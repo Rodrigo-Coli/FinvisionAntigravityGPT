@@ -28,38 +28,48 @@ export const CardList: React.FC<CardListProps> = ({
     });
 
     return (
-        <div className="lg:col-span-1 flex flex-row lg:flex-col gap-4 overflow-x-auto lg:overflow-visible pb-4 lg:pb-0 scrollbar-hide">
+        <div className="lg:col-span-1 flex flex-row lg:flex-col gap-4 overflow-x-auto lg:overflow-visible pb-4 lg:pb-0 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
             {groupedCards.map((card) => (
                 <button
                     key={card.id}
                     onClick={() => onSelectCard(card)}
-                    className={`min-w-[280px] lg:min-w-0 text-left p-5 lg:p-6 rounded-2xl border-2 transition-all shrink-0 relative ${selectedCardId === card.id
-                            ? 'border-brand-500 bg-white shadow-lg'
-                            : 'border-transparent bg-white hover:border-slate-100 shadow-sm'
-                        } ${card.level > 0 ? 'ml-0 lg:ml-6 scale-[0.98]' : ''}`}
+                    className={`min-w-[280px] lg:min-w-0 text-left p-6 sm:p-8 rounded-[28px] sm:rounded-[36px] border-2 transition-all shrink-0 relative flex flex-col justify-between h-[200px] sm:h-[220px] lg:h-auto ${selectedCardId === card.id
+                        ? 'border-brand-500 bg-white dark:bg-slate-800 shadow-xl shadow-brand-500/10'
+                        : 'border-transparent bg-slate-50 dark:bg-slate-900 hover:border-slate-200 dark:hover:border-slate-700'
+                        } ${card.level > 0 ? 'ml-0 lg:ml-8 scale-[0.98]' : ''}`}
                 >
                     {card.level > 0 && (
-                        <div className="absolute -left-5 top-1/2 -translate-y-1/2 hidden lg:block text-slate-300">
-                            <CornerDownRight size={20} />
+                        <div className="absolute -left-6 top-1/2 -translate-y-1/2 hidden lg:block text-slate-300 dark:text-slate-600">
+                            <CornerDownRight size={24} />
                         </div>
                     )}
-                    <div className="flex justify-between items-start mb-4">
-                        <div className={`w-10 h-7 ${getCardColor(card.brand)} rounded shadow-sm flex items-center justify-center`}>
-                            <CreditCard size={14} className="text-white opacity-40" />
+                    <div className="flex justify-between items-start mb-6">
+                        <div className={`w-12 h-8 sm:w-14 sm:h-9 ${getCardColor(card.brand)} rounded-lg shadow-inner flex items-center justify-center`}>
+                            <CreditCard size={18} className="text-white opacity-50" />
                         </div>
                         <div className="text-right">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">
+                            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
                                 {card.brand} {card.level > 0 ? '• ADICIONAL' : ''}
                             </p>
-                            <p className="text-[10px] text-slate-400 font-mono">**** {card.last4}</p>
+                            <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1">**** {card.last4}</p>
                         </div>
                     </div>
-                    <h3 className="font-bold text-slate-900 mb-1 line-clamp-1">
-                        {card.name} {card.level > 0 && card.additional_label ? `(${card.additional_label})` : ''}
-                    </h3>
-                    <div className="mt-4">
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Limite Total</p>
-                        <p className="text-lg font-black text-slate-900 leading-none">{formatCurrency(card.limit_total)}</p>
+
+                    <div className="space-y-4">
+                        <h3 className="font-display font-black text-slate-900 dark:text-white text-lg sm:text-xl line-clamp-1 leading-tight">
+                            {card.name}
+                        </h3>
+                        {card.level > 0 && card.additional_label && (
+                            <p className="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-tight -mt-3">
+                                Portador: {card.additional_label}
+                            </p>
+                        )}
+                        <div className="pt-4 border-t border-slate-100 dark:border-slate-700/50">
+                            <p className="text-[10px] uppercase font-black text-slate-300 dark:text-slate-600 tracking-widest mb-1">Limite Total</p>
+                            <p className="text-xl font-display font-black text-slate-900 dark:text-white leading-none">
+                                {formatCurrency(card.limit_total)}
+                            </p>
+                        </div>
                     </div>
                 </button>
             ))}
