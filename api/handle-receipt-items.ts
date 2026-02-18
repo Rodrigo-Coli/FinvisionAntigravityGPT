@@ -15,10 +15,12 @@ export default async function handler(req: any, res: any) {
 
     try {
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-        if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
+        if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada nas variáveis de ambiente.');
 
         const ai = new GoogleGenAI(geminiKey);
         const modelName = 'gemini-2.5-flash';
+
+        // Configuração do modelo com esquema de resposta se possível, mas mantendo flexível
         const model = ai.getGenerativeModel({
             model: modelName,
             generationConfig: {
@@ -28,15 +30,15 @@ export default async function handler(req: any, res: any) {
 
         const prompt = `
       Você é um especialista em análise de documentos fiscais (Cupons e NF-e) e inteligência de varejo.
-      Extraia os dados detalhados deste cupom.
+      Analise a imagem/PDF e extraia os dados detalhados.
       
       REGRAS DE INTELIGÊNCIA:
-      1. MERCHANT: Identifique o nome fantasia do estabelecimento.
-      2. NORMALIZAÇÃO: Para cada item, crie um 'normalized_name' (Ex: se no cupom está 'COCA LATA 350', normalize para 'Coca-Cola Lata 350ml').
-      3. PROMOÇÃO: Identifique se o item parece estar em promoção/oferta e marque 'is_promo'.
+      1. MERCHANT: Identifique o nome fantasia (Ex: Carrefour, Extra, Swift).
+      2. NORMALIZAÇÃO: Crie um 'normalized_name' padronizado para cada item.
+      3. PROMOÇÃO: Identifique se o item está em oferta/promoção ('is_promo').
       4. CATEGORIA: Classifique o item (Mercado, Restaurante, Farmácia, Posto, etc).
       
-      Retorne APENAS um objeto JSON no formato:
+      Retorne APENAS um objeto JSON válido:
       {
         "merchant": "Nome Fantasia",
         "date": "YYYY-MM-DD",
@@ -64,21 +66,52 @@ export default async function handler(req: any, res: any) {
             { inlineData: { data: base64, mimeType: mimeType || 'application/pdf' } }
         ]);
 
+        if (!result || !result.response) {
+            throw new Error('A IA não retornou um objeto de resposta válido.');
+        }
+
         const response = await result.response;
-        if (!response) throw new Error('Resposta da IA veio vazia (undefined).');
 
-        const rawText = response.text();
-        if (!rawText) throw new Error('IA retornou resposta sem conteúdo de texto.');
+        // Extração segura do texto
+        let rawText = '';
+        try {
+            // Tentar o método padrão
+            rawText = response.text();
+        } catch (textErr) {
+            console.error('[AI-Labs] Falha ao ler response.text(), tentando candidatos...', textErr);
+            // Fallback para candidatos
+            const candidate = response.candidates?.[0];
+            if (candidate?.content?.parts?.[0]?.text) {
+                rawText = candidate.content.parts[0].text;
+            }
+        }
 
-        console.log(`[AI-Labs] Resposta recebida (Tamanho: ${rawText.length})`);
-        const parsedData = JSON.parse(rawText.replace(/```json|```/g, "").trim());
+        if (!rawText) {
+            // Verificar motivos de bloqueio se estiver vazio
+            const feedback = response.promptFeedback;
+            if (feedback?.blockReason) {
+                throw new Error(`A IA bloqueou este conteúdo: ${feedback.blockReason}`);
+            }
+            throw new Error('A IA retornou uma resposta vazia. O documento pode estar ilegível ou ser muito grande.');
+        }
+
+        console.log(`[AI-Labs] Resposta recebida. Processando JSON...`);
+
+        // Limpar possíveis markdown code blocks e dar parse
+        const cleanJson = rawText.replace(/```json|```/g, "").trim();
+        const parsedData = JSON.parse(cleanJson);
+
+        // Validar campos básicos para evitar erros no front
+        if (!parsedData.items) parsedData.items = [];
+        if (!parsedData.merchant) parsedData.merchant = 'Desconhecido';
 
         return res.status(200).json(parsedData);
+
     } catch (err: any) {
-        console.error('[AI-Labs] Erro fatal no parsing:', err);
+        console.error('[AI-Labs] ERRO NO PARSING:', err);
         return res.status(500).json({
             error: err.message,
-            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+            details: 'Erro de processamento na IA ou formato inválido.'
         });
     }
 }
