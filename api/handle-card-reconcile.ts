@@ -35,8 +35,11 @@ export default async function handler(req: any, res: any) {
     const buffer = Buffer.from(await fileBlob.arrayBuffer());
 
     // 3. AI Extraction with Gemini
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const model = 'gemini-3-flash-preview';
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (!geminiKey) throw new Error('Chave do Gemini (GEMINI_API_KEY) não encontrada nas variáveis de ambiente.');
+
+    const ai = new GoogleGenAI({ apiKey: geminiKey });
+    const model = 'gemini-1.5-flash';
 
     const prompt = `
       Você é um especialista em conciliação bancária. Analise o extrato de cartão de crédito.
