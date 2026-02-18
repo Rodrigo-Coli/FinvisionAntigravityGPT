@@ -74,7 +74,8 @@ Retorne APENAS JSON ARRAY.
       },
     });
 
-    const text = response.text || "[]";
+    let rawText = (response as any).text || (response.response && (response.response as any).text) || (response.response && typeof (response.response as any).text === 'function' && (response.response as any).text()) || '';
+    const text = rawText.replace(/```json|```/g, "").trim() || "[]";
 
     return res.status(200).json(JSON.parse(text));
   } catch (error: any) {
