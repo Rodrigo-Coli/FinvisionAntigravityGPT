@@ -33,10 +33,10 @@ serve(async (req) => {
     const updateStatus = async (status: string, step: string, error?: string) => {
       await supabase
         .from("imports")
-        .update({ 
-          status, 
+        .update({
+          status,
           parse_meta: { ...importRec.parse_meta, step },
-          error_message: error || null 
+          error_message: error || null
         })
         .eq("id", import_id);
     };
@@ -67,8 +67,8 @@ serve(async (req) => {
 
     // 4. Intelligence via Gemini
     await updateStatus("processing", "llm");
-    const model = "gemini-3-flash-preview";
-    
+    const model = "gemini-2.5-flash";
+
     const base64File = btoa(String.fromCharCode(...fileBytes));
     const prompt = `
       Você é um especialista em conciliação bancária. Analise o conteúdo fornecido (extrato/comprovante).
@@ -89,7 +89,7 @@ serve(async (req) => {
       {
         parts: [
           { text: prompt },
-          extractedText === "[MULTIMODAL_INPUT]" 
+          extractedText === "[MULTIMODAL_INPUT]"
             ? { inlineData: { data: base64File, mimeType: importRec.documents.mime_type } }
             : { text: `CONTEÚDO DO ARQUIVO:\n${extractedText.substring(0, 10000)}` }
         ]
@@ -136,11 +136,11 @@ serve(async (req) => {
     const paidDefaultOnReconcile = (String(importRec.source_type || "").toLowerCase() === "bank");
 
     const nowIso = new Date().toISOString();
-    
+
     const txsToInsert = await Promise.all(transactions.map(async (t: any) => {
       const normalizedDesc = (t.description || "").trim();
       const fpData = `${t.date}|${Number(t.amount).toFixed(2)}|${normalizedDesc.toLowerCase()}|${importRec.account_id || ''}`;
-      
+
       const encoder = new TextEncoder();
       const data = encoder.encode(fpData);
       const hashBuffer = await crypto.subtle.digest("SHA-256", data);
@@ -160,8 +160,8 @@ serve(async (req) => {
         source_document_id: importRec.document_id,
         status: "READY_TO_RECONCILE",
         fingerprint,
-        metadata: { 
-          ai_confidence: t.confidence || 1.0, 
+        metadata: {
+          ai_confidence: t.confidence || 1.0,
           ai_notes: parsedResponse.notes,
 
           // ✅ Flags para a etapa de conciliação
@@ -188,26 +188,26 @@ serve(async (req) => {
     // 6. Complete
     await supabase
       .from("imports")
-      .update({ 
-        status: "ready", 
-        parse_meta: { 
-          ...importRec.parse_meta, 
-          step: "done", 
+      .update({
+        status: "ready",
+        parse_meta: {
+          ...importRec.parse_meta,
+          step: "done",
           count: transactions.length,
-          notes: parsedResponse.notes 
-        } 
+          notes: parsedResponse.notes
+        }
       })
       .eq(import_id);
 
-    return new Response(JSON.stringify({ success: true, count: transactions.length }), { 
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } 
+    return new Response(JSON.stringify({ success: true, count: transactions.length }), {
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     });
 
   } catch (err) {
     console.error(err);
-    return new Response(JSON.stringify({ error: (err as Error).message }), { 
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 400,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } 
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     });
   }
 });
