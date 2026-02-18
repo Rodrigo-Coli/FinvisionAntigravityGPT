@@ -51,26 +51,27 @@ export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
 }) => {
     return (
         <div className="bg-white p-6 rounded-3xl border border-slate-200/50 shadow-sm mb-6">
-            <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex flex-col lg:flex-row gap-3 sm:gap-4">
                 <div className="relative flex-grow">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-500 transition-colors" size={20} />
                     <input
                         type="text"
                         placeholder="Buscar por descrição ou detalhe..."
-                        className="w-full pl-12 pr-4 h-14 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 text-sm font-medium transition-all"
+                        className="w-full pl-12 pr-4 h-12 sm:h-14 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-[16px] sm:rounded-2xl outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 text-sm font-medium transition-all"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                     />
                 </div>
                 <button
                     onClick={() => setShowFilters(!showFilters)}
-                    className={`flex items-center justify-center gap-3 px-8 h-14 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${showFilters
-                            ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/20'
-                            : 'bg-slate-50 text-slate-600 border border-slate-100 hover:bg-slate-100'
+                    className={`flex items-center justify-center gap-3 px-6 sm:px-8 h-12 sm:h-14 rounded-[16px] sm:rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${showFilters
+                        ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/20'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-600 border border-slate-100 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                         }`}
                 >
                     <Filter size={18} />
-                    Filtros Avançados
+                    <span className="hidden xs:inline">Filtros Avançados</span>
+                    <span className="xs:hidden">Filtros</span>
                     {showFilters ? <X size={14} /> : <ChevronDown size={14} />}
                 </button>
             </div>
