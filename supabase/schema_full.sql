@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email TEXT,
     role TEXT CHECK (role IN ('admin', 'user')) DEFAULT 'user',
-    is_approved BOOLEAN DEFAULT false,
+    is_approved BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
