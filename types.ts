@@ -161,3 +161,14 @@ export interface PriceComparison {
   date: string;
   isBestPrice: boolean;
 }
+
+export type MatchStatus = 'READY_TO_RECONCILE' | 'OK' | 'IGNORED' | 'processing' | 'ready' | 'error';
+
+export interface ImportedTransaction {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  status: MatchStatus;
+  type: 'credit' | 'debit';
+}
