@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash } from 'lucide-react';
+import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar } from 'lucide-react';
 import { AIReconcileService } from '../services/aiReconcile.service';
 import { ExtractedReceipt, ReceiptItem, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
@@ -15,17 +15,62 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [selectedAccounts, setSelectedAccounts] = useState<any[]>([]);
   const [targetAccount, setTargetAccount] = useState('');
 
+  // States para Dados de Inteligência
+  const [comparisonData, setComparisonData] = useState<any[]>([]);
+  const [isLoadingIntelligence, setIsLoadingIntelligence] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchAccounts();
-  }, []);
+    if (activeTab !== 'upload') {
+      fetchIntelligenceData();
+    }
+  }, [activeTab]);
 
   const fetchAccounts = async () => {
     const { data } = await supabase.from('accounts').select('id, institution').eq('user_id', user.id);
     if (data) {
       setSelectedAccounts(data);
       if (data.length > 0) setTargetAccount(data[0].id);
+    }
+  };
+
+  const fetchIntelligenceData = async () => {
+    setIsLoadingIntelligence(true);
+    try {
+      const data = await AIReconcileService.getPriceComparison();
+
+      // Processar dados para o comparativo
+      const processed = data.map((prod: any) => {
+        const prices = prod.product_prices || [];
+        if (prices.length === 0) return null;
+
+        const validPrices = prices.filter((p: any) => !p.exclude_from_stats);
+        const avgPrice = validPrices.reduce((sum: number, p: any) => sum + p.unit_price, 0) / (validPrices.length || 1);
+        const minPriceObj = prices.reduce((min: any, p: any) => p.unit_price < min.unit_price ? p : min, prices[0]);
+        const lastPrice = prices[prices.length - 1];
+
+        return {
+          id: prod.id,
+          name: prod.name,
+          category: prod.category || 'Geral',
+          avgPrice,
+          minPrice: minPriceObj.unit_price,
+          bestMerchant: minPriceObj.ai_documents?.merchant_raw || 'N/A',
+          lastPrice: lastPrice.unit_price,
+          lastMerchant: lastPrice.ai_documents?.merchant_raw || 'N/A',
+          trend: lastPrice.unit_price > avgPrice ? 'up' : 'down',
+          history: prices
+        };
+      }).filter(Boolean);
+
+      setComparisonData(processed);
+    } catch (err) {
+      console.error('Erro ao carregar inteligência:', err);
+    } finally {
+      setIsLoadingIntelligence(false);
     }
   };
 
@@ -38,7 +83,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
     try {
       const data = await AIReconcileService.processReceiptItems(file);
-      // Initialize items as selected
       if (data.items) {
         data.items = data.items.map((it: any) => ({ ...it, selected: true }));
       }
@@ -70,10 +114,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     setSaveStatus('saving');
 
     try {
-      // 1. Salvar no AI Labs (Produtos e Preços)
       await AIReconcileService.saveReceiptToLabs(receipt);
-
-      // 2. Enviar para a fila de conciliação
       const finalAmount = getReconcileAmount();
       const accountName = selectedAccounts.find(a => a.id === targetAccount)?.institution || 'Conta';
 
@@ -91,7 +132,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         setReceipt(null);
         setSaveStatus('idle');
       }, 2000);
-
     } catch (err: any) {
       alert(err.message);
       setSaveStatus('idle');
@@ -109,7 +149,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
             <h1 className="text-4xl font-display font-black text-slate-900 tracking-tight">AI & <span className="text-brand-600 italic">Labs</span></h1>
             <div className="px-3 py-1 bg-brand-50 text-brand-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-brand-100">Inteligência de Varejo</div>
           </div>
-          <p className="text-slate-500 font-medium text-lg">Extraia itens, compare preços e controle gastos granulares</p>
+          <p className="text-slate-500 font-medium text-lg">Central de Economia e Laboratório de Preços</p>
         </div>
       </header>
 
@@ -219,7 +259,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   </div>
 
                   <div className="space-y-6">
-                    {/* Modo de Conciliação */}
                     <div className="grid grid-cols-3 gap-2">
                       {[
                         { id: 'total', label: 'Total', icon: <Hash size={16} /> },
@@ -239,7 +278,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       ))}
                     </div>
 
-                    {/* Input de Valor Parcial */}
                     {reconcileMode === 'partial' && (
                       <div className="p-5 bg-slate-50 rounded-3xl border border-slate-100 animate-in slide-in-from-top-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Valor para Conciliação</label>
@@ -255,7 +293,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       </div>
                     )}
 
-                    {/* Resumo do Valor */}
                     <div className="p-6 bg-brand-600 rounded-[32px] text-white shadow-xl shadow-brand-500/20">
                       <div className="flex justify-between items-center mb-1 opacity-60">
                         <span className="text-[10px] font-black uppercase tracking-widest">Valor Filtrado</span>
@@ -266,7 +303,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       </p>
                     </div>
 
-                    {/* Seletor de Conta */}
                     <div className="space-y-2">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block ml-1">Conta de Origem</label>
                       <select
@@ -280,7 +316,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       </select>
                     </div>
 
-                    {/* Botão Finalizar */}
                     <button
                       onClick={handleFinalize}
                       disabled={saveStatus !== 'idle'}
@@ -298,19 +333,168 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           </div>
         )}
 
-        {(activeTab === 'comparative' || activeTab === 'history') && (
-          <div className="bg-white rounded-[48px] border border-slate-200/50 shadow-sm p-32 text-center flex flex-col items-center gap-8">
-            <div className="w-24 h-24 bg-slate-50 text-slate-200 rounded-[32px] flex items-center justify-center shadow-inner">
-              {activeTab === 'comparative' ? <Store size={48} /> : <BarChart3 size={48} />}
+        {activeTab === 'comparative' && (
+          <div className="space-y-10 animate-in fade-in duration-700">
+            {/* Filtros e Busca */}
+            <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
+              <div className="relative w-full md:w-96 group">
+                <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-600 transition-colors" size={18} />
+                <input
+                  type="text"
+                  placeholder="Buscar produto ou categoria..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full h-16 bg-white border border-slate-200 rounded-[20px] pl-16 pr-6 font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                />
+              </div>
+              <div className="flex gap-4">
+                <button className="h-16 px-8 bg-white border border-slate-200 rounded-[20px] text-[10px] font-black uppercase tracking-widest text-slate-600 flex items-center gap-3 hover:bg-slate-50 transition-all">
+                  <Filter size={16} /> Filtrar
+                </button>
+                <button onClick={fetchIntelligenceData} className="w-16 h-16 bg-brand-50 text-brand-600 rounded-[20px] flex items-center justify-center hover:bg-brand-100 transition-all">
+                  <TrendingUp size={20} />
+                </button>
+              </div>
             </div>
-            <div className="space-y-3">
-              <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tight">
-                {activeTab === 'comparative' ? 'Comparador em Construção' : 'Análise de Inflação Pessoal'}
-              </h3>
-              <p className="text-slate-500 font-medium max-w-lg mx-auto text-lg">
-                Os cupons que você escanear agora já estão alimentando seu banco de dados.
-                Em breve, você verá o gráfico de variação de preços aqui!
-              </p>
+
+            {/* Grid de Comparativo */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {isLoadingIntelligence ? (
+                Array(6).fill(0).map((_, i) => (
+                  <div key={i} className="h-64 bg-slate-100 animate-pulse rounded-[40px]"></div>
+                ))
+              ) : (
+                comparisonData
+                  .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.category.toLowerCase().includes(searchTerm.toLowerCase()))
+                  .map((product) => (
+                    <div key={product.id} className="bg-white rounded-[40px] border border-slate-100 p-8 shadow-sm hover:shadow-xl transition-all group">
+                      <div className="flex justify-between items-start mb-6">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${product.trend === 'down' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                          {product.trend === 'down' ? <TrendingDown size={24} /> : <TrendingUp size={24} />}
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-full">{product.category}</span>
+                      </div>
+
+                      <h3 className="text-xl font-black text-slate-900 mb-2 group-hover:text-brand-600 transition-colors uppercase">{product.name}</h3>
+
+                      <div className="space-y-4 pt-4 border-t border-slate-50">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="font-bold text-slate-400 uppercase tracking-tighter">Preço Médio</span>
+                          <span className="font-black text-slate-900">{formatCurrency(product.avgPrice)}</span>
+                        </div>
+                        <div className="flex justify-between items-center p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Melhor Preço</span>
+                            <span className="text-xs font-black text-emerald-700 truncate max-w-[120px] uppercase">{product.bestMerchant}</span>
+                          </div>
+                          <span className="text-lg font-black text-emerald-600">{formatCurrency(product.minPrice)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm px-1">
+                          <div className="flex items-center gap-2 text-slate-400">
+                            <MapPin size={12} />
+                            <span className="text-[10px] font-black uppercase tracking-tighter">Última Compra</span>
+                          </div>
+                          <span className="text-xs font-bold text-slate-600 uppercase">{product.lastMerchant}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+
+            {comparisonData.length === 0 && !isLoadingIntelligence && (
+              <div className="py-20 text-center space-y-6">
+                <div className="w-20 h-20 bg-slate-50 text-slate-200 rounded-[32px] flex items-center justify-center mx-auto shadow-inner">
+                  <Store size={40} />
+                </div>
+                <h3 className="text-2xl font-black text-slate-400 uppercase tracking-widest">Aguardando dados de cupons...</h3>
+                <p className="text-slate-500 max-w-sm mx-auto">Comece a escanear seus cupons na primeira aba para alimentar seu comparador de preços.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'history' && (
+          <div className="space-y-10 animate-in fade-in duration-700">
+            {/* Dashboard de Inflação Pessoal */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="col-span-1 md:col-span-2 bg-slate-900 rounded-[40px] p-10 text-white relative overflow-hidden">
+                <div className="relative z-10 space-y-6">
+                  <div className="flex items-center gap-3">
+                    <Calendar size={20} className="text-brand-400" />
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Laboratório de Inflação</h3>
+                  </div>
+                  <h2 className="text-4xl font-black tracking-tighter">Variação Real de Preços</h2>
+                  <p className="text-slate-400 max-w-xs font-medium">Análise granular baseada no seu comportamento de consumo real nos últimos 30 dias.</p>
+                  <div className="flex gap-10 mt-10">
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Analisado</p>
+                      <p className="text-3xl font-black">{comparisonData.length} <span className="text-sm font-medium text-slate-500">Itens</span></p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Economia Potencial</p>
+                      <p className="text-3xl font-black text-emerald-400">R$ 142<span className="text-sm font-medium text-slate-500">.80</span></p>
+                    </div>
+                  </div>
+                </div>
+                <div className="absolute right-0 top-0 w-1/2 h-full opacity-10">
+                  <BarChart3 size={400} />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-[40px] border border-slate-100 p-10 flex flex-col justify-between shadow-sm">
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loja Mais Barata</h4>
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center">
+                      <Store size={28} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Assaí Atacadista</h3>
+                      <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">-12% vs Média</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="pt-8 border-t border-slate-50 mt-8">
+                  <button className="w-full h-14 bg-slate-50 rounded-2xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-all">Ver Detalhes das Lojas</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Lista de Inflação por Item */}
+            <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden">
+              <div className="p-8 border-b border-slate-50 flex justify-between items-center">
+                <h3 className="font-black text-slate-900 uppercase tracking-widest text-xs italic">Índice de Preços por Categoria</h3>
+              </div>
+              <div className="divide-y divide-slate-50">
+                {comparisonData.slice(0, 5).map((product, idx) => (
+                  <div key={idx} className="p-8 flex items-center justify-between hover:bg-slate-50/50 transition-all">
+                    <div className="flex items-center gap-6">
+                      <div className="text-2xl font-black text-slate-100 italic w-10">0{idx + 1}</div>
+                      <div>
+                        <h4 className="font-black text-slate-900 uppercase">{product.name}</h4>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{product.category}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-20">
+                      <div className="hidden md:block">
+                        <p className="text-[9px] font-black text-slate-300 uppercase tracking-tighter mb-1">Histórico</p>
+                        <div className="flex gap-1">
+                          {Array(8).fill(0).map((_, i) => (
+                            <div key={i} className={`w-1.5 rounded-full ${i === 7 ? 'h-4 bg-brand-500' : 'h-2 bg-slate-100'}`}></div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-xl font-black ${product.trend === 'up' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {product.trend === 'up' ? '+' : '-'}{Math.round(Math.abs((product.lastPrice - product.avgPrice) / product.avgPrice) * 100)}%
+                        </p>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">vs Média</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
