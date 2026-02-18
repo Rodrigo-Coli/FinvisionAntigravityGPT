@@ -48,7 +48,7 @@ export default async function handler(req: any, res: any) {
     if (!geminiKey) throw new Error('Chave do Gemini (GEMINI_API_KEY) não encontrada nas variáveis de ambiente.');
 
     const ai = new GoogleGenAI({ apiKey: geminiKey });
-    const model = 'gemini-1.5-flash-latest';
+    const model = 'gemini-2.5-flash';
 
     const prompt = `
       Você é um especialista em conciliação bancária. Analise o extrato de cartão de crédito.
@@ -93,7 +93,24 @@ export default async function handler(req: any, res: any) {
       }
     });
 
-    const parsedData = JSON.parse(response.text || '{"transactions":[]}');
+    // Pegar o texto de forma segura (Blindagem contra undefined)
+    let rawText = '';
+    try {
+      rawText = (response as any).text ||
+        (response.response && (response.response as any).text) ||
+        (response.response && typeof (response.response as any).text === 'function' && (response.response as any).text()) ||
+        '';
+    } catch (e) {
+      console.error('[API-Card] Erro ao extrair texto:', e);
+    }
+
+    if (!rawText) {
+      throw new Error('A IA não retornou nenhum dado.');
+    }
+
+    // Limpeza de Markdown Code Blocks (```json ... ```)
+    const cleanJson = rawText.replace(/```json|```/g, "").trim();
+    const parsedData = JSON.parse(cleanJson);
     const processedTxs = parsedData.transactions || [];
 
     // 4. Save to Reconcile Queue
