@@ -8,6 +8,7 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export default async function handler(req: any, res: any) {
+    if (req.method === 'OPTIONS') return res.status(200).send('ok');
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
     const { base64, mimeType } = req.body;
@@ -15,103 +16,68 @@ export default async function handler(req: any, res: any) {
 
     try {
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-        if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada nas variáveis de ambiente.');
+        if (!geminiKey) throw new Error('Chave do Gemini não configurada.');
 
-        const ai = new GoogleGenAI(geminiKey);
-        const modelName = 'gemini-2.5-flash';
-
-        // Configuração do modelo com esquema de resposta se possível, mas mantendo flexível
-        const model = ai.getGenerativeModel({
-            model: modelName,
-            generationConfig: {
-                responseMimeType: "application/json"
-            }
-        });
+        const ai = new GoogleGenAI({ apiKey: geminiKey });
+        const model = 'gemini-2.5-flash';
 
         const prompt = `
-      Você é um especialista em análise de documentos fiscais (Cupons e NF-e) e inteligência de varejo.
-      Analise a imagem/PDF e extraia os dados detalhados.
+      Você é um especialista em análise de documentos fiscais. Extraia os dados detalhados deste cupom.
       
-      REGRAS DE INTELIGÊNCIA:
-      1. MERCHANT: Identifique o nome fantasia (Ex: Carrefour, Extra, Swift).
-      2. NORMALIZAÇÃO: Crie um 'normalized_name' padronizado para cada item.
-      3. PROMOÇÃO: Identifique se o item está em oferta/promoção ('is_promo').
-      4. CATEGORIA: Classifique o item (Mercado, Restaurante, Farmácia, Posto, etc).
-      
-      Retorne APENAS um objeto JSON válido:
+      RETORNE APENAS JSON NO FORMATO:
       {
-        "merchant": "Nome Fantasia",
+        "merchant": "Nome",
         "date": "YYYY-MM-DD",
-        "total": 123.45,
-        "category": "Mercado",
+        "total": 0.00,
         "items": [
           {
-            "description": "Descrição Original",
-            "normalized_name": "Nome Padronizado",
+            "description": "Original",
+            "normalized_name": "Simplificado",
             "quantity": 1,
-            "unit": "un",
-            "unit_price": 25.90,
-            "total_price": 25.90,
-            "is_promo": false,
-            "category_hint": "Alimentação"
+            "unit_price": 0.00,
+            "total_price": 0.00,
+            "category_hint": "Alimentação",
+            "is_promo": false
           }
         ]
       }
     `;
 
-        console.log(`[AI-Labs] Iniciando extração com ${modelName}...`);
+        const contents = [{
+            parts: [
+                { text: prompt },
+                { inlineData: { data: base64, mimeType: mimeType || 'application/pdf' } }
+            ]
+        }];
 
-        const result = await model.generateContent([
-            { text: prompt },
-            { inlineData: { data: base64, mimeType: mimeType || 'application/pdf' } }
-        ]);
+        // USANDO EXATAMENTE O MESMO PADRÃO DO RECONCILE
+        const response = await ai.models.generateContent({
+            model,
+            contents,
+            generationConfig: {
+                responseMimeType: "application/json"
+            }
+        });
 
-        if (!result || !result.response) {
-            throw new Error('A IA não retornou um objeto de resposta válido.');
-        }
-
-        const response = await result.response;
-
-        // Extração segura do texto
+        // MESMA BLINDAGEM DO RECONCILE
         let rawText = '';
         try {
-            // Tentar o método padrão
-            rawText = response.text();
-        } catch (textErr) {
-            console.error('[AI-Labs] Falha ao ler response.text(), tentando candidatos...', textErr);
-            // Fallback para candidatos
-            const candidate = response.candidates?.[0];
-            if (candidate?.content?.parts?.[0]?.text) {
-                rawText = candidate.content.parts[0].text;
-            }
+            rawText = (response as any).text ||
+                (response.response && (response.response as any).text) ||
+                (response.response && typeof (response.response as any).text === 'function' && (response.response as any).text()) || '';
+        } catch (e) {
+            console.error('[AI-Labs] Erro ao extrair texto:', e);
         }
 
-        if (!rawText) {
-            // Verificar motivos de bloqueio se estiver vazio
-            const feedback = response.promptFeedback;
-            if (feedback?.blockReason) {
-                throw new Error(`A IA bloqueou este conteúdo: ${feedback.blockReason}`);
-            }
-            throw new Error('A IA retornou uma resposta vazia. O documento pode estar ilegível ou ser muito grande.');
-        }
+        if (!rawText) throw new Error('A IA não retornou nenhum dado.');
 
-        console.log(`[AI-Labs] Resposta recebida. Processando JSON...`);
-
-        // Limpar possíveis markdown code blocks e dar parse
         const cleanJson = rawText.replace(/```json|```/g, "").trim();
         const parsedData = JSON.parse(cleanJson);
-
-        // Validar campos básicos para evitar erros no front
-        if (!parsedData.items) parsedData.items = [];
-        if (!parsedData.merchant) parsedData.merchant = 'Desconhecido';
 
         return res.status(200).json(parsedData);
 
     } catch (err: any) {
-        console.error('[AI-Labs] ERRO NO PARSING:', err);
-        return res.status(500).json({
-            error: err.message,
-            details: 'Erro de processamento na IA ou formato inválido.'
-        });
+        console.error('[AI-Labs] Erro:', err.message);
+        return res.status(500).json({ error: err.message });
     }
 }
