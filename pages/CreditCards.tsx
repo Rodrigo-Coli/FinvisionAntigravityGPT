@@ -114,13 +114,15 @@ const CreditCardsPage: React.FC = () => {
       const { data, error } = await supabase
         .from('cards')
         .select('*')
-        .eq('user_id', user.id)
-        .eq('is_archived', false)
-        .order('created_at', { ascending: true });
+        .eq('user_id', user.id);
+
       if (error) throw error;
-      setCards(data || []);
-      if (data && data.length > 0 && !selectedCard) {
-        setSelectedCard(data[0]);
+
+      const activeCards = (data || []).filter((c: any) => c.is_archived !== true && c.status !== 'archived');
+      setCards(activeCards);
+
+      if (activeCards.length > 0 && !selectedCard) {
+        setSelectedCard(activeCards[0]);
       }
     } catch (err) {
       console.error('Erro ao buscar cartões:', err);
