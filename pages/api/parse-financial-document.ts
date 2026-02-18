@@ -41,7 +41,7 @@ Retorne APENAS JSON ARRAY.
 `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-1.5-flash",
       contents: [
         {
           parts: [
@@ -55,7 +55,7 @@ Retorne APENAS JSON ARRAY.
           ],
         },
       ],
-      config: {
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
