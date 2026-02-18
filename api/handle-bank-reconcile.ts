@@ -147,10 +147,24 @@ export default async function handler(req: any, res: any) {
 
     // 6. PARSE_JSON: Validar retorno
     console.log(`[parse-statement] STEP: PARSE_JSON`);
-    const rawText = response.response.text();
+    // Pegar o texto de forma segura
+    let rawText = '';
+    try {
+      rawText = (response as any).text || (response.response && (response.response as any).text) || (response.response && typeof (response.response as any).text === 'function' && (response.response as any).text()) || '';
+    } catch (e) {
+      console.error('[API] Erro ao extrair texto:', e);
+    }
+
+    console.log('[API] Resposta bruta da IA:', rawText);
+
+    if (!rawText) {
+      throw new Error('A IA não retornou nenhum dado.');
+    }
+
     const cleanJson = rawText.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleanJson);
     const transactions = parsed.transactions || [];
+
 
     // 7. UPSERT_TXS: Persistir transações (READY_TO_RECONCILE)
     console.log(`[parse-statement] STEP: UPSERT_TXS (${transactions.length} itens)`);
