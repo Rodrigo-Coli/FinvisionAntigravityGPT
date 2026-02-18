@@ -75,12 +75,14 @@ export default async function handler(req: any, res: any) {
 
     // 5. GEMINI_CALL: Processamento inteligente
     console.log(`[parse-statement] STEP: GEMINI_CALL (${imp.type})`);
-    if (!process.env.API_KEY) {
-      throw new Error('Variável de ambiente API_KEY (Gemini) não configurada no backend.');
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+
+    if (!geminiKey) {
+      throw new Error('Chave do Gemini (GEMINI_API_KEY) não encontrada nas variáveis de ambiente.');
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const model = 'gemini-3-flash-preview';
+    const ai = new GoogleGenAI({ apiKey: geminiKey });
+    const model = 'gemini-1.5-flash'; // Atualizado para o modelo mais estável
 
     const prompt = `
       Você é um especialista em conciliação bancária. Analise o extrato/comprovante fornecido.
