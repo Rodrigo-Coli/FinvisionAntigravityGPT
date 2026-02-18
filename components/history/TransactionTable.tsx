@@ -55,9 +55,9 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                     <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Atualizando histórico...</p>
                 </div>
             ) : (
-                <div className="w-full overflow-x-auto">
-                    <table className="w-full text-left min-w-[1100px] border-collapse">
-                        <thead className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">
+                <div className="w-full overflow-x-auto scrollbar-hide">
+                    <table className="w-full text-left min-w-[1000px] border-collapse">
+                        <thead className="bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-100 dark:border-slate-700 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">
                             <tr>
                                 <th className="px-6 py-5">Data</th>
                                 <th className="px-6 py-5">Descrição</th>
@@ -166,8 +166,8 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                                 onClick={() => openPayModal(t)}
                                                                 disabled={!canPay}
                                                                 className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${canPay
-                                                                        ? 'bg-brand-600 text-white hover:bg-brand-700 shadow-md shadow-brand-500/10'
-                                                                        : 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed'
+                                                                    ? 'bg-brand-600 text-white hover:bg-brand-700 shadow-md shadow-brand-500/10'
+                                                                    : 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed'
                                                                     }`}
                                                                 title={canPay ? 'Pagar agora' : 'Indisponível'}
                                                             >
