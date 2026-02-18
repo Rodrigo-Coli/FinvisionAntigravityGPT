@@ -82,24 +82,25 @@ const Accounts: React.FC = () => {
       const { data, error } = await supabase
         .from('accounts')
         .select('*')
-        .eq('user_id', user.id)
-        .order('institution', { ascending: true });
+        .eq('user_id', user.id);
 
       if (error) throw error;
 
-      const mapped = (data || []).map((acc: any) => ({
-        id: acc.id,
-        institution: acc.institution || acc.name || 'Conta',
-        name: acc.name || acc.institution,
-        type: acc.type as AccountType,
-        currency: acc.currency,
-        initialBalance: Number(acc.initial_balance),
-        currentBalance: Number(acc.current_balance),
-        limit: Number(acc.limit),
-        color: acc.color,
-        isArchived: acc.is_archived,
-        includeInDashboard: acc.include_in_dashboard
-      }));
+      const mapped = (data || [])
+        .map((acc: any) => ({
+          id: acc.id,
+          institution: acc.institution || acc.name || 'Conta',
+          name: acc.name || acc.institution || 'Conta',
+          type: acc.type as AccountType,
+          currency: acc.currency,
+          initialBalance: Number(acc.initial_balance || 0),
+          currentBalance: Number(acc.current_balance || 0),
+          limit: Number(acc.limit || acc.overdraft_limit || 0),
+          color: acc.color,
+          isArchived: acc.is_archived || acc.status === 'archived',
+          includeInDashboard: acc.include_in_dashboard !== false
+        }))
+        .sort((a, b) => a.institution.localeCompare(b.institution));
 
       setAccounts(mapped);
     } catch (err) {
