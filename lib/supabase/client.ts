@@ -1,24 +1,14 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-const getSupabaseConfig = () => {
-  let url: string | undefined;
-  let anonKey: string | undefined;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-  const isValid = (val: any): val is string => 
-    typeof val === 'string' && val.length > 10 && val !== 'undefined' && val !== 'null';
+export const isSupabaseConfigured = !!(
+  supabaseUrl &&
+  supabaseAnonKey &&
+  supabaseUrl !== 'your-project-url'
+);
 
-  try {
-    const vUrl = (import.meta as any).env?.VITE_SUPABASE_URL;
-    const vKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
-    if (isValid(vUrl)) url = vUrl;
-    if (isValid(vKey)) anonKey = vKey;
-  } catch (e) {}
-
-  return { url, anonKey };
-};
-
-const { url, anonKey } = getSupabaseConfig();
-
-export const isSupabaseConfigured = !!(url && anonKey);
-export const supabase = isSupabaseConfigured ? createClient(url!, anonKey!) : null;
+export const supabase = isSupabaseConfigured
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : null;
