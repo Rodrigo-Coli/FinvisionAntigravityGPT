@@ -44,7 +44,7 @@ export default async function handler(req: any, res: any) {
 
     if (docErr || !doc) throw new Error('Documento associado não encontrado');
 
-    // 3. Download File
+    // 3. Download and Prepare File
     const { data: fileBlob, error: dlErr } = await supabase.storage
       .from(doc.bucket)
       .download(doc.path);
@@ -52,6 +52,7 @@ export default async function handler(req: any, res: any) {
     if (dlErr || !fileBlob) throw new Error('Falha ao baixar arquivo do storage');
 
     const buffer = Buffer.from(await fileBlob.arrayBuffer());
+    const isTextFile = ['csv', 'ofx', 'xlsx'].includes(imp.type);
 
     // 4. AI Extraction with Gemini
     const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
@@ -60,26 +61,42 @@ export default async function handler(req: any, res: any) {
     const ai = new GoogleGenAI({ apiKey: geminiKey });
     const model = 'gemini-2.5-flash';
 
-    console.log(`[API-Card] Iniciando Gemini para import ${import_id}`);
+    console.log(`[API-Card] Iniciando Gemini para import ${import_id} (Tipo: ${imp.type})`);
 
     const prompt = `
       Você é um especialista em conciliação bancária. Analise o extrato de cartão de crédito fornecido.
       Extraia todas as transações individuais para uma lista estruturada.
+      
       REGRAS:
       1. Campo 'date' deve ser YYYY-MM-DD.
       2. Campo 'amount' deve ser um número float ABSOLUTO (positivo). O sistema tratará como débito.
       3. Identifique o merchant/descrição da melhor forma possível.
+      4. REMOVA: Linhas de SALDO, TOTAL, LIMITE, PAGAMENTO MINIMO, IOF, JUROS, ou qualquer linha que não seja uma transação financeira.
+      
       Retorne APENAS um objeto JSON no formato: { "transactions": [...] }
     `;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: [{
+    let contents: any;
+    if (isTextFile) {
+      const textContent = buffer.toString('utf-8');
+      contents = [{
         parts: [
           { text: prompt },
-          { inlineData: { data: buffer.toString('base64'), mimeType: doc.mime_type } }
+          { text: `CONTEÚDO DO ARQUIVO:\n${textContent.substring(0, 30000)}` }
         ]
-      }],
+      }];
+    } else {
+      contents = [{
+        parts: [
+          { text: prompt },
+          { inlineData: { data: buffer.toString('base64'), mimeType: doc.mime_type || 'application/pdf' } }
+        ]
+      }];
+    }
+
+    const result = await ai.models.generateContent({
+      model,
+      contents,
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -100,20 +117,26 @@ export default async function handler(req: any, res: any) {
                 required: ["date", "description", "amount"]
               }
             }
-          }
+          },
+          required: ["transactions"]
         }
       }
     });
 
+    // Pegar o texto de forma segura (Blindagem contra undefined)
     let rawText = '';
     try {
-      rawText = response.response.text();
+      const response = result.response;
+      rawText = (result as any).text ||
+        (response && (response as any).text) ||
+        (response && typeof (response as any).text === 'function' ? response.text() : '');
     } catch (e) {
       console.error('[API-Card] Erro ao extrair texto da resposta:', e);
-      throw new Error('Falha ao obter resposta da IA');
     }
 
-    if (!rawText) throw new Error('A IA não retornou nenhum dado.');
+    console.log('[API-Card] Resposta bruta da IA (primeiros 100 char):', rawText.substring(0, 100));
+
+    if (!rawText) throw new Error('A IA não retornou nenhum dado. Isso pode ser por filtros de segurança do Google ou o documento é ilegível.');
 
     const cleanJson = rawText.replace(/```json|```/g, "").trim();
     const parsedData = JSON.parse(cleanJson);
@@ -123,7 +146,8 @@ export default async function handler(req: any, res: any) {
     const targetAccountId = account_id || imp.account_id;
     const txsToInsert = processedTxs.map((t: any) => {
       // Fingerprint deduplication
-      const fpData = `${t.date}|${Number(t.amount).toFixed(2)}|${t.description.toLowerCase()}|${targetAccountId || ''}`;
+      const amountVal = Number(t.amount);
+      const fpData = `${t.date}|${amountVal.toFixed(2)}|${t.description.toLowerCase()}|${targetAccountId || ''}`;
       const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
 
       return {
@@ -131,7 +155,7 @@ export default async function handler(req: any, res: any) {
         import_id: import_id,
         date: t.date,
         description: t.description,
-        amount: -Math.abs(t.amount), // Débito negativo
+        amount: -Math.abs(amountVal), // Débito negativo
         account_id: targetAccountId,
         status: 'READY_TO_RECONCILE',
         fingerprint: fingerprint,
