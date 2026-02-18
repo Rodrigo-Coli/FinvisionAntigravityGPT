@@ -310,7 +310,7 @@ const CreditCardsPage: React.FC = () => {
         name: newName,
         brand: newBrand,
         last4: newLast4,
-        limit_total: newLimit,
+        limit_total: newLimit, // Nome sincronizado com o SQL
         closing_day: newClosingDay,
         due_day: newDueDay,
         is_archived: false,
@@ -324,8 +324,9 @@ const CreditCardsPage: React.FC = () => {
       if (!selectedCard) setSelectedCard(data);
       setShowAddModal(false);
       resetForm();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao salvar cartão:', err);
+      alert('Erro ao salvar cartão: ' + (err.message || 'Verifique sua conexão.'));
     } finally {
       setIsSaving(false);
     }
