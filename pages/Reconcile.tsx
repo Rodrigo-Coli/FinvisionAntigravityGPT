@@ -52,25 +52,29 @@ const Reconcile: React.FC = () => {
       const { data, error } = await supabase
         .from('accounts')
         .select('*')
-        .eq('user_id', user.id)
-        .eq('is_archived', false)
-        .order('institution', { ascending: true });
+        .eq('user_id', user.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erro ao buscar contas:', error);
+        throw error;
+      }
 
-      const mapped = (data || []).map((acc: any) => ({
-        id: acc.id,
-        institution: acc.institution || acc.name || 'Conta',
-        name: acc.name || acc.institution,
-        type: acc.type,
-        currency: acc.currency,
-        initialBalance: Number(acc.initial_balance),
-        currentBalance: Number(acc.current_balance),
-        limit: Number(acc.limit),
-        color: acc.color,
-        isArchived: acc.is_archived,
-        includeInDashboard: acc.include_in_dashboard
-      }));
+      const mapped = (data || [])
+        .filter((acc: any) => acc.is_archived === false || acc.status === 'active' || !acc.is_archived)
+        .map((acc: any) => ({
+          id: acc.id,
+          institution: acc.institution || acc.name || 'Conta',
+          name: acc.name || acc.institution || 'Conta',
+          type: acc.type,
+          currency: acc.currency,
+          initialBalance: Number(acc.initial_balance || 0),
+          currentBalance: Number(acc.current_balance || 0),
+          limit: Number(acc.limit || acc.overdraft_limit || 0),
+          color: acc.color,
+          isArchived: acc.is_archived || acc.status === 'archived',
+          includeInDashboard: acc.include_in_dashboard !== false
+        }))
+        .sort((a, b) => a.institution.localeCompare(b.institution));
 
       setRealAccounts(mapped);
     } catch (err) {
@@ -89,12 +93,15 @@ const Reconcile: React.FC = () => {
       const { data, error } = await supabase
         .from('cards')
         .select('*')
-        .eq('user_id', user.id)
-        .eq('is_archived', false)
-        .order('name', { ascending: true });
+        .eq('user_id', user.id);
 
       if (error) throw error;
-      setRealCards(data || []);
+
+      const filtered = (data || [])
+        .filter((c: any) => c.is_archived === false || c.status === 'active' || !c.is_archived)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+      setRealCards(filtered);
     } catch (err) {
       console.error('Erro ao buscar cartões:', err);
     }
@@ -387,9 +394,9 @@ const Reconcile: React.FC = () => {
                       <p className="text-[8px] text-gray-400 font-bold">{new Date(imp.created_at).toLocaleDateString()}</p>
                     </div>
                     <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ${imp.status === 'ready' ? 'bg-green-100 text-green-700' :
-                        imp.status === 'error' ? 'bg-red-100 text-red-700' :
-                          imp.status === 'processing' ? 'bg-purple-100 text-purple-700' :
-                            'bg-blue-100 text-blue-700'
+                      imp.status === 'error' ? 'bg-red-100 text-red-700' :
+                        imp.status === 'processing' ? 'bg-purple-100 text-purple-700' :
+                          'bg-blue-100 text-blue-700'
                       }`} title={imp.error_message}>{imp.status}</span>
                   </div>
                 ))
