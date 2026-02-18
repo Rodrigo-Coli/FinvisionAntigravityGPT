@@ -48,7 +48,7 @@ export default async function handler(req: any, res: any) {
     if (!geminiKey) throw new Error('Chave do Gemini (GEMINI_API_KEY) não encontrada nas variáveis de ambiente.');
 
     const ai = new GoogleGenAI({ apiKey: geminiKey });
-    const model = 'gemini-1.5-flash';
+    const model = 'gemini-1.5-flash-latest';
 
     const prompt = `
       Você é um especialista em conciliação bancária. Analise o extrato de cartão de crédito.
@@ -68,7 +68,7 @@ export default async function handler(req: any, res: any) {
           { inlineData: { data: buffer.toString('base64'), mimeType: imp.documents.mime_type } }
         ]
       }],
-      config: {
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
