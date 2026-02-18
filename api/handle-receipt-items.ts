@@ -16,7 +16,7 @@ export default async function handler(req: any, res: any) {
     try {
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
         const ai = new GoogleGenAI({ apiKey: geminiKey! });
-        const model = 'gemini-1.5-flash';
+        const model = 'gemini-2.5-flash';
 
         const prompt = `
       Você é um especialista em análise de documentos fiscais (Cupons e NF-e) e inteligência de varejo.
