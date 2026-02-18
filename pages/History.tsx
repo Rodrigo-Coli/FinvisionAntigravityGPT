@@ -260,18 +260,24 @@ const HistoryPage: React.FC = () => {
   const filtered = transactions.filter(t => t.description.toLowerCase().includes(search.toLowerCase()) || t.accountName.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8 space-y-10">
+    <div className="max-w-7xl mx-auto py-6 sm:py-10 px-4 sm:px-6 lg:px-8 space-y-8 sm:space-y-10 animate-in fade-in duration-700">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-1">
-          <h1 className="text-4xl font-display font-black text-slate-900 tracking-tight">Histórico <span className="text-brand-600 italic">Financeiro</span></h1>
-          <p className="text-slate-500 font-medium text-lg">Gestão detalhada e conciliação de lançamentos</p>
+          <h1 className="text-3xl sm:text-4xl font-display font-black text-slate-900 tracking-tight dark:text-white">
+            Histórico <span className="text-brand-600 italic">Financeiro</span>
+          </h1>
+          <p className="text-slate-500 font-medium text-base sm:text-lg">Gestão detalhada e conciliação de lançamentos</p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <button onClick={() => setAddModal({ open: true, isSubmitting: false, form: { date: new Date().toISOString().slice(0, 10), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros' } })}
-            className="px-6 py-4 bg-brand-600 text-white rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95 flex items-center gap-2">
+            className="px-6 py-4 bg-brand-600 text-white rounded-[16px] sm:rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95 flex items-center justify-center gap-2">
             <Plus size={18} /> Novo Lançamento
           </button>
-          <button onClick={() => exportToXlsx('xlsx')} className="p-4 bg-white border border-slate-100 rounded-2xl text-slate-500 hover:text-brand-600 shadow-sm transition-all"><FileDown size={20} /></button>
+          <div className="flex gap-2">
+            <button onClick={() => exportToXlsx('xlsx')} className="flex-grow sm:flex-none p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-[16px] sm:rounded-2xl text-slate-500 hover:text-brand-600 shadow-sm transition-all flex items-center justify-center">
+              <FileDown size={20} />
+            </button>
+          </div>
         </div>
       </header>
 
