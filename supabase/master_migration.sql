@@ -134,12 +134,39 @@ CREATE TABLE IF NOT EXISTS public.cards (
     account_id UUID REFERENCES public.accounts(id) ON DELETE CASCADE,
     name TEXT,
     brand TEXT NOT NULL,
+    last4 TEXT,
+    limit_total DECIMAL(12,2) DEFAULT 0,
     color TEXT,
     closing_day INT,
     due_day INT,
     is_archived BOOLEAN DEFAULT false,
+    is_additional BOOLEAN DEFAULT false,
+    parent_card_id UUID REFERENCES public.cards(id),
+    additional_label TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Garantir colunas em cards pré-existentes
+DO $$ 
+BEGIN 
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='cards' AND table_schema='public') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cards' AND column_name='last4') THEN
+            ALTER TABLE public.cards ADD COLUMN last4 TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cards' AND column_name='limit_total') THEN
+            ALTER TABLE public.cards ADD COLUMN limit_total DECIMAL(12,2) DEFAULT 0;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cards' AND column_name = 'is_additional') THEN
+            ALTER TABLE public.cards ADD COLUMN is_additional BOOLEAN DEFAULT false;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cards' AND column_name = 'parent_card_id') THEN
+            ALTER TABLE public.cards ADD COLUMN parent_card_id UUID REFERENCES public.cards(id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cards' AND column_name = 'additional_label') THEN
+            ALTER TABLE public.cards ADD COLUMN additional_label TEXT;
+        END IF;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
