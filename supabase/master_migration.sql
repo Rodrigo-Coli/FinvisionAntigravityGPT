@@ -150,6 +150,9 @@ CREATE TABLE IF NOT EXISTS public.cards (
 DO $$ 
 BEGIN 
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='cards' AND table_schema='public') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cards' AND column_name='name') THEN
+            ALTER TABLE public.cards ADD COLUMN "name" TEXT;
+        END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cards' AND column_name='last4') THEN
             ALTER TABLE public.cards ADD COLUMN last4 TEXT;
         END IF;
