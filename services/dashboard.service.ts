@@ -31,7 +31,7 @@ export const DashboardService = {
     // 2. Credit Cards Summary
     const { data: cards, error: cardErr } = await supabase
       .from('cards')
-      .select('brand, name')
+      .select('id, brand, name')
       .eq('user_id', user.id)
       .eq('is_archived', false);
 
