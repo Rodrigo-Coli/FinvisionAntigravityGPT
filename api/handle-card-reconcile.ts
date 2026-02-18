@@ -144,6 +144,8 @@ export default async function handler(req: any, res: any) {
 
     // 5. Save to Reconcile Queue
     const targetAccountId = account_id || imp.account_id;
+    const fingerprintsSeen = new Map();
+
     const txsToInsert = processedTxs.map((t: any) => {
       // Robust field extraction
       const description = t.description || t.merchant || t.merchant_normalized || 'Transação sem descrição';
@@ -172,6 +174,11 @@ export default async function handler(req: any, res: any) {
           }
         }
       };
+    }).filter((tx: any) => {
+      // In-memory deduplication to avoid "ON CONFLICT DO UPDATE command cannot affect row a second time"
+      if (fingerprintsSeen.has(tx.fingerprint)) return false;
+      fingerprintsSeen.set(tx.fingerprint, true);
+      return true;
     });
 
     if (txsToInsert.length > 0) {
