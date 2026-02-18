@@ -49,6 +49,7 @@ const Reconcile: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      console.log('[Reconcile] Buscando contas para:', user.id);
       const { data, error } = await supabase
         .from('accounts')
         .select('*')
@@ -59,14 +60,16 @@ const Reconcile: React.FC = () => {
         throw error;
       }
 
+      console.log('[Reconcile] Contas encontradas:', data?.length);
+
       const mapped = (data || [])
         .filter((acc: any) => acc.is_archived === false || acc.status === 'active' || !acc.is_archived)
         .map((acc: any) => ({
           id: acc.id,
           institution: acc.institution || acc.name || 'Conta',
           name: acc.name || acc.institution || 'Conta',
-          type: acc.type,
-          currency: acc.currency,
+          type: acc.type || 'CHECKING',
+          currency: acc.currency || 'BRL',
           initialBalance: Number(acc.initial_balance || 0),
           currentBalance: Number(acc.current_balance || 0),
           limit: Number(acc.limit || acc.overdraft_limit || 0),
@@ -113,6 +116,7 @@ const Reconcile: React.FC = () => {
       case 'SAVINGS': return 'Poupança';
       case 'INVESTMENT': return 'Investimento';
       case 'CASH': return 'Dinheiro';
+      case 'CREDIT_CARD': return 'Cartão';
       default: return type;
     }
   };
@@ -133,19 +137,21 @@ const Reconcile: React.FC = () => {
         .from('imported_transactions')
         .select('*')
         .eq('user_id', user.id)
-        .eq('status', 'READY_TO_RECONCILE')
+        .or('status.eq.READY_TO_RECONCILE,status.eq.ready,status.eq.pending')
         .order('date', { ascending: false });
 
       if (error) throw error;
 
-      const mapped = (data || []).map((t: any) => ({
-        id: t.id,
-        date: t.date,
-        description: t.description,
-        amount: Number(t.amount),
-        status: t.status as MatchStatus,
-        type: t.amount >= 0 ? 'credit' : 'debit'
-      }));
+      const mapped = (data || [])
+        .filter((t: any) => !t.ignored)
+        .map((t: any) => ({
+          id: t.id,
+          date: t.date,
+          description: t.description,
+          amount: Number(t.amount),
+          status: t.status as MatchStatus,
+          type: t.amount >= 0 ? 'credit' : 'debit'
+        }));
 
       setImported(mapped);
     } catch (err) {
