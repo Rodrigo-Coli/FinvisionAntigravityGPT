@@ -56,7 +56,14 @@ export const AIReconcileService = {
       body: JSON.stringify({ base64: base64Data, mimeType, fileName: file.name }),
     });
 
-    if (!res.ok) throw new Error("Erro ao extrair itens do cupom.");
+    if (!res.ok) {
+      let msg = "Erro ao extrair itens do cupom.";
+      try {
+        const j = await res.json();
+        msg = j?.error || j?.message || msg;
+      } catch { }
+      throw new Error(msg);
+    }
     return await res.json();
   },
 
@@ -103,11 +110,23 @@ export const AIReconcileService = {
 
     for (let i = 0; i < receipt.items.length; i++) {
       const item = receipt.items[i];
-      const { data: product } = await supabase.from('products').select('id').eq('user_id', user.id).ilike('name', item.description).maybeSingle();
+      const productName = item.normalized_name || item.description;
+
+      const { data: product } = await supabase.from('products')
+        .select('id')
+        .eq('user_id', user.id)
+        .ilike('name', productName)
+        .maybeSingle();
+
       let productId = product?.id;
 
       if (!productId) {
-        const { data: newProd, error: prodErr } = await supabase.from('products').insert({ user_id: user.id, name: item.description, default_unit: item.unit || 'un', category: item.category_hint }).select('id').single();
+        const { data: newProd, error: prodErr } = await supabase.from('products').insert({
+          user_id: user.id,
+          name: productName,
+          default_unit: item.unit || 'un',
+          category: item.category_hint
+        }).select('id').single();
         if (!prodErr) productId = newProd?.id;
       }
 
@@ -121,7 +140,9 @@ export const AIReconcileService = {
         unit_price: item.unit_price,
         total_price: item.total_price,
         product_id: productId,
-        category_hint: item.category_hint
+        category_hint: item.category_hint,
+        is_promo: item.is_promo || false,
+        exclude_from_stats: item.exclude_from_stats || false
       });
 
       if (productId) {
@@ -132,11 +153,61 @@ export const AIReconcileService = {
           document_date: receipt.date,
           unit_price: item.unit_price,
           total_price: item.total_price,
-          quantity: item.quantity
+          quantity: item.quantity,
+          is_promo: item.is_promo || false,
+          exclude_from_stats: item.exclude_from_stats || false
         });
       }
     }
     return doc.id;
+  },
+
+  async getPriceComparison() {
+    if (!supabase) throw new Error("Supabase is not configured");
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("No user found");
+
+    // Fetch products with their price history
+    const { data, error } = await supabase
+      .from('products')
+      .select(`
+        id,
+        name,
+        category,
+        product_prices (
+          unit_price,
+          document_date,
+          is_promo,
+          exclude_from_stats,
+          ai_documents (
+            merchant_raw
+          )
+        )
+      `)
+      .eq('user_id', user.id)
+      .eq('active', true);
+
+    if (error) throw new Error(prettySupabaseError(error));
+    return data || [];
+  },
+
+  async getPriceHistory(productId: string) {
+    if (!supabase) throw new Error("Supabase is not configured");
+    const { data, error } = await supabase
+      .from('product_prices')
+      .select(`
+        unit_price,
+        document_date,
+        is_promo,
+        ai_documents (
+            merchant_raw
+        )
+      `)
+      .eq('product_id', productId)
+      .order('document_date', { ascending: true });
+
+    if (error) throw new Error(prettySupabaseError(error));
+    return data || [];
   },
 
   fileToBase64(file: File): Promise<string> {
