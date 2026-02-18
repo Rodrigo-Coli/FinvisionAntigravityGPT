@@ -4,23 +4,27 @@ import { GoogleGenAI, Type } from '@google/genai';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('[API] Erro: SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados.');
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export default async function handler(req: any, res: any) {
   // Configurar headers para permitir CORS em desenvolvimento se necessário
   if (req.method === 'OPTIONS') {
     return res.status(200).send('ok');
   }
-  
+
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, message: 'Method not allowed' });
   }
 
   const { import_id, account_name, import_source } = req.body;
-  
+
   if (!import_id) {
     return res.status(400).json({ ok: false, message: 'import_id is required' });
   }
@@ -163,7 +167,7 @@ export default async function handler(req: any, res: any) {
             source_document_id: imp.document_id,
             status: 'READY_TO_RECONCILE',
             fingerprint: fingerprint,
-            metadata: { 
+            metadata: {
               category_suggested: t.category,
               parsed_at: new Date().toISOString()
             }
@@ -183,7 +187,7 @@ export default async function handler(req: any, res: any) {
 
     // 8. UPDATE_IMPORT_READY: Finalizar
     console.log(`[parse-statement] STEP: UPDATE_IMPORT_READY`);
-    await supabase.from('imports').update({ 
+    await supabase.from('imports').update({
       status: 'ready',
       notes: `${imp.notes || ''} | Extraídas ${transactions.length} transações.`
     }).eq('id', import_id);
@@ -193,11 +197,11 @@ export default async function handler(req: any, res: any) {
 
   } catch (err: any) {
     console.error('[parse-statement] ERRO CRÍTICO:', err.message);
-    
+
     // Tentar gravar erro no banco
     try {
-      await supabase.from('imports').update({ 
-        status: 'error', 
+      await supabase.from('imports').update({
+        status: 'error',
         notes: `ERROR: ${err.message.substring(0, 500)}`
       }).eq('id', import_id);
     } catch (dbErr) {
@@ -205,8 +209,8 @@ export default async function handler(req: any, res: any) {
     }
 
     return res.status(200).json({ // Retornar 200 com ok:false para o front tratar sem travar
-      ok: false, 
-      message: err.message 
+      ok: false,
+      message: err.message
     });
   }
 }
