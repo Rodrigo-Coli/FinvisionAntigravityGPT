@@ -145,23 +145,27 @@ export default async function handler(req: any, res: any) {
     // 5. Save to Reconcile Queue
     const targetAccountId = account_id || imp.account_id;
     const txsToInsert = processedTxs.map((t: any) => {
+      // Robust field extraction
+      const description = t.description || t.merchant || t.merchant_normalized || 'Transação sem descrição';
+      const date = t.date || new Date().toISOString().split('T')[0];
+      const amountVal = Number(t.amount) || 0;
+
       // Fingerprint deduplication
-      const amountVal = Number(t.amount);
-      const fpData = `${t.date}|${amountVal.toFixed(2)}|${t.description.toLowerCase()}|${targetAccountId || ''}`;
+      const fpData = `${date}|${amountVal.toFixed(2)}|${description.toLowerCase()}|${targetAccountId || ''}`;
       const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
 
       return {
         user_id: imp.user_id,
         import_id: import_id,
-        date: t.date,
-        description: t.description,
+        date: date,
+        description: description,
         amount: -Math.abs(amountVal), // Débito negativo
         account_id: targetAccountId,
         status: 'READY_TO_RECONCILE',
         fingerprint: fingerprint,
         metadata: {
           is_card: true,
-          merchant_normalized: t.merchant_normalized,
+          merchant_normalized: t.merchant_normalized || t.merchant || description,
           installment_info: {
             number: t.installment_number,
             total: t.installment_total
