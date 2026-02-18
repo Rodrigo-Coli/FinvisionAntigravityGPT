@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  CheckCircle2, 
-  ArrowRight, 
-  XCircle, 
-  Loader2, 
-  UploadCloud, 
-  ShieldCheck, 
-  RefreshCw, 
-  CreditCard, 
+import {
+  CheckCircle2,
+  ArrowRight,
+  XCircle,
+  Loader2,
+  UploadCloud,
+  ShieldCheck,
+  RefreshCw,
+  CreditCard,
   Landmark,
   History,
   Sparkles,
@@ -31,7 +31,7 @@ const Reconcile: React.FC = () => {
   const [importSource, setImportSource] = useState<'bank' | 'card'>('bank');
   const [isLoadingQueue, setIsLoadingQueue] = useState(true);
   const [recentImports, setRecentImports] = useState<any[]>([]);
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -60,7 +60,8 @@ const Reconcile: React.FC = () => {
 
       const mapped = (data || []).map((acc: any) => ({
         id: acc.id,
-        institution: acc.institution,
+        institution: acc.institution || acc.name || 'Conta',
+        name: acc.name || acc.institution,
         type: acc.type,
         currency: acc.currency,
         initialBalance: Number(acc.initial_balance),
@@ -211,7 +212,7 @@ const Reconcile: React.FC = () => {
         const card = realCards.find(c => c.id === selectedTargetId);
         targetName = card?.name || 'Cartão';
       }
-      
+
       const importId = await ReconciliationService.startImport({
         file,
         importSource,
@@ -295,7 +296,7 @@ const Reconcile: React.FC = () => {
     }
   };
 
-  const formatCurrency = (val: number) => 
+  const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   return (
@@ -303,7 +304,7 @@ const Reconcile: React.FC = () => {
       <header className="mb-6 lg:mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl lg:text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
-             <ShieldCheck className="text-blue-600 shrink-0" /> Conciliação Bancária
+            <ShieldCheck className="text-blue-600 shrink-0" /> Conciliação Bancária
           </h1>
           <p className="text-gray-500 text-xs lg:text-sm">Gerencie transações extraídas por IA</p>
         </div>
@@ -331,14 +332,14 @@ const Reconcile: React.FC = () => {
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">{importSource === 'bank' ? 'Conta' : 'Cartão'}</label>
-                <select 
-                  value={selectedTargetId} 
-                  onChange={(e) => setSelectedTargetId(e.target.value)} 
+                <select
+                  value={selectedTargetId}
+                  onChange={(e) => setSelectedTargetId(e.target.value)}
                   disabled={isLoadingTargets}
                   className="w-full h-12 px-4 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">{isLoadingTargets ? 'Carregando...' : `Selecione o ${importSource === 'bank' ? 'Banco' : 'Cartão'}...`}</option>
-                  
+
                   {importSource === 'bank' ? (
                     realAccounts.map(acc => (
                       <option key={acc.id} value={acc.id}>
@@ -385,12 +386,11 @@ const Reconcile: React.FC = () => {
                       <p className="text-[9px] font-black text-gray-800 truncate uppercase">{imp.original_name || 'Arquivo'}</p>
                       <p className="text-[8px] text-gray-400 font-bold">{new Date(imp.created_at).toLocaleDateString()}</p>
                     </div>
-                    <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ${
-                      imp.status === 'ready' ? 'bg-green-100 text-green-700' : 
-                      imp.status === 'error' ? 'bg-red-100 text-red-700' : 
-                      imp.status === 'processing' ? 'bg-purple-100 text-purple-700' :
-                      'bg-blue-100 text-blue-700'
-                    }`} title={imp.error_message}>{imp.status}</span>
+                    <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ${imp.status === 'ready' ? 'bg-green-100 text-green-700' :
+                        imp.status === 'error' ? 'bg-red-100 text-red-700' :
+                          imp.status === 'processing' ? 'bg-purple-100 text-purple-700' :
+                            'bg-blue-100 text-blue-700'
+                      }`} title={imp.error_message}>{imp.status}</span>
                   </div>
                 ))
               )}
@@ -404,33 +404,33 @@ const Reconcile: React.FC = () => {
           </div>
           {isLoadingQueue ? (
             <div className="py-20 flex flex-col items-center justify-center bg-white rounded-3xl border border-dashed border-gray-200">
-               <Loader2 className="animate-spin text-blue-600 mb-3" />
-               <p className="text-[9px] font-black text-gray-400 uppercase">Sincronizando dados...</p>
+              <Loader2 className="animate-spin text-blue-600 mb-3" />
+              <p className="text-[9px] font-black text-gray-400 uppercase">Sincronizando dados...</p>
             </div>
           ) : imported.length > 0 ? (
             <div className="space-y-3">
               {imported.map(item => (
                 <div key={item.id} className="bg-white border border-gray-200 rounded-3xl p-4 lg:p-5 shadow-sm hover:border-blue-300 transition-all">
-                   <div className="flex flex-col sm:flex-row items-center gap-4">
-                      <div className="flex-1 flex items-center gap-4 w-full min-w-0">
-                         <div className={`p-3 rounded-2xl shrink-0 ${item.amount < 0 ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}>
-                            <ArrowRight size={20} className={item.amount < 0 ? 'rotate-45' : '-rotate-45'} />
-                         </div>
-                         <div className="min-w-0 truncate">
-                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{new Date(item.date).toLocaleDateString('pt-BR')}</p>
-                            <p className="text-sm font-bold text-gray-900 truncate leading-tight">{item.description}</p>
-                         </div>
+                  <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <div className="flex-1 flex items-center gap-4 w-full min-w-0">
+                      <div className={`p-3 rounded-2xl shrink-0 ${item.amount < 0 ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}>
+                        <ArrowRight size={20} className={item.amount < 0 ? 'rotate-45' : '-rotate-45'} />
                       </div>
-                      <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0">
-                         <div className="sm:text-right">
-                            <p className={`text-base font-black ${item.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(item.amount)}</p>
-                         </div>
-                         <div className="flex gap-2">
-                            <button onClick={() => handleConfirm(item)} className="px-5 py-2.5 bg-green-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-green-700 shadow-md active:scale-95">Confirmar</button>
-                            <button onClick={() => handleDismiss(item.id)} className="p-2.5 text-gray-300 hover:text-red-600 bg-gray-50 rounded-xl"><X size={18} /></button>
-                         </div>
+                      <div className="min-w-0 truncate">
+                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{new Date(item.date).toLocaleDateString('pt-BR')}</p>
+                        <p className="text-sm font-bold text-gray-900 truncate leading-tight">{item.description}</p>
                       </div>
-                   </div>
+                    </div>
+                    <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0">
+                      <div className="sm:text-right">
+                        <p className={`text-base font-black ${item.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(item.amount)}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleConfirm(item)} className="px-5 py-2.5 bg-green-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-green-700 shadow-md active:scale-95">Confirmar</button>
+                        <button onClick={() => handleDismiss(item.id)} className="p-2.5 text-gray-300 hover:text-red-600 bg-gray-50 rounded-xl"><X size={18} /></button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
