@@ -4,7 +4,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -103,8 +103,8 @@ export default async function handler(req: any, res: any) {
           is_card: true,
           merchant_normalized: t.merchant_normalized,
           installment_info: {
-             number: t.installment_number,
-             total: t.installment_total
+            number: t.installment_number,
+            total: t.installment_total
           }
         }
       };
