@@ -86,7 +86,7 @@ export default async function handler(req: any, res: any) {
     }
 
     const ai = new GoogleGenAI({ apiKey: geminiKey });
-    const model = 'gemini-1.5-flash'; // Atualizado para o modelo mais estável
+    const model = 'gemini-1.5-flash-latest'; // Usando alias 'latest' para maior compatibilidade
 
     const prompt = `
       Você é um especialista em conciliação bancária. Analise o extrato/comprovante fornecido.
@@ -121,7 +121,7 @@ export default async function handler(req: any, res: any) {
     const response = await ai.models.generateContent({
       model,
       contents,
-      config: {
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
