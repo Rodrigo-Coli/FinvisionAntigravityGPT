@@ -19,27 +19,30 @@ export default async function handler(req: any, res: any) {
         const model = 'gemini-2.5-flash';
 
         const prompt = `
-      Você é um especialista em análise de documentos fiscais (Cupons e NF-e).
+      Você é um especialista em análise de documentos fiscais (Cupons e NF-e) e inteligência de varejo.
       Extraia os dados detalhados deste cupom.
       
-      REGRAS:
-      1. Identifique o nome do estabelecimento (merchant).
-      2. Extraia a data do documento (YYYY-MM-DD).
-      3. Extraia todos os itens da compra com quantidade, unidade (un, kg, etc), preço unitário e total.
-      4. Identifique o valor total bruto do cupom.
+      REGRAS DE INTELIGÊNCIA:
+      1. MERCHANT: Identifique o nome fantasia do estabelecimento.
+      2. NORMALIZAÇÃO: Para cada item, crie um 'normalized_name' (Ex: se no cupom está 'COCA LATA 350', normalize para 'Coca-Cola Lata 350ml').
+      3. PROMOÇÃO: Identifique se o item parece estar em promoção/oferta e marque 'is_promo'.
+      4. CATEGORIA: Classifique o item (Mercado, Restaurante, Farmácia, Posto, etc).
       
-      Retorne APENAS um objeto JSON no formato:
+      Retorne APENAS um objeto JSON:
       {
-        "merchant": "Nome do Local",
+        "merchant": "Nome Fantasia",
         "date": "YYYY-MM-DD",
         "total": 123.45,
+        "category": "Mercado",
         "items": [
           {
-            "description": "Arroz 5kg",
+            "description": "Descrição Original",
+            "normalized_name": "Nome Padronizado",
             "quantity": 1,
             "unit": "un",
             "unit_price": 25.90,
             "total_price": 25.90,
+            "is_promo": false,
             "category_hint": "Alimentação"
           }
         ]
