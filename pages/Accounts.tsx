@@ -76,16 +76,21 @@ const Accounts: React.FC = () => {
     if (!isSupabaseConfigured || !supabase) return;
     setLoading(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const { data, error } = await supabase
         .from('accounts')
         .select('*')
+        .eq('user_id', user.id)
         .order('institution', { ascending: true });
 
       if (error) throw error;
 
       const mapped = (data || []).map((acc: any) => ({
         id: acc.id,
-        institution: acc.institution,
+        institution: acc.institution || acc.name || 'Conta',
+        name: acc.name || acc.institution,
         type: acc.type as AccountType,
         currency: acc.currency,
         initialBalance: Number(acc.initial_balance),
