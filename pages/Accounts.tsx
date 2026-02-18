@@ -107,36 +107,47 @@ const Accounts: React.FC = () => {
   const handleSaveAccount = async () => {
     if (!supabase) return;
 
-    const payload = {
-      institution,
-      type,
-      initial_balance: initialBalance,
-      limit,
-      currency,
-      color,
-      include_in_dashboard: includeInDashboard,
-      current_balance: isEditing ? undefined : initialBalance,
-    };
-
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert('Usuário não autenticado');
+        return;
+      }
+
+      const payload: any = {
+        institution,
+        type,
+        initial_balance: initialBalance,
+        limit,
+        currency,
+        color,
+        include_in_dashboard: includeInDashboard,
+      };
+
       if (isEditing) {
         const { error } = await supabase
           .from('accounts')
           .update(payload)
-          .eq('id', isEditing);
+          .eq('id', isEditing)
+          .eq('user_id', user.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('accounts')
-          .insert([{ ...payload, user_id: (await supabase.auth.getUser()).data.user?.id }]);
+          .insert([{
+            ...payload,
+            user_id: user.id,
+            current_balance: initialBalance
+          }]);
         if (error) throw error;
       }
 
       setShowModal(false);
       resetForm();
       fetchAccounts();
-    } catch (err) {
-      alert('Erro ao salvar conta');
+    } catch (err: any) {
+      console.error('Error saving account:', err);
+      alert('Erro ao salvar conta: ' + (err.message || 'Erro desconhecido'));
     }
   };
 
