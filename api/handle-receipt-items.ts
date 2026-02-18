@@ -15,8 +15,16 @@ export default async function handler(req: any, res: any) {
 
     try {
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-        const ai = new GoogleGenAI({ apiKey: geminiKey! });
-        const model = 'gemini-2.5-flash';
+        if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
+
+        const ai = new GoogleGenAI(geminiKey);
+        const modelName = 'gemini-2.5-flash';
+        const model = ai.getGenerativeModel({
+            model: modelName,
+            generationConfig: {
+                responseMimeType: "application/json"
+            }
+        });
 
         const prompt = `
       Você é um especialista em análise de documentos fiscais (Cupons e NF-e) e inteligência de varejo.
@@ -28,7 +36,7 @@ export default async function handler(req: any, res: any) {
       3. PROMOÇÃO: Identifique se o item parece estar em promoção/oferta e marque 'is_promo'.
       4. CATEGORIA: Classifique o item (Mercado, Restaurante, Farmácia, Posto, etc).
       
-      Retorne APENAS um objeto JSON:
+      Retorne APENAS um objeto JSON no formato:
       {
         "merchant": "Nome Fantasia",
         "date": "YYYY-MM-DD",
@@ -49,62 +57,28 @@ export default async function handler(req: any, res: any) {
       }
     `;
 
-        const result = await ai.models.generateContent({
-            model,
-            contents: [{
-                parts: [
-                    { text: prompt },
-                    { inlineData: { data: base64, mimeType: mimeType || 'application/pdf' } }
-                ]
-            }],
-            generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        merchant: { type: Type.STRING },
-                        date: { type: Type.STRING },
-                        total: { type: Type.NUMBER },
-                        items: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    description: { type: Type.STRING },
-                                    normalized_name: { type: Type.STRING },
-                                    quantity: { type: Type.NUMBER },
-                                    unit: { type: Type.STRING },
-                                    unit_price: { type: Type.NUMBER },
-                                    total_price: { type: Type.NUMBER },
-                                    is_promo: { type: Type.BOOLEAN },
-                                    category_hint: { type: Type.STRING }
-                                },
-                                required: ["description", "quantity", "total_price"]
-                            }
-                        }
-                    }
-                }
-            }
-        });
+        console.log(`[AI-Labs] Iniciando extração com ${modelName}...`);
 
-        // Pegar o texto de forma segura (Blindagem contra undefined)
-        let rawText = '';
-        try {
-            const response = result.response;
-            rawText = (result as any).text ||
-                (response && (response as any).text) ||
-                (response && typeof (response as any).text === 'function' ? response.text() : '');
-        } catch (e) {
-            console.error('[AI-Labs] Erro ao extrair texto da resposta:', e);
-        }
+        const result = await model.generateContent([
+            { text: prompt },
+            { inlineData: { data: base64, mimeType: mimeType || 'application/pdf' } }
+        ]);
 
-        if (!rawText) throw new Error('A IA não retornou nenhum dado. Isso pode ser por filtros de segurança do Google ou o documento é ilegível.');
+        const response = await result.response;
+        if (!response) throw new Error('Resposta da IA veio vazia (undefined).');
 
+        const rawText = response.text();
+        if (!rawText) throw new Error('IA retornou resposta sem conteúdo de texto.');
+
+        console.log(`[AI-Labs] Resposta recebida (Tamanho: ${rawText.length})`);
         const parsedData = JSON.parse(rawText.replace(/```json|```/g, "").trim());
 
         return res.status(200).json(parsedData);
     } catch (err: any) {
-        console.error('[AI-Labs] Erro no parsing:', err);
-        return res.status(500).json({ error: err.message });
+        console.error('[AI-Labs] Erro fatal no parsing:', err);
+        return res.status(500).json({
+            error: err.message,
+            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        });
     }
 }
