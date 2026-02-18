@@ -101,7 +101,7 @@ const App: React.FC = () => {
                 <Route path="/assets" element={<Assets />} />
                 <Route path="/reconcile" element={<Reconcile />} />
                 <Route path="/history" element={<HistoryPage />} />
-                <Route path="/ai" element={<AIModule />} />
+                <Route path="/ai" element={<AIModule user={profile} />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 {profile.role === UserRole.ADMIN && <Route path="/admin/usuarios" element={<AdminUsers currentUser={profile} />} />}
                 <Route path="*" element={<Navigate to="/" replace />} />
