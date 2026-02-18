@@ -189,11 +189,13 @@ async function processWithGemini(buffer: Buffer, mimeType: string, context: stri
         { inlineData: { data: buffer.toString('base64'), mimeType } }
       ]
     }],
-    config: { responseMimeType: "application/json" }
+    generationConfig: { responseMimeType: "application/json" }
   });
 
   try {
-    const data = JSON.parse(response.text || '{}');
+    let rawText = (response as any).text || (response.response && (response.response as any).text) || (response.response && typeof (response.response as any).text === 'function' && (response.response as any).text()) || '';
+    const cleanJson = rawText.replace(/```json|```/g, "").trim();
+    const data = JSON.parse(cleanJson || '{}');
     return data.transactions || [];
   } catch { return []; }
 }
