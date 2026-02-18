@@ -6,6 +6,15 @@ import { Buffer } from 'node:buffer';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+if (!supabaseUrl) {
+  console.error('[API-Card] Erro: SUPABASE_URL não configurada.');
+}
+
+if (!supabaseServiceKey || !supabaseServiceKey.startsWith('eyJ')) {
+  console.error('[API-Card] Erro: SUPABASE_SERVICE_ROLE_KEY inválida. Deve começar com "eyJ".');
+}
+
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Fix: Full implementation of the credit card statement parsing API handler
