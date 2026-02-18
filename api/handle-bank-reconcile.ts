@@ -7,8 +7,12 @@ import { Buffer } from 'node:buffer';
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('[API] Erro: SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados.');
+if (!supabaseUrl) {
+  console.error('[API] Erro: SUPABASE_URL não configurada.');
+}
+
+if (!supabaseServiceKey || !supabaseServiceKey.startsWith('eyJ')) {
+  console.error('[API] Erro: SUPABASE_SERVICE_ROLE_KEY inválida ou ausente. Ela deve começar com "eyJ". A chave enviada começa com: ' + (supabaseServiceKey ? supabaseServiceKey.substring(0, 10) : 'vazia'));
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
