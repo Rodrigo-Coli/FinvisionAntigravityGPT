@@ -172,3 +172,21 @@ export interface ImportedTransaction {
   status: MatchStatus;
   type: 'credit' | 'debit';
 }
+
+export interface ReceiptItem {
+  id?: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  total_price: number;
+  category_hint?: string;
+  selected?: boolean;
+}
+
+export interface ExtractedReceipt {
+  merchant: string;
+  date: string;
+  total: number;
+  items: ReceiptItem[];
+}
