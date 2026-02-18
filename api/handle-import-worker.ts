@@ -65,7 +65,7 @@ export default async function handler(req: any, res: any) {
         const amount = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount).replace(',', '.'));
         const desc = (t.description || '').trim();
         const date = t.date;
-        
+
         // Fingerprint único: data + valor + descrição + conta
         const fpData = `${date}|${amount.toFixed(2)}|${desc.toLowerCase()}|${imp.account_id || ''}`;
         const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
@@ -91,7 +91,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // 5. Finalizar
-    await supabase.from('imports').update({ 
+    await supabase.from('imports').update({
       status: 'ready',
       notes: `${imp.notes || ''} | Processadas ${transactions.length} transações.`
     }).eq('id', import_id);
@@ -100,9 +100,9 @@ export default async function handler(req: any, res: any) {
 
   } catch (err: any) {
     console.error('API Process Error:', err);
-    await supabase.from('imports').update({ 
-      status: 'error', 
-      error_message: err.message 
+    await supabase.from('imports').update({
+      status: 'error',
+      error_message: err.message
     }).eq('id', import_id);
     return res.status(500).json({ error: err.message });
   }
@@ -172,7 +172,7 @@ async function parseCSV(content: string): Promise<any[]> {
 
 async function processWithGemini(buffer: Buffer, mimeType: string, context: string): Promise<any[]> {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const model = 'gemini-3-flash-preview';
+  const model = 'gemini-2.5-flash';
 
   const prompt = `
     Extraia as transações financeiras deste documento (${mimeType}).
