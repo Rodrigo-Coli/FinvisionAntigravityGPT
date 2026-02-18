@@ -147,8 +147,9 @@ export default async function handler(req: any, res: any) {
 
     // 6. PARSE_JSON: Validar retorno
     console.log(`[parse-statement] STEP: PARSE_JSON`);
-    const rawText = response.text || '{"transactions":[]}';
-    const parsed = JSON.parse(rawText);
+    const rawText = response.response.text();
+    const cleanJson = rawText.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleanJson);
     const transactions = parsed.transactions || [];
 
     // 7. UPSERT_TXS: Persistir transações (READY_TO_RECONCILE)
