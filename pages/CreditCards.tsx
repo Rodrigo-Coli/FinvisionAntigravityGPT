@@ -376,17 +376,19 @@ const CreditCardsPage: React.FC = () => {
   })();
 
   return (
-    <div className="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8 space-y-10">
+    <div className="max-w-7xl mx-auto py-6 sm:py-10 px-4 sm:px-6 lg:px-8 space-y-8 sm:space-y-10 animate-in fade-in duration-700">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-1">
-          <h1 className="text-4xl font-display font-black text-slate-900 tracking-tight">Cartões de <span className="text-brand-600 italic">Crédito</span></h1>
-          <p className="text-slate-500 font-medium text-lg">Controle de faturas, limites e gastos adicionais</p>
+          <h1 className="text-3xl sm:text-4xl font-display font-black text-slate-900 tracking-tight dark:text-white">
+            Cartões de <span className="text-brand-600 italic">Crédito</span>
+          </h1>
+          <p className="text-slate-500 font-medium text-base sm:text-lg">Controle de faturas, limites e gastos adicionais</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="inline-flex items-center justify-center gap-3 px-8 py-4 bg-brand-600 text-white rounded-[20px] font-black text-sm uppercase tracking-widest shadow-xl shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95 w-full md:w-auto"
+          className="px-6 py-4 bg-brand-600 text-white rounded-[16px] sm:rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95 flex items-center justify-center gap-2"
         >
-          <Plus size={20} /> Adicionar Cartão
+          <Plus size={18} /> Adicionar Cartão
         </button>
       </header>
 
@@ -412,73 +414,73 @@ const CreditCardsPage: React.FC = () => {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-          <CardList
-            cards={cards}
-            selectedCardId={selectedCard?.id}
-            onSelectCard={setSelectedCard}
-            getCardColor={getCardColor}
-            formatCurrency={formatCurrency}
-          />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-10">
+          <div className="lg:col-span-4 xl:col-span-3">
+            <CardList
+              cards={cards}
+              selectedCardId={selectedCard?.id}
+              onSelectCard={setSelectedCard}
+              getCardColor={getCardColor}
+              formatCurrency={formatCurrency}
+            />
+          </div>
 
-          <div className="lg:col-span-2 space-y-8">
+          <div className="lg:col-span-8 xl:col-span-9 space-y-6 sm:space-y-8">
             {selectedCard && (
-              <>
-                <div className="p-8 bg-white rounded-[40px] border border-slate-100 shadow-sm space-y-8">
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b border-slate-50 pb-8">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-3">
-                        <h2 className="text-2xl font-black text-slate-900">{selectedCard.name}</h2>
-                        {selectedCard.is_additional && (
-                          <span className="px-3 py-1 bg-brand-50 text-brand-600 rounded-full text-[10px] font-black uppercase border border-brand-100">
-                            Adicional
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-slate-400 font-bold text-sm flex items-center gap-2 uppercase tracking-tighter">
-                        {selectedCard.brand} <span className="opacity-30">•</span> **** {selectedCard.last4}
-                        {selectedCard.is_additional && <><span className="opacity-30">•</span> Portador: {selectedCard.additional_label}</>}
-                      </p>
+              <div className="p-5 sm:p-8 bg-white dark:bg-slate-800 rounded-[24px] sm:rounded-[40px] border border-slate-100 dark:border-slate-700 shadow-sm space-y-6 sm:space-y-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b border-slate-50 dark:border-slate-700 pb-6 sm:pb-8">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{selectedCard.name}</h2>
+                      {selectedCard.is_additional && (
+                        <span className="px-2.5 py-1 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-lg text-[9px] font-black uppercase border border-brand-100 dark:border-brand-500/20">
+                          Adicional
+                        </span>
+                      )}
                     </div>
-
-                    <div className="flex gap-3">
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Fechamento</span>
-                        <span className="text-sm font-black text-slate-900">Dia {selectedCard.closing_day}</span>
-                      </div>
-                      <div className="w-px h-8 bg-slate-100 self-center"></div>
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Vencimento</span>
-                        <span className="text-sm font-black text-slate-900">Dia {selectedCard.due_day}</span>
-                      </div>
-                    </div>
+                    <p className="text-slate-400 font-bold text-xs sm:text-sm flex flex-wrap items-center gap-2 uppercase tracking-tight">
+                      {selectedCard.brand} <span className="opacity-30 hidden xs:inline">•</span> **** {selectedCard.last4}
+                      {selectedCard.is_additional && <><span className="opacity-30 hidden xs:inline">•</span> Portador: {selectedCard.additional_label}</>}
+                    </p>
                   </div>
 
-                  <StatementSummary
-                    currentStatement={currentStatement}
-                    statementTotal={statementTotal}
-                    statementPaid={statementPaid}
-                    statementOpen={statementOpen}
-                    formatCurrency={formatCurrency}
-                    formatDateBR={formatDateBR}
-                    onRefresh={() => loadCardContext(selectedCard.id)}
-                    onPay={() => setShowPayModal(true)}
-                    statementBadge={statementBadge}
-                  />
-
-                  <TransactionList
-                    transactions={transactions}
-                    loadingTxs={loadingTxs}
-                    categories={categories}
-                    savingRowId={savingRowId}
-                    onAddManualTx={() => setShowAddTxModal(true)}
-                    onUpdateTxLocal={updateTxLocal}
-                    onSaveTxPatch={saveTxPatch}
-                    onDeleteTx={handleDeleteTx}
-                    showStatementScope={!!currentStatement?.id}
-                  />
+                  <div className="flex gap-4 sm:gap-6 w-full sm:w-auto justify-between sm:justify-end">
+                    <div className="flex flex-col items-start sm:items-end">
+                      <span className="text-[10px] font-black text-slate-300 dark:text-slate-500 uppercase tracking-widest">Fechamento</span>
+                      <span className="text-sm font-black text-slate-900 dark:text-white">Dia {selectedCard.closing_day}</span>
+                    </div>
+                    <div className="w-px h-8 bg-slate-100 dark:bg-slate-700 self-center"></div>
+                    <div className="flex flex-col items-start sm:items-end">
+                      <span className="text-[10px] font-black text-slate-300 dark:text-slate-500 uppercase tracking-widest">Vencimento</span>
+                      <span className="text-sm font-black text-slate-900 dark:text-white">Dia {selectedCard.due_day}</span>
+                    </div>
+                  </div>
                 </div>
-              </>
+
+                <StatementSummary
+                  currentStatement={currentStatement}
+                  statementTotal={statementTotal}
+                  statementPaid={statementPaid}
+                  statementOpen={statementOpen}
+                  formatCurrency={formatCurrency}
+                  formatDateBR={formatDateBR}
+                  onRefresh={() => loadCardContext(selectedCard.id)}
+                  onPay={() => setShowPayModal(true)}
+                  statementBadge={statementBadge}
+                />
+
+                <TransactionList
+                  transactions={transactions}
+                  loadingTxs={loadingTxs}
+                  categories={categories}
+                  savingRowId={savingRowId}
+                  onAddManualTx={() => setShowAddTxModal(true)}
+                  onUpdateTxLocal={updateTxLocal}
+                  onSaveTxPatch={saveTxPatch}
+                  onDeleteTx={handleDeleteTx}
+                  showStatementScope={!!currentStatement?.id}
+                />
+              </div>
             )}
           </div>
         </div>
