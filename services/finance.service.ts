@@ -5,7 +5,15 @@ export const FinanceService = {
   // Contas
   getAccounts: async (): Promise<BankAccount[]> => {
     if (!supabase) return [];
-    const { data, error } = await supabase.from('accounts').select('*').eq('is_archived', false);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('is_archived', false);
     if (error) throw error;
     return (data || []).map((a: any) => ({
       id: a.id,
@@ -43,9 +51,14 @@ export const FinanceService = {
   // Transações
   getTransactions: async (filters?: any): Promise<Transaction[]> => {
     if (!supabase) return [];
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
     let query = supabase
       .from('transactions')
-      .select('*, accounts(institution)')
+      .select('*, accounts(institution, name)')
+      .eq('user_id', user.id)
       .eq('is_deleted', false)
       .order('date', { ascending: false });
 
@@ -61,7 +74,7 @@ export const FinanceService = {
       date: t.date,
       type: t.type,
       accountId: t.account_id,
-      accountName: t.accounts?.institution || 'N/A',
+      accountName: t.accounts?.institution || t.accounts?.name || 'N/A',
       category: t.category,
       isPaid: t.is_paid,
       paidAmount: Number(t.paid_amount),
@@ -72,7 +85,15 @@ export const FinanceService = {
   // Cartões
   getCards: async (): Promise<CreditCardDetailed[]> => {
     if (!supabase) return [];
-    const { data, error } = await supabase.from('cards').select('*').eq('is_archived', false);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+      .from('cards')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('is_archived', false);
     if (error) throw error;
     return data || [];
   }
