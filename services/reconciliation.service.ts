@@ -43,7 +43,7 @@ export const ReconciliationService = {
 
     onProgress?.("Verificando integridade...");
     const fileHash = await this.computeFileHash(file);
-    
+
     // 1. Verificar deduplicação por hash na tabela direta
     const { data: existing } = await supabase
       .from('imports')
@@ -55,15 +55,15 @@ export const ReconciliationService = {
     if (existing) {
       if (existing.status === 'error') {
         onProgress?.("Reiniciando processamento...");
-        await supabase.from('imports').update({ 
+        await supabase.from('imports').update({
           status: 'processing',
           notes: `${existing.notes || ''} [REPROCESS]`
         }).eq('id', existing.id);
-        
+
         this.triggerBackend(existing.id, accountId, accountName, importSource);
         return existing.id;
       }
-      
+
       if (existing.status === 'ready' || existing.status === 'processing') {
         console.log("Arquivo já processado ou em andamento:", existing.id);
         return existing.id;
@@ -118,34 +118,34 @@ export const ReconciliationService = {
   },
 
   triggerBackend(
-    importId: string, 
+    importId: string,
     accountId: string,
-    accountName: string, 
+    accountName: string,
     importSource: 'bank' | 'card'
   ) {
     // 🔥 AQUI ESTÁ A CORREÇÃO!
     // Agora escolhe o endpoint correto baseado no tipo de importação
-    
-    const endpoint = importSource === 'card' 
-      ? '/api/parse-card-statement'  // ✅ Para faturas de cartão
-      : '/api/parse-statement';       // ✅ Para extratos bancários (mantém o original)
+
+    const endpoint = importSource === 'card'
+      ? '/api/handle-card-reconcile'  // ✅ Atualizado
+      : '/api/handle-bank-reconcile';  // ✅ Atualizado
 
     const payload = importSource === 'card'
       ? {
-          import_id: importId,
-          card_id: accountId,           // Cartão usa card_id
-          account_name: accountName,
-          import_source: importSource
-        }
+        import_id: importId,
+        card_id: accountId,           // Cartão usa card_id
+        account_name: accountName,
+        import_source: importSource
+      }
       : {
-          import_id: importId,
-          account_id: accountId,         // Banco usa account_id (original)
-          account_name: accountName,
-          import_source: importSource
-        };
+        import_id: importId,
+        account_id: accountId,         // Banco usa account_id (original)
+        account_name: accountName,
+        import_source: importSource
+      };
 
     console.log(`[ReconciliationService] Chamando ${endpoint} para ${importSource}`);
-    
+
     fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -159,7 +159,7 @@ export const ReconciliationService = {
       let attempts = 0;
       const interval = setInterval(async () => {
         attempts++;
-        
+
         // Consulta em dois passos para evitar erro 409/PGRST201
         const { data: imp, error: impErr } = await supabase
           .from('imports')
@@ -182,7 +182,7 @@ export const ReconciliationService = {
             .single();
           if (doc) originalName = doc.original_name || 'Arquivo';
         }
-        
+
         const combined = { ...imp, original_name: originalName };
         onUpdate(combined);
 
@@ -191,8 +191,8 @@ export const ReconciliationService = {
           resolve(combined);
         } else if (imp.status === 'error') {
           clearInterval(interval);
-          const msg = (imp.notes?.startsWith('ERROR:')) 
-            ? imp.notes.replace('ERROR:', '').trim() 
+          const msg = (imp.notes?.startsWith('ERROR:'))
+            ? imp.notes.replace('ERROR:', '').trim()
             : (imp.notes || "Erro no processamento");
           reject(new Error(msg));
         } else if (attempts > 180) { // 6 minutos
