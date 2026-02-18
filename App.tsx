@@ -53,7 +53,7 @@ const App: React.FC = () => {
     try {
       const { data, error } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
       if (!data && !error) {
-        const newProfile = { id: uid, email: email || '', role: UserRole.USER, is_approved: false };
+        const newProfile = { id: uid, email: email || '', role: UserRole.USER, is_approved: true };
         const { data: created } = await supabase.from('profiles').upsert(newProfile).select().single();
         setProfile(created);
       } else {
