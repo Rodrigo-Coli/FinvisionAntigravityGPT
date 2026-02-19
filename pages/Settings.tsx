@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Settings as SettingsIcon, 
-  Tags, 
-  Store, 
-  Cloud, 
-  Coins, 
-  Percent, 
-  Plus, 
-  ChevronRight, 
-  Trash2, 
-  Edit3, 
-  Database, 
-  Globe, 
-  Check, 
-  Clock, 
+import {
+  Settings as SettingsIcon,
+  Tags,
+  Store,
+  Cloud,
+  Coins,
+  Percent,
+  Plus,
+  ChevronRight,
+  Trash2,
+  Edit3,
+  Database,
+  Globe,
+  Info,
+  Check,
+  Clock,
   Download,
   AlertTriangle,
   Link as LinkIcon,
@@ -42,63 +43,133 @@ const SettingsPage: React.FC = () => {
   const [activeSection, setActiveSection] = useState<'general' | 'categories' | 'establishments' | 'backup' | 'currencies' | 'rates'>('general');
   const [settings, setSettings] = useState({
     email_notifications: true,
-    auto_dark_mode: false
+    auto_dark_mode: false,
+    iof_rate: 6.38,
+    spread_rate: 4.00
   });
-  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [establishments, setEstablishments] = useState<any[]>([]);
+  const [newCatName, setNewCatName] = useState('');
+  const [isAddingCat, setIsAddingCat] = useState(false);
 
   useEffect(() => {
-    if (activeSection === 'general' && isSupabaseConfigured) {
-      fetchSettings();
-    }
+    fetchData();
   }, [activeSection]);
 
-  const fetchSettings = async () => {
+  const fetchData = async () => {
     if (!supabase) return;
-    setLoadingSettings(true);
+    setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
-        .from('user_settings')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      if (activeSection === 'general' || activeSection === 'rates') {
+        const { data } = await supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle();
+        if (data) {
+          setSettings({
+            email_notifications: data.email_notifications,
+            auto_dark_mode: data.auto_dark_mode,
+            iof_rate: data.iof_rate || 6.38,
+            spread_rate: data.spread_rate || 4.00
+          });
+        }
+      }
 
-      if (error) throw error;
-      
-      if (data) {
-        setSettings({
-          email_notifications: data.email_notifications,
-          auto_dark_mode: data.auto_dark_mode
-        });
-      } else {
-        // Initial insert if settings don't exist
-        const { error: insError } = await supabase.from('user_settings').insert([{ user_id: user.id }]);
-        if (insError) console.error("Initial settings creation failed", insError);
+      if (activeSection === 'categories') {
+        const { data } = await supabase.from('categories').select('*').eq('user_id', user.id).order('name');
+        setCategories(data || []);
+      }
+
+      if (activeSection === 'establishments') {
+        const { data } = await supabase.rpc('get_active_merchants');
+        if (data) {
+          setEstablishments(data);
+        } else {
+          // Fallback if RPC doesn't exist
+          const { data: docs } = await supabase.from('ai_documents').select('merchant_raw, date').eq('user_id', user.id);
+          const grouped = (docs || []).reduce((acc: any, d: any) => {
+            if (!acc[d.merchant_raw]) acc[d.merchant_raw] = { name: d.merchant_raw, lastActive: d.date, count: 0 };
+            acc[d.merchant_raw].count++;
+            if (new Date(d.date) > new Date(acc[d.merchant_raw].lastActive)) acc[d.merchant_raw].lastActive = d.date;
+            return acc;
+          }, {});
+          setEstablishments(Object.values(grouped));
+        }
       }
     } catch (err) {
-      console.error('Error loading settings:', err);
+      console.error('Error fetching settings:', err);
     } finally {
-      setLoadingSettings(false);
+      setLoading(false);
     }
   };
 
-  const updateSetting = async (key: 'email_notifications' | 'auto_dark_mode', value: boolean) => {
+  const addCategory = async () => {
+    if (!newCatName || !supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { error } = await supabase.from('categories').insert({
+        user_id: user.id,
+        name: newCatName,
+        color: 'bg-blue-100 text-blue-600'
+      });
+      if (error) throw error;
+      setNewCatName('');
+      setIsAddingCat(false);
+      fetchData();
+    } catch (err) {
+      alert('Erro ao adicionar categoria');
+    }
+  };
+
+  const deleteCategory = async (id: string) => {
+    if (!supabase || !confirm('Deseja excluir esta categoria?')) return;
+    try {
+      await supabase.from('categories').delete().eq('id', id);
+      fetchData();
+    } catch (err) {
+      alert('Erro ao excluir categoria');
+    }
+  };
+
+  const seedDefaults = async () => {
     if (!supabase) return;
-    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const defaults = [
+        { name: 'Alimentação', color: 'bg-orange-100 text-orange-600' },
+        { name: 'Transporte', color: 'bg-blue-100 text-blue-600' },
+        { name: 'Lazer', color: 'bg-pink-100 text-pink-600' },
+        { name: 'Saúde', color: 'bg-emerald-100 text-emerald-600' },
+        { name: 'Moradia', color: 'bg-indigo-100 text-indigo-600' }
+      ];
+      const { error } = await supabase.from('categories').insert(
+        defaults.map(d => ({ ...d, user_id: user.id }))
+      );
+      if (error) throw error;
+      fetchData();
+    } catch (err) {
+      alert('Erro ao restaurar sugestões');
+    }
+  };
+
+  const updateSetting = async (key: string, value: any) => {
+    if (!supabase) return;
+
     // Optimistic update
     const previousSettings = { ...settings };
     setSettings(prev => ({ ...prev, [key]: value }));
-    
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { error } = await supabase
         .from('user_settings')
-        .upsert({ 
-          user_id: user.id, 
+        .upsert({
+          user_id: user.id,
           [key]: value,
           updated_at: new Date().toISOString()
         });
@@ -106,7 +177,6 @@ const SettingsPage: React.FC = () => {
       if (error) throw error;
     } catch (err) {
       console.error('Error saving setting:', err);
-      // Rollback on error
       setSettings(previousSettings);
     }
   };
@@ -133,13 +203,12 @@ const SettingsPage: React.FC = () => {
           {menuItems.map((item) => (
             <React.Fragment key={item.id}>
               {item.divider && <div className="hidden lg:block h-px bg-gray-200 my-4 mx-4"></div>}
-              <button 
+              <button
                 onClick={() => setActiveSection(item.id as any)}
-                className={`flex-1 lg:flex-none flex items-center justify-center lg:justify-start gap-3 px-5 lg:px-4 py-3.5 lg:py-3 rounded-xl text-xs lg:text-sm font-black uppercase tracking-widest transition-all whitespace-nowrap ${
-                  activeSection === item.id 
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' 
+                className={`flex-1 lg:flex-none flex items-center justify-center lg:justify-start gap-3 px-5 lg:px-4 py-3.5 lg:py-3 rounded-xl text-xs lg:text-sm font-black uppercase tracking-widest whitespace-nowrap ${activeSection === item.id
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
                   : 'bg-white lg:bg-transparent text-gray-500 hover:bg-gray-100 lg:hover:bg-gray-200/50 border lg:border-transparent border-gray-100'
-                }`}
+                  }`}
               >
                 {item.icon}
                 <span className="hidden sm:inline lg:inline">{item.label}</span>
@@ -153,17 +222,17 @@ const SettingsPage: React.FC = () => {
           {activeSection === 'general' && (
             <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 lg:p-8">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg lg:text-xl font-black text-gray-900 uppercase tracking-widest">Preferências</h2>
-                {loadingSettings && <Loader2 className="w-5 h-5 animate-spin text-blue-600" />}
+                <h2 className="text-lg lg:text-xl font-black text-gray-900 uppercase tracking-widest font-bold">Preferências</h2>
+                {loading && <Loader2 className="w-5 h-5 animate-spin text-blue-600" />}
               </div>
-              
+
               <div className="space-y-4">
                 <div className="flex items-center justify-between p-4 lg:p-5 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white transition-all">
                   <div>
                     <p className="font-bold text-gray-900 text-sm">Notificações por Email</p>
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Alertas de vencimento e metas</p>
                   </div>
-                  <div 
+                  <div
                     onClick={() => updateSetting('email_notifications', !settings.email_notifications)}
                     className={`w-12 h-6 rounded-full relative p-1 cursor-pointer transition-colors duration-200 ${settings.email_notifications ? 'bg-blue-600' : 'bg-gray-200'}`}
                   >
@@ -175,7 +244,7 @@ const SettingsPage: React.FC = () => {
                     <p className="font-bold text-gray-900 text-sm">Modo Dark Automático</p>
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Adapta ao tema do dispositivo</p>
                   </div>
-                  <div 
+                  <div
                     onClick={() => updateSetting('auto_dark_mode', !settings.auto_dark_mode)}
                     className={`w-12 h-6 rounded-full relative p-1 cursor-pointer transition-colors duration-200 ${settings.auto_dark_mode ? 'bg-blue-600' : 'bg-gray-200'}`}
                   >
@@ -193,34 +262,60 @@ const SettingsPage: React.FC = () => {
                   <h2 className="text-lg lg:text-xl font-black text-gray-900 uppercase tracking-widest">Categorias</h2>
                   <p className="text-xs text-gray-500">Gestão de rótulos para o Histórico</p>
                 </div>
-                <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 active:scale-95">
+                <button
+                  onClick={() => setIsAddingCat(true)}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 active:scale-95 font-bold"
+                >
                   <Plus size={18} /> Adicionar
                 </button>
               </div>
               <div className="divide-y divide-gray-50">
-                {CATEGORIES.map(cat => (
+                {isAddingCat && (
+                  <div className="p-4 bg-blue-50/50 flex items-center gap-4">
+                    <input
+                      type="text"
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      placeholder="Nome da categoria..."
+                      className="flex-1 bg-white border border-blue-200 rounded-lg px-4 py-2 text-sm font-bold placeholder:text-blue-300 outline-none focus:ring-2 focus:ring-blue-400"
+                      autoFocus
+                    />
+                    <button onClick={addCategory} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all"><Check size={18} /></button>
+                    <button onClick={() => setIsAddingCat(false)} className="p-2 bg-gray-200 text-gray-500 rounded-lg hover:bg-gray-300 transition-all"><XCircle size={18} /></button>
+                  </div>
+                )}
+                {categories.map(cat => (
                   <div key={cat.id} className="p-4 lg:p-5 flex items-center justify-between hover:bg-gray-50/50 transition-colors group">
                     <div className="flex items-center gap-4">
-                      <div className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-widest ${cat.color}`}>
+                      <div className={`px-4 py-2 rounded-xl font-bold text-[11px] uppercase tracking-widest ${cat.color || 'bg-slate-100 text-slate-600'}`}>
                         {cat.name}
                       </div>
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest hidden sm:inline">{cat.count} Movimentações</span>
                     </div>
-                    <div className="flex items-center gap-1 opacity-60 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                      <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Edit3 size={18} /></button>
-                      <button className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18} /></button>
+                    <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => deleteCategory(cat.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18} /></button>
                     </div>
                   </div>
                 ))}
+                {categories.length === 0 && !isAddingCat && (
+                  <div className="py-20 text-center">
+                    <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mb-6">Nenhuma categoria personalizada</p>
+                    <button
+                      onClick={seedDefaults}
+                      className="px-6 py-3 bg-gray-100 text-gray-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-200 transition-all border border-gray-200"
+                    >
+                      Restaurar Sugestões Padrão
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
           {activeSection === 'establishments' && (
-            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="p-6 lg:p-8 border-b border-gray-50">
+            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden p-6 lg:p-8">
+              <div className="flex flex-col gap-1 mb-6">
                 <h2 className="text-lg lg:text-xl font-black text-gray-900 uppercase tracking-widest">Estabelecimentos</h2>
-                <p className="text-xs text-gray-500">Inteligência de identificação de cupom fiscal</p>
+                <p className="text-xs text-gray-500">Lojas identificadas automaticamente em seus cupons fiscas</p>
               </div>
               <div className="w-full overflow-x-auto">
                 <table className="w-full text-left min-w-[500px]">
@@ -233,23 +328,30 @@ const SettingsPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {ESTABLISHMENTS.map((est, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                    {establishments.map((est, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50/50 transition-colors group">
                         <td className="px-6 lg:px-8 py-5 text-sm font-bold text-gray-900">{est.name}</td>
                         <td className="px-6 lg:px-8 py-5">
                           <div className="flex items-center gap-3">
                             <div className="flex-1 w-20 bg-gray-100 h-1.5 rounded-full overflow-hidden">
-                              <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: est.reliability }}></div>
+                              <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: '100%' }}></div>
                             </div>
-                            <span className="text-[10px] font-black text-emerald-600">{est.reliability}</span>
+                            <span className="text-[10px] font-black text-blue-600">CONFIRMADA</span>
                           </div>
                         </td>
                         <td className="px-6 lg:px-8 py-5 text-[10px] font-bold text-gray-400 uppercase">{new Date(est.lastActive).toLocaleDateString()}</td>
                         <td className="px-6 lg:px-8 py-5 text-right">
-                          <button className="p-2 text-gray-300 hover:text-blue-600 transition-colors"><ChevronRight size={18} /></button>
+                          <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all">{est.count} compras</span>
                         </td>
                       </tr>
                     ))}
+                    {establishments.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-20 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">
+                          Nenhuma loja registrada via cupons ainda.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -305,23 +407,35 @@ const SettingsPage: React.FC = () => {
                   <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white transition-all shadow-inner hover:shadow-sm">
                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2.5 ml-1">IOF Internacional</label>
                     <div className="flex items-center gap-2">
-                      <input type="text" value="6,38" className="bg-transparent font-black text-gray-900 text-2xl outline-none w-24" readOnly />
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={settings.iof_rate}
+                        onChange={(e) => updateSetting('iof_rate', parseFloat(e.target.value))}
+                        className="bg-transparent font-black text-gray-900 text-2xl outline-none w-24"
+                      />
                       <span className="font-black text-gray-300 text-xl">%</span>
                     </div>
                   </div>
                   <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white transition-all shadow-inner hover:shadow-sm">
                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2.5 ml-1">Spread Bancário</label>
                     <div className="flex items-center gap-2">
-                      <input type="text" value="4,00" className="bg-transparent font-black text-gray-900 text-2xl outline-none w-24" readOnly />
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={settings.spread_rate}
+                        onChange={(e) => updateSetting('spread_rate', parseFloat(e.target.value))}
+                        className="bg-transparent font-black text-gray-900 text-2xl outline-none w-24"
+                      />
                       <span className="font-black text-gray-300 text-xl">%</span>
                     </div>
                   </div>
                 </div>
                 <div className="p-4 lg:p-5 bg-amber-50 rounded-2xl border border-amber-100 flex items-start gap-4">
-                   <AlertTriangle size={20} className="text-amber-600 mt-1 shrink-0" />
-                   <p className="text-xs text-amber-800 leading-relaxed font-medium italic">
-                     Estas taxas são aplicadas em faturas internacionais e projeções de saldo quando não há cotação oficial em tempo real.
-                   </p>
+                  <AlertTriangle size={20} className="text-amber-600 mt-1 shrink-0" />
+                  <p className="text-xs text-amber-800 leading-relaxed font-medium italic">
+                    Estas taxas são aplicadas em faturas internacionais e projeções de saldo quando não há cotação oficial em tempo real.
+                  </p>
                 </div>
               </div>
             </div>
@@ -331,18 +445,17 @@ const SettingsPage: React.FC = () => {
             <div className="space-y-6">
               <div className="bg-white p-6 lg:p-8 rounded-3xl border border-gray-200 shadow-sm">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 mb-8">
-                   <div className="flex items-center gap-3">
-                      <div className="p-3.5 bg-amber-50 text-amber-600 rounded-2xl border border-amber-100">
-                        <Database size={24} />
-                      </div>
-                      <h3 className="font-black text-gray-900 uppercase tracking-widest text-sm lg:text-base">Infraestrutura Nuvem</h3>
-                   </div>
-                   <div className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl border ${
-                     isSupabaseConfigured ? 'text-green-600 bg-green-50 border-green-100' : 'text-gray-400 bg-gray-50 border-gray-100'
-                   }`}>
-                      {isSupabaseConfigured ? <Check size={14} /> : <XCircle size={14} />}
-                      {isSupabaseConfigured ? 'Ativa' : 'Desconectada'}
-                   </div>
+                  <div className="flex items-center gap-3">
+                    <div className="p-3.5 bg-amber-50 text-amber-600 rounded-2xl border border-amber-100">
+                      <Database size={24} />
+                    </div>
+                    <h3 className="font-black text-gray-900 uppercase tracking-widest text-sm lg:text-base">Infraestrutura Nuvem</h3>
+                  </div>
+                  <div className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl border ${isSupabaseConfigured ? 'text-green-600 bg-green-50 border-green-100' : 'text-gray-400 bg-gray-50 border-gray-100'
+                    }`}>
+                    {isSupabaseConfigured ? <Check size={14} /> : <XCircle size={14} />}
+                    {isSupabaseConfigured ? 'Ativa' : 'Desconectada'}
+                  </div>
                 </div>
 
                 {!isSupabaseConfigured && (
@@ -356,34 +469,34 @@ const SettingsPage: React.FC = () => {
                     </div>
                   </div>
                 )}
-                
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
-                   <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100 hover:bg-white transition-all shadow-inner hover:shadow-sm group">
-                      <div className="flex items-center gap-2 text-gray-400 mb-3">
-                        <Clock size={16} />
-                        <span className="text-[10px] font-black uppercase tracking-widest">Sincronização</span>
-                      </div>
-                      <p className="text-sm font-bold text-gray-700">Hoje às 14:32</p>
-                      <button disabled={!isSupabaseConfigured} className={`mt-5 text-[10px] font-black uppercase tracking-widest transition-all ${isSupabaseConfigured ? 'text-blue-600 hover:underline' : 'text-gray-300 cursor-not-allowed'}`}>Sincronizar Agora</button>
-                   </div>
-                   <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100 hover:bg-white transition-all shadow-inner hover:shadow-sm group">
-                      <div className="flex items-center gap-2 text-gray-400 mb-3">
-                        <Download size={16} />
-                        <span className="text-[10px] font-black uppercase tracking-widest">Cache Local</span>
-                      </div>
-                      <p className="text-sm font-bold text-gray-700">2.4 MB utilizados</p>
-                      <button className="mt-5 text-gray-500 text-[10px] font-black uppercase tracking-widest hover:underline transition-all">Limpar Tudo</button>
-                   </div>
+                  <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100 hover:bg-white transition-all shadow-inner hover:shadow-sm group">
+                    <div className="flex items-center gap-2 text-gray-400 mb-3">
+                      <Clock size={16} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Sincronização</span>
+                    </div>
+                    <p className="text-sm font-bold text-gray-700">Hoje às 14:32</p>
+                    <button disabled={!isSupabaseConfigured} className={`mt-5 text-[10px] font-black uppercase tracking-widest transition-all ${isSupabaseConfigured ? 'text-blue-600 hover:underline' : 'text-gray-300 cursor-not-allowed'}`}>Sincronizar Agora</button>
+                  </div>
+                  <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100 hover:bg-white transition-all shadow-inner hover:shadow-sm group">
+                    <div className="flex items-center gap-2 text-gray-400 mb-3">
+                      <Download size={16} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Cache Local</span>
+                    </div>
+                    <p className="text-sm font-bold text-gray-700">2.4 MB utilizados</p>
+                    <button className="mt-5 text-gray-500 text-[10px] font-black uppercase tracking-widest hover:underline transition-all">Limpar Tudo</button>
+                  </div>
                 </div>
               </div>
 
               <div className="bg-gradient-to-br from-gray-900 to-zinc-800 p-8 lg:p-10 rounded-[36px] text-white shadow-2xl relative overflow-hidden">
-                 <div className="absolute top-0 right-0 p-10 opacity-5"><Cloud size={160} /></div>
-                 <h3 className="text-xl lg:text-2xl font-black uppercase tracking-tighter mb-2">Exportação Universal</h3>
-                 <p className="text-xs lg:text-sm opacity-60 mb-8 leading-relaxed max-w-md font-medium">Baixe o dump completo dos seus dados financeiros (JSON/CSV) para custódia própria ou migração externa.</p>
-                 <button className="w-full sm:w-auto px-8 py-4 bg-white text-gray-900 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-gray-100 transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95">
-                    <Download size={20} /> Baixar Backup Completo
-                 </button>
+                <div className="absolute top-0 right-0 p-10 opacity-5"><Cloud size={160} /></div>
+                <h3 className="text-xl lg:text-2xl font-black uppercase tracking-tighter mb-2">Exportação Universal</h3>
+                <p className="text-xs lg:text-sm opacity-60 mb-8 leading-relaxed max-w-md font-medium">Baixe o dump completo dos seus dados financeiros (JSON/CSV) para custódia própria ou migração externa.</p>
+                <button className="w-full sm:w-auto px-8 py-4 bg-white text-gray-900 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-gray-100 transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95">
+                  <Download size={20} /> Baixar Backup Completo
+                </button>
               </div>
             </div>
           )}
