@@ -37,6 +37,7 @@ export default async function handler(req: any, res: any) {
         "merchant": "Nome Fantasia",
         "merchant_category": "Mercado | Restaurante | Farmácia | Loja | Posto | Outros",
         "date": "YYYY-MM-DD",
+        "currency": "BRL",
         "total": 0.00,
         "items": [
           {
