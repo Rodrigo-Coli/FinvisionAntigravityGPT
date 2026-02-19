@@ -102,8 +102,8 @@ export const AIReconcileService = {
         status: 'processed',
         source: 'manual_upload',
         ocr_structured: {
-          merchant_category: receipt.merchant_category,
-          full_data: receipt
+          ...receipt,
+          merchant_category: receipt.merchant_category || 'Mercado'
         }
       })
       .select('id')
@@ -113,15 +113,27 @@ export const AIReconcileService = {
 
     for (let i = 0; i < receipt.items.length; i++) {
       const item = receipt.items[i];
-      const productName = item.normalized_name || item.description;
+      const productName = (item.normalized_name || item.description).toUpperCase().trim();
+      const searchName = productName.replace(/[-]/g, ' '); // Troca hífen por espaço para busca flexível
 
       const { data: product } = await supabase.from('products')
         .select('id')
         .eq('user_id', user.id)
-        .ilike('name', productName)
+        .or(`name.ilike.${productName},name.ilike.${searchName}`)
         .maybeSingle();
 
       let productId = product?.id;
+
+      if (!productId) {
+        // Tentativa de busca por descrição original se o normalizado não bateu
+        const { data: altProd } = await supabase.from('products')
+          .select('id')
+          .eq('user_id', user.id)
+          .ilike('name', item.description)
+          .maybeSingle();
+
+        productId = altProd?.id;
+      }
 
       if (!productId) {
         const { data: newProd, error: prodErr } = await supabase.from('products').insert({
