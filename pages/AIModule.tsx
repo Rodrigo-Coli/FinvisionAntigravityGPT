@@ -110,13 +110,12 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   };
 
   const handleFinalize = async () => {
-    if (!receipt || !targetAccount) return;
+    if (!receipt) return;
     setSaveStatus('saving');
 
     try {
       await AIReconcileService.saveReceiptToLabs(receipt);
       const finalAmount = getReconcileAmount();
-      const accountName = selectedAccounts.find(a => a.id === targetAccount)?.institution || 'Conta';
 
       await AIReconcileService.saveToReconcileQueue([{
         date: receipt.date,
@@ -125,7 +124,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         type: 'debit',
         source: 'AI Labs',
         confidence: 1
-      }], targetAccount, accountName);
+      }], 'null', 'A Conciliar'); // Enviando para um alvo genérico de conciliação
 
       setSaveStatus('done');
       setTimeout(() => {
@@ -303,18 +302,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       </p>
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block ml-1">Conta de Origem</label>
-                      <select
-                        value={targetAccount}
-                        onChange={(e) => setTargetAccount(e.target.value)}
-                        className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-black text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 appearance-none"
-                      >
-                        {selectedAccounts.map(acc => (
-                          <option key={acc.id} value={acc.id}>{acc.institution}</option>
-                        ))}
-                      </select>
-                    </div>
+                    {/* Removido seletor de conta para enviar direto para conciliação global */}
 
                     <button
                       onClick={handleFinalize}
