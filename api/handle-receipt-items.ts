@@ -27,6 +27,7 @@ export default async function handler(req: any, res: any) {
       RETORNE APENAS UM OBJETO JSON NO FORMATO:
       {
         "merchant": "Nome Fantasia",
+        "merchant_category": "Mercado | Restaurante | Farmácia | Loja | Posto | Outros",
         "date": "YYYY-MM-DD",
         "total": 0.00,
         "items": [
