@@ -6,7 +6,7 @@ import { ExtractedReceipt, ReceiptItem, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
 
 const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
-  const [activeTab, setActiveTab] = useState<'upload' | 'history' | 'comparative'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'history' | 'comparative' | 'shopping'>('upload');
   const [isProcessing, setIsProcessing] = useState(false);
   const [receipt, setReceipt] = useState<ExtractedReceipt | null>(null);
   const [reconcileMode, setReconcileMode] = useState<'total' | 'partial' | 'items'>('total');
@@ -19,6 +19,8 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [comparisonData, setComparisonData] = useState<any[]>([]);
   const [isLoadingIntelligence, setIsLoadingIntelligence] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [targetSegment, setTargetSegment] = useState<string>('Mercado');
+  const [shoppingList, setShoppingList] = useState<any[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -48,21 +50,24 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         if (prices.length === 0) return null;
 
         const validPrices = prices.filter((p: any) => !p.exclude_from_stats);
+        if (validPrices.length === 0) return null;
+
         const avgPrice = validPrices.reduce((sum: number, p: any) => sum + p.unit_price, 0) / (validPrices.length || 1);
-        const minPriceObj = prices.reduce((min: any, p: any) => p.unit_price < min.unit_price ? p : min, prices[0]);
-        const lastPrice = prices[prices.length - 1];
+        const minPriceObj = validPrices.reduce((min: any, p: any) => p.unit_price < min.unit_price ? p : min, validPrices[0]);
+        const lastPrice = validPrices[validPrices.length - 1];
 
         return {
           id: prod.id,
           name: prod.name,
           category: prod.category || 'Geral',
+          merchantCategory: minPriceObj.ai_documents?.ocr_structured?.merchant_category || 'Mercado',
           avgPrice,
           minPrice: minPriceObj.unit_price,
           bestMerchant: minPriceObj.ai_documents?.merchant_raw || 'N/A',
           lastPrice: lastPrice.unit_price,
           lastMerchant: lastPrice.ai_documents?.merchant_raw || 'N/A',
           trend: lastPrice.unit_price > avgPrice ? 'up' : 'down',
-          history: prices
+          history: validPrices
         };
       }).filter(Boolean);
 
@@ -106,7 +111,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     if (!receipt) return 0;
     if (reconcileMode === 'total') return receipt.total;
     if (reconcileMode === 'partial') return partialValue;
-    return receipt.items.filter(it => it.selected).reduce((sum, it) => sum + it.total_price, 0);
+    return receipt.items.filter((it: any) => it.selected).reduce((sum: number, it: any) => sum + it.total_price, 0);
   };
 
   const handleFinalize = async () => {
@@ -166,6 +171,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         {[
           { id: 'upload', label: 'Scanner de Cupom', icon: <Receipt size={14} /> },
           { id: 'comparative', label: 'Comparador de Preços', icon: <Store size={14} /> },
+          { id: 'shopping', label: 'Lista de Compras', icon: <ShoppingCart size={14} /> },
           { id: 'history', label: 'Laboratório de Inflação', icon: <BarChart3 size={14} /> },
         ].map((tab) => (
           <button
@@ -315,7 +321,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block ml-1">Conta de Origem</label>
                       <select
                         value={targetAccount}
-                        onChange={(e) => setTargetAccount(e.target.value)}
+                        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetAccount(e.target.value)}
                         className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-black text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 appearance-none"
                       >
                         <option value="">Selecione uma conta...</option>
@@ -353,17 +359,23 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   placeholder="Buscar produto ou categoria..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full h-16 bg-white border border-slate-200 rounded-[20px] pl-16 pr-6 font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                  className="w-full h-16 bg-white border border-slate-200 rounded-[24px] pl-16 pr-6 font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                 />
               </div>
-              <div className="flex gap-4">
-                <button className="h-16 px-8 bg-white border border-slate-200 rounded-[20px] text-[10px] font-black uppercase tracking-widest text-slate-600 flex items-center gap-3 hover:bg-slate-50 transition-all">
-                  <Filter size={16} /> Filtrar
-                </button>
-                <button onClick={fetchIntelligenceData} className="w-16 h-16 bg-brand-50 text-brand-600 rounded-[20px] flex items-center justify-center hover:bg-brand-100 transition-all">
-                  <TrendingUp size={20} />
-                </button>
+              <div className="flex gap-2 bg-slate-100 p-1.5 rounded-[24px]">
+                {['Mercado', 'Restaurante', 'Loja'].map(seg => (
+                  <button
+                    key={seg}
+                    onClick={() => setTargetSegment(seg)}
+                    className={`px-6 py-3 rounded-[18px] text-[9px] font-black uppercase tracking-widest transition-all ${targetSegment === seg ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    {seg}
+                  </button>
+                ))}
               </div>
+              <button onClick={fetchIntelligenceData} className="w-16 h-16 bg-brand-50 text-brand-600 rounded-[24px] flex items-center justify-center hover:bg-brand-100 transition-all shadow-sm">
+                <TrendingUp size={20} />
+              </button>
             </div>
 
             {/* Grid de Comparativo */}
@@ -374,9 +386,10 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 ))
               ) : (
                 comparisonData
-                  .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.category.toLowerCase().includes(searchTerm.toLowerCase()))
+                  .filter(p => p.merchantCategory === targetSegment)
+                  .filter(p => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.category.toLowerCase().includes(searchTerm.toLowerCase()))
                   .map((product) => (
-                    <div key={product.id} className="bg-white rounded-[40px] border border-slate-100 p-8 shadow-sm hover:shadow-xl transition-all group">
+                    <div key={product.id} className="bg-white rounded-[40px] border border-slate-100 p-8 shadow-sm hover:shadow-xl transition-all group relative">
                       <div className="flex justify-between items-start mb-6">
                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${product.trend === 'down' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
                           {product.trend === 'down' ? <TrendingDown size={24} /> : <TrendingUp size={24} />}
@@ -387,10 +400,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       <h3 className="text-xl font-black text-slate-900 mb-2 group-hover:text-brand-600 transition-colors uppercase">{product.name}</h3>
 
                       <div className="space-y-4 pt-4 border-t border-slate-50">
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="font-bold text-slate-400 uppercase tracking-tighter">Preço Médio</span>
-                          <span className="font-black text-slate-900">{formatCurrency(product.avgPrice)}</span>
-                        </div>
                         <div className="flex justify-between items-center p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
                           <div className="flex flex-col">
                             <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Melhor Preço</span>
@@ -398,13 +407,17 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                           </div>
                           <span className="text-lg font-black text-emerald-600">{formatCurrency(product.minPrice)}</span>
                         </div>
-                        <div className="flex justify-between items-center text-sm px-1">
-                          <div className="flex items-center gap-2 text-slate-400">
-                            <MapPin size={12} />
-                            <span className="text-[10px] font-black uppercase tracking-tighter">Última Compra</span>
-                          </div>
-                          <span className="text-xs font-bold text-slate-600 uppercase">{product.lastMerchant}</span>
-                        </div>
+
+                        <button
+                          onClick={() => {
+                            if (!shoppingList.find(i => i.id === product.id)) {
+                              setShoppingList([...shoppingList, product]);
+                            }
+                          }}
+                          className="w-full h-12 bg-slate-900 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-brand-600 transition-all flex items-center justify-center gap-2"
+                        >
+                          <ShoppingCart size={14} /> Adicionar à Lista
+                        </button>
                       </div>
                     </div>
                   ))
@@ -505,6 +518,59 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'shopping' && (
+          <div className="space-y-10 animate-in fade-in duration-700">
+            <div className="bg-slate-900 rounded-[40px] p-12 text-white relative overflow-hidden">
+              <div className="relative z-10">
+                <h2 className="text-4xl font-black tracking-tighter mb-4">Lista de Compras Otimizada</h2>
+                <p className="text-slate-400 font-medium max-w-lg mb-8">Economize comprando cada item no local mais barato do segmento <span className="text-brand-400 font-black uppercase tracking-widest ml-1">{targetSegment}</span>.</p>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {Array.from(new Set(shoppingList.map(i => i.bestMerchant))).map(merchant => (
+                    <div key={merchant} className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-4">
+                      <div className="flex items-center gap-3">
+                        <Store size={18} className="text-brand-400" />
+                        <h3 className="font-black uppercase text-xs tracking-widest truncate">{merchant}</h3>
+                      </div>
+                      <div className="space-y-2">
+                        {shoppingList.filter((i: any) => i.bestMerchant === merchant).map((item: any) => (
+                          <div key={item.id} className="flex justify-between items-center text-sm">
+                            <span className="text-slate-400 truncate max-w-[150px]">{item.name}</span>
+                            <span className="font-black">{formatCurrency(item.minPrice)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="pt-4 border-t border-white/10 flex justify-between items-center">
+                        <span className="text-[10px] font-black uppercase text-slate-500">Subtotal</span>
+                        <span className="text-xl font-black text-brand-400">
+                          {formatCurrency(shoppingList.filter((i: any) => i.bestMerchant === merchant).reduce((sum: number, i: any) => sum + i.minPrice, 0))}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {shoppingList.length === 0 && (
+              <div className="py-20 text-center border-2 border-dashed border-slate-100 rounded-[40px]">
+                <ShoppingCart size={48} className="mx-auto text-slate-100 mb-6" />
+                <h3 className="text-xl font-black text-slate-300 uppercase tracking-widest">Sua lista está vazia</h3>
+                <p className="text-slate-400 mt-2">Adicione produtos do Comparador para ver a melhor estratégia de compra.</p>
+              </div>
+            )}
+
+            {shoppingList.length > 0 && (
+              <button
+                onClick={() => setShoppingList([])}
+                className="mx-auto block text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-rose-600 transition-all font-bold"
+              >
+                Limpar Lista de Compras
+              </button>
+            )}
           </div>
         )}
       </div>
