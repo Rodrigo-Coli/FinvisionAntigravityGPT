@@ -186,6 +186,7 @@ export interface ReceiptItem {
 
 export interface ExtractedReceipt {
   merchant: string;
+  merchant_category?: string;
   date: string;
   total: number;
   items: ReceiptItem[];
