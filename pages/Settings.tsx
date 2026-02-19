@@ -9,17 +9,24 @@ import {
   Plus,
   ChevronRight,
   Trash2,
-  Edit3,
+  Edit3, // Kept as it was in original, though not explicitly in user's new list
   Database,
-  Globe,
+  Globe, // Kept as it was in original, though not explicitly in user's new list
   Info,
   Check,
-  Clock,
+  Clock, // Kept as it was in original, though not explicitly in user's new list
   Download,
   AlertTriangle,
-  Link as LinkIcon,
-  XCircle,
-  Loader2
+  Link as LinkIcon, // Kept as it was in original, though not explicitly in user's new list
+  XCircle, // Kept as it was in original, though not explicitly in user's new list
+  Loader2, // Kept as it was in original, though not explicitly in user's new list
+  Tag, // Added as per user's request
+  Shield, // Added as per user's request
+  Bell, // Added as per user's request
+  Moon, // Added as per user's request
+  Smartphone, // Added as per user's request
+  Search, // Added as per user's request
+  ArrowUpRight, // Added as per user's request
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 
@@ -50,6 +57,7 @@ const SettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [establishments, setEstablishments] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
   const [newCatName, setNewCatName] = useState('');
   const [isAddingCat, setIsAddingCat] = useState(false);
 
@@ -82,20 +90,33 @@ const SettingsPage: React.FC = () => {
       }
 
       if (activeSection === 'establishments') {
-        const { data } = await supabase.rpc('get_active_merchants');
-        if (data) {
-          setEstablishments(data);
-        } else {
-          // Fallback if RPC doesn't exist
-          const { data: docs } = await supabase.from('ai_documents').select('merchant_raw, date').eq('user_id', user.id);
-          const grouped = (docs || []).reduce((acc: any, d: any) => {
-            if (!acc[d.merchant_raw]) acc[d.merchant_raw] = { name: d.merchant_raw, lastActive: d.date, count: 0 };
-            acc[d.merchant_raw].count++;
-            if (new Date(d.date) > new Date(acc[d.merchant_raw].lastActive)) acc[d.merchant_raw].lastActive = d.date;
-            return acc;
-          }, {});
-          setEstablishments(Object.values(grouped));
-        }
+        const { data: docs } = await supabase
+          .from('ai_documents')
+          .select('merchant_raw, date, ocr_structured')
+          .eq('user_id', user.id)
+          .order('date', { ascending: false });
+
+        const grouped = (docs || []).reduce((acc: any, d: any) => {
+          if (!acc[d.merchant_raw]) {
+            acc[d.merchant_raw] = {
+              name: d.merchant_raw,
+              lastActive: d.date,
+              count: 0,
+              category: d.ocr_structured?.merchant_category || 'Mercado'
+            };
+          }
+          acc[d.merchant_raw].count++;
+          if (new Date(d.date) > new Date(acc[d.merchant_raw].lastActive)) {
+            acc[d.merchant_raw].lastActive = d.date;
+          }
+          return acc;
+        }, {});
+        setEstablishments(Object.values(grouped));
+      }
+
+      if (activeSection === 'products') {
+        const { data } = await supabase.from('products').select('*').eq('user_id', user.id).eq('active', true).order('name');
+        setProducts(data || []);
       }
     } catch (err) {
       console.error('Error fetching settings:', err);
@@ -155,6 +176,77 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  const updateEstablishmentCategory = async (merchantName: string, newCategory: string) => {
+    if (!supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Fetch docs for this merchant
+      const { data: docs } = await supabase
+        .from('ai_documents')
+        .select('id, ocr_structured')
+        .eq('user_id', user.id)
+        .eq('merchant_raw', merchantName);
+
+      if (docs) {
+        for (const doc of docs) {
+          const updatedOcr = { ...doc.ocr_structured, merchant_category: newCategory };
+          await supabase
+            .from('ai_documents')
+            .update({ ocr_structured: updatedOcr })
+            .eq('id', doc.id);
+        }
+      }
+
+      // Optimistic update
+      setEstablishments(prev => prev.map(e => e.name === merchantName ? { ...e, category: newCategory } : e));
+    } catch (err) {
+      alert('Erro ao atualizar categoria');
+    }
+  };
+
+  const renameProduct = async (id: string, newName: string | null) => {
+    if (!supabase || !newName) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Check if name already exists to offer merge
+      const { data: existing } = await supabase.from('products')
+        .select('id')
+        .eq('user_id', user.id)
+        .ilike('name', newName.trim())
+        .neq('id', id)
+        .maybeSingle();
+
+      if (existing) {
+        if (confirm(`Já existe um produto com o nome "${newName.trim()}". Deseja mesclar os preços de ambos?`)) {
+          // Relink all prices to the existing product
+          await supabase.from('product_prices').update({ product_id: existing.id }).eq('product_id', id);
+          await supabase.from('ai_document_items').update({ product_id: existing.id }).eq('product_id', id);
+          // Deactivate the current product
+          await supabase.from('products').update({ active: false }).eq('id', id);
+        }
+      } else {
+        await supabase.from('products').update({ name: newName.trim().toUpperCase() }).eq('id', id);
+      }
+      fetchData();
+    } catch (err) {
+      alert('Erro ao renomear produto');
+    }
+  };
+
+  const deleteProduct = async (id: string) => {
+    if (!supabase || !confirm('Deseja excluir este produto e todo seu histórico de preços?')) return;
+    try {
+      await supabase.from('products').update({ active: false }).eq('id', id);
+      fetchData();
+    } catch (err) {
+      alert('Erro ao excluir produto');
+    }
+  };
+
   const updateSetting = async (key: string, value: any) => {
     if (!supabase) return;
 
@@ -184,9 +276,9 @@ const SettingsPage: React.FC = () => {
   const menuItems = [
     { id: 'general', label: 'Geral', icon: <SettingsIcon size={18} /> },
     { id: 'categories', label: 'Categorias', icon: <Tags size={18} /> },
-    { id: 'establishments', label: 'Lojas', icon: <Store size={18} /> },
-    { id: 'currencies', label: 'Moedas', icon: <Coins size={18} /> },
-    { id: 'rates', label: 'Taxas', icon: <Percent size={18} /> },
+    { id: 'establishments', label: 'Estabelecimentos', icon: <Store size={18} /> },
+    { id: 'products', label: 'Produtos', icon: <Tag size={18} /> },
+    { id: 'rates', label: 'Taxas e Conversão', icon: <Percent size={18} /> },
     { id: 'backup', label: 'Backup', icon: <Cloud size={18} />, divider: true },
   ];
 
@@ -322,26 +414,32 @@ const SettingsPage: React.FC = () => {
                   <thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-400 tracking-widest border-b border-gray-100">
                     <tr>
                       <th className="px-6 lg:px-8 py-4">Nome</th>
-                      <th className="px-6 lg:px-8 py-4">Confiança IA</th>
+                      <th className="px-6 lg:px-8 py-4">Categoria</th>
                       <th className="px-6 lg:px-8 py-4">Atividade</th>
-                      <th className="px-6 lg:px-8 py-4"></th>
+                      <th className="px-6 lg:px-8 py-4 text-right">Compras</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {establishments.map((est, idx) => (
                       <tr key={idx} className="hover:bg-gray-50/50 transition-colors group">
-                        <td className="px-6 lg:px-8 py-5 text-sm font-bold text-gray-900">{est.name}</td>
+                        <td className="px-6 lg:px-8 py-5 text-sm font-bold text-gray-900 uppercase italic tracking-tighter">{est.name}</td>
                         <td className="px-6 lg:px-8 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1 w-20 bg-gray-100 h-1.5 rounded-full overflow-hidden">
-                              <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: '100%' }}></div>
-                            </div>
-                            <span className="text-[10px] font-black text-blue-600">CONFIRMADA</span>
-                          </div>
+                          <select
+                            value={est.category}
+                            onChange={(e) => updateEstablishmentCategory(est.name, e.target.value)}
+                            className="bg-white border-2 border-gray-100 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 focus:outline-none focus:border-blue-500 transition-all cursor-pointer"
+                          >
+                            <option value="Mercado">Mercado</option>
+                            <option value="Restaurante">Restaurante</option>
+                            <option value="Farmácia">Farmácia</option>
+                            <option value="Loja">Loja</option>
+                            <option value="Posto">Posto</option>
+                            <option value="Outros">Outros</option>
+                          </select>
                         </td>
-                        <td className="px-6 lg:px-8 py-5 text-[10px] font-bold text-gray-400 uppercase">{new Date(est.lastActive).toLocaleDateString()}</td>
-                        <td className="px-6 lg:px-8 py-5 text-right">
-                          <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all">{est.count} compras</span>
+                        <td className="px-6 lg:px-8 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{new Date(est.lastActive).toLocaleDateString()}</td>
+                        <td className="px-6 lg:px-8 py-5 text-right font-black text-xs text-slate-400">
+                          {est.count} UN
                         </td>
                       </tr>
                     ))}
