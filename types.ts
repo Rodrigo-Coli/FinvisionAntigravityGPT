@@ -182,6 +182,7 @@ export interface ReceiptItem {
   total_price: number;
   category_hint?: string;
   selected?: boolean;
+  currency?: string;
 }
 
 export interface ExtractedReceipt {
@@ -189,5 +190,6 @@ export interface ExtractedReceipt {
   merchant_category?: string;
   date: string;
   total: number;
+  currency?: string;
   items: ReceiptItem[];
 }
