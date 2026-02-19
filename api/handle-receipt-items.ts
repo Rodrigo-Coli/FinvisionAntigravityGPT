@@ -16,7 +16,7 @@ export default async function handler(req: any, res: any) {
 
     try {
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-        if (!geminiKey) throw new Error('Chave do Gemini não configurada.');
+        if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
 
         const ai = new GoogleGenAI({ apiKey: geminiKey });
         const model = 'gemini-2.5-flash';
@@ -24,15 +24,15 @@ export default async function handler(req: any, res: any) {
         const prompt = `
       Você é um especialista em análise de documentos fiscais. Extraia os dados detalhados deste cupom.
       
-      RETORNE APENAS JSON NO FORMATO:
+      RETORNE APENAS UM OBJETO JSON NO FORMATO:
       {
-        "merchant": "Nome",
+        "merchant": "Nome Fantasia",
         "date": "YYYY-MM-DD",
         "total": 0.00,
         "items": [
           {
             "description": "Original",
-            "normalized_name": "Simplificado",
+            "normalized_name": "Nome Padronizado",
             "quantity": 1,
             "unit_price": 0.00,
             "total_price": 0.00,
@@ -50,7 +50,7 @@ export default async function handler(req: any, res: any) {
             ]
         }];
 
-        // USANDO EXATAMENTE O MESMO PADRÃO DO RECONCILE
+        // USANDO O MESMO PADRÃO DO RECONCILE QUE ESTÁ OK
         const response = await ai.models.generateContent({
             model,
             contents,
@@ -59,7 +59,11 @@ export default async function handler(req: any, res: any) {
             }
         });
 
-        // MESMA BLINDAGEM DO RECONCILE
+        if (!response) {
+            throw new Error('A IA não retornou nenhuma resposta.');
+        }
+
+        // EXTRAÇÃO DE TEXTO SEGURA (MESMA DO RECONCILE)
         let rawText = '';
         try {
             rawText = (response as any).text ||
@@ -69,7 +73,7 @@ export default async function handler(req: any, res: any) {
             console.error('[AI-Labs] Erro ao extrair texto:', e);
         }
 
-        if (!rawText) throw new Error('A IA não retornou nenhum dado.');
+        if (!rawText) throw new Error('IA não retornou conteúdo de texto.');
 
         const cleanJson = rawText.replace(/```json|```/g, "").trim();
         const parsedData = JSON.parse(cleanJson);
@@ -77,7 +81,7 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json(parsedData);
 
     } catch (err: any) {
-        console.error('[AI-Labs] Erro:', err.message);
+        console.error('[AI-Labs] Erro fatal:', err.message);
         return res.status(500).json({ error: err.message });
     }
 }
