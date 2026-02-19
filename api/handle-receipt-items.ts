@@ -27,7 +27,7 @@ export default async function handler(req: any, res: any) {
         if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
 
         const ai = new GoogleGenAI({ apiKey: geminiKey });
-        const model = 'gemini-1.5-flash';
+        const model = 'gemini-2.5-flash';
 
         const prompt = `
       Você é um especialista em análise de documentos fiscais. Extraia os dados detalhados deste cupom.
