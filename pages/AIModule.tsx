@@ -110,21 +110,29 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   };
 
   const handleFinalize = async () => {
-    if (!receipt) return;
+    if (!receipt || !targetAccount) {
+      alert("Por favor, selecione uma conta de origem.");
+      return;
+    }
     setSaveStatus('saving');
 
     try {
+      // Salva itens para o histórico e comparador
       await AIReconcileService.saveReceiptToLabs(receipt);
-      const finalAmount = getReconcileAmount();
 
+      // Pega o valor exato que o usuário filtrou na UI
+      const finalAmount = getReconcileAmount();
+      const accountName = selectedAccounts.find(a => a.id === targetAccount)?.institution || 'Conta';
+
+      // Envia para conciliação com o valor filtrado
       await AIReconcileService.saveToReconcileQueue([{
         date: receipt.date,
-        description: `Compra: ${receipt.merchant} (${reconcileMode})`,
+        description: `Labs: ${receipt.merchant} (${reconcileMode})`,
         amount: finalAmount,
         type: 'debit',
         source: 'AI Labs',
         confidence: 1
-      }], 'null', 'A Conciliar'); // Enviando para um alvo genérico de conciliação
+      }], targetAccount, accountName);
 
       setSaveStatus('done');
       setTimeout(() => {
@@ -132,7 +140,8 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         setSaveStatus('idle');
       }, 2000);
     } catch (err: any) {
-      alert(err.message);
+      console.error('Erro ao finalizar:', err);
+      alert(err.message || 'Erro ao processar.');
       setSaveStatus('idle');
     }
   };
@@ -302,7 +311,19 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       </p>
                     </div>
 
-                    {/* Removido seletor de conta para enviar direto para conciliação global */}
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block ml-1">Conta de Origem</label>
+                      <select
+                        value={targetAccount}
+                        onChange={(e) => setTargetAccount(e.target.value)}
+                        className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-black text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 appearance-none"
+                      >
+                        <option value="">Selecione uma conta...</option>
+                        {selectedAccounts.map(acc => (
+                          <option key={acc.id} value={acc.id}>{acc.institution}</option>
+                        ))}
+                      </select>
+                    </div>
 
                     <button
                       onClick={handleFinalize}
