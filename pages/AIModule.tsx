@@ -71,6 +71,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         };
       }).filter(Boolean);
 
+      console.log('Dados de inteligência carregados:', processed.length, 'itens');
       setComparisonData(processed);
     } catch (err) {
       console.error('Erro ao carregar inteligência:', err);
@@ -80,21 +81,21 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setIsProcessing(true);
     setReceipt(null);
 
     try {
-      const data = await AIReconcileService.processReceiptItems(file);
+      const data = await AIReconcileService.processReceiptItems(Array.from(files));
       if (data.items) {
         data.items = data.items.map((it: any) => ({ ...it, selected: true }));
       }
       setReceipt(data);
       setPartialValue(data.total);
     } catch (err: any) {
-      alert(err.message || 'Erro ao processar cupom.');
+      alert(err.message || 'Erro ao processar cupons.');
     } finally {
       setIsProcessing(false);
     }
@@ -194,7 +195,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   onClick={() => fileInputRef.current?.click()}
                   className={`bg-white border-2 border-dashed rounded-[40px] p-20 flex flex-col items-center justify-center transition-all min-h-[400px] cursor-pointer hover:bg-slate-50/50 ${isProcessing ? 'border-brand-400 animate-pulse' : 'border-slate-200 hover:border-brand-400'}`}
                 >
-                  <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,application/pdf" />
+                  <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,application/pdf" multiple />
                   {isProcessing ? (
                     <div className="text-center group">
                       <Loader2 className="w-16 h-16 text-brand-600 animate-spin mx-auto mb-6" />
@@ -208,7 +209,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       </div>
                       <h3 className="text-3xl font-black text-slate-900 mb-3 tracking-tight">O que você comprou?</h3>
                       <p className="text-slate-500 font-medium mb-10 max-w-xs mx-auto text-lg leading-relaxed">Envie um Cupom Fiscal para extrair itens e comparar preços.</p>
-                      <button className="px-10 py-4 bg-slate-900 text-white rounded-[20px] font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-brand-600 transition-all">Selecionar Documento</button>
+                      <button className="px-10 py-4 bg-slate-900 text-white rounded-[20px] font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-brand-600 transition-all font-bold">Selecionar Documentos (Um ou mais)</button>
                     </div>
                   )}
                 </div>
@@ -373,9 +374,14 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   </button>
                 ))}
               </div>
-              <button onClick={fetchIntelligenceData} className="w-16 h-16 bg-brand-50 text-brand-600 rounded-[24px] flex items-center justify-center hover:bg-brand-100 transition-all shadow-sm">
-                <TrendingUp size={20} />
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={fetchIntelligenceData}
+                  className={`w-16 h-16 bg-brand-50 text-brand-600 rounded-[24px] flex items-center justify-center hover:bg-brand-100 transition-all shadow-sm ${isLoadingIntelligence ? 'animate-spin' : ''}`}
+                >
+                  <TrendingUp size={20} />
+                </button>
+              </div>
             </div>
 
             {/* Grid de Comparativo */}
@@ -386,8 +392,8 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 ))
               ) : (
                 comparisonData
-                  .filter(p => p.merchantCategory === targetSegment)
-                  .filter(p => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.category.toLowerCase().includes(searchTerm.toLowerCase()))
+                  .filter((p: any) => p.merchantCategory === targetSegment)
+                  .filter((p: any) => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.category.toLowerCase().includes(searchTerm.toLowerCase()))
                   .map((product) => (
                     <div key={product.id} className="bg-white rounded-[40px] border border-slate-100 p-8 shadow-sm hover:shadow-xl transition-all group relative">
                       <div className="flex justify-between items-start mb-6">
@@ -410,7 +416,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
                         <button
                           onClick={() => {
-                            if (!shoppingList.find(i => i.id === product.id)) {
+                            if (!shoppingList.find((i: { id: any; }) => i.id === product.id)) {
                               setShoppingList([...shoppingList, product]);
                             }
                           }}
@@ -529,7 +535,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 <p className="text-slate-400 font-medium max-w-lg mb-8">Economize comprando cada item no local mais barato do segmento <span className="text-brand-400 font-black uppercase tracking-widest ml-1">{targetSegment}</span>.</p>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {Array.from(new Set(shoppingList.map(i => i.bestMerchant))).map(merchant => (
+                  {Array.from(new Set(shoppingList.map((i: { bestMerchant: string; }) => i.bestMerchant))).map(merchant => (
                     <div key={merchant} className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-4">
                       <div className="flex items-center gap-3">
                         <Store size={18} className="text-brand-400" />
@@ -571,6 +577,59 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 Limpar Lista de Compras
               </button>
             )}
+          </div>
+        )}
+
+        {activeTab === 'history' && (
+          <div className="space-y-10 animate-in fade-in duration-700">
+            <div className="bg-white rounded-[40px] border border-slate-100 p-12 shadow-sm">
+              <div className="flex justify-between items-center mb-12">
+                <div>
+                  <h2 className="text-3xl font-black text-slate-900 tracking-tight uppercase italic font-bold">Laboratório de Inflação</h2>
+                  <p className="text-slate-400 font-medium mt-1 uppercase text-xs tracking-widest font-bold">Acompanhe a variação real de preço dos seus itens</p>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                {comparisonData.length > 0 ? (
+                  comparisonData.slice(0, 10).map((product: any) => (
+                    <div key={product.id} className="p-8 bg-slate-50/50 rounded-[32px] border border-slate-100 flex items-center justify-between group hover:bg-white hover:shadow-xl transition-all">
+                      <div className="flex items-center gap-6">
+                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${product.trend === 'up' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                          {product.trend === 'up' ? <TrendingUp size={28} /> : <TrendingDown size={28} />}
+                        </div>
+                        <div>
+                          <h4 className="text-lg font-black text-slate-900 uppercase font-bold">{product.name}</h4>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{product.category}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-12">
+                        <div className="text-right">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Preço Médio</span>
+                          <p className="text-sm font-bold text-slate-600 font-mono tracking-tighter">{formatCurrency(product.avgPrice)}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Último Preço</span>
+                          <p className="text-lg font-black text-slate-900 font-mono tracking-tighter">{formatCurrency(product.lastPrice)}</p>
+                        </div>
+                        <div className="w-24 text-right">
+                          <span className={`text-xl font-black font-bold ${product.trend === 'up' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                            {product.trend === 'up' ? '↑' : '↓'} {Math.round(Math.abs((product.lastPrice - (product.avgPrice || 1)) / (product.avgPrice || 1)) * 100)}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="py-20 text-center border-2 border-dashed border-slate-100 rounded-[40px]">
+                    <BarChart3 size={48} className="mx-auto text-slate-100 mb-6" />
+                    <h3 className="text-xl font-black text-slate-300 uppercase tracking-widest font-bold">Sem dados históricos</h3>
+                    <p className="text-slate-400 mt-2 font-medium">Os dados de variação de preço aparecerão conforme você processar seus cupons.</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
