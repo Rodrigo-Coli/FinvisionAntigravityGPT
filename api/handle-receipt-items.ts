@@ -11,15 +11,23 @@ export default async function handler(req: any, res: any) {
     if (req.method === 'OPTIONS') return res.status(200).send('ok');
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    const { base64, mimeType } = req.body;
-    if (!base64) return res.status(400).json({ error: 'Arquivo é obrigatório' });
+    const { base64, mimeType, files } = req.body;
+    let inputFiles = [];
+
+    if (files && Array.isArray(files)) {
+        inputFiles = files;
+    } else if (base64) {
+        inputFiles = [{ base64, mimeType: mimeType || 'image/jpeg' }];
+    }
+
+    if (inputFiles.length === 0) return res.status(400).json({ error: 'Arquivo(s) obrigatório(s)' });
 
     try {
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
         if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
 
         const ai = new GoogleGenAI({ apiKey: geminiKey });
-        const model = 'gemini-2.5-flash';
+        const model = 'gemini-1.5-flash';
 
         const prompt = `
       Você é um especialista em análise de documentos fiscais. Extraia os dados detalhados deste cupom.
@@ -47,7 +55,9 @@ export default async function handler(req: any, res: any) {
         const contents = [{
             parts: [
                 { text: prompt },
-                { inlineData: { data: base64, mimeType: mimeType || 'application/pdf' } }
+                ...inputFiles.map((f: any) => ({
+                    inlineData: { data: f.base64, mimeType: f.mimeType || 'image/jpeg' }
+                }))
             ]
         }];
 
