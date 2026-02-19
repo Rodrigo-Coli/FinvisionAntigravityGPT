@@ -38,16 +38,21 @@ export const AIReconcileService = {
     return Array.isArray(data) ? (data as ReconcileItem[]) : [];
   },
 
-  async processReceiptItems(file: File): Promise<any> {
-    const base64Data = await this.fileToBase64(file);
-    const mimeType = file.type || "application/octet-stream";
+  async processReceiptItems(files: File | File[]): Promise<any> {
+    const fileArray = Array.isArray(files) ? files : [files];
+    const encodedFiles = await Promise.all(fileArray.map(async (file) => ({
+      base64: await this.fileToBase64(file),
+      mimeType: file.type || "image/jpeg",
+      fileName: file.name
+    })));
+
     const baseUrl = getApiBaseUrl();
     const url = `${baseUrl}/api/handle-receipt-items`;
 
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ base64: base64Data, mimeType, fileName: file.name }),
+      body: JSON.stringify({ files: encodedFiles }),
     });
 
     if (!res.ok) {
