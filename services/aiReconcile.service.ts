@@ -1,3 +1,4 @@
+
 import { supabase } from "../lib/supabase/client";
 import { ReconcileItem } from "../types";
 
@@ -7,14 +8,7 @@ function getApiBaseUrl() {
     const viteBase = import.meta?.env?.VITE_API_BASE_URL;
     if (viteBase) return String(viteBase);
   } catch { }
-
   return "";
-}
-
-function isMissingRelation(err: any) {
-  const msg = String(err?.message || "");
-  const code = String(err?.code || "");
-  return code === "42P01" || msg.includes("does not exist") || msg.includes("relation");
 }
 
 function prettySupabaseError(err: any) {
@@ -101,7 +95,11 @@ export const AIReconcileService = {
         document_date: receipt.date,
         total_amount: receipt.total,
         status: 'processed',
-        source: 'manual_upload'
+        source: 'manual_upload',
+        ocr_structured: {
+          merchant_category: receipt.merchant_category,
+          full_data: receipt
+        }
       })
       .select('id')
       .single();
@@ -167,7 +165,6 @@ export const AIReconcileService = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("No user found");
 
-    // Fetch products with their price history
     const { data, error } = await supabase
       .from('products')
       .select(`
@@ -180,7 +177,8 @@ export const AIReconcileService = {
           is_promo,
           exclude_from_stats,
           ai_documents (
-            merchant_raw
+            merchant_raw,
+            ocr_structured
           )
         )
       `)
