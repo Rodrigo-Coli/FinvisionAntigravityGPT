@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar } from 'lucide-react';
+import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info } from 'lucide-react';
 import { AIReconcileService } from '../services/aiReconcile.service';
-import { ExtractedReceipt, ReceiptItem, Profile } from '../types';
+import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
 
 const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
@@ -22,6 +22,11 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [targetSegment, setTargetSegment] = useState<string>('Mercado');
   const [shoppingList, setShoppingList] = useState<any[]>([]);
 
+  // States para Conversão de Moeda
+  const [exchangeQuote, setExchangeQuote] = useState<number>(1);
+  const [userSettings, setUserSettings] = useState<any>(null);
+  const [isApplyingTax, setIsApplyingTax] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -32,6 +37,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   }, [activeTab]);
 
   const fetchAccounts = async () => {
+    if (!supabase) return;
     const { data } = await supabase.from('accounts').select('id, institution').eq('user_id', user.id);
     if (data) {
       setSelectedAccounts(data);
@@ -44,7 +50,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     try {
       const data = await AIReconcileService.getPriceComparison();
 
-      // Processar dados para o comparativo
       const processed = data.map((prod: any) => {
         const prices = prod.product_prices || [];
         if (prices.length === 0) return null;
@@ -71,7 +76,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         };
       }).filter(Boolean);
 
-      console.log('Dados de inteligência carregados:', processed.length, 'itens');
       setComparisonData(processed);
     } catch (err) {
       console.error('Erro ao carregar inteligência:', err);
@@ -94,6 +98,21 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       }
       setReceipt(data);
       setPartialValue(data.total);
+
+      // Ajuste inicial de cotação baseado na moeda
+      setExchangeQuote(data.currency === 'USD' ? 5.20 : data.currency === 'EUR' ? 5.60 : 1);
+
+      // Carrega settings se necessário
+      if (!userSettings && supabase) {
+        const { data: settings } = await supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle();
+        setUserSettings(settings || { iof_rate: 6.38, spread_rate: 4.00 });
+      }
+
+      if (data.currency && data.currency !== 'BRL') {
+        setIsApplyingTax(true);
+      } else {
+        setIsApplyingTax(false);
+      }
     } catch (err: any) {
       alert(err.message || 'Erro ao processar cupons.');
     } finally {
@@ -105,14 +124,28 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     if (!receipt) return;
     const newItems = [...receipt.items];
     newItems[index].selected = !newItems[index].selected;
+
+    // Recalcula total com base nos selecionados
+    const newTotal = newItems.filter(i => i.selected).reduce((sum, i) => sum + i.total_price, 0);
     setReceipt({ ...receipt, items: newItems });
+    // Se estiver em modo items, o valor parcial não importa tanto, mas vamos manter coerente
+    if (reconcileMode === 'items') setPartialValue(newTotal);
   };
 
   const getReconcileAmount = () => {
     if (!receipt) return 0;
-    if (reconcileMode === 'total') return receipt.total;
-    if (reconcileMode === 'partial') return partialValue;
-    return receipt.items.filter((it: any) => it.selected).reduce((sum: number, it: any) => sum + it.total_price, 0);
+    let baseAmount = 0;
+    if (reconcileMode === 'total') baseAmount = receipt.total;
+    else if (reconcileMode === 'partial') baseAmount = partialValue;
+    else baseAmount = receipt.items.filter((it: any) => it.selected).reduce((sum: number, it: any) => sum + it.total_price, 0);
+
+    if (isApplyingTax && receipt.currency && receipt.currency !== 'BRL') {
+      const iof = userSettings?.iof_rate || 6.38;
+      const spread = userSettings?.spread_rate || 4.00;
+      // Cálculo: (Valor Moeda * Cotação * (1 + Spread%)) * (1 + IOF%)
+      return (baseAmount * exchangeQuote * (1 + spread / 100)) * (1 + iof / 100);
+    }
+    return baseAmount;
   };
 
   const handleFinalize = async () => {
@@ -123,17 +156,14 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     setSaveStatus('saving');
 
     try {
-      // Salva itens para o histórico e comparador
       await AIReconcileService.saveReceiptToLabs(receipt);
 
-      // Pega o valor exato que o usuário filtrou na UI
       const finalAmount = getReconcileAmount();
-      const accountName = selectedAccounts.find(a => a.id === targetAccount)?.institution || 'Conta';
+      const accountName = selectedAccounts.find((a: any) => a.id === targetAccount)?.institution || 'Conta';
 
-      // Envia para conciliação com o valor filtrado
       await AIReconcileService.saveToReconcileQueue([{
         date: receipt.date,
-        description: `Labs: ${receipt.merchant} (${reconcileMode})`,
+        description: `Labs: ${receipt.merchant} (${reconcileMode}) ${receipt.currency !== 'BRL' ? '[' + receipt.currency + ']' : ''}`,
         amount: finalAmount,
         type: 'debit',
         source: 'AI Labs',
@@ -188,7 +218,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       <div className="pt-4">
         {activeTab === 'upload' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-            {/* Esquerda: Upload e Lista de Itens */}
             <div className="lg:col-span-2 space-y-8">
               {!receipt ? (
                 <div
@@ -209,7 +238,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       </div>
                       <h3 className="text-3xl font-black text-slate-900 mb-3 tracking-tight">O que você comprou?</h3>
                       <p className="text-slate-500 font-medium mb-10 max-w-xs mx-auto text-lg leading-relaxed">Envie um Cupom Fiscal para extrair itens e comparar preços.</p>
-                      <button className="px-10 py-4 bg-slate-900 text-white rounded-[20px] font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-brand-600 transition-all font-bold">Selecionar Documentos (Um ou mais)</button>
+                      <button className="px-10 py-4 bg-slate-900 text-white rounded-[20px] font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-brand-600 transition-all font-bold">Selecionar Documentos</button>
                     </div>
                   )}
                 </div>
@@ -218,16 +247,20 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex justify-between items-center">
                     <div>
                       <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase italic">{receipt.merchant}</h2>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">{new Date(receipt.date).toLocaleDateString('pt-BR')}</p>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
+                        {new Date(receipt.date).toLocaleDateString('pt-BR')} • {receipt.currency || 'BRL'}
+                      </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Total do Cupom</p>
-                      <p className="text-3xl font-black text-brand-600 tracking-tighter">{formatCurrency(receipt.total)}</p>
+                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Total Extraído</p>
+                      <p className="text-3xl font-black text-brand-600 tracking-tighter">
+                        {receipt.currency === 'BRL' || !receipt.currency ? formatCurrency(receipt.total) : `${receipt.currency} ${receipt.total.toFixed(2)}`}
+                      </p>
                     </div>
                   </div>
 
                   <div className="max-h-[500px] overflow-y-auto divide-y divide-slate-50">
-                    {receipt.items.map((item, idx) => (
+                    {receipt.items.map((item: any, idx: number) => (
                       <div
                         key={idx}
                         onClick={() => toggleItemSelection(idx)}
@@ -240,12 +273,14 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                           <div>
                             <h4 className="font-black text-slate-900 leading-tight">{item.description}</h4>
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                              {item.quantity} {item.unit} × {formatCurrency(item.unit_price)}
+                              {item.quantity} {item.unit || 'UN'} × {item.currency === 'BRL' || !item.currency ? formatCurrency(item.unit_price) : `${item.currency} ${item.unit_price.toFixed(2)}`}
                             </p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="font-black text-slate-900">{formatCurrency(item.total_price)}</p>
+                          <p className="font-black text-slate-900">
+                            {item.currency === 'BRL' || !item.currency ? formatCurrency(item.total_price) : `${item.currency} ${item.total_price.toFixed(2)}`}
+                          </p>
                           {item.category_hint && (
                             <span className="text-[8px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-black uppercase tracking-tighter">
                               {item.category_hint}
@@ -259,7 +294,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
               )}
             </div>
 
-            {/* Direita: Opções de Conciliação */}
             <div className="space-y-8">
               {receipt && (
                 <div className="bg-white rounded-[40px] border border-brand-100 shadow-2xl p-8 sticky top-24 animate-in fade-in zoom-in-95 duration-500">
@@ -295,22 +329,63 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
                     {reconcileMode === 'partial' && (
                       <div className="p-5 bg-slate-50 rounded-3xl border border-slate-100 animate-in slide-in-from-top-2">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Valor para Conciliação</label>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Valor para Conciliação ({receipt.currency || 'BRL'})</label>
                         <div className="relative">
-                          <span className="absolute left-0 top-1/2 -translate-y-1/2 text-lg font-black text-slate-400 tracking-tighter">R$</span>
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 text-lg font-black text-slate-400 tracking-tighter">{receipt.currency || 'R$'}</span>
                           <input
                             type="number"
                             value={partialValue}
                             onChange={(e) => setPartialValue(Number(e.target.value))}
-                            className="bg-transparent w-full text-3xl font-black text-slate-900 pl-8 focus:outline-none"
+                            className="bg-transparent w-full text-3xl font-black text-slate-900 pl-10 focus:outline-none"
                           />
                         </div>
                       </div>
                     )}
 
+                    {/* Taxas Internacionais */}
+                    {receipt.currency && receipt.currency !== 'BRL' && (
+                      <div className="p-5 bg-amber-50 rounded-3xl border border-amber-100 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black text-amber-900 uppercase tracking-widest">Moeda: {receipt.currency}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-amber-700">Aplicar Taxas?</span>
+                            <input
+                              type="checkbox"
+                              checked={isApplyingTax}
+                              onChange={(e) => setIsApplyingTax(e.target.checked)}
+                              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                        {isApplyingTax && (
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-[10px] font-black text-amber-700 uppercase mb-1">Cotação do Dólar/Euro</label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-amber-500">R$</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={exchangeQuote}
+                                  onChange={(e) => setExchangeQuote(parseFloat(e.target.value))}
+                                  className="w-full bg-white border border-amber-200 rounded-xl pl-8 pr-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-500"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 p-3 bg-amber-100/50 rounded-xl">
+                              <Info size={14} className="text-amber-700" />
+                              <span className="text-[10px] font-bold text-amber-900">
+                                IOF ({userSettings?.iof_rate || 6.38}%) + Spread ({userSettings?.spread_rate || 4.0}%) inclusos.
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="p-6 bg-brand-600 rounded-[32px] text-white shadow-xl shadow-brand-500/20">
                       <div className="flex justify-between items-center mb-1 opacity-60">
-                        <span className="text-[10px] font-black uppercase tracking-widest">Valor Filtrado</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Valor Final em BRL</span>
                         <Calculator size={14} />
                       </div>
                       <p className="text-4xl font-black tracking-tighter italic">
@@ -326,7 +401,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                         className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-black text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 appearance-none"
                       >
                         <option value="">Selecione uma conta...</option>
-                        {selectedAccounts.map(acc => (
+                        {selectedAccounts.map((acc: any) => (
                           <option key={acc.id} value={acc.id}>{acc.institution}</option>
                         ))}
                       </select>
@@ -351,7 +426,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
         {activeTab === 'comparative' && (
           <div className="space-y-10 animate-in fade-in duration-700">
-            {/* Filtros e Busca */}
             <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
               <div className="relative w-full md:w-96 group">
                 <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-600 transition-colors" size={18} />
@@ -374,17 +448,14 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   </button>
                 ))}
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={fetchIntelligenceData}
-                  className={`w-16 h-16 bg-brand-50 text-brand-600 rounded-[24px] flex items-center justify-center hover:bg-brand-100 transition-all shadow-sm ${isLoadingIntelligence ? 'animate-spin' : ''}`}
-                >
-                  <TrendingUp size={20} />
-                </button>
-              </div>
+              <button
+                onClick={fetchIntelligenceData}
+                className={`w-16 h-16 bg-brand-50 text-brand-600 rounded-[24px] flex items-center justify-center hover:bg-brand-100 transition-all shadow-sm ${isLoadingIntelligence ? 'animate-spin' : ''}`}
+              >
+                <TrendingUp size={20} />
+              </button>
             </div>
 
-            {/* Grid de Comparativo */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {isLoadingIntelligence ? (
                 Array(6).fill(0).map((_, i) => (
@@ -392,9 +463,9 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 ))
               ) : (
                 comparisonData
-                  .filter((p: any) => p.merchantCategory === targetSegment)
+                  .filter((p: any) => !targetSegment || p.merchantCategory === targetSegment)
                   .filter((p: any) => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.category.toLowerCase().includes(searchTerm.toLowerCase()))
-                  .map((product) => (
+                  .map((product: any) => (
                     <div key={product.id} className="bg-white rounded-[40px] border border-slate-100 p-8 shadow-sm hover:shadow-xl transition-all group relative">
                       <div className="flex justify-between items-start mb-6">
                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${product.trend === 'down' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
@@ -414,9 +485,14 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                           <span className="text-lg font-black text-emerald-600">{formatCurrency(product.minPrice)}</span>
                         </div>
 
+                        <div className="flex justify-between items-center text-xs px-2">
+                          <span className="text-slate-400 font-bold uppercase tracking-widest">Média de Mercado</span>
+                          <span className="font-black text-slate-900">{formatCurrency(product.avgPrice)}</span>
+                        </div>
+
                         <button
                           onClick={() => {
-                            if (!shoppingList.find((i: { id: any; }) => i.id === product.id)) {
+                            if (!shoppingList.find(i => i.id === product.id)) {
                               setShoppingList([...shoppingList, product]);
                             }
                           }}
@@ -435,95 +511,10 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 <div className="w-20 h-20 bg-slate-50 text-slate-200 rounded-[32px] flex items-center justify-center mx-auto shadow-inner">
                   <Store size={40} />
                 </div>
-                <h3 className="text-2xl font-black text-slate-400 uppercase tracking-widest">Aguardando dados de cupons...</h3>
-                <p className="text-slate-500 max-w-sm mx-auto">Comece a escanear seus cupons na primeira aba para alimentar seu comparador de preços.</p>
+                <h3 className="text-2xl font-black text-slate-400 uppercase tracking-widest">Aguardando dados...</h3>
+                <p className="text-slate-500 max-w-sm mx-auto">Escanear cupons fiscais para alimentar seu comparador.</p>
               </div>
             )}
-          </div>
-        )}
-
-        {activeTab === 'history' && (
-          <div className="space-y-10 animate-in fade-in duration-700">
-            {/* Dashboard de Inflação Pessoal */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="col-span-1 md:col-span-2 bg-slate-900 rounded-[40px] p-10 text-white relative overflow-hidden">
-                <div className="relative z-10 space-y-6">
-                  <div className="flex items-center gap-3">
-                    <Calendar size={20} className="text-brand-400" />
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Laboratório de Inflação</h3>
-                  </div>
-                  <h2 className="text-4xl font-black tracking-tighter">Variação Real de Preços</h2>
-                  <p className="text-slate-400 max-w-xs font-medium">Análise granular baseada no seu comportamento de consumo real nos últimos 30 dias.</p>
-                  <div className="flex gap-10 mt-10">
-                    <div>
-                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Analisado</p>
-                      <p className="text-3xl font-black">{comparisonData.length} <span className="text-sm font-medium text-slate-500">Itens</span></p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Economia Potencial</p>
-                      <p className="text-3xl font-black text-emerald-400">R$ 142<span className="text-sm font-medium text-slate-500">.80</span></p>
-                    </div>
-                  </div>
-                </div>
-                <div className="absolute right-0 top-0 w-1/2 h-full opacity-10">
-                  <BarChart3 size={400} />
-                </div>
-              </div>
-
-              <div className="bg-white rounded-[40px] border border-slate-100 p-10 flex flex-col justify-between shadow-sm">
-                <div className="space-y-4">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loja Mais Barata</h4>
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center">
-                      <Store size={28} />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Assaí Atacadista</h3>
-                      <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">-12% vs Média</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="pt-8 border-t border-slate-50 mt-8">
-                  <button className="w-full h-14 bg-slate-50 rounded-2xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-all">Ver Detalhes das Lojas</button>
-                </div>
-              </div>
-            </div>
-
-            {/* Lista de Inflação por Item */}
-            <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden">
-              <div className="p-8 border-b border-slate-50 flex justify-between items-center">
-                <h3 className="font-black text-slate-900 uppercase tracking-widest text-xs italic">Índice de Preços por Categoria</h3>
-              </div>
-              <div className="divide-y divide-slate-50">
-                {comparisonData.slice(0, 5).map((product, idx) => (
-                  <div key={idx} className="p-8 flex items-center justify-between hover:bg-slate-50/50 transition-all">
-                    <div className="flex items-center gap-6">
-                      <div className="text-2xl font-black text-slate-100 italic w-10">0{idx + 1}</div>
-                      <div>
-                        <h4 className="font-black text-slate-900 uppercase">{product.name}</h4>
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{product.category}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-20">
-                      <div className="hidden md:block">
-                        <p className="text-[9px] font-black text-slate-300 uppercase tracking-tighter mb-1">Histórico</p>
-                        <div className="flex gap-1">
-                          {Array(8).fill(0).map((_, i) => (
-                            <div key={i} className={`w-1.5 rounded-full ${i === 7 ? 'h-4 bg-brand-500' : 'h-2 bg-slate-100'}`}></div>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-xl font-black ${product.trend === 'up' ? 'text-rose-600' : 'text-emerald-600'}`}>
-                          {product.trend === 'up' ? '+' : '-'}{Math.round(Math.abs((product.lastPrice - product.avgPrice) / product.avgPrice) * 100)}%
-                        </p>
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">vs Média</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
 
@@ -532,102 +523,95 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
             <div className="bg-slate-900 rounded-[40px] p-12 text-white relative overflow-hidden">
               <div className="relative z-10">
                 <h2 className="text-4xl font-black tracking-tighter mb-4">Lista de Compras Otimizada</h2>
-                <p className="text-slate-400 font-medium max-w-lg mb-8">Economize comprando cada item no local mais barato do segmento <span className="text-brand-400 font-black uppercase tracking-widest ml-1">{targetSegment}</span>.</p>
+                <p className="text-slate-400 font-medium max-w-lg mb-8">Economize comprando no local mais barato do segmento <span className="text-brand-400 font-black uppercase tracking-widest ml-1">{targetSegment}</span>.</p>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {Array.from(new Set(shoppingList.map((i: { bestMerchant: string; }) => i.bestMerchant))).map(merchant => (
-                    <div key={merchant} className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-4">
-                      <div className="flex items-center gap-3">
-                        <Store size={18} className="text-brand-400" />
-                        <h3 className="font-black uppercase text-xs tracking-widest truncate">{merchant}</h3>
+                {shoppingList.length === 0 ? (
+                  <div className="py-10 text-center border-2 border-dashed border-white/10 rounded-[32px]">
+                    <p className="font-black text-slate-500 uppercase tracking-widest text-xs">Sua lista está vazia</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {Array.from(new Set(shoppingList.map(i => i.bestMerchant))).map(merchant => (
+                      <div key={merchant} className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-4">
+                        <div className="flex items-center gap-3">
+                          <Store size={18} className="text-brand-400" />
+                          <h3 className="font-black uppercase text-xs tracking-widest truncate">{merchant}</h3>
+                        </div>
+                        <div className="space-y-2">
+                          {shoppingList.filter((i: any) => i.bestMerchant === merchant).map((item: any) => (
+                            <div key={item.id} className="flex justify-between items-center text-sm">
+                              <span className="text-slate-400 truncate max-w-[150px]">{item.name}</span>
+                              <span className="font-black">{formatCurrency(item.minPrice)}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        {shoppingList.filter((i: any) => i.bestMerchant === merchant).map((item: any) => (
-                          <div key={item.id} className="flex justify-between items-center text-sm">
-                            <span className="text-slate-400 truncate max-w-[150px]">{item.name}</span>
-                            <span className="font-black">{formatCurrency(item.minPrice)}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="pt-4 border-t border-white/10 flex justify-between items-center">
-                        <span className="text-[10px] font-black uppercase text-slate-500">Subtotal</span>
-                        <span className="text-xl font-black text-brand-400">
-                          {formatCurrency(shoppingList.filter((i: any) => i.bestMerchant === merchant).reduce((sum: number, i: any) => sum + i.minPrice, 0))}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
+
+                {shoppingList.length > 0 && (
+                  <button
+                    onClick={() => setShoppingList([])}
+                    className="mt-10 px-8 py-3 bg-red-500/20 text-red-400 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all"
+                  >
+                    Limpar Lista
+                  </button>
+                )}
               </div>
             </div>
-
-            {shoppingList.length === 0 && (
-              <div className="py-20 text-center border-2 border-dashed border-slate-100 rounded-[40px]">
-                <ShoppingCart size={48} className="mx-auto text-slate-100 mb-6" />
-                <h3 className="text-xl font-black text-slate-300 uppercase tracking-widest">Sua lista está vazia</h3>
-                <p className="text-slate-400 mt-2">Adicione produtos do Comparador para ver a melhor estratégia de compra.</p>
-              </div>
-            )}
-
-            {shoppingList.length > 0 && (
-              <button
-                onClick={() => setShoppingList([])}
-                className="mx-auto block text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-rose-600 transition-all font-bold"
-              >
-                Limpar Lista de Compras
-              </button>
-            )}
           </div>
         )}
 
         {activeTab === 'history' && (
           <div className="space-y-10 animate-in fade-in duration-700">
-            <div className="bg-white rounded-[40px] border border-slate-100 p-12 shadow-sm">
-              <div className="flex justify-between items-center mb-12">
-                <div>
-                  <h2 className="text-3xl font-black text-slate-900 tracking-tight uppercase italic font-bold">Laboratório de Inflação</h2>
-                  <p className="text-slate-400 font-medium mt-1 uppercase text-xs tracking-widest font-bold">Acompanhe a variação real de preço dos seus itens</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="col-span-1 md:col-span-2 bg-slate-900 rounded-[40px] p-10 text-white relative overflow-hidden">
+                <div className="relative z-10 space-y-6">
+                  <div className="flex items-center gap-3">
+                    <Calendar size={20} className="text-brand-400" />
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Laboratório de Inflação</h3>
+                  </div>
+                  <h2 className="text-4xl font-black tracking-tighter">Variação Real de Preços</h2>
+                  <p className="text-slate-400 max-w-xs font-medium">Análise granular baseada no seu comportamento de consumo real.</p>
+                  <div className="flex gap-10 mt-10">
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Analisado</p>
+                      <p className="text-3xl font-black">{comparisonData.length} <span className="text-sm font-medium text-slate-500">Itens</span></p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-6">
-                {comparisonData.length > 0 ? (
-                  comparisonData.slice(0, 10).map((product: any) => (
-                    <div key={product.id} className="p-8 bg-slate-50/50 rounded-[32px] border border-slate-100 flex items-center justify-between group hover:bg-white hover:shadow-xl transition-all">
-                      <div className="flex items-center gap-6">
-                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${product.trend === 'up' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                          {product.trend === 'up' ? <TrendingUp size={28} /> : <TrendingDown size={28} />}
-                        </div>
-                        <div>
-                          <h4 className="text-lg font-black text-slate-900 uppercase font-bold">{product.name}</h4>
-                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{product.category}</p>
-                        </div>
-                      </div>
+              <div className="bg-white rounded-[40px] border border-slate-100 p-10 shadow-sm flex flex-col justify-center items-center text-center">
+                <TrendingUp size={48} className="text-brand-600 mb-6" />
+                <h3 className="text-xl font-black text-slate-900 uppercase">Dashboard Experimental</h3>
+                <p className="text-sm text-slate-400 mt-2">Dados processados via IA em tempo real.</p>
+              </div>
+            </div>
 
-                      <div className="flex items-center gap-12">
-                        <div className="text-right">
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Preço Médio</span>
-                          <p className="text-sm font-bold text-slate-600 font-mono tracking-tighter">{formatCurrency(product.avgPrice)}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Último Preço</span>
-                          <p className="text-lg font-black text-slate-900 font-mono tracking-tighter">{formatCurrency(product.lastPrice)}</p>
-                        </div>
-                        <div className="w-24 text-right">
-                          <span className={`text-xl font-black font-bold ${product.trend === 'up' ? 'text-rose-600' : 'text-emerald-600'}`}>
-                            {product.trend === 'up' ? '↑' : '↓'} {Math.round(Math.abs((product.lastPrice - (product.avgPrice || 1)) / (product.avgPrice || 1)) * 100)}%
-                          </span>
-                        </div>
+            <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden">
+              <div className="p-8 border-b border-slate-50">
+                <h3 className="font-black text-slate-900 uppercase tracking-widest text-xs">Variabilidade por Item</h3>
+              </div>
+              <div className="divide-y divide-slate-50">
+                {comparisonData.slice(0, 10).map((product, idx) => (
+                  <div key={idx} className="p-8 flex items-center justify-between hover:bg-slate-50/50 transition-all">
+                    <div className="flex items-center gap-6">
+                      <div className="text-2xl font-black text-slate-100 italic">0{idx + 1}</div>
+                      <div>
+                        <h4 className="font-black text-slate-900 uppercase">{product.name}</h4>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{product.category}</p>
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="py-20 text-center border-2 border-dashed border-slate-100 rounded-[40px]">
-                    <BarChart3 size={48} className="mx-auto text-slate-100 mb-6" />
-                    <h3 className="text-xl font-black text-slate-300 uppercase tracking-widest font-bold">Sem dados históricos</h3>
-                    <p className="text-slate-400 mt-2 font-medium">Os dados de variação de preço aparecerão conforme você processar seus cupons.</p>
+                    <div className="text-right">
+                      <p className={`text-xl font-black ${product.trend === 'up' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                        {product.trend === 'up' ? '+' : '-'}{Math.round(Math.abs((product.lastPrice - product.avgPrice) / product.avgPrice) * 100)}%
+                      </p>
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">vs Média</span>
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
             </div>
           </div>
