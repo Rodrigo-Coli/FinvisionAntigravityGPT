@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info } from 'lucide-react';
+import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, X, ChevronRight } from 'lucide-react';
 import { AIReconcileService } from '../services/aiReconcile.service';
 import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
@@ -26,6 +26,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [exchangeQuote, setExchangeQuote] = useState<number>(1);
   const [userSettings, setUserSettings] = useState<any>(null);
   const [isApplyingTax, setIsApplyingTax] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -50,8 +51,23 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     try {
       const data = await AIReconcileService.getPriceComparison();
 
-      const processed = data.map((prod: any) => {
+      // Agrupar por nome (Ex: Várias "COCA 350ML" viram um só card)
+      const groupedByName = data.reduce((acc: any, prod: any) => {
+        const normalizedName = prod.name.toUpperCase().trim();
+        if (!acc[normalizedName]) {
+          acc[normalizedName] = {
+            name: prod.name,
+            category: prod.category || 'Geral',
+            allPrices: []
+          };
+        }
         const prices = prod.product_prices || [];
+        acc[normalizedName].allPrices.push(...prices);
+        return acc;
+      }, {});
+
+      const processed = Object.values(groupedByName).map((group: any) => {
+        const prices = group.allPrices || [];
         if (prices.length === 0) return null;
 
         const validPrices = prices.filter((p: any) => !p.exclude_from_stats);
@@ -59,12 +75,17 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
         const avgPrice = validPrices.reduce((sum: number, p: any) => sum + p.unit_price, 0) / (validPrices.length || 1);
         const minPriceObj = validPrices.reduce((min: any, p: any) => p.unit_price < min.unit_price ? p : min, validPrices[0]);
-        const lastPrice = validPrices[validPrices.length - 1];
+
+        // Ordenar histórico por data
+        const sortedHistory = [...validPrices].sort((a: any, b: any) =>
+          new Date(a.document_date).getTime() - new Date(b.document_date).getTime()
+        );
+        const lastPrice = sortedHistory[sortedHistory.length - 1];
 
         return {
-          id: prod.id,
-          name: prod.name,
-          category: prod.category || 'Geral',
+          id: group.name, // Usamos o nome como ID único para o grupo
+          name: group.name,
+          category: group.category,
           merchantCategory: minPriceObj.ai_documents?.ocr_structured?.merchant_category || 'Mercado',
           avgPrice,
           minPrice: minPriceObj.unit_price,
@@ -72,7 +93,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           lastPrice: lastPrice.unit_price,
           lastMerchant: lastPrice.ai_documents?.merchant_raw || 'N/A',
           trend: lastPrice.unit_price > avgPrice ? 'up' : 'down',
-          history: validPrices
+          history: sortedHistory
         };
       }).filter(Boolean);
 
@@ -466,7 +487,11 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   .filter((p: any) => !targetSegment || p.merchantCategory === targetSegment)
                   .filter((p: any) => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.category.toLowerCase().includes(searchTerm.toLowerCase()))
                   .map((product: any) => (
-                    <div key={product.id} className="bg-white rounded-[40px] border border-slate-100 p-8 shadow-sm hover:shadow-xl transition-all group relative">
+                    <div
+                      key={product.id}
+                      onClick={() => setSelectedProduct(product)}
+                      className="bg-white rounded-[40px] border border-slate-100 p-8 shadow-sm hover:shadow-xl transition-all group relative cursor-pointer active:scale-95"
+                    >
                       <div className="flex justify-between items-start mb-6">
                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${product.trend === 'down' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
                           {product.trend === 'down' ? <TrendingDown size={24} /> : <TrendingUp size={24} />}
@@ -617,6 +642,79 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           </div>
         )}
       </div>
+
+      {/* Modal de Detalhes do Produto */}
+      {selectedProduct && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 lg:p-10">
+          <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-md" onClick={() => setSelectedProduct(null)}></div>
+          <div className="relative bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest bg-brand-50 px-3 py-1 rounded-full mb-3 inline-block">Histórico de Preços</span>
+                <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">{selectedProduct.name}</h2>
+              </div>
+              <button
+                onClick={() => setSelectedProduct(null)}
+                className="w-12 h-12 bg-white border border-slate-200 rounded-2xl flex items-center justify-center text-slate-400 hover:text-slate-900 transition-all shadow-sm"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-8 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100">
+                  <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1">Mínimo Histórico</p>
+                  <p className="text-2xl font-black text-emerald-700">{formatCurrency(selectedProduct.minPrice)}</p>
+                </div>
+                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 shadow-inner">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Médio</p>
+                  <p className="text-2xl font-black text-slate-900">{formatCurrency(selectedProduct.avgPrice)}</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Registros por Estabelecimento</h4>
+                <div className="space-y-3">
+                  {selectedProduct.history.map((price: any, i: number) => (
+                    <div key={i} className="flex justify-between items-center p-5 bg-white border border-slate-100 rounded-2xl hover:border-brand-100 transition-all group">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-brand-50 group-hover:text-brand-600 transition-all">
+                          <Store size={18} />
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900 text-xs uppercase">{price.ai_documents?.merchant_raw || 'Ponto de Venda'}</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{new Date(price.document_date).toLocaleDateString('pt-BR')}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-black text-slate-900">{formatCurrency(price.unit_price)}</p>
+                        {price.is_promo && (
+                          <span className="text-[8px] font-black text-rose-500 uppercase tracking-widest bg-rose-50 px-2 py-0.5 rounded">Promoção</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-8 bg-slate-50 border-t border-slate-100">
+              <button
+                onClick={() => {
+                  if (!shoppingList.find((i: any) => i.id === selectedProduct.id)) {
+                    setShoppingList([...shoppingList, selectedProduct]);
+                  }
+                  setSelectedProduct(null);
+                }}
+                className="w-full h-16 bg-slate-900 text-white rounded-[24px] font-black text-xs uppercase tracking-widest hover:bg-brand-600 transition-all flex items-center justify-center gap-3 shadow-xl"
+              >
+                <ShoppingCart size={18} /> Adicionar à Lista de Compras
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
