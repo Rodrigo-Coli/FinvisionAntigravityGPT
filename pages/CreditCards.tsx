@@ -371,54 +371,49 @@ const CreditCardsPage: React.FC = () => {
   const statementBadge = (() => {
     const s = String(currentStatement?.status || '').toUpperCase();
     if (!s) return null;
-    const base = 'px-2 py-0.5 rounded text-[9px] font-black uppercase border';
-    if (s === 'PAID') return <span className={`${base} bg-emerald-50 text-emerald-700 border-emerald-100`}>Paga</span>;
-    if (s === 'DUE') return <span className={`${base} bg-rose-50 text-rose-700 border-rose-100`}>Vencendo</span>;
+    const base = 'px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border';
+    if (s === 'PAID') return <span className={`${base} bg-slate-900 text-white border-slate-900 shadow-sm`}>Paga</span>;
+    if (s === 'DUE') return <span className={`${base} bg-rose-50 text-rose-600 border-rose-100`}>Vencendo</span>;
     if (s === 'OPEN' || s === 'PENDING') return <span className={`${base} bg-brand-50 text-brand-600 border-brand-100`}>Aberta</span>;
-    return <span className={`${base} bg-slate-50 text-slate-600 border-slate-100`}>{s}</span>;
+    return <span className={`${base} bg-slate-50 text-slate-500 border-slate-100`}>{s}</span>;
   })();
 
   return (
-    <div className="max-w-7xl mx-auto py-6 sm:py-10 px-4 sm:px-6 lg:px-8 space-y-8 sm:space-y-10 animate-in fade-in duration-700">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+    <div className="max-w-6xl mx-auto py-8 sm:py-10 px-6 sm:px-8 space-y-8 animate-in fade-in duration-500">
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
         <div className="space-y-1">
-          <h1 className="text-3xl sm:text-4xl font-display font-black text-slate-900 tracking-tight dark:text-white">
-            Cartões de <span className="text-brand-600 italic">Crédito</span>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight leading-none">
+            Gestão de <span className="text-brand-600">Crédito</span>
           </h1>
-          <p className="text-slate-500 font-medium text-base sm:text-lg">Controle de faturas, limites e gastos adicionais</p>
+          <p className="text-slate-500 text-sm">{cards.length} dispositivos indexados.</p>
         </div>
+
         <button
           onClick={() => setShowAddModal(true)}
-          className="px-6 py-4 bg-brand-600 text-white rounded-[16px] sm:rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+          className="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-md flex items-center gap-2 self-start"
         >
-          <Plus size={18} /> Adicionar Cartão
+          <Plus size={16} /> Provisionar Cartão
         </button>
       </header>
 
       {loading ? (
-        <div className="py-20 flex flex-col items-center justify-center gap-4">
-          <Loader2 className="w-12 h-12 text-brand-600 animate-spin" />
-          <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Acessando seus cartões...</p>
+        <div className="py-24 flex flex-col items-center justify-center gap-4">
+          <Loader2 size={32} className="animate-spin text-slate-200" />
+          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Sincronizando...</p>
         </div>
       ) : cards.length === 0 ? (
-        <div className="bg-white rounded-[40px] border-2 border-dashed border-slate-200 p-20 text-center flex flex-col items-center gap-6">
-          <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
-            <Plus size={40} />
+        <div className="bg-white rounded-3xl border border-slate-100 p-12 text-center space-y-6">
+          <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-200 mx-auto">
+            <Plus size={32} />
           </div>
-          <div className="space-y-1">
-            <h3 className="text-xl font-black text-slate-900">Carteira Vazia</h3>
-            <p className="text-slate-400 font-medium">Cadastre seu primeiro cartão para começar o controle.</p>
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-slate-900">Nenhum Cartão</h3>
+            <p className="text-slate-400 text-sm">Seu vault de crédito está vazio.</p>
           </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="px-8 py-4 bg-brand-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-brand-700 transition-all"
-          >
-            Cadastrar Cartão
-          </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-10">
-          <div className="lg:col-span-4 xl:col-span-3">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-4">
             <CardList
               cards={cards}
               selectedCardId={selectedCard?.id}
@@ -428,34 +423,35 @@ const CreditCardsPage: React.FC = () => {
             />
           </div>
 
-          <div className="lg:col-span-8 xl:col-span-9 space-y-6 sm:space-y-8">
+          <div className="lg:col-span-8 space-y-8">
             {selectedCard && (
-              <div className="p-5 sm:p-8 bg-white dark:bg-slate-800 rounded-[24px] sm:rounded-[40px] border border-slate-100 dark:border-slate-700 shadow-sm space-y-6 sm:space-y-8">
-                <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b border-slate-50 dark:border-slate-700 pb-6 sm:pb-8">
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{selectedCard.name}</h2>
-                      {selectedCard.is_additional && (
-                        <span className="px-2.5 py-1 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-lg text-[9px] font-black uppercase border border-brand-100 dark:border-brand-500/20">
-                          Adicional
+              <div className="space-y-8">
+                <div className="p-8 bg-white rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden">
+                  <div className="flex flex-col xl:flex-row justify-between xl:items-center gap-8 relative z-10">
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <h2 className="text-2xl font-bold text-slate-900 tracking-tight">{selectedCard.name}</h2>
+                        {selectedCard.is_additional && (
+                          <span className="px-2 py-0.5 bg-slate-900 text-white rounded-md text-[8px] font-bold uppercase tracking-widest">Adicional</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                        <span className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${getCardColor(selectedCard.brand)}`} /> {selectedCard.brand}
                         </span>
-                      )}
+                        <span>**** {selectedCard.last4}</span>
+                      </div>
                     </div>
-                    <p className="text-slate-400 font-bold text-xs sm:text-sm flex flex-wrap items-center gap-2 uppercase tracking-tight">
-                      {selectedCard.brand} <span className="opacity-30 hidden xs:inline">•</span> **** {selectedCard.last4}
-                      {selectedCard.is_additional && <><span className="opacity-30 hidden xs:inline">•</span> Portador: {selectedCard.additional_label}</>}
-                    </p>
-                  </div>
 
-                  <div className="flex gap-4 sm:gap-6 w-full sm:w-auto justify-between sm:justify-end">
-                    <div className="flex flex-col items-start sm:items-end">
-                      <span className="text-[10px] font-black text-slate-300 dark:text-slate-500 uppercase tracking-widest">Fechamento</span>
-                      <span className="text-sm font-black text-slate-900 dark:text-white">Dia {selectedCard.closing_day}</span>
-                    </div>
-                    <div className="w-px h-8 bg-slate-100 dark:bg-slate-700 self-center"></div>
-                    <div className="flex flex-col items-start sm:items-end">
-                      <span className="text-[10px] font-black text-slate-300 dark:text-slate-500 uppercase tracking-widest">Vencimento</span>
-                      <span className="text-sm font-black text-slate-900 dark:text-white">Dia {selectedCard.due_day}</span>
+                    <div className="flex gap-8 p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
+                      <div className="space-y-1">
+                        <span className="text-[8px] font-bold text-slate-400 uppercase">Fechamento</span>
+                        <p className="text-sm font-black text-slate-900">Dia {selectedCard.closing_day}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[8px] font-bold text-slate-400 uppercase">Vencimento</span>
+                        <p className="text-sm font-black text-slate-900">Dia {selectedCard.due_day}</p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -489,7 +485,6 @@ const CreditCardsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modals */}
       <AddCardModal
         show={showAddModal}
         onClose={() => setShowAddModal(false)}
