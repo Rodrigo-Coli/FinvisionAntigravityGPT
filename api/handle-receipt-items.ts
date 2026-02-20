@@ -1,36 +1,13 @@
+
 import { createClient } from '@supabase/supabase-js';
-import { GoogleGenAI } from '@google/genai';
-
-// Add Node.js types to satisfy linter without adding @types/node
-declare const process: {
-    env: {
-        VITE_SUPABASE_URL?: string;
-        SUPABASE_URL?: string;
-        SUPABASE_SERVICE_ROLE_KEY?: string;
-        GEMINI_API_KEY?: string;
-        API_KEY?: string;
-        [key: string]: string | undefined;
-    };
-};
-
-interface VercelRequest {
-    method: string;
-    body: any;
-    [key: string]: any;
-}
-
-interface VercelResponse {
-    status: (code: number) => VercelResponse;
-    json: (body: any) => void;
-    send: (body: any) => void;
-    [key: string]: any;
-}
+import { GoogleGenAI, Type } from '@google/genai';
+import { Buffer } from 'node:buffer';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
     if (req.method === 'OPTIONS') return res.status(200).send('ok');
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -50,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
 
         const ai = new GoogleGenAI({ apiKey: geminiKey });
-        const model = 'gemini-2.0-flash'; // Fixed version name if gemini-2.5-flash was a typo or preview
+        const model = 'gemini-2.5-flash';
 
         const prompt = `
       Você é um especialista em análise de documentos fiscais. Extraia os dados detalhados deste cupom.
@@ -79,12 +56,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const contents = [{
             parts: [
                 { text: prompt },
-                ...inputFiles.map((f: { base64: string; mimeType?: string }) => ({
+                ...inputFiles.map((f: any) => ({
                     inlineData: { data: f.base64, mimeType: f.mimeType || 'image/jpeg' }
                 }))
             ]
         }];
 
+        // USANDO O MESMO PADRÃO DO RECONCILE QUE ESTÁ OK
         const response = await ai.models.generateContent({
             model,
             contents,
@@ -97,6 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             throw new Error('A IA não retornou nenhuma resposta.');
         }
 
+        // EXTRAÇÃO DE TEXTO SEGURA (MESMA DO RECONCILE)
         let rawText = '';
         try {
             rawText = (response as any).text ||
