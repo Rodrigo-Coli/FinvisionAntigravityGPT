@@ -11,6 +11,7 @@
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Outfit:wght@100..900&display=swap"
     rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -117,7 +118,7 @@
 
 <body class="bg-slate-50 text-slate-900 antialiased">
   <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
+  <script type="text/babel" data-type="module" src="/index.tsx"></script>
 </body>
 
 </html>
