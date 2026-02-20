@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, FileDown, Loader2, AlertCircle, Calendar, Hash, MoreHorizontal, Filter, Search, X } from 'lucide-react';
+import { Plus, FileDown, Loader2, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 import { Transaction, TransactionType, BankAccount } from '../types';
@@ -251,72 +251,55 @@ const HistoryPage: React.FC = () => {
 
   const statusBadge = (t: Transaction) => {
     const s = HistoryUtils.getStatus(t);
-    const base = "px-2 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-widest border";
-    if (s === 'PAID') return <span className={`${base} bg-emerald-50 text-emerald-600 border-emerald-100`}>Pago</span>;
-    if (s === 'PARTIAL') return <span className={`${base} bg-amber-50 text-amber-600 border-amber-100`}>Parcial</span>;
-    return <span className={`${base} bg-slate-50 text-slate-400 border-slate-100`}>Pendente</span>;
+    const base = "px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest border";
+    if (s === 'PAID') return <span className={`${base} bg-emerald-50 text-emerald-700 border-emerald-100`}>Pago</span>;
+    if (s === 'PARTIAL') return <span className={`${base} bg-amber-50 text-amber-700 border-amber-100`}>Parcial</span>;
+    return <span className={`${base} bg-slate-50 text-slate-500 border-slate-100`}>Pendente</span>;
   };
 
   const filtered = transactions.filter(t => t.description.toLowerCase().includes(search.toLowerCase()) || t.accountName.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="max-w-6xl mx-auto py-8 sm:py-10 px-6 sm:px-8 space-y-8 animate-in fade-in duration-500">
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-        <div className="space-y-1">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Histórico <span className="text-brand-600">Financeiro</span></h1>
-          <p className="text-slate-500 text-sm">{transactions.length} registros processados no vault.</p>
+    <div className="max-w-7xl mx-auto py-16 sm:py-24 px-8 sm:px-12 space-y-16 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-12">
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-center gap-4">
+            <h1 className="text-4xl sm:text-6xl font-bold text-slate-900 tracking-tight leading-none">
+              Histórico <span className="text-brand-600">Financeiro</span>
+            </h1>
+            <span className="px-3 py-1 bg-slate-50 text-slate-400 rounded-full text-[10px] font-bold uppercase tracking-widest border border-slate-100 shadow-sm">Ledger</span>
+          </div>
+          <p className="text-slate-500 font-medium text-lg sm:text-2xl leading-relaxed max-w-2xl">
+            Gestão granular e conciliação de lançamentos. <br className="hidden sm:block" /> {transactions.length} registros processados no vault.
+          </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
           <button
             onClick={() => setAddModal({ open: true, isSubmitting: false, form: { date: new Date().toISOString().slice(0, 10), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros' } })}
-            className="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-md flex items-center gap-2"
+            className="w-full md:w-auto px-10 py-6 bg-slate-900 text-white rounded-[24px] font-bold text-[10px] uppercase tracking-[0.2em] shadow-2xl shadow-black/10 hover:bg-slate-800 transition-all active:scale-95 flex items-center justify-center gap-4"
           >
-            <Plus size={16} /> Novo Lançamento
+            <Plus size={20} /> Novo Lançamento
           </button>
           <button
             onClick={() => exportToXlsx('xlsx')}
-            className="p-3 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-slate-900 shadow-sm transition-all"
-            title="Exportar"
+            className="p-6 bg-white border border-slate-100 rounded-[24px] text-slate-400 hover:text-slate-900 shadow-soft transition-all active:scale-95 flex items-center justify-center"
+            title="Exportar para Excel"
           >
-            <FileDown size={18} />
+            <FileDown size={24} />
           </button>
         </div>
       </header>
 
-      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-        <div className="relative flex-grow group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-          <input
-            type="text"
-            placeholder="Pesquisar registros..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-11 pl-11 pr-4 bg-slate-50 border-none rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-1 focus:ring-slate-200"
-          />
-        </div>
-        <button onClick={() => setShowFilters(!showFilters)} className={`p-3 rounded-xl border transition-all ${showFilters ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
-          <Filter size={18} />
-        </button>
-      </div>
+      <HistoryFilters
+        search={search} setSearch={setSearch} showFilters={showFilters} setShowFilters={setShowFilters}
+        filterType={filterType} setFilterType={setFilterType} filterAccount={filterAccount} setFilterAccount={setFilterAccount}
+        filterCategory={filterCategory} setFilterCategory={setFilterCategory} startDate={startDate} setStartDate={setStartDate}
+        endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
+        categories={CATEGORIES} accounts={accounts} resetFilters={resetFilters}
+      />
 
-      {showFilters && (
-        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 animate-in slide-in-from-top-2">
-          {/* Filter inputs scaled down... */}
-          <select value={filterType} onChange={e => setFilterType(e.target.value)} className="h-10 px-3 bg-white border border-slate-100 rounded-lg text-[10px] font-bold uppercase tracking-widest">
-            <option value="ALL">TODOS TIPOS</option>
-            <option value="INCOME">ENTRADAS</option>
-            <option value="EXPENSE">SAÍDAS</option>
-          </select>
-          <select value={filterAccount} onChange={e => setFilterAccount(e.target.value)} className="h-10 px-3 bg-white border border-slate-100 rounded-lg text-[10px] font-bold uppercase tracking-widest">
-            <option value="ALL">TODAS CONTAS</option>
-            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
-          </select>
-          <button onClick={resetFilters} className="h-10 px-6 text-[9px] font-bold text-slate-400 bg-white border border-slate-100 rounded-lg uppercase tracking-widest hover:text-rose-500 hover:border-rose-100 transition-all">Limpar Filtros</button>
-        </div>
-      )}
-
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-[48px] border border-slate-100 shadow-soft overflow-hidden">
         <TransactionTable
           transactions={filtered} isLoading={isLoading} accounts={accounts} categories={CATEGORIES}
           editingRow={editingRow} setEditingRow={setEditingRow} editValue={editValue} setEditValue={setEditValue}
