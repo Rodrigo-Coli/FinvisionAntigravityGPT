@@ -9,30 +9,23 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const items = [
-    { label: 'Visão Geral', path: '/', icon: <Home size={18} /> },
-    { label: 'Contas', path: '/accounts', icon: <Landmark size={18} /> },
-    { label: 'Cartões', path: '/cards', icon: <CreditCard size={18} /> },
-    { label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={18} /> },
-    { label: 'Patrimônio', path: '/assets', icon: <Gem size={18} /> },
-    { label: 'Histórico', path: '/history', icon: <History size={18} /> },
-    { label: 'AI Labs', path: '/ai', icon: <Sparkles size={18} /> },
-    { label: 'Ajustes', path: '/settings', icon: <Settings size={18} /> },
+    { label: 'Geral', path: '/', icon: <Home size={14} /> },
+    { label: 'Contas', path: '/accounts', icon: <Landmark size={14} /> },
+    { label: 'Cartões', path: '/cards', icon: <CreditCard size={14} /> },
+    { label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={14} /> },
+    { label: 'Patrimônio', path: '/assets', icon: <Gem size={14} /> },
+    { label: 'Histórico', path: '/history', icon: <History size={14} /> },
+    { label: 'AI Labs', path: '/ai', icon: <Sparkles size={14} /> },
+    { label: 'Ajustes', path: '/settings', icon: <Settings size={14} /> },
   ];
 
   return (
     <>
-      <nav className="glass border-b border-slate-200/50 dark:border-slate-700/50 h-20 flex items-center justify-between px-4 sm:px-8 sticky top-0 z-50">
-        <div className="flex items-center gap-4 lg:gap-10">
-          <button
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
-          >
-            {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
-
-          <Link to="/" className="text-brand-600 font-display font-black text-xl sm:text-2xl flex items-center gap-2 sm:gap-3 tracking-tighter transition-transform hover:scale-105">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-brand-600 text-white rounded-lg sm:rounded-xl flex items-center justify-center font-black italic shadow-lg shadow-brand-500/30">FV</div>
-            <span className="hidden xs:inline">FinVision</span> <span className="text-slate-400 font-medium text-[10px] sm:text-sm ml-0.5 sm:ml-1 bg-slate-100 dark:bg-slate-800 px-1.5 sm:py-0.5 rounded-full">PRO</span>
+      <nav className="bg-white border-b border-slate-50 h-14 flex items-center justify-between px-6 sm:px-8 sticky top-0 z-50">
+        <div className="flex items-center gap-6 lg:gap-10">
+          <Link to="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+            <div className="w-7 h-7 bg-slate-900 text-white rounded-lg flex items-center justify-center font-black text-[10px] tracking-tighter">FV</div>
+            <span className="hidden xs:inline font-bold text-slate-900 tracking-tight text-base">FinVision</span>
           </Link>
 
           <div className="hidden lg:flex items-center gap-1">
@@ -40,73 +33,58 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2.5 transition-all duration-200 ${location.pathname === item.path
-                  ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-slate-400'
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all duration-200 flex items-center gap-2 ${location.pathname === item.path
+                  ? 'text-brand-600 bg-brand-50/50'
+                  : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'
                   }`}
               >
-                <span className={location.pathname === item.path ? 'text-brand-600' : 'text-slate-400'}>
-                  {item.icon}
-                </span>
+                {item.icon}
                 {item.label}
               </Link>
             ))}
           </div>
         </div>
 
-        <div className="flex items-center gap-3 sm:gap-6">
+        <div className="flex items-center gap-4">
           <div className="hidden sm:flex flex-col items-end">
-            <span className="text-xs font-black text-slate-900 dark:text-white tracking-tight">{user.email.split('@')[0]}</span>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Premium Plan</span>
+            <span className="text-[10px] font-bold text-slate-900 leading-none">{user.email.split('@')[0]}</span>
+            <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest leading-none mt-1">PRO VAULT</span>
           </div>
           <button
             onClick={() => supabase?.auth.signOut()}
-            className="p-2 sm:p-3 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all"
-            title="Sair"
+            className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
           >
-            <LogOut size={20} />
+            <LogOut size={16} />
           </button>
         </div>
       </nav>
 
-      {/* Mobile Menu Overlay */}
-      <div className={`fixed inset-0 z-40 lg:hidden transition-all duration-300 ${isMenuOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
-        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsMenuOpen(false)} />
-        <div className={`absolute top-20 left-4 right-4 bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-2xl p-6 transition-all duration-300 transform ${isMenuOpen ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0'}`}>
-          <div className="grid grid-cols-2 gap-3">
+      <button
+        onClick={() => setIsMenuOpen(!isMenuOpen)}
+        className="fixed bottom-6 right-6 w-12 h-12 bg-slate-900 text-white rounded-full shadow-2xl z-[60] lg:hidden flex items-center justify-center transition-all active:scale-90"
+      >
+        {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+
+      {/* Mobile Menu Rescaled */}
+      <div className={`fixed inset-0 z-50 lg:hidden transition-all duration-500 ${isMenuOpen ? 'visible' : 'invisible'}`}>
+        <div className={`absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-500 ${isMenuOpen ? 'opacity-100' : 'opacity-0'}`} onClick={() => setIsMenuOpen(false)} />
+        <div className={`absolute bottom-20 left-4 right-4 bg-white rounded-3xl p-6 shadow-2xl transition-all duration-500 transform ${isMenuOpen ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+          <div className="grid grid-cols-2 gap-2">
             {items.map(item => (
               <Link
                 key={item.path}
                 to={item.path}
                 onClick={() => setIsMenuOpen(false)}
-                className={`p-4 rounded-2xl text-sm font-bold flex flex-col items-center gap-3 transition-all ${location.pathname === item.path
-                  ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-900/50'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent'
+                className={`p-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest flex flex-col items-center gap-2 transition-all ${location.pathname === item.path
+                  ? 'bg-brand-50 text-brand-600 border border-brand-100'
+                  : 'text-slate-400 border border-transparent'
                   }`}
               >
-                <span className={location.pathname === item.path ? 'text-brand-600' : 'text-slate-400'}>
-                  {item.icon}
-                </span>
+                {item.icon}
                 {item.label}
               </Link>
             ))}
-          </div>
-          <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-500 font-black text-xs uppercase">
-                {user.email[0]}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-black text-slate-900 dark:text-white">{user.email.split('@')[0]}</span>
-                <span className="text-[10px] font-bold text-slate-400">Premium Plan</span>
-              </div>
-            </div>
-            <button
-              onClick={() => supabase?.auth.signOut()}
-              className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl"
-            >
-              <LogOut size={18} />
-            </button>
           </div>
         </div>
       </div>
