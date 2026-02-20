@@ -285,10 +285,7 @@ const SettingsPage: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:py-8 lg:px-8 bg-gray-50 min-h-screen">
       <header className="mb-6 lg:mb-8">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl lg:text-2xl font-black text-gray-900 tracking-tight uppercase">Configurações</h1>
-          <span className="bg-amber-100 text-amber-700 text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest border border-amber-200">Dev Preview</span>
-        </div>
+        <h1 className="text-xl lg:text-2xl font-black text-gray-900 tracking-tight uppercase">Configurações</h1>
         <p className="text-gray-500 text-xs lg:text-sm">Personalização de metadados e ajustes de sistema</p>
       </header>
 
