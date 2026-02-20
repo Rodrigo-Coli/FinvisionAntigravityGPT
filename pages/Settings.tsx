@@ -92,22 +92,22 @@ const SettingsPage: React.FC = () => {
       if (activeSection === 'establishments') {
         const { data: docs } = await supabase
           .from('ai_documents')
-          .select('merchant_raw, date, ocr_structured')
+          .select('merchant_raw, document_date, ocr_structured')
           .eq('user_id', user.id)
-          .order('date', { ascending: false });
+          .order('document_date', { ascending: false });
 
         const grouped = (docs || []).reduce((acc: any, d: any) => {
           if (!acc[d.merchant_raw]) {
             acc[d.merchant_raw] = {
               name: d.merchant_raw,
-              lastActive: d.date,
+              lastActive: d.document_date,
               count: 0,
               category: d.ocr_structured?.merchant_category || 'Mercado'
             };
           }
           acc[d.merchant_raw].count++;
-          if (new Date(d.date) > new Date(acc[d.merchant_raw].lastActive)) {
-            acc[d.merchant_raw].lastActive = d.date;
+          if (new Date(d.document_date) > new Date(acc[d.merchant_raw].lastActive)) {
+            acc[d.merchant_raw].lastActive = d.document_date;
           }
           return acc;
         }, {});
