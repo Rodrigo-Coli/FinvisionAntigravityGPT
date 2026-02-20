@@ -379,41 +379,57 @@ const CreditCardsPage: React.FC = () => {
   })();
 
   return (
-    <div className="max-w-6xl mx-auto py-8 sm:py-10 px-6 sm:px-8 space-y-8 animate-in fade-in duration-500">
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-        <div className="space-y-1">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight leading-none">
-            Gestão de <span className="text-brand-600">Crédito</span>
-          </h1>
-          <p className="text-slate-500 text-sm">{cards.length} dispositivos indexados.</p>
+    <div className="max-w-7xl mx-auto py-16 sm:py-24 px-8 sm:px-12 space-y-16 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-12">
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-center gap-4">
+            <h1 className="text-4xl sm:text-6xl font-bold text-slate-900 tracking-tight leading-none">
+              Gestão de <span className="text-brand-600">Crédito</span>
+            </h1>
+            <span className="px-3 py-1 bg-slate-50 text-slate-400 rounded-full text-[10px] font-bold uppercase tracking-widest border border-slate-100 shadow-sm">Vault</span>
+          </div>
+          <p className="text-slate-500 font-medium text-lg sm:text-2xl leading-relaxed max-w-2xl">
+            Sincronização integral de faturas, limites e ciclos de fechamento. <br className="hidden sm:block" /> {cards.length} dispositivos de crédito indexados.
+          </p>
         </div>
 
         <button
           onClick={() => setShowAddModal(true)}
-          className="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-md flex items-center gap-2 self-start"
+          className="w-full md:w-auto px-10 py-6 bg-slate-900 text-white rounded-[24px] font-bold text-[10px] uppercase tracking-[0.2em] shadow-2xl shadow-black/10 hover:bg-slate-800 transition-all active:scale-95 flex items-center justify-center gap-4"
         >
-          <Plus size={16} /> Provisionar Cartão
+          <Plus size={20} /> Provisionar Cartão
         </button>
       </header>
 
       {loading ? (
-        <div className="py-24 flex flex-col items-center justify-center gap-4">
-          <Loader2 size={32} className="animate-spin text-slate-200" />
-          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Sincronizando...</p>
+        <div className="py-48 flex flex-col items-center justify-center gap-10">
+          <div className="relative">
+            <div className="w-20 h-20 border-4 border-slate-50 border-t-slate-900 rounded-full animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader2 size={32} className="text-slate-200 animate-pulse" />
+            </div>
+          </div>
+          <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[11px] animate-pulse">Syncing Credit Engines...</p>
         </div>
       ) : cards.length === 0 ? (
-        <div className="bg-white rounded-3xl border border-slate-100 p-12 text-center space-y-6">
-          <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-200 mx-auto">
-            <Plus size={32} />
+        <div className="bg-white rounded-[64px] border border-slate-100 shadow-soft p-24 text-center flex flex-col items-center gap-10">
+          <div className="w-32 h-32 bg-slate-50 rounded-[40px] flex items-center justify-center text-slate-200 border border-slate-100">
+            <Plus size={64} />
           </div>
-          <div className="space-y-2">
-            <h3 className="text-xl font-bold text-slate-900">Nenhum Cartão</h3>
-            <p className="text-slate-400 text-sm">Seu vault de crédito está vazio.</p>
+          <div className="space-y-4">
+            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">Soberania Financeira</h3>
+            <p className="text-slate-400 font-medium text-lg max-w-md mx-auto leading-relaxed">Seu vault de crédito está vazio. Inicie a indexação do seu primeiro cartão para consolidar seus ciclos de pagamento.</p>
           </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-12 py-6 bg-slate-900 text-white rounded-[28px] font-bold text-[11px] uppercase tracking-[0.3em] hover:bg-slate-800 transition-all shadow-2xl shadow-black/10 active:scale-95"
+          >
+            Começar Agora
+          </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 xl:gap-20">
+          <div className="lg:col-span-4 xl:col-span-3">
             <CardList
               cards={cards}
               selectedCardId={selectedCard?.id}
@@ -423,37 +439,49 @@ const CreditCardsPage: React.FC = () => {
             />
           </div>
 
-          <div className="lg:col-span-8 space-y-8">
+          <div className="lg:col-span-8 xl:col-span-9 space-y-12">
             {selectedCard && (
-              <div className="space-y-8">
-                <div className="p-8 bg-white rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden">
-                  <div className="flex flex-col xl:flex-row justify-between xl:items-center gap-8 relative z-10">
-                    <div className="space-y-4">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <h2 className="text-2xl font-bold text-slate-900 tracking-tight">{selectedCard.name}</h2>
+              <div className="space-y-12">
+                <div className="px-10 sm:px-14 py-12 bg-white rounded-[48px] border border-slate-100 shadow-soft relative overflow-hidden group">
+                  <div className="flex flex-col xl:flex-row justify-between xl:items-center gap-10 relative z-10">
+                    <div className="space-y-6">
+                      <div className="flex flex-wrap items-center gap-5">
+                        <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 tracking-tight leading-none">{selectedCard.name}</h2>
                         {selectedCard.is_additional && (
-                          <span className="px-2 py-0.5 bg-slate-900 text-white rounded-md text-[8px] font-bold uppercase tracking-widest">Adicional</span>
+                          <span className="px-4 py-1.5 bg-slate-900 text-white rounded-full text-[9px] font-bold uppercase tracking-[0.2em] shadow-lg shadow-black/10">
+                            Adicional
+                          </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-4 text-[9px] font-bold uppercase tracking-widest text-slate-400">
-                        <span className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${getCardColor(selectedCard.brand)}`} /> {selectedCard.brand}
+                      <div className="flex flex-wrap items-center gap-6 text-slate-300 font-bold text-[10px] uppercase tracking-[0.3em]">
+                        <span className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full ${getCardColor(selectedCard.brand)}`} />
+                          {selectedCard.brand}
                         </span>
-                        <span>**** {selectedCard.last4}</span>
+                        <span className="w-1.5 h-1.5 bg-slate-100 rounded-full" />
+                        <span className="text-slate-400">Card ID: **** {selectedCard.last4}</span>
+                        {selectedCard.is_additional && (
+                          <>
+                            <span className="w-1.5 h-1.5 bg-slate-100 rounded-full" />
+                            <span className="text-brand-600">Owner: {selectedCard.additional_label}</span>
+                          </>
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex gap-8 p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
-                      <div className="space-y-1">
-                        <span className="text-[8px] font-bold text-slate-400 uppercase">Fechamento</span>
-                        <p className="text-sm font-black text-slate-900">Dia {selectedCard.closing_day}</p>
+                    <div className="flex gap-12 p-8 bg-slate-50/50 rounded-[32px] border border-slate-100">
+                      <div className="space-y-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.3em] leading-none">Cycle Closing</span>
+                        <p className="text-lg font-black text-slate-900">Dia {selectedCard.closing_day}</p>
                       </div>
-                      <div className="space-y-1">
-                        <span className="text-[8px] font-bold text-slate-400 uppercase">Vencimento</span>
-                        <p className="text-sm font-black text-slate-900">Dia {selectedCard.due_day}</p>
+                      <div className="w-px h-12 bg-slate-200/50" />
+                      <div className="space-y-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.3em] leading-none">Settlement Due</span>
+                        <p className="text-lg font-black text-slate-900">Dia {selectedCard.due_day}</p>
                       </div>
                     </div>
                   </div>
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-slate-50/50 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl pointer-events-none group-hover:bg-brand-50/50 transition-colors duration-1000" />
                 </div>
 
                 <StatementSummary
@@ -485,6 +513,7 @@ const CreditCardsPage: React.FC = () => {
         </div>
       )}
 
+      {/* Modals are kept as they are - we refactor the components themselves */}
       <AddCardModal
         show={showAddModal}
         onClose={() => setShowAddModal(false)}
