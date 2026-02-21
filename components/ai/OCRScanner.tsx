@@ -1,5 +1,6 @@
 import React from 'react';
 import { Upload, Scan, FileText, Sparkles, Check, Loader2, Tag } from 'lucide-react';
+import { DateUtils } from '../../lib/dateUtils';
 import { ReconcileItem } from '../../types';
 
 interface OCRScannerProps {
@@ -25,8 +26,8 @@ export const OCRScanner: React.FC<OCRScannerProps> = ({
         <div className="lg:col-span-2 space-y-8 animate-in fade-in duration-500">
             <div
                 className={`bg-white border-2 border-dashed rounded-[40px] p-12 flex flex-col items-center justify-center transition-all min-h-[400px] group ${isProcessing
-                        ? 'border-brand-400 bg-brand-50/20'
-                        : 'border-slate-200 hover:border-brand-400 cursor-pointer hover:bg-slate-50/50'
+                    ? 'border-brand-400 bg-brand-50/20'
+                    : 'border-slate-200 hover:border-brand-400 cursor-pointer hover:bg-slate-50/50'
                     }`}
                 onClick={() => fileInputRef.current?.click()}
             >
@@ -81,8 +82,8 @@ export const OCRScanner: React.FC<OCRScannerProps> = ({
                             onClick={saveToQueue}
                             disabled={saveStatus !== 'idle'}
                             className={`px-10 py-5 rounded-[20px] font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 w-full sm:w-auto active:scale-95 ${saveStatus === 'done'
-                                    ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                                    : 'bg-brand-600 text-white hover:bg-brand-700 shadow-xl shadow-brand-500/30'
+                                ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
+                                : 'bg-brand-600 text-white hover:bg-brand-700 shadow-xl shadow-brand-500/30'
                                 }`}
                         >
                             {saveStatus === 'saving'
@@ -110,7 +111,7 @@ export const OCRScanner: React.FC<OCRScannerProps> = ({
                                     <div>
                                         <h4 className="text-lg font-black text-slate-900 mb-1">{item.description}</h4>
                                         <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                            <span>{new Date(item.date).toLocaleDateString('pt-BR')}</span>
+                                            <span>{DateUtils.formatDisplayDate(item.date)}</span>
                                             <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
                                             <span className={`px-2.5 py-1 rounded-lg ${item.type === 'credit' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
                                                 {item.type === 'credit' ? 'Recebido' : 'Debitado'}
