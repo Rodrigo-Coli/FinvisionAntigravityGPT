@@ -1,4 +1,4 @@
-import { Transaction } from '../types';
+import { Transaction } from '../types'; import { DateUtils } from './dateUtils';
 
 export const EPS = 0.000001;
 
@@ -43,7 +43,7 @@ export const formatCurrency = (val: number) =>
 export const formatDateBR = (d?: string) => {
     if (!d) return '-';
     try {
-        return new Date(d).toLocaleDateString('pt-BR');
+        return DateUtils.formatDisplayDate(d);
     } catch {
         return d;
     }
