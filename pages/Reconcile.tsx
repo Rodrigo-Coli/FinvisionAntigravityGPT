@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { ImportedTransaction, MatchStatus, BankAccount } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
+import { DateUtils } from '../lib/dateUtils';
 import { ReconciliationService } from '../services/reconciliation.service';
 import { FinanceService } from '../services/finance.service';
 
@@ -412,7 +413,7 @@ const Reconcile: React.FC = () => {
                     <div key={imp.id} className="p-2.5 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center gap-2">
                       <div className="min-w-0">
                         <p className="text-[9px] font-black text-gray-800 truncate uppercase">{imp.original_name || 'Arquivo'}</p>
-                        <p className="text-[8px] text-gray-400 font-bold">{new Date(imp.created_at).toLocaleDateString()}</p>
+                        <p className="text-[8px] text-gray-400 font-bold">{DateUtils.formatDisplayDate(imp.created_at?.split('T')[0])}</p>
                       </div>
                       <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ${imp.status === 'ready' ? 'bg-green-100 text-green-700' :
                         imp.status === 'error' ? 'bg-red-100 text-red-700' :
@@ -445,7 +446,7 @@ const Reconcile: React.FC = () => {
                           <ArrowRight size={20} className={item.amount < 0 ? 'rotate-45' : '-rotate-45'} />
                         </div>
                         <div className="min-w-0 truncate">
-                          <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{new Date(item.date).toLocaleDateString('pt-BR')}</p>
+                          <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{DateUtils.formatDisplayDate(item.date)}</p>
                           <p className="text-sm font-bold text-gray-900 truncate leading-tight">{item.description}</p>
                         </div>
                       </div>
