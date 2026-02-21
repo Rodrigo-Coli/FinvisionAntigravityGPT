@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { BankAccount, AccountType } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
+import { DateUtils } from '../lib/dateUtils';
 
 const COLORS = [
   { name: 'Blue', hex: '#3b82f6' },
@@ -47,7 +48,7 @@ const Accounts: React.FC = () => {
   const [hasTransactions, setHasTransactions] = useState(false);
   const [adjustMode, setAdjustMode] = useState<'initial' | 'transaction'>('transaction');
   const [adjustValue, setAdjustValue] = useState<number>(0);
-  const [adjustDate, setAdjustDate] = useState(new Date().toISOString().split('T')[0]);
+  const [adjustDate, setAdjustDate] = useState(DateUtils.formatToISODate());
   const [adjustDesc, setAdjustDesc] = useState('Investimentos');
   const [adjustCat, setAdjustCat] = useState('Investimentos');
   const [isSavingAdjust, setIsSavingAdjust] = useState(false);
@@ -185,7 +186,7 @@ const Accounts: React.FC = () => {
       // Mantém a inteligência de abrir na aba certa, mas agora permite trocar
       setAdjustValue(hasTxs ? acc.currentBalance : acc.initialBalance);
       setAdjustMode(hasTxs ? 'transaction' : 'initial');
-      setAdjustDate(new Date().toISOString().split('T')[0]);
+      setAdjustDate(DateUtils.formatToISODate());
       setAdjustDesc('Ajuste de Saldo');
       setAdjustCat('Investimentos');
       setShowAdjustModal(true);
