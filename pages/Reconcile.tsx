@@ -271,6 +271,9 @@ const Reconcile: React.FC = () => {
           account_id: acc.id,
           account_name: acc.institution,
           category: 'Conciliação',
+          is_paid: true,
+          paid_amount: Math.abs(item.amount),
+          paid_at: item.date,
           metadata: {
             imported_transaction_id: item.id,
             source: 'RECONCILIATION'
@@ -278,6 +281,7 @@ const Reconcile: React.FC = () => {
         });
 
         if (txError) throw txError;
+        // O gatilho no banco já deve cuidar disso, mas chamamos explicitamente para garantir sincronia imediata na UI
         await supabase.rpc('recalculate_account_balance', { p_account_id: acc.id });
       } else {
         const card = realCards.find(c => c.id === selectedTargetId);
