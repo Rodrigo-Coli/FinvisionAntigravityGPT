@@ -3,6 +3,7 @@ import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, S
 import { AIReconcileService } from '../services/aiReconcile.service';
 import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
+import { DateUtils } from '../lib/dateUtils';
 
 const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [activeTab, setActiveTab] = useState<'upload' | 'history' | 'comparative' | 'shopping'>('upload');
@@ -245,7 +246,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       <div>
                         <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase italic">{receipt.merchant}</h2>
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
-                          {new Date(receipt.date).toLocaleDateString('pt-BR')} • {receipt.currency || 'BRL'}
+                          {DateUtils.formatDateTime(new Date(receipt.date))} • {receipt.currency || 'BRL'}
                         </p>
                       </div>
                       <div className="text-right">
