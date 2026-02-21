@@ -15,6 +15,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { DashboardService } from '../services/dashboard.service';
+import { DateUtils } from '../lib/dateUtils';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -89,7 +90,9 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
               <div className="p-2 bg-brand-50 dark:bg-brand-900/30 rounded-xl text-brand-600">
                 <Calendar size={18} />
               </div>
-              <p className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-200 uppercase tracking-tight">Janeiro 2024</p>
+              <p className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-200 uppercase tracking-tight">
+                {DateUtils.formatFullMonthYearNoSlash(DateUtils.getNow().getFullYear(), DateUtils.getNow().getMonth() + 1)}
+              </p>
             </div>
           </div>
         </header>
