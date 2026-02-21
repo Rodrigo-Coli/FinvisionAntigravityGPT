@@ -82,6 +82,15 @@ export interface Transaction {
   paidAmount?: number;       // quanto já foi pago (parcial/total)
   paidAt?: string;           // quando quitou (ou último registro)
   parentId?: string | null;  // se for uma "diferença" gerada a partir de outra transação
+
+  // --- RECONCILIAÇÃO / RECORRÊNCIA ---
+  is_recurring?: boolean;
+  recurrence_period?: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom';
+  recurrence_group_id?: string;
+  is_installment?: boolean;
+  installment_number?: number;
+  installment_total?: number;
+  installment_group_id?: string;
 }
 
 export interface ReconcileItem {
@@ -171,6 +180,8 @@ export interface ImportedTransaction {
   amount: number;
   status: MatchStatus;
   type: 'credit' | 'debit';
+  installment_number?: number;
+  installment_total?: number;
 }
 
 export interface ReceiptItem {
