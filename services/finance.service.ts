@@ -96,5 +96,84 @@ export const FinanceService = {
       .eq('is_archived', false);
     if (error) throw error;
     return data || [];
+  },
+
+  getOrCreateStatement: async (cardId: string, dateStr: string): Promise<string> => {
+    if (!supabase) throw new Error('Supabase not configured');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Usuário não autenticado");
+
+    // 1. Buscar detalhes do cartão
+    const { data: card, error: cardErr } = await supabase
+      .from('cards')
+      .select('*')
+      .eq('id', cardId)
+      .single();
+    if (cardErr) throw cardErr;
+
+    const txDate = new Date(dateStr);
+    const day = txDate.getUTCDate();
+    const month = txDate.getUTCMonth(); // 0-indexed
+    const year = txDate.getUTCFullYear();
+
+    // Determinar mês/ano alvo da fatura
+    // Se dia > closing_day, pertence à próxima fatura
+    let targetMonth = month;
+    let targetYear = year;
+
+    if (day > card.closing_day) {
+      targetMonth++;
+      if (targetMonth > 11) {
+        targetMonth = 0;
+        targetYear++;
+      }
+    }
+
+    const stmtMonth = targetMonth + 1; // 1-indexed para o banco
+    const stmtYear = targetYear;
+
+    // Verificar se já existe
+    const { data: existing } = await supabase
+      .from('card_statements')
+      .select('id')
+      .eq('card_id', cardId)
+      .eq('month', stmtMonth)
+      .eq('year', stmtYear)
+      .maybeSingle();
+
+    if (existing) return existing.id;
+
+    // Criar nova fatura
+    const closingDate = new Date(Date.UTC(targetYear, targetMonth, card.closing_day));
+
+    let dueMonth = targetMonth;
+    let dueYear = targetYear;
+    if (card.due_day < card.closing_day) {
+      dueMonth++;
+      if (dueMonth > 11) {
+        dueMonth = 0;
+        dueYear++;
+      }
+    }
+    const dueDate = new Date(Date.UTC(dueYear, dueMonth, card.due_day));
+
+    const { data: newStmt, error: createErr } = await supabase
+      .from('card_statements')
+      .insert({
+        user_id: user.id,
+        card_id: cardId,
+        month: stmtMonth,
+        year: stmtYear,
+        status: 'OPEN',
+        total_amount: 0,
+        paid_amount: 0,
+        closing_date: closingDate.toISOString(),
+        due_date: dueDate.toISOString()
+      })
+      .select()
+      .single();
+
+    if (createErr) throw createErr;
+    return newStmt.id;
   }
 };
