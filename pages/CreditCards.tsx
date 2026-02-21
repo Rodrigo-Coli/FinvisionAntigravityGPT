@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Loader2 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { FinanceService } from '../services/finance.service';
+import { DateUtils } from '../lib/dateUtils';
 
 // Modular Components
 import { CardList } from '../components/cards/CardList';
@@ -42,7 +43,7 @@ const CreditCardsPage: React.FC = () => {
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
 
   const [showAddTxModal, setShowAddTxModal] = useState(false);
-  const [txDate, setTxDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [txDate, setTxDate] = useState<string>(() => DateUtils.formatToISODate());
   const [txDescription, setTxDescription] = useState('');
   const [txAmount, setTxAmount] = useState<number>(0);
   const [txCategoryId, setTxCategoryId] = useState<string>('');
@@ -52,7 +53,7 @@ const CreditCardsPage: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [showPayModal, setShowPayModal] = useState(false);
   const [payAccountId, setPayAccountId] = useState<string>('');
-  const [payDate, setPayDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [payDate, setPayDate] = useState<string>(() => DateUtils.formatToISODate());
   const [payAmount, setPayAmount] = useState<number>(0);
   const [isPaying, setIsPaying] = useState(false);
 
@@ -90,11 +91,7 @@ const CreditCardsPage: React.FC = () => {
 
   const formatDateBR = (d?: string) => {
     if (!d) return '-';
-    try {
-      return new Date(d).toLocaleDateString('pt-BR');
-    } catch {
-      return d;
-    }
+    return DateUtils.formatDisplayDate(d);
   };
 
   const getCardColor = (brand: string) => {
@@ -344,7 +341,7 @@ const CreditCardsPage: React.FC = () => {
       setShowAddTxModal(false);
       setTxDescription('');
       setTxAmount(0);
-      setTxDate(new Date().toISOString().slice(0, 10));
+      setTxDate(DateUtils.formatToISODate());
 
       // Recarregar o contexto completo do cartão
       // Usamos o txCardId para garantir que recarregamos o cartão onde o lançamento foi feito
@@ -656,7 +653,7 @@ const CreditCardsPage: React.FC = () => {
                               <optgroup label="Faturas Anteriores">
                                 {statements.map(s => (
                                   <option key={s.id} value={s.id}>
-                                    {new Date(s.year, s.month - 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase().replace(' DE ', ' / ')}
+                                    {DateUtils.formatFullMonthYear(s.year, s.month)}
                                   </option>
                                 ))}
                               </optgroup>
