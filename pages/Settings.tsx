@@ -29,6 +29,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
+import { DateUtils } from '../lib/dateUtils';
 
 const CATEGORIES = [
   { id: '1', name: 'Alimentação', color: 'bg-orange-100 text-orange-600', count: 42 },
@@ -106,7 +107,7 @@ const SettingsPage: React.FC = () => {
             };
           }
           acc[d.merchant_raw].count++;
-          if (new Date(d.date) > new Date(acc[d.merchant_raw].lastActive)) {
+          if (d.date > acc[d.merchant_raw].lastActive) {
             acc[d.merchant_raw].lastActive = d.date;
           }
           return acc;
@@ -257,7 +258,7 @@ const SettingsPage: React.FC = () => {
         .upsert({
           user_id: user.id,
           [key]: value,
-          updated_at: new Date().toISOString()
+          updated_at: DateUtils.getNow().toISOString()
         });
 
       if (error) throw error;
@@ -430,7 +431,7 @@ const SettingsPage: React.FC = () => {
                               <option value="Outros">Outros</option>
                             </select>
                           </td>
-                          <td className="px-6 lg:px-8 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{new Date(est.lastActive).toLocaleDateString()}</td>
+                          <td className="px-6 lg:px-8 py-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{DateUtils.formatDisplayDate(est.lastActive)}</td>
                           <td className="px-6 lg:px-8 py-5 text-right font-black text-xs text-slate-400">
                             {est.count} UN
                           </td>
