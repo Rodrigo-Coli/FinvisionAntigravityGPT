@@ -300,6 +300,10 @@ const CreditCardsPage: React.FC = () => {
   };
 
   const handleDeleteTx = async (id: string) => {
+    if (currentStatement?.status === 'PAID') {
+      alert("Fatura paga. Reabra a fatura para remover transações.");
+      return;
+    }
     if (!supabase) return;
     if (!confirm('Excluir esta transação?')) return;
     try {
@@ -323,7 +327,7 @@ const CreditCardsPage: React.FC = () => {
         card_id: txCardId,
         date: txDate,
         description: txDescription,
-        amount: Math.abs(Number(txAmount || 0)),
+        amount: Number(txAmount || 0), // Removido Math.abs para permitir estornos
         status: 'POSTED',
         source: 'MANUAL',
         is_manual: true,
@@ -333,7 +337,7 @@ const CreditCardsPage: React.FC = () => {
       // Obter ou criar a fatura correta para a data da transação
       const targetStmtId = await FinanceService.getOrCreateStatement(txCardId, txDate);
       payload.statement_id = targetStmtId;
-      const { data, error } = await supabase.from('card_transactions').insert([payload]).select('*').single();
+      const { data, error } = await supabase.from('card_transactions').insert([payload]).select();
       if (error) throw error;
 
       // Limpar formulário e fechar modal PRIMEIRO para dar feedback visual imediato
@@ -342,10 +346,9 @@ const CreditCardsPage: React.FC = () => {
       setTxAmount(0);
       setTxDate(new Date().toISOString().slice(0, 10));
 
-      // Recarregar o contexto completo do cartão para garantir que novas faturas e transações apareçam
-      if (selectedCard?.id) {
-        await loadCardContext(selectedCard.id);
-      }
+      // Recarregar o contexto completo do cartão
+      // Usamos o txCardId para garantir que recarregamos o cartão onde o lançamento foi feito
+      await loadCardContext(txCardId);
     } catch (err: any) {
       console.error('Erro ao adicionar transação:', err);
       alert("Erro ao salvar lançamento: " + (err.message || "Erro desconhecido"));
@@ -596,15 +599,7 @@ const CreditCardsPage: React.FC = () => {
                     </div>
 
                     <div className="flex gap-4 sm:gap-6 w-full sm:w-auto justify-between sm:justify-end">
-                      <div className="flex flex-col items-start sm:items-end">
-                        <span className="text-[10px] font-black text-slate-300 dark:text-slate-500 uppercase tracking-widest">Fechamento</span>
-                        <span className="text-sm font-black text-slate-900 dark:text-white">Dia {selectedCard.closing_day}</span>
-                      </div>
-                      <div className="w-px h-8 bg-slate-100 dark:bg-slate-700 self-center"></div>
-                      <div className="flex flex-col items-start sm:items-end">
-                        <span className="text-[10px] font-black text-slate-300 dark:text-slate-500 uppercase tracking-widest">Vencimento</span>
-                        <span className="text-sm font-black text-slate-900 dark:text-white">Dia {selectedCard.due_day}</span>
-                      </div>
+                      {/* Datas removidas daqui para evitar redundância com o StatementSummary abaixo */}
                     </div>
                   </div>
 
@@ -645,17 +640,23 @@ const CreditCardsPage: React.FC = () => {
                             onChange={(e) => {
                               const val = e.target.value;
                               setSelectedStatementId(val);
-                              fetchTransactions(selectedCard.id, val === 'ALL' ? null : (val === 'CURRENT' ? (currentStatement?.id || null) : val));
+                              if (val === 'ALL') {
+                                fetchTransactions(selectedCard.id, null);
+                              } else if (val === 'CURRENT') {
+                                fetchTransactions(selectedCard.id, currentStatement?.id || null);
+                              } else {
+                                fetchTransactions(selectedCard.id, val);
+                              }
                             }}
                             className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[200px]"
                           >
                             <option value="CURRENT">Fatura Atual</option>
                             <option value="ALL">Todo o Histórico</option>
                             {statements.length > 0 && (
-                              <optgroup label="Histórico Mensal">
+                              <optgroup label="Faturas Anteriores">
                                 {statements.map(s => (
                                   <option key={s.id} value={s.id}>
-                                    {new Date(s.due_date).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}
+                                    {new Date(s.year, s.month - 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase().replace(' DE ', ' / ')}
                                   </option>
                                 ))}
                               </optgroup>
@@ -711,6 +712,7 @@ const CreditCardsPage: React.FC = () => {
                       onDeleteTx={handleDeleteTx}
                       showStatementScope={selectedStatementId !== 'ALL'}
                       statements={statements}
+                      isLocked={currentStatement?.status === 'PAID'}
                     />
                   </div>
                 </div>
