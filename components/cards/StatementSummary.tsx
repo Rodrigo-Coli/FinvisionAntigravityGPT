@@ -37,7 +37,11 @@ export const StatementSummary: React.FC<StatementSummaryProps> = ({
                             {statementBadge}
                         </div>
                         <p className="text-xl font-display font-black text-slate-900 dark:text-white mt-0.5">
-                            {currentStatement?.reference_month ? `Referência: ${String(currentStatement.reference_month)}` : 'Nenhuma fatura aberta'}
+                            {currentStatement?.reference_month
+                                ? `Referência: ${String(currentStatement.reference_month)}`
+                                : currentStatement?.month
+                                    ? `Referência: ${String(currentStatement.month).padStart(2, '0')}/${currentStatement.year}`
+                                    : 'Nenhuma fatura aberta'}
                         </p>
                     </div>
                 </div>
@@ -52,8 +56,8 @@ export const StatementSummary: React.FC<StatementSummaryProps> = ({
 
                     <button
                         onClick={onPay}
-                        disabled={!currentStatement?.id || statementOpen <= 0}
-                        className={`flex-1 sm:flex-none px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all inline-flex items-center justify-center gap-2 ${!currentStatement?.id || statementOpen <= 0
+                        disabled={statementTotal <= 0 || statementOpen <= 0}
+                        className={`flex-1 sm:flex-none px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all inline-flex items-center justify-center gap-2 ${statementTotal <= 0 || statementOpen <= 0
                             ? 'bg-slate-50 dark:bg-slate-800 text-slate-300 dark:text-slate-600 border-slate-100 dark:border-slate-700 cursor-not-allowed opacity-50'
                             : 'bg-brand-600 text-white border-brand-600 hover:bg-brand-700 shadow-xl shadow-brand-500/20 active:scale-95'
                             }`}
