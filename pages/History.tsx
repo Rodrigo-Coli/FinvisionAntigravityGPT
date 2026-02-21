@@ -309,7 +309,7 @@ const HistoryPage: React.FC = () => {
           formatCurrency={HistoryUtils.formatCurrency} getAmount={HistoryUtils.getAmount} getPaidAmount={HistoryUtils.getPaidAmount}
           getRemaining={HistoryUtils.getRemaining} getStatus={HistoryUtils.getStatus} openPayModal={openPayModal}
           reopenTransaction={async (t) => {
-            if (!supabase || !window.confirm('Deseja reabrir este lançamento? Ele será removido do histórico e o saldo da conta será atualizado.')) return;
+            if (!supabase || !window.confirm('Deseja reabrir este lançamento? O saldo da conta será atualizado e o lançamento ficará pendente de pagamento novamente.')) return;
             try {
               const { data: { user } } = await supabase.auth.getUser();
               if (!user) return;
@@ -369,9 +369,20 @@ const HistoryPage: React.FC = () => {
                 await supabase.from('imported_transactions').update({ status: 'READY_TO_RECONCILE' }).eq('id', importedId);
               }
 
-              // 3. Marcar como deletado para sair do histórico e saldo
-              const { error } = await supabase.from('transactions').update({ is_deleted: true }).eq('id', t.id);
-              if (error) throw error;
+              // 3. Diferenciar lógica de saída do histórico
+              if (isCardPayment) {
+                // Pagamentos de cartão são deletados para permitir novo pagamento com valor atualizado
+                const { error } = await supabase.from('transactions').update({ is_deleted: true }).eq('id', t.id);
+                if (error) throw error;
+              } else {
+                // Outras transações permanecem no histórico mas voltam a ficar pendentes
+                const { error } = await supabase.from('transactions').update({
+                  is_paid: false,
+                  paid_amount: 0,
+                  paid_at: null
+                }).eq('id', t.id);
+                if (error) throw error;
+              }
 
               // 4. Forçar recálculo do saldo
               await supabase.rpc('recalculate_account_balance', { p_account_id: t.accountId });
