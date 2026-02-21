@@ -21,11 +21,18 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
 
   return (
     <>
-      <nav className="bg-white/80 backdrop-blur-md border-b border-slate-100 h-16 flex items-center justify-between px-6 sm:px-10 sticky top-0 z-50">
-        <div className="flex items-center gap-8 lg:gap-12">
-          <Link to="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
-            <div className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center font-bold text-sm tracking-tighter">FV</div>
-            <span className="hidden xs:inline font-semibold text-slate-900 tracking-tight text-lg">FinVision</span>
+      <nav className="glass border-b border-slate-200/50 dark:border-slate-700/50 h-20 flex items-center justify-between px-4 sm:px-8 sticky top-0 z-50">
+        <div className="flex items-center gap-4 lg:gap-10">
+          <button
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+          >
+            {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+
+          <Link to="/" className="text-brand-600 font-display font-black text-xl sm:text-2xl flex items-center gap-2 sm:gap-3 tracking-tighter transition-transform hover:scale-105">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-brand-600 text-white rounded-lg sm:rounded-xl flex items-center justify-center font-black italic shadow-lg shadow-brand-500/30">FV</div>
+            <span className="hidden xs:inline">FinVision</span> <span className="text-slate-400 font-medium text-[10px] sm:text-sm ml-0.5 sm:ml-1 bg-slate-100 dark:bg-slate-800 px-1.5 sm:py-0.5 rounded-full">PRO</span>
           </Link>
 
           <div className="hidden lg:flex items-center gap-1">
@@ -33,25 +40,28 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${location.pathname === item.path
-                  ? 'text-brand-600 bg-brand-50/50'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2.5 transition-all duration-200 ${location.pathname === item.path
+                  ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-slate-400'
                   }`}
               >
+                <span className={location.pathname === item.path ? 'text-brand-600' : 'text-slate-400'}>
+                  {item.icon}
+                </span>
                 {item.label}
               </Link>
             ))}
           </div>
         </div>
 
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-3 sm:gap-6">
           <div className="hidden sm:flex flex-col items-end">
-            <span className="text-xs font-semibold text-slate-900 tracking-tight">{user.email.split('@')[0]}</span>
-            <span className="text-[10px] font-medium text-slate-400 uppercase tracking-widest leading-none mt-0.5">Premium Plan</span>
+            <span className="text-xs font-black text-slate-900 dark:text-white tracking-tight">{user.email.split('@')[0]}</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Premium Plan</span>
           </div>
           <button
             onClick={() => supabase?.auth.signOut()}
-            className="p-2.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all"
+            className="p-2 sm:p-3 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all"
             title="Sair"
           >
             <LogOut size={20} />
