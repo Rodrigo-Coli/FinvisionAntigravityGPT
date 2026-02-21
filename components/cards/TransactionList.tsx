@@ -1,5 +1,6 @@
 import React from 'react';
 import { Clock, Plus, Loader2, Tags, Trash2 } from 'lucide-react';
+import { DateUtils } from '../../lib/dateUtils';
 
 interface TransactionListProps {
     transactions: any[];
@@ -140,7 +141,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                 <option value="">Nenhuma Fatura</option>
                                                 {statements.map(s => (
                                                     <option key={s.id} value={s.id}>
-                                                        {new Date(s.year, s.month - 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).toUpperCase()}
+                                                        {DateUtils.formatMonthYear(s.year, s.month)}
                                                     </option>
                                                 ))}
                                             </select>
