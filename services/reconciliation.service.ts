@@ -73,7 +73,12 @@ export const ReconciliationService = {
     // 2. Upload para Storage
     onProgress?.("Fazendo upload...");
     const bucket = 'finvision-documents';
-    const fileName = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
+    const cleanName = file.name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+      .replace(/[^\w.-]/g, '_');      // Mantém apenas letras, números, . - e converte o resto para _
+
+    const fileName = `${Date.now()}_${cleanName}`;
     const filePath = `${user.id}/${fileName}`;
     const { error: uploadError } = await supabase.storage
       .from(bucket)
@@ -123,28 +128,25 @@ export const ReconciliationService = {
     accountName: string,
     importSource: 'bank' | 'card'
   ) {
-    // 🔥 AQUI ESTÁ A CORREÇÃO!
-    // Agora escolhe o endpoint correto baseado no tipo de importação
-
     const endpoint = importSource === 'card'
-      ? '/api/handle-card-reconcile'  // ✅ Atualizado
-      : '/api/handle-bank-reconcile';  // ✅ Atualizado
+      ? '/api/handle-card-reconcile'
+      : '/api/handle-bank-reconcile';
 
     const payload = importSource === 'card'
       ? {
         import_id: importId,
-        card_id: accountId,           // Cartão usa card_id
+        card_id: accountId,
         account_name: accountName,
         import_source: importSource
       }
       : {
         import_id: importId,
-        account_id: accountId,         // Banco usa account_id (original)
+        account_id: accountId,
         account_name: accountName,
         import_source: importSource
       };
 
-    console.log(`[ReconciliationService] Chamando ${endpoint} para ${importSource}`);
+    console.log(`[ReconciliationService] Chamando ${endpoint} para ${importSource} via Proxy`);
 
     fetch(endpoint, {
       method: 'POST',
