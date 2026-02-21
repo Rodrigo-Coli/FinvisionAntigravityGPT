@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { Transaction, TransactionType, BankAccount } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { HistoryUtils, EPS } from '../lib/historyUtils';
+import { DateUtils } from '../lib/dateUtils';
 
 // Modular Components
 import { HistoryFilters } from '../components/history/HistoryFilters';
@@ -188,7 +189,7 @@ const HistoryPage: React.FC = () => {
 
   const exportToXlsx = (format: 'xlsx' | 'csv') => {
     const rows = filtered.map(t => ({
-      Data: t.date ? new Date(t.date).toLocaleDateString('pt-BR') : '',
+      Data: DateUtils.formatDisplayDate(t.date),
       Descrição: t.description,
       Conta: t.accountName,
       Categoria: t.category,
@@ -199,14 +200,14 @@ const HistoryPage: React.FC = () => {
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Histórico');
-    if (format === 'xlsx') XLSX.writeFile(wb, `historico-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    if (format === 'xlsx') XLSX.writeFile(wb, `historico-${DateUtils.formatToISODate()}.xlsx`);
     else {
       const csv = XLSX.utils.sheet_to_csv(ws);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `historico-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.download = `historico-${DateUtils.formatToISODate()}.csv`;
       link.click();
     }
   };
@@ -229,7 +230,7 @@ const HistoryPage: React.FC = () => {
         await supabase.from('transactions').update({
           is_paid: amount >= payModal.remaining - EPS,
           paid_amount: (payModal.tx.paidAmount || 0) + amount,
-          paid_at: new Date().toISOString()
+          paid_at: DateUtils.getNow().toISOString()
         }).eq('id', payModal.tx.id);
       }
 
@@ -282,7 +283,7 @@ const HistoryPage: React.FC = () => {
             <p className="text-slate-500 font-medium text-base sm:text-lg">Gestão detalhada e conciliação de lançamentos</p>
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <button onClick={() => setAddModal({ open: true, isSubmitting: false, form: { date: new Date().toISOString().slice(0, 10), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros' } })}
+            <button onClick={() => setAddModal({ open: true, isSubmitting: false, form: { date: DateUtils.formatToISODate(), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros' } })}
               className="px-6 py-4 bg-brand-600 text-white rounded-[16px] sm:rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95 flex items-center justify-center gap-2">
               <Plus size={18} /> Novo Lançamento
             </button>
