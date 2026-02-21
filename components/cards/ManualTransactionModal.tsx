@@ -18,6 +18,18 @@ interface ManualTransactionModalProps {
     setTxDescription: (v: string) => void;
     txCategoryId: string;
     setTxCategoryId: (v: string) => void;
+
+    // --- NEW: RECURRENCE & INSTALLMENTS ---
+    isInstallment?: boolean;
+    setIsInstallment?: (v: boolean) => void;
+    installmentsCount?: number;
+    setInstallmentsCount?: (v: number) => void;
+    isRecurring?: boolean;
+    setIsRecurring?: (v: boolean) => void;
+    recurrencePeriod?: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom';
+    setRecurrencePeriod?: (v: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom') => void;
+    recurrenceDaysInterval?: number;
+    setRecurrenceDaysInterval?: (v: number) => void;
 }
 
 export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
@@ -36,7 +48,17 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     txDescription,
     setTxDescription,
     txCategoryId,
-    setTxCategoryId
+    setTxCategoryId,
+    isInstallment = false,
+    setIsInstallment,
+    installmentsCount = 1,
+    setInstallmentsCount,
+    isRecurring = false,
+    setIsRecurring,
+    recurrencePeriod = 'monthly',
+    setRecurrencePeriod,
+    recurrenceDaysInterval = 1,
+    setRecurrenceDaysInterval
 }) => {
     if (!show) return null;
 
@@ -108,6 +130,79 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                 placeholder="Ex: Uber / Mercado / Amazon..."
                                 className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                             />
+                        </div>
+
+                        {/* TIPO DE LANÇAMENTO */}
+                        <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 space-y-4">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Repetição</label>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsInstallment?.(false); setIsRecurring?.(false); }}
+                                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${(!isInstallment && !isRecurring) ? 'bg-white text-brand-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}
+                                >
+                                    Único
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsInstallment?.(true); setIsRecurring?.(false); }}
+                                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${isInstallment ? 'bg-white text-brand-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}
+                                >
+                                    Parcelado
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsInstallment?.(false); setIsRecurring?.(true); }}
+                                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${isRecurring ? 'bg-white text-brand-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}
+                                >
+                                    Recorrente
+                                </button>
+                            </div>
+
+                            {isInstallment && (
+                                <div className="pt-2 animate-in slide-in-from-top-2 duration-300">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Número de Parcelas</label>
+                                    <input
+                                        type="number"
+                                        min="2"
+                                        value={installmentsCount}
+                                        onChange={(e) => setInstallmentsCount?.(Number(e.target.value))}
+                                        className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"
+                                    />
+                                    <p className="text-[8px] text-slate-400 mt-2 italic font-medium">
+                                        * O valor acima será o TOTAL para cartões ou por PARCELA para bancos.
+                                    </p>
+                                </div>
+                            )}
+
+                            {isRecurring && (
+                                <div className="pt-2 animate-in slide-in-from-top-2 duration-300">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Frequência</label>
+                                    <select
+                                        value={recurrencePeriod}
+                                        onChange={(e) => setRecurrencePeriod?.(e.target.value as any)}
+                                        className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"
+                                    >
+                                        <option value="weekly">Semanal</option>
+                                        <option value="biweekly">Quinzenal</option>
+                                        <option value="monthly">Mensal</option>
+                                        <option value="yearly">Anual</option>
+                                        <option value="custom">Personalizado (Dias)</option>
+                                    </select>
+                                    {recurrencePeriod === 'custom' && (
+                                        <div className="mt-2 animate-in slide-in-from-top-1 duration-200">
+                                            <label className="text-[8px] font-black text-slate-400 uppercase mb-1 block">A cada X dias</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={recurrenceDaysInterval}
+                                                onChange={(e) => setRecurrenceDaysInterval?.(Number(e.target.value))}
+                                                className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg font-bold text-slate-700 outline-none"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         <div>
