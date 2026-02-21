@@ -18,6 +18,7 @@ import {
 import { ImportedTransaction, MatchStatus, BankAccount } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { ReconciliationService } from '../services/reconciliation.service';
+import { FinanceService } from '../services/finance.service';
 
 const Reconcile: React.FC = () => {
   const navigate = useNavigate();
@@ -269,7 +270,11 @@ const Reconcile: React.FC = () => {
           type: item.amount < 0 ? 'EXPENSE' : 'INCOME',
           account_id: acc.id,
           account_name: acc.institution,
-          category: 'Conciliação'
+          category: 'Conciliação',
+          metadata: {
+            imported_transaction_id: item.id,
+            source: 'RECONCILIATION'
+          }
         });
 
         if (txError) throw txError;
@@ -278,15 +283,20 @@ const Reconcile: React.FC = () => {
         const card = realCards.find(c => c.id === selectedTargetId);
         if (!card) return alert("Selecione um cartão válido.");
 
+        // Obter ou criar a fatura correta para a data da transação
+        const targetStatementId = await FinanceService.getOrCreateStatement(card.id, item.date);
+
         const { error: txError } = await supabase.from('card_transactions').insert({
           user_id: user.id,
           card_id: card.id,
           used_card_id: card.id,
+          statement_id: targetStatementId,
           date: item.date,
           description: item.description,
           amount: Math.abs(item.amount),
           source: 'IMPORT',
-          status: 'POSTED'
+          status: 'POSTED',
+          is_manual: false
         });
 
         if (txError) throw txError;
@@ -313,147 +323,149 @@ const Reconcile: React.FC = () => {
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   return (
-    <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:py-8 lg:px-8 bg-gray-50 min-h-screen">
-      <header className="mb-6 lg:mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl lg:text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
-            <ShieldCheck className="text-blue-600 shrink-0" /> Conciliação Bancária
-          </h1>
-          <p className="text-gray-500 text-xs lg:text-sm">Gerencie transações extraídas por IA</p>
-        </div>
-        <div className="flex gap-2 w-full md:w-auto">
-          <button onClick={() => navigate('/ai')} className="flex-1 md:flex-none justify-center flex items-center gap-2 px-4 py-3 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-100 transition-all active:scale-95">
-            <Sparkles size={14} /> AI Comprovantes
-          </button>
-          <button onClick={fetchData} className="p-3 text-gray-400 hover:text-blue-600 bg-white rounded-xl border border-gray-200 shadow-sm transition-all active:bg-gray-50">
-            <RefreshCw size={20} className={isLoadingQueue ? 'animate-spin' : ''} />
-          </button>
-        </div>
-      </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8">
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white p-5 lg:p-6 rounded-3xl border border-gray-200 shadow-sm">
-            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Novo Extrato</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">Origem</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => { setImportSource('bank'); setSelectedTargetId(''); }} className={`flex flex-col items-center gap-2 p-3.5 rounded-xl border text-[10px] font-black uppercase transition-all ${importSource === 'bank' ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-gray-50 border-gray-100 text-gray-500'}`}><Landmark size={20} /> Banco</button>
-                  <button onClick={() => { setImportSource('card'); setSelectedTargetId(''); }} className={`flex flex-col items-center gap-2 p-3.5 rounded-xl border text-[10px] font-black uppercase transition-all ${importSource === 'card' ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-gray-50 border-gray-100 text-gray-500'}`}><CreditCard size={20} /> Cartão</button>
-                </div>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">{importSource === 'bank' ? 'Conta' : 'Cartão'}</label>
-                <select
-                  value={selectedTargetId}
-                  onChange={(e) => setSelectedTargetId(e.target.value)}
-                  disabled={isLoadingTargets}
-                  className="w-full h-12 px-4 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">{isLoadingTargets ? 'Carregando...' : `Selecione o ${importSource === 'bank' ? 'Banco' : 'Cartão'}...`}</option>
-
-                  {importSource === 'bank' ? (
-                    realAccounts.map(acc => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.institution} ({getAccountTypeLabel(acc.type)})
-                      </option>
-                    ))
-                  ) : (
-                    realCards.map(card => (
-                      <option key={card.id} value={card.id}>
-                        {card.name} {card.is_additional ? `(${card.additional_label || 'Adicional'})` : ''} • ****{card.last4}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-              <div className="pt-2">
-                <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".csv,.ofx,.pdf,.png,.jpg,.jpeg" />
-                <button onClick={() => fileInputRef.current?.click()} disabled={isProcessing || !selectedTargetId} className="w-full py-10 border-2 border-dashed border-gray-200 rounded-3xl flex flex-col items-center justify-center gap-3 hover:bg-blue-50 transition-all group active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {isProcessing ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <Loader2 size={32} className="animate-spin text-blue-600" />
-                      <span className="text-[9px] font-black text-blue-600 uppercase animate-pulse">{progressStep}</span>
-                    </div>
-                  ) : (
-                    <>
-                      <UploadCloud size={32} className="text-gray-300 group-hover:text-blue-500" />
-                      <div className="text-center">
-                        <span className="text-[10px] font-black uppercase block">Upload de Arquivo</span>
-                        <span className="text-[8px] font-bold opacity-50 uppercase mt-1">CSV, PDF, OFX ou FOTO</span>
-                      </div>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
+    <div className="w-full flex justify-center py-6 sm:py-10 px-4 sm:px-6 lg:px-8 animate-in fade-in duration-700 bg-gray-50 min-h-screen">
+      <div className="inline-block min-w-min max-w-full space-y-8 sm:space-y-10">
+        <header className="mb-6 lg:mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl lg:text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
+              <ShieldCheck className="text-blue-600 shrink-0" /> Conciliação Bancária
+            </h1>
+            <p className="text-gray-500 text-xs lg:text-sm">Gerencie transações extraídas por IA</p>
           </div>
-          <div className="bg-white p-5 lg:p-6 rounded-3xl border border-gray-200 shadow-sm">
-            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><History size={14} /> Recentes</h3>
-            <div className="space-y-2">
-              {recentImports.length === 0 ? (<p className="text-[9px] text-gray-400 font-bold uppercase text-center py-4">Sem registros</p>) : (
-                recentImports.map(imp => (
-                  <div key={imp.id} className="p-2.5 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-black text-gray-800 truncate uppercase">{imp.original_name || 'Arquivo'}</p>
-                      <p className="text-[8px] text-gray-400 font-bold">{new Date(imp.created_at).toLocaleDateString()}</p>
-                    </div>
-                    <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ${imp.status === 'ready' ? 'bg-green-100 text-green-700' :
-                      imp.status === 'error' ? 'bg-red-100 text-red-700' :
-                        imp.status === 'processing' ? 'bg-purple-100 text-purple-700' :
-                          'bg-blue-100 text-blue-700'
-                      }`} title={imp.error_message}>{imp.status}</span>
-                  </div>
-                ))
-              )}
-            </div>
+          <div className="flex gap-2 w-full md:w-auto">
+            <button onClick={() => navigate('/ai')} className="flex-1 md:flex-none justify-center flex items-center gap-2 px-4 py-3 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-100 transition-all active:scale-95">
+              <Sparkles size={14} /> AI Comprovantes
+            </button>
+            <button onClick={fetchData} className="p-3 text-gray-400 hover:text-blue-600 bg-white rounded-xl border border-gray-200 shadow-sm transition-all active:bg-gray-50">
+              <RefreshCw size={20} className={isLoadingQueue ? 'animate-spin' : ''} />
+            </button>
           </div>
-        </div>
+        </header>
 
-        <div className="lg:col-span-3 space-y-4">
-          <div className="flex items-center justify-between px-1">
-            <h3 className="text-xs font-black text-gray-900 uppercase">Fila de Transações ({imported.length})</h3>
-          </div>
-          {isLoadingQueue ? (
-            <div className="py-20 flex flex-col items-center justify-center bg-white rounded-3xl border border-dashed border-gray-200">
-              <Loader2 className="animate-spin text-blue-600 mb-3" />
-              <p className="text-[9px] font-black text-gray-400 uppercase">Sincronizando dados...</p>
-            </div>
-          ) : imported.length > 0 ? (
-            <div className="space-y-3">
-              {imported.map(item => (
-                <div key={item.id} className="bg-white border border-gray-200 rounded-3xl p-4 lg:p-5 shadow-sm hover:border-blue-300 transition-all">
-                  <div className="flex flex-col sm:flex-row items-center gap-4">
-                    <div className="flex-1 flex items-center gap-4 w-full min-w-0">
-                      <div className={`p-3 rounded-2xl shrink-0 ${item.amount < 0 ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}>
-                        <ArrowRight size={20} className={item.amount < 0 ? 'rotate-45' : '-rotate-45'} />
-                      </div>
-                      <div className="min-w-0 truncate">
-                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{new Date(item.date).toLocaleDateString('pt-BR')}</p>
-                        <p className="text-sm font-bold text-gray-900 truncate leading-tight">{item.description}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0">
-                      <div className="sm:text-right">
-                        <p className={`text-base font-black ${item.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(item.amount)}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => handleConfirm(item)} className="px-5 py-2.5 bg-green-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-green-700 shadow-md active:scale-95">Confirmar</button>
-                        <button onClick={() => handleDismiss(item.id)} className="p-2.5 text-gray-300 hover:text-red-600 bg-gray-50 rounded-xl"><X size={18} /></button>
-                      </div>
-                    </div>
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8">
+          <div className="lg:col-span-1 space-y-6">
+            <div className="bg-white p-5 lg:p-6 rounded-3xl border border-gray-200 shadow-sm">
+              <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Novo Extrato</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">Origem</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => { setImportSource('bank'); setSelectedTargetId(''); }} className={`flex flex-col items-center gap-2 p-3.5 rounded-xl border text-[10px] font-black uppercase transition-all ${importSource === 'bank' ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-gray-50 border-gray-100 text-gray-500'}`}><Landmark size={20} /> Banco</button>
+                    <button onClick={() => { setImportSource('card'); setSelectedTargetId(''); }} className={`flex flex-col items-center gap-2 p-3.5 rounded-xl border text-[10px] font-black uppercase transition-all ${importSource === 'card' ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-gray-50 border-gray-100 text-gray-500'}`}><CreditCard size={20} /> Cartão</button>
                   </div>
                 </div>
-              ))}
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">{importSource === 'bank' ? 'Conta' : 'Cartão'}</label>
+                  <select
+                    value={selectedTargetId}
+                    onChange={(e) => setSelectedTargetId(e.target.value)}
+                    disabled={isLoadingTargets}
+                    className="w-full h-12 px-4 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">{isLoadingTargets ? 'Carregando...' : `Selecione o ${importSource === 'bank' ? 'Banco' : 'Cartão'}...`}</option>
+
+                    {importSource === 'bank' ? (
+                      realAccounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.institution} ({getAccountTypeLabel(acc.type)})
+                        </option>
+                      ))
+                    ) : (
+                      realCards.map(card => (
+                        <option key={card.id} value={card.id}>
+                          {card.name} {card.is_additional ? `(${card.additional_label || 'Adicional'})` : ''} • ****{card.last4}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+                <div className="pt-2">
+                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".csv,.ofx,.pdf,.png,.jpg,.jpeg" />
+                  <button onClick={() => fileInputRef.current?.click()} disabled={isProcessing || !selectedTargetId} className="w-full py-10 border-2 border-dashed border-gray-200 rounded-3xl flex flex-col items-center justify-center gap-3 hover:bg-blue-50 transition-all group active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {isProcessing ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 size={32} className="animate-spin text-blue-600" />
+                        <span className="text-[9px] font-black text-blue-600 uppercase animate-pulse">{progressStep}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <UploadCloud size={32} className="text-gray-300 group-hover:text-blue-500" />
+                        <div className="text-center">
+                          <span className="text-[10px] font-black uppercase block">Upload de Arquivo</span>
+                          <span className="text-[8px] font-bold opacity-50 uppercase mt-1">CSV, PDF, OFX ou FOTO</span>
+                        </div>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
-          ) : (
-            <div className="bg-white border-2 border-dashed border-gray-200 rounded-3xl p-20 text-center flex flex-col items-center">
-              <CheckCircle2 size={40} className="text-green-200 mb-4" />
-              <p className="font-black text-gray-900 uppercase tracking-tighter">Nenhuma pendência</p>
-              <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase">Importe novos extratos para ver transações aqui</p>
+            <div className="bg-white p-5 lg:p-6 rounded-3xl border border-gray-200 shadow-sm">
+              <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><History size={14} /> Recentes</h3>
+              <div className="space-y-2">
+                {recentImports.length === 0 ? (<p className="text-[9px] text-gray-400 font-bold uppercase text-center py-4">Sem registros</p>) : (
+                  recentImports.map(imp => (
+                    <div key={imp.id} className="p-2.5 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[9px] font-black text-gray-800 truncate uppercase">{imp.original_name || 'Arquivo'}</p>
+                        <p className="text-[8px] text-gray-400 font-bold">{new Date(imp.created_at).toLocaleDateString()}</p>
+                      </div>
+                      <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ${imp.status === 'ready' ? 'bg-green-100 text-green-700' :
+                        imp.status === 'error' ? 'bg-red-100 text-red-700' :
+                          imp.status === 'processing' ? 'bg-purple-100 text-purple-700' :
+                            'bg-blue-100 text-blue-700'
+                        }`} title={imp.error_message}>{imp.status}</span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-          )}
+          </div>
+
+          <div className="lg:col-span-3 space-y-4">
+            <div className="flex items-center justify-between px-1">
+              <h3 className="text-xs font-black text-gray-900 uppercase">Fila de Transações ({imported.length})</h3>
+            </div>
+            {isLoadingQueue ? (
+              <div className="py-20 flex flex-col items-center justify-center bg-white rounded-3xl border border-dashed border-gray-200">
+                <Loader2 className="animate-spin text-blue-600 mb-3" />
+                <p className="text-[9px] font-black text-gray-400 uppercase">Sincronizando dados...</p>
+              </div>
+            ) : imported.length > 0 ? (
+              <div className="space-y-3">
+                {imported.map(item => (
+                  <div key={item.id} className="bg-white border border-gray-200 rounded-3xl p-4 lg:p-5 shadow-sm hover:border-blue-300 transition-all">
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                      <div className="flex-1 flex items-center gap-4 w-full min-w-0">
+                        <div className={`p-3 rounded-2xl shrink-0 ${item.amount < 0 ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}>
+                          <ArrowRight size={20} className={item.amount < 0 ? 'rotate-45' : '-rotate-45'} />
+                        </div>
+                        <div className="min-w-0 truncate">
+                          <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{new Date(item.date).toLocaleDateString('pt-BR')}</p>
+                          <p className="text-sm font-bold text-gray-900 truncate leading-tight">{item.description}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0">
+                        <div className="sm:text-right">
+                          <p className={`text-base font-black ${item.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(item.amount)}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleConfirm(item)} className="px-5 py-2.5 bg-green-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-green-700 shadow-md active:scale-95">Confirmar</button>
+                          <button onClick={() => handleDismiss(item.id)} className="p-2.5 text-gray-300 hover:text-red-600 bg-gray-50 rounded-xl"><X size={18} /></button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-white border-2 border-dashed border-gray-200 rounded-3xl p-20 text-center flex flex-col items-center">
+                <CheckCircle2 size={40} className="text-green-200 mb-4" />
+                <p className="font-black text-gray-900 uppercase tracking-tighter">Nenhuma pendência</p>
+                <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase">Importe novos extratos para ver transações aqui</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
