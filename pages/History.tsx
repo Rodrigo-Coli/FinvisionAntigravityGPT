@@ -15,7 +15,8 @@ import { AddTransactionModal } from '../components/history/AddTransactionModal';
 const CATEGORIES = [
   'Salário', 'Moradia', 'Investimento', 'Cartão de Crédito',
   'Extra', 'Alimentação', 'Transporte', 'Lazer', 'Saúde',
-  'Educação', 'Outros', 'Conciliação'
+  'Educação', 'Outros', 'Conciliação', 'Pagamentos', 'Transferência',
+  'Mercado', 'Assinaturas', 'Farmácia', 'Restaurante', 'Vendas', 'Estorno'
 ];
 
 type PayModalState =
@@ -126,7 +127,8 @@ const HistoryPage: React.FC = () => {
         isPaid: t.is_paid ?? false,
         paidAmount: Number(t.paid_amount ?? 0),
         paidAt: t.paid_at ?? undefined,
-        parentId: t.parent_id ?? null
+        parentId: t.parent_id ?? null,
+        metadata: t.metadata ?? {}
       })));
     } catch (err) {
       setError('Erro ao carregar dados.');
@@ -220,7 +222,17 @@ const HistoryPage: React.FC = () => {
     if (isNaN(amount) || amount <= 0 || amount > payModal.remaining + EPS) return;
     setPayModal(prev => prev.open ? { ...prev, isSubmitting: true } : prev);
     try {
-      await supabase.rpc('pay_transaction', { p_transaction_id: payModal.tx.id, p_amount: amount, p_split_remainder: payModal.splitRemainder });
+      const { error } = await supabase.rpc('pay_transaction', { p_transaction_id: payModal.tx.id, p_amount: amount, p_split_remainder: payModal.splitRemainder });
+
+      if (error) {
+        // Fallback direto se o RPC falhar
+        await supabase.from('transactions').update({
+          is_paid: amount >= payModal.remaining - EPS,
+          paid_amount: (payModal.tx.paidAmount || 0) + amount,
+          paid_at: new Date().toISOString()
+        }).eq('id', payModal.tx.id);
+      }
+
       await supabase.rpc('recalculate_account_balance', { p_account_id: payModal.tx.accountId });
       setPayModal({ open: false });
       await fetchData();
@@ -252,64 +264,139 @@ const HistoryPage: React.FC = () => {
   const statusBadge = (t: Transaction) => {
     const s = HistoryUtils.getStatus(t);
     const base = "px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest border";
-    if (s === 'PAID') return <span className={`${base} bg-emerald-50 text-emerald-700 border-emerald-100`}>Pago</span>;
-    if (s === 'PARTIAL') return <span className={`${base} bg-amber-50 text-amber-700 border-amber-100`}>Parcial</span>;
-    return <span className={`${base} bg-slate-50 text-slate-500 border-slate-100`}>Pendente</span>;
+    if (s === 'PAID') return <span className={`${base} bg-emerald-50 text-emerald-700 border-emerald-100`}>PAGO</span>;
+    if (s === 'PARTIAL') return <span className={`${base} bg-amber-50 text-amber-700 border-amber-100`}>PARCIAL</span>;
+    return <span className={`${base} bg-slate-50 text-slate-500 border-slate-100`}>PENDENTE</span>;
   };
 
   const filtered = transactions.filter(t => t.description.toLowerCase().includes(search.toLowerCase()) || t.accountName.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="max-w-7xl mx-auto py-6 sm:py-10 px-4 sm:px-6 lg:px-8 space-y-8 sm:space-y-10 animate-in fade-in duration-700">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-1">
-          <h1 className="text-3xl sm:text-4xl font-display font-black text-slate-900 tracking-tight dark:text-white">
-            Histórico <span className="text-brand-600 italic">Financeiro</span>
-          </h1>
-          <p className="text-slate-500 font-medium text-base sm:text-lg">Gestão detalhada e conciliação de lançamentos</p>
-        </div>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <button onClick={() => setAddModal({ open: true, isSubmitting: false, form: { date: new Date().toISOString().slice(0, 10), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros' } })}
-            className="px-6 py-4 bg-brand-600 text-white rounded-[16px] sm:rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95 flex items-center justify-center gap-2">
-            <Plus size={18} /> Novo Lançamento
-          </button>
-          <div className="flex gap-2">
-            <button onClick={() => exportToXlsx('xlsx')} className="flex-grow sm:flex-none p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-[16px] sm:rounded-2xl text-slate-500 hover:text-brand-600 shadow-sm transition-all flex items-center justify-center">
-              <FileDown size={20} />
-            </button>
+    <div className="w-full flex justify-center py-6 sm:py-10 px-4 sm:px-6 lg:px-8 animate-in fade-in duration-700">
+      <div className="inline-block min-w-min max-w-full space-y-8 sm:space-y-10">
+        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="space-y-1">
+            <h1 className="text-3xl sm:text-4xl font-display font-black text-slate-900 tracking-tight dark:text-white">
+              Histórico <span className="text-brand-600 italic">Financeiro</span>
+            </h1>
+            <p className="text-slate-500 font-medium text-base sm:text-lg">Gestão detalhada e conciliação de lançamentos</p>
           </div>
-        </div>
-      </header>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <button onClick={() => setAddModal({ open: true, isSubmitting: false, form: { date: new Date().toISOString().slice(0, 10), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros' } })}
+              className="px-6 py-4 bg-brand-600 text-white rounded-[16px] sm:rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95 flex items-center justify-center gap-2">
+              <Plus size={18} /> Novo Lançamento
+            </button>
+            <div className="flex gap-2">
+              <button onClick={() => exportToXlsx('xlsx')} className="flex-grow sm:flex-none p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-[16px] sm:rounded-2xl text-slate-500 hover:text-brand-600 shadow-sm transition-all flex items-center justify-center">
+                <FileDown size={20} />
+              </button>
+            </div>
+          </div>
+        </header>
 
-      <HistoryFilters
-        search={search} setSearch={setSearch} showFilters={showFilters} setShowFilters={setShowFilters}
-        filterType={filterType} setFilterType={setFilterType} filterAccount={filterAccount} setFilterAccount={setFilterAccount}
-        filterCategory={filterCategory} setFilterCategory={setFilterCategory} startDate={startDate} setStartDate={setStartDate}
-        endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
-        categories={CATEGORIES} accounts={accounts} resetFilters={resetFilters}
-      />
+        <HistoryFilters
+          search={search} setSearch={setSearch} showFilters={showFilters} setShowFilters={setShowFilters}
+          filterType={filterType} setFilterType={setFilterType} filterAccount={filterAccount} setFilterAccount={setFilterAccount}
+          filterCategory={filterCategory} setFilterCategory={setFilterCategory} startDate={startDate} setStartDate={setStartDate}
+          endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
+          categories={CATEGORIES} accounts={accounts} resetFilters={resetFilters}
+        />
 
-      <TransactionTable
-        transactions={filtered} isLoading={isLoading} accounts={accounts} categories={CATEGORIES}
-        editingRow={editingRow} setEditingRow={setEditingRow} editValue={editValue} setEditValue={setEditValue}
-        savingId={savingId} handleUpdate={handleUpdate} handleDelete={handleDelete} statusBadge={statusBadge}
-        formatCurrency={HistoryUtils.formatCurrency} getAmount={HistoryUtils.getAmount} getPaidAmount={HistoryUtils.getPaidAmount}
-        getRemaining={HistoryUtils.getRemaining} getStatus={HistoryUtils.getStatus} openPayModal={openPayModal}
-        reopenTransaction={(t) => supabase && supabase.rpc('reopen_transaction', { p_transaction_id: t.id }).then(() => fetchData())}
-      />
+        <TransactionTable
+          transactions={filtered} isLoading={isLoading} accounts={accounts} categories={CATEGORIES}
+          editingRow={editingRow} setEditingRow={setEditingRow} editValue={editValue} setEditValue={setEditValue}
+          savingId={savingId} handleUpdate={handleUpdate} handleDelete={handleDelete} statusBadge={statusBadge}
+          formatCurrency={HistoryUtils.formatCurrency} getAmount={HistoryUtils.getAmount} getPaidAmount={HistoryUtils.getPaidAmount}
+          getRemaining={HistoryUtils.getRemaining} getStatus={HistoryUtils.getStatus} openPayModal={openPayModal}
+          reopenTransaction={async (t) => {
+            if (!supabase || !window.confirm('Deseja reabrir este lançamento? Ele será removido do histórico e o saldo da conta será atualizado.')) return;
+            try {
+              const { data: { user } } = await supabase.auth.getUser();
+              if (!user) return;
 
-      <PaymentModal show={payModal.open} onClose={() => setPayModal({ open: false })} onSubmit={submitPayment}
-        tx={payModal.open ? payModal.tx : null} remaining={payModal.open ? payModal.remaining : 0}
-        payAmount={payModal.open ? payModal.payAmount : ''} setPayAmount={(v) => setPayModal(prev => prev.open ? { ...prev, payAmount: v } : prev)}
-        splitRemainder={payModal.open ? payModal.splitRemainder : false} setSplitRemainder={(v) => setPayModal(prev => prev.open ? { ...prev, splitRemainder: v } : prev)}
-        isSubmitting={payModal.open ? payModal.isSubmitting : false} error={payModal.open ? payModal.error : null} formatCurrency={HistoryUtils.formatCurrency}
-      />
+              // 1. Se for pagamento de cartão, tentar reabrir a fatura
+              const isCardPayment = t.type === 'BILL_PAYMENT' || t.description.toLowerCase().includes('pagamento cartão');
 
-      <AddTransactionModal show={addModal.open} onClose={() => setAddModal({ open: false })} onSubmit={createManualTransaction}
-        isSubmitting={addModal.open ? addModal.isSubmitting : false} error={addModal.open ? addModal.error : null}
-        form={addModal.open ? addModal.form : {} as any} setAddField={(f, v) => setAddModal(prev => prev.open ? { ...prev, form: { ...prev.form, [f]: v } } : prev)}
-        accounts={accounts} categories={CATEGORIES}
-      />
+              if (isCardPayment) {
+                const statementId = (t as any).metadata?.statement_id;
+                let targetId = statementId;
+                if (!targetId) {
+                  // Busca por aproximação: busca o cartão e depois o statement que tenha pagamentos ou seja o mais recente
+                  const { data: card } = await supabase.from('cards').select('id').ilike('name', `%${t.description.split(':').pop()?.trim()}%`).limit(1);
+                  if (card?.[0]) {
+                    // Tenta primeiro um statement que tenha algum valor pago (provavelmente o que estamos reabrindo)
+                    const { data: stmCandidate } = await supabase.from('card_statements')
+                      .select('id')
+                      .eq('card_id', card[0].id)
+                      .gt('paid_amount', 0)
+                      .order('due_date', { ascending: false })
+                      .limit(1);
+
+                    if (stmCandidate?.[0]) {
+                      targetId = stmCandidate[0].id;
+                    } else {
+                      // Fallback para o mais recente se nenhum tiver pagamento
+                      const { data: stmLast } = await supabase.from('card_statements')
+                        .select('id')
+                        .eq('card_id', card[0].id)
+                        .order('due_date', { ascending: false })
+                        .limit(1);
+                      if (stmLast?.[0]) targetId = stmLast[0].id;
+                    }
+                  }
+                }
+
+                if (targetId) {
+                  const { data: stmCur, error: fetchErr } = await supabase.from('card_statements').select('paid_amount, total_amount').eq('id', targetId).maybeSingle();
+                  if (stmCur && !fetchErr) {
+                    const txAmount = Math.abs(t.amount || 0);
+                    const currentPaid = Number(stmCur.paid_amount || 0);
+                    const newPaid = Math.max(0, currentPaid - txAmount);
+
+                    const { error: updErr } = await supabase.from('card_statements').update({
+                      status: 'OPEN',
+                      paid_amount: newPaid
+                    }).eq('id', targetId);
+
+                    if (updErr) console.error('Erro ao atualizar fatura:', updErr);
+                  }
+                }
+              }
+
+              // 2. Se veio de conciliação, restaurar na fila
+              const importedId = (t as any).metadata?.imported_transaction_id;
+              if (importedId) {
+                await supabase.from('imported_transactions').update({ status: 'READY_TO_RECONCILE' }).eq('id', importedId);
+              }
+
+              // 3. Marcar como deletado para sair do histórico e saldo
+              const { error } = await supabase.from('transactions').update({ is_deleted: true }).eq('id', t.id);
+              if (error) throw error;
+
+              // 4. Forçar recálculo do saldo
+              await supabase.rpc('recalculate_account_balance', { p_account_id: t.accountId });
+
+              await fetchData();
+            } catch (e) {
+              console.error(e);
+              alert('Erro ao reabrir transação');
+            }
+          }}
+        />
+
+        <PaymentModal show={payModal.open} onClose={() => setPayModal({ open: false })} onSubmit={submitPayment}
+          tx={payModal.open ? payModal.tx : null} remaining={payModal.open ? payModal.remaining : 0}
+          payAmount={payModal.open ? payModal.payAmount : ''} setPayAmount={(v) => setPayModal(prev => prev.open ? { ...prev, payAmount: v } : prev)}
+          splitRemainder={payModal.open ? payModal.splitRemainder : false} setSplitRemainder={(v) => setPayModal(prev => prev.open ? { ...prev, splitRemainder: v } : prev)}
+          isSubmitting={payModal.open ? payModal.isSubmitting : false} error={payModal.open ? payModal.error : null} formatCurrency={HistoryUtils.formatCurrency}
+        />
+
+        <AddTransactionModal show={addModal.open} onClose={() => setAddModal({ open: false })} onSubmit={createManualTransaction}
+          isSubmitting={addModal.open ? addModal.isSubmitting : false} error={addModal.open ? addModal.error : null}
+          form={addModal.open ? addModal.form : {} as any} setAddField={(f, v) => setAddModal(prev => prev.open ? { ...prev, form: { ...prev.form, [f]: v } } : prev)}
+          accounts={accounts} categories={CATEGORIES}
+        />
+      </div>
     </div>
   );
 };
