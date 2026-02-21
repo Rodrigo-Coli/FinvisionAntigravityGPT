@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { DateUtils } from '../lib/dateUtils';
 import { Profile, UserRole } from '../types';
 import { supabase } from '../lib/supabase/client';
 import {
@@ -160,8 +161,8 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ currentUser }) => {
                           onClick={() => toggleRole(profile.id, profile.role)}
                           disabled={updatingId === profile.id}
                           className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter border transition-all ${profile.role === UserRole.ADMIN
-                              ? 'bg-indigo-50 border-indigo-100 text-indigo-700'
-                              : 'bg-gray-50 border-gray-100 text-gray-600 hover:bg-white'
+                            ? 'bg-indigo-50 border-indigo-100 text-indigo-700'
+                            : 'bg-gray-50 border-gray-100 text-gray-600 hover:bg-white'
                             }`}
                         >
                           <ShieldCheck size={12} />
@@ -176,7 +177,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ currentUser }) => {
                         </div>
                       </td>
                       <td className="px-8 py-5 text-sm text-gray-500">
-                        {new Date(profile.created_at).toLocaleDateString()}
+                        {DateUtils.formatDisplayDate(profile.created_at?.split('T')[0])}
                       </td>
                       <td className="px-8 py-5 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -184,8 +185,8 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ currentUser }) => {
                             onClick={() => toggleApproval(profile.id, profile.is_approved)}
                             disabled={updatingId === profile.id}
                             className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${profile.is_approved
-                                ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                                : 'bg-green-600 text-white hover:bg-green-700 shadow-md shadow-green-100'
+                              ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                              : 'bg-green-600 text-white hover:bg-green-700 shadow-md shadow-green-100'
                               }`}
                           >
                             {updatingId === profile.id ? '...' : profile.is_approved ? 'Bloquear' : 'Aprovar'}
