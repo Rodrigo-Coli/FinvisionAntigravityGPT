@@ -12,6 +12,7 @@ import { TransactionList } from '../components/cards/TransactionList';
 import { AddCardModal } from '../components/cards/AddCardModal';
 import { ManualTransactionModal } from '../components/cards/ManualTransactionModal';
 import { PayStatementModal } from '../components/cards/PayStatementModal';
+import { SeriesScopeModal, SeriesScope } from '../components/SeriesScopeModal';
 
 type Account = {
   id: string;
@@ -49,6 +50,13 @@ const CreditCardsPage: React.FC = () => {
   const [txCategoryId, setTxCategoryId] = useState<string>('');
   const [txCardId, setTxCardId] = useState<string>('');
 
+  // New Series States
+  const [isInstallment, setIsInstallment] = useState(false);
+  const [installmentsCount, setInstallmentsCount] = useState(1);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrencePeriod, setRecurrencePeriod] = useState<'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom'>('monthly');
+  const [recurrenceDaysInterval, setRecurrenceDaysInterval] = useState(1);
+
   // PAY STATEMENT
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [showPayModal, setShowPayModal] = useState(false);
@@ -68,6 +76,14 @@ const CreditCardsPage: React.FC = () => {
   const [parentCardId, setParentCardId] = useState('');
   const [additionalLabel, setAdditionalLabel] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Series Scope Modal State
+  const [seriesModal, setSeriesModal] = useState<{
+    show: boolean;
+    tx: any | null;
+    pendingAction: 'UPDATE' | 'DELETE';
+    pendingPatch?: any;
+  }>({ show: false, tx: null, pendingAction: 'DELETE' });
 
   const isAnyModalBusy = isSaving || isPaying;
 
@@ -124,6 +140,8 @@ const CreditCardsPage: React.FC = () => {
     if (!supabase) return;
     setLoading(true);
     try {
+
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const { data, error } = await supabase
@@ -194,8 +212,47 @@ const CreditCardsPage: React.FC = () => {
       const allStatements = await fetchStatements(cardId);
       setStatements(allStatements);
 
-      // Encontrar a fatura "atual" (Aberta ou a mais recente)
-      const current = allStatements.find(s => ['OPEN', 'DUE', 'PENDING'].includes(s.status)) || allStatements[0];
+      // 1. Determinar o período de postagem "alvo" (Baseado em hoje + dia de fechamento)
+      // Priorizamos o selectedCard se o ID bater, para evitar falha se o array 'cards' ainda estiver carregando
+      const card = (selectedCard?.id === cardId ? selectedCard : cards.find(c => c.id === cardId));
+
+      const now = new Date();
+      const localDay = now.getDate();
+      let localMonth = now.getMonth(); // 0-indexed (Fev = 1)
+      let localYear = now.getFullYear();
+
+      // Regra de Fechamento: Se passou do dia de fechamento, a compra cai na próxima fatura
+      if (card?.closing_day && localDay > card.closing_day) {
+        localMonth++;
+        if (localMonth > 11) {
+          localMonth = 0;
+          localYear++;
+        }
+      }
+
+      const targetMonth = localMonth + 1; // 1-indexed para o banco
+      const targetYear = localYear;
+
+
+
+      // 2. Tentar encontrar a fatura que corresponde EXATAMENTE a este período de uso
+      let current = allStatements.find(s => s.month === targetMonth && s.year === targetYear);
+
+      // 3. Fallback inteligente: Se não houver fatura do mês atual, pega a fatura aberta mais antiga/próxima (a que deve ser paga logo)
+      if (!current) {
+        const openStatements = [...allStatements]
+          .filter(s => ['OPEN', 'DUE', 'PENDING'].includes(s.status))
+          .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+        current = openStatements[0];
+      }
+
+      // 4. Último recurso: A fatura mais recente do banco
+      if (!current) {
+        current = allStatements[0];
+      }
+
+      setCurrentStatement(current || null);
+
       setCurrentStatement(current || null);
 
       // Se não houver seleção manual, focar na atual
@@ -254,6 +311,8 @@ const CreditCardsPage: React.FC = () => {
     if (!supabase) return;
     setLoadingTxs(true);
     try {
+
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -280,37 +339,101 @@ const CreditCardsPage: React.FC = () => {
     setTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   };
 
-  const saveTxPatch = async (id: string, patch: any) => {
+  const saveTxPatch = async (id: string, patch: any, confirmedScope?: SeriesScope) => {
     if (!supabase) return;
+
+    const tx = transactions.find(t => t.id === id);
+    const isSeries = tx?.installment_group_id || tx?.recurrence_group_id;
+
+    if (isSeries && !confirmedScope) {
+      setSeriesModal({
+        show: true,
+        tx: tx || null,
+        pendingAction: 'UPDATE',
+        pendingPatch: patch
+      });
+      return;
+    }
+
     setSavingRowId(id);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { error } = await supabase.from('card_transactions').update(patch).eq('id', id).eq('user_id', user.id);
-      if (error) throw error;
+
+      if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
+        const { error } = await supabase.from('card_transactions').update(patch).eq('id', id).eq('user_id', user.id);
+        if (error) throw error;
+      } else {
+        const groupId = tx?.installment_group_id || tx?.recurrence_group_id;
+        let query = supabase.from('card_transactions').update(patch).eq('user_id', user.id);
+
+        if (tx?.installment_group_id) query = query.eq('installment_group_id', groupId);
+        else query = query.eq('recurrence_group_id', groupId);
+
+        if (confirmedScope === 'THIS_AND_FUTURE') {
+          query = query.gte('date', tx?.date);
+        }
+
+        const { error } = await query;
+        if (error) throw error;
+      }
     } catch (err) {
       console.error('Erro ao salvar transação:', err);
-      if (selectedCard?.id) loadCardContext(selectedCard.id);
     } finally {
       setSavingRowId(null);
+      setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' });
+      if (selectedCard?.id) loadCardContext(selectedCard.id);
     }
   };
 
-  const handleDeleteTx = async (id: string) => {
+  const handleDeleteTx = async (id: string, confirmedScope?: SeriesScope) => {
     if (currentStatement?.status === 'PAID') {
       alert("Fatura paga. Reabra a fatura para remover transações.");
       return;
     }
     if (!supabase) return;
-    if (!confirm('Excluir esta transação?')) return;
+
+    const tx = transactions.find(t => t.id === id);
+    const isSeries = tx?.installment_group_id || tx?.recurrence_group_id;
+
+    if (isSeries && !confirmedScope) {
+      setSeriesModal({
+        show: true,
+        tx: tx || null,
+        pendingAction: 'DELETE'
+      });
+      return;
+    }
+
+    if (!confirmedScope && !confirm('Excluir esta transação?')) return;
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { error } = await supabase.from('card_transactions').delete().eq('id', id).eq('user_id', user.id);
-      if (error) throw error;
-      setTransactions((prev) => prev.filter((t) => t.id !== id));
+
+      if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
+        const { error } = await supabase.from('card_transactions').delete().eq('id', id).eq('user_id', user.id);
+        if (error) throw error;
+      } else {
+        const groupId = tx?.installment_group_id || tx?.recurrence_group_id;
+        let query = supabase.from('card_transactions').delete().eq('user_id', user.id);
+
+        if (tx?.installment_group_id) query = query.eq('installment_group_id', groupId);
+        else query = query.eq('recurrence_group_id', groupId);
+
+        if (confirmedScope === 'THIS_AND_FUTURE') {
+          query = query.gte('date', tx?.date);
+        }
+
+        const { error } = await query;
+        if (error) throw error;
+      }
+
+      if (selectedCard?.id) loadCardContext(selectedCard.id);
     } catch (err) {
       console.error('Erro ao excluir transação:', err);
+    } finally {
+      setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' });
     }
   };
 
@@ -319,32 +442,88 @@ const CreditCardsPage: React.FC = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const payload: any = {
-        user_id: user.id,
-        card_id: txCardId,
-        date: txDate,
-        description: txDescription,
-        amount: Number(txAmount || 0), // Removido Math.abs para permitir estornos
-        status: 'POSTED',
-        source: 'MANUAL',
-        is_manual: true,
-      };
-      if (txCategoryId) payload.category_id = txCategoryId;
 
-      // Obter ou criar a fatura correta para a data da transação
-      const targetStmtId = await FinanceService.getOrCreateStatement(txCardId, txDate);
-      payload.statement_id = targetStmtId;
-      const { data, error } = await supabase.from('card_transactions').insert([payload]).select();
-      if (error) throw error;
+      if (!isInstallment && !isRecurring) {
+        // Fluxo Simples
+        const payload: any = {
+          user_id: user.id,
+          card_id: txCardId,
+          date: txDate,
+          description: txDescription,
+          amount: Number(txAmount || 0),
+          status: 'POSTED',
+          source: 'MANUAL',
+          is_manual: true,
+        };
+        if (txCategoryId) payload.category_id = txCategoryId;
 
-      // Limpar formulário e fechar modal PRIMEIRO para dar feedback visual imediato
+        const targetStmtId = await FinanceService.getOrCreateStatement(txCardId, txDate);
+        payload.statement_id = targetStmtId;
+        const { error } = await supabase.from('card_transactions').insert([payload]);
+        if (error) throw error;
+      } else {
+        // Fluxo Série (Parcelado ou Recorrente)
+        const type = isInstallment ? 'INSTALLMENT' : 'RECURRING';
+        // Importamos TransactionSeriesUtils dinamicamente ou fixamos o import no topo
+        const { TransactionSeriesUtils } = await import('../lib/transactionSeriesUtils');
+
+        const series = TransactionSeriesUtils.generateSeries(
+          {
+            user_id: user.id,
+            card_id: txCardId,
+            description: txDescription,
+            amount: Number(txAmount || 0),
+            category_id: txCategoryId || undefined,
+            is_manual: true,
+            source: 'MANUAL'
+          },
+          {
+            type,
+            count: installmentsCount,
+            period: recurrencePeriod,
+            daysInterval: recurrenceDaysInterval,
+            startDate: txDate,
+            totalAmount: isInstallment ? Number(txAmount || 0) : undefined // Para cartão, txAmount é o total no parcelamento
+          }
+        );
+
+        // Salvar cada item da série corrigindo a fatura
+        const groupId = crypto.randomUUID();
+        const inserts = [];
+        for (const item of series) {
+          const targetStmtId = await FinanceService.getOrCreateStatement(txCardId, item.date!);
+          inserts.push({
+            user_id: user.id,
+            card_id: txCardId,
+            statement_id: targetStmtId,
+            date: item.date,
+            description: item.description,
+            amount: item.amount,
+            status: 'POSTED',
+            category_id: txCategoryId || null,
+            is_manual: true,
+            source: 'MANUAL',
+            is_installment: item.is_installment,
+            installment_number: item.installment_number,
+            installment_total: item.installment_total,
+            installment_group_id: isInstallment ? groupId : null,
+            is_recurring: item.is_recurring,
+            recurrence_period: item.recurrence_period,
+            recurrence_group_id: isRecurring ? groupId : null
+          });
+        }
+        const { error } = await supabase.from('card_transactions').insert(inserts);
+        if (error) throw error;
+      }
+
       setShowAddTxModal(false);
       setTxDescription('');
       setTxAmount(0);
       setTxDate(DateUtils.formatToISODate());
+      setIsInstallment(false);
+      setIsRecurring(false);
+      setInstallmentsCount(1);
 
-      // Recarregar o contexto completo do cartão
-      // Usamos o txCardId para garantir que recarregamos o cartão onde o lançamento foi feito
       await loadCardContext(txCardId);
     } catch (err: any) {
       console.error('Erro ao adicionar transação:', err);
@@ -526,263 +705,285 @@ const CreditCardsPage: React.FC = () => {
   })();
 
   return (
-    <div className="w-full flex justify-center py-6 sm:py-10 px-4 sm:px-6 lg:px-8 animate-in fade-in duration-700">
-      <div className="inline-block min-w-min max-w-full space-y-8 sm:space-y-10">
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+    <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
+      {/* HEADER SECTION */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Cartões de Crédito</h1>
+          <p className="text-sm text-slate-400 font-medium">Controle de faturas, limites e gastos adicionais.</p>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95 whitespace-nowrap"
+        >
+          <Plus size={18} /> Adicionar Cartão
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
+          <div className="w-10 h-10 border-2 border-slate-200 border-t-brand-600 rounded-full animate-spin" />
+          <p className="text-slate-400 font-medium tracking-widest text-[10px] uppercase">Acessando seus cartões...</p>
+        </div>
+      ) : cards.length === 0 ? (
+        <div className="flex flex-col items-center justify-center min-h-[50vh] bg-white border border-slate-100 rounded-[32px] p-20 text-center space-y-6">
+          <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
+            <Plus size={40} />
+          </div>
           <div className="space-y-1">
-            <h1 className="text-3xl sm:text-4xl font-display font-black text-slate-900 tracking-tight dark:text-white">
-              Cartões de <span className="text-brand-600 italic">Crédito</span>
-            </h1>
-            <p className="text-slate-500 font-medium text-base sm:text-lg">Controle de faturas, limites e gastos adicionais</p>
+            <h3 className="text-xl font-bold text-slate-900">Carteira Vazia</h3>
+            <p className="text-slate-400 font-medium">Cadastre seu primeiro cartão para começar o controle.</p>
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-6 py-4 bg-brand-600 text-white rounded-[16px] sm:rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+            className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-black transition-all"
           >
-            <Plus size={18} /> Adicionar Cartão
+            Cadastrar Cartão
           </button>
-        </header>
-
-        {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center gap-4">
-            <Loader2 className="w-12 h-12 text-brand-600 animate-spin" />
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Acessando seus cartões...</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+          <div className="lg:col-span-4 xl:col-span-3">
+            <CardList
+              cards={cards}
+              selectedCardId={selectedCard?.id}
+              onSelectCard={setSelectedCard}
+              getCardColor={getCardColor}
+              formatCurrency={formatCurrency}
+            />
           </div>
-        ) : cards.length === 0 ? (
-          <div className="bg-white rounded-[40px] border-2 border-dashed border-slate-200 p-20 text-center flex flex-col items-center gap-6">
-            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
-              <Plus size={40} />
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-xl font-black text-slate-900">Carteira Vazia</h3>
-              <p className="text-slate-400 font-medium">Cadastre seu primeiro cartão para começar o controle.</p>
-            </div>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="px-8 py-4 bg-brand-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-brand-700 transition-all"
-            >
-              Cadastrar Cartão
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-10">
-            <div className="lg:col-span-4 xl:col-span-3">
-              <CardList
-                cards={cards}
-                selectedCardId={selectedCard?.id}
-                onSelectCard={setSelectedCard}
-                getCardColor={getCardColor}
-                formatCurrency={formatCurrency}
-              />
-            </div>
 
-            <div className="lg:col-span-8 xl:col-span-9 space-y-6 sm:space-y-8">
-              {selectedCard && (
-                <div className="p-5 sm:p-8 bg-white dark:bg-slate-800 rounded-[24px] sm:rounded-[40px] border border-slate-100 dark:border-slate-700 shadow-sm space-y-6 sm:space-y-8">
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b border-slate-50 dark:border-slate-700 pb-6 sm:pb-8">
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{selectedCard.name}</h2>
-                        {selectedCard.is_additional && (
-                          <span className="px-2.5 py-1 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-lg text-[9px] font-black uppercase border border-brand-100 dark:border-brand-500/20">
-                            Adicional
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-slate-400 font-bold text-xs sm:text-sm flex flex-wrap items-center gap-2 uppercase tracking-tight">
-                        {selectedCard.brand} <span className="opacity-30 hidden xs:inline">•</span> **** {selectedCard.last4}
-                        {selectedCard.is_additional && <><span className="opacity-30 hidden xs:inline">•</span> Portador: {selectedCard.additional_label}</>}
-                      </p>
+          <div className="lg:col-span-8 xl:col-span-9 space-y-6 sm:space-y-8">
+            {selectedCard && (
+              <div className="p-5 sm:p-8 bg-white dark:bg-slate-800 rounded-[24px] sm:rounded-[40px] border border-slate-100 dark:border-slate-700 shadow-sm space-y-6 sm:space-y-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b border-slate-50 dark:border-slate-700 pb-6 sm:pb-8">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{selectedCard.name}</h2>
+                      {selectedCard.is_additional && (
+                        <span className="px-2.5 py-1 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-lg text-[9px] font-black uppercase border border-brand-100 dark:border-brand-500/20">
+                          Adicional
+                        </span>
+                      )}
                     </div>
-
-                    <div className="flex gap-4 sm:gap-6 w-full sm:w-auto justify-between sm:justify-end">
-                      {/* Datas removidas daqui para evitar redundância com o StatementSummary abaixo */}
-                    </div>
+                    <p className="text-slate-400 font-bold text-xs sm:text-sm flex flex-wrap items-center gap-2 uppercase tracking-tight">
+                      {selectedCard.brand} <span className="opacity-30 hidden xs:inline">•</span> **** {selectedCard.last4}
+                      {selectedCard.is_additional && <><span className="opacity-30 hidden xs:inline">•</span> Portador: {selectedCard.additional_label}</>}
+                    </p>
                   </div>
 
-                  <StatementSummary
-                    currentStatement={currentStatement}
-                    statementTotal={statementTotal}
-                    statementPaid={statementPaid}
-                    statementOpen={statementOpen}
-                    formatCurrency={formatCurrency}
-                    formatDateBR={formatDateBR}
-                    onRefresh={() => loadCardContext(selectedCard.id)}
-                    onPay={() => { setPayAmount(statementOpen); setShowPayModal(true); }}
-                    statementBadge={statementBadge}
-                  />
-
-                  <div className="pt-6 border-t border-slate-50 dark:border-slate-700">
-                    <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-8">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-3">
-                          <h3 className="text-lg font-black text-slate-900 dark:text-white">Lançamentos</h3>
-                          <button
-                            onClick={() => setShowFilters(!showFilters)}
-                            className={`p-2 rounded-xl border transition-all ${showFilters ? 'bg-brand-50 border-brand-200 text-brand-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
-                            title="Alternar Filtros"
-                          >
-                            <Plus size={16} className={showFilters ? 'rotate-45 transition-transform' : 'transition-transform'} />
-                          </button>
-                        </div>
-                        <p className="text-slate-400 text-sm font-medium">Controle e filtre os gastos deste cartão</p>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
-                        {/* Statement Selector */}
-                        <div className="flex flex-col gap-1 w-full sm:w-auto">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Período</span>
-                          <select
-                            value={selectedStatementId}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setSelectedStatementId(val);
-                              if (val === 'ALL') {
-                                fetchTransactions(selectedCard.id, null);
-                              } else if (val === 'CURRENT') {
-                                fetchTransactions(selectedCard.id, currentStatement?.id || null);
-                              } else {
-                                fetchTransactions(selectedCard.id, val);
-                              }
-                            }}
-                            className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[200px]"
-                          >
-                            <option value="CURRENT">Fatura Atual</option>
-                            <option value="ALL">Todo o Histórico</option>
-                            {statements.length > 0 && (
-                              <optgroup label="Faturas Anteriores">
-                                {statements.map(s => (
-                                  <option key={s.id} value={s.id}>
-                                    {DateUtils.formatFullMonthYear(s.year, s.month)}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-                          </select>
-                        </div>
-
-                        {showFilters && (
-                          <div className="flex flex-wrap items-end gap-3 animate-in slide-in-from-top-2 duration-300">
-                            {/* Search */}
-                            <div className="flex flex-col gap-1">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Busca</span>
-                              <div className="relative">
-                                <input
-                                  type="text"
-                                  placeholder="O que procura?"
-                                  value={searchQuery}
-                                  onChange={(e) => setSearchQuery(e.target.value)}
-                                  className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl pl-4 pr-10 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all w-full xl:w-48"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Category Filter */}
-                            <div className="flex flex-col gap-1">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria</span>
-                              <select
-                                value={filterCategory}
-                                onChange={(e) => setFilterCategory(e.target.value)}
-                                className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[140px]"
-                              >
-                                <option value="ALL">Todas</option>
-                                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                              </select>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <TransactionList
-                      transactions={transactions.filter(t => {
-                        const matchesSearch = t.description?.toLowerCase().includes(searchQuery.toLowerCase());
-                        const matchesCategory = filterCategory === 'ALL' || t.category_id === filterCategory;
-                        return matchesSearch && matchesCategory;
-                      })}
-                      loadingTxs={loadingTxs}
-                      categories={categories}
-                      savingRowId={savingRowId}
-                      onAddManualTx={() => setShowAddTxModal(true)}
-                      onUpdateTxLocal={updateTxLocal}
-                      onSaveTxPatch={saveTxPatch}
-                      onDeleteTx={handleDeleteTx}
-                      showStatementScope={selectedStatementId !== 'ALL'}
-                      statements={statements}
-                      isLocked={currentStatement?.status === 'PAID'}
-                    />
+                  <div className="flex gap-4 sm:gap-6 w-full sm:w-auto justify-between sm:justify-end">
+                    {/* Datas removidas daqui para evitar redundância com o StatementSummary abaixo */}
                   </div>
                 </div>
-              )}
-            </div>
+
+                <StatementSummary
+                  currentStatement={currentStatement}
+                  statementTotal={statementTotal}
+                  statementPaid={statementPaid}
+                  statementOpen={statementOpen}
+                  formatCurrency={formatCurrency}
+                  formatDateBR={formatDateBR}
+                  onRefresh={() => loadCardContext(selectedCard.id)}
+                  onPay={() => { setPayAmount(statementOpen); setShowPayModal(true); }}
+                  statementBadge={statementBadge}
+                />
+
+                <div className="pt-6 border-t border-slate-50 dark:border-slate-700">
+                  <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-8">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-lg font-black text-slate-900 dark:text-white">Lançamentos</h3>
+                        <button
+                          onClick={() => setShowFilters(!showFilters)}
+                          className={`p-2 rounded-xl border transition-all ${showFilters ? 'bg-brand-50 border-brand-200 text-brand-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
+                          title="Alternar Filtros"
+                        >
+                          <Plus size={16} className={showFilters ? 'rotate-45 transition-transform' : 'transition-transform'} />
+                        </button>
+                      </div>
+                      <p className="text-slate-400 text-sm font-medium">Controle e filtre os gastos deste cartão</p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+                      {/* Statement Selector */}
+                      <div className="flex flex-col gap-1 w-full sm:w-auto">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Período</span>
+                        <select
+                          value={selectedStatementId}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSelectedStatementId(val);
+                            if (val === 'ALL') {
+                              fetchTransactions(selectedCard.id, null);
+                            } else if (val === 'CURRENT') {
+                              fetchTransactions(selectedCard.id, currentStatement?.id || null);
+                            } else {
+                              fetchTransactions(selectedCard.id, val);
+                            }
+                          }}
+                          className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[200px]"
+                        >
+                          <option value="CURRENT">Fatura Atual</option>
+                          <option value="ALL">Todo o Histórico</option>
+                          {statements.length > 0 && (
+                            <optgroup label="Faturas Anteriores">
+                              {statements.map(s => (
+                                <option key={s.id} value={s.id}>
+                                  {DateUtils.formatFullMonthYear(s.year, s.month)}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      </div>
+
+                      {showFilters && (
+                        <div className="flex flex-wrap items-end gap-3 animate-in slide-in-from-top-2 duration-300">
+                          {/* Search */}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Busca</span>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder="O que procura?"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl pl-4 pr-10 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all w-full xl:w-48"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Category Filter */}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria</span>
+                            <select
+                              value={filterCategory}
+                              onChange={(e) => setFilterCategory(e.target.value)}
+                              className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[140px]"
+                            >
+                              <option value="ALL">Todas</option>
+                              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <TransactionList
+                    transactions={transactions.filter(t => {
+                      const matchesSearch = t.description?.toLowerCase().includes(searchQuery.toLowerCase());
+                      const matchesCategory = filterCategory === 'ALL' || t.category_id === filterCategory;
+                      return matchesSearch && matchesCategory;
+                    })}
+                    loadingTxs={loadingTxs}
+                    categories={categories}
+                    savingRowId={savingRowId}
+                    onAddManualTx={() => setShowAddTxModal(true)}
+                    onUpdateTxLocal={updateTxLocal}
+                    onSaveTxPatch={saveTxPatch}
+                    onDeleteTx={handleDeleteTx}
+                    showStatementScope={selectedStatementId !== 'ALL'}
+                    statements={statements}
+                    isLocked={currentStatement?.status === 'PAID'}
+                  />
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Modals */}
-        <AddCardModal
-          show={showAddModal}
-          onClose={() => setShowAddModal(false)}
-          onSubmit={handleAddCard}
-          isSaving={isSaving}
-          isAnyModalBusy={isAnyModalBusy}
-          cards={cards}
-          newName={newName}
-          setNewName={setNewName}
-          newBrand={newBrand}
-          setNewBrand={setNewBrand}
-          newLast4={newLast4}
-          setNewLast4={setNewLast4}
-          newLimit={newLimit}
-          setNewLimit={setNewLimit}
-          newClosingDay={newClosingDay}
-          setNewClosingDay={setNewClosingDay}
-          newDueDay={newDueDay}
-          setNewDueDay={setNewDueDay}
-          isAdditional={isAdditional}
-          setIsAdditional={setIsAdditional}
-          parentCardId={parentCardId}
-          setParentCardId={setParentCardId}
-          additionalLabel={additionalLabel}
-          setAdditionalLabel={setAdditionalLabel}
-        />
+      {/* Modals */}
+      <AddCardModal
+        show={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSubmit={handleAddCard}
+        isSaving={isSaving}
+        isAnyModalBusy={isAnyModalBusy}
+        cards={cards}
+        newName={newName}
+        setNewName={setNewName}
+        newBrand={newBrand}
+        setNewBrand={setNewBrand}
+        newLast4={newLast4}
+        setNewLast4={setNewLast4}
+        newLimit={newLimit}
+        setNewLimit={setNewLimit}
+        newClosingDay={newClosingDay}
+        setNewClosingDay={setNewClosingDay}
+        newDueDay={newDueDay}
+        setNewDueDay={setNewDueDay}
+        isAdditional={isAdditional}
+        setIsAdditional={setIsAdditional}
+        parentCardId={parentCardId}
+        setParentCardId={setParentCardId}
+        additionalLabel={additionalLabel}
+        setAdditionalLabel={setAdditionalLabel}
+      />
 
-        <ManualTransactionModal
-          show={showAddTxModal}
-          onClose={() => setShowAddTxModal(false)}
-          onSubmit={handleAddManualTx}
-          isAnyModalBusy={isAnyModalBusy}
-          cards={cards}
-          categories={categories}
-          txCardId={txCardId}
-          setTxCardId={setTxCardId}
-          txDate={txDate}
-          setTxDate={setTxDate}
-          txAmount={txAmount}
-          setTxAmount={setTxAmount}
-          txDescription={txDescription}
-          setTxDescription={setTxDescription}
-          txCategoryId={txCategoryId}
-          setTxCategoryId={setTxCategoryId}
-        />
+      <ManualTransactionModal
+        show={showAddTxModal}
+        onClose={() => setShowAddTxModal(false)}
+        onSubmit={handleAddManualTx}
+        isAnyModalBusy={isAnyModalBusy}
+        cards={cards}
+        categories={categories}
+        txCardId={txCardId}
+        setTxCardId={setTxCardId}
+        txDate={txDate}
+        setTxDate={setTxDate}
+        txAmount={txAmount}
+        setTxAmount={setTxAmount}
+        txDescription={txDescription}
+        setTxDescription={setTxDescription}
+        txCategoryId={txCategoryId}
+        setTxCategoryId={setTxCategoryId}
+        isInstallment={isInstallment}
+        setIsInstallment={setIsInstallment}
+        installmentsCount={installmentsCount}
+        setInstallmentsCount={setInstallmentsCount}
+        isRecurring={isRecurring}
+        setIsRecurring={setIsRecurring}
+        recurrencePeriod={recurrencePeriod}
+        setRecurrencePeriod={setRecurrencePeriod}
+        recurrenceDaysInterval={recurrenceDaysInterval}
+        setRecurrenceDaysInterval={setRecurrenceDaysInterval}
+      />
 
-        <PayStatementModal
-          show={showPayModal}
-          onClose={() => setShowPayModal(false)}
-          onSubmit={handlePayStatement}
-          isPaying={isPaying}
-          selectedCardName={selectedCard?.name}
-          statementOpen={statementOpen}
-          formatCurrency={formatCurrency}
-          accounts={accounts}
-          payAccountId={payAccountId}
-          setPayAccountId={setPayAccountId}
-          payDate={payDate}
-          setPayDate={setPayDate}
-          payAmount={payAmount}
-          setPayAmount={setPayAmount}
-          getAccountLabel={getAccountLabel}
-        />
-      </div>
+      <PayStatementModal
+        show={showPayModal}
+        onClose={() => setShowPayModal(false)}
+        onSubmit={handlePayStatement}
+        isPaying={isPaying}
+        selectedCardName={selectedCard?.name}
+        statementOpen={statementOpen}
+        formatCurrency={formatCurrency}
+        accounts={accounts}
+        payAccountId={payAccountId}
+        setPayAccountId={setPayAccountId}
+        payDate={payDate}
+        setPayDate={setPayDate}
+        payAmount={payAmount}
+        setPayAmount={setPayAmount}
+        getAccountLabel={getAccountLabel}
+      />
+
+      <SeriesScopeModal
+        show={seriesModal.show}
+        onClose={() => setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' })}
+        onConfirm={(scope) => {
+          if (seriesModal.pendingAction === 'DELETE') {
+            handleDeleteTx(seriesModal.tx.id, scope);
+          } else {
+            saveTxPatch(seriesModal.tx.id, seriesModal.pendingPatch, scope);
+          }
+        }}
+        title={seriesModal.pendingAction === 'DELETE' ? 'Excluir Lançamento' : 'Editar Lançamento'}
+        actionLabel={seriesModal.pendingAction === 'DELETE' ? 'Excluir' : 'Salvar'}
+        type={seriesModal.tx?.recurrence_group_id ? 'RECURRING' : 'INSTALLMENT'}
+      />
     </div>
   );
 };
