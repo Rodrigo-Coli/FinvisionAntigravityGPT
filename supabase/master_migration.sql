@@ -124,6 +124,21 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='transactions' AND column_name='account_name') THEN
             ALTER TABLE public.transactions ADD COLUMN account_name TEXT;
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='transactions' AND column_name='metadata') THEN
+            ALTER TABLE public.transactions ADD COLUMN metadata JSONB DEFAULT '{}'::jsonb;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='transactions' AND column_name='is_paid') THEN
+            ALTER TABLE public.transactions ADD COLUMN is_paid BOOLEAN DEFAULT true;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='transactions' AND column_name='paid_amount') THEN
+            ALTER TABLE public.transactions ADD COLUMN paid_amount DECIMAL(12,2);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='transactions' AND column_name='paid_at') THEN
+            ALTER TABLE public.transactions ADD COLUMN paid_at TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='transactions' AND column_name='is_deleted') THEN
+            ALTER TABLE public.transactions ADD COLUMN is_deleted BOOLEAN DEFAULT false;
+        END IF;
     END IF;
 END $$;
 
@@ -311,6 +326,18 @@ CREATE TABLE IF NOT EXISTS public.product_prices (
     quantity DECIMAL(10,3),
     is_promo BOOLEAN DEFAULT false,
     exclude_from_stats BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6.5 PHYSICAL ASSETS
+CREATE TABLE IF NOT EXISTS public.physical_assets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    category TEXT CHECK (category IN ('REAL_ESTATE', 'VEHICLE', 'OTHER')),
+    estimated_value DECIMAL(12,2) DEFAULT 0,
+    acquisition_date DATE,
+    description TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
