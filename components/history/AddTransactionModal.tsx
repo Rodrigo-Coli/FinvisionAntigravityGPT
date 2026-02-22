@@ -15,8 +15,13 @@ interface AddTransactionModalProps {
         amount: string;
         accountId: string;
         category: string;
+        isInstallment: boolean;
+        installmentsCount: number;
+        isRecurring: boolean;
+        recurrencePeriod: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom';
+        recurrenceDaysInterval: number;
     };
-    setAddField: (field: string, value: string) => void;
+    setAddField: (field: string, value: any) => void;
     accounts: BankAccount[];
     categories: string[];
 }
@@ -123,6 +128,79 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                     <option key={c} value={c}>{c}</option>
                                 ))}
                             </select>
+                        </div>
+
+                        {/* SERIES OPTIONS */}
+                        <div className="p-4 bg-slate-50 rounded-2xl space-y-4">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Opções de Série</span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <button
+                                    onClick={() => {
+                                        setAddField('isInstallment', !form.isInstallment);
+                                        if (!form.isInstallment) setAddField('isRecurring', false);
+                                    }}
+                                    className={`h-12 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${form.isInstallment ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-slate-400 border-slate-200'}`}
+                                >
+                                    Parcelado
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setAddField('isRecurring', !form.isRecurring);
+                                        if (!form.isRecurring) setAddField('isInstallment', false);
+                                    }}
+                                    className={`h-12 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${form.isRecurring ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-slate-400 border-slate-200'}`}
+                                >
+                                    Fixo / Recorrente
+                                </button>
+                            </div>
+
+                            {form.isInstallment && (
+                                <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Número de Parcelas</label>
+                                    <input
+                                        type="number"
+                                        min="2"
+                                        value={form.installmentsCount}
+                                        onChange={(e) => setAddField('installmentsCount', Number(e.target.value))}
+                                        className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"
+                                    />
+                                </div>
+                            )}
+
+                            {form.isRecurring && (
+                                <div className="space-y-3 animate-in slide-in-from-top-2 duration-300">
+                                    <div>
+                                        <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Frequência</label>
+                                        <select
+                                            value={form.recurrencePeriod}
+                                            onChange={(e) => setAddField('recurrencePeriod', e.target.value)}
+                                            className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"
+                                        >
+                                            <option value="weekly">Semanal</option>
+                                            <option value="biweekly">Quinzenal</option>
+                                            <option value="monthly">Mensal</option>
+                                            <option value="yearly">Anual</option>
+                                            <option value="custom">Personalizado (Dias)</option>
+                                        </select>
+                                    </div>
+
+                                    {form.recurrencePeriod === 'custom' && (
+                                        <div className="animate-in slide-in-from-top-1 duration-200">
+                                            <label className="text-[8px] font-black text-slate-400 uppercase mb-1 block">A cada X dias</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={form.recurrenceDaysInterval}
+                                                onChange={(e) => setAddField('recurrenceDaysInterval', Number(e.target.value))}
+                                                className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg font-bold text-slate-700 outline-none"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {error && (
