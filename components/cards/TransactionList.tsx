@@ -69,9 +69,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <div className="min-w-[900px]">
                             <div className="grid grid-cols-12 gap-4 px-6 py-4 bg-slate-50/50 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100">
                                 <div className="col-span-1 text-[8px]">Data</div>
-                                <div className="col-span-3 text-[8px]">Descrição</div>
+                                <div className="col-span-2 text-[8px]">Descrição</div>
                                 <div className="col-span-2 text-[8px]">Categoria</div>
-                                <div className="col-span-3 text-[8px]">Fatura / Mês</div>
+                                <div className="col-span-2 text-[8px]">Entidade</div>
+                                <div className="col-span-2 text-[8px]">Fatura / Mês</div>
                                 <div className="col-span-2 text-right text-[8px]">Valor</div>
                                 <div className="col-span-1 text-right text-[8px]">Ação</div>
                             </div>
@@ -94,7 +95,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                         </div>
 
                                         {/* Description */}
-                                        <div className="col-span-3">
+                                        <div className="col-span-2">
                                             <input
                                                 type="text"
                                                 value={tx.description || ''}
@@ -127,8 +128,25 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                             </div>
                                         </div>
 
+                                        {/* Entity */}
+                                        <div className="col-span-2">
+                                            <select
+                                                value={tx.owner_name || 'Pessoal'}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    onUpdateTxLocal(tx.id, { owner_name: val });
+                                                    onSaveTxPatch(tx.id, { owner_name: val === 'Pessoal' ? null : val });
+                                                }}
+                                                className="w-full text-[10px] font-bold bg-white border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                                            >
+                                                {['Pessoal', ...new Set(transactions.map(t => t.owner_name).filter(Boolean))].map(o => (
+                                                    <option key={o} value={o}>{o}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
                                         {/* Statement Selector */}
-                                        <div className="col-span-3 text-[10px]">
+                                        <div className="col-span-2 text-[10px]">
                                             <select
                                                 value={tx.statement_id || ''}
                                                 onChange={(e) => {
