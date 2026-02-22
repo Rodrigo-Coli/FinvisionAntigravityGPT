@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Trash2, Edit2 } from 'lucide-react';
+import { Loader2, Trash2, Edit2, RotateCcw, Check } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 import { Transaction, BankAccount } from '../../types';
 
@@ -49,30 +49,29 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
     const EPS = 0.000001;
 
     return (
-        <div className="bg-white rounded-[32px] border border-slate-200/50 shadow-sm overflow-hidden w-full">
+        <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden w-full">
             {isLoading ? (
                 <div className="py-32 flex flex-col items-center justify-center gap-4">
-                    <Loader2 className="w-12 h-12 text-brand-600 animate-spin" />
-                    <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Atualizando histórico...</p>
+                    <Loader2 className="w-10 h-10 text-brand-600 animate-spin" />
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Atualizando histórico...</p>
                 </div>
             ) : (
                 <div className="w-full overflow-x-auto scrollbar-hide">
                     <table className="w-full text-left border-collapse table-auto">
-                        <thead className="bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-100 dark:border-slate-700 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">
+                        <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                             <tr>
-                                <th className="px-6 py-5">Data</th>
-                                <th className="px-6 py-5">Descrição</th>
-                                <th className="px-6 py-5">Conta</th>
-                                <th className="px-6 py-5">Categoria</th>
-                                <th className="px-6 py-5 text-center">Status</th>
-                                <th className="px-6 py-5 text-right">Valor</th>
-                                <th className="px-12 py-5 text-center">Ações</th>
+                                <th className="px-8 py-5">Data</th>
+                                <th className="px-8 py-5">Descrição</th>
+                                <th className="px-8 py-5">Conta / Categoria</th>
+                                <th className="px-8 py-5">Entidade</th>
+                                <th className="px-8 py-5 text-center">Status</th>
+                                <th className="px-8 py-5 text-right">Valor</th>
+                                <th className="px-8 py-5 text-right w-40">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                             {transactions.map(t => {
                                 const amount = getAmount(t);
-                                const paidAmount = getPaidAmount(t);
                                 const remaining = getRemaining(t);
                                 const status = getStatus(t);
 
@@ -81,107 +80,134 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                 const canPay = showPay && remaining > EPS;
 
                                 return (
-                                    <tr key={t.id} className="group hover:bg-slate-50/30 transition-colors">
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className="text-xs font-bold text-slate-500">
+                                    <tr key={t.id} className="group hover:bg-slate-50/50 transition-colors">
+                                        <td className="px-8 py-5 whitespace-nowrap">
+                                            <span className="text-xs font-bold text-slate-400">
                                                 {DateUtils.formatDisplayDate(t.date)}
                                             </span>
                                         </td>
 
-                                        <td className="px-6 py-4">
-                                            {editingRow?.id === t.id && editingRow.field === 'description' ? (
-                                                <input
-                                                    autoFocus
-                                                    className="w-full h-9 px-3 text-sm font-bold bg-white border border-brand-400 rounded-xl outline-none shadow-sm"
-                                                    value={editValue}
-                                                    onChange={e => setEditValue(e.target.value)}
-                                                    onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'description', editValue)}
-                                                    onBlur={() => handleUpdate(t.id, 'description', editValue)}
-                                                />
-                                            ) : (
+                                        <td className="px-8 py-5">
+                                            <div className="flex flex-col gap-1">
                                                 <div className="flex items-center gap-2">
-                                                    <button
-                                                        onClick={() => { setEditingRow({ id: t.id, field: 'description' }); setEditValue(t.description); }}
-                                                        className="text-sm font-black text-slate-900 hover:text-brand-600 transition-colors text-left truncate flex-grow group-hover:underline decoration-brand-200 underline-offset-4"
-                                                        title={t.description}
-                                                    >
-                                                        {t.description}
-                                                    </button>
+                                                    {editingRow?.id === t.id && editingRow.field === 'description' ? (
+                                                        <input
+                                                            autoFocus
+                                                            className="w-full h-9 px-3 text-sm font-bold bg-white border border-brand-500 rounded-lg outline-none"
+                                                            value={editValue}
+                                                            onChange={e => setEditValue(e.target.value)}
+                                                            onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'description', editValue)}
+                                                            onBlur={() => handleUpdate(t.id, 'description', editValue)}
+                                                        />
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => { setEditingRow({ id: t.id, field: 'description' }); setEditValue(t.description); }}
+                                                            className="text-sm font-bold text-slate-900 text-left hover:text-brand-600 transition-colors"
+                                                        >
+                                                            {t.description || 'Sem descrição'}
+                                                        </button>
+                                                    )}
+                                                    {t.is_incomplete && (
+                                                        <span className="px-1.5 py-0.5 bg-amber-50 text-amber-500 border border-amber-100 rounded text-[7px] font-black uppercase tracking-tighter" title="Registro antigo com dados incompletos. Recomenda-se revisar.">REVISAR</span>
+                                                    )}
                                                 </div>
+                                            </div>
+                                        </td>
+
+                                        <td className="px-8 py-5">
+                                            <div className="flex flex-col gap-1">
+                                                <select
+                                                    className="text-[10px] font-bold uppercase text-slate-400 bg-transparent border-none p-0 outline-none cursor-pointer hover:text-slate-900 transition-colors"
+                                                    value={t.accountId}
+                                                    onChange={(e) => handleUpdate(t.id, 'account_id', e.target.value)}
+                                                >
+                                                    {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
+                                                </select>
+                                                <select
+                                                    className="text-[9px] font-bold uppercase text-brand-600/50 bg-transparent border-none p-0 outline-none cursor-pointer hover:text-brand-600 transition-colors"
+                                                    value={t.category}
+                                                    onChange={(e) => handleUpdate(t.id, 'category', e.target.value)}
+                                                >
+                                                    {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                                </select>
+                                            </div>
+                                        </td>
+
+                                        <td className="px-8 py-5">
+                                            {editingRow?.id === t.id && editingRow.field === 'owner_name' ? (
+                                                <select
+                                                    autoFocus
+                                                    className="w-full h-9 px-3 text-[10px] font-bold bg-white border border-brand-500 rounded-lg outline-none"
+                                                    value={editValue}
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        setEditValue(val);
+                                                        handleUpdate(t.id, 'owner_name', val === 'Pessoal' ? null : val);
+                                                    }}
+                                                    onBlur={() => handleUpdate(t.id, 'owner_name', editValue === 'Pessoal' ? null : editValue)}
+                                                >
+                                                    {['Pessoal', ...new Set(transactions.map(tx => tx.owner_name).filter(Boolean))].map(o => (
+                                                        <option key={o} value={o}>{o}</option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <button
+                                                    onClick={() => { setEditingRow({ id: t.id, field: 'owner_name' }); setEditValue(t.owner_name || 'Pessoal'); }}
+                                                    className="text-[10px] font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg uppercase tracking-wider hover:bg-slate-200 transition-colors"
+                                                >
+                                                    {t.owner_name || 'Pessoal'}
+                                                </button>
                                             )}
                                         </td>
 
-                                        <td className="px-6 py-4">
-                                            <select
-                                                className="text-[10px] font-black uppercase tracking-tight bg-slate-100 text-slate-500 rounded-lg px-2 py-1.5 border-none focus:ring-4 focus:ring-brand-500/10 cursor-pointer hover:bg-slate-200 transition-all"
-                                                value={t.accountId}
-                                                onChange={(e) => handleUpdate(t.id, 'account_id', e.target.value)}
-                                            >
-                                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
-                                            </select>
-                                        </td>
-
-                                        <td className="px-6 py-4">
-                                            <select
-                                                className="text-[10px] font-black uppercase tracking-tighter bg-indigo-50 text-indigo-600 rounded-lg px-2 py-1.5 border-none focus:ring-4 focus:ring-indigo-500/10 hover:bg-indigo-100 transition-all cursor-pointer"
-                                                value={t.category}
-                                                onChange={(e) => handleUpdate(t.id, 'category', e.target.value)}
-                                            >
-                                                {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                            </select>
-                                        </td>
-
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2">
+                                        <td className="px-8 py-5 text-center">
+                                            <div className="flex flex-col items-center gap-1">
                                                 {statusBadge(t)}
                                                 {(t as any).parentId && (
-                                                    <span className="px-2 py-1 rounded-lg text-[9px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-100">Diferença</span>
+                                                    <span className="text-[8px] font-bold text-indigo-400 uppercase tracking-widest">Conciliação</span>
                                                 )}
                                             </div>
                                         </td>
 
-                                        <td className="px-6 py-4 text-right">
-                                            <span className={`text-sm font-black ${t.type === 'INCOME' ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                        <td className="px-8 py-5 text-right">
+                                            <span className={`text-sm font-bold ${t.type === 'INCOME' ? 'text-emerald-600' : 'text-slate-900'}`}>
                                                 {t.type === 'EXPENSE' ? '-' : ''}{formatCurrency(amount)}
                                             </span>
                                         </td>
 
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center justify-center gap-2">
+                                        <td className="px-8 py-5">
+                                            <div className="flex items-center justify-end gap-2">
                                                 {savingId === t.id ? (
                                                     <Loader2 size={16} className="animate-spin text-brand-500" />
                                                 ) : (
-                                                    <>
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         {showPay && (
                                                             <button
                                                                 onClick={() => openPayModal(t)}
                                                                 disabled={!canPay}
-                                                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${canPay
-                                                                    ? 'bg-brand-600 text-white hover:bg-brand-700 shadow-md shadow-brand-500/10'
-                                                                    : 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed'
-                                                                    }`}
-                                                                title={canPay ? 'Pagar agora' : 'Indisponível'}
+                                                                className={`p-2 rounded-lg transition-all ${canPay ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-200 cursor-not-allowed'}`}
+                                                                title="Pagar"
                                                             >
-                                                                Pagar
+                                                                <Check size={18} />
                                                             </button>
                                                         )}
                                                         {showReopen && (
                                                             <button
                                                                 onClick={() => reopenTransaction(t)}
-                                                                className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
-                                                                title="Desfazer pagamento"
+                                                                className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
+                                                                title="Reabrir"
                                                             >
-                                                                Reabrir
+                                                                <RotateCcw size={18} />
                                                             </button>
                                                         )}
                                                         <button
                                                             onClick={() => handleDelete(t.id)}
-                                                            className="p-2.5 rounded-xl text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all"
+                                                            className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
                                                             title="Excluir"
                                                         >
                                                             <Trash2 size={18} />
                                                         </button>
-                                                    </>
+                                                    </div>
                                                 )}
                                             </div>
                                         </td>
