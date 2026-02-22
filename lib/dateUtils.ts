@@ -61,7 +61,9 @@ export const DateUtils = {
      */
     formatDisplayDate: (dateStr: string): string => {
         if (!dateStr) return '';
-        const parts = dateStr.split('-');
+        // Caso receba ISO com tempo, pegamos apenas a data
+        const pureDate = dateStr.split('T')[0];
+        const parts = pureDate.split('-');
         if (parts.length !== 3) return dateStr;
         const [year, month, day] = parts;
         return `${day}/${month}/${year}`;
