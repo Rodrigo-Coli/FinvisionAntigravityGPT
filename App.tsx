@@ -77,9 +77,9 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
-      <div className="min-h-screen flex flex-col bg-slate-50/50 font-sans">
+      <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 font-sans">
         {profile?.is_approved && <Nav user={profile} />}
-        <main className="flex-grow">
+        <main className="flex-grow overflow-x-hidden">
           <Routes>
             <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
             <Route path="/signup" element={!session ? <Signup /> : <Navigate to="/" />} />
