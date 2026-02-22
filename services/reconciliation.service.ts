@@ -73,7 +73,12 @@ export const ReconciliationService = {
     // 2. Upload para Storage
     onProgress?.("Fazendo upload...");
     const bucket = 'finvision-documents';
-    const fileName = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
+    const cleanName = file.name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+      .replace(/[^\w.-]/g, '_');      // Mantém apenas letras, números, . - e converte o resto para _
+
+    const fileName = `${Date.now()}_${cleanName}`;
     const filePath = `${user.id}/${fileName}`;
     const { error: uploadError } = await supabase.storage
       .from(bucket)
@@ -209,12 +214,81 @@ export const ReconciliationService = {
     if (error) throw error;
   },
 
-  async updateTransactionStatus(id: string, status: string) {
+  async updateTransactionStatus(id: string, status: string, owner_name?: string) {
     if (!supabase) return;
+    const updateData: any = { status };
+    if (owner_name) updateData.owner_name = owner_name;
+
     const { error } = await supabase
       .from('imported_transactions')
-      .update({ status })
+      .update(updateData)
       .eq('id', id);
     if (error) throw error;
+  },
+
+  async ensureCategoryExists(categoryName: string): Promise<string> {
+    if (!supabase || !categoryName) return '';
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return '';
+
+    // Verifica se já existe (case-insensitive)
+    const { data: existing } = await supabase
+      .from('categories')
+      .select('id, name')
+      .eq('user_id', user.id)
+      .ilike('name', categoryName)
+      .maybeSingle();
+
+    if (existing) return existing.id;
+
+    // Cria nova
+    const { data: created, error } = await supabase
+      .from('categories')
+      .insert({ user_id: user.id, name: categoryName, is_archived: false })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error("Erro ao criar categoria auto:", error);
+      return '';
+    }
+    return created.id;
+  },
+
+  async ensureAccountExists(accountName: string): Promise<string> {
+    if (!supabase || !accountName) return '';
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return '';
+
+    // Verifica se já existe (case-insensitive)
+    const { data: existing } = await supabase
+      .from('accounts')
+      .select('id, institution')
+      .eq('user_id', user.id)
+      .ilike('institution', accountName)
+      .maybeSingle();
+
+    if (existing) return existing.id;
+
+    // Cria nova conta (checking por default para bancos)
+    const { data: created, error } = await supabase
+      .from('accounts')
+      .insert({
+        user_id: user.id,
+        institution: accountName,
+        type: 'CHECKING',
+        currency: 'BRL',
+        initial_balance: 0,
+        current_balance: 0,
+        is_archived: false
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error("Erro ao criar conta auto:", error);
+      return '';
+    }
+    return created.id;
   }
 };
