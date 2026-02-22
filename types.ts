@@ -14,10 +14,14 @@ export interface Profile {
 export interface DashboardData {
   consolidatedBalance: number;
   netWorth: number;
+  totalExpenses?: number;
+  lastMonthExpenses?: number;
+  netWorthGrowth?: number;
   creditCards: {
     brand: string;
     current: number;
     forecasted: number;
+    limit?: number;
     color: string;
   }[];
   alerts: {
@@ -65,6 +69,12 @@ export type TransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'BILL_PAYMENT'
 
 export interface Transaction {
   id: string;
+  user_id?: string;
+  card_id?: string;
+  statement_id?: string;
+  category_id?: string;
+  is_manual?: boolean;
+  source?: string;
   description: string;
   amount: number;
   date: string;
@@ -75,6 +85,7 @@ export interface Transaction {
   isDeleted?: boolean;
   isReconciled?: boolean;
   metadata?: Record<string, any>;
+  owner_name?: string; // --- NOVA ENTIDADE (PESSOAL/EMPRESA) ---
 
   // --- NOVOS CAMPOS (pagamentos) ---
   // Mantidos opcionais para não quebrar outras telas / dados antigos.
@@ -82,6 +93,16 @@ export interface Transaction {
   paidAmount?: number;       // quanto já foi pago (parcial/total)
   paidAt?: string;           // quando quitou (ou último registro)
   parentId?: string | null;  // se for uma "diferença" gerada a partir de outra transação
+
+  // --- RECONCILIAÇÃO / RECORRÊNCIA ---
+  is_recurring?: boolean;
+  recurrence_period?: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom';
+  recurrence_group_id?: string;
+  is_installment?: boolean;
+  installment_number?: number;
+  installment_total?: number;
+  installment_group_id?: string;
+  is_incomplete?: boolean;    // Flag para dados legados que precisam de revisão
 }
 
 export interface ReconcileItem {
@@ -91,6 +112,7 @@ export interface ReconcileItem {
   type: 'credit' | 'debit';
   source: string;
   confidence: number;
+  owner_name?: string;
 }
 
 export interface PhysicalAsset {
@@ -171,6 +193,10 @@ export interface ImportedTransaction {
   amount: number;
   status: MatchStatus;
   type: 'credit' | 'debit';
+  installment_number?: number;
+  installment_total?: number;
+  owner_name?: string;
+  category?: string;
 }
 
 export interface ReceiptItem {
