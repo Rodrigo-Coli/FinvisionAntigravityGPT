@@ -3,13 +3,15 @@ import { DashboardData } from '../types';
 
 export const DashboardService = {
   getSummary: async (): Promise<DashboardData> => {
-    if (!supabase) throw new Error('Supabase not configured');
+    const sb = supabase;
+    if (!sb) return { consolidatedBalance: 0, netWorth: 0, creditCards: [], alerts: [], goals: [], cashFlow: [], assets: [] };
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('User not authenticated');
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return { consolidatedBalance: 0, netWorth: 0, creditCards: [], alerts: [], goals: [], cashFlow: [], assets: [] };
 
-    // 1. Consolidated Balance & Net Worth from Accounts
-    const { data: accounts, error: accErr } = await supabase
+
+    // 1. Accounts
+    const { data: accounts, error: accErr } = await sb
       .from('accounts')
       .select('current_balance, type')
       .eq('user_id', user.id)
@@ -29,17 +31,14 @@ export const DashboardService = {
     });
 
     // 2. Credit Cards Summary
-    const { data: cards, error: cardErr } = await supabase
+    const { data: cards, error: cardErr } = await sb
       .from('cards')
-      .select('id, brand, name')
+      .select('id, brand, name, limit_total')
       .eq('user_id', user.id)
       .eq('is_archived', false);
 
-    if (cardErr) throw cardErr;
-
-    // We'll need the current statements for these cards
-    const creditCardsSummary = await Promise.all((cards || []).map(async (card: any) => {
-      const { data: stmt } = await supabase
+    const creditCardsSummary = !cardErr && cards ? await Promise.all(cards.map(async (card: any) => {
+      const { data: stmt } = await sb
         .from('card_statements')
         .select('total_amount, paid_amount')
         .eq('card_id', card.id)
@@ -54,30 +53,88 @@ export const DashboardService = {
       return {
         brand: card.name || card.brand,
         current: total - paid,
-        forecasted: total, // Simple forecast for now
+        forecasted: total,
+        limit: Number(card.limit_total || 0),
         color: card.brand.toLowerCase().includes('visa') ? 'bg-brand-600' : 'bg-slate-900'
       };
-    }));
+    })) : [];
+
+    // 3. Physical Assets
+    const { data: physicalAssets, error: physErr } = await sb
+      .from('physical_assets')
+      .select('estimated_value, category')
+      .eq('user_id', user.id);
+
+    if (!physErr && physicalAssets) {
+      physicalAssets.forEach((asset: any) => {
+        netWorth += Number(asset.estimated_value || 0);
+      });
+    }
+
+    // 4. Cash Flow & Metrics
+    const { data: txs, error: txsErr } = await sb
+      .from('transactions')
+      .select('date, amount, type')
+      .eq('user_id', user.id)
+      .eq('is_deleted', false)
+      .gte('date', new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString());
+
+    const cashFlow: any[] = [];
+    let totalExpenses = 0;
+    let lastMonthExpenses = 0;
+    const now = new Date();
+    const currentMonth = now.getUTCMonth();
+    const lastMonth = (currentMonth - 1 + 12) % 12;
+
+    if (!txsErr && txs) {
+      const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+      const grouped = txs.reduce((acc: any, tx: any) => {
+        const txDate = new Date(tx.date);
+        const m = txDate.getUTCMonth();
+        const key = months[m];
+        if (!acc[key]) acc[key] = { month: key, income: 0, expense: 0 };
+
+        const val = Number(tx.amount || 0);
+        if (tx.type === 'INCOME') {
+          acc[key].income += val;
+        } else if (tx.type === 'EXPENSE' || tx.type === 'BILL_PAYMENT') {
+          acc[key].expense += val;
+          if (m === currentMonth) totalExpenses += val;
+          if (m === lastMonth) lastMonthExpenses += val;
+        }
+        return acc;
+      }, {});
+
+      const today = new Date().getUTCMonth();
+      for (let i = 5; i >= 0; i--) {
+        const mIdx = (today - i + 12) % 12;
+        const key = months[mIdx];
+        cashFlow.push(grouped[key] || { month: key, income: 0, expense: 0 });
+      }
+    }
+
+    // 5. Assets Summary
+    const assetsSummary = [
+      { name: 'Conta Corrente', value: Number(consolidatedBalance || 0), color: '#3b82f6' },
+      { name: 'Investimentos', value: (accounts || []).filter(a => a.type === 'INVESTMENT').reduce((s, a) => s + Number(a.current_balance || 0), 0), color: '#8b5cf6' },
+      { name: 'Bens Físicos', value: (physicalAssets || []).reduce((s, a) => s + Number(a.estimated_value || 0), 0), color: '#10b981' },
+    ];
+
+    // 6. Net Worth Growth (comparing to previous month)
+    // This would require storing historical net worth or calculating it from historical data.
+    // For now, we'll return 0 or a placeholder.
+    const netWorthGrowth = 0;
 
     return {
-      consolidatedBalance,
-      netWorth,
+      consolidatedBalance: Number(consolidatedBalance || 0),
+      netWorth: Number(netWorth || 0),
       creditCards: creditCardsSummary,
-      alerts: [], // Real alerts feature to be implemented
-      goals: [],  // Real goals feature to be implemented
-      cashFlow: [
-        { month: 'Set', income: 12000, expense: 8500 },
-        { month: 'Out', income: 13500, expense: 9200 },
-        { month: 'Nov', income: 12800, expense: 8800 },
-        { month: 'Dez', income: 15000, expense: 11000 },
-        { month: 'Jan', income: 14200, expense: 9500 },
-        { month: 'Fev', income: 16800, expense: 9800 },
-      ],
-      assets: [
-        { name: 'Conta Corrente', value: consolidatedBalance, color: '#3b82f6' },
-        { name: 'Investimentos', value: netWorth - consolidatedBalance, color: '#8b5cf6' },
-        { name: 'Imóveis', value: 0, color: '#10b981' },
-      ],
+      alerts: [],
+      goals: [],
+      cashFlow,
+      assets: assetsSummary,
+      totalExpenses: Number(totalExpenses || 0),
+      netWorthGrowth: Number(netWorthGrowth || 0)
     };
   },
 
