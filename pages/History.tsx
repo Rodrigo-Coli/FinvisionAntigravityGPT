@@ -12,6 +12,7 @@ import { HistoryFilters } from '../components/history/HistoryFilters';
 import { TransactionTable } from '../components/history/TransactionTable';
 import { PaymentModal } from '../components/history/PaymentModal';
 import { AddTransactionModal } from '../components/history/AddTransactionModal';
+import { SeriesScopeModal, SeriesScope } from '../components/SeriesScopeModal';
 
 const CATEGORIES = [
   'Salário', 'Moradia', 'Investimento', 'Cartão de Crédito',
@@ -45,6 +46,11 @@ type AddModalState =
       amount: string;
       accountId: string;
       category: string;
+      isInstallment: boolean;
+      installmentsCount: number;
+      isRecurring: boolean;
+      recurrencePeriod: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom';
+      recurrenceDaysInterval: number;
     };
   };
 
@@ -64,6 +70,8 @@ const HistoryPage: React.FC = () => {
   const [endDate, setEndDate] = useState('');
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
+  const [filterOwner, setFilterOwner] = useState<string>('ALL');
+  const [owners, setOwners] = useState<string[]>(['Pessoal']);
 
   // Inline Editing
   const [editingRow, setEditingRow] = useState<{ id: string; field: string } | null>(null);
@@ -74,12 +82,21 @@ const HistoryPage: React.FC = () => {
   const [payModal, setPayModal] = useState<PayModalState>({ open: false });
   const [addModal, setAddModal] = useState<AddModalState>({ open: false });
 
+  // Series Scope Modal State
+  const [seriesModal, setSeriesModal] = useState<{
+    show: boolean;
+    tx: Transaction | null;
+    pendingAction: 'UPDATE' | 'DELETE';
+    pendingPatch?: { field: string, value: any };
+  }>({ show: false, tx: null, pendingAction: 'DELETE' });
+
   const fetchData = useCallback(async () => {
-    if (!supabase) return;
     setIsLoading(true);
     setError(null);
 
     try {
+      if (!supabase) return;
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setIsLoading(false);
@@ -110,40 +127,67 @@ const HistoryPage: React.FC = () => {
       if (endDate) query = query.lte('date', endDate);
       if (minPrice !== '') query = query.gte('amount', Number(minPrice));
       if (maxPrice !== '') query = query.lte('amount', Number(maxPrice));
+      if (filterOwner !== 'ALL') query = query.eq('owner_name', filterOwner);
 
       const { data, error: fetchError } = await query;
       if (fetchError) throw fetchError;
 
-      setTransactions((data || []).map((t: any) => ({
-        id: t.id,
-        description: t.description ?? '',
-        amount: Number(t.amount),
-        date: t.date,
-        type: t.type as TransactionType,
-        accountId: t.account_id,
-        accountName: t.account_name ?? '',
-        category: t.category ?? 'Outros',
-        isDeleted: t.is_deleted,
-        isReconciled: t.is_reconciled,
-        isPaid: t.is_paid ?? false,
-        paidAmount: Number(t.paid_amount ?? 0),
-        paidAt: t.paid_at ?? undefined,
-        parentId: t.parent_id ?? null,
-        metadata: t.metadata ?? {}
-      })));
+      // Extract unique owners for the filter
+      const uniqueOwners = ['Pessoal', ...new Set((data || []).map((t: any) => t.owner_name).filter(Boolean))];
+      setOwners(uniqueOwners as string[]);
+
+      setTransactions((data || []).map((t: any) => {
+        // Marcamos como incompleto se faltar algum campo que agora consideramos essencial
+        // mas que no passado podia ser nulo. Isso não trava o sistema, apenas informa a UI.
+        const isIncomplete = !t.description || !t.account_name || !t.category || !t.owner_name;
+
+        return {
+          id: t.id,
+          description: t.description ?? 'Sem descrição',
+          amount: Number(t.amount || 0),
+          date: t.date,
+          type: t.type as TransactionType,
+          accountId: t.account_id,
+          accountName: t.account_name ?? 'Conta antiga',
+          category: t.category ?? 'Outros',
+          owner_name: t.owner_name ?? 'Pessoal',
+          isDeleted: t.is_deleted,
+          isReconciled: t.is_reconciled,
+          isPaid: t.is_paid ?? false,
+          paidAmount: Number(t.paid_amount ?? 0),
+          paidAt: t.paid_at ?? undefined,
+          parentId: t.parent_id ?? null,
+          metadata: t.metadata ?? {},
+          is_incomplete: isIncomplete
+        };
+      }));
     } catch (err) {
       setError('Erro ao carregar dados.');
     } finally {
       setIsLoading(false);
     }
-  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice]);
+  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner]);
 
   useEffect(() => {
     if (isSupabaseConfigured) fetchData();
   }, [fetchData]);
 
-  const handleUpdate = async (id: string, field: string, value: any) => {
+  const handleUpdate = async (id: string, field: string, value: any, confirmedScope?: SeriesScope) => {
     if (!supabase) return;
+
+    const tx = transactions.find(t => t.id === id);
+    const isSeries = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
+
+    if (isSeries && !confirmedScope) {
+      setSeriesModal({
+        show: true,
+        tx: tx || null,
+        pendingAction: 'UPDATE',
+        pendingPatch: { field, value }
+      });
+      return;
+    }
+
     setSavingId(id);
     try {
       const patch: any = { [field]: value };
@@ -151,33 +195,66 @@ const HistoryPage: React.FC = () => {
         const acc = accounts.find(a => a.id === value);
         if (acc) patch.account_name = acc.institution;
       }
-      const { error: err } = await supabase.from('transactions').update(patch).eq('id', id);
-      if (err) throw err;
 
-      const before = transactions.find(t => t.id === id);
-      if (before && (HistoryUtils.getStatus(before) !== 'PENDING') && (field === 'amount' || field === 'type' || field === 'account_id')) {
-        await supabase.rpc('recalculate_account_balance', { p_account_id: field === 'account_id' ? value : before.accountId });
-        if (field === 'account_id' && before.accountId !== value) await supabase.rpc('recalculate_account_balance', { p_account_id: before.accountId });
+      if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
+        const { error: err } = await supabase.from('transactions').update(patch).eq('id', id);
+        if (err) throw err;
+      } else {
+        const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
+        let query = supabase.from('transactions').update(patch).filter('metadata->>' + (tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id'), 'eq', groupId);
+        if (confirmedScope === 'THIS_AND_FUTURE') query = query.gte('date', tx?.date);
+        const { error: err } = await query;
+        if (err) throw err;
       }
 
-      setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...patch, accountId: patch.account_id || t.accountId, accountName: patch.account_name || t.accountName } : t));
+      if (tx && (HistoryUtils.getStatus(tx) !== 'PENDING') && (field === 'amount' || field === 'type' || field === 'account_id')) {
+        await supabase.rpc('recalculate_account_balance', { p_account_id: field === 'account_id' ? value : tx.accountId });
+        if (field === 'account_id' && tx.accountId !== value) await supabase.rpc('recalculate_account_balance', { p_account_id: tx.accountId });
+      }
+
+      await fetchData();
     } catch (err) {
       alert('Erro ao salvar alteração');
     } finally {
       setSavingId(null);
       setEditingRow(null);
+      setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' });
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!supabase || !window.confirm('Excluir transação?')) return;
+  const handleDelete = async (id: string, confirmedScope?: SeriesScope) => {
+    if (!supabase) return;
+
+    const tx = transactions.find(t => t.id === id);
+    const isSeries = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
+
+    if (isSeries && !confirmedScope) {
+      setSeriesModal({ show: true, tx: tx || null, pendingAction: 'DELETE' });
+      return;
+    }
+
+    if (!confirmedScope && !window.confirm('Excluir transação?')) return;
+
     try {
-      const tx = transactions.find(t => t.id === id);
-      await supabase.from('transactions').update({ is_deleted: true }).eq('id', id);
-      setTransactions(prev => prev.filter(t => t.id !== id));
-      if (tx && HistoryUtils.getStatus(tx) !== 'PENDING') await supabase.rpc('recalculate_account_balance', { p_account_id: tx.accountId });
+      if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
+        await supabase.from('transactions').update({ is_deleted: true }).eq('id', id);
+      } else {
+        const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
+        let query = supabase.from('transactions').update({ is_deleted: true }).filter('metadata->>' + (tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id'), 'eq', groupId);
+        if (confirmedScope === 'THIS_AND_FUTURE') query = query.gte('date', tx?.date);
+        const { error } = await query;
+        if (error) throw error;
+      }
+
+      if (tx && HistoryUtils.getStatus(tx) !== 'PENDING') {
+        await supabase.rpc('recalculate_account_balance', { p_account_id: tx.accountId });
+      }
+
+      await fetchData();
     } catch (err) {
       alert('Erro ao excluir');
+    } finally {
+      setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' });
     }
   };
 
@@ -185,6 +262,7 @@ const HistoryPage: React.FC = () => {
     setFilterType('ALL'); setFilterAccount('ALL'); setFilterCategory('ALL');
     setStartDate(''); setEndDate(''); setMinPrice(''); setMaxPrice('');
     setSearch('');
+    setFilterOwner('ALL');
   };
 
   const exportToXlsx = (format: 'xlsx' | 'csv') => {
@@ -193,6 +271,7 @@ const HistoryPage: React.FC = () => {
       Descrição: t.description,
       Conta: t.accountName,
       Categoria: t.category,
+      Entidade: t.owner_name || 'Pessoal',
       Tipo: t.type,
       Valor: (t.type === 'EXPENSE' ? -1 : 1) * t.amount,
       Status: HistoryUtils.getStatus(t)
@@ -224,16 +303,13 @@ const HistoryPage: React.FC = () => {
     setPayModal(prev => prev.open ? { ...prev, isSubmitting: true } : prev);
     try {
       const { error } = await supabase.rpc('pay_transaction', { p_transaction_id: payModal.tx.id, p_amount: amount, p_split_remainder: payModal.splitRemainder });
-
       if (error) {
-        // Fallback direto se o RPC falhar
         await supabase.from('transactions').update({
           is_paid: amount >= payModal.remaining - EPS,
           paid_amount: (payModal.tx.paidAmount || 0) + amount,
           paid_at: DateUtils.getNow().toISOString()
         }).eq('id', payModal.tx.id);
       }
-
       await supabase.rpc('recalculate_account_balance', { p_account_id: payModal.tx.accountId });
       setPayModal({ open: false });
       await fetchData();
@@ -251,10 +327,26 @@ const HistoryPage: React.FC = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      await supabase.from('transactions').insert({
-        user_id: user.id, date: f.date, description: f.description, amount, type: f.type,
-        account_id: f.accountId, category: f.category, is_paid: false, paid_amount: 0
-      });
+
+      if (!f.isInstallment && !f.isRecurring) {
+        await supabase.from('transactions').insert({
+          user_id: user.id, date: f.date, description: f.description, amount, type: f.type,
+          account_id: f.accountId, category: f.category, is_paid: false, paid_amount: 0
+        });
+      } else {
+        const { TransactionSeriesUtils } = await import('../lib/transactionSeriesUtils');
+        const series = TransactionSeriesUtils.generateSeries(
+          { description: f.description, amount, category: f.category, accountId: f.accountId, type: f.type },
+          { type: f.isInstallment ? 'INSTALLMENT' : 'RECURRING', count: f.installmentsCount, period: f.recurrencePeriod, daysInterval: f.recurrenceDaysInterval, startDate: f.date, totalAmount: f.isInstallment ? amount : undefined }
+        );
+        const groupId = crypto.randomUUID();
+        const inserts = series.map(item => ({
+          user_id: user.id, date: item.date, description: item.description, amount: item.amount, type: item.type, account_id: item.accountId, category: item.category, is_paid: false, paid_amount: 0,
+          metadata: { ...(f.isInstallment ? { installment_group_id: groupId, installment_number: (item as any).installmentNumber, installment_total: f.installmentsCount } : { recurrence_group_id: groupId }) }
+        }));
+        const { error } = await supabase.from('transactions').insert(inserts);
+        if (error) throw error;
+      }
       setAddModal({ open: false });
       await fetchData();
     } catch (err) {
@@ -264,151 +356,98 @@ const HistoryPage: React.FC = () => {
 
   const statusBadge = (t: Transaction) => {
     const s = HistoryUtils.getStatus(t);
-    const base = "px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest border";
-    if (s === 'PAID') return <span className={`${base} bg-emerald-50 text-emerald-700 border-emerald-100`}>PAGO</span>;
-    if (s === 'PARTIAL') return <span className={`${base} bg-amber-50 text-amber-700 border-amber-100`}>PARCIAL</span>;
-    return <span className={`${base} bg-slate-50 text-slate-500 border-slate-100`}>PENDENTE</span>;
+    const base = "px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest border";
+    if (s === 'PAID') return <span className={`${base} bg-emerald-50 text-emerald-600 border-emerald-100`}>PAGO</span>;
+    if (s === 'PARTIAL') return <span className={`${base} bg-amber-50 text-amber-600 border-amber-100`}>PARCIAL</span>;
+    return <span className={`${base} bg-slate-50 text-slate-400 border-slate-100`}>PENDENTE</span>;
   };
 
   const filtered = transactions.filter(t => t.description.toLowerCase().includes(search.toLowerCase()) || t.accountName.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="w-full flex justify-center py-6 sm:py-10 px-4 sm:px-6 lg:px-8 animate-in fade-in duration-700">
-      <div className="inline-block min-w-min max-w-full space-y-8 sm:space-y-10">
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div className="space-y-1">
-            <h1 className="text-3xl sm:text-4xl font-display font-black text-slate-900 tracking-tight dark:text-white">
-              Histórico <span className="text-brand-600 italic">Financeiro</span>
-            </h1>
-            <p className="text-slate-500 font-medium text-base sm:text-lg">Gestão detalhada e conciliação de lançamentos</p>
-          </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <button onClick={() => setAddModal({ open: true, isSubmitting: false, form: { date: DateUtils.formatToISODate(), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros' } })}
-              className="px-6 py-4 bg-brand-600 text-white rounded-[16px] sm:rounded-[20px] font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95 flex items-center justify-center gap-2">
-              <Plus size={18} /> Novo Lançamento
-            </button>
-            <div className="flex gap-2">
-              <button onClick={() => exportToXlsx('xlsx')} className="flex-grow sm:flex-none p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-[16px] sm:rounded-2xl text-slate-500 hover:text-brand-600 shadow-sm transition-all flex items-center justify-center">
-                <FileDown size={20} />
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <HistoryFilters
-          search={search} setSearch={setSearch} showFilters={showFilters} setShowFilters={setShowFilters}
-          filterType={filterType} setFilterType={setFilterType} filterAccount={filterAccount} setFilterAccount={setFilterAccount}
-          filterCategory={filterCategory} setFilterCategory={setFilterCategory} startDate={startDate} setStartDate={setStartDate}
-          endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
-          categories={CATEGORIES} accounts={accounts} resetFilters={resetFilters}
-        />
-
-        <TransactionTable
-          transactions={filtered} isLoading={isLoading} accounts={accounts} categories={CATEGORIES}
-          editingRow={editingRow} setEditingRow={setEditingRow} editValue={editValue} setEditValue={setEditValue}
-          savingId={savingId} handleUpdate={handleUpdate} handleDelete={handleDelete} statusBadge={statusBadge}
-          formatCurrency={HistoryUtils.formatCurrency} getAmount={HistoryUtils.getAmount} getPaidAmount={HistoryUtils.getPaidAmount}
-          getRemaining={HistoryUtils.getRemaining} getStatus={HistoryUtils.getStatus} openPayModal={openPayModal}
-          reopenTransaction={async (t) => {
-            if (!supabase || !window.confirm('Deseja reabrir este lançamento? O saldo da conta será atualizado e o lançamento ficará pendente de pagamento novamente.')) return;
-            try {
-              const { data: { user } } = await supabase.auth.getUser();
-              if (!user) return;
-
-              // 1. Se for pagamento de cartão, tentar reabrir a fatura
-              const isCardPayment = t.type === 'BILL_PAYMENT' || t.description.toLowerCase().includes('pagamento cartão');
-
-              if (isCardPayment) {
-                const statementId = (t as any).metadata?.statement_id;
-                let targetId = statementId;
-                if (!targetId) {
-                  // Busca por aproximação: busca o cartão e depois o statement que tenha pagamentos ou seja o mais recente
-                  const { data: card } = await supabase.from('cards').select('id').ilike('name', `%${t.description.split(':').pop()?.trim()}%`).limit(1);
-                  if (card?.[0]) {
-                    // Tenta primeiro um statement que tenha algum valor pago (provavelmente o que estamos reabrindo)
-                    const { data: stmCandidate } = await supabase.from('card_statements')
-                      .select('id')
-                      .eq('card_id', card[0].id)
-                      .gt('paid_amount', 0)
-                      .order('due_date', { ascending: false })
-                      .limit(1);
-
-                    if (stmCandidate?.[0]) {
-                      targetId = stmCandidate[0].id;
-                    } else {
-                      // Fallback para o mais recente se nenhum tiver pagamento
-                      const { data: stmLast } = await supabase.from('card_statements')
-                        .select('id')
-                        .eq('card_id', card[0].id)
-                        .order('due_date', { ascending: false })
-                        .limit(1);
-                      if (stmLast?.[0]) targetId = stmLast[0].id;
-                    }
-                  }
-                }
-
-                if (targetId) {
-                  const { data: stmCur, error: fetchErr } = await supabase.from('card_statements').select('paid_amount, total_amount').eq('id', targetId).maybeSingle();
-                  if (stmCur && !fetchErr) {
-                    const txAmount = Math.abs(t.amount || 0);
-                    const currentPaid = Number(stmCur.paid_amount || 0);
-                    const newPaid = Math.max(0, currentPaid - txAmount);
-
-                    const { error: updErr } = await supabase.from('card_statements').update({
-                      status: 'OPEN',
-                      paid_amount: newPaid
-                    }).eq('id', targetId);
-
-                    if (updErr) console.error('Erro ao atualizar fatura:', updErr);
-                  }
-                }
-              }
-
-              // 2. Se veio de conciliação, restaurar na fila
-              const importedId = (t as any).metadata?.imported_transaction_id;
-              if (importedId) {
-                await supabase.from('imported_transactions').update({ status: 'READY_TO_RECONCILE' }).eq('id', importedId);
-              }
-
-              // 3. Diferenciar lógica de saída do histórico
-              if (isCardPayment) {
-                // Pagamentos de cartão são deletados para permitir novo pagamento com valor atualizado
-                const { error } = await supabase.from('transactions').update({ is_deleted: true }).eq('id', t.id);
-                if (error) throw error;
-              } else {
-                // Outras transações permanecem no histórico mas voltam a ficar pendentes
-                const { error } = await supabase.from('transactions').update({
-                  is_paid: false,
-                  paid_amount: 0,
-                  paid_at: null
-                }).eq('id', t.id);
-                if (error) throw error;
-              }
-
-              // 4. Forçar recálculo do saldo
-              await supabase.rpc('recalculate_account_balance', { p_account_id: t.accountId });
-
-              await fetchData();
-            } catch (e) {
-              console.error(e);
-              alert('Erro ao reabrir transação');
-            }
-          }}
-        />
-
-        <PaymentModal show={payModal.open} onClose={() => setPayModal({ open: false })} onSubmit={submitPayment}
-          tx={payModal.open ? payModal.tx : null} remaining={payModal.open ? payModal.remaining : 0}
-          payAmount={payModal.open ? payModal.payAmount : ''} setPayAmount={(v) => setPayModal(prev => prev.open ? { ...prev, payAmount: v } : prev)}
-          splitRemainder={payModal.open ? payModal.splitRemainder : false} setSplitRemainder={(v) => setPayModal(prev => prev.open ? { ...prev, splitRemainder: v } : prev)}
-          isSubmitting={payModal.open ? payModal.isSubmitting : false} error={payModal.open ? payModal.error : null} formatCurrency={HistoryUtils.formatCurrency}
-        />
-
-        <AddTransactionModal show={addModal.open} onClose={() => setAddModal({ open: false })} onSubmit={createManualTransaction}
-          isSubmitting={addModal.open ? addModal.isSubmitting : false} error={addModal.open ? addModal.error : null}
-          form={addModal.open ? addModal.form : {} as any} setAddField={(f, v) => setAddModal(prev => prev.open ? { ...prev, form: { ...prev.form, [f]: v } } : prev)}
-          accounts={accounts} categories={CATEGORIES}
-        />
+    <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
+      {/* HEADER SECTION */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Histórico Financeiro</h1>
+          <p className="text-sm text-slate-400 font-medium">Gestão detalhada e conciliação de lançamentos.</p>
+        </div>
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <button
+            onClick={() => setAddModal({
+              open: true,
+              isSubmitting: false,
+              form: { date: DateUtils.formatToISODate(), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros', isInstallment: false, installmentsCount: 2, isRecurring: false, recurrencePeriod: 'monthly', recurrenceDaysInterval: 30 }
+            })}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
+          >
+            <Plus size={18} /> Novo Lançamento
+          </button>
+          <button onClick={() => exportToXlsx('xlsx')} className="p-3 bg-white border border-slate-100 text-slate-400 rounded-xl hover:text-slate-900 transition-all shadow-sm">
+            <FileDown size={20} />
+          </button>
+        </div>
       </div>
+
+      <HistoryFilters
+        search={search} setSearch={setSearch} showFilters={showFilters} setShowFilters={setShowFilters}
+        filterType={filterType} setFilterType={setFilterType} filterAccount={filterAccount} setFilterAccount={setFilterAccount}
+        filterCategory={filterCategory} setFilterCategory={setFilterCategory} startDate={startDate} setStartDate={setStartDate}
+        endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
+        filterOwner={filterOwner} setFilterOwner={setFilterOwner} owners={owners}
+        categories={CATEGORIES} accounts={accounts} resetFilters={resetFilters}
+      />
+
+      <TransactionTable
+        transactions={filtered} isLoading={isLoading} accounts={accounts} categories={CATEGORIES}
+        editingRow={editingRow} setEditingRow={setEditingRow} editValue={editValue} setEditValue={setEditValue}
+        savingId={savingId} handleUpdate={handleUpdate} handleDelete={handleDelete} statusBadge={statusBadge}
+        formatCurrency={HistoryUtils.formatCurrency} getAmount={HistoryUtils.getAmount} getPaidAmount={HistoryUtils.getPaidAmount}
+        getRemaining={HistoryUtils.getRemaining} getStatus={HistoryUtils.getStatus} openPayModal={openPayModal}
+        reopenTransaction={async (t) => {
+          if (!supabase || !window.confirm('Deseja reabrir este lançamento?')) return;
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+            const isCardPayment = t.type === 'BILL_PAYMENT' || t.description.toLowerCase().includes('pagamento cartão');
+            if (isCardPayment) {
+              const statementId = (t as any).metadata?.statement_id;
+              if (statementId) {
+                const { data: stmCur } = await supabase.from('card_statements').select('paid_amount').eq('id', statementId).maybeSingle();
+                if (stmCur) {
+                  await supabase.from('card_statements').update({ status: 'OPEN', paid_amount: Math.max(0, Number(stmCur.paid_amount) - Math.abs(t.amount)) }).eq('id', statementId);
+                }
+              }
+              await supabase.from('transactions').update({ is_deleted: true }).eq('id', t.id);
+            } else {
+              await supabase.from('transactions').update({ is_paid: false, paid_amount: 0, paid_at: null }).eq('id', t.id);
+            }
+            await supabase.rpc('recalculate_account_balance', { p_account_id: t.accountId });
+            await fetchData();
+          } catch (e) { console.error(e); alert('Erro ao reabrir'); }
+        }}
+      />
+
+      <PaymentModal show={payModal.open} onClose={() => setPayModal({ open: false })} onSubmit={submitPayment}
+        tx={payModal.open ? payModal.tx : null} remaining={payModal.open ? payModal.remaining : 0}
+        payAmount={payModal.open ? payModal.payAmount : ''} setPayAmount={(v) => setPayModal(prev => prev.open ? { ...prev, payAmount: v } : prev)}
+        splitRemainder={payModal.open ? payModal.splitRemainder : false} setSplitRemainder={(v) => setPayModal(prev => prev.open ? { ...prev, splitRemainder: v } : prev)}
+        isSubmitting={payModal.open ? payModal.isSubmitting : false} error={payModal.open ? payModal.error : null} formatCurrency={HistoryUtils.formatCurrency}
+      />
+
+      <AddTransactionModal show={addModal.open} onClose={() => setAddModal({ open: false })} onSubmit={createManualTransaction}
+        isSubmitting={addModal.open ? addModal.isSubmitting : false} error={addModal.open ? addModal.error : null}
+        form={addModal.open ? addModal.form : {} as any} setAddField={(f, v) => setAddModal(prev => prev.open ? { ...prev, form: { ...prev.form, [f]: v } } : prev)}
+        accounts={accounts} categories={CATEGORIES}
+      />
+
+      <SeriesScopeModal
+        show={seriesModal.show} onClose={() => setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' })}
+        onConfirm={(scope) => seriesModal.pendingAction === 'DELETE' ? handleDelete(seriesModal.tx!.id, scope) : handleUpdate(seriesModal.tx!.id, seriesModal.pendingPatch!.field, seriesModal.pendingPatch!.value, scope)}
+        title={seriesModal.pendingAction === 'DELETE' ? 'Excluir Lançamento' : 'Editar Lançamento'}
+        actionLabel={seriesModal.pendingAction === 'DELETE' ? 'Excluir' : 'Salvar'}
+        type={seriesModal.tx?.metadata?.recurrence_group_id ? 'RECURRING' : 'INSTALLMENT'}
+      />
     </div>
   );
 };
