@@ -3,7 +3,7 @@ import { Profile, DashboardData } from '../types';
 import {
   TrendingUp,
   Wallet,
-  CreditCard,
+  CreditCard as CreditCardIcon,
   Calendar,
   Sparkles,
   ArrowUpRight,
@@ -12,7 +12,10 @@ import {
   Zap,
   MoreHorizontal,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Plus
 } from 'lucide-react';
 import { DashboardService } from '../services/dashboard.service';
 import { DateUtils } from '../lib/dateUtils';
@@ -21,6 +24,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
   const [data, setData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showBalance, setShowBalance] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
@@ -42,176 +46,203 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
     minimumFractionDigits: 2
   }).format(v);
 
+  // Helper function for credit card icons matching image
+  const getCardLogo = (brand: string) => {
+    const b = brand.toLowerCase();
+    const fallback = <CreditCardIcon size={18} className="text-slate-400" />;
+
+    // Usando URLs mais estáveis e leves (Vector Logo Zone)
+    if (b.includes('visa')) return <img src="https://www.vectorlogo.zone/logos/visa/visa-ar21.svg" className="h-3 object-contain" alt="Visa" onError={(e) => (e.currentTarget.style.display = 'none')} />;
+    if (b.includes('master')) return <img src="https://www.vectorlogo.zone/logos/mastercard/mastercard-ar21.svg" className="h-5 object-contain" alt="Mastercard" onError={(e) => (e.currentTarget.style.display = 'none')} />;
+    if (b.includes('amex')) return <img src="https://www.vectorlogo.zone/logos/amex/amex-ar21.svg" className="h-4 object-contain" alt="Amex" onError={(e) => (e.currentTarget.style.display = 'none')} />;
+
+    return fallback;
+  };
+
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-        <Loader2 className="animate-spin text-brand-600" size={48} />
-        <p className="text-slate-400 font-black uppercase tracking-widest text-xs">Sincronizando Excelência...</p>
+      <div className="flex flex-col items-center justify-center min-h-screen space-y-4">
+        <div className="w-10 h-10 border-2 border-slate-200 border-t-brand-600 rounded-full animate-spin" />
+        <p className="text-slate-400 font-medium tracking-widest text-[10px] uppercase">Carregando FinVision...</p>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 px-4 text-center">
-        <div className="p-6 bg-rose-50 text-rose-600 rounded-[32px] border border-rose-100 shadow-inner">
-          <AlertCircle size={48} />
-        </div>
-        <div className="space-y-2">
-          <h3 className="text-2xl font-black text-slate-900 tracking-tight">Ops! Algo deu errado.</h3>
-          <p className="text-slate-500 font-medium max-w-sm">{error || 'Não foi possível carregar seus dados.'}</p>
-        </div>
-        <button onClick={() => window.location.reload()} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl hover:bg-black transition-all active:scale-95">
-          Tentar Novamente
-        </button>
+      <div className="flex flex-col items-center justify-center min-h-screen space-y-6">
+        <AlertCircle className="text-rose-500" size={40} />
+        <p className="text-slate-500 font-medium">{error || 'Falha na conexão.'}</p>
+        <button onClick={() => window.location.reload()} className="px-6 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase">Recarregar</button>
       </div>
     );
   }
 
   return (
-    <div className="w-full flex justify-center py-6 sm:py-10 px-4 sm:px-6 lg:px-8 animate-in fade-in duration-700">
-      <div className="inline-block min-w-min max-w-full space-y-8 sm:space-y-10">
-        {/* Header Section */}
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div className="space-y-1">
-            <h1 className="text-3xl sm:text-4xl font-display font-black text-slate-900 tracking-tight dark:text-white">
-              Excelência <span className="text-brand-600 italic">Financeira</span>
-            </h1>
-            <p className="text-slate-500 font-medium text-base sm:text-lg">
-              Bem-vindo de volta, <span className="text-slate-900 font-bold dark:text-slate-200">{user.email.split('@')[0]}</span>
-            </p>
+    <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
+      {/* HEADER ROW */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Visão Geral</h1>
+          <p className="text-sm text-slate-400 font-medium">Monitorando sua saúde financeira com excelência.</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <button className="p-3 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-slate-900 transition-colors shadow-sm relative">
+            <Bell size={20} />
+            <div className="absolute top-3 right-3 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
+          </button>
+          <button className="hidden sm:flex items-center gap-2 px-5 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95">
+            <Plus size={18} />
+            Novo Lançamento
+          </button>
+        </div>
+      </div>
+
+      {/* BALANCE CARDS GRID */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="lg:col-span-3 bg-brand-600 rounded-[32px] p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-500/30 group">
+          <div className="absolute -right-10 -bottom-10 opacity-10 group-hover:scale-110 transition-transform duration-1000">
+            <Wallet size={200} />
           </div>
 
-          <div className="flex items-center gap-3">
-            <button className="p-3 sm:p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm text-slate-400 hover:text-brand-600 transition-all hover:scale-105">
-              <Bell size={20} />
-            </button>
-            <div className="flex items-center gap-3 sm:gap-4 bg-white dark:bg-slate-800 p-3 sm:p-4 sm:pr-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm group cursor-pointer hover:border-brand-200 transition-all hover:scale-105 active:scale-95">
-              <div className="p-2 bg-brand-50 dark:bg-brand-900/30 rounded-xl text-brand-600">
-                <Calendar size={18} />
-              </div>
-              <p className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-200 uppercase tracking-tight">
-                {DateUtils.formatFullMonthYearNoSlash(DateUtils.getNow().getFullYear(), DateUtils.getNow().getMonth() + 1)}
-              </p>
-            </div>
-          </div>
-        </header>
-
-        {/* Main Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-          {/* Balance Card - Premium Large */}
-          <div className="md:col-span-2 bg-gradient-to-br from-brand-600 to-indigo-700 p-6 sm:p-10 rounded-[32px] sm:rounded-[48px] text-white shadow-2xl shadow-brand-500/30 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:scale-110 transition-transform duration-1000 hidden sm:block">
-              <Wallet size={200} />
-            </div>
-
-            <div className="relative z-10 space-y-6 sm:space-y-10">
-              <div className="flex items-center justify-between">
-                <div className="px-4 sm:px-5 py-2 bg-white/20 backdrop-blur-md border border-white/10 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em]">
-                  Patrimônio Consolidado
-                </div>
-                <div className="flex items-center gap-1 sm:gap-2 text-emerald-300 font-black text-xs sm:text-sm uppercase tracking-tighter">
-                  <ArrowUpRight size={16} sm:size={18} />
-                  <span>+4.2%</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-white/70 text-[10px] sm:text-sm font-black uppercase tracking-widest pl-1">Saldo Total Disponível</p>
-                <h2 className="text-4xl sm:text-6xl font-display font-black tracking-tighter truncate">
-                  {format(data.consolidatedBalance)}
+          <div className="relative z-10 flex flex-col h-full justify-between gap-12">
+            <div className="flex justify-between items-start">
+              <div className="space-y-1">
+                <p className="text-white/70 text-sm font-medium">Saldo Total</p>
+                <h2 className={`text-4xl sm:text-5xl font-bold tracking-tight transition-all duration-300 ${!showBalance && 'blur-xl select-none'}`}>
+                  {showBalance ? format(data.consolidatedBalance) : 'R$ 00.000,00'}
                 </h2>
               </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2 sm:pt-4">
-                <button className="w-full sm:w-auto px-8 py-4 bg-white text-brand-600 rounded-[16px] sm:rounded-[20px] font-black text-xs uppercase tracking-widest hover:bg-brand-50 shadow-xl shadow-black/10 transition-all active:scale-95">
-                  Ver Detalhes
-                </button>
-                <button className="w-full sm:w-auto px-8 py-4 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-[16px] sm:rounded-[20px] font-black text-xs uppercase tracking-widest hover:bg-white/20 transition-all active:scale-95">
-                  Novo Lançamento
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Net Worth Sidebar Card */}
-          <div className="bg-white dark:bg-slate-800 p-6 sm:p-10 rounded-[32px] sm:rounded-[48px] border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col justify-between card-premium group hover:border-brand-100 transition-all">
-            <div className="space-y-6 sm:space-y-8">
-              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-indigo-50 dark:bg-indigo-900/30 rounded-[16px] sm:rounded-[20px] flex items-center justify-center text-indigo-600 shadow-inner group-hover:bg-brand-50 group-hover:text-brand-600 transition-all group-hover:rotate-3">
-                <TrendingUp size={28} sm:size={32} />
-              </div>
-              <div className="space-y-2">
-                <p className="text-[9px] sm:text-[10px] text-slate-400 font-black uppercase tracking-[0.2em]">Patrimônio Líquido</p>
-                <h3 className="text-3xl sm:text-4xl font-display font-black text-slate-900 dark:text-white tracking-tight truncate">
-                  {format(data.netWorth)}
-                </h3>
-              </div>
+              <button
+                onClick={() => setShowBalance(!showBalance)}
+                className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
+              >
+                {showBalance ? <Eye size={18} /> : <EyeOff size={18} />}
+              </button>
             </div>
 
-            <div className="pt-6 sm:pt-8 mt-6 sm:mt-0 border-t border-slate-50 dark:border-slate-700/50 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-slate-500 font-black text-[9px] sm:text-[10px] uppercase tracking-widest">
-                <Target size={14} sm:size={16} className="text-brand-600" />
-                Meta: 75%
-              </div>
-              <div className="w-24 sm:w-32 h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden shadow-inner">
-                <div className="h-full bg-brand-500 rounded-full shadow-lg shadow-brand-500/50 transition-all duration-1000" style={{ width: '75%' }}></div>
+            <div className="flex items-center gap-2 text-white font-medium text-xs">
+              <div className="px-2 py-0.5 bg-white/20 rounded-md">Patrimônio Líquido</div>
+              <span className={`font-bold ${!showBalance && 'blur-md'}`}>{showBalance ? format(data.netWorth) : '---'}</span>
+              <div className="p-1 px-2 border border-white/20 rounded-md flex items-center gap-1 ml-auto cursor-pointer hover:bg-white/10 transition-colors">
+                Detalhes <ArrowUpRight size={14} />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Secondary Row: Credit Cards & AI Insights */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 pb-10">
-          {/* Credit Cards Section */}
-          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8">
+        <div className="flex flex-col gap-4">
+          {/* Growth Widget */}
+          <div className="flex-1 bg-white border border-slate-100 rounded-[24px] p-6 shadow-sm flex flex-col justify-between group cursor-pointer hover:border-brand-200 transition-all">
+            <div className="flex justify-between items-start">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Crescimento</p>
+              <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg"><ArrowUpRight size={14} /></div>
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold text-slate-900 tracking-tight">{data.netWorthGrowth ? `${data.netWorthGrowth.toFixed(1)}%` : '--'}</h3>
+              <p className="text-[10px] text-slate-400 font-medium">Crescimento Patrimonial</p>
+            </div>
+          </div>
+
+          <div className="flex-1 bg-white border border-slate-100 rounded-[24px] p-6 shadow-sm flex flex-col justify-between group cursor-pointer hover:border-brand-200 transition-all">
+            <div className="flex justify-between items-start">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Despesas</p>
+              <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg"><ArrowDownRight size={14} className="rotate-0" /></div>
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold text-slate-900 tracking-tight">{format(data.totalExpenses || 0)}</h3>
+              <p className="text-[10px] text-slate-400 font-medium">Este Mês (Estimado)</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* MID SECTION: CREDIT CARDS & INSIGHTS */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="lg:col-span-8 space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-slate-900">Cartões de Crédito</h3>
+            <button className="text-xs font-bold text-brand-600 hover:underline">Ver Mais</button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {data.creditCards.map((card, i) => (
-              <div key={i} className="bg-white dark:bg-slate-800 p-6 sm:p-10 rounded-[32px] sm:rounded-[40px] border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col justify-between card-premium hover:border-brand-100 transition-all group">
-                <div className="flex items-center justify-between mb-6 sm:mb-10">
-                  <div className={`p-3 sm:p-4 ${card.color} rounded-xl sm:rounded-2xl text-white shadow-xl shadow-black/10 transform group-hover:scale-110 group-hover:rotate-6 transition-all`}>
-                    <CreditCard size={20} sm:size={22} />
+              <div key={i} className="bg-white border border-slate-100/80 rounded-[24px] p-5 shadow-sm hover:border-brand-100 transition-all group">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="bg-slate-50 p-2 py-3 rounded-lg flex items-center justify-center min-w-[50px]">
+                    {getCardLogo(card.brand)}
                   </div>
-                  <button className="p-2 sm:p-3 text-slate-300 hover:text-slate-500 transition-colors">
-                    <MoreHorizontal size={20} />
-                  </button>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-slate-900">{card.brand}</p>
+                    <p className="text-[10px] text-slate-400 tracking-widest">****1234</p>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-[9px] sm:text-[10px] text-slate-400 font-black uppercase tracking-[0.2em]">{card.brand}</p>
-                  <h4 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">{format(card.current)}</h4>
+
+                <div className="flex items-end justify-between">
+                  <div className="space-y-0.5">
+                    <h4 className={`text-xl font-bold text-slate-900 ${!showBalance && 'blur-md'}`}>{showBalance ? format(card.current) : 'R$ ••••'}</h4>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[9px] text-slate-400 font-medium italic">de {format(card.limit || 0)}</p>
+                  </div>
                 </div>
-                <div className="mt-4 sm:mt-6 flex flex-wrap items-center gap-2 sm:gap-3">
-                  <div className="px-2.5 py-1 bg-brand-50 dark:bg-slate-700 rounded-lg text-[9px] sm:text-[10px] font-black text-brand-600 uppercase tracking-widest border border-brand-100 dark:border-transparent">Fat. Aberta</div>
-                  <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold">Vence em 12 dias</p>
+                <div className="mt-4 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${card.color.includes('brand') ? 'bg-brand-500' : 'bg-slate-950'} rounded-full opacity-60 transition-all duration-1000`}
+                    style={{ width: `${Math.min((card.current / (card.limit || 1)) * 100, 100)}%` }}
+                  />
                 </div>
               </div>
             ))}
             {data.creditCards.length === 0 && (
-              <div className="col-span-1 sm:col-span-2 p-8 sm:p-12 bg-slate-50 dark:bg-slate-800/50 rounded-[32px] sm:rounded-[40px] border border-dashed border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-center space-y-4">
-                <CreditCard size={36} sm:size={40} className="text-slate-300 dark:text-slate-600" />
-                <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs">Nenhum cartão cadastrado</p>
+              <div className="col-span-1 md:col-span-2 py-10 border border-dashed border-slate-200 rounded-[24px] flex flex-col items-center justify-center grayscale opacity-50">
+                <CreditCardIcon size={40} className="text-slate-300" />
+                <p className="text-xs font-bold text-slate-400 uppercase mt-4">Nenhum cartão encontrado</p>
               </div>
             )}
           </div>
+        </div>
 
-          {/* AI Insight Teaser */}
-          <div className="bg-gradient-to-br from-slate-900 to-indigo-950 p-8 sm:p-10 rounded-[32px] sm:rounded-[48px] text-white shadow-2xl relative overflow-hidden group border border-white/5">
-            <div className="absolute -bottom-16 -right-16 opacity-30 group-hover:rotate-12 transition-transform duration-1000 scale-125 sm:scale-150">
-              <Sparkles size={180} />
-            </div>
+        <div className="lg:col-span-4 space-y-6">
+          <h3 className="text-lg font-bold text-slate-900">Insights AI</h3>
 
-            <div className="relative z-10 flex flex-col h-full justify-between gap-6 sm:gap-8">
-              <div className="space-y-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-600 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-brand-500/40 ring-4 ring-brand-500/10 animate-pulse">
-                  <Zap size={10} sm:size={12} fill="currentColor" /> Labs Live
+          <div className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm relative overflow-hidden group">
+            <div className="absolute top-0 left-0 w-32 h-32 bg-indigo-100/50 rounded-full blur-3xl -translate-x-10 -translate-y-10 group-hover:scale-150 transition-transform duration-1000" />
+
+            <div className="relative z-10 flex flex-col gap-6">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-indigo-50 border border-indigo-100 rounded-[20px] flex items-center justify-center text-indigo-600 shadow-sm">
+                  <Sparkles size={28} />
                 </div>
-                <h3 className="text-2xl sm:text-3xl font-display font-black leading-[1.1] tracking-tight">Insight <br /><span className="text-brand-400 italic">Inteligente</span></h3>
-                <p className="text-slate-300 text-xs sm:text-sm leading-relaxed font-medium">
-                  Você gastou <span className="text-brand-400 font-black">12% a menos</span> em restaurantes nesta semana. Excelente controle!
-                </p>
+                <div>
+                  <h4 className="font-bold text-slate-900">Análise de Gastos</h4>
+                  <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Inteligência Ativa</p>
+                </div>
               </div>
 
-              <button className="w-full py-4 sm:py-5 bg-white/10 hover:bg-white text-white hover:text-slate-900 rounded-[20px] sm:rounded-[24px] font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all border border-white/10 hover:border-white active:scale-95 shadow-2xl">
-                Analisar Gastos
-              </button>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                Seus gastos este mês totalizam <span className="text-indigo-600 font-bold">{format(data.totalExpenses || 0)}</span>. Continue acompanhando para otimizar sua saúde financeira.
+              </p>
+
+              <div className="flex items-center gap-2 mt-2">
+                <button className="flex-1 py-3 text-[10px] font-bold text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-widest">Ignorar</button>
+                <button className="flex-1 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-lg active:scale-95">Ver Mais</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 rounded-[32px] p-6 text-white group cursor-pointer overflow-hidden relative">
+            <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:rotate-12 transition-transform">
+              <Zap size={100} fill="currentColor" />
+            </div>
+            <div className="relative z-10 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-white/50 uppercase tracking-widest mb-1">Média Mensal</p>
+                <h3 className="text-2xl font-bold tracking-tight">{format(data.lastMonthExpenses || 0)}</h3>
+              </div>
+              <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                <div className="h-full bg-brand-400 w-2/3" />
+              </div>
             </div>
           </div>
         </div>
@@ -219,5 +250,11 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
     </div>
   );
 };
+
+const ArrowDownRight: React.FC<{ size?: number; className?: string }> = ({ size = 20, className = "" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M7 7l10 10M17 7v10H7" />
+  </svg>
+);
 
 export default Home;
