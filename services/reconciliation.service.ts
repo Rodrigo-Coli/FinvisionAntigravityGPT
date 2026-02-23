@@ -44,12 +44,13 @@ export const ReconciliationService = {
     onProgress?.("Verificando integridade...");
     const fileHash = await this.computeFileHash(file);
 
-    // 1. Verificar deduplicação por hash na tabela direta
+    // 1. Verificar deduplicação por hash na tabela direta, considerando a fonte
     const { data: existing } = await supabase
       .from('imports')
       .select('id, status, notes')
       .eq('user_id', user.id)
       .eq('file_sha256', fileHash)
+      .eq('source_type', importSource) // Evita deduplicar se mudou de 'bank' para 'smart'
       .maybeSingle();
 
     if (existing) {
