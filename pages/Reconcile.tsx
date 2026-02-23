@@ -37,7 +37,7 @@ const Reconcile: React.FC = () => {
   const [isLoadingTargets, setIsLoadingTargets] = useState(false);
   const [progressStep, setProgressStep] = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState('');
-  const [importSource, setImportSource] = useState<'bank' | 'card'>('bank');
+  const [importSource, setImportSource] = useState<'bank' | 'card' | 'smart'>('bank');
   const [isLoadingQueue, setIsLoadingQueue] = useState(true);
   const [recentImports, setRecentImports] = useState<any[]>([]);
   const [categories] = useState<string[]>([
@@ -294,12 +294,15 @@ const Reconcile: React.FC = () => {
           <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-8">
             <div className="space-y-4">
               <p className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em]">Fluxo de Entrada</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => setImportSource('bank')} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border text-[10px] font-bold uppercase transition-all ${importSource === 'bank' ? 'bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-200' : 'bg-slate-50 border-slate-50 text-slate-400'}`}>
-                  <Building2 size={24} /> Banco
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={() => setImportSource('bank')} className={`flex flex-col items-center gap-3 p-4 rounded-3xl border text-[9px] font-bold uppercase transition-all ${importSource === 'bank' ? 'bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-200' : 'bg-slate-50 border-slate-50 text-slate-400'}`}>
+                  <Building2 size={20} /> Banco
                 </button>
-                <button onClick={() => setImportSource('card')} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border text-[10px] font-bold uppercase transition-all ${importSource === 'card' ? 'bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-200' : 'bg-slate-50 border-slate-50 text-slate-400'}`}>
-                  <CreditCard size={24} /> Cartão
+                <button onClick={() => setImportSource('card')} className={`flex flex-col items-center gap-3 p-4 rounded-3xl border text-[9px] font-bold uppercase transition-all ${importSource === 'card' ? 'bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-200' : 'bg-slate-50 border-slate-50 text-slate-400'}`}>
+                  <CreditCard size={20} /> Cartão
+                </button>
+                <button onClick={() => setImportSource('smart')} className={`flex flex-col items-center gap-3 p-4 rounded-3xl border text-[9px] font-bold uppercase transition-all ${importSource === 'smart' ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-200' : 'bg-slate-50 border-slate-50 text-slate-400'}`}>
+                  <Sparkles size={20} /> Diversos
                 </button>
               </div>
             </div>

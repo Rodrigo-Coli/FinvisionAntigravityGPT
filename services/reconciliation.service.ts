@@ -31,7 +31,7 @@ export const ReconciliationService = {
     onProgress
   }: {
     file: File;
-    importSource: 'bank' | 'card';
+    importSource: 'bank' | 'card' | 'smart';
     accountId: string;
     accountName: string;
     onProgress?: (step: string) => void;
@@ -113,7 +113,7 @@ export const ReconciliationService = {
       source_type: importSource,
       parse_meta: {
         account_name: accountName,
-        is_mobills: file.name.toLowerCase().includes('mobills')
+        is_mobills: importSource === 'smart' || file.name.toLowerCase().includes('mobills')
       }
     }).select('id').single();
 
@@ -129,7 +129,7 @@ export const ReconciliationService = {
     importId: string,
     accountId: string,
     accountName: string,
-    importSource: 'bank' | 'card'
+    importSource: 'bank' | 'card' | 'smart'
   ) {
     const endpoint = importSource === 'card'
       ? '/api/handle-card-reconcile'
