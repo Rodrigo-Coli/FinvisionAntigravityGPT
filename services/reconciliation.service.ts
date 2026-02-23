@@ -107,7 +107,7 @@ export const ReconciliationService = {
       document_id: doc.id,
       notes: `Source: ${importSource} | Account: ${accountName}`,
       file_sha256: fileHash,
-      account_id: accountId,
+      account_id: accountId === '' ? null : accountId,
 
       // ✅ ADIÇÕES SEGURAS (não mudam fluxo)
       source_type: importSource,

@@ -149,7 +149,22 @@ const Reconcile: React.FC = () => {
     if (!file || !supabase) return;
     setIsProcessing(true); setProgressStep("Iniciando...");
     try {
-      const importId = await ReconciliationService.startImport({ file, importSource, accountId: selectedTargetId, accountName: 'Importação Direta', onProgress: setProgressStep });
+      let targetName = 'Importação Direta';
+      if (selectedTargetId) {
+        if (importSource === 'bank') {
+          targetName = realAccounts.find(a => a.id === selectedTargetId)?.institution || targetName;
+        } else {
+          targetName = realCards.find(c => c.id === selectedTargetId)?.name || targetName;
+        }
+      }
+
+      const importId = await ReconciliationService.startImport({
+        file,
+        importSource,
+        accountId: selectedTargetId,
+        accountName: targetName,
+        onProgress: setProgressStep
+      });
       await ReconciliationService.pollImportStatus(importId, (imp) => {
         if (imp.status === 'processing') setProgressStep("IA analisando...");
       });
