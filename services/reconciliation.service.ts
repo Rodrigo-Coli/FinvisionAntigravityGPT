@@ -111,7 +111,10 @@ export const ReconciliationService = {
 
       // ✅ ADIÇÕES SEGURAS (não mudam fluxo)
       source_type: importSource,
-      parse_meta: { account_name: accountName }
+      parse_meta: {
+        account_name: accountName,
+        is_mobills: file.name.toLowerCase().includes('mobills')
+      }
     }).select('id').single();
 
     if (impErr) throw impErr;
@@ -163,7 +166,7 @@ export const ReconciliationService = {
         attempts++;
 
         // Consulta em dois passos para evitar erro 409/PGRST201
-        const { data: imp, error: impErr } = await supabase
+        const { data: imp, error: impErr } = await supabase!
           .from('imports')
           .select('id, status, document_id, created_at, type, notes')
           .eq('id', importId)
@@ -177,7 +180,7 @@ export const ReconciliationService = {
         // Buscar nome original se disponível
         let originalName = 'Arquivo';
         if (imp.document_id) {
-          const { data: doc } = await supabase
+          const { data: doc } = await supabase!
             .from('documents')
             .select('original_name')
             .eq('id', imp.document_id)
