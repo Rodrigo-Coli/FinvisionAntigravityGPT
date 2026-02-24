@@ -197,6 +197,8 @@ export interface ImportedTransaction {
   installment_total?: number;
   owner_name?: string;
   category?: string;
+  potential_duplicate?: boolean;
+  duplicate_reason?: string;
 }
 
 export interface ReceiptItem {

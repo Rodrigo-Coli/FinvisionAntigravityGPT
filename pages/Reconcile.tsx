@@ -124,7 +124,16 @@ const Reconcile: React.FC = () => {
       const { data, error } = await supabase.from('imported_transactions').select('*').eq('user_id', user.id).or('status.eq.READY_TO_RECONCILE,status.eq.ready,status.eq.pending').order('date', { ascending: false });
       if (error) throw error;
       setImported((data || []).map((t: any) => ({
-        id: t.id, date: t.date, description: t.description, amount: Number(t.amount), status: t.status as MatchStatus, type: t.amount >= 0 ? 'credit' : 'debit', owner_name: t.owner_name || 'Pessoal'
+        id: t.id,
+        date: t.date,
+        description: t.description,
+        amount: Number(t.amount),
+        status: t.status as MatchStatus,
+        type: t.amount >= 0 ? 'credit' : 'debit',
+        owner_name: t.owner_name || 'Pessoal',
+        category: t.category,
+        potential_duplicate: t.potential_duplicate,
+        duplicate_reason: t.duplicate_reason
       })));
     } catch (err) { console.error(err); }
   };
@@ -358,11 +367,29 @@ const Reconcile: React.FC = () => {
                         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                           {/* Col 1: Desc & Date */}
                           <div className="lg:col-span-1 space-y-1">
-                            <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{DateUtils.formatDisplayDate(item.date)}</p>
+                            {isEditing ? (
+                              <input
+                                type="date"
+                                value={editForm.date || item.date}
+                                onChange={e => setEditForm({ ...editForm, date: e.target.value })}
+                                className="w-full bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-2 focus:ring-brand-500 mb-1"
+                              />
+                            ) : (
+                              <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{DateUtils.formatDisplayDate(item.date)}</p>
+                            )}
+
                             {isEditing ? (
                               <input type="text" value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} className="w-full bg-slate-50 border-none rounded-xl text-xs font-bold p-2 outline-none focus:ring-2 focus:ring-brand-500" />
                             ) : (
-                              <h4 className="text-xs font-bold text-slate-900 truncate uppercase" title={item.description}>{item.description}</h4>
+                              <div className="space-y-1">
+                                <h4 className="text-xs font-bold text-slate-900 truncate uppercase" title={item.description}>{item.description}</h4>
+                                {item.potential_duplicate && (
+                                  <div className="flex items-start gap-1 p-1.5 bg-amber-50 rounded-lg border border-amber-100">
+                                    <AlertCircle size={10} className="text-amber-500 mt-0.5 shrink-0" />
+                                    <p className="text-[8px] font-bold text-amber-600 uppercase leading-[1.2]">{item.duplicate_reason || "Possível Duplicidade"}</p>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
 
@@ -423,9 +450,20 @@ const Reconcile: React.FC = () => {
                           {isEditing ? (
                             <button onClick={() => saveEdit(item.id)} className="p-3 bg-brand-600 text-white rounded-xl shadow-lg shadow-brand-100 hover:bg-slate-900 transition-all"><Check size={20} /></button>
                           ) : (
-                            <button onClick={() => handleConfirm(item)} className="h-12 px-6 bg-slate-900 text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-brand-600 shadow-xl shadow-slate-200 transition-all active:scale-95">Confirmar</button>
+                            <>
+                              {item.potential_duplicate ? (
+                                <div className="flex flex-col gap-2">
+                                  <button onClick={() => ReconciliationService.updateTransactionStatus(item.id, 'IGNORED').then(() => fetchData())} className="h-9 px-4 bg-amber-500 text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-amber-600 shadow-md shadow-amber-200 transition-all active:scale-95">Ignorar (Duplicado)</button>
+                                  <button onClick={() => handleConfirm(item)} className="h-9 px-4 border border-rose-200 text-rose-500 bg-white text-[9px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-rose-50 hover:border-rose-300 transition-all active:scale-95">Forçar Inserção</button>
+                                </div>
+                              ) : (
+                                <>
+                                  <button onClick={() => handleConfirm(item)} className="h-12 px-6 bg-slate-900 text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-brand-600 shadow-xl shadow-slate-200 transition-all active:scale-95">Confirmar</button>
+                                  <button onClick={() => ReconciliationService.updateTransactionStatus(item.id, 'IGNORED').then(() => fetchData())} className="p-3 text-slate-300 hover:text-rose-500 transition-colors"><XCircle size={20} /></button>
+                                </>
+                              )}
+                            </>
                           )}
-                          <button onClick={() => ReconciliationService.updateTransactionStatus(item.id, 'IGNORED').then(() => fetchData())} className="p-3 text-slate-300 hover:text-rose-500 transition-colors"><XCircle size={20} /></button>
                         </div>
                       </div>
                     </div>

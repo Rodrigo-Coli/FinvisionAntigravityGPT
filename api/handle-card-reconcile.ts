@@ -281,7 +281,9 @@ export default async function handler(req: any, res: any) {
         if (cardErr) throw new Error(`Falha ao inserir histórico Mobills Card: ${cardErr.message}`);
       } else {
         // PADRÃO: Salvar na fila de conciliação (imported_transactions)
-        const txsToInsert = processedTxs.map((t: any) => {
+        const txsToInsert = [];
+
+        for (const t of processedTxs) {
           const description = t.description || t.merchant || t.merchant_normalized || 'Transação sem descrição';
           const todaySP = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
           const date = t.date || todaySP;
@@ -289,15 +291,51 @@ export default async function handler(req: any, res: any) {
           const fpData = `${date}|${amountVal.toFixed(2)}|${description.toLowerCase()}|${targetAccountId || ''}`;
           const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
 
-          return {
+          if (fingerprintsSeen.has(fingerprint)) continue;
+          fingerprintsSeen.set(fingerprint, true);
+
+          // Fuzzy Duplicate Check (±3 days, ±R$0.05)
+          let isDuplicate = false;
+          let dupReason = null;
+
+          const txDateObj = new Date(date);
+          const minDate = new Date(txDateObj);
+          minDate.setDate(minDate.getDate() - 3);
+          const maxDate = new Date(txDateObj);
+          maxDate.setDate(maxDate.getDate() + 3);
+
+          const minAmount = Math.abs(amountVal) - 0.05;
+          const maxAmount = Math.abs(amountVal) + 0.05;
+
+          if (targetAccountId) {
+            const { data: possibleDups } = await supabase
+              .from('card_transactions')
+              .select('id, date, amount, description')
+              .eq('user_id', imp.user_id)
+              .eq('card_id', targetAccountId)
+              .gte('date', minDate.toISOString().split('T')[0])
+              .lte('date', maxDate.toISOString().split('T')[0])
+              .gte('amount', minAmount)
+              .lte('amount', maxAmount)
+              .limit(1);
+
+            if (possibleDups && possibleDups.length > 0) {
+              isDuplicate = true;
+              dupReason = `Transação similar no cartão: ${possibleDups[0].description} em ${possibleDups[0].date} (R$ ${possibleDups[0].amount})`;
+            }
+          }
+
+          txsToInsert.push({
             user_id: imp.user_id,
             import_id: import_id,
             date: date,
             description: description,
-            amount: -Math.abs(amountVal),
+            amount: -Math.abs(amountVal), // Cartão é sempre negativo na fila por padrao
             account_id: targetAccountId,
             status: 'READY_TO_RECONCILE',
             fingerprint: fingerprint,
+            potential_duplicate: isDuplicate,
+            duplicate_reason: dupReason,
             metadata: {
               is_card: true,
               merchant_normalized: t.merchant_normalized || t.merchant || description,
@@ -306,12 +344,8 @@ export default async function handler(req: any, res: any) {
                 total: t.installment_total || null
               }
             }
-          };
-        }).filter((tx: any) => {
-          if (fingerprintsSeen.has(tx.fingerprint)) return false;
-          fingerprintsSeen.set(tx.fingerprint, true);
-          return true;
-        });
+          });
+        }
 
         const { error: insErr } = await supabase
           .from('imported_transactions')

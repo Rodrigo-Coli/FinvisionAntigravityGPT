@@ -301,32 +301,69 @@ export default async function handler(req: any, res: any) {
         }
       } else {
         // PADRÃO: Salvar na fila de conciliação (imported_transactions)
-        const txsToInsert = transactions
-          .filter((t: any) => t.date && typeof t.amount === 'number' && t.amount !== 0)
-          .map((t: any) => {
-            const cleanDesc = t.description.trim();
-            const todaySP = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
-            const txDate = t.date || todaySP;
-            const fpData = `${txDate}|${t.amount.toFixed(2)}|${cleanDesc.toLowerCase()}|${imp.account_id || ''}`;
-            const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
+        const txsToInsert = [];
 
-            return {
-              user_id: imp.user_id,
-              import_id: imp.id,
-              date: txDate,
-              description: cleanDesc,
-              amount: t.amount,
-              account_id: imp.account_id,
-              account_name: account_name || 'Importado',
-              source_document_id: imp.document_id,
-              status: 'READY_TO_RECONCILE',
-              fingerprint: fingerprint,
-              metadata: {
-                category_suggested: t.category,
-                parsed_at: new Date().toISOString()
-              }
-            };
+        for (const t of transactions) {
+          if (!t.date || typeof t.amount !== 'number' || t.amount === 0) continue;
+
+          const cleanDesc = t.description.trim();
+          const todaySP = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+          const txDate = t.date || todaySP;
+          const fpData = `${txDate}|${t.amount.toFixed(2)}|${cleanDesc.toLowerCase()}|${imp.account_id || ''}`;
+          const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
+
+          // Fuzzy Duplicate Check (±3 days, ±R$0.05)
+          let isDuplicate = false;
+          let dupReason = null;
+
+          const txDateObj = new Date(txDate);
+          const minDate = new Date(txDateObj);
+          minDate.setDate(minDate.getDate() - 3);
+          const maxDate = new Date(txDateObj);
+          maxDate.setDate(maxDate.getDate() + 3);
+
+          const minAmount = Math.abs(t.amount) - 0.05;
+          const maxAmount = Math.abs(t.amount) + 0.05;
+          const txType = t.amount < 0 ? 'EXPENSE' : 'INCOME';
+
+          if (imp.account_id) {
+            const { data: possibleDups } = await supabase
+              .from('transactions')
+              .select('id, date, amount, description')
+              .eq('user_id', imp.user_id)
+              .eq('account_id', imp.account_id)
+              .eq('type', txType)
+              .gte('date', minDate.toISOString().split('T')[0])
+              .lte('date', maxDate.toISOString().split('T')[0])
+              .gte('amount', minAmount)
+              .lte('amount', maxAmount)
+              .limit(1);
+
+            if (possibleDups && possibleDups.length > 0) {
+              isDuplicate = true;
+              dupReason = `Transação similar encontrada: ${possibleDups[0].description} em ${possibleDups[0].date} (R$ ${possibleDups[0].amount})`;
+            }
+          }
+
+          txsToInsert.push({
+            user_id: imp.user_id,
+            import_id: imp.id,
+            date: txDate,
+            description: cleanDesc,
+            amount: t.amount,
+            account_id: imp.account_id,
+            account_name: account_name || 'Importado',
+            source_document_id: imp.document_id,
+            status: 'READY_TO_RECONCILE',
+            fingerprint: fingerprint,
+            potential_duplicate: isDuplicate,
+            duplicate_reason: dupReason,
+            metadata: {
+              category_suggested: t.category,
+              parsed_at: new Date().toISOString()
+            }
           });
+        }
 
         const { error: insErr } = await supabase
           .from('imported_transactions')
