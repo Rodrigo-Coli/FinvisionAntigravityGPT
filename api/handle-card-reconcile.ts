@@ -104,52 +104,86 @@ export default async function handler(req: any, res: any) {
       }];
     }
 
-    const result = await ai.models.generateContent({
-      model,
-      contents,
-      generationConfig: {
-        responseMimeType: "application/json",
-        maxOutputTokens: 8192,
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            transactions: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  date: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  amount: { type: Type.NUMBER },
-                  merchant_normalized: { type: Type.STRING },
-                  installment_number: { type: Type.NUMBER },
-                  installment_total: { type: Type.NUMBER },
-                  category_name: { type: Type.STRING }, // Adicionado para Mobills
-                  card_name: { type: Type.STRING }      // Adicionado para Mobills
-                },
-                required: ["date", "description", "amount"]
-              }
+    const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+    let result: any = null;
+    let rawText = '';
+    let lastError: any = null;
+
+    for (let i = 0; i < fallbackModels.length; i++) {
+      const currentModel = fallbackModels[i];
+      console.log(`[API-Card] Tentando modelo: ${currentModel} (Tentativa ${i + 1}/${fallbackModels.length})`);
+
+      try {
+        result = await ai.models.generateContent({
+          model: currentModel,
+          contents,
+          generationConfig: {
+            responseMimeType: "application/json",
+            maxOutputTokens: 8192,
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                transactions: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      date: { type: Type.STRING },
+                      description: { type: Type.STRING },
+                      amount: { type: Type.NUMBER },
+                      merchant_normalized: { type: Type.STRING },
+                      installment_number: { type: Type.NUMBER },
+                      installment_total: { type: Type.NUMBER },
+                      category_name: { type: Type.STRING },
+                      card_name: { type: Type.STRING }
+                    },
+                    required: ["date", "description", "amount"]
+                  }
+                }
+              },
+              required: ["transactions"]
             }
-          },
-          required: ["transactions"]
+          }
+        });
+
+        // Pegar o texto de forma segura
+        try {
+          const response = result.response;
+          rawText = result.text ||
+            (response && response.text) ||
+            (response && typeof response.text === 'function' ? response.text() : '');
+        } catch (e) {
+          console.error('[API-Card] Erro ao extrair texto da resposta:', e);
+        }
+
+        console.log(`[API-Card] Sucesso com ${currentModel}. Resposta bruta da IA length: ${rawText.length}`);
+
+        if (rawText) {
+          break; // Sucesso, sai do loop
+        } else {
+          throw new Error('A IA não retornou nenhum dado nesse request.');
+        }
+
+      } catch (error: any) {
+        lastError = error;
+        const errMsg = error.message || String(error);
+        console.error(`[API-Card] Falha ao tentar ${currentModel}:`, errMsg);
+
+        const isQuotaError = errMsg.includes('429') || errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('exhausted');
+
+        if (isQuotaError && i < fallbackModels.length - 1) {
+          console.log(`[API-Card] Limite atingido (429). Chaveando para próximo modelo de Fallback...`);
+        } else {
+          break; // Não é erro de cota ou é o último modelo
         }
       }
-    });
-
-    // Pegar o texto de forma segura (Blindagem contra undefined)
-    let rawText = '';
-    try {
-      const response = result.response;
-      rawText = (result as any).text ||
-        (response && (response as any).text) ||
-        (response && typeof (response as any).text === 'function' ? response.text() : '');
-    } catch (e) {
-      console.error('[API-Card] Erro ao extrair texto da resposta:', e);
     }
 
-    console.log('[API-Card] Resposta bruta da IA (primeiros 100 char):', rawText.substring(0, 100));
+    console.log('[API-Card] Resposta final bruta da IA (primeiros 100 char):', rawText.substring(0, 100));
 
-    if (!rawText) throw new Error('A IA não retornou nenhum dado. Isso pode ser por filtros de segurança do Google ou o documento é ilegível.');
+    if (!rawText) {
+      throw new Error(`Falha final na IA após tentar modelo(s). Último erro: ${lastError?.message || 'O documento é ilegível ou a IA não retornou dados.'}`);
+    }
 
     const cleanJson = rawText.replace(/```json|```/g, "").trim();
     let parsedData;

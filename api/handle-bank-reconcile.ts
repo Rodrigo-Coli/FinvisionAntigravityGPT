@@ -122,50 +122,85 @@ export default async function handler(req: any, res: any) {
       }];
     }
 
-    const response = await ai.models.generateContent({
-      model,
-      contents,
-      generationConfig: {
-        responseMimeType: "application/json",
-        maxOutputTokens: 8192,
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            transactions: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  date: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  amount: { type: Type.NUMBER },
-                  category: { type: Type.STRING },
-                  account_name: { type: Type.STRING }, // Adicionado para Mobills
-                  category_name: { type: Type.STRING } // Adicionado para Mobills
-                },
-                required: ["date", "description", "amount"]
-              }
+    const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+
+    let response: any = null;
+    let rawText = '';
+    let lastError: any = null;
+
+    for (let i = 0; i < fallbackModels.length; i++) {
+      const currentModel = fallbackModels[i];
+      console.log(`[API] Tentando modelo: ${currentModel} (Tentativa ${i + 1}/${fallbackModels.length})`);
+
+      try {
+        response = await ai.models.generateContent({
+          model: currentModel,
+          contents,
+          generationConfig: {
+            responseMimeType: "application/json",
+            maxOutputTokens: 8192,
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                transactions: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      date: { type: Type.STRING },
+                      description: { type: Type.STRING },
+                      amount: { type: Type.NUMBER },
+                      category: { type: Type.STRING },
+                      account_name: { type: Type.STRING },
+                      category_name: { type: Type.STRING }
+                    },
+                    required: ["date", "description", "amount"]
+                  }
+                }
+              },
+              required: ["transactions"]
             }
-          },
-          required: ["transactions"]
+          }
+        });
+
+        // 6. PARSE_JSON: Validar retorno
+        console.log(`[parse-statement] STEP: PARSE_JSON`);
+        // Pegar o texto de forma segura
+        try {
+          rawText = (response as any).text || (response.response && (response.response as any).text) || (response.response && typeof (response.response as any).text === 'function' && (response.response as any).text()) || '';
+        } catch (e) {
+          console.error('[API] Erro ao extrair texto:', e);
+        }
+
+        console.log(`[API] Sucesso com ${currentModel}. Resposta bruta da IA length: ${rawText.length}`);
+
+        if (rawText) {
+          // Deu tudo certo, podemos sair do loop
+          break;
+        } else {
+          throw new Error('A IA não retornou nenhum dado nesse request.');
+        }
+
+      } catch (error: any) {
+        lastError = error;
+        const errMsg = error.message || String(error);
+        console.error(`[API] Falha ao tentar ${currentModel}:`, errMsg);
+
+        // Verifica se é erro 429 (Resource Exhausted)
+        const isQuotaError = errMsg.includes('429') || errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('exhausted');
+
+        if (isQuotaError && i < fallbackModels.length - 1) {
+          console.log(`[API] Limite atingido (429). Chaveando para próximo modelo de Fallback...`);
+          // Segue para a próxima iteração do loop
+        } else {
+          // Se não for erro de cota, ou se for o último modelo da lista, interrompe tudo
+          break;
         }
       }
-    });
-
-    // 6. PARSE_JSON: Validar retorno
-    console.log(`[parse-statement] STEP: PARSE_JSON`);
-    // Pegar o texto de forma segura
-    let rawText = '';
-    try {
-      rawText = (response as any).text || (response.response && (response.response as any).text) || (response.response && typeof (response.response as any).text === 'function' && (response.response as any).text()) || '';
-    } catch (e) {
-      console.error('[API] Erro ao extrair texto:', e);
     }
 
-    console.log('[API] Resposta bruta da IA:', rawText);
-
     if (!rawText) {
-      throw new Error('A IA não retornou nenhum dado.');
+      throw new Error(`Falha final na IA após tentar modelo(s). Último erro: ${lastError?.message || 'A IA não retornou nenhum dado.'}`);
     }
 
     const cleanJson = rawText.replace(/```json|```/g, "").trim();
