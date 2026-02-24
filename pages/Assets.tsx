@@ -74,7 +74,8 @@ const Assets: React.FC = () => {
     interestRate: '',
     installmentAmount: '',
     installmentsRemaining: '',
-    dueDay: ''
+    dueDay: '',
+    linkedAssetId: ''
   });
 
   const handleSaveLiability = async (e: React.FormEvent) => {
@@ -99,6 +100,7 @@ const Assets: React.FC = () => {
         installment_amount: installmentAmt,
         installments_remaining: installmentsLeft,
         due_day: dueDay,
+        linked_asset_id: liabilityFormData.linkedAssetId || null,
       }]).select();
 
       if (error) throw error;
@@ -137,7 +139,7 @@ const Assets: React.FC = () => {
       }
 
       setShowLiabilityModal(false);
-      setLiabilityFormData({ name: '', type: 'PERSONAL_LOAN', totalAmount: '', remainingBalance: '', interestRate: '', installmentAmount: '', installmentsRemaining: '', dueDay: '' });
+      setLiabilityFormData({ name: '', type: 'PERSONAL_LOAN', totalAmount: '', remainingBalance: '', interestRate: '', installmentAmount: '', installmentsRemaining: '', dueDay: '', linkedAssetId: '' });
       fetchData();
     } catch (err: any) {
       alert(`Erro ao salvar: ${err.message}`);
@@ -660,6 +662,27 @@ const Assets: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {physicalAssets.length > 0 && (
+                <div className="border-t border-slate-100 pt-4">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                    Bem Físico Vinculado <span className="text-slate-300 normal-case font-normal">(opcional)</span>
+                  </label>
+                  <select
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                    value={liabilityFormData.linkedAssetId}
+                    onChange={(e) => setLiabilityFormData({ ...liabilityFormData, linkedAssetId: e.target.value })}
+                  >
+                    <option value="">— Nenhum (dívida sem bem vinculado) —</option>
+                    {physicalAssets.map(asset => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.name} ({asset.category === 'REAL_ESTATE' ? 'Imóvel' : asset.category === 'VEHICLE' ? 'Veículo' : 'Outro'})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[9px] text-slate-400 mt-1 font-medium">Vinculando, o FinVision calcula o equity real do bem (Valor - Dívida).</p>
+                </div>
+              )}
 
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setShowLiabilityModal(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancelar</button>
