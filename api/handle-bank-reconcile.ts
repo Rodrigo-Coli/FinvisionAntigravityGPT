@@ -251,6 +251,7 @@ export default async function handler(req: any, res: any) {
               type: txType,
               account_id: resolvedAccId,
               account_name: t.account_name || account_name || 'Mobills Import',
+              category: t.category_name || t.category || 'Outros',
               category_id: resolvedCatId,
               is_paid: true,
               paid_at: t.date,

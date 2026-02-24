@@ -57,6 +57,7 @@ type AddModalState =
 const HistoryPage: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<string[]>(CATEGORIES);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,6 +119,14 @@ const HistoryPage: React.FC = () => {
         includeInDashboard: a.include_in_dashboard,
         lastSync: a.last_sync
       })));
+
+      const { data: catData, error: catErr } = await supabase.from('categories').select('name').eq('user_id', user.id).eq('is_archived', false).order('name');
+      if (!catErr && catData) {
+        const dbCategories = catData.map((c: any) => c.name);
+        // Merge with defaults and remove duplicates
+        const mergedCategories = Array.from(new Set([...CATEGORIES, ...dbCategories]));
+        setAvailableCategories(mergedCategories.sort((a, b) => a.localeCompare(b)));
+      }
 
       let query: any = supabase.from('transactions').select('*').eq('user_id', user.id).eq('is_deleted', false).order('date', { ascending: false });
       if (filterType !== 'ALL') query = query.eq('type', filterType);
@@ -395,11 +404,11 @@ const HistoryPage: React.FC = () => {
         filterCategory={filterCategory} setFilterCategory={setFilterCategory} startDate={startDate} setStartDate={setStartDate}
         endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
         filterOwner={filterOwner} setFilterOwner={setFilterOwner} owners={owners}
-        categories={CATEGORIES} accounts={accounts} resetFilters={resetFilters}
+        categories={availableCategories} accounts={accounts} resetFilters={resetFilters}
       />
 
       <TransactionTable
-        transactions={filtered} isLoading={isLoading} accounts={accounts} categories={CATEGORIES}
+        transactions={filtered} isLoading={isLoading} accounts={accounts} categories={availableCategories}
         editingRow={editingRow} setEditingRow={setEditingRow} editValue={editValue} setEditValue={setEditValue}
         savingId={savingId} handleUpdate={handleUpdate} handleDelete={handleDelete} statusBadge={statusBadge}
         formatCurrency={HistoryUtils.formatCurrency} getAmount={HistoryUtils.getAmount} getPaidAmount={HistoryUtils.getPaidAmount}
@@ -438,7 +447,7 @@ const HistoryPage: React.FC = () => {
       <AddTransactionModal show={addModal.open} onClose={() => setAddModal({ open: false })} onSubmit={createManualTransaction}
         isSubmitting={addModal.open ? addModal.isSubmitting : false} error={addModal.open ? addModal.error : null}
         form={addModal.open ? addModal.form : {} as any} setAddField={(f, v) => setAddModal(prev => prev.open ? { ...prev, form: { ...prev.form, [f]: v } } : prev)}
-        accounts={accounts} categories={CATEGORIES}
+        accounts={accounts} categories={availableCategories}
       />
 
       <SeriesScopeModal
