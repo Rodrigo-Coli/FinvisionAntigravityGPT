@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Profile, DashboardData } from '../types';
 import {
   TrendingUp,
@@ -25,6 +26,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showBalance, setShowBalance] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const loadData = async () => {
@@ -91,7 +93,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
             <Bell size={20} />
             <div className="absolute top-3 right-3 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
           </button>
-          <button className="hidden sm:flex items-center gap-2 px-5 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95">
+          <button
+            onClick={() => navigate('/history')}
+            className="hidden sm:flex items-center gap-2 px-5 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
+          >
             <Plus size={18} />
             Novo Lançamento
           </button>
@@ -124,16 +129,22 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
             <div className="flex items-center gap-2 text-white font-medium text-xs">
               <div className="px-2 py-0.5 bg-white/20 rounded-md">Patrimônio Líquido</div>
               <span className={`font-bold ${!showBalance && 'blur-md'}`}>{showBalance ? format(data.netWorth) : '---'}</span>
-              <div className="p-1 px-2 border border-white/20 rounded-md flex items-center gap-1 ml-auto cursor-pointer hover:bg-white/10 transition-colors">
+              <button
+                onClick={() => navigate('/assets')}
+                className="p-1 px-2 border border-white/20 rounded-md flex items-center gap-1 ml-auto cursor-pointer hover:bg-white/10 transition-colors"
+              >
                 Detalhes <ArrowUpRight size={14} />
-              </div>
+              </button>
             </div>
           </div>
         </div>
 
         <div className="flex flex-col gap-4">
           {/* Growth Widget */}
-          <div className="flex-1 bg-white border border-slate-100 rounded-[24px] p-6 shadow-sm flex flex-col justify-between group cursor-pointer hover:border-brand-200 transition-all">
+          <div
+            onClick={() => navigate('/assets')}
+            className="flex-1 bg-white border border-slate-100 rounded-[24px] p-6 shadow-sm flex flex-col justify-between group cursor-pointer hover:border-brand-200 transition-all"
+          >
             <div className="flex justify-between items-start">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Crescimento</p>
               <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg"><ArrowUpRight size={14} /></div>
@@ -144,7 +155,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
             </div>
           </div>
 
-          <div className="flex-1 bg-white border border-slate-100 rounded-[24px] p-6 shadow-sm flex flex-col justify-between group cursor-pointer hover:border-brand-200 transition-all">
+          <div
+            onClick={() => navigate('/history')}
+            className="flex-1 bg-white border border-slate-100 rounded-[24px] p-6 shadow-sm flex flex-col justify-between group cursor-pointer hover:border-brand-200 transition-all"
+          >
             <div className="flex justify-between items-start">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Despesas</p>
               <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg"><ArrowDownRight size={14} className="rotate-0" /></div>
@@ -162,12 +176,12 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         <div className="lg:col-span-8 space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-slate-900">Cartões de Crédito</h3>
-            <button className="text-xs font-bold text-brand-600 hover:underline">Ver Mais</button>
+            <button onClick={() => navigate('/cards')} className="text-xs font-bold text-brand-600 hover:underline">Ver Mais</button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {data.creditCards.map((card, i) => (
-              <div key={i} className="bg-white border border-slate-100/80 rounded-[24px] p-5 shadow-sm hover:border-brand-100 transition-all group">
+              <div key={i} onClick={() => navigate('/cards')} className="bg-white border border-slate-100/80 rounded-[24px] p-5 shadow-sm hover:border-brand-100 transition-all group cursor-pointer">
                 <div className="flex justify-between items-start mb-4">
                   <div className="bg-slate-50 p-2 py-3 rounded-lg flex items-center justify-center min-w-[50px]">
                     {getCardLogo(card.brand)}
@@ -195,7 +209,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
               </div>
             ))}
             {data.creditCards.length === 0 && (
-              <div className="col-span-1 md:col-span-2 py-10 border border-dashed border-slate-200 rounded-[24px] flex flex-col items-center justify-center grayscale opacity-50">
+              <div onClick={() => navigate('/cards')} className="col-span-1 md:col-span-2 py-10 border border-dashed border-slate-200 rounded-[24px] flex flex-col items-center justify-center grayscale opacity-50 cursor-pointer hover:opacity-100 transition-opacity">
                 <CreditCardIcon size={40} className="text-slate-300" />
                 <p className="text-xs font-bold text-slate-400 uppercase mt-4">Nenhum cartão encontrado</p>
               </div>
@@ -225,13 +239,16 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
               </p>
 
               <div className="flex items-center gap-2 mt-2">
-                <button className="flex-1 py-3 text-[10px] font-bold text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-widest">Ignorar</button>
-                <button className="flex-1 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-lg active:scale-95">Ver Mais</button>
+                <button onClick={() => navigate('/history')} className="flex-1 py-3 text-[10px] font-bold text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-widest">Ignorar</button>
+                <button onClick={() => navigate('/ai')} className="flex-1 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-lg active:scale-95">Ver Mais</button>
               </div>
             </div>
           </div>
 
-          <div className="bg-slate-900 rounded-[32px] p-6 text-white group cursor-pointer overflow-hidden relative">
+          <div
+            onClick={() => navigate('/history')}
+            className="bg-slate-900 rounded-[32px] p-6 text-white group cursor-pointer overflow-hidden relative shadow-lg shadow-slate-900/30 hover:scale-[1.02] transition-transform"
+          >
             <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:rotate-12 transition-transform">
               <Zap size={100} fill="currentColor" />
             </div>
