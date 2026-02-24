@@ -82,9 +82,24 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                 return (
                                     <tr key={t.id} className="group hover:bg-slate-50/50 transition-colors">
                                         <td className="px-8 py-5 whitespace-nowrap">
-                                            <span className="text-xs font-bold text-slate-400">
-                                                {DateUtils.formatDisplayDate(t.date)}
-                                            </span>
+                                            {editingRow?.id === t.id && editingRow.field === 'date' ? (
+                                                <input
+                                                    type="date"
+                                                    autoFocus
+                                                    className="w-[120px] h-8 px-2 text-xs font-bold text-slate-600 bg-white border border-brand-500 rounded outline-none"
+                                                    value={editValue.split('T')[0]} // Ajuste p/ segurança
+                                                    onChange={e => setEditValue(e.target.value)}
+                                                    onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'date', editValue)}
+                                                    onBlur={() => handleUpdate(t.id, 'date', editValue)}
+                                                />
+                                            ) : (
+                                                <button
+                                                    onClick={() => { setEditingRow({ id: t.id, field: 'date' }); setEditValue(t.date.split('T')[0]); }}
+                                                    className="text-xs font-bold text-slate-400 hover:text-brand-600 transition-colors outline-none bg-transparent p-0 border-none cursor-pointer"
+                                                >
+                                                    {DateUtils.formatDisplayDate(t.date)}
+                                                </button>
+                                            )}
                                         </td>
 
                                         <td className="px-8 py-5">
