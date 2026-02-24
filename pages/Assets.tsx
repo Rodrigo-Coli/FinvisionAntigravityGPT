@@ -87,6 +87,41 @@ const Assets: React.FC = () => {
     );
   }
 
+  const [showModal, setShowModal] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    category: 'REAL_ESTATE',
+    estimatedValue: '',
+    acquisitionDate: '',
+    description: ''
+  });
+
+  const handleSaveAsset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+      const { error } = await supabase.from('physical_assets').insert([{
+        user_id: user.id,
+        name: formData.name,
+        category: formData.category,
+        estimated_value: parseFloat(formData.estimatedValue) || 0,
+        acquisition_date: formData.acquisitionDate || null,
+        description: formData.description
+      }]);
+
+      if (error) throw error;
+
+      setShowModal(false);
+      setFormData({ name: '', category: 'REAL_ESTATE', estimatedValue: '', acquisitionDate: '', description: '' });
+      fetchData();
+    } catch (err: any) {
+      alert(`Erro ao salvar: ${err.message}`);
+    }
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
       {/* HEADER SECTION */}
@@ -95,7 +130,10 @@ const Assets: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Patrimônio Líquido</h1>
           <p className="text-sm text-slate-400 font-medium">Bens físicos e ativos financeiros consolidados.</p>
         </div>
-        <button className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95">
+        <button
+          onClick={() => setShowModal(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
+        >
           <Plus size={18} /> Novo Ativo
         </button>
       </div>
@@ -172,14 +210,14 @@ const Assets: React.FC = () => {
                       <div className="w-2.5 h-2.5 bg-brand-600 rounded-full" />
                       <span className="text-xs font-bold text-slate-600 uppercase">Financeiros</span>
                     </div>
-                    <span className="text-sm font-bold text-slate-900">{Math.round((totalFinancial / totalNetWorth) * 100)}%</span>
+                    <span className="text-sm font-bold text-slate-900">{totalNetWorth ? Math.round((totalFinancial / totalNetWorth) * 100) : 0}%</span>
                   </div>
                   <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl group cursor-default">
                     <div className="flex items-center gap-3">
                       <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full" />
                       <span className="text-xs font-bold text-slate-600 uppercase">Bens Físicos</span>
                     </div>
-                    <span className="text-sm font-bold text-slate-900">{Math.round((totalPhysical / totalNetWorth) * 100)}%</span>
+                    <span className="text-sm font-bold text-slate-900">{totalNetWorth ? Math.round((totalPhysical / totalNetWorth) * 100) : 0}%</span>
                   </div>
                 </div>
               </div>
@@ -221,11 +259,14 @@ const Assets: React.FC = () => {
                 </div>
                 <div className="px-8 py-4 bg-slate-50/50 flex justify-between items-center border-t border-slate-50">
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Aquisição: {asset.acquisitionDate ? new Date(asset.acquisitionDate).getFullYear() : '---'}</span>
-                  <button className="text-brand-600 text-[10px] font-bold uppercase tracking-widest hover:underline">Reavaliar</button>
+                  <button onClick={() => alert('Módulo de reavaliação de bens chegará em breve.')} className="text-brand-600 text-[10px] font-bold uppercase tracking-widest hover:underline">Reavaliar</button>
                 </div>
               </div>
             ))}
-            <button className="rounded-[32px] border-2 border-dashed border-slate-100 p-8 flex flex-col items-center justify-center gap-4 text-slate-300 hover:border-brand-200 hover:text-brand-600 hover:bg-brand-50/30 transition-all min-h-[280px]">
+            <button
+              onClick={() => setShowModal(true)}
+              className="rounded-[32px] border-2 border-dashed border-slate-100 p-8 flex flex-col items-center justify-center gap-4 text-slate-300 hover:border-brand-200 hover:text-brand-600 hover:bg-brand-50/30 transition-all min-h-[280px]"
+            >
               <Plus size={32} />
               <span className="font-bold text-slate-400">Adicionar Bem</span>
             </button>
@@ -257,7 +298,7 @@ const Assets: React.FC = () => {
                     </div>
 
                     <div className="flex gap-4">
-                      <button className="flex-1 lg:flex-none px-8 py-3.5 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95">Ver Detalhes</button>
+                      <button onClick={() => alert('Integração de corretoras e visualização detalhada em desenvolvimento.')} className="flex-1 lg:flex-none px-8 py-3.5 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95">Ver Detalhes</button>
                       <button className="flex-1 lg:flex-none px-8 py-3.5 bg-slate-50 text-slate-400 rounded-xl text-xs font-bold uppercase tracking-widest hover:text-slate-900 hover:bg-slate-100 transition-all">Relatórios</button>
                     </div>
                   </div>
@@ -294,11 +335,80 @@ const Assets: React.FC = () => {
               <div className="py-20 border-2 border-dashed border-slate-100 rounded-[40px] flex flex-col items-center justify-center text-slate-300">
                 <TrendingUp size={48} />
                 <p className="mt-4 font-bold uppercase tracking-widest text-xs">Nenhum investimento cadastrado</p>
+                <p className="text-[10px] text-slate-400 mt-2 font-medium italic">Vincule uma conta de Investimento na aba de Contas.</p>
               </div>
             )}
           </div>
         )}
       </div>
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">Novo Bem Físico</h3>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-50">
+                <LayoutGrid size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAsset} className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nome / Identificação</label>
+                <input
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                  placeholder="Ex: Apartamento Centro"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Categoria</label>
+                  <select
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  >
+                    <option value="REAL_ESTATE">Imóvel</option>
+                    <option value="VEHICLE">Veículo</option>
+                    <option value="OTHER">Outros Bens</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Estimado (R$)</label>
+                  <input
+                    required
+                    type="number"
+                    step="0.01"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                    placeholder="0.00"
+                    value={formData.estimatedValue}
+                    onChange={(e) => setFormData({ ...formData, estimatedValue: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Aquisição</label>
+                <input
+                  type="date"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                  value={formData.acquisitionDate}
+                  onChange={(e) => setFormData({ ...formData, acquisitionDate: e.target.value })}
+                />
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancelar</button>
+                <button type="submit" className="flex-1 px-4 py-3 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-[1.02] transition-transform active:scale-95">Salvar Bem</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

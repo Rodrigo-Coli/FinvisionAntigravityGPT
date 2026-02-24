@@ -122,9 +122,6 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                             {t.description || 'Sem descrição'}
                                                         </button>
                                                     )}
-                                                    {t.is_incomplete && (
-                                                        <span className="px-1.5 py-0.5 bg-amber-50 text-amber-500 border border-amber-100 rounded text-[7px] font-black uppercase tracking-tighter" title="Registro antigo com dados incompletos. Recomenda-se revisar.">REVISAR</span>
-                                                    )}
                                                 </div>
                                             </div>
                                         </td>
