@@ -14,12 +14,12 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { label: 'Início', path: '/', icon: <Home size={20} /> },
     { label: 'Contas', path: '/accounts', icon: <Landmark size={20} /> },
     { label: 'Cartões', path: '/cards', icon: <CreditCard size={20} /> },
-    { label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },
     { label: 'Patrimônio', path: '/assets', icon: <Gem size={20} /> },
     { label: 'Metas', path: '/goals', icon: <Target size={20} /> },
     { label: 'Orçamento', path: '/budget', icon: <PieChart size={20} /> },
     { label: 'Histórico', path: '/history', icon: <History size={20} /> },
     { label: 'Insights AI', path: '/ai', icon: <Sparkles size={20} /> },
+    { label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },
     { label: 'Ajustes', path: '/settings', icon: <Settings size={20} /> },
   ];
 

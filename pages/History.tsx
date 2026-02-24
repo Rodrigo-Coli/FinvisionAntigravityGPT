@@ -12,7 +12,6 @@ import { HistoryFilters } from '../components/history/HistoryFilters';
 import { TransactionTable } from '../components/history/TransactionTable';
 import { PaymentModal } from '../components/history/PaymentModal';
 import { AddTransactionModal } from '../components/history/AddTransactionModal';
-import { HistoryCharts } from '../components/history/HistoryCharts';
 import { SeriesScopeModal, SeriesScope } from '../components/SeriesScopeModal';
 
 const CATEGORIES = [
@@ -408,8 +407,7 @@ const HistoryPage: React.FC = () => {
         categories={availableCategories} accounts={accounts} resetFilters={resetFilters}
       />
 
-      {/* CHARTS LAYER */}
-      {!isLoading && <HistoryCharts transactions={transactions} />}
+      {/* CHARTS LAYER (REMOVED TO DASHBOARD) */}
 
       <TransactionTable
         transactions={filtered} isLoading={isLoading} accounts={accounts} categories={availableCategories}

@@ -20,10 +20,14 @@ import {
 } from 'lucide-react';
 import { DashboardService } from '../services/dashboard.service';
 import { DateUtils } from '../lib/dateUtils';
+import { useTour } from '../contexts/TourContext';
+import { HistoryCharts } from '../components/history/HistoryCharts';
 import CashFlowProjection from '../components/CashFlowProjection';
+import { supabase } from '../lib/supabase/client';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showBalance, setShowBalance] = useState(true);
@@ -32,16 +36,45 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const summary = await DashboardService.getSummary();
-        setData(summary);
+        const dashboardData = await DashboardService.getSummary(); // Changed from dashboardService.getDashboardData() to DashboardService.getSummary() to match original
+        setData(dashboardData);
+
+        // Fetch recent transactions for the charts
+        const startOfMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
+        const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+        const lastMonthStart = `${new Date().getFullYear()}-${String(new Date().getMonth()).padStart(2, '0')}-01`;
+
+        let queryDateStart = startOfMonth;
+        if (new Date().getMonth() === 0) {
+          queryDateStart = `${new Date().getFullYear() - 1}-12-01`;
+        } else {
+          queryDateStart = lastMonthStart;
+        }
+
+        if (!supabase) throw new Error("Supabase client is not available.");
+
+        const { data: txs, error: txError } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('date', queryDateStart)
+          .lte('date', endOfMonth)
+          .order('date', { ascending: false });
+
+        if (txError) {
+          console.error("Error fetching transactions:", txError);
+          setError('Erro ao carregar transações.');
+        } else if (txs) {
+          setTransactions(txs);
+        }
       } catch (err: any) {
         setError('Erro ao carregar o resumo financeiro.');
       } finally {
         setIsLoading(false);
       }
     };
-    loadData();
-  }, []);
+    if (user?.id) loadData();
+  }, [user]);
 
   const format = (v: number) => new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -260,6 +293,13 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
               </div>
             )}
           </div>
+
+          {/* HISTÓRICO DE DESPESAS (CHART) COINCIDINDO COM O LAYOUT */}
+          <div className="mt-8">
+            <h3 className="text-lg font-bold text-slate-900 mb-6">Gráficos de Despesas</h3>
+            <HistoryCharts transactions={transactions} />
+          </div>
+
         </div>
 
         <div className="lg:col-span-4 space-y-6">
