@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, Box, LayoutGrid } from 'lucide-react';
+import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, Box, LayoutGrid, Brain, ShieldCheck, AlertTriangle, Target, Lightbulb } from 'lucide-react';
 import { AIReconcileService } from '../services/aiReconcile.service';
 import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
 import { DateUtils } from '../lib/dateUtils';
 
 const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
-  const [activeTab, setActiveTab] = useState<'upload' | 'history' | 'comparative' | 'shopping'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'history' | 'comparative' | 'shopping' | 'wealth'>('upload');
   const [isProcessing, setIsProcessing] = useState(false);
   const [receipt, setReceipt] = useState<ExtractedReceipt | null>(null);
   const [reconcileMode, setReconcileMode] = useState<'total' | 'partial' | 'items'>('total');
@@ -21,6 +21,11 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [targetSegment, setTargetSegment] = useState<string>('Mercado');
   const [shoppingList, setShoppingList] = useState<any[]>([]);
+
+  // Wealth Advisor states
+  const [wealthAnalysis, setWealthAnalysis] = useState<string>('');
+  const [wealthMeta, setWealthMeta] = useState<any>(null);
+  const [isLoadingWealth, setIsLoadingWealth] = useState(false);
 
   // States para Conversão de Moeda
   const [exchangeQuote, setExchangeQuote] = useState<number>(1);
@@ -50,8 +55,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const fetchIntelligenceData = async () => {
     setIsLoadingIntelligence(true);
     try {
-
-
       const data = await AIReconcileService.getPriceComparison();
       const processed = data.map((prod: any) => {
         const prices = prod.product_prices || [];
@@ -71,6 +74,27 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       console.error('Erro ao carregar inteligência:', err);
     } finally {
       setIsLoadingIntelligence(false);
+    }
+  };
+
+  const generateWealthAnalysis = async () => {
+    if (!user?.id) return;
+    setIsLoadingWealth(true);
+    setWealthAnalysis('');
+    try {
+      const resp = await fetch('/api/handle-wealth-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Erro ao gerar diagnóstico');
+      setWealthAnalysis(data.analysis);
+      setWealthMeta(data.metadata);
+    } catch (err: any) {
+      setWealthAnalysis(`**Erro:** ${err.message}`);
+    } finally {
+      setIsLoadingWealth(false);
     }
   };
 
@@ -149,6 +173,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           { id: 'comparative', label: 'Comparador', icon: <Store size={16} /> },
           { id: 'shopping', label: 'Lista de Compras', icon: <ShoppingCart size={16} /> },
           { id: 'history', label: 'Minha Inflação', icon: <BarChart3 size={16} /> },
+          { id: 'wealth', label: 'Diagnóstico FinVision', icon: <Brain size={16} /> },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -452,6 +477,80 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+        {activeTab === 'wealth' && (
+          <div className="space-y-8">
+            {/* Hero header */}
+            <div className="bg-slate-900 rounded-[40px] p-10 md:p-16 text-white relative overflow-hidden">
+              <div className="absolute -top-10 -right-10 w-64 h-64 bg-brand-500/10 rounded-full blur-3xl" />
+              <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
+                <div className="w-20 h-20 bg-white/5 border border-white/10 rounded-[28px] flex items-center justify-center shrink-0">
+                  <Brain size={40} className="text-brand-400" />
+                </div>
+                <div className="text-center md:text-left">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-1">FinVision Private Banking</p>
+                  <h2 className="text-3xl md:text-4xl font-bold tracking-tight">Diagnóstico Patrimonial Completo</h2>
+                  <p className="text-slate-400 mt-2 font-medium">Análise de toda a sua vida financeira: dívidas, investimentos, fluxo de caixa e oportunidades.</p>
+                </div>
+                <button
+                  onClick={generateWealthAnalysis}
+                  disabled={isLoadingWealth}
+                  className="shrink-0 flex items-center gap-3 px-8 py-4 bg-brand-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl shadow-brand-600/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {isLoadingWealth ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                  {isLoadingWealth ? 'Analisando...' : 'Gerar Diagnóstico'}
+                </button>
+              </div>
+            </div>
+
+            {/* Metadata cards - show only after analysis */}
+            {wealthMeta && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                {[
+                  { label: 'Patrimônio Líquido', value: `R$ ${Math.round(wealthMeta.netWorth).toLocaleString('pt-BR')}`, color: wealthMeta.netWorth >= 0 ? 'text-emerald-600' : 'text-red-600', icon: <ShieldCheck size={20} /> },
+                  { label: 'Total de Dívidas', value: `R$ ${Math.round(wealthMeta.totalLiabilities).toLocaleString('pt-BR')}`, color: 'text-red-600', icon: <AlertTriangle size={20} /> },
+                  { label: 'Poupança Mensal', value: `R$ ${Math.round(wealthMeta.avgMonthlySavings).toLocaleString('pt-BR')}`, color: wealthMeta.avgMonthlySavings >= 0 ? 'text-brand-600' : 'text-orange-600', icon: <Target size={20} /> },
+                  { label: 'Compromissão de Renda', value: `${wealthMeta.debtToIncome}%`, color: wealthMeta.debtToIncome > 30 ? 'text-red-600' : 'text-emerald-600', icon: <Lightbulb size={20} /> },
+                ].map((card, i) => (
+                  <div key={i} className="bg-white border border-slate-100 rounded-[28px] p-6 shadow-sm">
+                    <div className={`${card.color} mb-3`}>{card.icon}</div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{card.label}</p>
+                    <p className={`text-2xl font-bold mt-1 ${card.color}`}>{card.value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Analysis report */}
+            {wealthAnalysis && (
+              <div className="bg-white border border-slate-100 rounded-[40px] shadow-sm overflow-hidden">
+                <div className="px-10 py-6 border-b border-slate-50 flex items-center gap-3">
+                  <Sparkles size={18} className="text-brand-500" />
+                  <h3 className="font-bold text-slate-900 uppercase tracking-widest text-[10px]">Relatório FinVision Advisor</h3>
+                </div>
+                <div className="p-10 prose prose-slate max-w-none">
+                  {wealthAnalysis.split('\n').map((line, i) => {
+                    if (line.startsWith('# ')) return <h1 key={i} className="text-2xl font-bold text-slate-900 mt-6 mb-3">{line.replace('# ', '')}</h1>;
+                    if (line.startsWith('## ')) return <h2 key={i} className="text-xl font-bold text-slate-900 mt-6 mb-3 border-b border-slate-100 pb-2">{line.replace('## ', '')}</h2>;
+                    if (line.startsWith('### ')) return <h3 key={i} className="text-base font-bold text-brand-700 mt-4 mb-2">{line.replace('### ', '')}</h3>;
+                    if (line.startsWith('- ') || line.startsWith('* ')) return <li key={i} className="ml-4 text-slate-600 mb-1 font-medium">{line.replace(/^[-*] /, '').replace(/\*\*(.*?)\*\*/g, '$1')}</li>;
+                    if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-bold text-slate-900 mt-2">{line.replace(/\*\*(.*?)\*\*/g, '$1')}</p>;
+                    if (line.trim() === '') return <div key={i} className="h-3" />;
+                    return <p key={i} className="text-slate-600 mb-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />;
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!wealthAnalysis && !isLoadingWealth && (
+              <div className="py-20 border-2 border-dashed border-slate-100 rounded-[40px] flex flex-col items-center justify-center text-slate-300 gap-4">
+                <Brain size={48} />
+                <p className="font-bold uppercase tracking-widest text-xs">Clique em "Gerar Diagnóstico" para começar</p>
+                <p className="text-[10px] text-slate-400 font-medium max-w-xs text-center">O FinVision irá analisar todos seus ativos, passivos, fluxo de caixa e te dar um plano de ação preciso.</p>
+              </div>
+            )}
           </div>
         )}
       </div>

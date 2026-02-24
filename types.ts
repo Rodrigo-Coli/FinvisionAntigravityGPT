@@ -98,6 +98,8 @@ export interface Transaction {
   // --- RECONCILIAÇÃO / RECORRÊNCIA ---
   is_recurring?: boolean;
   recurrence_period?: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom';
+  liability_id?: string;     // Link to a debt/liability
+  is_amortization?: boolean; // True if this transaction pays off a liability
   recurrence_group_id?: string;
   is_installment?: boolean;
   installment_number?: number;
@@ -233,5 +235,8 @@ export interface Liability {
   remainingBalance: number;
   interestRate?: number;
   linkedAssetId?: string;
+  installmentAmount?: number;
+  installmentsRemaining?: number;
+  dueDay?: number;
   metadata?: any;
 }
