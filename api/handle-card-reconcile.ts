@@ -164,9 +164,15 @@ export default async function handler(req: any, res: any) {
       if (isMobills) {
         // BYPASS MOTOR: Inserir direto em card_transactions (Faturas) com Auto-Provisão
 
+        const cardCache = new Map<string, string>();
+        const categoryCache = new Map<string, string>();
+
         // Helper: Resolver ou Criar Cartão
         const resolveCardId = async (name: string, userId: string) => {
           if (!name) return targetAccountId;
+          const key = name.trim().toUpperCase();
+          if (cardCache.has(key)) return cardCache.get(key) as string;
+
           const { data: existing } = await supabase
             .from('cards')
             .select('id')
@@ -174,7 +180,10 @@ export default async function handler(req: any, res: any) {
             .eq('user_id', userId)
             .maybeSingle();
 
-          if (existing) return existing.id;
+          if (existing) {
+            cardCache.set(key, existing.id);
+            return existing.id;
+          }
 
           const { data: newCard, error: createErr } = await supabase
             .from('cards')
@@ -191,12 +200,17 @@ export default async function handler(req: any, res: any) {
             .single();
 
           if (createErr) console.error(`[Mobills-Motor] Erro ao criar cartão ${name}:`, createErr);
-          return newCard?.id || targetAccountId;
+          const finalId = newCard?.id || targetAccountId;
+          if (finalId) cardCache.set(key, finalId);
+          return finalId;
         };
 
         // Helper: Resolver ou Criar Categoria
         const resolveCategoryId = async (name: string, userId: string) => {
           if (!name) return null;
+          const key = name.trim().toUpperCase();
+          if (categoryCache.has(key)) return categoryCache.get(key);
+
           const { data: existing } = await supabase
             .from('categories')
             .select('id')
@@ -204,7 +218,10 @@ export default async function handler(req: any, res: any) {
             .eq('user_id', userId)
             .maybeSingle();
 
-          if (existing) return existing.id;
+          if (existing) {
+            categoryCache.set(key, existing.id);
+            return existing.id;
+          }
 
           const { data: newCat, error: createErr } = await supabase
             .from('categories')
@@ -218,16 +235,18 @@ export default async function handler(req: any, res: any) {
             .single();
 
           if (createErr) console.error(`[Mobills-Motor] Erro ao criar categoria ${name}:`, createErr);
+          if (newCat?.id) categoryCache.set(key, newCat.id);
           return newCat?.id;
         };
 
-        const entriesToInsert = await Promise.all(processedTxs.map(async (t: any) => {
+        const entriesToInsert = [];
+        for (const t of processedTxs) {
           const date = t.date || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
           const amount = Math.abs(Number(t.amount) || 0);
           const resolvedCardId = await resolveCardId(t.card_name || 'Mobills Card', imp.user_id);
           const resolvedCatId = await resolveCategoryId(t.category_name || t.category, imp.user_id);
 
-          return {
+          entriesToInsert.push({
             user_id: imp.user_id,
             card_id: resolvedCardId,
             used_card_id: resolvedCardId,
@@ -247,8 +266,8 @@ export default async function handler(req: any, res: any) {
                 total: t.installment_total || null
               }
             }
-          };
-        }));
+          });
+        }
 
         const { error: cardErr } = await supabase.from('card_transactions').insert(entriesToInsert);
         if (cardErr) throw new Error(`Falha ao inserir histórico Mobills Card: ${cardErr.message}`);

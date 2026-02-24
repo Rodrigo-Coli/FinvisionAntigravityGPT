@@ -181,9 +181,15 @@ export default async function handler(req: any, res: any) {
       if (isMobills) {
         // BYPASS MOTOR: Inserir direto em transactions (Histórico) com Auto-Provisão
 
+        const accountCache = new Map<string, string>();
+        const categoryCache = new Map<string, string>();
+
         // Helper: Resolver ou Criar Conta
         const resolveAccountId = async (name: string, userId: string) => {
           if (!name) return imp.account_id;
+          const key = name.trim().toUpperCase();
+          if (accountCache.has(key)) return accountCache.get(key) as string;
+
           const { data: existing } = await supabase
             .from('accounts')
             .select('id')
@@ -191,7 +197,10 @@ export default async function handler(req: any, res: any) {
             .eq('user_id', userId)
             .maybeSingle();
 
-          if (existing) return existing.id;
+          if (existing) {
+            accountCache.set(key, existing.id);
+            return existing.id;
+          }
 
           const { data: newAcc, error: createErr } = await supabase
             .from('accounts')
@@ -206,12 +215,17 @@ export default async function handler(req: any, res: any) {
             .single();
 
           if (createErr) console.error(`[Mobills-Motor] Erro ao criar conta ${name}:`, createErr);
-          return newAcc?.id || imp.account_id;
+          const finalId = newAcc?.id || imp.account_id;
+          if (finalId) accountCache.set(key, finalId);
+          return finalId;
         };
 
         // Helper: Resolver ou Criar Categoria
         const resolveCategoryId = async (name: string, userId: string, type: 'INCOME' | 'EXPENSE') => {
           if (!name) return null;
+          const key = name.trim().toUpperCase();
+          if (categoryCache.has(key)) return categoryCache.get(key);
+
           const { data: existing } = await supabase
             .from('categories')
             .select('id')
@@ -219,7 +233,10 @@ export default async function handler(req: any, res: any) {
             .eq('user_id', userId)
             .maybeSingle();
 
-          if (existing) return existing.id;
+          if (existing) {
+            categoryCache.set(key, existing.id);
+            return existing.id;
+          }
 
           const { data: newCat, error: createErr } = await supabase
             .from('categories')
@@ -233,35 +250,37 @@ export default async function handler(req: any, res: any) {
             .single();
 
           if (createErr) console.error(`[Mobills-Motor] Erro ao criar categoria ${name}:`, createErr);
+          if (newCat?.id) categoryCache.set(key, newCat.id);
           return newCat?.id;
         };
 
-        const entriesToInsert = await Promise.all(transactions
-          .filter((t: any) => t.date && typeof t.amount === 'number' && t.amount !== 0)
-          .map(async (t: any) => {
-            const txType = t.amount < 0 ? 'EXPENSE' : 'INCOME';
-            const resolvedAccId = await resolveAccountId(t.account_name || 'Mobills', imp.user_id);
-            const resolvedCatId = await resolveCategoryId(t.category_name || t.category, imp.user_id, txType);
+        const entriesToInsert = [];
+        for (const t of transactions) {
+          if (!t.date || typeof t.amount !== 'number' || t.amount === 0) continue;
 
-            return {
-              user_id: imp.user_id,
-              date: t.date,
-              description: t.description.trim(),
-              amount: Math.abs(t.amount),
-              type: txType,
-              account_id: resolvedAccId,
-              account_name: t.account_name || account_name || 'Mobills Import',
-              category: t.category_name || t.category || 'Outros',
-              category_id: resolvedCatId,
-              is_paid: true,
-              paid_at: t.date,
-              metadata: {
-                import_id: imp.id,
-                source: 'mobills_direct_motor',
-                original_category: t.category_name
-              }
-            };
-          }));
+          const txType = t.amount < 0 ? 'EXPENSE' : 'INCOME';
+          const resolvedAccId = await resolveAccountId(t.account_name || 'Mobills', imp.user_id);
+          const resolvedCatId = await resolveCategoryId(t.category_name || t.category, imp.user_id, txType);
+
+          entriesToInsert.push({
+            user_id: imp.user_id,
+            date: t.date,
+            description: t.description.trim(),
+            amount: Math.abs(t.amount),
+            type: txType,
+            account_id: resolvedAccId,
+            account_name: t.account_name || account_name || 'Mobills Import',
+            category: t.category_name || t.category || 'Outros',
+            category_id: resolvedCatId,
+            is_paid: true,
+            paid_at: t.date,
+            metadata: {
+              import_id: imp.id,
+              source: 'mobills_direct_motor',
+              original_category: t.category_name
+            }
+          });
+        }
 
         if (entriesToInsert.length > 0) {
           const { error: histErr } = await supabase.from('transactions').insert(entriesToInsert);
