@@ -61,6 +61,11 @@ const HistoryPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Pagination
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const PAGE_SIZE = 500;
+
   // Filters
   const [showFilters, setShowFilters] = useState(false);
   const [search, setSearch] = useState('');
@@ -138,14 +143,22 @@ const HistoryPage: React.FC = () => {
       if (maxPrice !== '') query = query.lte('amount', Number(maxPrice));
       if (filterOwner !== 'ALL') query = query.eq('owner_name', filterOwner);
 
+      // Pagination setup (requesting 1 extra to check if there are more)
+      query = query.range(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
+
       const { data, error: fetchError } = await query;
       if (fetchError) throw fetchError;
 
+      let fetchedData = data || [];
+      const hasMoreData = fetchedData.length > PAGE_SIZE;
+      if (hasMoreData) fetchedData.pop();
+      setHasMore(hasMoreData);
+
       // Extract unique owners for the filter
-      const uniqueOwners = ['Pessoal', ...new Set((data || []).map((t: any) => t.owner_name).filter(Boolean))];
+      const uniqueOwners = ['Pessoal', ...new Set(fetchedData.map((t: any) => t.owner_name).filter(Boolean))];
       setOwners(uniqueOwners as string[]);
 
-      setTransactions((data || []).map((t: any) => {
+      setTransactions(fetchedData.map((t: any) => {
         // Marcamos como incompleto se faltar algum campo que agora consideramos essencial
         // mas que no passado podia ser nulo. Isso não trava o sistema, apenas informa a UI.
         const isIncomplete = !t.description || !t.account_name || !t.category || !t.owner_name;
@@ -175,6 +188,11 @@ const HistoryPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner, page]);
+
+  // Reset page to 0 when filters change
+  useEffect(() => {
+    setPage(0);
   }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner]);
 
   useEffect(() => {
@@ -438,6 +456,25 @@ const HistoryPage: React.FC = () => {
           } catch (e) { console.error(e); alert('Erro ao reabrir'); }
         }}
       />
+
+      {/* PAGINATION CONTROLS */}
+      <div className="flex items-center justify-between px-6 py-4 bg-white border border-slate-100 rounded-[24px] shadow-sm">
+        <button
+          onClick={() => setPage(p => Math.max(0, p - 1))}
+          disabled={page === 0 || isLoading}
+          className="px-6 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors"
+        >
+          Anterior
+        </button>
+        <span className="text-sm font-bold text-slate-400 uppercase tracking-widest text-[10px]">Página {page + 1}</span>
+        <button
+          onClick={() => setPage(p => p + 1)}
+          disabled={!hasMore || isLoading}
+          className="px-6 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors"
+        >
+          Próxima
+        </button>
+      </div>
 
       <PaymentModal show={payModal.open} onClose={() => setPayModal({ open: false })} onSubmit={submitPayment}
         tx={payModal.open ? payModal.tx : null} remaining={payModal.open ? payModal.remaining : 0}
