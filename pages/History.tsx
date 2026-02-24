@@ -64,6 +64,7 @@ const HistoryPage: React.FC = () => {
   // Pagination
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
   const PAGE_SIZE = 500;
 
   // Filters
@@ -133,7 +134,7 @@ const HistoryPage: React.FC = () => {
         setAvailableCategories(mergedCategories.sort((a, b) => a.localeCompare(b)));
       }
 
-      let query: any = supabase.from('transactions').select('*').eq('user_id', user.id).eq('is_deleted', false).order('date', { ascending: false });
+      let query: any = supabase.from('transactions').select('*', { count: 'exact' }).eq('user_id', user.id).eq('is_deleted', false).order('date', { ascending: false });
       if (filterType !== 'ALL') query = query.eq('type', filterType);
       if (filterAccount !== 'ALL') query = query.eq('account_id', filterAccount);
       if (filterCategory !== 'ALL') query = query.eq('category', filterCategory);
@@ -146,8 +147,10 @@ const HistoryPage: React.FC = () => {
       // Pagination setup (requesting 1 extra to check if there are more)
       query = query.range(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
 
-      const { data, error: fetchError } = await query;
+      const { data, count, error: fetchError } = await query;
       if (fetchError) throw fetchError;
+
+      if (count !== null) setTotalCount(count);
 
       let fetchedData = data || [];
       const hasMoreData = fetchedData.length > PAGE_SIZE;
@@ -458,23 +461,40 @@ const HistoryPage: React.FC = () => {
       />
 
       {/* PAGINATION CONTROLS */}
-      <div className="flex items-center justify-between px-6 py-4 bg-white border border-slate-100 rounded-[24px] shadow-sm">
-        <button
-          onClick={() => setPage(p => Math.max(0, p - 1))}
-          disabled={page === 0 || isLoading}
-          className="px-6 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors"
-        >
-          Anterior
-        </button>
-        <span className="text-sm font-bold text-slate-400 uppercase tracking-widest text-[10px]">Página {page + 1}</span>
-        <button
-          onClick={() => setPage(p => p + 1)}
-          disabled={!hasMore || isLoading}
-          className="px-6 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors"
-        >
-          Próxima
-        </button>
-      </div>
+      {totalCount > PAGE_SIZE && (
+        <div className="flex items-center justify-between px-6 py-4 bg-white border border-slate-100 rounded-[24px] shadow-sm overflow-x-auto gap-4">
+          <button
+            onClick={() => setPage(p => Math.max(0, p - 1))}
+            disabled={page === 0 || isLoading}
+            className="px-6 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors shrink-0"
+          >
+            Anterior
+          </button>
+
+          <div className="flex items-center gap-2">
+            {Array.from({ length: Math.ceil(totalCount / PAGE_SIZE) }, (_, i) => (
+              <button
+                key={i}
+                onClick={() => setPage(i)}
+                className={`w-10 h-10 rounded-xl text-sm font-bold flex items-center justify-center transition-all shrink-0 ${page === i
+                    ? 'bg-brand-600 text-white shadow-md shadow-brand-500/20'
+                    : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                  }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => setPage(p => p + 1)}
+            disabled={!hasMore || isLoading}
+            className="px-6 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors shrink-0"
+          >
+            Próxima
+          </button>
+        </div>
+      )}
 
       <PaymentModal show={payModal.open} onClose={() => setPayModal({ open: false })} onSubmit={submitPayment}
         tx={payModal.open ? payModal.tx : null} remaining={payModal.open ? payModal.remaining : 0}
