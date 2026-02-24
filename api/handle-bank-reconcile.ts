@@ -169,7 +169,13 @@ export default async function handler(req: any, res: any) {
     }
 
     const cleanJson = rawText.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(cleanJson);
+    let parsed;
+    try {
+      parsed = JSON.parse(cleanJson);
+    } catch (e) {
+      console.error('[API] Erro ao fazer parse do JSON truncado:', e);
+      throw new Error("O arquivo enviado é muito longo e excedeu o limite máximo de leitura da Inteligência Artificial. Por favor, divida o seu PDF em períodos menores (ex: 3 a 5 meses por arquivo).");
+    }
     const transactions = parsed.transactions || [];
 
 

@@ -152,7 +152,13 @@ export default async function handler(req: any, res: any) {
     if (!rawText) throw new Error('A IA não retornou nenhum dado. Isso pode ser por filtros de segurança do Google ou o documento é ilegível.');
 
     const cleanJson = rawText.replace(/```json|```/g, "").trim();
-    const parsedData = JSON.parse(cleanJson);
+    let parsedData;
+    try {
+      parsedData = JSON.parse(cleanJson);
+    } catch (e) {
+      console.error('[API-Card] Erro ao fazer parse do JSON truncado:', e);
+      throw new Error("O arquivo enviado é muito longo e excedeu o limite máximo de leitura da Inteligência Artificial. Por favor, divida o seu PDF em períodos menores (ex: 3 a 5 meses por arquivo).");
+    }
     const processedTxs = parsedData.transactions || [];
 
     // 5. Save Data (Bypass or Reconcile Queue)
