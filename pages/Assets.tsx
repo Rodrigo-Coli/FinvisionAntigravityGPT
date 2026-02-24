@@ -15,16 +15,19 @@ import {
   LayoutGrid,
   Search,
   Zap,
-  Box
+  Box,
+  Landmark,
+  ArrowDownRight
 } from 'lucide-react';
-import { PhysicalAsset, InvestmentBroker } from '../types';
+import { PhysicalAsset, InvestmentBroker, Liability } from '../types';
 
 import { supabase } from '../lib/supabase/client';
 
 const Assets: React.FC = () => {
-  const [activeView, setActiveView] = useState<'overview' | 'physical' | 'investments'>('overview');
+  const [activeView, setActiveView] = useState<'overview' | 'physical' | 'investments' | 'liabilities'>('overview');
   const [physicalAssets, setPhysicalAssets] = useState<PhysicalAsset[]>([]);
   const [brokers, setBrokers] = useState<InvestmentBroker[]>([]);
+  const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [showModal, setShowModal] = useState(false);
@@ -56,6 +59,41 @@ const Assets: React.FC = () => {
 
       setShowModal(false);
       setFormData({ name: '', category: 'REAL_ESTATE', estimatedValue: '', acquisitionDate: '', description: '' });
+      fetchData();
+    } catch (err: any) {
+      alert(`Erro ao salvar: ${err.message}`);
+    }
+  };
+
+  const [showLiabilityModal, setShowLiabilityModal] = useState(false);
+  const [liabilityFormData, setLiabilityFormData] = useState({
+    name: '',
+    type: 'PERSONAL_LOAN',
+    totalAmount: '',
+    remainingBalance: '',
+    interestRate: ''
+  });
+
+  const handleSaveLiability = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+      const { error } = await supabase.from('liabilities').insert([{
+        user_id: user.id,
+        name: liabilityFormData.name,
+        type: liabilityFormData.type,
+        total_amount: parseFloat(liabilityFormData.totalAmount) || 0,
+        remaining_balance: parseFloat(liabilityFormData.remainingBalance) || 0,
+        interest_rate: liabilityFormData.interestRate ? parseFloat(liabilityFormData.interestRate) : null,
+      }]);
+
+      if (error) throw error;
+
+      setShowLiabilityModal(false);
+      setLiabilityFormData({ name: '', type: 'PERSONAL_LOAN', totalAmount: '', remainingBalance: '', interestRate: '' });
       fetchData();
     } catch (err: any) {
       alert(`Erro ao salvar: ${err.message}`);
@@ -99,6 +137,19 @@ const Assets: React.FC = () => {
           ]
         })));
       }
+
+      // Fetch Liabilities
+      const { data: liabs } = await sb.from('liabilities').select('*').eq('user_id', user.id);
+      if (liabs) {
+        setLiabilities(liabs.map((l: any) => ({
+          id: l.id,
+          name: l.name,
+          type: l.type,
+          totalAmount: Number(l.total_amount),
+          remainingBalance: Number(l.remaining_balance),
+          interestRate: l.interest_rate ? Number(l.interest_rate) : undefined
+        })));
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -111,7 +162,9 @@ const Assets: React.FC = () => {
 
   const totalPhysical = physicalAssets.reduce((acc, curr) => acc + curr.estimatedValue, 0);
   const totalFinancial = brokers.reduce((acc, curr) => acc + curr.balance, 0);
-  const totalNetWorth = totalPhysical + totalFinancial;
+  const totalLiabilities = liabilities.reduce((acc, curr) => acc + curr.remainingBalance, 0);
+  const totalAssets = totalPhysical + totalFinancial;
+  const totalNetWorth = totalAssets - totalLiabilities;
 
   if (isLoading) {
     return (
@@ -139,7 +192,7 @@ const Assets: React.FC = () => {
       </div>
 
       {/* SUMMARY BANNER */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-slate-900 md:col-span-1 rounded-[32px] p-8 text-white relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-bl-[100px] -translate-y-10 translate-x-10" />
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Total Consolidado</p>
@@ -161,6 +214,12 @@ const Assets: React.FC = () => {
           <h3 className="text-3xl font-bold text-brand-600 tracking-tight">{formatCurrency(totalFinancial)}</h3>
           <p className="text-[10px] font-bold text-slate-300 mt-6 uppercase tracking-widest">Corretoras e Cripto</p>
         </div>
+
+        <div className="bg-red-50/50 border border-red-100/50 rounded-[32px] p-8 shadow-sm">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-400 mb-2">Passivos</p>
+          <h3 className="text-3xl font-bold text-red-600 tracking-tight">{formatCurrency(totalLiabilities)}</h3>
+          <p className="text-[10px] font-bold text-red-300 mt-6 uppercase tracking-widest">Dívidas e Financiamentos</p>
+        </div>
       </div>
 
       {/* NAVIGATION TABS */}
@@ -168,7 +227,8 @@ const Assets: React.FC = () => {
         {[
           { id: 'overview', label: 'Visão Geral', icon: <LayoutGrid size={16} /> },
           { id: 'physical', label: 'Bens Físicos', icon: <Box size={16} /> },
-          { id: 'investments', label: 'Investimentos', icon: <TrendingUp size={16} /> }
+          { id: 'investments', label: 'Investimentos', icon: <TrendingUp size={16} /> },
+          { id: 'liabilities', label: 'Passivos (Dívidas)', icon: <Landmark size={16} /> }
         ].map((tab) => (
           <button
             key={tab.id}
@@ -208,16 +268,23 @@ const Assets: React.FC = () => {
                   <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl group cursor-default">
                     <div className="flex items-center gap-3">
                       <div className="w-2.5 h-2.5 bg-brand-600 rounded-full" />
-                      <span className="text-xs font-bold text-slate-600 uppercase">Financeiros</span>
+                      <span className="text-xs font-bold text-slate-600 uppercase">Investimentos Ativos</span>
                     </div>
-                    <span className="text-sm font-bold text-slate-900">{totalNetWorth ? Math.round((totalFinancial / totalNetWorth) * 100) : 0}%</span>
+                    <span className="text-sm font-bold text-slate-900">{totalAssets ? Math.round((totalFinancial / totalAssets) * 100) : 0}%</span>
                   </div>
                   <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl group cursor-default">
                     <div className="flex items-center gap-3">
                       <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full" />
                       <span className="text-xs font-bold text-slate-600 uppercase">Bens Físicos</span>
                     </div>
-                    <span className="text-sm font-bold text-slate-900">{totalNetWorth ? Math.round((totalPhysical / totalNetWorth) * 100) : 0}%</span>
+                    <span className="text-sm font-bold text-slate-900">{totalAssets ? Math.round((totalPhysical / totalAssets) * 100) : 0}%</span>
+                  </div>
+                  <div className="flex justify-between items-center p-4 bg-red-50/50 rounded-2xl group cursor-default">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2.5 h-2.5 bg-red-500 rounded-full" />
+                      <span className="text-xs font-bold text-red-600 uppercase">Comprometimento em Dívidas</span>
+                    </div>
+                    <span className="text-sm font-bold text-red-600">{totalAssets ? Math.round((totalLiabilities / totalAssets) * 100) : 0}%</span>
                   </div>
                 </div>
               </div>
@@ -340,6 +407,46 @@ const Assets: React.FC = () => {
             )}
           </div>
         )}
+
+        {activeView === 'liabilities' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {liabilities.map(liability => (
+              <div key={liability.id} className="bg-white rounded-[32px] border border-red-100 shadow-sm overflow-hidden group hover:border-red-200 transition-all duration-300">
+                <div className="p-8 space-y-6">
+                  <div className="flex justify-between items-start">
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-red-50 text-red-600 shadow-lg shadow-current/5">
+                      <Landmark size={28} />
+                    </div>
+                    <button className="p-2 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors"><MoreHorizontal size={20} /></button>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-xl tracking-tight leading-tight uppercase tracking-tight">{liability.name}</h4>
+                    <span className="inline-block mt-2 px-2 py-1 bg-slate-100 text-slate-500 rounded text-[10px] font-bold uppercase tracking-widest">
+                      {liability.type === 'MORTGAGE' ? 'Financiamento Imob.' : liability.type === 'VEHICLE_FINANCING' ? 'Financ. Veículo' : liability.type === 'PERSONAL_LOAN' ? 'Empréstimo Pessoal' : liability.type === 'CONSORTIUM' ? 'Consórcio' : 'Outros'}
+                    </span>
+                  </div>
+
+                  <div className="pt-6 border-t border-slate-50">
+                    <p className="text-[10px] font-bold uppercase text-red-300 tracking-widest mb-1.5 leading-none">Saldo Devedor Restante</p>
+                    <p className="text-2xl font-bold text-red-600 leading-none">{formatCurrency(liability.remainingBalance)}</p>
+                  </div>
+                </div>
+                <div className="px-8 py-4 bg-red-50/30 flex justify-between items-center border-t border-red-50">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Total: {formatCurrency(liability.totalAmount)}</span>
+                  <button onClick={() => alert('Integração de pagamento de parcelas e amortização em breve.')} className="text-red-500 text-[10px] font-bold uppercase tracking-widest hover:underline">Amortizar</button>
+                </div>
+              </div>
+            ))}
+            <button
+              onClick={() => setShowLiabilityModal(true)}
+              className="rounded-[32px] border-2 border-dashed border-red-100 p-8 flex flex-col items-center justify-center gap-4 text-red-300 hover:border-red-300 hover:text-red-500 hover:bg-red-50/30 transition-all min-h-[280px]"
+            >
+              <Plus size={32} />
+              <span className="font-bold text-red-400">Novo Passivo</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {showModal && (
@@ -404,6 +511,79 @@ const Assets: React.FC = () => {
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancelar</button>
                 <button type="submit" className="flex-1 px-4 py-3 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-[1.02] transition-transform active:scale-95">Salvar Bem</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showLiabilityModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">Nova Dívida / Passivo</h3>
+              <button onClick={() => setShowLiabilityModal(false)} className="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-50">
+                <LayoutGrid size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveLiability} className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Descrição (Ex: Financiamento Caixa)</label>
+                <input
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                  placeholder="Nome do Passivo"
+                  value={liabilityFormData.name}
+                  onChange={(e) => setLiabilityFormData({ ...liabilityFormData, name: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Passivo</label>
+                <select
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500"
+                  value={liabilityFormData.type}
+                  onChange={(e) => setLiabilityFormData({ ...liabilityFormData, type: e.target.value })}
+                >
+                  <option value="MORTGAGE">Financiamento Imobiliário</option>
+                  <option value="VEHICLE_FINANCING">Financiamento de Veículo</option>
+                  <option value="PERSONAL_LOAN">Empréstimo Pessoal</option>
+                  <option value="CONSORTIUM">Consórcio</option>
+                  <option value="OTHER">Outras Dívidas</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Original Total</label>
+                  <input
+                    required
+                    type="number"
+                    step="0.01"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500"
+                    placeholder="0.00"
+                    value={liabilityFormData.totalAmount}
+                    onChange={(e) => setLiabilityFormData({ ...liabilityFormData, totalAmount: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-red-500 uppercase tracking-widest mb-1.5">Saldo Devedor Atual</label>
+                  <input
+                    required
+                    type="number"
+                    step="0.01"
+                    className="w-full bg-red-50/50 border border-red-200 rounded-xl px-4 py-3 text-sm font-bold text-red-900 outline-none focus:border-red-500"
+                    placeholder="0.00"
+                    value={liabilityFormData.remainingBalance}
+                    onChange={(e) => setLiabilityFormData({ ...liabilityFormData, remainingBalance: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button type="button" onClick={() => setShowLiabilityModal(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancelar</button>
+                <button type="submit" className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-red-500/20 hover:scale-[1.02] transition-transform active:scale-95">Salvar Passivo</button>
               </div>
             </form>
           </div>

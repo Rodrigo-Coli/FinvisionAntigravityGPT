@@ -14,6 +14,7 @@ export interface Profile {
 export interface DashboardData {
   consolidatedBalance: number;
   netWorth: number;
+  totalLiabilities?: number;
   totalExpenses?: number;
   lastMonthExpenses?: number;
   netWorthGrowth?: number;
@@ -220,4 +221,17 @@ export interface ExtractedReceipt {
   total: number;
   currency?: string;
   items: ReceiptItem[];
+}
+
+export type LiabilityType = 'MORTGAGE' | 'VEHICLE_FINANCING' | 'PERSONAL_LOAN' | 'CONSORTIUM' | 'CREDIT_CARD' | 'OTHER';
+
+export interface Liability {
+  id: string;
+  name: string;
+  type: LiabilityType;
+  totalAmount: number;
+  remainingBalance: number;
+  interestRate?: number;
+  linkedAssetId?: string;
+  metadata?: any;
 }

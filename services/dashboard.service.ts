@@ -125,9 +125,24 @@ export const DashboardService = {
     // For now, we'll return 0 or a placeholder.
     const netWorthGrowth = 0;
 
+    // 7. Liabilities (Debts/Passivos)
+    const { data: liabilitiesData, error: liabErr } = await sb
+      .from('liabilities')
+      .select('remaining_balance, type')
+      .eq('user_id', user.id);
+
+    let totalLiabilities = 0;
+    if (!liabErr && liabilitiesData) {
+      liabilitiesData.forEach((liab: any) => {
+        totalLiabilities += Number(liab.remaining_balance || 0);
+      });
+      netWorth -= totalLiabilities; // Net Worth = Assets - Liabilities
+    }
+
     return {
       consolidatedBalance: Number(consolidatedBalance || 0),
       netWorth: Number(netWorth || 0),
+      totalLiabilities: Number(totalLiabilities || 0),
       creditCards: creditCardsSummary,
       alerts: [],
       goals: [],
