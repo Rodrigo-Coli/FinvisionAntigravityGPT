@@ -200,8 +200,7 @@ export default async function handler(req: any, res: any) {
               institution: name,
               type: 'CHECKING',
               balance: 0,
-              color: '#0ea5e9',
-              active: true
+              color: '#0ea5e9'
             })
             .select('id')
             .single();
@@ -228,8 +227,7 @@ export default async function handler(req: any, res: any) {
               user_id: userId,
               name: name,
               color: type === 'INCOME' ? '#22c55e' : '#ef4444',
-              icon: 'Tag',
-              active: true
+              icon: 'Tag'
             })
             .select('id')
             .single();
@@ -256,7 +254,6 @@ export default async function handler(req: any, res: any) {
               category_id: resolvedCatId,
               is_paid: true,
               paid_at: t.date,
-              is_reconciled: true, // Bypass total
               metadata: {
                 import_id: imp.id,
                 source: 'mobills_direct_motor',

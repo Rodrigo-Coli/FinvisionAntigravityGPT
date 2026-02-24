@@ -185,8 +185,7 @@ export default async function handler(req: any, res: any) {
               limit: 1000,
               closing_day: 1,
               due_day: 10,
-              color: '#6366f1',
-              active: true
+              color: '#6366f1'
             })
             .select('id')
             .single();
@@ -213,8 +212,7 @@ export default async function handler(req: any, res: any) {
               user_id: userId,
               name: name,
               color: '#ef4444',
-              icon: 'Tag',
-              active: true
+              icon: 'Tag'
             })
             .select('id')
             .single();
