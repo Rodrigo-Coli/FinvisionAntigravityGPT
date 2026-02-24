@@ -22,7 +22,7 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   // Fix: changed 'card_id' to 'account_id' to match payload from ReconciliationService
-  const { import_id, account_id } = req.body;
+  const { import_id, account_id, import_source } = req.body;
   if (!import_id) return res.status(400).json({ error: 'import_id is required' });
 
   try {
@@ -64,16 +64,26 @@ export default async function handler(req: any, res: any) {
     console.log(`[API-Card] Iniciando Gemini para import ${import_id} (Tipo: ${imp.type})`);
 
     const prompt = `
-      Você é um especialista em conciliação bancária. Analise o extrato de cartão de crédito fornecido.
-      Extraia todas as transações individuais para uma lista estruturada.
+      Você é um especialista em conciliação de cartões de crédito com foco em mapeamento semântico flexível.
+      Analise o documento fornecido (extrato, fatura ou backup).
       
-      REGRAS:
-      1. Campo 'date' deve ser YYYY-MM-DD.
-      2. Campo 'amount' deve ser um número float ABSOLUTO (positivo). O sistema tratará como débito.
-      3. Identifique o merchant/descrição da melhor forma possível.
-      4. REMOVA: Linhas de SALDO, TOTAL, LIMITE, PAGAMENTO MINIMO, IOF, JUROS, ou qualquer linha que não seja uma transação financeira.
+      OBJETIVO: Extrair transações e identificar colunas de forma inteligente.
       
-      Retorne APENAS um objeto JSON no formato: { "transactions": [...] }
+      REGRAS DE INTERPRETAÇÃO (MUITO IMPORTANTE):
+      1. DATA: Procure por "Data", "Vencimento", "Dia". (Formato YYYY-MM-DD).
+      2. DESCRIÇÃO: Procure por "Descrição", "Histórico", "Detalhe", "Estabelecimento".
+      3. VALOR: Procure por "Valor", "Quantia", "Montante". (Manter como positivo).
+      4. CARTÃO (Conta): Procure por "Cartão", "Conta", "Origem", "Destino", "Bancos". (Mapear p/ card_name).
+      5. CATEGORIA: Procure por "Categoria", "Tipo", "Classificação", "Grupo". (Mapear p/ category_name).
+      
+      PARCELAMENTO: Se a descrição contiver algo como 'Amazon 2/5' ou '2 de 5', extraia installment_number=2 e installment_total=5.
+      
+      REGRAS DE OURO:
+      - Ignore cabeçalhos, totais de rodapé e saldos acumulados.
+      - Se o documento for de um sistema terceiro (ex: Mobills), trate as colunas de "Cartão" e "Categoria" como nomes reais.
+      
+      Retorne APENAS um objeto JSON no formato:
+      {"transactions": [{"date": "YYYY-MM-DD", "description": "texto", "amount": 123.45, "installment_number": 2, "installment_total": 5, "card_name": "Nome do Cartão", "category_name": "Nome da Categoria"}]}
     `;
 
     let contents: any;
@@ -99,6 +109,7 @@ export default async function handler(req: any, res: any) {
       contents,
       generationConfig: {
         responseMimeType: "application/json",
+        maxOutputTokens: 8192,
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -112,7 +123,9 @@ export default async function handler(req: any, res: any) {
                   amount: { type: Type.NUMBER },
                   merchant_normalized: { type: Type.STRING },
                   installment_number: { type: Type.NUMBER },
-                  installment_total: { type: Type.NUMBER }
+                  installment_total: { type: Type.NUMBER },
+                  category_name: { type: Type.STRING }, // Adicionado para Mobills
+                  card_name: { type: Type.STRING }      // Adicionado para Mobills
                 },
                 required: ["date", "description", "amount"]
               }
@@ -142,60 +155,154 @@ export default async function handler(req: any, res: any) {
     const parsedData = JSON.parse(cleanJson);
     const processedTxs = parsedData.transactions || [];
 
-    // 5. Save to Reconcile Queue
+    // 5. Save Data (Bypass or Reconcile Queue)
+    const isMobills = import_source === 'smart' || (imp.parse_meta as any)?.is_mobills || imp.notes?.toLowerCase().includes('mobills') || imp.notes?.toLowerCase().includes('smart');
     const targetAccountId = account_id || imp.account_id;
     const fingerprintsSeen = new Map();
 
-    const txsToInsert = processedTxs.map((t: any) => {
-      // Robust field extraction
-      const description = t.description || t.merchant || t.merchant_normalized || 'Transação sem descrição';
-      const date = t.date || new Date().toISOString().split('T')[0];
-      const amountVal = Number(t.amount) || 0;
+    if (processedTxs.length > 0) {
+      if (isMobills) {
+        // BYPASS MOTOR: Inserir direto em card_transactions (Faturas) com Auto-Provisão
 
-      // Fingerprint deduplication
-      const fpData = `${date}|${amountVal.toFixed(2)}|${description.toLowerCase()}|${targetAccountId || ''}`;
-      const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
+        // Helper: Resolver ou Criar Cartão
+        const resolveCardId = async (name: string, userId: string) => {
+          if (!name) return targetAccountId;
+          const { data: existing } = await supabase
+            .from('cards')
+            .select('id')
+            .ilike('name', name)
+            .eq('user_id', userId)
+            .maybeSingle();
 
-      return {
-        user_id: imp.user_id,
-        import_id: import_id,
-        date: date,
-        description: description,
-        amount: -Math.abs(amountVal), // Débito negativo
-        account_id: targetAccountId,
-        status: 'READY_TO_RECONCILE',
-        fingerprint: fingerprint,
-        metadata: {
-          is_card: true,
-          merchant_normalized: t.merchant_normalized || t.merchant || description,
-          installment_info: {
-            number: t.installment_number,
-            total: t.installment_total
-          }
-        }
-      };
-    }).filter((tx: any) => {
-      // In-memory deduplication to avoid "ON CONFLICT DO UPDATE command cannot affect row a second time"
-      if (fingerprintsSeen.has(tx.fingerprint)) return false;
-      fingerprintsSeen.set(tx.fingerprint, true);
-      return true;
-    });
+          if (existing) return existing.id;
 
-    if (txsToInsert.length > 0) {
-      const { error: insErr } = await supabase
-        .from('imported_transactions')
-        .upsert(txsToInsert, { onConflict: 'user_id,fingerprint' });
+          const { data: newCard, error: createErr } = await supabase
+            .from('cards')
+            .insert({
+              user_id: userId,
+              name: name,
+              brand: 'VISA',
+              limit: 1000,
+              closing_day: 1,
+              due_day: 10,
+              color: '#6366f1',
+              active: true
+            })
+            .select('id')
+            .single();
 
-      if (insErr) throw new Error(`Falha ao inserir transações: ${insErr.message}`);
+          if (createErr) console.error(`[Mobills-Motor] Erro ao criar cartão ${name}:`, createErr);
+          return newCard?.id || targetAccountId;
+        };
+
+        // Helper: Resolver ou Criar Categoria
+        const resolveCategoryId = async (name: string, userId: string) => {
+          if (!name) return null;
+          const { data: existing } = await supabase
+            .from('categories')
+            .select('id')
+            .ilike('name', name)
+            .eq('user_id', userId)
+            .maybeSingle();
+
+          if (existing) return existing.id;
+
+          const { data: newCat, error: createErr } = await supabase
+            .from('categories')
+            .insert({
+              user_id: userId,
+              name: name,
+              color: '#ef4444',
+              icon: 'Tag',
+              active: true
+            })
+            .select('id')
+            .single();
+
+          if (createErr) console.error(`[Mobills-Motor] Erro ao criar categoria ${name}:`, createErr);
+          return newCat?.id;
+        };
+
+        const entriesToInsert = await Promise.all(processedTxs.map(async (t: any) => {
+          const date = t.date || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+          const amount = Math.abs(Number(t.amount) || 0);
+          const resolvedCardId = await resolveCardId(t.card_name || 'Mobills Card', imp.user_id);
+          const resolvedCatId = await resolveCategoryId(t.category_name || t.category, imp.user_id);
+
+          return {
+            user_id: imp.user_id,
+            card_id: resolvedCardId,
+            used_card_id: resolvedCardId,
+            date: date,
+            description: t.description || 'Mobills Card Import',
+            amount: amount,
+            category_id: resolvedCatId,
+            source: 'IMPORT',
+            status: 'POSTED',
+            owner_name: 'Pessoal',
+            metadata: {
+              import_id: imp.id,
+              source: 'mobills_direct_motor',
+              original_category: t.category_name,
+              installment_info: {
+                number: t.installment_number || null,
+                total: t.installment_total || null
+              }
+            }
+          };
+        }));
+
+        const { error: cardErr } = await supabase.from('card_transactions').insert(entriesToInsert);
+        if (cardErr) throw new Error(`Falha ao inserir histórico Mobills Card: ${cardErr.message}`);
+      } else {
+        // PADRÃO: Salvar na fila de conciliação (imported_transactions)
+        const txsToInsert = processedTxs.map((t: any) => {
+          const description = t.description || t.merchant || t.merchant_normalized || 'Transação sem descrição';
+          const todaySP = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+          const date = t.date || todaySP;
+          const amountVal = Number(t.amount) || 0;
+          const fpData = `${date}|${amountVal.toFixed(2)}|${description.toLowerCase()}|${targetAccountId || ''}`;
+          const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
+
+          return {
+            user_id: imp.user_id,
+            import_id: import_id,
+            date: date,
+            description: description,
+            amount: -Math.abs(amountVal),
+            account_id: targetAccountId,
+            status: 'READY_TO_RECONCILE',
+            fingerprint: fingerprint,
+            metadata: {
+              is_card: true,
+              merchant_normalized: t.merchant_normalized || t.merchant || description,
+              installment_info: {
+                number: t.installment_number || null,
+                total: t.installment_total || null
+              }
+            }
+          };
+        }).filter((tx: any) => {
+          if (fingerprintsSeen.has(tx.fingerprint)) return false;
+          fingerprintsSeen.set(tx.fingerprint, true);
+          return true;
+        });
+
+        const { error: insErr } = await supabase
+          .from('imported_transactions')
+          .upsert(txsToInsert, { onConflict: 'user_id,fingerprint' });
+
+        if (insErr) throw new Error(`Falha ao inserir transações: ${insErr.message}`);
+      }
     }
 
     // 6. Finalize
     await supabase.from('imports').update({
       status: 'ready',
-      notes: `Processado. Extraídas ${txsToInsert.length} transações.`
+      notes: `Processado. Extraídas ${processedTxs.length} transações.`
     }).eq('id', import_id);
 
-    return res.status(200).json({ success: true, count: txsToInsert.length });
+    return res.status(200).json({ success: true, count: processedTxs.length });
 
   } catch (err: any) {
     console.error('[API-Card] Erro Crítico:', err);

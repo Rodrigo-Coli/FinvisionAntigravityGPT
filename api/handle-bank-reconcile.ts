@@ -40,7 +40,7 @@ export default async function handler(req: any, res: any) {
     console.log(`[parse-statement] STEP: FETCH_IMPORT`);
     const { data: imp, error: impErr } = await supabase
       .from('imports')
-      .select('id, user_id, document_id, account_id, type, notes')
+      .select('id, user_id, document_id, account_id, type, notes, parse_meta')
       .eq('id', import_id)
       .single();
 
@@ -86,36 +86,40 @@ export default async function handler(req: any, res: any) {
     }
 
     const ai = new GoogleGenAI({ apiKey: geminiKey });
-    const model = 'gemini-2.5-flash'; // Atualizado para a versão que você tem acesso
+    const model = 'gemini-2.5-flash';
 
     const prompt = `
-      Você é um especialista em conciliação bancária. Analise o extrato/comprovante fornecido.
-      Extraia todas as transações individuais para uma lista JSON.
+      Você é um especialista em conciliação financeira com foco em mapeamento semântico flexível.
+      Analise o documento fornecido (extrato, relatório ou backup).
       
-      REGRAS:
-      1. Campo 'date' deve ser YYYY-MM-DD.
-      2. Campo 'amount' deve ser um número float. 
-      3. Se for despesa/saída/débito, o 'amount' deve ser NEGATIVO.
-      4. Se for receita/entrada/crédito, o 'amount' deve ser POSITIVO.
-      5. Descrição deve ser limpa, sem códigos internos se possível.
-      6. Contexto: Conta=${account_name || 'Desconhecida'}, Origem=${import_source || 'Desconhecida'}.
-      7. REMOVA: Linhas de SALDO, TOTAL, LIMITE, PAGAMENTO MINIMO, IOF, JUROS, ou qualquer linha que não seja uma transação financeira.
+      OBJETIVO: Extrair transações e identificar colunas de forma inteligente.
+      
+      REGRAS DE INTERPRETAÇÃO (MUITO IMPORTANTE):
+      1. DATA: Procure por "Data", "Vencimento", "Movimento", "Dia". (Formato YYYY-MM-DD).
+      2. DESCRIÇÃO: Procure por "Descrição", "Histórico", "Detalhe", "Favorecido".
+      3. VALOR: Procure por "Valor", "Quantia", "Montante", "Número". (Se for saída, manter negativo).
+      4. CONTA: Procure por "Conta", "Banco", "Origem", "Destino", "Bancos". (Mapear p/ account_name).
+      5. CATEGORIA: Procure por "Categoria", "Tipo", "Classificação", "Grupo". (Mapear p/ category_name).
+      
+      REGRAS DE OURO:
+      - Ignore cabeçalhos, totais de rodapé e saldos acumulados.
+      - Se o documento for de um sistema terceiro (ex: Mobills, Organizze), trate as colunas de "Conta" e "Categoria" como nomes reais que serão criados.
       
       Retorne APENAS um objeto JSON no formato:
-      {"transactions": [{"date": "YYYY-MM-DD", "description": "texto", "amount": -123.45, "category": "opcional"}]}
+      {"transactions": [{"date": "YYYY-MM-DD", "description": "texto", "amount": -123.45, "account_name": "Nome da Conta", "category_name": "Nome da Categoria"}]}
     `;
 
     let contents: any;
     if (isTextFile) {
       const textContent = buffer.toString('utf-8');
-      contents = { parts: [{ text: prompt }, { text: `CONTEÚDO DO ARQUIVO:\n${textContent.substring(0, 30000)}` }] };
+      contents = [{ parts: [{ text: prompt }, { text: `CONTEÚDO DO ARQUIVO:\n${textContent.substring(0, 30000)}` }] }];
     } else {
-      contents = {
+      contents = [{
         parts: [
           { text: prompt },
           { inlineData: { data: buffer.toString('base64'), mimeType: doc.mime_type || 'application/pdf' } }
         ]
-      };
+      }];
     }
 
     const response = await ai.models.generateContent({
@@ -123,6 +127,7 @@ export default async function handler(req: any, res: any) {
       contents,
       generationConfig: {
         responseMimeType: "application/json",
+        maxOutputTokens: 8192,
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -134,7 +139,9 @@ export default async function handler(req: any, res: any) {
                   date: { type: Type.STRING },
                   description: { type: Type.STRING },
                   amount: { type: Type.NUMBER },
-                  category: { type: Type.STRING }
+                  category: { type: Type.STRING },
+                  account_name: { type: Type.STRING }, // Adicionado para Mobills
+                  category_name: { type: Type.STRING } // Adicionado para Mobills
                 },
                 required: ["date", "description", "amount"]
               }
@@ -166,43 +173,142 @@ export default async function handler(req: any, res: any) {
     const transactions = parsed.transactions || [];
 
 
-    // 7. UPSERT_TXS: Persistir transações (READY_TO_RECONCILE)
-    console.log(`[parse-statement] STEP: UPSERT_TXS (${transactions.length} itens)`);
+    // 7. PERSIST_DATA: Salvar no banco (Fila ou Direto no Histórico)
+    const isMobills = import_source === 'smart' || (imp.parse_meta as any)?.is_mobills || imp.notes?.toLowerCase().includes('mobills') || imp.notes?.toLowerCase().includes('smart');
+    console.log(`[parse-statement] STEP: PERSIST_DATA (Smart Bypass: ${!!isMobills})`);
+
     if (transactions.length > 0) {
-      const txsToInsert = transactions
-        .filter((t: any) => t.date && typeof t.amount === 'number' && t.amount !== 0)
-        .map((t: any) => {
-          const cleanDesc = t.description.trim();
-          // Fingerprint: date | amount | description | account_id
-          const fpData = `${t.date}|${t.amount.toFixed(2)}|${cleanDesc.toLowerCase()}|${imp.account_id || ''}`;
-          const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
+      if (isMobills) {
+        // BYPASS MOTOR: Inserir direto em transactions (Histórico) com Auto-Provisão
 
-          return {
-            user_id: imp.user_id,
-            import_id: imp.id,
-            date: t.date,
-            description: cleanDesc,
-            amount: t.amount,
-            account_id: imp.account_id,
-            account_name: account_name || 'Importado',
-            source_document_id: imp.document_id,
-            status: 'READY_TO_RECONCILE',
-            fingerprint: fingerprint,
-            metadata: {
-              category_suggested: t.category,
-              parsed_at: new Date().toISOString()
-            }
-          };
-        });
+        // Helper: Resolver ou Criar Conta
+        const resolveAccountId = async (name: string, userId: string) => {
+          if (!name) return imp.account_id;
+          const { data: existing } = await supabase
+            .from('accounts')
+            .select('id')
+            .ilike('institution', name)
+            .eq('user_id', userId)
+            .maybeSingle();
 
-      if (txsToInsert.length > 0) {
+          if (existing) return existing.id;
+
+          const { data: newAcc, error: createErr } = await supabase
+            .from('accounts')
+            .insert({
+              user_id: userId,
+              institution: name,
+              type: 'CHECKING',
+              balance: 0,
+              color: '#0ea5e9',
+              active: true
+            })
+            .select('id')
+            .single();
+
+          if (createErr) console.error(`[Mobills-Motor] Erro ao criar conta ${name}:`, createErr);
+          return newAcc?.id || imp.account_id;
+        };
+
+        // Helper: Resolver ou Criar Categoria
+        const resolveCategoryId = async (name: string, userId: string, type: 'INCOME' | 'EXPENSE') => {
+          if (!name) return null;
+          const { data: existing } = await supabase
+            .from('categories')
+            .select('id')
+            .ilike('name', name)
+            .eq('user_id', userId)
+            .maybeSingle();
+
+          if (existing) return existing.id;
+
+          const { data: newCat, error: createErr } = await supabase
+            .from('categories')
+            .insert({
+              user_id: userId,
+              name: name,
+              color: type === 'INCOME' ? '#22c55e' : '#ef4444',
+              icon: 'Tag',
+              active: true
+            })
+            .select('id')
+            .single();
+
+          if (createErr) console.error(`[Mobills-Motor] Erro ao criar categoria ${name}:`, createErr);
+          return newCat?.id;
+        };
+
+        const entriesToInsert = await Promise.all(transactions
+          .filter((t: any) => t.date && typeof t.amount === 'number' && t.amount !== 0)
+          .map(async (t: any) => {
+            const txType = t.amount < 0 ? 'EXPENSE' : 'INCOME';
+            const resolvedAccId = await resolveAccountId(t.account_name || 'Mobills', imp.user_id);
+            const resolvedCatId = await resolveCategoryId(t.category_name || t.category, imp.user_id, txType);
+
+            return {
+              user_id: imp.user_id,
+              date: t.date,
+              description: t.description.trim(),
+              amount: Math.abs(t.amount),
+              type: txType,
+              account_id: resolvedAccId,
+              account_name: t.account_name || account_name || 'Mobills Import',
+              category_id: resolvedCatId,
+              is_paid: true,
+              paid_at: t.date,
+              is_reconciled: true, // Bypass total
+              metadata: {
+                import_id: imp.id,
+                source: 'mobills_direct_motor',
+                original_category: t.category_name
+              }
+            };
+          }));
+
+        if (entriesToInsert.length > 0) {
+          const { error: histErr } = await supabase.from('transactions').insert(entriesToInsert);
+          if (histErr) throw new Error(`Falha ao inserir histórico Mobills: ${histErr.message}`);
+
+          // Recalcular saldos de todas as contas envolvidas
+          const uniqueAccountIds = [...new Set(entriesToInsert.map(e => e.account_id))];
+          for (const accId of uniqueAccountIds) {
+            if (accId) await supabase.rpc('recalculate_account_balance', { p_account_id: accId });
+          }
+        }
+      } else {
+        // PADRÃO: Salvar na fila de conciliação (imported_transactions)
+        const txsToInsert = transactions
+          .filter((t: any) => t.date && typeof t.amount === 'number' && t.amount !== 0)
+          .map((t: any) => {
+            const cleanDesc = t.description.trim();
+            const todaySP = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+            const txDate = t.date || todaySP;
+            const fpData = `${txDate}|${t.amount.toFixed(2)}|${cleanDesc.toLowerCase()}|${imp.account_id || ''}`;
+            const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
+
+            return {
+              user_id: imp.user_id,
+              import_id: imp.id,
+              date: txDate,
+              description: cleanDesc,
+              amount: t.amount,
+              account_id: imp.account_id,
+              account_name: account_name || 'Importado',
+              source_document_id: imp.document_id,
+              status: 'READY_TO_RECONCILE',
+              fingerprint: fingerprint,
+              metadata: {
+                category_suggested: t.category,
+                parsed_at: new Date().toISOString()
+              }
+            };
+          });
+
         const { error: insErr } = await supabase
           .from('imported_transactions')
           .upsert(txsToInsert, { onConflict: 'user_id,fingerprint' });
 
-        if (insErr) {
-          throw new Error(`Falha ao inserir transações: ${insErr.message}`);
-        }
+        if (insErr) throw new Error(`Falha ao inserir transações: ${insErr.message}`);
       }
     }
 
