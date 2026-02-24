@@ -104,7 +104,7 @@ export default async function handler(req: any, res: any) {
       }];
     }
 
-    const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+    const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
     let result: any = null;
     let rawText = '';
     let lastError: any = null;
