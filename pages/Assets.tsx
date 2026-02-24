@@ -27,6 +27,41 @@ const Assets: React.FC = () => {
   const [brokers, setBrokers] = useState<InvestmentBroker[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const [showModal, setShowModal] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    category: 'REAL_ESTATE',
+    estimatedValue: '',
+    acquisitionDate: '',
+    description: ''
+  });
+
+  const handleSaveAsset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+      const { error } = await supabase.from('physical_assets').insert([{
+        user_id: user.id,
+        name: formData.name,
+        category: formData.category,
+        estimated_value: parseFloat(formData.estimatedValue) || 0,
+        acquisition_date: formData.acquisitionDate || null,
+        description: formData.description
+      }]);
+
+      if (error) throw error;
+
+      setShowModal(false);
+      setFormData({ name: '', category: 'REAL_ESTATE', estimatedValue: '', acquisitionDate: '', description: '' });
+      fetchData();
+    } catch (err: any) {
+      alert(`Erro ao salvar: ${err.message}`);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -86,41 +121,6 @@ const Assets: React.FC = () => {
       </div>
     );
   }
-
-  const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    category: 'REAL_ESTATE',
-    estimatedValue: '',
-    acquisitionDate: '',
-    description: ''
-  });
-
-  const handleSaveAsset = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!supabase) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    try {
-      const { error } = await supabase.from('physical_assets').insert([{
-        user_id: user.id,
-        name: formData.name,
-        category: formData.category,
-        estimated_value: parseFloat(formData.estimatedValue) || 0,
-        acquisition_date: formData.acquisitionDate || null,
-        description: formData.description
-      }]);
-
-      if (error) throw error;
-
-      setShowModal(false);
-      setFormData({ name: '', category: 'REAL_ESTATE', estimatedValue: '', acquisitionDate: '', description: '' });
-      fetchData();
-    } catch (err: any) {
-      alert(`Erro ao salvar: ${err.message}`);
-    }
-  };
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
