@@ -357,26 +357,36 @@ export default async function handler(req: any, res: any) {
           const maxDate = new Date(txDateObj);
           maxDate.setDate(maxDate.getDate() + 3);
 
-          const minAmount = Math.abs(t.amount) - 0.05;
-          const maxAmount = Math.abs(t.amount) + 0.05;
-          const txType = t.amount < 0 ? 'EXPENSE' : 'INCOME';
+          const rawAmount = t.amount;
+          const txType = rawAmount < 0 ? 'EXPENSE' : 'INCOME';
+          const minAmount = Math.abs(rawAmount) - 0.05;
+          const maxAmount = Math.abs(rawAmount) + 0.05;
+
+          // Construir a query dinamicamente
+          let query = supabase
+            .from('transactions')
+            .select('id, date, amount, description, type')
+            .eq('user_id', imp.user_id)
+            .eq('type', txType)
+            .gte('date', minDate.toISOString().split('T')[0])
+            .lte('date', maxDate.toISOString().split('T')[0]);
 
           if (imp.account_id) {
-            const { data: possibleDups } = await supabase
-              .from('transactions')
-              .select('id, date, amount, description')
-              .eq('user_id', imp.user_id)
-              .eq('account_id', imp.account_id)
-              .eq('type', txType)
-              .gte('date', minDate.toISOString().split('T')[0])
-              .lte('date', maxDate.toISOString().split('T')[0])
-              .gte('amount', minAmount)
-              .lte('amount', maxAmount)
-              .limit(1);
+            query = query.eq('account_id', imp.account_id);
+          }
 
-            if (possibleDups && possibleDups.length > 0) {
+          const { data: possibleDups } = await query;
+
+          if (possibleDups && possibleDups.length > 0) {
+            // Filtrar no JS pelo valor absoluto para evitar problemas de sinal no banco
+            const match = possibleDups.find(dup => {
+              const absDupAmount = Math.abs(Number(dup.amount));
+              return absDupAmount >= minAmount && absDupAmount <= maxAmount;
+            });
+
+            if (match) {
               isDuplicate = true;
-              dupReason = `Transação similar encontrada: ${possibleDups[0].description} em ${possibleDups[0].date} (R$ ${possibleDups[0].amount})`;
+              dupReason = `Transação similar encontrada: ${match.description} em ${match.date} (R$ ${match.amount})`;
             }
           }
 

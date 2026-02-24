@@ -341,21 +341,30 @@ export default async function handler(req: any, res: any) {
           const minAmount = Math.abs(amountVal) - 0.05;
           const maxAmount = Math.abs(amountVal) + 0.05;
 
-          if (targetAccountId) {
-            const { data: possibleDups } = await supabase
-              .from('card_transactions')
-              .select('id, date, amount, description')
-              .eq('user_id', imp.user_id)
-              .eq('card_id', targetAccountId)
-              .gte('date', minDate.toISOString().split('T')[0])
-              .lte('date', maxDate.toISOString().split('T')[0])
-              .gte('amount', minAmount)
-              .lte('amount', maxAmount)
-              .limit(1);
+          // Construir a query dinamicamente
+          let query = supabase
+            .from('card_transactions')
+            .select('id, date, amount, description')
+            .eq('user_id', imp.user_id)
+            .gte('date', minDate.toISOString().split('T')[0])
+            .lte('date', maxDate.toISOString().split('T')[0]);
 
-            if (possibleDups && possibleDups.length > 0) {
+          if (targetAccountId) {
+            query = query.eq('card_id', targetAccountId);
+          }
+
+          const { data: possibleDups } = await query;
+
+          if (possibleDups && possibleDups.length > 0) {
+            // Filtrar no JS pelo valor absoluto
+            const match = possibleDups.find(dup => {
+              const absDupAmount = Math.abs(Number(dup.amount));
+              return absDupAmount >= minAmount && absDupAmount <= maxAmount;
+            });
+
+            if (match) {
               isDuplicate = true;
-              dupReason = `Transação similar no cartão: ${possibleDups[0].description} em ${possibleDups[0].date} (R$ ${possibleDups[0].amount})`;
+              dupReason = `Transação similar no cartão: ${match.description} em ${match.date} (R$ ${match.amount})`;
             }
           }
 
