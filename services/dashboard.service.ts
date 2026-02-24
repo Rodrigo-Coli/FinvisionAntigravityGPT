@@ -21,10 +21,12 @@ export const DashboardService = {
 
     let consolidatedBalance = 0;
     let netWorth = 0;
+    let totalAssets = 0;
 
     (accounts || []).forEach((acc: any) => {
       const balance = Number(acc.current_balance || 0);
       netWorth += balance;
+      totalAssets += balance;
       if (['CHECKING', 'SAVINGS', 'CASH'].includes(acc.type)) {
         consolidatedBalance += balance;
       }
@@ -67,7 +69,9 @@ export const DashboardService = {
 
     if (!physErr && physicalAssets) {
       physicalAssets.forEach((asset: any) => {
-        netWorth += Number(asset.estimated_value || 0);
+        const val = Number(asset.estimated_value || 0);
+        netWorth += val;
+        totalAssets += val;
       });
     }
 
@@ -139,12 +143,24 @@ export const DashboardService = {
       netWorth -= totalLiabilities; // Net Worth = Assets - Liabilities
     }
 
+    // 8. Smart Alerts Generation
+    const smartAlerts: any[] = [];
+    if (consolidatedBalance < 1000) {
+      smartAlerts.push({ id: 'low-bal', type: 'warning', message: 'Atenção: Saldo consolidado abaixo de R$ 1.000', createdAt: new Date().toISOString() });
+    }
+    creditCardsSummary.forEach(c => {
+      if (c.limit > 0 && c.current / c.limit > 0.8) {
+        smartAlerts.push({ id: `cc-high-${c.brand}`, type: 'critical', message: `Cartão ${c.brand} com mais de 80% do limite utilizado`, createdAt: new Date().toISOString() });
+      }
+    });
+
     return {
       consolidatedBalance: Number(consolidatedBalance || 0),
       netWorth: Number(netWorth || 0),
+      totalAssets: Number(totalAssets || 0),
       totalLiabilities: Number(totalLiabilities || 0),
       creditCards: creditCardsSummary,
-      alerts: [],
+      alerts: smartAlerts,
       goals: [],
       cashFlow,
       assets: assetsSummary,

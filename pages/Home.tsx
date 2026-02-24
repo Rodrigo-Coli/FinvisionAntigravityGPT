@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { DashboardService } from '../services/dashboard.service';
 import { DateUtils } from '../lib/dateUtils';
+import CashFlowProjection from '../components/CashFlowProjection';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -105,17 +106,14 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
       {/* BALANCE CARDS GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3 bg-brand-600 rounded-[32px] p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-500/30 group">
-          <div className="absolute -right-10 -bottom-10 opacity-10 group-hover:scale-110 transition-transform duration-1000">
-            <Wallet size={200} />
-          </div>
+        <div id="tour-net-worth" className="lg:col-span-3 bg-brand-600 rounded-[32px] p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-500/30 group">
 
-          <div className="relative z-10 flex flex-col h-full justify-between gap-12">
+          <div className="relative z-10 flex flex-col h-full justify-between gap-8">
             <div className="flex justify-between items-start">
               <div className="space-y-1">
-                <p className="text-white/70 text-sm font-medium">Saldo Total</p>
+                <p className="text-white/70 text-sm font-medium uppercase tracking-widest text-[10px]">Patrimônio Líquido</p>
                 <h2 className={`text-4xl sm:text-5xl font-bold tracking-tight transition-all duration-300 ${!showBalance && 'blur-xl select-none'}`}>
-                  {showBalance ? format(data.consolidatedBalance) : 'R$ 00.000,00'}
+                  {showBalance ? format(data.netWorth) : 'R$ 00.000,00'}
                 </h2>
               </div>
               <button
@@ -126,14 +124,41 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
               </button>
             </div>
 
-            <div className="flex items-center gap-2 text-white font-medium text-xs">
-              <div className="px-2 py-0.5 bg-white/20 rounded-md">Patrimônio Líquido</div>
-              <span className={`font-bold ${!showBalance && 'blur-md'}`}>{showBalance ? format(data.netWorth) : '---'}</span>
+            <div className="space-y-4">
+              {/* Assets vs Liabilities Breakdown Bar */}
+              <div className={`h-2 w-full rounded-full overflow-hidden flex shadow-inner ${(data.totalAssets || 0) === 0 && (data.totalLiabilities || 0) === 0 ? 'bg-white/20' : 'bg-rose-500'}`}>
+                <div
+                  className={`h-full transition-all duration-1000 ${(data.totalAssets || 0) === 0 && (data.totalLiabilities || 0) === 0 ? 'bg-transparent' : 'bg-emerald-400'}`}
+                  style={{ width: `${Math.min(100, Math.max(0, (data.totalAssets || 0) / ((data.totalAssets || 0) + (data.totalLiabilities || 0) || 1) * 100))}%` }}
+                />
+              </div>
+
+              <div className="flex justify-between items-end text-white text-xs">
+                <div>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span className="font-medium text-white/70">Ativos (Bens e Contas)</span>
+                  </div>
+                  <span className={`font-bold text-sm ${!showBalance && 'blur-sm'}`}>{showBalance ? format(data.totalAssets || 0) : '---'}</span>
+                </div>
+                <div className="text-right">
+                  <div className="flex items-center justify-end gap-1.5 mb-0.5">
+                    <div className="w-2 h-2 rounded-full bg-rose-500" />
+                    <span className="font-medium text-white/70">Passivos (Dívidas)</span>
+                  </div>
+                  <span className={`font-bold text-sm ${!showBalance && 'blur-sm'}`}>{showBalance ? format(data.totalLiabilities || 0) : '---'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-4 border-t border-white/10 text-white font-medium text-xs">
+              <div className="px-2 py-0.5 bg-white/20 rounded-md">Saldo Bancário Consolidado</div>
+              <span className={`font-bold ${!showBalance && 'blur-md'}`}>{showBalance ? format(data.consolidatedBalance) : '---'}</span>
               <button
                 onClick={() => navigate('/assets')}
                 className="p-1 px-2 border border-white/20 rounded-md flex items-center gap-1 ml-auto cursor-pointer hover:bg-white/10 transition-colors"
               >
-                Detalhes <ArrowUpRight size={14} />
+                Meus Bens <ArrowUpRight size={14} />
               </button>
             </div>
           </div>
@@ -171,6 +196,26 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         </div>
       </div>
 
+      {/* SMART ALERTS */}
+      {data?.alerts && data.alerts.length > 0 && (
+        <div className="flex flex-col gap-3">
+          {data.alerts.map((alert: any) => (
+            <div key={alert.id} className={`flex items-start gap-4 p-4 rounded-2xl border ${alert.type === 'critical' ? 'bg-rose-50 border-rose-100 text-rose-700' : 'bg-orange-50 border-orange-100 text-orange-700'}`}>
+              <AlertCircle size={20} className="shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold uppercase tracking-widest text-[10px] mb-0.5">Alerta Inteligente</p>
+                <p className="text-sm font-medium">{alert.message}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* CASH FLOW PROJECTION (12 MONTHS) */}
+      <div id="tour-cash-flow">
+        <CashFlowProjection userId={user?.id} />
+      </div>
+
       {/* MID SECTION: CREDIT CARDS & INSIGHTS */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         <div className="lg:col-span-8 space-y-6">
@@ -180,7 +225,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {data.creditCards.map((card, i) => (
+            {data?.creditCards?.map((card, i) => (
               <div key={i} onClick={() => navigate('/cards')} className="bg-white border border-slate-100/80 rounded-[24px] p-5 shadow-sm hover:border-brand-100 transition-all group cursor-pointer">
                 <div className="flex justify-between items-start mb-4">
                   <div className="bg-slate-50 p-2 py-3 rounded-lg flex items-center justify-center min-w-[50px]">
@@ -208,7 +253,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
                 </div>
               </div>
             ))}
-            {data.creditCards.length === 0 && (
+            {(!data?.creditCards || data.creditCards.length === 0) && (
               <div onClick={() => navigate('/cards')} className="col-span-1 md:col-span-2 py-10 border border-dashed border-slate-200 rounded-[24px] flex flex-col items-center justify-center grayscale opacity-50 cursor-pointer hover:opacity-100 transition-opacity">
                 <CreditCardIcon size={40} className="text-slate-300" />
                 <p className="text-xs font-bold text-slate-400 uppercase mt-4">Nenhum cartão encontrado</p>
@@ -235,7 +280,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
               </div>
 
               <p className="text-sm text-slate-500 leading-relaxed">
-                Seus gastos este mês totalizam <span className="text-indigo-600 font-bold">{format(data.totalExpenses || 0)}</span>. Continue acompanhando para otimizar sua saúde financeira.
+                Seus gastos este mês totalizam <span className="text-indigo-600 font-bold">{format(data?.totalExpenses || 0)}</span>. Continue acompanhando para otimizar sua saúde financeira.
               </p>
 
               <div className="flex items-center gap-2 mt-2">
@@ -255,7 +300,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
             <div className="relative z-10 flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-black text-white/50 uppercase tracking-widest mb-1">Média Mensal</p>
-                <h3 className="text-2xl font-bold tracking-tight">{format(data.lastMonthExpenses || 0)}</h3>
+                <h3 className="text-2xl font-bold tracking-tight">{format(data?.lastMonthExpenses || 0)}</h3>
               </div>
               <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
                 <div className="h-full bg-brand-400 w-2/3" />

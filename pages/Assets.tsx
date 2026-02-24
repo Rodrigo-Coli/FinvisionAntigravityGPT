@@ -31,6 +31,7 @@ const Assets: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   const [showModal, setShowModal] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<PhysicalAsset | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     category: 'REAL_ESTATE',
@@ -39,6 +40,18 @@ const Assets: React.FC = () => {
     description: ''
   });
 
+  const openEditAsset = (asset: PhysicalAsset) => {
+    setEditingAsset(asset);
+    setFormData({
+      name: asset.name,
+      category: asset.category,
+      estimatedValue: String(asset.estimatedValue),
+      acquisitionDate: asset.acquisitionDate || '',
+      description: asset.description || ''
+    });
+    setShowModal(true);
+  };
+
   const handleSaveAsset = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) return;
@@ -46,18 +59,31 @@ const Assets: React.FC = () => {
     if (!user) return;
 
     try {
-      const { error } = await supabase.from('physical_assets').insert([{
-        user_id: user.id,
-        name: formData.name,
-        category: formData.category,
-        estimated_value: parseFloat(formData.estimatedValue) || 0,
-        acquisition_date: formData.acquisitionDate || null,
-        description: formData.description
-      }]);
-
-      if (error) throw error;
+      if (editingAsset) {
+        // UPDATE existing asset
+        const { error } = await supabase.from('physical_assets').update({
+          name: formData.name,
+          category: formData.category,
+          estimated_value: parseFloat(formData.estimatedValue) || 0,
+          acquisition_date: formData.acquisitionDate || null,
+          description: formData.description
+        }).eq('id', editingAsset.id);
+        if (error) throw error;
+      } else {
+        // INSERT new asset
+        const { error } = await supabase.from('physical_assets').insert([{
+          user_id: user.id,
+          name: formData.name,
+          category: formData.category,
+          estimated_value: parseFloat(formData.estimatedValue) || 0,
+          acquisition_date: formData.acquisitionDate || null,
+          description: formData.description
+        }]);
+        if (error) throw error;
+      }
 
       setShowModal(false);
+      setEditingAsset(null);
       setFormData({ name: '', category: 'REAL_ESTATE', estimatedValue: '', acquisitionDate: '', description: '' });
       fetchData();
     } catch (err: any) {
@@ -357,7 +383,9 @@ const Assets: React.FC = () => {
                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${asset.category === 'REAL_ESTATE' ? 'bg-blue-50 text-blue-600' : 'bg-slate-900 text-white'} shadow-lg shadow-current/5`}>
                       {asset.category === 'REAL_ESTATE' ? <Home size={28} /> : <Car size={28} />}
                     </div>
-                    <button className="p-2 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors"><MoreHorizontal size={20} /></button>
+                    <button onClick={() => openEditAsset(asset)} className="p-2 text-slate-400 hover:bg-slate-50 hover:text-brand-600 rounded-xl transition-colors">
+                      <MoreHorizontal size={20} />
+                    </button>
                   </div>
 
                   <div>
@@ -372,7 +400,7 @@ const Assets: React.FC = () => {
                 </div>
                 <div className="px-8 py-4 bg-slate-50/50 flex justify-between items-center border-t border-slate-50">
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Aquisição: {asset.acquisitionDate ? new Date(asset.acquisitionDate).getFullYear() : '---'}</span>
-                  <button onClick={() => alert('Módulo de reavaliação de bens chegará em breve.')} className="text-brand-600 text-[10px] font-bold uppercase tracking-widest hover:underline">Reavaliar</button>
+                  <button onClick={() => openEditAsset(asset)} className="text-brand-600 text-[10px] font-bold uppercase tracking-widest hover:underline">Editar / Reavaliar</button>
                 </div>
               </div>
             ))}

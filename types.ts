@@ -15,6 +15,7 @@ export interface DashboardData {
   consolidatedBalance: number;
   netWorth: number;
   totalLiabilities?: number;
+  totalAssets?: number;
   totalExpenses?: number;
   lastMonthExpenses?: number;
   netWorthGrowth?: number;
@@ -239,4 +240,24 @@ export interface Liability {
   installmentsRemaining?: number;
   dueDay?: number;
   metadata?: any;
+}
+
+export interface Goal {
+  id: string;
+  name: string;
+  description?: string;
+  targetAmount: number;
+  currentAmount: number;
+  color: string;
+  deadline?: string;
+  isCompleted: boolean;
+}
+
+export interface Budget {
+  id: string;
+  category: string;
+  monthlyLimit: number;
+  color: string;
+  isActive: boolean;
+  currentMonthSpent?: number; // computed client-side
 }

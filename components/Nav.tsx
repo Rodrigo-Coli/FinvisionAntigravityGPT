@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, FileCheck, Menu, X, Bell } from 'lucide-react';
+import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle } from 'lucide-react';
 import { Profile } from '../types';
 import { supabase } from '../lib/supabase/client';
+import { useTour } from '../contexts/TourContext';
 
 const Nav: React.FC<{ user: Profile }> = ({ user }) => {
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { startTour } = useTour();
 
   const items = [
     { label: 'Início', path: '/', icon: <Home size={20} /> },
@@ -14,6 +16,8 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { label: 'Cartões', path: '/cards', icon: <CreditCard size={20} /> },
     { label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },
     { label: 'Patrimônio', path: '/assets', icon: <Gem size={20} /> },
+    { label: 'Metas', path: '/goals', icon: <Target size={20} /> },
+    { label: 'Orçamento', path: '/budget', icon: <PieChart size={20} /> },
     { label: 'Histórico', path: '/history', icon: <History size={20} /> },
     { label: 'Insights AI', path: '/ai', icon: <Sparkles size={20} /> },
     { label: 'Ajustes', path: '/settings', icon: <Settings size={20} /> },
@@ -33,6 +37,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
             <Link
               key={item.path}
               to={item.path}
+              id={`tour-nav-${item.path.replace('/', '') || 'home'}`}
               className={`group flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all relative ${location.pathname === item.path
                 ? 'text-brand-600 font-bold'
                 : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
@@ -60,13 +65,22 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
             </div>
           </div>
 
-          <button
-            onClick={() => supabase?.auth.signOut()}
-            className="flex items-center gap-3 w-full px-4 py-3 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all text-sm font-medium"
-          >
-            <LogOut size={20} />
-            Sair
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => startTour()}
+              className="flex items-center justify-center gap-3 w-full px-4 py-2.5 text-brand-600 bg-brand-50 hover:bg-brand-100 rounded-xl transition-all text-xs font-bold uppercase tracking-widest"
+            >
+              <HelpCircle size={16} />
+              Tour Interativo
+            </button>
+            <button
+              onClick={() => supabase?.auth.signOut()}
+              className="flex items-center justify-center gap-3 w-full px-4 py-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all text-sm font-medium"
+            >
+              <LogOut size={20} />
+              Sair
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -84,9 +98,14 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
           FinVision
         </Link>
 
-        <button className="p-2 text-slate-400">
-          <Bell size={20} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => startTour()} className="p-2 text-brand-600 bg-brand-50 rounded-lg">
+            <HelpCircle size={20} />
+          </button>
+          <button className="p-2 text-slate-400">
+            <Bell size={20} />
+          </button>
+        </div>
       </nav>
 
       {/* Mobile Menu Overlay */}
