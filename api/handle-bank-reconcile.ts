@@ -208,7 +208,8 @@ export default async function handler(req: any, res: any) {
               user_id: userId,
               institution: name,
               type: 'CHECKING',
-              balance: 0,
+              initial_balance: 0,
+              current_balance: 0,
               color: '#0ea5e9'
             })
             .select('id')

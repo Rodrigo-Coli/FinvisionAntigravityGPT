@@ -191,10 +191,12 @@ export default async function handler(req: any, res: any) {
               user_id: userId,
               name: name,
               brand: 'VISA',
-              limit: 1000,
+              limit_total: 1000,
               closing_day: 1,
               due_day: 10,
-              color: '#6366f1'
+              color: '#6366f1',
+              account_id: targetAccountId
+
             })
             .select('id')
             .single();
