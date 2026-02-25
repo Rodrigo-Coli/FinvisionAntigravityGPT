@@ -63,10 +63,12 @@ const HistoryPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Pagination
+  // Pagination & Sorting
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
+  const [sortField, setSortField] = useState('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const PAGE_SIZE = 500;
 
   // Filters
@@ -143,7 +145,10 @@ const HistoryPage: React.FC = () => {
         setAvailableCategories(mergedCategories.sort((a, b) => a.localeCompare(b)));
       }
 
-      let query: any = supabase.from('transactions').select('*', { count: 'exact' }).eq('user_id', user.id).eq('is_deleted', false).order('date', { ascending: false });
+      let query: any = supabase.from('transactions').select('*', { count: 'exact' }).eq('user_id', user.id).eq('is_deleted', false).order(sortField, { ascending: sortDirection === 'asc' });
+      if (sortField !== 'date') {
+        query = query.order('date', { ascending: false }); // secondary sort fallback
+      }
       if (filterType !== 'ALL') query = query.eq('type', filterType);
       if (filterAccount !== 'ALL') query = query.eq('account_id', filterAccount);
       if (filterCategory !== 'ALL') query = query.eq('category', filterCategory);
@@ -200,16 +205,25 @@ const HistoryPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner, page]);
+  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner, page, sortField, sortDirection]);
 
   // Reset page to 0 when filters change
   useEffect(() => {
     setPage(0);
-  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner]);
+  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner, sortField, sortDirection]);
 
   useEffect(() => {
     if (isSupabaseConfigured) fetchData();
   }, [fetchData]);
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc'); // Default to sorting descending when clicking a new field
+    }
+  };
 
   const handleUpdate = async (id: string, field: string, value: any, confirmedScope?: SeriesScope) => {
     if (!supabase) return;
@@ -524,6 +538,7 @@ const HistoryPage: React.FC = () => {
         transactions={filtered} isLoading={isLoading} accounts={accounts} categories={availableCategories}
         editingRow={editingRow} setEditingRow={setEditingRow} editValue={editValue} setEditValue={setEditValue}
         savingId={savingId} handleUpdate={handleUpdate} handleDelete={handleDelete} statusBadge={statusBadge}
+        sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
         formatCurrency={HistoryUtils.formatCurrency} getAmount={HistoryUtils.getAmount} getPaidAmount={HistoryUtils.getPaidAmount}
         getRemaining={HistoryUtils.getRemaining} getStatus={HistoryUtils.getStatus} openPayModal={openPayModal}
         reopenTransaction={async (t) => {

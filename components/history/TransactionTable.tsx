@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Trash2, Edit2, RotateCcw, Check } from 'lucide-react';
+import { Loader2, Trash2, Edit2, RotateCcw, Check, ChevronUp, ChevronDown } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 import { Transaction, BankAccount } from '../../types';
 
@@ -23,6 +23,9 @@ interface TransactionTableProps {
     getStatus: (t: Transaction) => string;
     openPayModal: (t: Transaction) => void;
     reopenTransaction: (t: Transaction) => void;
+    sortField: string;
+    sortDirection: 'asc' | 'desc';
+    onSort: (field: string) => void;
 }
 
 export const TransactionTable: React.FC<TransactionTableProps> = ({
@@ -44,7 +47,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
     getRemaining,
     getStatus,
     openPayModal,
-    reopenTransaction
+    reopenTransaction,
+    sortField,
+    sortDirection,
+    onSort
 }) => {
     const EPS = 0.000001;
 
@@ -60,12 +66,24 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                     <table className="w-full text-left border-collapse table-auto">
                         <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                             <tr>
-                                <th className="px-8 py-5">Data</th>
-                                <th className="px-8 py-5">Descrição</th>
-                                <th className="px-8 py-5">Conta / Categoria</th>
-                                <th className="px-8 py-5">Entidade</th>
-                                <th className="px-8 py-5 text-center">Status</th>
-                                <th className="px-8 py-5 text-right">Valor</th>
+                                <th className="px-8 py-5 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => onSort('date')}>
+                                    <div className="flex items-center gap-1">Data {sortField === 'date' && (sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</div>
+                                </th>
+                                <th className="px-8 py-5 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => onSort('description')}>
+                                    <div className="flex items-center gap-1">Descrição {sortField === 'description' && (sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</div>
+                                </th>
+                                <th className="px-8 py-5 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => onSort('category')}>
+                                    <div className="flex items-center gap-1">Conta / Categoria {sortField === 'category' && (sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</div>
+                                </th>
+                                <th className="px-8 py-5 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => onSort('owner_name')}>
+                                    <div className="flex items-center gap-1">Entidade {sortField === 'owner_name' && (sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</div>
+                                </th>
+                                <th className="px-8 py-5 text-center cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => onSort('is_paid')}>
+                                    <div className="flex items-center justify-center gap-1">Status {sortField === 'is_paid' && (sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</div>
+                                </th>
+                                <th className="px-8 py-5 text-right cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => onSort('amount')}>
+                                    <div className="flex items-center justify-end gap-1">Valor {sortField === 'amount' && (sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</div>
+                                </th>
                                 <th className="px-8 py-5 text-right w-40">Ações</th>
                             </tr>
                         </thead>
