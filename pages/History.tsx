@@ -235,22 +235,39 @@ const HistoryPage: React.FC = () => {
       }
 
       if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
+        // Otimização de UI: atualiza a tela instantaneamente para não dar reload na tabela toda
+        setTransactions(prev => prev.map(t => {
+          if (t.id === id) {
+            const updated = { ...t, [field]: value };
+            if (field === 'account_id') {
+              const acc = accounts.find(a => a.id === value);
+              if (acc) updated.accountName = acc.institution;
+            }
+            return updated;
+          }
+          return t;
+        }));
+
         const { error: err } = await supabase.from('transactions').update(patch).eq('id', id);
-        if (err) throw err;
+        if (err) {
+          await fetchData(); // rollback visual em caso de erro no banco
+          throw err;
+        }
       } else {
         const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
         let query = supabase.from('transactions').update(patch).filter('metadata->>' + (tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id'), 'eq', groupId);
         if (confirmedScope === 'THIS_AND_FUTURE') query = query.gte('date', tx?.date);
         const { error: err } = await query;
         if (err) throw err;
+
+        // Reload completo só quando altera parcelas e assinaturas (múltiplas linhas)
+        await fetchData();
       }
 
       if (tx && (HistoryUtils.getStatus(tx) !== 'PENDING') && (field === 'amount' || field === 'type' || field === 'account_id')) {
         await supabase.rpc('recalculate_account_balance', { p_account_id: field === 'account_id' ? value : tx.accountId });
         if (field === 'account_id' && tx.accountId !== value) await supabase.rpc('recalculate_account_balance', { p_account_id: tx.accountId });
       }
-
-      await fetchData();
     } catch (err) {
       alert('Erro ao salvar alteração');
     } finally {
