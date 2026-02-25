@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, FileDown, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, FileDown, Loader2, AlertCircle, Check } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 import { Transaction, TransactionType, BankAccount } from '../types';
@@ -64,6 +64,7 @@ const HistoryPage: React.FC = () => {
   const [categoryObjects, setCategoryObjects] = useState<{ name: string, type?: 'INCOME' | 'EXPENSE' }[]>(CATEGORIES.map(c => ({ name: c })));
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'ALL' | 'SETTLED'>('ALL');
 
   // Pagination & Sorting
   const [page, setPage] = useState(0);
@@ -478,7 +479,18 @@ const HistoryPage: React.FC = () => {
     return <span className={`${base} bg-slate-50 text-slate-400 border-slate-100`}>PENDENTE</span>;
   };
 
-  const filtered = transactions.filter(t => t.description.toLowerCase().includes(search.toLowerCase()) || t.accountName.toLowerCase().includes(search.toLowerCase()));
+  const filtered = transactions.filter(t =>
+    t.description.toLowerCase().includes(search.toLowerCase()) ||
+    t.accountName.toLowerCase().includes(search.toLowerCase())
+  );
+
+  // View mode filter: SETTLED shows only paid/received transactions
+  const viewFiltered = viewMode === 'SETTLED'
+    ? filtered.filter(t => {
+      const s = HistoryUtils.getStatus(t);
+      return s === 'PAID';
+    })
+    : filtered;
 
   const handleCreateCategory = async (name: string, type: 'INCOME' | 'EXPENSE') => {
     if (!supabase) return;
@@ -550,12 +562,35 @@ const HistoryPage: React.FC = () => {
         categories={availableCategories} accounts={accounts} resetFilters={resetFilters}
       />
 
-      {/* QUICK DATE FILTERS */}
+      {/* QUICK DATE FILTERS + VIEW MODE TOGGLE */}
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={() => setDatePreset('MONTH')} className={`px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(firstDay) && endDate === DateUtils.formatToISODate(lastDay) ? 'bg-brand-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-100'}`}>Este Mês</button>
-        <button onClick={() => setDatePreset(15)} className="px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider bg-white text-slate-500 hover:bg-slate-50 border border-slate-100 transition-all">Últimos 15 Dias</button>
-        <button onClick={() => setDatePreset(7)} className="px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider bg-white text-slate-500 hover:bg-slate-50 border border-slate-100 transition-all">Últimos 7 Dias</button>
-        <button onClick={() => setDatePreset('ALL')} className={`px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all ${!startDate && !endDate ? 'bg-brand-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-100'}`}>Todo o Período</button>
+        {/* Date presets */}
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setDatePreset('MONTH')} className={`px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(firstDay) && endDate === DateUtils.formatToISODate(lastDay) ? 'bg-brand-600 text-white shadow-sm' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-100'}`}>Este Mês</button>
+          <button onClick={() => setDatePreset(30)} className={`px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all bg-white text-slate-500 hover:bg-slate-50 border border-slate-100`}>30 Dias</button>
+          <button onClick={() => setDatePreset(90)} className={`px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all bg-white text-slate-500 hover:bg-slate-50 border border-slate-100`}>3 Meses</button>
+          <button onClick={() => setDatePreset(180)} className={`px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all bg-white text-slate-500 hover:bg-slate-50 border border-slate-100`}>6 Meses</button>
+          <button onClick={() => setDatePreset('ALL')} className={`px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all ${!startDate && !endDate ? 'bg-brand-600 text-white shadow-sm' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-100'}`}>Todo o Período</button>
+        </div>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* View mode toggle */}
+        <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+          <button
+            onClick={() => setViewMode('ALL')}
+            className={`px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all ${viewMode === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            Todos
+          </button>
+          <button
+            onClick={() => setViewMode('SETTLED')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all ${viewMode === 'SETTLED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            <Check size={12} /> Pagos & Recebidos
+          </button>
+        </div>
       </div>
 
       {/* SUMMARY CARDS */}
@@ -598,7 +633,7 @@ const HistoryPage: React.FC = () => {
       />
 
       <TransactionTable
-        transactions={filtered} isLoading={isLoading} accounts={accounts}
+        transactions={viewFiltered} isLoading={isLoading} accounts={accounts}
         categoryObjects={categoryObjects} onCreateCategory={handleCreateCategory}
         editingRow={editingRow} setEditingRow={setEditingRow} editValue={editValue} setEditValue={setEditValue}
         savingId={savingId} handleUpdate={handleUpdate} handleDelete={handleDelete} statusBadge={statusBadge}

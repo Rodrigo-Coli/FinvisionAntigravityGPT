@@ -21,6 +21,7 @@ import SettingsPage from './pages/Settings';
 import Goals from './pages/Goals';
 import Budget from './pages/Budget';
 import { TourProvider } from './contexts/TourContext';
+import OfflineBanner from './components/OfflineBanner';
 
 const App: React.FC = () => {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -80,6 +81,7 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
+      <OfflineBanner />
       <TourProvider>
         <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 font-sans">
           {profile?.is_approved && <Nav user={profile} />}
