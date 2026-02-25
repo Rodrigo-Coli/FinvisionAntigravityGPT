@@ -7,6 +7,8 @@ interface HistoryChartsProps {
     transactions: Transaction[];
     selectedTimelineCategories: string[];
     setSelectedTimelineCategories: (cats: string[] | ((prev: string[]) => string[])) => void;
+    startDate: string;
+    endDate: string;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -24,7 +26,7 @@ const CATEGORY_COLORS: Record<string, string> = {
     'Outros': '#94a3b8'
 };
 
-export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, selectedTimelineCategories, setSelectedTimelineCategories }) => {
+export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, selectedTimelineCategories, setSelectedTimelineCategories, startDate, endDate }) => {
     const [activeTab, setActiveTab] = useState<'categories' | 'mom' | 'timeline'>('categories');
 
     const availableTimelineCategories = useMemo(() => {
@@ -194,16 +196,25 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, sele
 
     const maxCatExpValue = categoryDataExpense.length > 0 ? categoryDataExpense[0].value : 1;
     const maxCatIncValue = categoryDataIncome.length > 0 ? categoryDataIncome[0].value : 1;
+    // Build the period label from the actual date filters (not from transaction data)
     const currMonthLabel = (() => {
-        // Derive the label from the most recent month in the transaction set
-        let latestDate: Date | null = null;
-        transactions.forEach(t => {
-            if (!t.is_amortization && (t.type === 'EXPENSE' || t.type === 'INCOME')) {
-                const d = new Date(t.date);
-                if (!latestDate || d > latestDate) latestDate = d;
+        const fmt = (iso: string) => {
+            const d = new Date(iso + 'T00:00:00');
+            return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+        };
+        if (!startDate && !endDate) return 'Todo o Período';
+        if (startDate && endDate) {
+            // If same month → show just that month
+            const s = new Date(startDate + 'T00:00:00');
+            const e = new Date(endDate + 'T00:00:00');
+            if (s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth()) {
+                return fmt(startDate);
             }
-        });
-        return (latestDate || new Date()).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+            // Different months → show range
+            return `${fmt(startDate)} → ${fmt(endDate)}`;
+        }
+        if (startDate) return `A partir de ${fmt(startDate)}`;
+        return `Até ${fmt(endDate)}`;
     })();
     const isWorseExpense = momPercentChangeExpense > 0;
     const isBetterIncome = momPercentChangeIncome > 0;

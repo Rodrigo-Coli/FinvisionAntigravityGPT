@@ -557,6 +557,8 @@ const HistoryPage: React.FC = () => {
         transactions={filtered}
         selectedTimelineCategories={selectedTimelineCategories}
         setSelectedTimelineCategories={setSelectedTimelineCategories}
+        startDate={startDate}
+        endDate={endDate}
       />
 
       <TransactionTable
