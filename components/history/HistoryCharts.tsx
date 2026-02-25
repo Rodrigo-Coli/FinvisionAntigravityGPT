@@ -38,9 +38,29 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, sele
     }, [transactions]);
 
     const { categoryDataExpense, categoryDataIncome, momData, totalCurrentMonthExpense, totalCurrentMonthIncome, momPercentChangeExpense, momPercentChangeIncome, timelineData } = useMemo(() => {
-        const now = new Date();
-        const currMonth = now.getMonth();
-        const currYear = now.getFullYear();
+        // Derive the "current" period from the actual transactions, not from new Date().
+        // Find the most-recent month present in the data set.
+        let latestYear = 0;
+        let latestMonth = 0;
+        transactions.forEach(t => {
+            if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+            const d = new Date(t.date);
+            const y = d.getFullYear();
+            const m = d.getMonth();
+            if (y > latestYear || (y === latestYear && m > latestMonth)) {
+                latestYear = y;
+                latestMonth = m;
+            }
+        });
+        // Fall back to the actual current month if there are no transactions
+        if (latestYear === 0) {
+            const now = new Date();
+            latestYear = now.getFullYear();
+            latestMonth = now.getMonth();
+        }
+
+        const currMonth = latestMonth;
+        const currYear = latestYear;
         const prevMonth = currMonth === 0 ? 11 : currMonth - 1;
         const prevYear = currMonth === 0 ? currYear - 1 : currYear;
 
@@ -105,6 +125,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, sele
         } else if (totalCurrIncome > 0) {
             momChangeIncome = 100; // infinite practically, but cap at 100 for display
         }
+
 
         // --- Timeline Data ---
         let minDateStr = '9999-12-31';
@@ -196,7 +217,17 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, sele
 
     const maxCatExpValue = categoryDataExpense.length > 0 ? categoryDataExpense[0].value : 1;
     const maxCatIncValue = categoryDataIncome.length > 0 ? categoryDataIncome[0].value : 1;
-    const currMonthLabel = new Date().toLocaleDateString('pt-BR', { month: 'long' });
+    const currMonthLabel = (() => {
+        // Derive the label from the most recent month in the transaction set
+        let latestDate: Date | null = null;
+        transactions.forEach(t => {
+            if (!t.is_amortization && (t.type === 'EXPENSE' || t.type === 'INCOME')) {
+                const d = new Date(t.date);
+                if (!latestDate || d > latestDate) latestDate = d;
+            }
+        });
+        return (latestDate || new Date()).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    })();
     const isWorseExpense = momPercentChangeExpense > 0;
     const isBetterIncome = momPercentChangeIncome > 0;
 
