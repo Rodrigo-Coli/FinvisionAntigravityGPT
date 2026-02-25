@@ -25,62 +25,79 @@ const CATEGORY_COLORS: Record<string, string> = {
 export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) => {
     const [activeTab, setActiveTab] = useState<'categories' | 'mom'>('categories');
 
-    const { categoryData, momData, totalCurrentMonth, momPercentChange } = useMemo(() => {
+    const { categoryDataExpense, categoryDataIncome, momData, totalCurrentMonthExpense, totalCurrentMonthIncome, momPercentChange } = useMemo(() => {
         const now = new Date();
         const currMonth = now.getMonth();
         const currYear = now.getFullYear();
         const prevMonth = currMonth === 0 ? 11 : currMonth - 1;
         const prevYear = currMonth === 0 ? currYear - 1 : currYear;
 
-        const categories: Record<string, number> = {};
+        const categoriesExpense: Record<string, number> = {};
+        const categoriesIncome: Record<string, number> = {};
         const dailySpendCurr: number[] = new Array(31).fill(0);
         const dailySpendPrev: number[] = new Array(31).fill(0);
 
-        let totalCurr = 0;
-        let totalPrev = 0;
+        let totalCurrExpense = 0;
+        let totalCurrIncome = 0;
+        let totalPrevExpense = 0;
 
         transactions.forEach(t => {
-            if (t.type !== 'EXPENSE' || t.is_amortization) return;
+            if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
 
             const d = new Date(t.date);
             const m = d.getMonth();
             const y = d.getFullYear();
             const day = d.getDate() - 1; // 0-indexed day
-            const amt = Number(t.amount);
+            const amt = Math.abs(Number(t.amount));
 
             if (y === currYear && m === currMonth) {
-                categories[t.category] = (categories[t.category] || 0) + amt;
-                totalCurr += amt;
-                if (day >= 0 && day < 31) dailySpendCurr[day] += amt;
+                if (t.type === 'EXPENSE') {
+                    categoriesExpense[t.category] = (categoriesExpense[t.category] || 0) + amt;
+                    totalCurrExpense += amt;
+                    if (day >= 0 && day < 31) dailySpendCurr[day] += amt;
+                } else if (t.type === 'INCOME') {
+                    categoriesIncome[t.category] = (categoriesIncome[t.category] || 0) + amt;
+                    totalCurrIncome += amt;
+                }
             } else if (y === prevYear && m === prevMonth) {
-                totalPrev += amt;
-                if (day >= 0 && day < 31) dailySpendPrev[day] += amt;
+                if (t.type === 'EXPENSE') {
+                    totalPrevExpense += amt;
+                    if (day >= 0 && day < 31) dailySpendPrev[day] += amt;
+                }
             }
         });
 
-        const catArray = Object.entries(categories)
+        const catArrayExpense = Object.entries(categoriesExpense)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 8); // top 8
+
+        const catArrayIncome = Object.entries(categoriesIncome)
             .map(([name, value]) => ({ name, value }))
             .sort((a, b) => b.value - a.value)
             .slice(0, 8); // top 8
 
         let momChange = 0;
-        if (totalPrev > 0) {
-            momChange = ((totalCurr - totalPrev) / totalPrev) * 100;
-        } else if (totalCurr > 0) {
+        if (totalPrevExpense > 0) {
+            momChange = ((totalCurrExpense - totalPrevExpense) / totalPrevExpense) * 100;
+        } else if (totalCurrExpense > 0) {
             momChange = 100; // infinite practically, but cap at 100 for display
         }
 
         return {
-            categoryData: catArray,
-            momData: { curr: dailySpendCurr, prev: dailySpendPrev, totalPrev },
-            totalCurrentMonth: totalCurr,
+            categoryDataExpense: catArrayExpense,
+            categoryDataIncome: catArrayIncome,
+            momData: { curr: dailySpendCurr, prev: dailySpendPrev, totalPrev: totalPrevExpense },
+            totalCurrentMonthExpense: totalCurrExpense,
+            totalCurrentMonthIncome: totalCurrIncome,
             momPercentChange: momChange
         };
     }, [transactions]);
 
     if (transactions.length === 0) return null;
 
-    const maxCatValue = categoryData.length > 0 ? categoryData[0].value : 1;
+    const maxCatExpValue = categoryDataExpense.length > 0 ? categoryDataExpense[0].value : 1;
+    const maxCatIncValue = categoryDataIncome.length > 0 ? categoryDataIncome[0].value : 1;
     const currMonthLabel = new Date().toLocaleDateString('pt-BR', { month: 'long' });
     const isWorse = momPercentChange > 0;
 
@@ -92,7 +109,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
                         <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
                             <Activity size={18} />
                         </div>
-                        Análise de Despesas
+                        Análise do Período
                     </h3>
                     <p className="text-sm text-slate-500 mt-1 first-letter:capitalize">{currMonthLabel}</p>
                 </div>
@@ -115,52 +132,82 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
             </div>
 
             {activeTab === 'categories' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-                    {/* Summary Column */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+
+                    {/* Income Column */}
                     <div className="space-y-6">
-                        <div className="p-6 bg-slate-50 rounded-[24px]">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Gasto ({currMonthLabel})</p>
-                            <h4 className="text-3xl font-bold text-slate-900">{HistoryUtils.formatCurrency(totalCurrentMonth)}</h4>
-                            <div className="flex items-center gap-2 mt-3">
-                                <span className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-md ${isWorse ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                                    {isWorse ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                                    {Math.abs(momPercentChange).toFixed(1)}%
-                                </span>
-                                <span className="text-xs text-slate-500 font-medium">vs. mês passado</span>
-                            </div>
+                        <div className="p-6 bg-emerald-50/50 border border-emerald-100/50 rounded-[24px]">
+                            <p className="text-[10px] font-black text-emerald-600/50 uppercase tracking-widest mb-2">Total Recebido ({currMonthLabel})</p>
+                            <h4 className="text-3xl font-bold text-emerald-600">{HistoryUtils.formatCurrency(totalCurrentMonthIncome)}</h4>
+                        </div>
+                        <div className="space-y-4">
+                            {categoryDataIncome.length === 0 ? (
+                                <p className="text-slate-400 text-sm py-4 italic">Nenhuma receita registrada neste mês.</p>
+                            ) : (
+                                categoryDataIncome.map(cat => {
+                                    const color = CATEGORY_COLORS[cat.name] || '#10b981';
+                                    const pct = (cat.value / totalCurrentMonthIncome) * 100;
+                                    const widthPct = (cat.value / maxCatIncValue) * 100;
+
+                                    return (
+                                        <div key={cat.name} className="group">
+                                            <div className="flex justify-between items-end mb-1">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                                                    <span className="text-sm font-bold text-slate-700">{cat.name}</span>
+                                                    <span className="text-[10px] font-bold text-slate-400 ml-2">{pct.toFixed(1)}%</span>
+                                                </div>
+                                                <span className="text-xs font-bold text-slate-900">{HistoryUtils.formatCurrency(cat.value)}</span>
+                                            </div>
+                                            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full rounded-full transition-all duration-1000 group-hover:opacity-80"
+                                                    style={{ width: `${widthPct}%`, backgroundColor: color }}
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
                         </div>
                     </div>
 
-                    {/* Bar Chart Column */}
-                    <div className="space-y-4">
-                        {categoryData.length === 0 ? (
-                            <p className="text-slate-400 text-sm text-center py-4">Nenhuma despesa registrada neste mês.</p>
-                        ) : (
-                            categoryData.map(cat => {
-                                const color = CATEGORY_COLORS[cat.name] || '#94a3b8';
-                                const pct = (cat.value / totalCurrentMonth) * 100;
-                                const widthPct = (cat.value / maxCatValue) * 100;
+                    {/* Expense Column */}
+                    <div className="space-y-6">
+                        <div className="p-6 bg-rose-50/50 border border-rose-100/50 rounded-[24px]">
+                            <p className="text-[10px] font-black text-rose-600/50 uppercase tracking-widest mb-2">Total Gasto ({currMonthLabel})</p>
+                            <h4 className="text-3xl font-bold text-rose-600">{HistoryUtils.formatCurrency(totalCurrentMonthExpense)}</h4>
+                        </div>
+                        <div className="space-y-4">
+                            {categoryDataExpense.length === 0 ? (
+                                <p className="text-slate-400 text-sm py-4 italic">Nenhuma despesa registrada neste mês.</p>
+                            ) : (
+                                categoryDataExpense.map(cat => {
+                                    const color = CATEGORY_COLORS[cat.name] || '#ef4444';
+                                    const pct = (cat.value / totalCurrentMonthExpense) * 100;
+                                    const widthPct = (cat.value / maxCatExpValue) * 100;
 
-                                return (
-                                    <div key={cat.name} className="group">
-                                        <div className="flex justify-between items-end mb-1">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                                                <span className="text-sm font-bold text-slate-700">{cat.name}</span>
-                                                <span className="text-[10px] font-bold text-slate-400 ml-2">{pct.toFixed(1)}%</span>
+                                    return (
+                                        <div key={cat.name} className="group">
+                                            <div className="flex justify-between items-end mb-1">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                                                    <span className="text-sm font-bold text-slate-700">{cat.name}</span>
+                                                    <span className="text-[10px] font-bold text-slate-400 ml-2">{pct.toFixed(1)}%</span>
+                                                </div>
+                                                <span className="text-xs font-bold text-slate-900">{HistoryUtils.formatCurrency(cat.value)}</span>
                                             </div>
-                                            <span className="text-xs font-bold text-slate-900">{HistoryUtils.formatCurrency(cat.value)}</span>
+                                            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full rounded-full transition-all duration-1000 group-hover:opacity-80"
+                                                    style={{ width: `${widthPct}%`, backgroundColor: color }}
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full rounded-full transition-all duration-1000 group-hover:opacity-80"
-                                                style={{ width: `${widthPct}%`, backgroundColor: color }}
-                                            />
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
+                                    );
+                                })
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
@@ -173,7 +220,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
                             <span className="text-xl font-bold text-slate-400">{HistoryUtils.formatCurrency(momData.totalPrev)}</span>
                             <div
                                 className="w-full max-w-[120px] bg-slate-200 rounded-t-2xl transition-all duration-1000"
-                                style={{ height: `${Math.min(200, (momData.totalPrev / Math.max(momData.totalPrev, totalCurrentMonth, 1)) * 200)}px` }}
+                                style={{ height: `${Math.min(200, (momData.totalPrev / Math.max(momData.totalPrev, totalCurrentMonthExpense, 1)) * 200)}px` }}
                             />
                             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Mês Passado</span>
                         </div>
@@ -184,11 +231,11 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
                                 {isWorse ? '+' : '-'}{Math.abs(momPercentChange).toFixed(1)}%
                             </div>
                             <span className={`text-xl font-bold ${isWorse ? 'text-rose-500' : 'text-emerald-500'}`}>
-                                {HistoryUtils.formatCurrency(totalCurrentMonth)}
+                                {HistoryUtils.formatCurrency(totalCurrentMonthExpense)}
                             </span>
                             <div
                                 className={`w-full max-w-[120px] rounded-t-2xl transition-all duration-1000 ${isWorse ? 'bg-rose-400' : 'bg-emerald-400'}`}
-                                style={{ height: `${Math.min(200, (totalCurrentMonth / Math.max(momData.totalPrev, totalCurrentMonth, 1)) * 200)}px` }}
+                                style={{ height: `${Math.min(200, (totalCurrentMonthExpense / Math.max(momData.totalPrev, totalCurrentMonthExpense, 1)) * 200)}px` }}
                             />
                             <span className="text-xs font-bold text-slate-900 uppercase tracking-widest capitalize">{currMonthLabel}</span>
                         </div>
