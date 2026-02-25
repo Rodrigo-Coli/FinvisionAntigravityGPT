@@ -408,7 +408,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                         <td className="px-8 py-5">
                                             <OwnerPicker
                                                 value={t.owner_name || 'Pessoal'}
-                                                allOwners={['Pessoal', ...Array.from(new Set(transactions.map(tx => tx.owner_name).filter((o): o is string => !!o)))]}
+                                                allOwners={Array.from(new Set(['Pessoal', ...transactions.map(tx => tx.owner_name).filter((o): o is string => !!o)]))}
 
                                                 onSelect={(owner) => handleUpdate(t.id, 'owner_name', owner === 'Pessoal' ? null : owner)}
                                             />
