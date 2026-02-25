@@ -25,7 +25,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) => {
     const [activeTab, setActiveTab] = useState<'categories' | 'mom'>('categories');
 
-    const { categoryDataExpense, categoryDataIncome, momData, totalCurrentMonthExpense, totalCurrentMonthIncome, momPercentChange } = useMemo(() => {
+    const { categoryDataExpense, categoryDataIncome, momData, totalCurrentMonthExpense, totalCurrentMonthIncome, momPercentChangeExpense, momPercentChangeIncome } = useMemo(() => {
         const now = new Date();
         const currMonth = now.getMonth();
         const currYear = now.getFullYear();
@@ -40,6 +40,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
         let totalCurrExpense = 0;
         let totalCurrIncome = 0;
         let totalPrevExpense = 0;
+        let totalPrevIncome = 0;
 
         transactions.forEach(t => {
             if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
@@ -63,6 +64,8 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
                 if (t.type === 'EXPENSE') {
                     totalPrevExpense += amt;
                     if (day >= 0 && day < 31) dailySpendPrev[day] += amt;
+                } else if (t.type === 'INCOME') {
+                    totalPrevIncome += amt;
                 }
             }
         });
@@ -77,20 +80,28 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
             .sort((a, b) => b.value - a.value)
             .slice(0, 8); // top 8
 
-        let momChange = 0;
+        let momChangeExpense = 0;
         if (totalPrevExpense > 0) {
-            momChange = ((totalCurrExpense - totalPrevExpense) / totalPrevExpense) * 100;
+            momChangeExpense = ((totalCurrExpense - totalPrevExpense) / totalPrevExpense) * 100;
         } else if (totalCurrExpense > 0) {
-            momChange = 100; // infinite practically, but cap at 100 for display
+            momChangeExpense = 100; // infinite practically, but cap at 100 for display
+        }
+
+        let momChangeIncome = 0;
+        if (totalPrevIncome > 0) {
+            momChangeIncome = ((totalCurrIncome - totalPrevIncome) / totalPrevIncome) * 100;
+        } else if (totalCurrIncome > 0) {
+            momChangeIncome = 100; // infinite practically, but cap at 100 for display
         }
 
         return {
             categoryDataExpense: catArrayExpense,
             categoryDataIncome: catArrayIncome,
-            momData: { curr: dailySpendCurr, prev: dailySpendPrev, totalPrev: totalPrevExpense },
+            momData: { curr: dailySpendCurr, prev: dailySpendPrev, totalPrevExpense: totalPrevExpense, totalPrevIncome: totalPrevIncome },
             totalCurrentMonthExpense: totalCurrExpense,
             totalCurrentMonthIncome: totalCurrIncome,
-            momPercentChange: momChange
+            momPercentChangeExpense: momChangeExpense,
+            momPercentChangeIncome: momChangeIncome
         };
     }, [transactions]);
 
@@ -99,7 +110,8 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
     const maxCatExpValue = categoryDataExpense.length > 0 ? categoryDataExpense[0].value : 1;
     const maxCatIncValue = categoryDataIncome.length > 0 ? categoryDataIncome[0].value : 1;
     const currMonthLabel = new Date().toLocaleDateString('pt-BR', { month: 'long' });
-    const isWorse = momPercentChange > 0;
+    const isWorseExpense = momPercentChangeExpense > 0;
+    const isBetterIncome = momPercentChangeIncome > 0;
 
     return (
         <div className="bg-white border border-slate-100 rounded-[32px] p-6 sm:p-8 shadow-sm mb-6 animate-in fade-in">
@@ -213,31 +225,70 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
             )}
 
             {activeTab === 'mom' && (
-                <div className="space-y-8 animate-in fade-in">
-                    {/* MoM Comparison Simple Bars */}
-                    <div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto items-end pt-8">
-                        <div className="flex flex-col items-center gap-4">
-                            <span className="text-xl font-bold text-slate-400">{HistoryUtils.formatCurrency(momData.totalPrev)}</span>
-                            <div
-                                className="w-full max-w-[120px] bg-slate-200 rounded-t-2xl transition-all duration-1000"
-                                style={{ height: `${Math.min(200, (momData.totalPrev / Math.max(momData.totalPrev, totalCurrentMonthExpense, 1)) * 200)}px` }}
-                            />
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Mês Passado</span>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start animate-in fade-in">
+                    {/* Income MoM */}
+                    <div className="space-y-8">
+                        <div className="p-6 bg-emerald-50/50 border border-emerald-100/50 rounded-[24px]">
+                            <p className="text-[10px] font-black text-emerald-600/50 uppercase tracking-widest mb-2">Comportamento de Receitas</p>
+                            <h4 className="text-xl font-bold text-emerald-600">Este Mês vs Mês Passado</h4>
                         </div>
-
-                        <div className="flex flex-col items-center gap-4 relative">
-                            <div className="absolute -top-12 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xl border border-slate-700 flex items-center gap-2">
-                                {isWorse ? <TrendingUp size={14} className="text-rose-400" /> : <TrendingDown size={14} className="text-emerald-400" />}
-                                {isWorse ? '+' : '-'}{Math.abs(momPercentChange).toFixed(1)}%
+                        <div className="grid grid-cols-2 gap-8 max-w-[300px] mx-auto items-end pt-8">
+                            <div className="flex flex-col items-center gap-4">
+                                <span className="text-xl font-bold text-slate-400">{HistoryUtils.formatCurrency(momData.totalPrevIncome)}</span>
+                                <div
+                                    className="w-full max-w-[100px] bg-slate-200 rounded-t-2xl transition-all duration-1000"
+                                    style={{ height: `${Math.min(200, (momData.totalPrevIncome / Math.max(momData.totalPrevIncome, totalCurrentMonthIncome, 1)) * 200)}px` }}
+                                />
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Mês Passado</span>
                             </div>
-                            <span className={`text-xl font-bold ${isWorse ? 'text-rose-500' : 'text-emerald-500'}`}>
-                                {HistoryUtils.formatCurrency(totalCurrentMonthExpense)}
-                            </span>
-                            <div
-                                className={`w-full max-w-[120px] rounded-t-2xl transition-all duration-1000 ${isWorse ? 'bg-rose-400' : 'bg-emerald-400'}`}
-                                style={{ height: `${Math.min(200, (totalCurrentMonthExpense / Math.max(momData.totalPrev, totalCurrentMonthExpense, 1)) * 200)}px` }}
-                            />
-                            <span className="text-xs font-bold text-slate-900 uppercase tracking-widest capitalize">{currMonthLabel}</span>
+
+                            <div className="flex flex-col items-center gap-4 relative">
+                                <div className="absolute -top-12 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xl border border-slate-700 flex items-center gap-2">
+                                    {isBetterIncome ? <TrendingUp size={14} className="text-emerald-400" /> : <TrendingDown size={14} className="text-rose-400" />}
+                                    {isBetterIncome ? '+' : '-'}{Math.abs(momPercentChangeIncome).toFixed(1)}%
+                                </div>
+                                <span className={`text-xl font-bold ${isBetterIncome ? 'text-emerald-500' : 'text-slate-500'}`}>
+                                    {HistoryUtils.formatCurrency(totalCurrentMonthIncome)}
+                                </span>
+                                <div
+                                    className={`w-full max-w-[100px] rounded-t-2xl transition-all duration-1000 ${isBetterIncome ? 'bg-emerald-400' : 'bg-emerald-300'}`}
+                                    style={{ height: `${Math.min(200, (totalCurrentMonthIncome / Math.max(momData.totalPrevIncome, totalCurrentMonthIncome, 1)) * 200)}px` }}
+                                />
+                                <span className="text-xs font-bold text-slate-900 uppercase tracking-widest capitalize">{currMonthLabel}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Expense MoM */}
+                    <div className="space-y-8">
+                        <div className="p-6 bg-rose-50/50 border border-rose-100/50 rounded-[24px]">
+                            <p className="text-[10px] font-black text-rose-600/50 uppercase tracking-widest mb-2">Comportamento de Despesas</p>
+                            <h4 className="text-xl font-bold text-rose-600">Este Mês vs Mês Passado</h4>
+                        </div>
+                        <div className="grid grid-cols-2 gap-8 max-w-[300px] mx-auto items-end pt-8">
+                            <div className="flex flex-col items-center gap-4">
+                                <span className="text-xl font-bold text-slate-400">{HistoryUtils.formatCurrency(momData.totalPrevExpense)}</span>
+                                <div
+                                    className="w-full max-w-[100px] bg-slate-200 rounded-t-2xl transition-all duration-1000"
+                                    style={{ height: `${Math.min(200, (momData.totalPrevExpense / Math.max(momData.totalPrevExpense, totalCurrentMonthExpense, 1)) * 200)}px` }}
+                                />
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Mês Passado</span>
+                            </div>
+
+                            <div className="flex flex-col items-center gap-4 relative">
+                                <div className="absolute -top-12 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xl border border-slate-700 flex items-center gap-2">
+                                    {isWorseExpense ? <TrendingUp size={14} className="text-rose-400" /> : <TrendingDown size={14} className="text-emerald-400" />}
+                                    {isWorseExpense ? '+' : '-'}{Math.abs(momPercentChangeExpense).toFixed(1)}%
+                                </div>
+                                <span className={`text-xl font-bold ${isWorseExpense ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                    {HistoryUtils.formatCurrency(totalCurrentMonthExpense)}
+                                </span>
+                                <div
+                                    className={`w-full max-w-[100px] rounded-t-2xl transition-all duration-1000 ${isWorseExpense ? 'bg-rose-400' : 'bg-emerald-400'}`}
+                                    style={{ height: `${Math.min(200, (totalCurrentMonthExpense / Math.max(momData.totalPrevExpense, totalCurrentMonthExpense, 1)) * 200)}px` }}
+                                />
+                                <span className="text-xs font-bold text-slate-900 uppercase tracking-widest capitalize">{currMonthLabel}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
