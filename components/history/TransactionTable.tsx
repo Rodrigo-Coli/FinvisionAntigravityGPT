@@ -166,6 +166,105 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({ value, transactionType,
     );
 };
 
+// ─── Inline Owner Picker ─────────────────────────────────────────────────────
+interface OwnerPickerProps {
+    value: string;
+    allOwners: string[];
+    onSelect: (owner: string) => void;
+}
+
+const OwnerPicker: React.FC<OwnerPickerProps> = ({ value, allOwners, onSelect }) => {
+    const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const [creating, setCreating] = useState(false);
+    const [newName, setNewName] = useState('');
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) {
+                setOpen(false); setCreating(false); setSearch(''); setNewName('');
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const options = allOwners.filter(o => o.toLowerCase().includes(search.toLowerCase()));
+
+    const handleCreate = () => {
+        if (!newName.trim()) return;
+        onSelect(newName.trim());
+        setCreating(false); setNewName(''); setOpen(false);
+    };
+
+    return (
+        <div ref={ref} className="relative">
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                className="text-[10px] font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg uppercase tracking-wider hover:bg-slate-200 transition-colors flex items-center gap-1"
+            >
+                {value}
+                <ChevronDown size={9} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
+
+            {open && (
+                <div className="absolute z-50 top-full left-0 mt-1 bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden w-48 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="p-2 border-b border-slate-50 space-y-1.5">
+                        <div className="relative">
+                            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
+                            <input
+                                autoFocus
+                                className="w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300"
+                                placeholder="Buscar entidade..."
+                                value={search}
+                                onChange={e => { setSearch(e.target.value); setCreating(false); }}
+                            />
+                        </div>
+                        {creating ? (
+                            <div className="flex items-center gap-1.5">
+                                <input
+                                    autoFocus
+                                    className="flex-1 h-8 px-2.5 bg-brand-50 border border-brand-200 rounded-lg text-xs font-bold outline-none"
+                                    placeholder="Nova entidade..."
+                                    value={newName}
+                                    onChange={e => setNewName(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                                />
+                                <button type="button" onClick={handleCreate} disabled={!newName.trim()} className="w-8 h-8 bg-brand-600 text-white rounded-lg flex items-center justify-center hover:bg-brand-700 disabled:opacity-50">
+                                    <Check size={11} />
+                                </button>
+                                <button type="button" onClick={() => { setCreating(false); setNewName(''); }} className="w-8 h-8 bg-slate-100 text-slate-500 rounded-lg flex items-center justify-center hover:bg-slate-200">
+                                    <X size={11} />
+                                </button>
+                            </div>
+                        ) : (
+                            <button type="button" onClick={() => setCreating(true)} className="w-full flex items-center gap-1.5 px-2.5 h-8 text-[10px] font-bold text-brand-600 hover:bg-brand-50 rounded-lg transition-colors uppercase tracking-wider">
+                                <Plus size={11} /> Nova Entidade
+                            </button>
+                        )}
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                        {options.map(o => (
+                            <button key={o} type="button"
+                                onClick={() => { onSelect(o); setOpen(false); setSearch(''); }}
+                                className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 transition-colors flex items-center gap-2 ${o === value ? 'text-brand-600 font-bold' : 'text-slate-700'}`}
+                            >
+                                {o === value && <Check size={10} className="text-brand-600 shrink-0" />}
+                                {o}
+                            </button>
+                        ))}
+                        {options.length === 0 && !creating && (
+                            <p className="px-3 py-4 text-xs text-slate-300 text-center">Nenhuma entidade encontrada</p>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 export const TransactionTable: React.FC<TransactionTableProps> = ({
     transactions,
@@ -307,30 +406,12 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                         </td>
 
                                         <td className="px-8 py-5">
-                                            {editingRow?.id === t.id && editingRow.field === 'owner_name' ? (
-                                                <select
-                                                    autoFocus
-                                                    className="w-full h-9 px-3 text-[10px] font-bold bg-white border border-brand-500 rounded-lg outline-none"
-                                                    value={editValue}
-                                                    onChange={e => {
-                                                        const val = e.target.value;
-                                                        setEditValue(val);
-                                                        handleUpdate(t.id, 'owner_name', val === 'Pessoal' ? null : val);
-                                                    }}
-                                                    onBlur={() => handleUpdate(t.id, 'owner_name', editValue === 'Pessoal' ? null : editValue)}
-                                                >
-                                                    {['Pessoal', ...new Set(transactions.map(tx => tx.owner_name).filter(Boolean))].map(o => (
-                                                        <option key={o} value={o}>{o}</option>
-                                                    ))}
-                                                </select>
-                                            ) : (
-                                                <button
-                                                    onClick={() => { setEditingRow({ id: t.id, field: 'owner_name' }); setEditValue(t.owner_name || 'Pessoal'); }}
-                                                    className="text-[10px] font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg uppercase tracking-wider hover:bg-slate-200 transition-colors"
-                                                >
-                                                    {t.owner_name || 'Pessoal'}
-                                                </button>
-                                            )}
+                                            <OwnerPicker
+                                                value={t.owner_name || 'Pessoal'}
+                                                allOwners={['Pessoal', ...Array.from(new Set(transactions.map(tx => tx.owner_name).filter((o): o is string => !!o)))]}
+
+                                                onSelect={(owner) => handleUpdate(t.id, 'owner_name', owner === 'Pessoal' ? null : owner)}
+                                            />
                                         </td>
 
                                         <td className="px-8 py-5 text-center">
@@ -389,8 +470,8 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                             })}
                         </tbody>
                     </table>
-                </div>
+                </div >
             )}
-        </div>
+        </div >
     );
 };
