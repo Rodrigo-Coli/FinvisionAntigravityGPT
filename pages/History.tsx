@@ -13,6 +13,7 @@ import { TransactionTable } from '../components/history/TransactionTable';
 import { PaymentModal } from '../components/history/PaymentModal';
 import { AddTransactionModal } from '../components/history/AddTransactionModal';
 import { SeriesScopeModal, SeriesScope } from '../components/SeriesScopeModal';
+import { ArrowDownRight, ArrowUpRight, Wallet } from 'lucide-react';
 
 const CATEGORIES = [
   'Salário', 'Moradia', 'Investimento', 'Cartão de Crédito',
@@ -73,8 +74,15 @@ const HistoryPage: React.FC = () => {
   const [filterType, setFilterType] = useState<string>('ALL');
   const [filterAccount, setFilterAccount] = useState<string>('ALL');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+
+  // Default to current month
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+  const [startDate, setStartDate] = useState(DateUtils.formatToISODate(firstDay));
+  const [endDate, setEndDate] = useState(DateUtils.formatToISODate(lastDay));
+
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
   const [filterOwner, setFilterOwner] = useState<string>('ALL');
@@ -394,6 +402,31 @@ const HistoryPage: React.FC = () => {
 
   const filtered = transactions.filter(t => t.description.toLowerCase().includes(search.toLowerCase()) || t.accountName.toLowerCase().includes(search.toLowerCase()));
 
+  // Summary Calculations based on loaded/filtered transactions
+  const summary = filtered.reduce((acc, t) => {
+    if (t.type === 'INCOME') acc.income += Number(t.amount);
+    else acc.expense += Math.abs(Number(t.amount));
+    return acc;
+  }, { income: 0, expense: 0 });
+  const balance = summary.income - summary.expense;
+
+  const setDatePreset = (days: number | 'MONTH' | 'ALL') => {
+    const d = new Date();
+    if (days === 'ALL') {
+      setStartDate('');
+      setEndDate('');
+    } else if (days === 'MONTH') {
+      setStartDate(DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth(), 1)));
+      setEndDate(DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth() + 1, 0)));
+    } else {
+      const start = new Date(d);
+      start.setDate(d.getDate() - days);
+      setStartDate(DateUtils.formatToISODate(start));
+      setEndDate(DateUtils.formatToISODate(d));
+    }
+    setPage(0);
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
       {/* HEADER SECTION */}
@@ -428,7 +461,44 @@ const HistoryPage: React.FC = () => {
         categories={availableCategories} accounts={accounts} resetFilters={resetFilters}
       />
 
-      {/* CHARTS LAYER (REMOVED TO DASHBOARD) */}
+      {/* QUICK DATE FILTERS */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => setDatePreset('MONTH')} className={`px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(firstDay) && endDate === DateUtils.formatToISODate(lastDay) ? 'bg-brand-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-100'}`}>Este Mês</button>
+        <button onClick={() => setDatePreset(15)} className="px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider bg-white text-slate-500 hover:bg-slate-50 border border-slate-100 transition-all">Últimos 15 Dias</button>
+        <button onClick={() => setDatePreset(7)} className="px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider bg-white text-slate-500 hover:bg-slate-50 border border-slate-100 transition-all">Últimos 7 Dias</button>
+        <button onClick={() => setDatePreset('ALL')} className={`px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all ${!startDate && !endDate ? 'bg-brand-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-100'}`}>Todo o Período</button>
+      </div>
+
+      {/* SUMMARY CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Receitas</p>
+            <h3 className="text-xl font-bold text-emerald-500">{HistoryUtils.formatCurrency(summary.income)}</h3>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
+            <ArrowUpRight size={20} />
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Despesas</p>
+            <h3 className="text-xl font-bold text-rose-500">{HistoryUtils.formatCurrency(-summary.expense)}</h3>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center">
+            <ArrowDownRight size={20} />
+          </div>
+        </div>
+        <div className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between ${balance >= 0 ? 'border-b-4 border-b-emerald-500' : 'border-b-4 border-b-rose-500'}`}>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Balanço do Período</p>
+            <h3 className={`text-xl font-bold ${balance >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{HistoryUtils.formatCurrency(balance)}</h3>
+          </div>
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${balance >= 0 ? 'bg-emerald-50 text-emerald-500' : 'bg-rose-50 text-rose-500'}`}>
+            <Wallet size={20} />
+          </div>
+        </div>
+      </div>
 
       <TransactionTable
         transactions={filtered} isLoading={isLoading} accounts={accounts} categories={availableCategories}
@@ -477,8 +547,8 @@ const HistoryPage: React.FC = () => {
                 key={i}
                 onClick={() => setPage(i)}
                 className={`w-10 h-10 rounded-xl text-sm font-bold flex items-center justify-center transition-all shrink-0 ${page === i
-                    ? 'bg-brand-600 text-white shadow-md shadow-brand-500/20'
-                    : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                  ? 'bg-brand-600 text-white shadow-md shadow-brand-500/20'
+                  : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
                   }`}
               >
                 {i + 1}
