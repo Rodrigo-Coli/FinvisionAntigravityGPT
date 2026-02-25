@@ -24,6 +24,17 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) => {
     const [activeTab, setActiveTab] = useState<'categories' | 'mom' | 'timeline'>('categories');
+    const [selectedTimelineCategories, setSelectedTimelineCategories] = useState<string[]>([]);
+
+    const availableTimelineCategories = useMemo(() => {
+        const cats = new Set<string>();
+        transactions.forEach(t => {
+            if (!t.is_amortization && (t.type === 'INCOME' || t.type === 'EXPENSE')) {
+                cats.add(t.category);
+            }
+        });
+        return Array.from(cats).sort();
+    }, [transactions]);
 
     const { categoryDataExpense, categoryDataIncome, momData, totalCurrentMonthExpense, totalCurrentMonthIncome, momPercentChangeExpense, momPercentChangeIncome, timelineData } = useMemo(() => {
         const now = new Date();
@@ -104,7 +115,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
             if (ymd > maxDateStr) maxDateStr = ymd;
         });
 
-        let timelineArray: { label: string, income: number, expense: number }[] = [];
+        let timelineArray: { label: string, income: number, expense: number, balance: number }[] = [];
         if (minDateStr <= maxDateStr && minDateStr !== '9999-12-31') {
             const dMin = new Date(minDateStr + 'T00:00:00');
             const dMax = new Date(maxDateStr + 'T00:00:00');
@@ -115,11 +126,14 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
                 const tMap = new Map();
                 transactions.forEach(t => {
                     if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+                    if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
+
                     const ym = t.date.split('T')[0].substring(0, 7); // YYYY-MM
-                    if (!tMap.has(ym)) tMap.set(ym, { income: 0, expense: 0 });
+                    if (!tMap.has(ym)) tMap.set(ym, { income: 0, expense: 0, balance: 0 });
                     const b = tMap.get(ym);
                     if (t.type === 'INCOME') b.income += Number(t.amount);
                     if (t.type === 'EXPENSE') b.expense += Math.abs(Number(t.amount));
+                    b.balance = b.income - b.expense;
                 });
 
                 let currentYear = Number(minDateStr.substring(0, 4));
@@ -129,10 +143,10 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
 
                 while (currentYear < maxYear || (currentYear === maxYear && currentMonth <= maxMonth)) {
                     const ym = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
-                    const b = tMap.get(ym) || { income: 0, expense: 0 };
+                    const b = tMap.get(ym) || { income: 0, expense: 0, balance: 0 };
                     const labelDate = new Date(currentYear, currentMonth - 1, 1);
                     const label = labelDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/').replace(' de ', '/');
-                    timelineArray.push({ label, income: b.income, expense: b.expense });
+                    timelineArray.push({ label, income: b.income, expense: b.expense, balance: b.balance });
 
                     currentMonth++;
                     if (currentMonth > 12) {
@@ -145,18 +159,21 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
                 const tMap = new Map();
                 transactions.forEach(t => {
                     if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+                    if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
+
                     const ymd = t.date.split('T')[0];
-                    if (!tMap.has(ymd)) tMap.set(ymd, { income: 0, expense: 0 });
+                    if (!tMap.has(ymd)) tMap.set(ymd, { income: 0, expense: 0, balance: 0 });
                     const b = tMap.get(ymd);
                     if (t.type === 'INCOME') b.income += Number(t.amount);
                     if (t.type === 'EXPENSE') b.expense += Math.abs(Number(t.amount));
+                    b.balance = b.income - b.expense;
                 });
                 let curr = new Date(minDateStr + 'T00:00:00');
                 while (curr <= dMax) {
                     const ymd = curr.getFullYear() + '-' + String(curr.getMonth() + 1).padStart(2, '0') + '-' + String(curr.getDate()).padStart(2, '0');
-                    const b = tMap.get(ymd) || { income: 0, expense: 0 };
+                    const b = tMap.get(ymd) || { income: 0, expense: 0, balance: 0 };
                     const label = curr.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-                    timelineArray.push({ label, income: b.income, expense: b.expense });
+                    timelineArray.push({ label, income: b.income, expense: b.expense, balance: b.balance });
                     curr.setDate(curr.getDate() + 1);
                 }
             }
@@ -172,7 +189,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
             momPercentChangeIncome: momChangeIncome,
             timelineData: timelineArray
         };
-    }, [transactions]);
+    }, [transactions, selectedTimelineCategories]);
 
     if (transactions.length === 0) return null;
 
@@ -370,61 +387,100 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
             )}
 
             {activeTab === 'timeline' && (
-                <div className="pt-8 animate-in fade-in">
+                <div className="pt-8 animate-in fade-in flex flex-col gap-6">
+                    <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                        <div className="flex items-center gap-4 text-xs font-bold text-slate-500">
+                            <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Receitas</div>
+                            <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Despesas</div>
+                            <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Balanço</div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 justify-end">
+                            <button
+                                onClick={() => setSelectedTimelineCategories([])}
+                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${selectedTimelineCategories.length === 0 ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+                            >
+                                Todas
+                            </button>
+                            {availableTimelineCategories.map(cat => (
+                                <button
+                                    key={cat}
+                                    onClick={() => {
+                                        if (selectedTimelineCategories.includes(cat)) {
+                                            setSelectedTimelineCategories(prev => prev.filter(c => c !== cat));
+                                        } else {
+                                            setSelectedTimelineCategories(prev => [...prev, cat]);
+                                        }
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${selectedTimelineCategories.includes(cat) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+                                >
+                                    {cat}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
                     {timelineData.length === 0 ? (
-                        <p className="text-slate-400 text-sm text-center">Não há dados suficientes para a linha do tempo.</p>
+                        <p className="text-slate-400 text-sm text-center py-12">Não há dados suficientes para a linha do tempo com as categorias selecionadas.</p>
                     ) : (
                         <div className="w-full overflow-x-auto pb-4">
-                            <div className="min-w-[600px] relative">
+                            <div className="min-w-[700px] relative">
                                 {(() => {
-                                    const height = 280;
+                                    const height = 300;
                                     const width = 800;
-                                    const padY = 30;
-                                    const maxInc = Math.max(...timelineData.map(d => d.income), 1);
-                                    const maxExp = Math.max(...timelineData.map(d => d.expense), 1);
+                                    const padYTop = 30;
+                                    const padYBottom = 40;
+                                    const padX = 30;
+                                    const chartWidth = width - 2 * padX;
 
-                                    // Zero axis no meio do gráfico
-                                    const zeroY = height / 2;
+                                    const maxInc = Math.max(...timelineData.map(d => d.income), 0);
+                                    const maxExp = Math.max(...timelineData.map(d => d.expense), 0);
+                                    const maxBal = Math.max(...timelineData.map(d => d.balance), 0);
+                                    const minBal = Math.min(...timelineData.map(d => d.balance), 0);
 
-                                    const incPoints = timelineData.map((d, i) => {
-                                        const x = (i / Math.max(timelineData.length - 1, 1)) * width;
-                                        const y = zeroY - (d.income / maxInc) * (zeroY - padY);
-                                        return `${x},${y}`;
-                                    }).join(' ');
+                                    const maxVal = Math.max(maxInc, maxExp, maxBal, 1);
+                                    const minVal = Math.min(minBal, 0);
 
-                                    const expPoints = timelineData.map((d, i) => {
-                                        const x = (i / Math.max(timelineData.length - 1, 1)) * width;
-                                        const y = zeroY + (d.expense / maxExp) * (height - zeroY - padY);
-                                        return `${x},${y}`;
-                                    }).join(' ');
+                                    const range = maxVal - minVal || 1;
+
+                                    const getY = (val: number) => height - padYBottom - ((val - minVal) / range) * (height - padYTop - padYBottom);
+                                    const getX = (i: number) => padX + (i / Math.max(timelineData.length - 1, 1)) * chartWidth;
+
+                                    const zeroY = getY(0);
+
+                                    const incPoints = timelineData.map((d, i) => `${getX(i)},${getY(d.income)}`).join(' ');
+                                    const expPoints = timelineData.map((d, i) => `${getX(i)},${getY(d.expense)}`).join(' ');
+                                    const balPoints = timelineData.map((d, i) => `${getX(i)},${getY(d.balance)}`).join(' ');
 
                                     return (
-                                        <svg viewBox={`-10 0 ${width + 20} ${height + 20}`} className="w-full h-full min-h-[280px] overflow-visible">
+                                        <svg viewBox={`0 0 ${width} ${height + 20}`} className="w-full h-full min-h-[300px] overflow-visible">
                                             {/* Fill Background Areas */}
-                                            <polygon fill="url(#gradIncome)" points={`0,${zeroY} ${incPoints} ${width},${zeroY}`} opacity={0.3} />
-                                            <polygon fill="url(#gradExpense)" points={`0,${zeroY} ${expPoints} ${width},${zeroY}`} opacity={0.3} />
+                                            <polygon fill="url(#gradIncome)" points={`${padX},${zeroY} ${incPoints} ${padX + chartWidth},${zeroY}`} opacity={0.2} />
+                                            <polygon fill="url(#gradExpense)" points={`${padX},${zeroY} ${expPoints} ${padX + chartWidth},${zeroY}`} opacity={0.2} />
 
                                             {/* Data Lines */}
-                                            <polyline points={incPoints} fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                                            <polyline points={expPoints} fill="none" stroke="#f43f5e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                                            <polyline points={incPoints} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                                            <polyline points={expPoints} fill="none" stroke="#f43f5e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                                            <polyline points={balPoints} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeDasharray="4 4" strokeLinecap="round" strokeLinejoin="round" />
 
                                             {/* Zero Axis */}
-                                            <line x1="0" y1={zeroY} x2={width} y2={zeroY} stroke="#e2e8f0" strokeWidth="2" strokeDasharray="4 4" />
+                                            <line x1={`${padX}`} y1={zeroY} x2={`${padX + chartWidth}`} y2={zeroY} stroke="#cbd5e1" strokeWidth="2" strokeDasharray="4 4" />
 
                                             {/* Data Points & Labels */}
                                             {timelineData.map((d, i) => {
-                                                const x = (i / Math.max(timelineData.length - 1, 1)) * width;
-                                                const yInc = zeroY - (d.income / maxInc) * (zeroY - padY);
-                                                const yExp = zeroY + (d.expense / maxExp) * (height - zeroY - padY);
+                                                const x = getX(i);
+                                                const yInc = getY(d.income);
+                                                const yExp = getY(d.expense);
+                                                const yBal = getY(d.balance);
 
-                                                const showLabel = timelineData.length <= 15 || i % Math.ceil(timelineData.length / 10) === 0 || i === timelineData.length - 1;
+                                                const showLabel = timelineData.length <= 15 || i % Math.ceil(timelineData.length / 10) === 0 || i === timelineData.length - 1 || i === 0;
 
                                                 return (
                                                     <g key={i}>
                                                         <circle cx={x} cy={yInc} r="4" fill="#10b981" className="cursor-pointer hover:r-6 transition-all" />
                                                         <circle cx={x} cy={yExp} r="4" fill="#f43f5e" className="cursor-pointer hover:r-6 transition-all" />
+                                                        <circle cx={x} cy={yBal} r="3" fill="#3b82f6" />
                                                         {showLabel && (
-                                                            <text x={x} y={height + 15} fontSize="10" fill="#94a3b8" textAnchor="middle" fontWeight="bold">{d.label}</text>
+                                                            <text x={x} y={height + 10} fontSize="10" fill="#94a3b8" textAnchor="middle" fontWeight="bold">{d.label}</text>
                                                         )}
                                                     </g>
                                                 );
@@ -437,8 +493,8 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
                                                     <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
                                                 </linearGradient>
                                                 <linearGradient id="gradExpense" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="0%" stopColor="#f43f5e" stopOpacity="0" />
-                                                    <stop offset="100%" stopColor="#f43f5e" stopOpacity="1" />
+                                                    <stop offset="0%" stopColor="#f43f5e" stopOpacity="1" />
+                                                    <stop offset="100%" stopColor="#f43f5e" stopOpacity="0" />
                                                 </linearGradient>
                                             </defs>
                                         </svg>
