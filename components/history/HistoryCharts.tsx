@@ -38,8 +38,36 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, sele
     }, [transactions]);
 
     const { categoryDataExpense, categoryDataIncome, momData, totalCurrentMonthExpense, totalCurrentMonthIncome, momPercentChangeExpense, momPercentChangeIncome, timelineData } = useMemo(() => {
-        // Derive the "current" period from the actual transactions, not from new Date().
-        // Find the most-recent month present in the data set.
+
+        // ── CATEGORIES: aggregate ALL transactions passed (they're already filtered by the date range selector) ──
+        const categoriesExpense: Record<string, number> = {};
+        const categoriesIncome: Record<string, number> = {};
+        let totalAllExpense = 0;
+        let totalAllIncome = 0;
+
+        transactions.forEach(t => {
+            if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+            const amt = Math.abs(Number(t.amount));
+            if (t.type === 'EXPENSE') {
+                categoriesExpense[t.category] = (categoriesExpense[t.category] || 0) + amt;
+                totalAllExpense += amt;
+            } else {
+                categoriesIncome[t.category] = (categoriesIncome[t.category] || 0) + amt;
+                totalAllIncome += amt;
+            }
+        });
+
+        const catArrayExpense = Object.entries(categoriesExpense)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 8);
+
+        const catArrayIncome = Object.entries(categoriesIncome)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 8);
+
+        // ── MÊS A MÊS: detect the latest month in the transaction set and compare with the previous one ──
         let latestYear = 0;
         let latestMonth = 0;
         transactions.forEach(t => {
@@ -48,27 +76,18 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, sele
             const y = d.getFullYear();
             const m = d.getMonth();
             if (y > latestYear || (y === latestYear && m > latestMonth)) {
-                latestYear = y;
-                latestMonth = m;
+                latestYear = y; latestMonth = m;
             }
         });
-        // Fall back to the actual current month if there are no transactions
-        if (latestYear === 0) {
-            const now = new Date();
-            latestYear = now.getFullYear();
-            latestMonth = now.getMonth();
-        }
+        if (latestYear === 0) { const now = new Date(); latestYear = now.getFullYear(); latestMonth = now.getMonth(); }
 
         const currMonth = latestMonth;
         const currYear = latestYear;
         const prevMonth = currMonth === 0 ? 11 : currMonth - 1;
         const prevYear = currMonth === 0 ? currYear - 1 : currYear;
 
-        const categoriesExpense: Record<string, number> = {};
-        const categoriesIncome: Record<string, number> = {};
         const dailySpendCurr: number[] = new Array(31).fill(0);
         const dailySpendPrev: number[] = new Array(31).fill(0);
-
         let totalCurrExpense = 0;
         let totalCurrIncome = 0;
         let totalPrevExpense = 0;
@@ -76,58 +95,28 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, sele
 
         transactions.forEach(t => {
             if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
-
             const d = new Date(t.date);
-            const m = d.getMonth();
-            const y = d.getFullYear();
-            const day = d.getDate() - 1; // 0-indexed day
+            const m = d.getMonth(); const y = d.getFullYear();
+            const day = d.getDate() - 1;
             const amt = Math.abs(Number(t.amount));
-
             if (y === currYear && m === currMonth) {
-                if (t.type === 'EXPENSE') {
-                    categoriesExpense[t.category] = (categoriesExpense[t.category] || 0) + amt;
-                    totalCurrExpense += amt;
-                    if (day >= 0 && day < 31) dailySpendCurr[day] += amt;
-                } else if (t.type === 'INCOME') {
-                    categoriesIncome[t.category] = (categoriesIncome[t.category] || 0) + amt;
-                    totalCurrIncome += amt;
-                }
+                if (t.type === 'EXPENSE') { totalCurrExpense += amt; if (day >= 0 && day < 31) dailySpendCurr[day] += amt; }
+                else { totalCurrIncome += amt; }
             } else if (y === prevYear && m === prevMonth) {
-                if (t.type === 'EXPENSE') {
-                    totalPrevExpense += amt;
-                    if (day >= 0 && day < 31) dailySpendPrev[day] += amt;
-                } else if (t.type === 'INCOME') {
-                    totalPrevIncome += amt;
-                }
+                if (t.type === 'EXPENSE') { totalPrevExpense += amt; if (day >= 0 && day < 31) dailySpendPrev[day] += amt; }
+                else { totalPrevIncome += amt; }
             }
         });
 
-        const catArrayExpense = Object.entries(categoriesExpense)
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 8); // top 8
-
-        const catArrayIncome = Object.entries(categoriesIncome)
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 8); // top 8
-
         let momChangeExpense = 0;
-        if (totalPrevExpense > 0) {
-            momChangeExpense = ((totalCurrExpense - totalPrevExpense) / totalPrevExpense) * 100;
-        } else if (totalCurrExpense > 0) {
-            momChangeExpense = 100; // infinite practically, but cap at 100 for display
-        }
+        if (totalPrevExpense > 0) momChangeExpense = ((totalCurrExpense - totalPrevExpense) / totalPrevExpense) * 100;
+        else if (totalCurrExpense > 0) momChangeExpense = 100;
 
         let momChangeIncome = 0;
-        if (totalPrevIncome > 0) {
-            momChangeIncome = ((totalCurrIncome - totalPrevIncome) / totalPrevIncome) * 100;
-        } else if (totalCurrIncome > 0) {
-            momChangeIncome = 100; // infinite practically, but cap at 100 for display
-        }
+        if (totalPrevIncome > 0) momChangeIncome = ((totalCurrIncome - totalPrevIncome) / totalPrevIncome) * 100;
+        else if (totalCurrIncome > 0) momChangeIncome = 100;
 
-
-        // --- Timeline Data ---
+        // ── TIMELINE ──
         let minDateStr = '9999-12-31';
         let maxDateStr = '0000-01-01';
         transactions.forEach(t => {
@@ -144,45 +133,33 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, sele
             const diffDays = Math.round((dMax.getTime() - dMin.getTime()) / (1000 * 3600 * 24));
 
             if (diffDays > 90) {
-                // Group by month
                 const tMap = new Map();
                 transactions.forEach(t => {
                     if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
                     if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
-
-                    const ym = t.date.split('T')[0].substring(0, 7); // YYYY-MM
+                    const ym = t.date.split('T')[0].substring(0, 7);
                     if (!tMap.has(ym)) tMap.set(ym, { income: 0, expense: 0, balance: 0 });
                     const b = tMap.get(ym);
                     if (t.type === 'INCOME') b.income += Number(t.amount);
                     if (t.type === 'EXPENSE') b.expense += Math.abs(Number(t.amount));
                     b.balance = b.income - b.expense;
                 });
-
-                let currentYear = Number(minDateStr.substring(0, 4));
-                let currentMonth = Number(minDateStr.substring(5, 7));
-                const maxYear = Number(maxDateStr.substring(0, 4));
-                const maxMonth = Number(maxDateStr.substring(5, 7));
-
-                while (currentYear < maxYear || (currentYear === maxYear && currentMonth <= maxMonth)) {
-                    const ym = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+                let cy = Number(minDateStr.substring(0, 4));
+                let cm = Number(minDateStr.substring(5, 7));
+                const maxY = Number(maxDateStr.substring(0, 4));
+                const maxM = Number(maxDateStr.substring(5, 7));
+                while (cy < maxY || (cy === maxY && cm <= maxM)) {
+                    const ym = `${cy}-${String(cm).padStart(2, '0')}`;
                     const b = tMap.get(ym) || { income: 0, expense: 0, balance: 0 };
-                    const labelDate = new Date(currentYear, currentMonth - 1, 1);
-                    const label = labelDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/').replace(' de ', '/');
+                    const label = new Date(cy, cm - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/').replace(' de ', '/');
                     timelineArray.push({ label, income: b.income, expense: b.expense, balance: b.balance });
-
-                    currentMonth++;
-                    if (currentMonth > 12) {
-                        currentMonth = 1;
-                        currentYear++;
-                    }
+                    cm++; if (cm > 12) { cm = 1; cy++; }
                 }
             } else {
-                // Group by day
                 const tMap = new Map();
                 transactions.forEach(t => {
                     if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
                     if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
-
                     const ymd = t.date.split('T')[0];
                     if (!tMap.has(ymd)) tMap.set(ymd, { income: 0, expense: 0, balance: 0 });
                     const b = tMap.get(ymd);
@@ -194,8 +171,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, sele
                 while (curr <= dMax) {
                     const ymd = curr.getFullYear() + '-' + String(curr.getMonth() + 1).padStart(2, '0') + '-' + String(curr.getDate()).padStart(2, '0');
                     const b = tMap.get(ymd) || { income: 0, expense: 0, balance: 0 };
-                    const label = curr.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-                    timelineArray.push({ label, income: b.income, expense: b.expense, balance: b.balance });
+                    timelineArray.push({ label: curr.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), income: b.income, expense: b.expense, balance: b.balance });
                     curr.setDate(curr.getDate() + 1);
                 }
             }
@@ -204,14 +180,15 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, sele
         return {
             categoryDataExpense: catArrayExpense,
             categoryDataIncome: catArrayIncome,
-            momData: { curr: dailySpendCurr, prev: dailySpendPrev, totalPrevExpense: totalPrevExpense, totalPrevIncome: totalPrevIncome },
-            totalCurrentMonthExpense: totalCurrExpense,
-            totalCurrentMonthIncome: totalCurrIncome,
+            momData: { curr: dailySpendCurr, prev: dailySpendPrev, totalPrevExpense, totalPrevIncome },
+            totalCurrentMonthExpense: totalAllExpense,   // <-- uses ALL period total for the Categories tab header
+            totalCurrentMonthIncome: totalAllIncome,     // <-- same
             momPercentChangeExpense: momChangeExpense,
             momPercentChangeIncome: momChangeIncome,
             timelineData: timelineArray
         };
     }, [transactions, selectedTimelineCategories]);
+
 
     if (transactions.length === 0) return null;
 

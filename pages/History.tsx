@@ -560,7 +560,8 @@ const HistoryPage: React.FC = () => {
       />
 
       <TransactionTable
-        transactions={filtered} isLoading={isLoading} accounts={accounts} categories={availableCategories}
+        transactions={filtered} isLoading={isLoading} accounts={accounts}
+        categoryObjects={categoryObjects} onCreateCategory={handleCreateCategory}
         editingRow={editingRow} setEditingRow={setEditingRow} editValue={editValue} setEditValue={setEditValue}
         savingId={savingId} handleUpdate={handleUpdate} handleDelete={handleDelete} statusBadge={statusBadge}
         sortField={sortField} sortDirection={sortDirection} onSort={handleSort}

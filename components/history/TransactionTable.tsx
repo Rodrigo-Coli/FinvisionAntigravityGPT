@@ -1,5 +1,5 @@
-import React from 'react';
-import { Loader2, Trash2, Edit2, RotateCcw, Check, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Loader2, Trash2, RotateCcw, Check, ChevronUp, ChevronDown, Search, Plus, X } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 import { Transaction, BankAccount } from '../../types';
 
@@ -7,7 +7,8 @@ interface TransactionTableProps {
     transactions: Transaction[];
     isLoading: boolean;
     accounts: BankAccount[];
-    categories: string[];
+    categoryObjects: { name: string; type?: 'INCOME' | 'EXPENSE' }[];
+    onCreateCategory: (name: string, type: 'INCOME' | 'EXPENSE') => Promise<void>;
     editingRow: { id: string; field: string } | null;
     setEditingRow: (v: { id: string; field: string } | null) => void;
     editValue: any;
@@ -28,11 +29,150 @@ interface TransactionTableProps {
     onSort: (field: string) => void;
 }
 
+// ─── Inline Category Picker ──────────────────────────────────────────────────
+interface CategoryPickerProps {
+    value: string;
+    transactionType: 'INCOME' | 'EXPENSE' | string;
+    categoryObjects: { name: string; type?: 'INCOME' | 'EXPENSE' }[];
+    onSelect: (cat: string) => void;
+    onCreateCategory: (name: string, type: 'INCOME' | 'EXPENSE') => Promise<void>;
+}
+
+const CategoryPicker: React.FC<CategoryPickerProps> = ({ value, transactionType, categoryObjects, onSelect, onCreateCategory }) => {
+    const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const [creating, setCreating] = useState(false);
+    const [newName, setNewName] = useState('');
+    const [saving, setSaving] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) {
+                setOpen(false);
+                setCreating(false);
+                setSearch('');
+                setNewName('');
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    // Filter by transaction type, then by search
+    const txType = transactionType === 'INCOME' ? 'INCOME' : 'EXPENSE';
+    const filtered = categoryObjects
+        .filter(c => !c.type || c.type === txType)
+        .filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+
+    const handleCreate = async () => {
+        if (!newName.trim()) return;
+        setSaving(true);
+        try {
+            await onCreateCategory(newName.trim(), txType);
+            onSelect(newName.trim());
+            setCreating(false);
+            setNewName('');
+            setOpen(false);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div ref={ref} className="relative">
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                className="text-[9px] font-bold uppercase text-brand-600/60 hover:text-brand-600 transition-colors flex items-center gap-1 leading-none"
+            >
+                {value || 'Categoria'}
+                <ChevronDown size={9} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
+
+            {open && (
+                <div className="absolute z-50 top-full left-0 mt-1 bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden w-56 animate-in fade-in slide-in-from-top-2 duration-150">
+
+                    {/* Search + Create button header */}
+                    <div className="p-2 border-b border-slate-50 space-y-1.5">
+                        <div className="relative">
+                            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
+                            <input
+                                autoFocus
+                                className="w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300 focus:ring-2 focus:ring-brand-500/10"
+                                placeholder={`Buscar ${txType === 'INCOME' ? 'receita' : 'despesa'}...`}
+                                value={search}
+                                onChange={e => { setSearch(e.target.value); setCreating(false); }}
+                            />
+                        </div>
+
+                        {creating ? (
+                            <div className="flex items-center gap-1.5">
+                                <input
+                                    autoFocus
+                                    className="flex-1 h-8 px-2.5 bg-brand-50 border border-brand-200 rounded-lg text-xs font-bold outline-none"
+                                    placeholder={`Nova ${txType === 'INCOME' ? 'receita' : 'despesa'}...`}
+                                    value={newName}
+                                    onChange={e => setNewName(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleCreate}
+                                    disabled={saving || !newName.trim()}
+                                    className="w-8 h-8 bg-brand-600 text-white rounded-lg flex items-center justify-center hover:bg-brand-700 disabled:opacity-50 transition-all"
+                                >
+                                    {saving ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setCreating(false); setNewName(''); }}
+                                    className="w-8 h-8 bg-slate-100 text-slate-500 rounded-lg flex items-center justify-center hover:bg-slate-200 transition-all"
+                                >
+                                    <X size={11} />
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setCreating(true)}
+                                className="w-full flex items-center gap-1.5 px-2.5 h-8 text-[10px] font-bold text-brand-600 hover:bg-brand-50 rounded-lg transition-colors uppercase tracking-wider"
+                            >
+                                <Plus size={11} /> Criar Nova Categoria
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Category list */}
+                    <div className="max-h-52 overflow-y-auto">
+                        {filtered.map(c => (
+                            <button
+                                key={c.name}
+                                type="button"
+                                onClick={() => { onSelect(c.name); setOpen(false); setSearch(''); }}
+                                className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors hover:bg-slate-50 flex items-center gap-2 ${c.name === value ? 'text-brand-600 font-bold bg-brand-50/50' : 'text-slate-700'}`}
+                            >
+                                {c.name === value && <Check size={10} className="text-brand-600 shrink-0" />}
+                                {c.name}
+                            </button>
+                        ))}
+                        {filtered.length === 0 && !creating && (
+                            <p className="px-3 py-4 text-xs text-slate-300 text-center">Nenhuma categoria encontrada</p>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 export const TransactionTable: React.FC<TransactionTableProps> = ({
     transactions,
     isLoading,
     accounts,
-    categories,
+    categoryObjects,
+    onCreateCategory,
     editingRow,
     setEditingRow,
     editValue,
@@ -105,7 +245,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     type="date"
                                                     autoFocus
                                                     className="w-[120px] h-8 px-2 text-xs font-bold text-slate-600 bg-white border border-brand-500 rounded outline-none"
-                                                    value={editValue.split('T')[0]} // Ajuste p/ segurança
+                                                    value={editValue.split('T')[0]}
                                                     onChange={e => setEditValue(e.target.value)}
                                                     onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'date', editValue)}
                                                     onBlur={() => handleUpdate(t.id, 'date', editValue)}
@@ -146,6 +286,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
 
                                         <td className="px-8 py-5">
                                             <div className="flex flex-col gap-1">
+                                                {/* Account selector (native, simpler) */}
                                                 <select
                                                     className="text-[10px] font-bold uppercase text-slate-400 bg-transparent border-none p-0 outline-none cursor-pointer hover:text-slate-900 transition-colors"
                                                     value={t.accountId}
@@ -153,13 +294,15 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                 >
                                                     {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
                                                 </select>
-                                                <select
-                                                    className="text-[9px] font-bold uppercase text-brand-600/50 bg-transparent border-none p-0 outline-none cursor-pointer hover:text-brand-600 transition-colors"
+
+                                                {/* Custom searchable + type-filtered category picker */}
+                                                <CategoryPicker
                                                     value={t.category}
-                                                    onChange={(e) => handleUpdate(t.id, 'category', e.target.value)}
-                                                >
-                                                    {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                                </select>
+                                                    transactionType={t.type}
+                                                    categoryObjects={categoryObjects}
+                                                    onSelect={(cat) => handleUpdate(t.id, 'category', cat)}
+                                                    onCreateCategory={onCreateCategory}
+                                                />
                                             </div>
                                         </td>
 
