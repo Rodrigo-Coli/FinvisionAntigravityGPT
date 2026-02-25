@@ -58,6 +58,7 @@ type AddModalState =
 
 const HistoryPage: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [chartTransactions, setChartTransactions] = useState<Transaction[]>([]); // full set for charts (no pagination)
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [availableCategories, setAvailableCategories] = useState<string[]>(CATEGORIES);
   const [categoryObjects, setCategoryObjects] = useState<{ name: string, type?: 'INCOME' | 'EXPENSE' }[]>(CATEGORIES.map(c => ({ name: c })));
@@ -155,6 +156,7 @@ const HistoryPage: React.FC = () => {
         setCategoryObjects(Array.from(catMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
       }
 
+      // ── Paginated query for the visible table ──
       let query: any = supabase.from('transactions').select('*', { count: 'exact' }).eq('user_id', user.id).eq('is_deleted', false).order(sortField, { ascending: sortDirection === 'asc' });
       if (sortField !== 'date') {
         query = query.order('date', { ascending: false }); // secondary sort fallback
@@ -167,12 +169,46 @@ const HistoryPage: React.FC = () => {
       if (minPrice !== '') query = query.gte('amount', Number(minPrice));
       if (maxPrice !== '') query = query.lte('amount', Number(maxPrice));
       if (filterOwner !== 'ALL') query = query.eq('owner_name', filterOwner);
-
-      // Pagination setup (requesting 1 extra to check if there are more)
       query = query.range(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
 
-      const { data, count, error: fetchError } = await query;
+      // ── Aggregation query for charts — same filters, no pagination, minimal columns ──
+      let chartQuery: any = supabase.from('transactions')
+        .select('id, date, type, amount, category, is_amortization, account_id')
+        .eq('user_id', user.id).eq('is_deleted', false)
+        .order('date', { ascending: false });
+      if (filterType !== 'ALL') chartQuery = chartQuery.eq('type', filterType);
+      if (filterAccount !== 'ALL') chartQuery = chartQuery.eq('account_id', filterAccount);
+      if (filterCategory.length > 0) chartQuery = chartQuery.in('category', filterCategory);
+      if (startDate) chartQuery = chartQuery.gte('date', startDate);
+      if (endDate) chartQuery = chartQuery.lte('date', endDate);
+      if (minPrice !== '') chartQuery = chartQuery.gte('amount', Number(minPrice));
+      if (maxPrice !== '') chartQuery = chartQuery.lte('amount', Number(maxPrice));
+      if (filterOwner !== 'ALL') chartQuery = chartQuery.eq('owner_name', filterOwner);
+
+      const [{ data, count, error: fetchError }, { data: chartData }] = await Promise.all([query, chartQuery]);
       if (fetchError) throw fetchError;
+
+      // Store chart transactions (minimal mapping, no pagination)
+      setChartTransactions((chartData || []).map((t: any) => ({
+        id: t.id,
+        description: '',
+        amount: Number(t.amount || 0),
+        date: t.date,
+        type: t.type as TransactionType,
+        accountId: t.account_id,
+        accountName: '',
+        category: t.category ?? 'Outros',
+        owner_name: t.owner_name ?? 'Pessoal',
+        isDeleted: false,
+        isReconciled: false,
+        isPaid: false,
+        paidAmount: 0,
+        paidAt: undefined,
+        parentId: null,
+        metadata: {},
+        is_amortization: t.is_amortization ?? false,
+        is_incomplete: false
+      })));
 
       if (count !== null) setTotalCount(count);
 
@@ -454,11 +490,11 @@ const HistoryPage: React.FC = () => {
     } catch (err) { alert('Erro ao criar categoria inline'); }
   };
 
-  // Summary Calculations based on loaded/filtered transactions
-  // (filterCategory already applied at DB level, so these just sum everything loaded)
-  const summary = filtered.reduce((acc, t) => {
+  // Summary Calculations based on ALL filtered transactions (chartTransactions = no pagination)
+  const summary = chartTransactions.reduce((acc, t) => {
+    if (t.is_amortization) return acc;
     if (t.type === 'INCOME') acc.income += Number(t.amount);
-    else acc.expense += Math.abs(Number(t.amount));
+    else if (t.type === 'EXPENSE') acc.expense += Math.abs(Number(t.amount));
     return acc;
   }, { income: 0, expense: 0 });
   const balance = summary.income - summary.expense;
@@ -554,7 +590,7 @@ const HistoryPage: React.FC = () => {
       </div>
 
       <HistoryCharts
-        transactions={filtered}
+        transactions={chartTransactions}
         selectedTimelineCategories={selectedTimelineCategories}
         setSelectedTimelineCategories={setSelectedTimelineCategories}
         startDate={startDate}
