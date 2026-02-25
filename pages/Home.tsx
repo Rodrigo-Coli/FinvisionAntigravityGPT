@@ -114,34 +114,37 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
     );
   }
 
+  const startOfMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
+  const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+
   return (
-    <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
+    <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 animate-in fade-in duration-500 min-w-0">
       {/* HEADER ROW */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Visão Geral</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Visão Geral</h1>
           <p className="text-sm text-slate-400 font-medium">Monitorando sua saúde financeira com excelência.</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <button className="p-3 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-slate-900 transition-colors shadow-sm relative">
             <Bell size={20} />
             <div className="absolute top-3 right-3 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
           </button>
           <button
             onClick={() => navigate('/history')}
-            className="hidden sm:flex items-center gap-2 px-5 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
+            className="flex items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
           >
             <Plus size={18} />
-            Novo Lançamento
+            <span className="hidden xs:inline">Novo</span><span className="hidden sm:inline"> Lançamento</span>
           </button>
         </div>
       </div>
 
       {/* BALANCE CARDS GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div id="tour-net-worth" className="lg:col-span-3 bg-brand-600 rounded-[32px] p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-500/30 group">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
+        <div id="tour-net-worth" className="lg:col-span-3 bg-brand-600 rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-500/30 group">
 
-          <div className="relative z-10 flex flex-col h-full justify-between gap-8">
+          <div className="relative z-10 flex flex-col h-full justify-between gap-6 sm:gap-8">
             <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <p className="text-white/70 text-sm font-medium uppercase tracking-widest text-[10px]">Patrimônio Líquido</p>
@@ -184,12 +187,12 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 pt-4 border-t border-white/10 text-white font-medium text-xs">
-              <div className="px-2 py-0.5 bg-white/20 rounded-md">Saldo Bancário Consolidado</div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-2 pt-4 border-t border-white/10 text-white font-medium text-xs">
+              <div className="px-2 py-0.5 bg-white/20 rounded-md shrink-0">Saldo Bancário Consolidado</div>
               <span className={`font-bold ${!showBalance && 'blur-md'}`}>{showBalance ? format(data.consolidatedBalance) : '---'}</span>
               <button
                 onClick={() => navigate('/assets')}
-                className="p-1 px-2 border border-white/20 rounded-md flex items-center gap-1 ml-auto cursor-pointer hover:bg-white/10 transition-colors"
+                className="p-1 px-2 border border-white/20 rounded-md flex items-center gap-1 sm:ml-auto cursor-pointer hover:bg-white/10 transition-colors"
               >
                 Meus Bens <ArrowUpRight size={14} />
               </button>
@@ -250,8 +253,8 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       </div>
 
       {/* MID SECTION: CREDIT CARDS & INSIGHTS */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-8 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+        <div className="lg:col-span-8 space-y-6 min-w-0">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-slate-900">Cartões de Crédito</h3>
             <button onClick={() => navigate('/cards')} className="text-xs font-bold text-brand-600 hover:underline">Ver Mais</button>
@@ -294,10 +297,14 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
             )}
           </div>
 
-          {/* HISTÓRICO DE DESPESAS (CHART) COINCIDINDO COM O LAYOUT */}
-          <div className="mt-8">
-            <h3 className="text-lg font-bold text-slate-900 mb-6">Gráficos de Despesas</h3>
-            <HistoryCharts transactions={transactions} />
+          {/* HISTÓRICO DE DESPESAS (CHART) */}
+          <div className="mt-6 sm:mt-8">
+            <h3 className="text-lg font-bold text-slate-900 mb-4 sm:mb-6">Gráficos de Despesas</h3>
+            <HistoryCharts
+              transactions={transactions}
+              startDate={startOfMonth}
+              endDate={endOfMonth}
+            />
           </div>
 
         </div>

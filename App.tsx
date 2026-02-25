@@ -83,7 +83,7 @@ const App: React.FC = () => {
       <TourProvider>
         <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 font-sans">
           {profile?.is_approved && <Nav user={profile} />}
-          <main className="flex-grow overflow-x-hidden">
+          <main className="flex-grow overflow-x-hidden min-w-0">
             <Routes>
               <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
               <Route path="/signup" element={!session ? <Signup /> : <Navigate to="/" />} />

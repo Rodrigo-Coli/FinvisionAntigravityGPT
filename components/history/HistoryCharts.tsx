@@ -5,10 +5,10 @@ import { HistoryUtils } from '../../lib/historyUtils';
 
 interface HistoryChartsProps {
     transactions: Transaction[];
-    selectedTimelineCategories: string[];
-    setSelectedTimelineCategories: (cats: string[] | ((prev: string[]) => string[])) => void;
-    startDate: string;
-    endDate: string;
+    selectedTimelineCategories?: string[];
+    setSelectedTimelineCategories?: (cats: string[] | ((prev: string[]) => string[])) => void;
+    startDate?: string;
+    endDate?: string;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -26,7 +26,13 @@ const CATEGORY_COLORS: Record<string, string> = {
     'Outros': '#94a3b8'
 };
 
-export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, selectedTimelineCategories, setSelectedTimelineCategories, startDate, endDate }) => {
+export const HistoryCharts: React.FC<HistoryChartsProps> = ({
+    transactions,
+    selectedTimelineCategories = [],
+    setSelectedTimelineCategories = () => { },
+    startDate = '',
+    endDate = ''
+}) => {
     const [activeTab, setActiveTab] = useState<'categories' | 'mom' | 'timeline'>('categories');
 
     const availableTimelineCategories = useMemo(() => {
