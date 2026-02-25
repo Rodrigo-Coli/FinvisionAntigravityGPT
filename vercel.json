@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/((?!api|sw\\.js|manifest\\.json|favicon\\.ico|assets/).*)",
+      "source": "/((?!api).*)",
       "destination": "/"
     }
   ]
