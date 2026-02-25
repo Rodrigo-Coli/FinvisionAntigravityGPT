@@ -13,6 +13,7 @@ import { TransactionTable } from '../components/history/TransactionTable';
 import { PaymentModal } from '../components/history/PaymentModal';
 import { AddTransactionModal } from '../components/history/AddTransactionModal';
 import { SeriesScopeModal, SeriesScope } from '../components/SeriesScopeModal';
+import { HistoryCharts } from '../components/history/HistoryCharts';
 import { ArrowDownRight, ArrowUpRight, Wallet } from 'lucide-react';
 
 const CATEGORIES = [
@@ -516,6 +517,8 @@ const HistoryPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <HistoryCharts transactions={filtered} />
 
       <TransactionTable
         transactions={filtered} isLoading={isLoading} accounts={accounts} categories={availableCategories}
