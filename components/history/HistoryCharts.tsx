@@ -389,48 +389,10 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, sele
 
             {activeTab === 'timeline' && (
                 <div className="pt-8 animate-in fade-in flex flex-col gap-6">
-                    <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-                        <div className="flex items-center gap-4 text-xs font-bold text-slate-500">
-                            <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Receitas</div>
-                            <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Despesas</div>
-                            <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Balanço</div>
-                        </div>
-                        <div className="flex flex-wrap gap-2 justify-end">
-                            <button
-                                onClick={() => setSelectedTimelineCategories([])}
-                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${selectedTimelineCategories.length === 0 ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
-                            >
-                                Selecionar Todas
-                            </button>
-                            <button
-                                onClick={() => setSelectedTimelineCategories(['__NONE__'])}
-                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${selectedTimelineCategories.includes('__NONE__') ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
-                            >
-                                Desmarcar Todas
-                            </button>
-                            {availableTimelineCategories.map(cat => (
-                                <button
-                                    key={cat}
-                                    onClick={() => {
-                                        setSelectedTimelineCategories(prev => {
-                                            if (prev.length === 0) return [cat];
-                                            const withoutNone = prev.filter(c => c !== '__NONE__');
-                                            let next = [...withoutNone];
-                                            if (next.includes(cat)) {
-                                                next = next.filter(c => c !== cat);
-                                                if (next.length === 0) return ['__NONE__'];
-                                            } else {
-                                                next = [...next, cat];
-                                            }
-                                            return next;
-                                        });
-                                    }}
-                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${selectedTimelineCategories.length === 0 || (selectedTimelineCategories.includes(cat) && !selectedTimelineCategories.includes('__NONE__')) ? 'bg-slate-800 text-white shadow-sm scale-105' : 'bg-white border border-slate-100 text-slate-400 hover:bg-slate-50'}`}
-                                >
-                                    {cat}
-                                </button>
-                            ))}
-                        </div>
+                    <div className="flex items-center gap-4 text-xs font-bold text-slate-500">
+                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Receitas</div>
+                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Despesas</div>
+                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Balanço</div>
                     </div>
 
                     {timelineData.length === 0 ? (

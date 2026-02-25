@@ -77,10 +77,11 @@ const HistoryPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
   const [filterAccount, setFilterAccount] = useState<string>('ALL');
-  const [filterCategory, setFilterCategory] = useState<string>('ALL');
+  const [filterCategory, setFilterCategory] = useState<string[]>([]);
 
-  // Timeline inner-category selection (elevated to react with Top Cards)
-  const [selectedTimelineCategories, setSelectedTimelineCategories] = useState<string[]>([]);
+  // (no longer used for pills, kept empty to avoid breaking HistoryCharts prop)
+  const [selectedTimelineCategories] = useState<string[]>([]);
+  const setSelectedTimelineCategories = (_v: any) => { };
 
   // Default to current month
   const today = new Date();
@@ -160,7 +161,7 @@ const HistoryPage: React.FC = () => {
       }
       if (filterType !== 'ALL') query = query.eq('type', filterType);
       if (filterAccount !== 'ALL') query = query.eq('account_id', filterAccount);
-      if (filterCategory !== 'ALL') query = query.eq('category', filterCategory);
+      if (filterCategory.length > 0) query = query.in('category', filterCategory);
       if (startDate) query = query.gte('date', startDate);
       if (endDate) query = query.lte('date', endDate);
       if (minPrice !== '') query = query.gte('amount', Number(minPrice));
@@ -219,7 +220,7 @@ const HistoryPage: React.FC = () => {
   // Reset page to 0 when filters change
   useEffect(() => {
     setPage(0);
-  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner, sortField, sortDirection]);
+  }, [filterType, filterAccount, JSON.stringify(filterCategory), startDate, endDate, minPrice, maxPrice, filterOwner, sortField, sortDirection]);
 
   useEffect(() => {
     if (isSupabaseConfigured) fetchData();
@@ -338,7 +339,7 @@ const HistoryPage: React.FC = () => {
   };
 
   const resetFilters = () => {
-    setFilterType('ALL'); setFilterAccount('ALL'); setFilterCategory('ALL');
+    setFilterType('ALL'); setFilterAccount('ALL'); setFilterCategory([]);
     setStartDate(''); setEndDate(''); setMinPrice(''); setMaxPrice('');
     setSearch('');
     setFilterOwner('ALL');
@@ -454,9 +455,8 @@ const HistoryPage: React.FC = () => {
   };
 
   // Summary Calculations based on loaded/filtered transactions
+  // (filterCategory already applied at DB level, so these just sum everything loaded)
   const summary = filtered.reduce((acc, t) => {
-    if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return acc;
-
     if (t.type === 'INCOME') acc.income += Number(t.amount);
     else acc.expense += Math.abs(Number(t.amount));
     return acc;
