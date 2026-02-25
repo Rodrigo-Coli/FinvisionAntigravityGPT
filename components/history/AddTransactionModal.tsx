@@ -23,7 +23,8 @@ interface AddTransactionModalProps {
     };
     setAddField: (field: string, value: any) => void;
     accounts: BankAccount[];
-    categories: string[];
+    categoryObjects: { name: string, type?: 'INCOME' | 'EXPENSE' }[];
+    onCreateCategory: (name: string, type: 'INCOME' | 'EXPENSE') => Promise<void>;
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
@@ -35,9 +36,31 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     form,
     setAddField,
     accounts,
-    categories
+    categoryObjects,
+    onCreateCategory
 }) => {
+    const [isCreatingCategory, setIsCreatingCategory] = React.useState(false);
+    const [newCategoryName, setNewCategoryName] = React.useState('');
+    const [isSavingCategory, setIsSavingCategory] = React.useState(false);
+
     if (!show) return null;
+
+    const filteredCategories = categoryObjects.filter(
+        c => !c.type || c.type === form.type
+    );
+
+    const handleCreateCategorySubmit = async () => {
+        if (!newCategoryName.trim()) return;
+        setIsSavingCategory(true);
+        try {
+            await onCreateCategory(newCategoryName.trim(), form.type);
+            setAddField('category', newCategoryName.trim());
+            setIsCreatingCategory(false);
+            setNewCategoryName('');
+        } finally {
+            setIsSavingCategory(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -118,16 +141,58 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria</label>
-                            <select
-                                value={form.category}
-                                onChange={(e) => setAddField('category', e.target.value)}
-                                className="w-full h-14 px-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
-                            >
-                                {categories.map(c => (
-                                    <option key={c} value={c}>{c}</option>
-                                ))}
-                            </select>
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria</label>
+                                {!isCreatingCategory && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCreatingCategory(true)}
+                                        className="text-[10px] font-bold text-brand-600 hover:text-brand-700 uppercase tracking-widest"
+                                    >
+                                        + Criar Nova
+                                    </button>
+                                )}
+                            </div>
+
+                            {isCreatingCategory ? (
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        autoFocus
+                                        value={newCategoryName}
+                                        onChange={(e) => setNewCategoryName(e.target.value)}
+                                        placeholder={`Nome da nova ${form.type === 'INCOME' ? 'receita' : 'despesa'}...`}
+                                        className="flex-1 h-14 px-4 bg-slate-50 border border-brand-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
+                                        onKeyDown={(e) => e.key === 'Enter' && handleCreateCategorySubmit()}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleCreateCategorySubmit}
+                                        disabled={isSavingCategory}
+                                        className="h-14 w-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center hover:bg-brand-700 transition-all disabled:opacity-50"
+                                    >
+                                        {isSavingCategory ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCreatingCategory(false)}
+                                        disabled={isSavingCategory}
+                                        className="h-14 w-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200 transition-all disabled:opacity-50"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                            ) : (
+                                <select
+                                    value={form.category}
+                                    onChange={(e) => setAddField('category', e.target.value)}
+                                    className="w-full h-14 px-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
+                                >
+                                    {filteredCategories.map(c => (
+                                        <option key={c.name} value={c.name}>{c.name}</option>
+                                    ))}
+                                </select>
+                            )}
                         </div>
 
                         {/* SERIES OPTIONS */}

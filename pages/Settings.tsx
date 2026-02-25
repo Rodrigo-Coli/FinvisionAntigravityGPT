@@ -46,6 +46,7 @@ const SettingsPage: React.FC = () => {
   const [products, setProducts] = useState<any[]>([]);
   const [newCatName, setNewCatName] = useState('');
   const [isAddingCat, setIsAddingCat] = useState(false);
+  const [categoryTab, setCategoryTab] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
 
   useEffect(() => {
     fetchData();
@@ -104,7 +105,7 @@ const SettingsPage: React.FC = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      await supabase.from('categories').insert({ user_id: user.id, name: newCatName, color: 'bg-brand-50 text-brand-600' });
+      await supabase.from('categories').insert({ user_id: user.id, name: newCatName, type: categoryTab, color: 'bg-brand-50 text-brand-600' });
       setNewCatName(''); setIsAddingCat(false); fetchData();
     } catch (err) { alert('Erro ao adicionar'); }
   };
@@ -206,22 +207,29 @@ const SettingsPage: React.FC = () => {
 
           {activeSection === 'categories' && (
             <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden border-b-4 border-b-slate-100">
-              <div className="p-10 border-b border-slate-50 flex justify-between items-center bg-slate-50/20">
+              <div className="p-6 md:p-10 border-b border-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-slate-50/20">
                 <div className="space-y-1">
                   <h2 className="text-xl font-bold text-slate-900">Categorias</h2>
                   <p className="text-sm text-slate-400 font-medium">Lançamentos do histórico.</p>
                 </div>
-                <button onClick={() => setIsAddingCat(true)} className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all font-bold flex items-center gap-2"><Plus size={16} /> Novo</button>
+
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                  <div className="flex bg-slate-100 p-1 rounded-xl flex-1 md:flex-none">
+                    <button onClick={() => setCategoryTab('INCOME')} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-xs font-bold transition-all ${categoryTab === 'INCOME' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Receitas</button>
+                    <button onClick={() => setCategoryTab('EXPENSE')} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-xs font-bold transition-all ${categoryTab === 'EXPENSE' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Despesas</button>
+                  </div>
+                  <button onClick={() => setIsAddingCat(true)} className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all flex items-center gap-2"><Plus size={16} /> Novo</button>
+                </div>
               </div>
               <div className="divide-y divide-slate-50">
                 {isAddingCat && (
-                  <div className="p-10 flex gap-4 bg-brand-50/30">
-                    <input autoFocus className="flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm" placeholder="Nome da categoria..." value={newCatName} onChange={e => setNewCatName(e.target.value)} />
-                    <button onClick={addCategory} className="w-16 h-16 bg-brand-600 text-white rounded-2xl flex items-center justify-center shadow-lg"><Check size={24} /></button>
-                    <button onClick={() => setIsAddingCat(false)} className="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center"><XCircle size={24} /></button>
+                  <div className="p-6 md:p-10 flex gap-4 bg-brand-50/30">
+                    <input autoFocus className="flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm" placeholder={`Nome da categoria de ${categoryTab === 'INCOME' ? 'receita' : 'despesa'}...`} value={newCatName} onChange={e => setNewCatName(e.target.value)} />
+                    <button onClick={addCategory} className="w-16 h-16 bg-brand-600 text-white rounded-2xl flex items-center justify-center shadow-lg transition-transform hover:scale-105"><Check size={24} /></button>
+                    <button onClick={() => setIsAddingCat(false)} className="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-slate-200"><XCircle size={24} /></button>
                   </div>
                 )}
-                {categories.map(cat => (
+                {categories.filter(c => c.type === categoryTab || (!c.type && categoryTab === 'EXPENSE')).map(cat => (
                   <div key={cat.id} className="p-6 lg:p-8 flex items-center justify-between group hover:bg-slate-50/50 transition-all">
                     <div className="flex items-center gap-4">
                       <div className={`w-4 h-4 rounded-full ${cat.color?.split(' ')[0] || 'bg-brand-500'}`} />
@@ -233,6 +241,9 @@ const SettingsPage: React.FC = () => {
                     </div>
                   </div>
                 ))}
+                {categories.filter(c => c.type === categoryTab || (!c.type && categoryTab === 'EXPENSE')).length === 0 && !isAddingCat && (
+                  <div className="p-10 text-center text-slate-400 text-sm font-medium">Nenhuma categoria encontrada.</div>
+                )}
               </div>
             </div>
           )}

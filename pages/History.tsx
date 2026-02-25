@@ -60,6 +60,7 @@ const HistoryPage: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [availableCategories, setAvailableCategories] = useState<string[]>(CATEGORIES);
+  const [categoryObjects, setCategoryObjects] = useState<{ name: string, type?: 'INCOME' | 'EXPENSE' }[]>(CATEGORIES.map(c => ({ name: c })));
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,6 +78,9 @@ const HistoryPage: React.FC = () => {
   const [filterType, setFilterType] = useState<string>('ALL');
   const [filterAccount, setFilterAccount] = useState<string>('ALL');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
+
+  // Timeline inner-category selection (elevated to react with Top Cards)
+  const [selectedTimelineCategories, setSelectedTimelineCategories] = useState<string[]>([]);
 
   // Default to current month
   const today = new Date();
@@ -137,12 +141,17 @@ const HistoryPage: React.FC = () => {
         lastSync: a.last_sync
       })));
 
-      const { data: catData, error: catErr } = await supabase.from('categories').select('name').eq('user_id', user.id).eq('is_archived', false).order('name');
+      const { data: catData, error: catErr } = await supabase.from('categories').select('name, type').eq('user_id', user.id).eq('is_archived', false).order('name');
       if (!catErr && catData) {
         const dbCategories = catData.map((c: any) => c.name);
-        // Merge with defaults and remove duplicates
-        const mergedCategories = Array.from(new Set([...CATEGORIES, ...dbCategories]));
-        setAvailableCategories(mergedCategories.sort((a, b) => a.localeCompare(b)));
+        const mergedCategories = Array.from(new Set([...CATEGORIES, ...dbCategories])).sort((a, b) => a.localeCompare(b));
+        setAvailableCategories(mergedCategories);
+
+        // Build the objects combining defaults + DB
+        const catMap = new Map<string, { name: string, type?: 'INCOME' | 'EXPENSE' }>();
+        CATEGORIES.forEach(c => catMap.set(c, { name: c })); // Default has no type
+        catData.forEach(c => catMap.set(c.name, c)); // DB might have type
+        setCategoryObjects(Array.from(catMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
       }
 
       let query: any = supabase.from('transactions').select('*', { count: 'exact' }).eq('user_id', user.id).eq('is_deleted', false).order(sortField, { ascending: sortDirection === 'asc' });
@@ -434,8 +443,20 @@ const HistoryPage: React.FC = () => {
 
   const filtered = transactions.filter(t => t.description.toLowerCase().includes(search.toLowerCase()) || t.accountName.toLowerCase().includes(search.toLowerCase()));
 
+  const handleCreateCategory = async (name: string, type: 'INCOME' | 'EXPENSE') => {
+    if (!supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('categories').insert({ user_id: user.id, name, type, color: 'bg-brand-50 text-brand-600' });
+      await fetchData(); // Refetch the list
+    } catch (err) { alert('Erro ao criar categoria inline'); }
+  };
+
   // Summary Calculations based on loaded/filtered transactions
   const summary = filtered.reduce((acc, t) => {
+    if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return acc;
+
     if (t.type === 'INCOME') acc.income += Number(t.amount);
     else acc.expense += Math.abs(Number(t.amount));
     return acc;
@@ -532,7 +553,11 @@ const HistoryPage: React.FC = () => {
         </div>
       </div>
 
-      <HistoryCharts transactions={filtered} />
+      <HistoryCharts
+        transactions={filtered}
+        selectedTimelineCategories={selectedTimelineCategories}
+        setSelectedTimelineCategories={setSelectedTimelineCategories}
+      />
 
       <TransactionTable
         transactions={filtered} isLoading={isLoading} accounts={accounts} categories={availableCategories}
@@ -611,7 +636,7 @@ const HistoryPage: React.FC = () => {
       <AddTransactionModal show={addModal.open} onClose={() => setAddModal({ open: false })} onSubmit={createManualTransaction}
         isSubmitting={addModal.open ? addModal.isSubmitting : false} error={addModal.open ? addModal.error : null}
         form={addModal.open ? addModal.form : {} as any} setAddField={(f, v) => setAddModal(prev => prev.open ? { ...prev, form: { ...prev.form, [f]: v } } : prev)}
-        accounts={accounts} categories={availableCategories}
+        accounts={accounts} categoryObjects={categoryObjects} onCreateCategory={handleCreateCategory}
       />
 
       <SeriesScopeModal

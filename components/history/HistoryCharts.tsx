@@ -5,6 +5,8 @@ import { HistoryUtils } from '../../lib/historyUtils';
 
 interface HistoryChartsProps {
     transactions: Transaction[];
+    selectedTimelineCategories: string[];
+    setSelectedTimelineCategories: (cats: string[] | ((prev: string[]) => string[])) => void;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -22,9 +24,8 @@ const CATEGORY_COLORS: Record<string, string> = {
     'Outros': '#94a3b8'
 };
 
-export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) => {
+export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions, selectedTimelineCategories, setSelectedTimelineCategories }) => {
     const [activeTab, setActiveTab] = useState<'categories' | 'mom' | 'timeline'>('categories');
-    const [selectedTimelineCategories, setSelectedTimelineCategories] = useState<string[]>([]);
 
     const availableTimelineCategories = useMemo(() => {
         const cats = new Set<string>();
@@ -399,19 +400,32 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
                                 onClick={() => setSelectedTimelineCategories([])}
                                 className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${selectedTimelineCategories.length === 0 ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
                             >
-                                Todas
+                                Selecionar Todas
+                            </button>
+                            <button
+                                onClick={() => setSelectedTimelineCategories(['__NONE__'])}
+                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${selectedTimelineCategories.includes('__NONE__') ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+                            >
+                                Desmarcar Todas
                             </button>
                             {availableTimelineCategories.map(cat => (
                                 <button
                                     key={cat}
                                     onClick={() => {
-                                        if (selectedTimelineCategories.includes(cat)) {
-                                            setSelectedTimelineCategories(prev => prev.filter(c => c !== cat));
-                                        } else {
-                                            setSelectedTimelineCategories(prev => [...prev, cat]);
-                                        }
+                                        setSelectedTimelineCategories(prev => {
+                                            if (prev.length === 0) return [cat];
+                                            const withoutNone = prev.filter(c => c !== '__NONE__');
+                                            let next = [...withoutNone];
+                                            if (next.includes(cat)) {
+                                                next = next.filter(c => c !== cat);
+                                                if (next.length === 0) return ['__NONE__'];
+                                            } else {
+                                                next = [...next, cat];
+                                            }
+                                            return next;
+                                        });
                                     }}
-                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${selectedTimelineCategories.includes(cat) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${selectedTimelineCategories.length === 0 || (selectedTimelineCategories.includes(cat) && !selectedTimelineCategories.includes('__NONE__')) ? 'bg-slate-800 text-white shadow-sm scale-105' : 'bg-white border border-slate-100 text-slate-400 hover:bg-slate-50'}`}
                                 >
                                     {cat}
                                 </button>
