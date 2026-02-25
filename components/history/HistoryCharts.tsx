@@ -99,12 +99,13 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
         let maxDateStr = '0000-01-01';
         transactions.forEach(t => {
             if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
-            if (t.date < minDateStr) minDateStr = t.date;
-            if (t.date > maxDateStr) maxDateStr = t.date;
+            const ymd = t.date.split('T')[0];
+            if (ymd < minDateStr) minDateStr = ymd;
+            if (ymd > maxDateStr) maxDateStr = ymd;
         });
 
         let timelineArray: { label: string, income: number, expense: number }[] = [];
-        if (minDateStr <= maxDateStr) {
+        if (minDateStr <= maxDateStr && minDateStr !== '9999-12-31') {
             const dMin = new Date(minDateStr + 'T00:00:00');
             const dMax = new Date(maxDateStr + 'T00:00:00');
             const diffDays = Math.round((dMax.getTime() - dMin.getTime()) / (1000 * 3600 * 24));
@@ -114,34 +115,45 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({ transactions }) =>
                 const tMap = new Map();
                 transactions.forEach(t => {
                     if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
-                    const ym = t.date.substring(0, 7); // YYYY-MM
+                    const ym = t.date.split('T')[0].substring(0, 7); // YYYY-MM
                     if (!tMap.has(ym)) tMap.set(ym, { income: 0, expense: 0 });
                     const b = tMap.get(ym);
                     if (t.type === 'INCOME') b.income += Number(t.amount);
                     if (t.type === 'EXPENSE') b.expense += Math.abs(Number(t.amount));
                 });
-                let curr = new Date(dMin.getFullYear(), dMin.getMonth(), 1);
-                while (curr <= dMax) {
-                    const ym = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}`;
+
+                let currentYear = Number(minDateStr.substring(0, 4));
+                let currentMonth = Number(minDateStr.substring(5, 7));
+                const maxYear = Number(maxDateStr.substring(0, 4));
+                const maxMonth = Number(maxDateStr.substring(5, 7));
+
+                while (currentYear < maxYear || (currentYear === maxYear && currentMonth <= maxMonth)) {
+                    const ym = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
                     const b = tMap.get(ym) || { income: 0, expense: 0 };
-                    const label = curr.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/');
+                    const labelDate = new Date(currentYear, currentMonth - 1, 1);
+                    const label = labelDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/').replace(' de ', '/');
                     timelineArray.push({ label, income: b.income, expense: b.expense });
-                    curr.setMonth(curr.getMonth() + 1);
+
+                    currentMonth++;
+                    if (currentMonth > 12) {
+                        currentMonth = 1;
+                        currentYear++;
+                    }
                 }
             } else {
                 // Group by day
                 const tMap = new Map();
                 transactions.forEach(t => {
                     if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
-                    const ymd = t.date;
+                    const ymd = t.date.split('T')[0];
                     if (!tMap.has(ymd)) tMap.set(ymd, { income: 0, expense: 0 });
                     const b = tMap.get(ymd);
                     if (t.type === 'INCOME') b.income += Number(t.amount);
                     if (t.type === 'EXPENSE') b.expense += Math.abs(Number(t.amount));
                 });
-                let curr = new Date(dMin.getFullYear(), dMin.getMonth(), dMin.getDate());
+                let curr = new Date(minDateStr + 'T00:00:00');
                 while (curr <= dMax) {
-                    const ymd = curr.toISOString().split('T')[0];
+                    const ymd = curr.getFullYear() + '-' + String(curr.getMonth() + 1).padStart(2, '0') + '-' + String(curr.getDate()).padStart(2, '0');
                     const b = tMap.get(ymd) || { income: 0, expense: 0 };
                     const label = curr.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
                     timelineArray.push({ label, income: b.income, expense: b.expense });
