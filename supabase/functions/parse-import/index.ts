@@ -178,9 +178,18 @@ serve(async (req) => {
     }));
 
     if (txsToInsert.length > 0) {
+      // ✅ DEDUPLICAÇÃO LOCAL: Evita erro "ON CONFLICT DO UPDATE command cannot affect row a second time"
+      // caso o arquivo contenha transações idênticas que gerem o mesmo fingerprint.
+      const uniqueTxs = Array.from(
+        txsToInsert.reduce((map, tx) => {
+          map.set(tx.fingerprint, tx);
+          return map;
+        }, new Map()).values()
+      );
+
       const { error: insertErr } = await supabase
         .from("imported_transactions")
-        .upsert(txsToInsert, { onConflict: "user_id,fingerprint" });
+        .upsert(uniqueTxs, { onConflict: "user_id,fingerprint" });
 
       if (insertErr) throw insertErr;
     }

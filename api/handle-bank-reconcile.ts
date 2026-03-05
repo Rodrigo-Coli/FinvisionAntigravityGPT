@@ -410,9 +410,17 @@ export default async function handler(req: any, res: any) {
           });
         }
 
+        // DEDUPLICAÇÃO LOCAL: Evita erro "ON CONFLICT DO UPDATE command cannot affect row a second time"
+        const fingerprintsSeen = new Set();
+        const uniqueTxsToInsert = txsToInsert.filter(tx => {
+          if (fingerprintsSeen.has(tx.fingerprint)) return false;
+          fingerprintsSeen.add(tx.fingerprint);
+          return true;
+        });
+
         const { error: insErr } = await supabase
           .from('imported_transactions')
-          .upsert(txsToInsert, { onConflict: 'user_id,fingerprint' });
+          .upsert(uniqueTxsToInsert, { onConflict: 'user_id,fingerprint' });
 
         if (insErr) throw new Error(`Falha ao inserir transações: ${insErr.message}`);
       }

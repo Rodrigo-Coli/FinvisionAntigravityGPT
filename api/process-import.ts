@@ -65,7 +65,7 @@ export default async function handler(req: any, res: any) {
         const amount = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount).replace(',', '.'));
         const desc = (t.description || '').trim();
         const date = t.date;
-        
+
         // Fingerprint único: data + valor + descrição + conta
         const fpData = `${date}|${amount.toFixed(2)}|${desc.toLowerCase()}|${imp.account_id || ''}`;
         const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
@@ -83,15 +83,23 @@ export default async function handler(req: any, res: any) {
         };
       });
 
+      // DEDUPLICAÇÃO LOCAL: Evita erro "ON CONFLICT DO UPDATE command cannot affect row a second time"
+      const fingerprintsSeen = new Set();
+      const uniqueTxsToInsert = txsToInsert.filter(tx => {
+        if (fingerprintsSeen.has(tx.fingerprint)) return false;
+        fingerprintsSeen.add(tx.fingerprint);
+        return true;
+      });
+
       const { error: insErr } = await supabase
         .from('imported_transactions')
-        .upsert(txsToInsert, { onConflict: 'user_id,fingerprint' });
+        .upsert(uniqueTxsToInsert, { onConflict: 'user_id,fingerprint' });
 
       if (insErr) throw insErr;
     }
 
     // 5. Finalizar
-    await supabase.from('imports').update({ 
+    await supabase.from('imports').update({
       status: 'ready',
       notes: `${imp.notes || ''} | Processadas ${transactions.length} transações.`
     }).eq('id', import_id);
@@ -100,9 +108,9 @@ export default async function handler(req: any, res: any) {
 
   } catch (err: any) {
     console.error('API Process Error:', err);
-    await supabase.from('imports').update({ 
-      status: 'error', 
-      error_message: err.message 
+    await supabase.from('imports').update({
+      status: 'error',
+      error_message: err.message
     }).eq('id', import_id);
     return res.status(500).json({ error: err.message });
   }
