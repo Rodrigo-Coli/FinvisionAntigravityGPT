@@ -65,24 +65,8 @@ const Reconcile: React.FC = () => {
   }, []);
 
   const fetchOwners = async () => {
-
-    if (!supabase) return;
-    try {
-      const { data } = await supabase.from('transactions').select('owner_name').not('owner_name', 'is', null);
-      const { data: cardData } = await supabase.from('card_transactions').select('owner_name').not('owner_name', 'is', null);
-
-      const allOwners = [
-        ...new Set([
-          'Pessoal',
-          ...(data || []).map(t => t.owner_name),
-          ...(cardData || []).map(t => t.owner_name)
-        ])
-      ].filter(Boolean) as string[];
-
-      setOwners(allOwners);
-    } catch (e) {
-      console.warn("Erro ao buscar donos:", e);
-    }
+    const dbEntities = await FinanceService.getEntities();
+    setOwners(dbEntities);
   };
 
   const fetchRealAccounts = async () => {
@@ -327,10 +311,13 @@ const Reconcile: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Auto-provisionamento de categoria
+      // Auto-provisionamento de categoria e entidade
       let finalCategoryId = null;
       if (categoryName) {
         finalCategoryId = await ReconciliationService.ensureCategoryExists(categoryName);
+      }
+      if (owner && owner !== 'Pessoal') {
+        await FinanceService.ensureEntityExists(owner);
       }
 
       if (importSource === 'bank') {

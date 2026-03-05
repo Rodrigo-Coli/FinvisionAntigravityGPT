@@ -6,6 +6,7 @@ import { Transaction, TransactionType, BankAccount } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { HistoryUtils, EPS } from '../lib/historyUtils';
 import { DateUtils } from '../lib/dateUtils';
+import { FinanceService } from '../services/finance.service';
 
 // Modular Components
 import { HistoryFilters } from '../components/history/HistoryFilters';
@@ -53,6 +54,7 @@ type AddModalState =
       isRecurring: boolean;
       recurrencePeriod: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom';
       recurrenceDaysInterval: number;
+      ownerName: string;
     };
   };
 
@@ -170,11 +172,17 @@ const HistoryPage: React.FC = () => {
       if (minPrice !== '') query = query.gte('amount', Number(minPrice));
       if (maxPrice !== '') query = query.lte('amount', Number(maxPrice));
       if (filterOwner !== 'ALL') query = query.eq('owner_name', filterOwner);
+
+      // Global Search in DB
+      if (search) {
+        query = query.or(`description.ilike.%${search}%,account_name.ilike.%${search}%,category.ilike.%${search}%,owner_name.ilike.%${search}%`);
+      }
+
       query = query.range(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
 
       // ── Aggregation query for charts — same filters, no pagination, minimal columns ──
       let chartQuery: any = supabase.from('transactions')
-        .select('id, date, type, amount, category, is_amortization, account_id')
+        .select('id, date, type, amount, category, is_amortization, account_id, owner_name')
         .eq('user_id', user.id).eq('is_deleted', false)
         .order('date', { ascending: false });
       if (filterType !== 'ALL') chartQuery = chartQuery.eq('type', filterType);
@@ -183,11 +191,20 @@ const HistoryPage: React.FC = () => {
       if (startDate) chartQuery = chartQuery.gte('date', startDate);
       if (endDate) chartQuery = chartQuery.lte('date', endDate);
       if (minPrice !== '') chartQuery = chartQuery.gte('amount', Number(minPrice));
-      if (maxPrice !== '') chartQuery = chartQuery.lte('amount', Number(maxPrice));
+      if (maxPrice !== '') chartQuery = chartQuery.gte('amount', Number(maxPrice));
       if (filterOwner !== 'ALL') chartQuery = chartQuery.eq('owner_name', filterOwner);
 
-      const [{ data, count, error: fetchError }, { data: chartData }] = await Promise.all([query, chartQuery]);
+      if (search) {
+        chartQuery = chartQuery.or(`description.ilike.%${search}%,account_name.ilike.%${search}%,category.ilike.%${search}%,owner_name.ilike.%${search}%`);
+      }
+
+      const [{ data, count, error: fetchError }, { data: chartData }, dbEntities] = await Promise.all([
+        query,
+        chartQuery,
+        FinanceService.getEntities()
+      ]);
       if (fetchError) throw fetchError;
+      setOwners(dbEntities);
 
       // Store chart transactions (minimal mapping, no pagination)
       setChartTransactions((chartData || []).map((t: any) => ({
@@ -252,12 +269,12 @@ const HistoryPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner, page, sortField, sortDirection]);
+  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner, page, sortField, sortDirection, search]);
 
   // Reset page to 0 when filters change
   useEffect(() => {
     setPage(0);
-  }, [filterType, filterAccount, JSON.stringify(filterCategory), startDate, endDate, minPrice, maxPrice, filterOwner, sortField, sortDirection]);
+  }, [filterType, filterAccount, JSON.stringify(filterCategory), startDate, endDate, minPrice, maxPrice, filterOwner, sortField, sortDirection, search]);
 
   useEffect(() => {
     if (isSupabaseConfigured) fetchData();
@@ -296,6 +313,9 @@ const HistoryPage: React.FC = () => {
       if (field === 'account_id') {
         const acc = accounts.find(a => a.id === value);
         if (acc) patch.account_name = acc.institution;
+      }
+      if (field === 'owner_name' && value) {
+        await FinanceService.ensureEntityExists(value);
       }
 
       if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
@@ -385,7 +405,7 @@ const HistoryPage: React.FC = () => {
   };
 
   const exportToXlsx = (format: 'xlsx' | 'csv') => {
-    const rows = filtered.map(t => ({
+    const rows = transactions.map(t => ({
       Data: DateUtils.formatDisplayDate(t.date),
       Descrição: t.description,
       Conta: t.accountName,
@@ -450,7 +470,8 @@ const HistoryPage: React.FC = () => {
       if (!f.isInstallment && !f.isRecurring) {
         await supabase.from('transactions').insert({
           user_id: user.id, date: f.date, description: f.description, amount, type: f.type,
-          account_id: f.accountId, category: f.category, is_paid: false, paid_amount: 0
+          account_id: f.accountId, category: f.category, is_paid: false, paid_amount: 0,
+          owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName
         });
       } else {
         const { TransactionSeriesUtils } = await import('../lib/transactionSeriesUtils');
@@ -461,6 +482,7 @@ const HistoryPage: React.FC = () => {
         const groupId = crypto.randomUUID();
         const inserts = series.map(item => ({
           user_id: user.id, date: item.date, description: item.description, amount: item.amount, type: item.type, account_id: item.accountId, category: item.category, is_paid: false, paid_amount: 0,
+          owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
           metadata: { ...(f.isInstallment ? { installment_group_id: groupId, installment_number: (item as any).installmentNumber, installment_total: f.installmentsCount } : { recurrence_group_id: groupId }) }
         }));
         const { error } = await supabase.from('transactions').insert(inserts);
@@ -481,14 +503,9 @@ const HistoryPage: React.FC = () => {
     return <span className={`${base} bg-slate-50 text-slate-400 border-slate-100`}>PENDENTE</span>;
   };
 
-  const filtered = transactions.filter(t =>
-    t.description.toLowerCase().includes(search.toLowerCase()) ||
-    t.accountName.toLowerCase().includes(search.toLowerCase())
-  );
-
   const viewFiltered = viewMode === 'SETTLED'
-    ? filtered.filter(t => HistoryUtils.getStatus(t) === 'PAID')
-    : filtered;
+    ? transactions.filter(t => HistoryUtils.getStatus(t) === 'PAID')
+    : transactions;
 
   const chartViewFiltered = viewMode === 'SETTLED'
     ? chartTransactions.filter(t => HistoryUtils.getStatus(t) === 'PAID')
@@ -550,7 +567,7 @@ const HistoryPage: React.FC = () => {
             onClick={() => setAddModal({
               open: true,
               isSubmitting: false,
-              form: { date: DateUtils.formatToISODate(), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros', isInstallment: false, installmentsCount: 2, isRecurring: false, recurrencePeriod: 'monthly', recurrenceDaysInterval: 30 }
+              form: { date: DateUtils.formatToISODate(), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros', ownerName: 'Pessoal', isInstallment: false, installmentsCount: 2, isRecurring: false, recurrencePeriod: 'monthly', recurrenceDaysInterval: 30 }
             })}
             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
           >
@@ -726,7 +743,7 @@ const HistoryPage: React.FC = () => {
       <AddTransactionModal show={addModal.open} onClose={() => setAddModal({ open: false })} onSubmit={createManualTransaction}
         isSubmitting={addModal.open ? addModal.isSubmitting : false} error={addModal.open ? addModal.error : null}
         form={addModal.open ? addModal.form : {} as any} setAddField={(f, v) => setAddModal(prev => prev.open ? { ...prev, form: { ...prev.form, [f]: v } } : prev)}
-        accounts={accounts} categoryObjects={categoryObjects} onCreateCategory={handleCreateCategory}
+        accounts={accounts} owners={owners} categoryObjects={categoryObjects} onCreateCategory={handleCreateCategory}
       />
 
       <SeriesScopeModal

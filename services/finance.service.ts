@@ -175,5 +175,36 @@ export const FinanceService = {
 
     if (createErr) throw createErr;
     return newStmt.id;
+  },
+
+  // Entidades (Proprietários)
+  getEntities: async (): Promise<string[]> => {
+    if (!supabase) return ['Pessoal'];
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return ['Pessoal'];
+
+      const { data, error } = await supabase.from('entities').select('name').eq('user_id', user.id).order('name');
+      if (error) {
+        // Fallback: se a tabela não existir, busca das transações
+        const { data: txData } = await supabase.from('transactions').select('owner_name').not('owner_name', 'is', null);
+        return Array.from(new Set(['Pessoal', ...(txData || []).map(t => t.owner_name)])).sort() as string[];
+      }
+      return Array.from(new Set(['Pessoal', ...(data || []).map((e: any) => e.name)])).sort() as string[];
+    } catch (e) {
+      return ['Pessoal'];
+    }
+  },
+
+  ensureEntityExists: async (name: string): Promise<void> => {
+    if (!supabase || !name || name === 'Pessoal') return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase.from('entities').upsert({ user_id: user.id, name }, { onConflict: 'user_id, name' });
+      // Se der erro aqui, provavelmente a tabela não existe, ignoramos silenciosamente
+      if (error) console.warn("Erro ao garantir entidade:", error);
+    } catch (e) { }
   }
 };

@@ -1,5 +1,5 @@
-import React from 'react';
-import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Loader2, CheckCircle2, AlertCircle, Plus, Check } from 'lucide-react';
 import { BankAccount } from '../../types';
 
 interface AddTransactionModalProps {
@@ -15,6 +15,7 @@ interface AddTransactionModalProps {
         amount: string;
         accountId: string;
         category: string;
+        ownerName: string;
         isInstallment: boolean;
         installmentsCount: number;
         isRecurring: boolean;
@@ -23,6 +24,7 @@ interface AddTransactionModalProps {
     };
     setAddField: (field: string, value: any) => void;
     accounts: BankAccount[];
+    owners: string[];
     categoryObjects: { name: string, type?: 'INCOME' | 'EXPENSE' }[];
     onCreateCategory: (name: string, type: 'INCOME' | 'EXPENSE') => Promise<void>;
 }
@@ -36,17 +38,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     form,
     setAddField,
     accounts,
+    owners,
     categoryObjects,
     onCreateCategory
 }) => {
-    const [isCreatingCategory, setIsCreatingCategory] = React.useState(false);
-    const [newCategoryName, setNewCategoryName] = React.useState('');
-    const [isSavingCategory, setIsSavingCategory] = React.useState(false);
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [isSavingCategory, setIsSavingCategory] = useState(false);
 
     if (!show) return null;
 
     const filteredCategories = categoryObjects.filter(
-        c => !c.type || c.type === form.type
+        (c: any) => !c.type || c.type === form.type
     );
 
     const handleCreateCategorySubmit = async () => {
@@ -79,7 +82,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         </button>
                     </div>
 
-                    <div className="space-y-6">
+                    <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2 scrollbar-hide">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data</label>
@@ -132,12 +135,25 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                     onChange={(e) => setAddField('accountId', e.target.value)}
                                     className="w-full h-14 px-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
                                 >
-                                    <option value="">Selecione a conta...</option>
-                                    {accounts.map(acc => (
+                                    <option value="">Selecione...</option>
+                                    {accounts.map((acc: any) => (
                                         <option key={acc.id} value={acc.id}>{acc.institution}</option>
                                     ))}
                                 </select>
                             </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Entidade / Solicitante</label>
+                            <select
+                                value={form.ownerName}
+                                onChange={(e) => setAddField('ownerName', e.target.value)}
+                                className="w-full h-14 px-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
+                            >
+                                {owners.map((o: any) => (
+                                    <option key={o} value={o}>{o}</option>
+                                ))}
+                            </select>
                         </div>
 
                         <div className="space-y-2">
@@ -188,7 +204,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                     onChange={(e) => setAddField('category', e.target.value)}
                                     className="w-full h-14 px-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
                                 >
-                                    {filteredCategories.map(c => (
+                                    {filteredCategories.map((c: any) => (
                                         <option key={c.name} value={c.name}>{c.name}</option>
                                     ))}
                                 </select>
