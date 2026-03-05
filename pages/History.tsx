@@ -148,7 +148,8 @@ const HistoryPage: React.FC = () => {
     const map: Record<string, string> = {
       'a': '[aáàãâä]', 'e': '[eéèêë]', 'i': '[iíìîï]', 'o': '[oóòõôö]', 'u': '[uúùûü]', 'c': '[cç]'
     };
-    return escaped.toLowerCase().split('').map(c => map[c] || c).join('').replace(/\s+/g, '.*');
+    // Postgrest requires double quotes around complex values in .or()
+    return '"' + escaped.toLowerCase().split('').map(c => map[c] || c).join('').replace(/\s+/g, '.*') + '"';
   };
 
   const fetchData = useCallback(async () => {
@@ -213,7 +214,6 @@ const HistoryPage: React.FC = () => {
       // Global Search in DB (Server-side Regex for accent-insensitivity)
       if (debouncedSearch) {
         const pattern = getAccentRegex(debouncedSearch.trim());
-        // IMPORTANT: No double quotes around the pattern for iregex in Postgrest strings
         query = query.or(`description.iregex.${pattern},account_name.iregex.${pattern},category.iregex.${pattern},owner_name.iregex.${pattern}`);
       }
 
@@ -221,7 +221,7 @@ const HistoryPage: React.FC = () => {
 
       // ── Aggregation query for charts — same filters, no pagination, minimal columns ──
       let chartQuery: any = supabase.from('transactions')
-        .select('id, date, type, amount, category, is_amortization, account_id, owner_name')
+        .select('id, date, type, amount, category, is_amortization, account_id, owner_name, description, is_paid, paid_amount')
         .eq('user_id', user.id).eq('is_deleted', false)
         .order('date', { ascending: false });
       if (filterType !== 'ALL') chartQuery = chartQuery.eq('type', filterType);
@@ -230,11 +230,11 @@ const HistoryPage: React.FC = () => {
       if (startDate) chartQuery = chartQuery.gte('date', startDate);
       if (endDate) chartQuery = chartQuery.lte('date', endDate);
       if (minPrice !== '') chartQuery = chartQuery.gte('amount', Number(minPrice));
-      if (maxPrice !== '') chartQuery = chartQuery.gte('amount', Number(maxPrice));
+      if (maxPrice !== '') chartQuery = chartQuery.lte('amount', Number(maxPrice));
       if (filterOwner !== 'ALL') chartQuery = chartQuery.eq('owner_name', filterOwner);
 
       if (debouncedSearch) {
-        const pattern = getAccentRegex(debouncedSearch.trim()).replace(/\s+/g, '.*');
+        const pattern = getAccentRegex(debouncedSearch.trim());
         chartQuery = chartQuery.or(`description.iregex.${pattern},account_name.iregex.${pattern},category.iregex.${pattern},owner_name.iregex.${pattern}`);
       }
 
@@ -250,23 +250,20 @@ const HistoryPage: React.FC = () => {
       // Store chart transactions (minimal mapping, no pagination)
       setChartTransactions((chartData || []).map((t: any) => ({
         id: t.id,
-        description: '',
+        description: t.description || '',
         amount: Number(t.amount || 0),
         date: t.date,
         type: t.type as TransactionType,
         accountId: t.account_id,
-        accountName: '',
+        accountName: t.account_name ?? '',
         category: t.category ?? 'Outros',
         owner_name: t.owner_name ?? 'Pessoal',
-        isDeleted: false,
-        isReconciled: false,
-        isPaid: false,
-        paidAmount: 0,
-        paidAt: undefined,
-        parentId: null,
-        metadata: {},
-        is_amortization: t.is_amortization ?? false,
-        is_incomplete: false
+        isDeleted: !!t.is_deleted,
+        isReconciled: !!t.is_reconciled,
+        isPaid: !!t.is_paid,
+        paidAmount: Number(t.paid_amount || 0),
+        is_amortization: !!t.is_amortization,
+        metadata: t.metadata || {}
       })));
 
       if (count !== null) setTotalCount(count);
