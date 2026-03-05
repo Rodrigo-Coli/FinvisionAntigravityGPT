@@ -40,12 +40,7 @@ const Reconcile: React.FC = () => {
   const [importSource, setImportSource] = useState<'bank' | 'card' | 'smart'>('bank');
   const [isLoadingQueue, setIsLoadingQueue] = useState(true);
   const [recentImports, setRecentImports] = useState<any[]>([]);
-  const [categories] = useState<string[]>([
-    'Salário', 'Moradia', 'Investimento', 'Cartão de Crédito',
-    'Extra', 'Alimentação', 'Transporte', 'Lazer', 'Saúde',
-    'Educação', 'Outros', 'Conciliação', 'Pagamentos', 'Transferência',
-    'Mercado', 'Assinaturas', 'Farmácia', 'Restaurante', 'Vendas', 'Estorno'
-  ]);
+  const [categories, setCategories] = useState<string[]>([]);
 
   // Novos estados para o Editor Inline
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -66,7 +61,13 @@ const Reconcile: React.FC = () => {
     fetchRealAccounts();
     fetchRealCards();
     fetchOwners();
+    fetchCategories();
   }, []);
+
+  const fetchCategories = async () => {
+    const dbCategories = await FinanceService.getCategories();
+    setCategories(dbCategories);
+  };
 
   const fetchOwners = async () => {
     const dbEntities = await FinanceService.getEntities();
@@ -527,14 +528,12 @@ const Reconcile: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2 flex-1 sm:flex-none">
-                  <select
-                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px]"
+                  <input
+                    list="categories-list"
+                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px] placeholder:text-slate-500"
                     onChange={(e) => applyBulkEdit('category', e.target.value)}
-                    value=""
-                  >
-                    <option value="">Definir Categoria...</option>
-                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                    placeholder="Definir Categoria..."
+                  />
 
                   <select
                     className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px]"
@@ -649,13 +648,19 @@ const Reconcile: React.FC = () => {
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Categoria</p>
                             <div className="relative">
                               <Tag size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
-                              <select
+                              <input
+                                list="categories-list"
                                 value={categoryValue}
-                                onChange={e => isEditing ? setEditForm({ ...editForm, category: e.target.value }) : startEditing(item, e.target.value)}
-                                className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none"
-                              >
-                                {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                              </select>
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  if (isEditing) setEditForm({ ...editForm, category: val });
+                                  else {
+                                    startEditing(item, val);
+                                  }
+                                }}
+                                placeholder="Categoria..."
+                                className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-1 focus:ring-brand-500"
+                              />
                             </div>
                           </div>
 
@@ -753,6 +758,9 @@ const Reconcile: React.FC = () => {
           )}
         </div>
       </div>
+      <datalist id="categories-list">
+        {categories.map(c => <option key={c} value={c} />)}
+      </datalist>
     </div>
   );
 };

@@ -17,12 +17,13 @@ import { SeriesScopeModal, SeriesScope } from '../components/SeriesScopeModal';
 import { HistoryCharts } from '../components/history/HistoryCharts';
 import { ArrowDownRight, ArrowUpRight, Wallet } from 'lucide-react';
 
-const CATEGORIES = [
-  'Salário', 'Moradia', 'Investimento', 'Cartão de Crédito',
-  'Extra', 'Alimentação', 'Transporte', 'Lazer', 'Saúde',
-  'Educação', 'Outros', 'Conciliação', 'Pagamentos', 'Transferência',
-  'Mercado', 'Assinaturas', 'Farmácia', 'Restaurante', 'Vendas', 'Estorno'
-];
+// Initial fallback categories
+const DEFAULT_CATEGORIES = [
+  'Alimentação', 'Assinaturas', 'Cartão de Crédito', 'Conciliação',
+  'Educação', 'Estorno', 'Extra', 'Farmácia', 'Investimento',
+  'Lazer', 'Mercado', 'Moradia', 'Outros', 'Pagamentos',
+  'Restaurante', 'Salário', 'Saúde', 'Transporte', 'Vendas'
+].sort();
 
 type PayModalState =
   | { open: false }
@@ -62,8 +63,8 @@ const HistoryPage: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [chartTransactions, setChartTransactions] = useState<Transaction[]>([]); // full set for charts (no pagination)
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
-  const [availableCategories, setAvailableCategories] = useState<string[]>(CATEGORIES);
-  const [categoryObjects, setCategoryObjects] = useState<{ name: string, type?: 'INCOME' | 'EXPENSE' }[]>(CATEGORIES.map(c => ({ name: c })));
+  const [availableCategories, setAvailableCategories] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [categoryObjects, setCategoryObjects] = useState<{ name: string, type?: 'INCOME' | 'EXPENSE' }[]>(DEFAULT_CATEGORIES.map(c => ({ name: c })));
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'ALL' | 'SETTLED'>('ALL');
@@ -149,13 +150,15 @@ const HistoryPage: React.FC = () => {
       const { data: catData, error: catErr } = await supabase.from('categories').select('name, type').eq('user_id', user.id).eq('is_archived', false).order('name');
       if (!catErr && catData) {
         const dbCategories = catData.map((c: any) => c.name);
-        const mergedCategories = Array.from(new Set([...CATEGORIES, ...dbCategories])).sort((a, b) => a.localeCompare(b));
+        // Garantir nomes essenciais
+        const essential = ['Outros', 'Conciliação'];
+        const mergedCategories = Array.from(new Set([...DEFAULT_CATEGORIES, ...dbCategories, ...essential])).sort((a, b) => a.localeCompare(b));
         setAvailableCategories(mergedCategories);
 
         // Build the objects combining defaults + DB
         const catMap = new Map<string, { name: string, type?: 'INCOME' | 'EXPENSE' }>();
-        CATEGORIES.forEach(c => catMap.set(c, { name: c })); // Default has no type
-        catData.forEach(c => catMap.set(c.name, c)); // DB might have type
+        DEFAULT_CATEGORIES.forEach((c: string) => catMap.set(c, { name: c })); // Default has no type
+        catData.forEach((c: any) => catMap.set(c.name, c)); // DB might have type
         setCategoryObjects(Array.from(catMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
       }
 

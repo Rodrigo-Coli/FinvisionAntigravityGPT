@@ -206,5 +206,59 @@ export const FinanceService = {
       // Se der erro aqui, provavelmente a tabela não existe, ignoramos silenciosamente
       if (error) console.warn("Erro ao garantir entidade:", error);
     } catch (e) { }
+  },
+
+  // Categorias
+  getCategories: async (): Promise<string[]> => {
+    if (!supabase) return [];
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      const { data, error } = await supabase
+        .from('categories')
+        .select('name')
+        .eq('user_id', user.id)
+        .eq('is_archived', false)
+        .order('name');
+
+      if (error) {
+        // Fallback
+        return ['Alimentação', 'Lazer', 'Moradia', 'Outros', 'Saúde', 'Transporte', 'Salário'].sort();
+      }
+
+      const names = (data || []).map((c: any) => c.name);
+      // Garantir que temos 'Outros' e 'Conciliação' se necessário
+      if (!names.includes('Conciliação')) names.push('Conciliação');
+      if (!names.includes('Outros')) names.push('Outros');
+
+      return Array.from(new Set(names)).sort();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  ensureCategoryExists: async (name: string): Promise<void> => {
+    if (!supabase || !name) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: existing } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('user_id', user.id)
+        .ilike('name', name)
+        .maybeSingle();
+
+      if (!existing) {
+        await supabase.from('categories').insert({
+          user_id: user.id,
+          name,
+          is_archived: false,
+          color: '#cbd5e1'
+        });
+      }
+    } catch (e) { }
   }
 };
