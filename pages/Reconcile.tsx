@@ -51,6 +51,7 @@ const Reconcile: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [owners, setOwners] = useState<string[]>(['Pessoal']);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -209,10 +210,9 @@ const Reconcile: React.FC = () => {
     setProgressStep("Sincronizando tudo...");
 
     try {
-      for (const item of imported) {
-        // Se houver categoria ou conta no metadata do item (vinda do Mobills), tratar aqui
-        // Por ora, usamos o padrão selecionado ou o que estiver no item
-        await handleConfirm(item, true); // true = silent/bulk mode
+      const itemsToSync = [...imported];
+      for (const item of itemsToSync) {
+        await handleConfirm(item, true);
       }
       alert("Sincronização concluída com sucesso!");
     } catch (e) {
@@ -222,6 +222,86 @@ const Reconcile: React.FC = () => {
       setIsProcessing(false);
       setProgressStep(null);
       fetchData();
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(imported.map(t => t.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleIgnore = async (id: string) => {
+    try {
+      await ReconciliationService.updateTransactionStatus(id, 'IGNORED');
+      setImported(prev => prev.filter(x => x.id !== id));
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    } catch (e) {
+      alert("Erro ao ignorar transação");
+    }
+  };
+
+  const handleBulkIgnore = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Deseja ignorar as ${selectedIds.size} transações selecionadas?`)) return;
+
+    setIsProcessing(true);
+    setProgressStep(`Ignorando ${selectedIds.size} itens...`);
+
+    try {
+      const idsArray = Array.from(selectedIds);
+      for (const id of idsArray) {
+        await ReconciliationService.updateTransactionStatus(id, 'IGNORED');
+      }
+      setImported(prev => prev.filter(t => !selectedIds.has(t.id)));
+      setSelectedIds(new Set());
+    } catch (e) {
+      alert("Erro ao ignorar itens selecionados");
+    } finally {
+      setIsProcessing(false);
+      setProgressStep(null);
+    }
+  };
+
+  const handleBulkConfirm = async () => {
+    if (selectedIds.size === 0) return;
+    if (!selectedTargetId) return alert("Selecione um destino (Banco/Cartão) para confirmar a seleção.");
+
+    if (!window.confirm(`Deseja confirmar as ${selectedIds.size} transações selecionadas?`)) return;
+
+    setIsProcessing(true);
+    setProgressStep(`Confirmando ${selectedIds.size} itens...`);
+
+    try {
+      const idsArray = Array.from(selectedIds);
+      const itemsToConfirm = imported.filter(t => selectedIds.has(t.id));
+
+      for (const item of itemsToConfirm) {
+        await handleConfirm(item, true); // true = silent/bulk
+      }
+
+      setSelectedIds(new Set());
+    } catch (e) {
+      alert("Erro ao confirmar itens selecionados. Alguns podem não ter sido processados.");
+    } finally {
+      setIsProcessing(false);
+      setProgressStep(null);
+      fetchData(); // Recarrega para garantir saldos e lista limpa
     }
   };
 
@@ -341,8 +421,38 @@ const Reconcile: React.FC = () => {
         </div>
 
         <div className="lg:col-span-3 space-y-6">
-          <div className="flex items-center justify-between px-2">
-            <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.3em]">Operações Pendentes ({imported.length})</h3>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-2">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                  checked={imported.length > 0 && selectedIds.size === imported.length}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                />
+                <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.3em]">Operações Pendentes ({imported.length})</h3>
+              </div>
+            </div>
+
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-2 animate-in slide-in-from-right-2 duration-300">
+                <span className="text-[10px] font-bold text-slate-400 uppercase mr-2">{selectedIds.size} selecionado(s)</span>
+                <button
+                  onClick={handleBulkConfirm}
+                  disabled={isProcessing}
+                  className="px-4 py-2 bg-slate-900 text-white text-[9px] font-bold uppercase tracking-widest rounded-lg hover:bg-brand-600 transition-colors shadow-md shadow-slate-200"
+                >
+                  <Check size={14} className="inline mr-1" /> Confirmar Seleção
+                </button>
+                <button
+                  onClick={handleBulkIgnore}
+                  disabled={isProcessing}
+                  className="px-4 py-2 bg-amber-500 text-white text-[9px] font-bold uppercase tracking-widest rounded-lg hover:bg-amber-600 transition-colors shadow-md shadow-amber-100"
+                >
+                  <X size={14} className="inline mr-1" /> Ignorar Seleção
+                </button>
+              </div>
+            )}
           </div>
 
           {isLoadingQueue ? (
@@ -355,9 +465,19 @@ const Reconcile: React.FC = () => {
               {imported.map(item => {
                 const isEditing = editingId === item.id;
                 return (
-                  <div key={item.id} className={`bg-white border transition-all duration-300 rounded-[32px] overflow-hidden ${isEditing ? 'border-brand-500 shadow-2xl ring-4 ring-brand-500/5' : 'border-slate-100 shadow-sm hover:shadow-md'}`}>
+                  <div key={item.id} className={`bg-white border transition-all duration-300 rounded-[32px] overflow-hidden ${isEditing ? 'border-brand-500 shadow-2xl ring-4 ring-brand-500/5' : 'border-slate-100 shadow-sm hover:shadow-md'} ${selectedIds.has(item.id) ? 'border-brand-200 bg-brand-50/5' : ''}`}>
                     <div className="p-8">
-                      <div className="flex flex-col lg:flex-row gap-8">
+                      <div className="flex flex-col lg:flex-row gap-6">
+                        {/* Multi-select Checkbox */}
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            className="w-5 h-5 rounded-lg border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                            checked={selectedIds.has(item.id)}
+                            onChange={() => handleToggleSelect(item.id)}
+                          />
+                        </div>
+
                         {/* Status Icon */}
                         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${item.amount < 0 ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-500'}`}>
                           <RefreshCw size={24} className={isEditing ? 'animate-spin' : ''} />
@@ -453,13 +573,13 @@ const Reconcile: React.FC = () => {
                             <>
                               {item.potential_duplicate ? (
                                 <div className="flex flex-col gap-2">
-                                  <button onClick={() => ReconciliationService.updateTransactionStatus(item.id, 'IGNORED').then(() => fetchData())} className="h-9 px-4 bg-amber-500 text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-amber-600 shadow-md shadow-amber-200 transition-all active:scale-95">Ignorar (Duplicado)</button>
+                                  <button onClick={() => handleIgnore(item.id)} className="h-9 px-4 bg-amber-500 text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-amber-600 shadow-md shadow-amber-200 transition-all active:scale-95">Ignorar (Duplicado)</button>
                                   <button onClick={() => handleConfirm(item)} className="h-9 px-4 border border-rose-200 text-rose-500 bg-white text-[9px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-rose-50 hover:border-rose-300 transition-all active:scale-95">Forçar Inserção</button>
                                 </div>
                               ) : (
                                 <>
                                   <button onClick={() => handleConfirm(item)} className="h-12 px-6 bg-slate-900 text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-brand-600 shadow-xl shadow-slate-200 transition-all active:scale-95">Confirmar</button>
-                                  <button onClick={() => ReconciliationService.updateTransactionStatus(item.id, 'IGNORED').then(() => fetchData())} className="p-3 text-slate-300 hover:text-rose-500 transition-colors"><XCircle size={20} /></button>
+                                  <button onClick={() => handleIgnore(item.id)} className="p-3 text-slate-300 hover:text-rose-500 transition-colors"><XCircle size={20} /></button>
                                 </>
                               )}
                             </>
