@@ -53,6 +53,9 @@ const Reconcile: React.FC = () => {
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
   const [showOnlyDuplicates, setShowOnlyDuplicates] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkOwner, setBulkOwner] = useState('');
+  const [bulkTarget, setBulkTarget] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -104,7 +107,14 @@ const Reconcile: React.FC = () => {
 
   const fetchData = async () => {
     setIsLoadingQueue(true);
-    await Promise.all([fetchQueue(), fetchRecentImports()]);
+    await Promise.all([
+      fetchQueue(),
+      fetchRecentImports(),
+      fetchCategories(),
+      fetchOwners(),
+      fetchRealAccounts(),
+      fetchRealCards()
+    ]);
     setIsLoadingQueue(false);
   };
 
@@ -340,6 +350,7 @@ const Reconcile: React.FC = () => {
       }
       setImported(prev => prev.filter(t => !selectedIds.has(t.id)));
       setSelectedIds(new Set());
+      setBulkCategory(''); setBulkOwner(''); setBulkTarget('');
     } catch (e) {
       alert("Erro ao ignorar itens selecionados");
     } finally {
@@ -365,6 +376,7 @@ const Reconcile: React.FC = () => {
         await handleConfirm(item, true); // true = silent/bulk
       }
 
+      setBulkCategory(''); setBulkOwner(''); setBulkTarget('');
       setSelectedIds(new Set());
     } catch (e) {
       alert("Erro ao confirmar itens selecionados. Alguns podem não ter sido processados.");
@@ -453,6 +465,13 @@ const Reconcile: React.FC = () => {
         });
       }
       await ReconciliationService.updateTransactionStatus(item.id, 'OK');
+
+      // Refresh lists if new items were likely created (only for single confirm, bulk handles at end via fetchData)
+      if (!isBulk) {
+        if (categoryName && !categories.includes(categoryName)) fetchCategories();
+        if (owner && !owners.includes(owner)) fetchOwners();
+      }
+
       setImported(prev => prev.filter(x => x.id !== item.id));
       if (editingId === item.id) setEditingId(null);
     } catch (e) {
@@ -584,22 +603,32 @@ const Reconcile: React.FC = () => {
                 <div className="flex items-center gap-2 flex-1 sm:flex-none">
                   <input
                     list="categories-list"
+                    value={bulkCategory}
                     className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px] placeholder:text-slate-500"
-                    onChange={(e) => applyBulkEdit('category', e.target.value)}
+                    onChange={(e) => {
+                      setBulkCategory(e.target.value);
+                      applyBulkEdit('category', e.target.value);
+                    }}
                     placeholder="Definir Categoria..."
                   />
 
                   <input
                     list="targets-list"
+                    value={bulkTarget}
                     className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px] placeholder:text-slate-500"
-                    onChange={(e) => handleTargetChange(e.target.value, false)}
+                    onChange={(e) => {
+                      setBulkTarget(e.target.value);
+                      handleTargetChange(e.target.value, false);
+                    }}
                     placeholder="Definir Destino..."
                   />
 
                   <input
                     list="entities-list"
+                    value={bulkOwner}
                     className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px] placeholder:text-slate-500"
                     onChange={(e) => {
+                      setBulkOwner(e.target.value);
                       const val = e.target.value;
                       if (val === '+ Criar Nova...') handleEntityChange('NEW');
                       else handleEntityChange(val);
