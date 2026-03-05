@@ -49,6 +49,8 @@ const Reconcile: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [counterAccountId, setCounterAccountId] = useState<string>('');
   const [processingItemId, setProcessingItemId] = useState<string | null>(null);
+  const [selectedTargetName, setSelectedTargetName] = useState('');
+  const [globalCounterpartName, setGlobalCounterpartName] = useState('');
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -191,9 +193,11 @@ const Reconcile: React.FC = () => {
     setEditForm({
       ...item,
       targetId: selectedTargetId,
+      targetName: getTargetName(selectedTargetId),
       owner_name: item.owner_name || 'Pessoal',
       category: initialCategory || item.category || 'Conciliação',
-      counterAccountId: ''
+      counterAccountId: counterAccountId,
+      counterAccountName: getCounterpartName(counterAccountId)
     });
   };
 
@@ -284,16 +288,15 @@ const Reconcile: React.FC = () => {
 
   const handleTargetChange = (name: string, isEdit: boolean, item?: any) => {
     let foundId = '';
-    if (importSource === 'bank') {
-      foundId = realAccounts.find(a => a.institution === name)?.id || '';
-    } else {
-      foundId = realCards.find(c => c.name === name)?.id || '';
-    }
+    const list = importSource === 'bank' ? realAccounts : realCards;
+    const match = list.find(a => (a.institution || a.name) === name);
+    if (match) foundId = match.id;
 
     if (isEdit && item) {
-      setEditForm({ ...editForm, targetId: foundId });
+      setEditForm((prev: any) => ({ ...prev, targetName: name, targetId: foundId || prev.targetId }));
     } else {
-      setSelectedTargetId(foundId);
+      setSelectedTargetName(name);
+      if (foundId) setSelectedTargetId(foundId);
     }
   };
 
@@ -310,9 +313,10 @@ const Reconcile: React.FC = () => {
     }
 
     if (isEdit && item) {
-      setEditForm({ ...editForm, counterAccountId: foundId });
+      setEditForm((prev: any) => ({ ...prev, counterAccountName: name, counterAccountId: foundId || prev.counterAccountId }));
     } else {
-      setCounterAccountId(foundId);
+      setGlobalCounterpartName(name);
+      if (foundId) setCounterAccountId(foundId);
     }
   };
 
@@ -565,7 +569,8 @@ const Reconcile: React.FC = () => {
                   <Landmark size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" />
                   <input
                     list="targets-list"
-                    value={getTargetName(selectedTargetId)}
+                    value={selectedTargetName}
+                    onFocus={e => e.target.select()}
                     onChange={e => handleTargetChange(e.target.value, false)}
                     placeholder={importSource === 'bank' ? "Filtrar por Banco..." : "Filtrar por Cartão..."}
                     className="w-full pl-10 pr-4 py-2 bg-white border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-brand-500/20 transition-all shadow-sm"
@@ -728,8 +733,9 @@ const Reconcile: React.FC = () => {
                               <Landmark size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
                               <input
                                 list="targets-list"
-                                value={isEditing ? getTargetName(editForm.targetId) : getTargetName(selectedTargetId)}
-                                onChange={e => isEditing ? handleTargetChange(e.target.value, true, item) : handleTargetChange(e.target.value, false)}
+                                value={isEditing ? editForm.targetName : getTargetName(selectedTargetId)}
+                                onFocus={e => e.target.select()}
+                                onChange={e => handleTargetChange(e.target.value, isEditing, item)}
                                 placeholder={importSource === 'bank' ? "Buscar banco..." : "Buscar cartão..."}
                                 className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-1 focus:ring-brand-500"
                               />
@@ -744,6 +750,7 @@ const Reconcile: React.FC = () => {
                               <input
                                 list="categories-list"
                                 value={categoryValue}
+                                onFocus={e => e.target.select()}
                                 onChange={e => {
                                   const val = e.target.value;
                                   if (isEditing) setEditForm({ ...editForm, category: val });
@@ -765,6 +772,7 @@ const Reconcile: React.FC = () => {
                               <input
                                 list="entities-list"
                                 value={isEditing ? editForm.owner_name : (item.owner_name || 'Pessoal')}
+                                onFocus={e => e.target.select()}
                                 onChange={e => {
                                   const val = e.target.value;
                                   if (val === '+ Criar Nova...') handleEntityChange('NEW', item);
@@ -784,7 +792,8 @@ const Reconcile: React.FC = () => {
                               </p>
                               <input
                                 list="counterparts-list"
-                                value={isEditing ? getCounterpartName(editForm.counterAccountId) : getCounterpartName(counterAccountId)}
+                                value={isEditing ? editForm.counterAccountName : getCounterpartName(counterAccountId)}
+                                onFocus={e => e.target.select()}
                                 onChange={e => {
                                   const val = e.target.value;
                                   if (isEditing) handleCounterpartChange(val, true, item);
