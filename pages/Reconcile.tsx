@@ -52,6 +52,7 @@ const Reconcile: React.FC = () => {
   const [editForm, setEditForm] = useState<any>({});
   const [owners, setOwners] = useState<string[]>(['Pessoal']);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [counterAccountId, setCounterAccountId] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -307,8 +308,11 @@ const Reconcile: React.FC = () => {
 
   const handleConfirm = async (item: any, isBulk: boolean = false) => {
     if (!supabase) return;
-    const targetId = (item.id === editingId && !isBulk) ? editForm.targetId : selectedTargetId;
-    const owner = (item.id === editingId && !isBulk) ? editForm.owner_name : (item.owner_name || 'Pessoal');
+    const isEditing = item.id === editingId && !isBulk;
+    const targetId = isEditing ? editForm.targetId : selectedTargetId;
+    const owner = isEditing ? editForm.owner_name : (item.owner_name || 'Pessoal');
+    const categoryName = isEditing ? editForm.category : (item.category || 'Conciliação');
+    const counterId = isEditing ? editForm.counterAccountId : counterAccountId;
 
     if (!targetId && !isBulk) return alert("Selecione um destino (Banco/Cartão)");
     if (!targetId) return; // Pula em bulk se não tiver destino
@@ -316,8 +320,6 @@ const Reconcile: React.FC = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
-      const categoryName = (item.id === editingId && !isBulk) ? editForm.category : (item.category || 'Conciliação');
 
       // Auto-provisionamento de categoria
       let finalCategoryId = null;
@@ -327,15 +329,35 @@ const Reconcile: React.FC = () => {
 
       if (importSource === 'bank') {
         const acc = realAccounts.find(a => a.id === targetId);
+        const isTransfer = categoryName.toLowerCase().includes('transferencia') || categoryName.toLowerCase().includes('transferência');
+
+        // Transação principal
         await supabase.from('transactions').insert({
           user_id: user.id, date: item.date, description: item.description,
           amount: Math.abs(item.amount), type: item.amount < 0 ? 'EXPENSE' : 'INCOME',
           account_id: targetId, account_name: acc?.institution || 'Conta',
           category: categoryName,
           owner_name: owner, is_paid: true, paid_at: item.date,
-          metadata: { category_id: finalCategoryId }
+          metadata: { category_id: finalCategoryId, is_transfer: isTransfer, counter_account_id: isTransfer ? counterId : null }
         });
         await supabase.rpc('recalculate_account_balance', { p_account_id: targetId });
+
+        // Se for transferência e tiver conta de contrapartida, cria a perna espelhada
+        if (isTransfer && counterId && counterId !== 'NONE') {
+          const counterAcc = realAccounts.find(a => a.id === counterId);
+          await supabase.from('transactions').insert({
+            user_id: user.id, date: item.date,
+            description: `[TRANSF] ${item.description}`,
+            amount: Math.abs(item.amount),
+            type: item.amount < 0 ? 'INCOME' : 'EXPENSE', // Inverte o tipo
+            account_id: counterId,
+            account_name: counterAcc?.institution || 'Conta Destino',
+            category: categoryName,
+            owner_name: owner, is_paid: true, paid_at: item.date,
+            metadata: { category_id: finalCategoryId, is_transfer: true, source_transaction_id: item.id }
+          });
+          await supabase.rpc('recalculate_account_balance', { p_account_id: counterId });
+        }
       } else {
         const stmtId = await FinanceService.getOrCreateStatement(targetId, item.date);
         await supabase.from('card_transactions').insert({
@@ -557,8 +579,28 @@ const Reconcile: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Col 5: Value */}
-                          <div className="text-right flex flex-col justify-center">
+                          {/* Col 5: Counterparty (Transfer only) */}
+                          {((isEditing ? editForm.category : (item.category || '')).toLowerCase().includes('transfer')) && (
+                            <div className="space-y-1 animate-in zoom-in-95 duration-200">
+                              <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest flex items-center gap-1">
+                                <RefreshCw size={10} /> Conta Contrapartida
+                              </p>
+                              <select
+                                value={isEditing ? editForm.counterAccountId : counterAccountId}
+                                onChange={e => isEditing ? setEditForm({ ...editForm, counterAccountId: e.target.value }) : setCounterAccountId(e.target.value)}
+                                className="w-full bg-amber-50 border border-amber-100 rounded-xl text-[10px] font-bold p-2 outline-none appearance-none cursor-pointer text-amber-900"
+                              >
+                                <option value="">Selecionar...</option>
+                                <option value="NONE">- Nenhuma (Apenas Registrar) -</option>
+                                {realAccounts.filter(a => a.id !== (isEditing ? editForm.targetId : selectedTargetId)).map(a => (
+                                  <option key={a.id} value={a.id}>{a.institution}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
+                          {/* Col 6: Value */}
+                          <div className={`text-right flex flex-col justify-center ${((isEditing ? editForm.category : (item.category || '')).toLowerCase().includes('transfer')) ? 'lg:col-span-1' : 'lg:col-span-1'}`}>
                             <span className={`text-lg font-bold tracking-tighter ${item.amount < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                               {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.amount)}
                             </span>
