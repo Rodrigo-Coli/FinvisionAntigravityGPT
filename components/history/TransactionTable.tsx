@@ -27,6 +27,10 @@ interface TransactionTableProps {
     sortField: string;
     sortDirection: 'asc' | 'desc';
     onSort: (field: string) => void;
+    owners: string[];
+    selectedIds: Set<string>;
+    onToggleSelect: (id: string) => void;
+    onSelectAll: (checked: boolean) => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -72,7 +76,8 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({ value, transactionType,
     const txType = transactionType === 'INCOME' ? 'INCOME' : 'EXPENSE';
     const filtered = categoryObjects
         .filter(c => !c.type || c.type === txType)
-        .filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+        .filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
+        .sort((a, b) => a.name.localeCompare(b.name));
 
     const handleCreate = async () => {
         if (!newName.trim()) return;
@@ -176,7 +181,9 @@ const OwnerPicker: React.FC<OwnerPickerProps> = ({ value, allOwners, onSelect, c
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    const options = allOwners.filter(o => o.toLowerCase().includes(search.toLowerCase()));
+    const options = allOwners
+        .filter(o => o.toLowerCase().includes(search.toLowerCase()))
+        .sort((a, b) => a.localeCompare(b));
 
     const handleCreate = () => {
         if (!newName.trim()) return;
@@ -253,10 +260,12 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
     savingId, handleUpdate, handleDelete,
     statusBadge, formatCurrency, getAmount, getPaidAmount, getRemaining, getStatus,
     openPayModal, reopenTransaction,
-    sortField, sortDirection, onSort
+    sortField, sortDirection, onSort,
+    owners,
+    selectedIds, onToggleSelect, onSelectAll
 }) => {
     const EPS = 0.000001;
-    const allOwners = Array.from(new Set(['Pessoal', ...transactions.map(tx => tx.owner_name).filter((o): o is string => !!o)]));
+    const allOwners = owners;
 
     const LoadingState = () => (
         <div className="py-32 flex flex-col items-center justify-center gap-4">
@@ -289,7 +298,18 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                             const canPay = showPay && remaining > EPS;
 
                             return (
-                                <div key={t.id} className="p-4 space-y-3">
+                                <div key={t.id} className={`p-4 space-y-3 transition-colors ${selectedIds.has(t.id) ? 'bg-brand-50/30' : ''}`}>
+                                    {/* Row 0: Selection */}
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            className="w-5 h-5 rounded-lg border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                                            checked={selectedIds.has(t.id)}
+                                            onChange={() => onToggleSelect(t.id)}
+                                        />
+                                        <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Selecionar Lançamento</span>
+                                    </div>
+
                                     {/* Row 1: Date + Amount */}
                                     <div className="flex items-center justify-between">
                                         <button
@@ -332,13 +352,25 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                             >
                                                 {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
                                             </select>
-                                            <CategoryPicker
-                                                value={t.category}
-                                                transactionType={t.type}
-                                                categoryObjects={categoryObjects}
-                                                onSelect={cat => handleUpdate(t.id, 'category', cat)}
-                                                onCreateCategory={onCreateCategory}
-                                            />
+                                            <div className="flex items-center gap-1">
+                                                <CategoryPicker
+                                                    value={t.category}
+                                                    transactionType={t.type}
+                                                    categoryObjects={categoryObjects}
+                                                    onSelect={cat => handleUpdate(t.id, 'category', cat)}
+                                                    onCreateCategory={onCreateCategory}
+                                                />
+                                                {t.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
+                                                    <select
+                                                        className="text-[9px] font-black text-brand-600 bg-brand-50/50 px-2 py-0.5 rounded-lg outline-none cursor-pointer border border-brand-200"
+                                                        value={t.metadata?.counter_account_id || ''}
+                                                        onChange={e => handleUpdate(t.id, 'counter_account_id', e.target.value)}
+                                                    >
+                                                        <option value="">Para...</option>
+                                                        {accounts.filter(a => a.id !== t.accountId).map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
+                                                    </select>
+                                                )}
+                                            </div>
                                         </div>
                                         <OwnerPicker
                                             value={t.owner_name || 'Pessoal'}
@@ -396,6 +428,14 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                 <table className="w-full text-left border-collapse table-auto">
                     <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                         <tr>
+                            <th className="px-6 py-5 w-10">
+                                <input
+                                    type="checkbox"
+                                    className="w-5 h-5 rounded-lg border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                                    checked={transactions.length > 0 && selectedIds.size === transactions.length}
+                                    onChange={(e) => onSelectAll(e.target.checked)}
+                                />
+                            </th>
                             <th className="px-6 py-5 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => onSort('date')}>
                                 <div className="flex items-center gap-1">Data {sortField === 'date' && (sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</div>
                             </th>
@@ -427,7 +467,15 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                             const canPay = showPay && remaining > EPS;
 
                             return (
-                                <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
+                                <tr key={t.id} className={`hover:bg-slate-50/50 transition-colors ${selectedIds.has(t.id) ? 'bg-brand-50/30' : ''}`}>
+                                    <td className="px-6 py-4">
+                                        <input
+                                            type="checkbox"
+                                            className="w-5 h-5 rounded-lg border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                                            checked={selectedIds.has(t.id)}
+                                            onChange={() => onToggleSelect(t.id)}
+                                        />
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         {editingRow?.id === t.id && editingRow.field === 'date' ? (
                                             <input type="date" autoFocus
@@ -478,6 +526,16 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                 onSelect={cat => handleUpdate(t.id, 'category', cat)}
                                                 onCreateCategory={onCreateCategory}
                                             />
+                                            {t.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
+                                                <select
+                                                    className="text-[9px] font-black text-brand-600 bg-brand-50/50 px-2 py-0.5 rounded-lg outline-none cursor-pointer border border-brand-200 w-fit"
+                                                    value={t.metadata?.counter_account_id || ''}
+                                                    onChange={e => handleUpdate(t.id, 'counter_account_id', e.target.value)}
+                                                >
+                                                    <option value="">Destino...</option>
+                                                    {accounts.filter(a => a.id !== t.accountId).map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
+                                                </select>
+                                            )}
                                         </div>
                                     </td>
 
