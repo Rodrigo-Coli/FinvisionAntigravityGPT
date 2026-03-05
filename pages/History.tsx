@@ -81,8 +81,9 @@ const HistoryPage: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
-  const [filterAccount, setFilterAccount] = useState<string>('ALL');
+  const [filterAccount, setFilterAccount] = useState<string[]>([]);
   const [filterCategory, setFilterCategory] = useState<string[]>([]);
+  const [filterOwner, setFilterOwner] = useState<string[]>([]);
 
   // (no longer used for pills, kept empty to avoid breaking HistoryCharts prop)
   const [selectedTimelineCategories] = useState<string[]>([]);
@@ -98,7 +99,6 @@ const HistoryPage: React.FC = () => {
 
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
-  const [filterOwner, setFilterOwner] = useState<string>('ALL');
   const [owners, setOwners] = useState<string[]>(['Pessoal']);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const lastRequestId = useRef(0);
@@ -148,8 +148,7 @@ const HistoryPage: React.FC = () => {
     const map: Record<string, string> = {
       'a': '[aáàãâä]', 'e': '[eéèêë]', 'i': '[iíìîï]', 'o': '[oóòõôö]', 'u': '[uúùûü]', 'c': '[cç]'
     };
-    // Postgrest requires double quotes around complex values in .or()
-    return '"' + escaped.toLowerCase().split('').map(c => map[c] || c).join('').replace(/\s+/g, '.*') + '"';
+    return escaped.toLowerCase().split('').map(c => map[c] || c).join('').replace(/\s+/g, '.*');
   };
 
   const fetchData = useCallback(async () => {
@@ -180,7 +179,7 @@ const HistoryPage: React.FC = () => {
         isArchived: a.is_archived,
         includeInDashboard: a.include_in_dashboard,
         lastSync: a.last_sync
-      })));
+      })).sort((a, b) => a.institution.localeCompare(b.institution)));
 
       const { data: catData, error: catErr } = await supabase.from('categories').select('name, type').eq('user_id', user.id).eq('is_archived', false).order('name');
       if (!catErr && catData) {
@@ -203,13 +202,13 @@ const HistoryPage: React.FC = () => {
         query = query.order('date', { ascending: false }); // secondary sort fallback
       }
       if (filterType !== 'ALL') query = query.eq('type', filterType);
-      if (filterAccount !== 'ALL') query = query.eq('account_id', filterAccount);
+      if (filterAccount.length > 0) query = query.in('account_id', filterAccount);
       if (filterCategory.length > 0) query = query.in('category', filterCategory);
       if (startDate) query = query.gte('date', startDate);
       if (endDate) query = query.lte('date', endDate);
       if (minPrice !== '') query = query.gte('amount', Number(minPrice));
       if (maxPrice !== '') query = query.lte('amount', Number(maxPrice));
-      if (filterOwner !== 'ALL') query = query.eq('owner_name', filterOwner);
+      if (filterOwner.length > 0) query = query.in('owner_name', filterOwner);
 
       // Global Search in DB (Server-side Regex for accent-insensitivity)
       if (debouncedSearch) {
@@ -225,13 +224,13 @@ const HistoryPage: React.FC = () => {
         .eq('user_id', user.id).eq('is_deleted', false)
         .order('date', { ascending: false });
       if (filterType !== 'ALL') chartQuery = chartQuery.eq('type', filterType);
-      if (filterAccount !== 'ALL') chartQuery = chartQuery.eq('account_id', filterAccount);
+      if (filterAccount.length > 0) chartQuery = chartQuery.in('account_id', filterAccount);
       if (filterCategory.length > 0) chartQuery = chartQuery.in('category', filterCategory);
       if (startDate) chartQuery = chartQuery.gte('date', startDate);
       if (endDate) chartQuery = chartQuery.lte('date', endDate);
       if (minPrice !== '') chartQuery = chartQuery.gte('amount', Number(minPrice));
       if (maxPrice !== '') chartQuery = chartQuery.lte('amount', Number(maxPrice));
-      if (filterOwner !== 'ALL') chartQuery = chartQuery.eq('owner_name', filterOwner);
+      if (filterOwner.length > 0) chartQuery = chartQuery.in('owner_name', filterOwner);
 
       if (debouncedSearch) {
         const pattern = getAccentRegex(debouncedSearch.trim());
@@ -245,7 +244,7 @@ const HistoryPage: React.FC = () => {
       ]);
       if (requestId !== lastRequestId.current) return;
       if (fetchError) throw fetchError;
-      setOwners(dbEntities);
+      setOwners((dbEntities || []).sort((a, b) => a.localeCompare(b)));
 
       // Store chart transactions (minimal mapping, no pagination)
       setChartTransactions((chartData || []).map((t: any) => ({
@@ -309,7 +308,7 @@ const HistoryPage: React.FC = () => {
   useEffect(() => {
     setPage(0);
     setSelectedIds(new Set());
-  }, [filterType, filterAccount, JSON.stringify(filterCategory), startDate, endDate, minPrice, maxPrice, filterOwner, sortField, sortDirection, debouncedSearch]);
+  }, [filterType, JSON.stringify(filterAccount), JSON.stringify(filterCategory), startDate, endDate, minPrice, maxPrice, JSON.stringify(filterOwner), sortField, sortDirection, debouncedSearch]);
 
   useEffect(() => {
     if (isSupabaseConfigured) fetchData();
@@ -449,10 +448,10 @@ const HistoryPage: React.FC = () => {
   };
 
   const resetFilters = () => {
-    setFilterType('ALL'); setFilterAccount('ALL'); setFilterCategory([]);
+    setFilterType('ALL'); setFilterAccount([]); setFilterCategory([]);
     setStartDate(DateUtils.formatToISODate(firstDay));
     setEndDate(DateUtils.formatToISODate(lastDay));
-    setMinPrice(''); setMaxPrice(''); setFilterOwner('ALL');
+    setMinPrice(''); setMaxPrice(''); setFilterOwner([]);
     setSearch('');
   };
 
@@ -785,11 +784,11 @@ const HistoryPage: React.FC = () => {
               </select>
             </div>
 
-            {bulkCategory.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
+            {(bulkCategory.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes('transferencia') || bulkCategory.toLowerCase().includes('transfer')) && (
               <div className="flex items-center gap-2 animate-in slide-in-from-left-2 duration-300">
                 <ArrowRight size={14} className="text-brand-400" />
                 <div className="relative w-full md:w-44">
-                  <Landmark size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <Landmark size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-400" />
                   <select
                     value={bulkCounterAccount}
                     onChange={(e) => setBulkCounterAccount(e.target.value)}
