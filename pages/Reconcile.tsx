@@ -184,13 +184,14 @@ const Reconcile: React.FC = () => {
     } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); setProgressStep(null); }
   };
 
-  const startEditing = (item: ImportedTransaction) => {
+  const startEditing = (item: ImportedTransaction, initialCategory?: string) => {
     setEditingId(item.id);
     setEditForm({
       ...item,
       targetId: selectedTargetId,
       owner_name: item.owner_name || 'Pessoal',
-      category: 'Conciliação'
+      category: initialCategory || item.category || 'Conciliação',
+      counterAccountId: ''
     });
   };
 
@@ -490,6 +491,8 @@ const Reconcile: React.FC = () => {
             <div className="space-y-4">
               {imported.map(item => {
                 const isEditing = editingId === item.id;
+                const categoryValue = isEditing ? editForm.category : (item.category || 'Conciliação');
+                const isTransfer = categoryValue.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
                 return (
                   <div key={item.id} className={`bg-white border transition-all duration-300 rounded-[32px] overflow-hidden ${isEditing ? 'border-brand-500 shadow-2xl ring-4 ring-brand-500/5' : 'border-slate-100 shadow-sm hover:shadow-md'} ${selectedIds.has(item.id) ? 'border-brand-200 bg-brand-50/5' : ''}`}>
                     <div className="p-8">
@@ -514,7 +517,7 @@ const Reconcile: React.FC = () => {
                         </div>
 
                         {/* Data Sections */}
-                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                           {/* Col 1: Desc & Date */}
                           <div className="lg:col-span-1 space-y-1">
                             {isEditing ? (
@@ -562,8 +565,8 @@ const Reconcile: React.FC = () => {
                             <div className="relative">
                               <Tag size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
                               <select
-                                value={isEditing ? editForm.category : (item.category || 'Conciliação')}
-                                onChange={e => isEditing ? setEditForm({ ...editForm, category: e.target.value }) : startEditing(item)}
+                                value={categoryValue}
+                                onChange={e => isEditing ? setEditForm({ ...editForm, category: e.target.value }) : startEditing(item, e.target.value)}
                                 className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none"
                               >
                                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
@@ -588,18 +591,24 @@ const Reconcile: React.FC = () => {
                           </div>
 
                           {/* Col 5: Counterparty (Transfer only) */}
-                          {((isEditing ? editForm.category : (item.category || '')).toLowerCase().includes('transfer')) && (
+                          {isTransfer && (
                             <div className="space-y-1 animate-in zoom-in-95 duration-200">
                               <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest flex items-center gap-1">
-                                <RefreshCw size={10} /> Conta Contrapartida
+                                <RefreshCw size={10} /> Contrapartida
                               </p>
                               <select
-                                value={isEditing ? editForm.counterAccountId : counterAccountId}
-                                onChange={e => isEditing ? setEditForm({ ...editForm, counterAccountId: e.target.value }) : setCounterAccountId(e.target.value)}
+                                value={isEditing ? (editForm.counterAccountId || '') : counterAccountId}
+                                onChange={e => {
+                                  if (isEditing) setEditForm({ ...editForm, counterAccountId: e.target.value });
+                                  else {
+                                    startEditing(item);
+                                    setEditForm(prev => ({ ...prev, counterAccountId: e.target.value }));
+                                  }
+                                }}
                                 className="w-full bg-amber-50 border border-amber-100 rounded-xl text-[10px] font-bold p-2 outline-none appearance-none cursor-pointer text-amber-900"
                               >
                                 <option value="">Selecionar...</option>
-                                <option value="NONE">- Nenhuma (Apenas Registrar) -</option>
+                                <option value="NONE">- Apenas Registrar -</option>
                                 {realAccounts.filter(a => a.id !== (isEditing ? editForm.targetId : selectedTargetId)).map(a => (
                                   <option key={a.id} value={a.id}>{a.institution}</option>
                                 ))}
@@ -608,7 +617,7 @@ const Reconcile: React.FC = () => {
                           )}
 
                           {/* Col 6: Value */}
-                          <div className={`text-right flex flex-col justify-center ${((isEditing ? editForm.category : (item.category || '')).toLowerCase().includes('transfer')) ? 'lg:col-span-1' : 'lg:col-span-1'}`}>
+                          <div className="text-right flex flex-col justify-center">
                             <span className={`text-lg font-bold tracking-tighter ${item.amount < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                               {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.amount)}
                             </span>
