@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, FileDown, Loader2, AlertCircle, Check, RefreshCw, Calendar } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Plus, FileDown, Loader2, AlertCircle, Check, RefreshCw, Calendar, Tag, Landmark, User, ArrowRight, Trash, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 import { Transaction, TransactionType, BankAccount } from '../types';
@@ -100,6 +100,17 @@ const HistoryPage: React.FC = () => {
   const [maxPrice, setMaxPrice] = useState('');
   const [filterOwner, setFilterOwner] = useState<string>('ALL');
   const [owners, setOwners] = useState<string[]>(['Pessoal']);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const lastRequestId = useRef(0);
+
+  // Selection & Bulk Edit
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDescription, setBulkDescription] = useState('');
+  const [bulkAccount, setBulkAccount] = useState('');
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkOwner, setBulkOwner] = useState('');
+  const [bulkCounterAccount, setBulkCounterAccount] = useState('');
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
 
   // Inline Editing
   const [editingRow, setEditingRow] = useState<{ id: string; field: string } | null>(null);
@@ -118,7 +129,30 @@ const HistoryPage: React.FC = () => {
     pendingPatch?: { field: string, value: any };
   }>({ show: false, tx: null, pendingAction: 'DELETE' });
 
+  // Debounce search effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const normalize = (str: string) => {
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  };
+
+  const getAccentRegex = (s: string) => {
+    if (!s) return '';
+    // Escapar caracteres especiais de Regex
+    const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const map: Record<string, string> = {
+      'a': '[aáàãâä]', 'e': '[eéèêë]', 'i': '[iíìîï]', 'o': '[oóòõôö]', 'u': '[uúùûü]', 'c': '[cç]'
+    };
+    return escaped.toLowerCase().split('').map(c => map[c] || c).join('');
+  };
+
   const fetchData = useCallback(async () => {
+    const requestId = ++lastRequestId.current;
     setIsLoading(true);
     setError(null);
 
@@ -176,9 +210,10 @@ const HistoryPage: React.FC = () => {
       if (maxPrice !== '') query = query.lte('amount', Number(maxPrice));
       if (filterOwner !== 'ALL') query = query.eq('owner_name', filterOwner);
 
-      // Global Search in DB
-      if (search) {
-        query = query.or(`description.ilike.%${search}%,account_name.ilike.%${search}%,category.ilike.%${search}%,owner_name.ilike.%${search}%`);
+      // Global Search in DB (Server-side Regex for accent-insensitivity)
+      if (debouncedSearch) {
+        const regex = `"${getAccentRegex(debouncedSearch)}"`;
+        query = query.or(`description.iregex.${regex},account_name.iregex.${regex},category.iregex.${regex},owner_name.iregex.${regex}`);
       }
 
       query = query.range(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
@@ -197,8 +232,9 @@ const HistoryPage: React.FC = () => {
       if (maxPrice !== '') chartQuery = chartQuery.gte('amount', Number(maxPrice));
       if (filterOwner !== 'ALL') chartQuery = chartQuery.eq('owner_name', filterOwner);
 
-      if (search) {
-        chartQuery = chartQuery.or(`description.ilike.%${search}%,account_name.ilike.%${search}%,category.ilike.%${search}%,owner_name.ilike.%${search}%`);
+      if (debouncedSearch) {
+        const regex = `"${getAccentRegex(debouncedSearch)}"`;
+        chartQuery = chartQuery.or(`description.iregex.${regex},account_name.iregex.${regex},category.iregex.${regex},owner_name.iregex.${regex}`);
       }
 
       const [{ data, count, error: fetchError }, { data: chartData }, dbEntities] = await Promise.all([
@@ -206,6 +242,7 @@ const HistoryPage: React.FC = () => {
         chartQuery,
         FinanceService.getEntities()
       ]);
+      if (requestId !== lastRequestId.current) return;
       if (fetchError) throw fetchError;
       setOwners(dbEntities);
 
@@ -273,7 +310,8 @@ const HistoryPage: React.FC = () => {
   // Reset page to 0 when filters change
   useEffect(() => {
     setPage(0);
-  }, [filterType, filterAccount, JSON.stringify(filterCategory), startDate, endDate, minPrice, maxPrice, filterOwner, sortField, sortDirection, search]);
+    setSelectedIds(new Set());
+  }, [filterType, filterAccount, JSON.stringify(filterCategory), startDate, endDate, minPrice, maxPrice, filterOwner, sortField, sortDirection, debouncedSearch]);
 
   useEffect(() => {
     if (isSupabaseConfigured) fetchData();
@@ -308,7 +346,16 @@ const HistoryPage: React.FC = () => {
 
     setSavingId(id);
     try {
-      const patch: any = { [field]: value };
+      let patch: any = { [field]: value };
+
+      // Handle metadata fields
+      if (field === 'counter_account_id') {
+        patch = {
+          type: 'TRANSFER',
+          metadata: { ...(tx?.metadata || {}), is_transfer: true, counter_account_id: value }
+        };
+      }
+
       if (field === 'account_id') {
         const acc = accounts.find(a => a.id === value);
         if (acc) patch.account_name = acc.institution;
@@ -321,7 +368,14 @@ const HistoryPage: React.FC = () => {
         // Otimização de UI: atualiza a tela instantaneamente para não dar reload na tabela toda
         setTransactions(prev => prev.map(t => {
           if (t.id === id) {
-            const updated = { ...t, [field]: value };
+            let updated = { ...t, [field]: value };
+            if (field === 'counter_account_id') {
+              updated = {
+                ...t,
+                type: 'TRANSFER' as TransactionType,
+                metadata: { ...(t.metadata || {}), is_transfer: true, counter_account_id: value }
+              };
+            }
             if (field === 'account_id') {
               const acc = accounts.find(a => a.id === value);
               if (acc) updated.accountName = acc.institution;
@@ -398,9 +452,103 @@ const HistoryPage: React.FC = () => {
 
   const resetFilters = () => {
     setFilterType('ALL'); setFilterAccount('ALL'); setFilterCategory([]);
-    setStartDate(''); setEndDate(''); setMinPrice(''); setMaxPrice('');
+    setStartDate(DateUtils.formatToISODate(firstDay));
+    setEndDate(DateUtils.formatToISODate(lastDay));
+    setMinPrice(''); setMaxPrice(''); setFilterOwner('ALL');
     setSearch('');
-    setFilterOwner('ALL');
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(transactions.map(t => t.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleBulkUpdate = async () => {
+    if (selectedIds.size === 0 || !supabase) return;
+    if (!bulkDescription && !bulkAccount && !bulkCategory && !bulkOwner) {
+      return alert("Preencha ao menos um campo para editar em lote.");
+    }
+
+    if (!window.confirm(`Deseja atualizar ${selectedIds.size} lançamentos?`)) return;
+
+    setIsBulkUpdating(true);
+    try {
+      const patch: any = {};
+      if (bulkDescription) patch.description = bulkDescription;
+      if (bulkAccount) {
+        const acc = accounts.find(a => a.id === bulkAccount);
+        if (acc) {
+          patch.account_id = bulkAccount;
+          patch.account_name = acc.institution;
+        }
+      }
+      if (bulkCategory) patch.category = bulkCategory;
+      if (bulkOwner) patch.owner_name = bulkOwner;
+
+      const ids = Array.from(selectedIds);
+
+      const isTransfer = bulkCategory.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
+
+      if (isTransfer && bulkCounterAccount) {
+        patch.type = 'TRANSFER';
+        for (const id of ids) {
+          const tx = transactions.find(t => t.id === id);
+          const currentMetadata = tx?.metadata || {};
+          await supabase.from('transactions').update({
+            ...patch,
+            metadata: {
+              ...currentMetadata,
+              is_transfer: true,
+              counter_account_id: bulkCounterAccount
+            }
+          }).eq('id', id);
+        }
+      } else {
+        const { error: err } = await supabase.from('transactions').update(patch).in('id', ids);
+        if (err) throw err;
+      }
+
+      await fetchData();
+      setSelectedIds(new Set());
+      setBulkDescription(''); setBulkAccount(''); setBulkCategory(''); setBulkOwner(''); setBulkCounterAccount('');
+      alert("Lote atualizado com sucesso!");
+    } catch (err) {
+      alert("Erro ao atualizar lote");
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0 || !supabase) return;
+    if (!window.confirm(`Excluir ${selectedIds.size} lançamentos permanentemente?`)) return;
+
+    setIsBulkUpdating(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const { error: err } = await supabase.from('transactions').update({ is_deleted: true }).in('id', ids);
+      if (err) throw err;
+
+      await fetchData();
+      setSelectedIds(new Set());
+      alert("Lançamentos excluídos com sucesso!");
+    } catch (err) {
+      alert("Erro ao excluir lote");
+    } finally {
+      setIsBulkUpdating(false);
+    }
   };
 
   const exportToXlsx = (format: 'xlsx' | 'csv') => {
@@ -664,6 +812,115 @@ const HistoryPage: React.FC = () => {
         endDate={endDate}
       />
 
+      {/* BARRA DE EDIÇÃO EM LOTE - Estilo Conciliação */}
+      {selectedIds.size > 0 && (
+        <div className="sticky top-4 z-50 flex flex-wrap items-center gap-3 p-4 bg-slate-900 rounded-[30px] shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500 border border-slate-800 mb-6 mx-2">
+          <div className="flex items-center gap-3 px-4 border-r border-slate-700 mr-2">
+            <div className="w-8 h-8 bg-brand-500 rounded-full flex items-center justify-center text-white text-xs font-black">
+              {selectedIds.size}
+            </div>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Selecionados</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 flex-1">
+            <input
+              type="text"
+              value={bulkDescription}
+              onChange={(e) => setBulkDescription(e.target.value)}
+              placeholder="Nova Descrição..."
+              className="bg-slate-800 text-white text-[10px] font-bold uppercase py-2.5 px-4 rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 w-full md:w-48 placeholder:text-slate-500"
+            />
+
+            <div className="relative w-full md:w-44">
+              <Landmark size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <select
+                value={bulkAccount}
+                onChange={(e) => setBulkAccount(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
+              >
+                <option value="">Trocar Conta...</option>
+                {accounts.map(acc => (
+                  <option key={acc.id} value={acc.id}>{acc.institution}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative w-full md:w-44">
+              <Tag size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <select
+                value={bulkCategory}
+                onChange={(e) => setBulkCategory(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
+              >
+                <option value="">Trocar Categoria...</option>
+                {availableCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative w-full md:w-44">
+              <User size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <select
+                value={bulkOwner}
+                onChange={(e) => setBulkOwner(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
+              >
+                <option value="">Trocar Entidade...</option>
+                {owners.map(o => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+            </div>
+
+            {bulkCategory.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
+              <div className="flex items-center gap-2 animate-in slide-in-from-left-2 duration-300">
+                <ArrowRight size={14} className="text-brand-400" />
+                <div className="relative w-full md:w-44">
+                  <Landmark size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <select
+                    value={bulkCounterAccount}
+                    onChange={(e) => setBulkCounterAccount(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-brand-400 border border-brand-500/30 text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
+                  >
+                    <option value="">Destino Transf...</option>
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>{acc.institution}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={handleBulkUpdate}
+              disabled={isBulkUpdating}
+              className="flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-brand-500 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {isBulkUpdating ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              Aplicar Lote
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={isBulkUpdating}
+              className="p-2.5 bg-slate-800 text-slate-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all active:scale-95"
+              title="Excluir Lote"
+            >
+              <Trash size={14} />
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="p-2.5 bg-slate-800 text-slate-500 rounded-xl hover:bg-slate-700 transition-all"
+              title="Limpar Seleção"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       <TransactionTable
         transactions={viewFiltered} isLoading={isLoading} accounts={accounts}
         categoryObjects={categoryObjects} onCreateCategory={handleCreateCategory}
@@ -672,6 +929,10 @@ const HistoryPage: React.FC = () => {
         sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
         formatCurrency={HistoryUtils.formatCurrency} getAmount={HistoryUtils.getAmount} getPaidAmount={HistoryUtils.getPaidAmount}
         getRemaining={HistoryUtils.getRemaining} getStatus={HistoryUtils.getStatus} openPayModal={openPayModal}
+        owners={owners}
+        selectedIds={selectedIds}
+        onToggleSelect={handleToggleSelect}
+        onSelectAll={handleSelectAll}
         reopenTransaction={async (t) => {
           if (!supabase || !window.confirm('Deseja reabrir este lançamento?')) return;
           try {
