@@ -305,7 +305,7 @@ const HistoryPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner, page, sortField, sortDirection, search]);
+  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner, page, sortField, sortDirection, debouncedSearch]);
 
   // Reset page to 0 when filters change
   useEffect(() => {
