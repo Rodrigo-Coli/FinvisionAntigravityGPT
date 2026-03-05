@@ -85,7 +85,7 @@ const Reconcile: React.FC = () => {
       if (error) throw error;
       const mapped = (data || []).filter((acc: any) => !acc.is_archived).map((acc: any) => ({
         id: acc.id, institution: acc.institution || acc.name || 'Conta', type: acc.type || 'CHECKING'
-      } as any));
+      } as any)).sort((a: any, b: any) => a.institution.localeCompare(b.institution));
       setRealAccounts(mapped);
     } catch (err) { console.error(err); } finally { setIsLoadingTargets(false); }
   };
@@ -98,7 +98,7 @@ const Reconcile: React.FC = () => {
       if (!user) return;
       const { data, error } = await supabase.from('cards').select('*').eq('user_id', user.id);
       if (error) throw error;
-      setRealCards(data || []);
+      setRealCards((data || []).sort((a: any, b: any) => a.name.localeCompare(b.name)));
     } catch (err) { console.error(err); }
   };
 
@@ -262,6 +262,47 @@ const Reconcile: React.FC = () => {
       }
     } else {
       applyBulkEdit('owner_name', finalValue);
+    }
+  };
+
+  const getTargetName = (id: string) => {
+    if (importSource === 'bank') {
+      return realAccounts.find(a => a.id === id)?.institution || '';
+    }
+    return realCards.find(c => c.id === id)?.name || '';
+  };
+
+  const handleTargetChange = (name: string, isEdit: boolean, item?: any) => {
+    let foundId = '';
+    if (importSource === 'bank') {
+      foundId = realAccounts.find(a => a.institution === name)?.id || '';
+    } else {
+      foundId = realCards.find(c => c.name === name)?.id || '';
+    }
+
+    if (isEdit && item) {
+      setEditForm({ ...editForm, targetId: foundId });
+    } else {
+      setSelectedTargetId(foundId);
+    }
+  };
+
+  const getCounterpartName = (id: string) => {
+    if (id === 'NONE') return '- Apenas Registrar -';
+    return realAccounts.find(a => a.id === id)?.institution || '';
+  };
+
+  const handleCounterpartChange = (name: string, isEdit: boolean, item?: any) => {
+    let foundId = '';
+    if (name === '- Apenas Registrar -') foundId = 'NONE';
+    else {
+      foundId = realAccounts.find(a => a.institution === name)?.id || '';
+    }
+
+    if (isEdit && item) {
+      setEditForm({ ...editForm, counterAccountId: foundId });
+    } else {
+      setCounterAccountId(foundId);
     }
   };
 
@@ -499,6 +540,19 @@ const Reconcile: React.FC = () => {
                 />
                 <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.3em]">Operações Pendentes ({imported.length})</h3>
               </div>
+
+              <div className="hidden md:block w-64">
+                <div className="relative">
+                  <Landmark size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" />
+                  <input
+                    list="targets-list"
+                    value={getTargetName(selectedTargetId)}
+                    onChange={e => handleTargetChange(e.target.value, false)}
+                    placeholder={importSource === 'bank' ? "Filtrar por Banco..." : "Filtrar por Cartão..."}
+                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-brand-500/20 transition-all shadow-sm"
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto mt-4 sm:mt-0">
@@ -535,15 +589,23 @@ const Reconcile: React.FC = () => {
                     placeholder="Definir Categoria..."
                   />
 
-                  <select
-                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px]"
-                    onChange={(e) => handleEntityChange(e.target.value)}
-                    value=""
-                  >
-                    <option value="">Definir Entidade...</option>
-                    {owners.map(o => <option key={o} value={o}>{o}</option>)}
-                    <option value="NEW">+ Criar Nova...</option>
-                  </select>
+                  <input
+                    list="targets-list"
+                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px] placeholder:text-slate-500"
+                    onChange={(e) => handleTargetChange(e.target.value, false)}
+                    placeholder="Definir Destino..."
+                  />
+
+                  <input
+                    list="entities-list"
+                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px] placeholder:text-slate-500"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '+ Criar Nova...') handleEntityChange('NEW');
+                      else handleEntityChange(val);
+                    }}
+                    placeholder="Definir Entidade..."
+                  />
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -633,14 +695,16 @@ const Reconcile: React.FC = () => {
                           {/* Col 2: Target Selection */}
                           <div className="space-y-1">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Destino</p>
-                            <select
-                              value={isEditing ? editForm.targetId : selectedTargetId}
-                              onChange={e => isEditing ? setEditForm({ ...editForm, targetId: e.target.value }) : setSelectedTargetId(e.target.value)}
-                              className="w-full bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none appearance-none cursor-pointer"
-                            >
-                              <option value="">Selecionar...</option>
-                              {importSource === 'bank' ? realAccounts.map(a => <option key={a.id} value={a.id}>{a.institution}</option>) : realCards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
+                            <div className="relative">
+                              <Landmark size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                              <input
+                                list="targets-list"
+                                value={isEditing ? getTargetName(editForm.targetId) : getTargetName(selectedTargetId)}
+                                onChange={e => isEditing ? handleTargetChange(e.target.value, true, item) : handleTargetChange(e.target.value, false)}
+                                placeholder={importSource === 'bank' ? "Buscar banco..." : "Buscar cartão..."}
+                                className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-1 focus:ring-brand-500"
+                              />
+                            </div>
                           </div>
 
                           {/* Col 3: Category */}
@@ -669,14 +733,17 @@ const Reconcile: React.FC = () => {
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Entidade</p>
                             <div className="relative">
                               <Building2 size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
-                              <select
+                              <input
+                                list="entities-list"
                                 value={isEditing ? editForm.owner_name : (item.owner_name || 'Pessoal')}
-                                onChange={e => handleEntityChange(e.target.value, item)}
-                                className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none"
-                              >
-                                {owners.map(o => <option key={o} value={o}>{o}</option>)}
-                                <option value="NEW">+ Criar Nova...</option>
-                              </select>
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  if (val === '+ Criar Nova...') handleEntityChange('NEW', item);
+                                  else handleEntityChange(val, item);
+                                }}
+                                placeholder="Entidade..."
+                                className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-1 focus:ring-brand-500"
+                              />
                             </div>
                           </div>
 
@@ -686,23 +753,20 @@ const Reconcile: React.FC = () => {
                               <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest flex items-center gap-1">
                                 <RefreshCw size={10} /> Contrapartida
                               </p>
-                              <select
-                                value={isEditing ? (editForm.counterAccountId || '') : counterAccountId}
+                              <input
+                                list="counterparts-list"
+                                value={isEditing ? getCounterpartName(editForm.counterAccountId) : getCounterpartName(counterAccountId)}
                                 onChange={e => {
-                                  if (isEditing) setEditForm({ ...editForm, counterAccountId: e.target.value });
+                                  const val = e.target.value;
+                                  if (isEditing) handleCounterpartChange(val, true, item);
                                   else {
                                     startEditing(item);
-                                    setEditForm((prev: any) => ({ ...prev, counterAccountId: e.target.value }));
+                                    handleCounterpartChange(val, true, item);
                                   }
                                 }}
-                                className="w-full bg-amber-50 border border-amber-100 rounded-xl text-[10px] font-bold p-2 outline-none appearance-none cursor-pointer text-amber-900"
-                              >
-                                <option value="">Selecionar...</option>
-                                <option value="NONE">- Apenas Registrar -</option>
-                                {realAccounts.filter(a => a.id !== (isEditing ? editForm.targetId : selectedTargetId)).map(a => (
-                                  <option key={a.id} value={a.id}>{a.institution}</option>
-                                ))}
-                              </select>
+                                placeholder="Contrapartida..."
+                                className="w-full bg-amber-50 border border-amber-100 rounded-xl text-[10px] font-bold p-2 outline-none appearance-none cursor-pointer text-amber-900 focus:ring-1 focus:ring-amber-500"
+                              />
                             </div>
                           )}
 
@@ -760,6 +824,22 @@ const Reconcile: React.FC = () => {
       </div>
       <datalist id="categories-list">
         {categories.map(c => <option key={c} value={c} />)}
+      </datalist>
+
+      <datalist id="targets-list">
+        {importSource === 'bank'
+          ? realAccounts.map(a => <option key={a.id} value={a.institution} />)
+          : realCards.map(c => <option key={c.id} value={c.name} />)}
+      </datalist>
+
+      <datalist id="entities-list">
+        {owners.map(o => <option key={o} value={o} />)}
+        <option value="+ Criar Nova..." />
+      </datalist>
+
+      <datalist id="counterparts-list">
+        <option value="- Apenas Registrar -" />
+        {realAccounts.map(a => <option key={a.id} value={a.institution} />)}
       </datalist>
     </div>
   );
