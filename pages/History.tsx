@@ -148,7 +148,7 @@ const HistoryPage: React.FC = () => {
     const map: Record<string, string> = {
       'a': '[aáàãâä]', 'e': '[eéèêë]', 'i': '[iíìîï]', 'o': '[oóòõôö]', 'u': '[uúùûü]', 'c': '[cç]'
     };
-    return escaped.toLowerCase().split('').map(c => map[c] || c).join('');
+    return escaped.toLowerCase().split('').map(c => map[c] || c).join('').replace(/\s+/g, '.*');
   };
 
   const fetchData = useCallback(async () => {
@@ -212,8 +212,9 @@ const HistoryPage: React.FC = () => {
 
       // Global Search in DB (Server-side Regex for accent-insensitivity)
       if (debouncedSearch) {
-        const regex = `"${getAccentRegex(debouncedSearch)}"`;
-        query = query.or(`description.iregex.${regex},account_name.iregex.${regex},category.iregex.${regex},owner_name.iregex.${regex}`);
+        const pattern = getAccentRegex(debouncedSearch.trim());
+        // IMPORTANT: No double quotes around the pattern for iregex in Postgrest strings
+        query = query.or(`description.iregex.${pattern},account_name.iregex.${pattern},category.iregex.${pattern},owner_name.iregex.${pattern}`);
       }
 
       query = query.range(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
@@ -233,8 +234,8 @@ const HistoryPage: React.FC = () => {
       if (filterOwner !== 'ALL') chartQuery = chartQuery.eq('owner_name', filterOwner);
 
       if (debouncedSearch) {
-        const regex = `"${getAccentRegex(debouncedSearch)}"`;
-        chartQuery = chartQuery.or(`description.iregex.${regex},account_name.iregex.${regex},category.iregex.${regex},owner_name.iregex.${regex}`);
+        const pattern = getAccentRegex(debouncedSearch.trim()).replace(/\s+/g, '.*');
+        chartQuery = chartQuery.or(`description.iregex.${pattern},account_name.iregex.${pattern},category.iregex.${pattern},owner_name.iregex.${pattern}`);
       }
 
       const [{ data, count, error: fetchError }, { data: chartData }, dbEntities] = await Promise.all([
@@ -726,95 +727,9 @@ const HistoryPage: React.FC = () => {
         </div>
       </div>
 
-      <HistoryFilters
-        search={search} setSearch={setSearch} showFilters={showFilters} setShowFilters={setShowFilters}
-        filterType={filterType} setFilterType={setFilterType} filterAccount={filterAccount} setFilterAccount={setFilterAccount}
-        filterCategory={filterCategory} setFilterCategory={setFilterCategory} startDate={startDate} setStartDate={setStartDate}
-        endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
-        filterOwner={filterOwner} setFilterOwner={setFilterOwner} owners={owners}
-        categories={availableCategories} accounts={accounts} resetFilters={resetFilters}
-      />
-
-      {/* QUICK DATE FILTERS + CUSTOM RANGE + VIEW MODE TOGGLE */}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
-        {/* Date presets */}
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setDatePreset('MONTH')} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Este Mês</button>
-          <button onClick={() => setDatePreset(30)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>30 Dias</button>
-          <button onClick={() => setDatePreset(90)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>3 Meses</button>
-          <button onClick={() => setDatePreset('ALL')} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${!startDate && !endDate ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Tudo</button>
-        </div>
-
-        {/* Custom Range picker always visible */}
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100">
-          <Calendar size={14} className="text-slate-400" />
-          <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none w-28" />
-          <span className="text-slate-300">/</span>
-          <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none w-28" />
-        </div>
-
-        {/* Spacer */}
-        <div className="hidden lg:block flex-1" />
-
-        {/* View mode toggle */}
-        <div className="flex bg-slate-100 p-1 rounded-xl gap-1 w-full lg:w-auto">
-          <button
-            onClick={() => setViewMode('ALL')}
-            className={`flex-1 lg:flex-none px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-          >
-            Todos os Lançamentos
-          </button>
-          <button
-            onClick={() => setViewMode('SETTLED')}
-            className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'SETTLED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-          >
-            <Check size={12} /> Pagos & Recebidos
-          </button>
-        </div>
-      </div>
-
-      {/* SUMMARY CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Receitas</p>
-            <h3 className="text-xl font-bold text-emerald-500">{HistoryUtils.formatCurrency(summary.income)}</h3>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
-            <ArrowUpRight size={20} />
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Despesas</p>
-            <h3 className="text-xl font-bold text-rose-500">{HistoryUtils.formatCurrency(-summary.expense)}</h3>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center">
-            <ArrowDownRight size={20} />
-          </div>
-        </div>
-        <div className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between ${balance >= 0 ? 'border-b-4 border-b-emerald-500' : 'border-b-4 border-b-rose-500'}`}>
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Balanço do Período</p>
-            <h3 className={`text-xl font-bold ${balance >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{HistoryUtils.formatCurrency(balance)}</h3>
-          </div>
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${balance >= 0 ? 'bg-emerald-50 text-emerald-500' : 'bg-rose-50 text-rose-500'}`}>
-            <Wallet size={20} />
-          </div>
-        </div>
-      </div>
-
-      <HistoryCharts
-        transactions={chartViewFiltered}
-        selectedTimelineCategories={selectedTimelineCategories}
-        setSelectedTimelineCategories={setSelectedTimelineCategories}
-        startDate={startDate}
-        endDate={endDate}
-      />
-
-      {/* BARRA DE EDIÇÃO EM LOTE - Estilo Conciliação */}
+      {/* BARRA DE EDIÇÃO EM LOTE - Estilo Conciliação (AGORA NO TOPO PARA VISIBILIDADE) */}
       {selectedIds.size > 0 && (
-        <div className="sticky top-4 z-50 flex flex-wrap items-center gap-3 p-4 bg-slate-900 rounded-[30px] shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500 border border-slate-800 mb-6 mx-2">
+        <div className="sticky top-4 z-[100] flex flex-wrap items-center gap-3 p-4 bg-slate-900 rounded-[30px] shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500 border border-slate-800 mb-6">
           <div className="flex items-center gap-3 px-4 border-r border-slate-700 mr-2">
             <div className="w-8 h-8 bg-brand-500 rounded-full flex items-center justify-center text-white text-xs font-black">
               {selectedIds.size}
@@ -920,6 +835,94 @@ const HistoryPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <HistoryFilters
+        search={search} setSearch={setSearch} showFilters={showFilters} setShowFilters={setShowFilters}
+        filterType={filterType} setFilterType={setFilterType} filterAccount={filterAccount} setFilterAccount={setFilterAccount}
+        filterCategory={filterCategory} setFilterCategory={setFilterCategory} startDate={startDate} setStartDate={setStartDate}
+        endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
+        filterOwner={filterOwner} setFilterOwner={setFilterOwner} owners={owners}
+        categories={availableCategories} accounts={accounts} resetFilters={resetFilters}
+      />
+
+      {/* QUICK DATE FILTERS + CUSTOM RANGE + VIEW MODE TOGGLE */}
+      <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+        {/* Date presets */}
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setDatePreset('MONTH')} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Este Mês</button>
+          <button onClick={() => setDatePreset(30)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>30 Dias</button>
+          <button onClick={() => setDatePreset(90)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>3 Meses</button>
+          <button onClick={() => setDatePreset('ALL')} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${!startDate && !endDate ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Tudo</button>
+        </div>
+
+        {/* Custom Range picker always visible */}
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100">
+          <Calendar size={14} className="text-slate-400" />
+          <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none w-28" />
+          <span className="text-slate-300">/</span>
+          <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none w-28" />
+        </div>
+
+        {/* Spacer */}
+        <div className="hidden lg:block flex-1" />
+
+        {/* View mode toggle */}
+        <div className="flex bg-slate-100 p-1 rounded-xl gap-1 w-full lg:w-auto">
+          <button
+            onClick={() => setViewMode('ALL')}
+            className={`flex-1 lg:flex-none px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            Todos os Lançamentos
+          </button>
+          <button
+            onClick={() => setViewMode('SETTLED')}
+            className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'SETTLED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            <Check size={12} /> Pagos & Recebidos
+          </button>
+        </div>
+      </div>
+
+      {/* SUMMARY CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Receitas</p>
+            <h3 className="text-xl font-bold text-emerald-500">{HistoryUtils.formatCurrency(summary.income)}</h3>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
+            <ArrowUpRight size={20} />
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Despesas</p>
+            <h3 className="text-xl font-bold text-rose-500">{HistoryUtils.formatCurrency(-summary.expense)}</h3>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center">
+            <ArrowDownRight size={20} />
+          </div>
+        </div>
+        <div className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between ${balance >= 0 ? 'border-b-4 border-b-emerald-500' : 'border-b-4 border-b-rose-500'}`}>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Balanço do Período</p>
+            <h3 className={`text-xl font-bold ${balance >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{HistoryUtils.formatCurrency(balance)}</h3>
+          </div>
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${balance >= 0 ? 'bg-emerald-50 text-emerald-500' : 'bg-rose-50 text-rose-500'}`}>
+            <Wallet size={20} />
+          </div>
+        </div>
+      </div>
+
+      <HistoryCharts
+        transactions={chartViewFiltered}
+        selectedTimelineCategories={selectedTimelineCategories}
+        setSelectedTimelineCategories={setSelectedTimelineCategories}
+        startDate={startDate}
+        endDate={endDate}
+      />
+
+      <div />
 
       <TransactionTable
         transactions={viewFiltered} isLoading={isLoading} accounts={accounts}
