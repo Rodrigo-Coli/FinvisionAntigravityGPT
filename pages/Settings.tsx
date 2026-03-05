@@ -51,6 +51,10 @@ const SettingsPage: React.FC = () => {
   const [isAddingCat, setIsAddingCat] = useState(false);
   const [isAddingEntity, setIsAddingEntity] = useState(false);
   const [categoryTab, setCategoryTab] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
+  const [catSearch, setCatSearch] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editCatName, setEditCatName] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -78,7 +82,9 @@ const SettingsPage: React.FC = () => {
       }
 
       if (activeSection === 'categories') {
-        const { data } = await supabase.from('categories').select('*').eq('user_id', user.id).eq('is_archived', false).order('name');
+        let query = supabase.from('categories').select('*').eq('user_id', user.id).order('name');
+        if (!showArchived) query = query.eq('is_archived', false);
+        const { data } = await query;
         setCategories(data || []);
       }
 
@@ -119,17 +125,31 @@ const SettingsPage: React.FC = () => {
     } catch (err) { alert('Erro ao adicionar'); }
   };
 
-  const archiveCategory = async (id: string) => {
+  const archiveCategory = async (id: string, archive: boolean = true) => {
     if (!supabase) return;
     try {
-      await supabase.from('categories').update({ is_archived: true }).eq('id', id);
+      await supabase.from('categories').update({ is_archived: archive }).eq('id', id);
       fetchData();
-    } catch (err) { alert('Erro ao arquivar'); }
+    } catch (err) { alert(`Erro ao ${archive ? 'arquivar' : 'desarquivar'}`); }
   };
 
   const deleteCategory = async (id: string) => {
-    if (!supabase || !confirm('Deseja excluir permanentemente? (Histórico será preservado)')) return;
+    if (!supabase || !confirm('Deseja excluir permanentemente? (Transações existentes manterão o nome da categoria mas perderão o vínculo de ID)')) return;
     try { await supabase.from('categories').delete().eq('id', id); fetchData(); } catch (err) { alert('Erro ao excluir'); }
+  };
+
+  const startEditingCat = (cat: any) => {
+    setEditingCatId(cat.id);
+    setEditCatName(cat.name);
+  };
+
+  const saveEditCat = async () => {
+    if (!editingCatId || !editCatName || !supabase) return;
+    try {
+      await supabase.from('categories').update({ name: editCatName }).eq('id', editingCatId);
+      setEditingCatId(null);
+      fetchData();
+    } catch (err) { alert('Erro ao salvar'); }
   };
 
   const updateSetting = async (key: string, value: any) => {
@@ -243,7 +263,23 @@ const SettingsPage: React.FC = () => {
                   <p className="text-sm text-slate-400 font-medium">Lançamentos do histórico.</p>
                 </div>
 
-                <div className="flex items-center gap-4 w-full md:w-auto">
+                <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
+                  <div className="relative flex-1 md:w-64">
+                    <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
+                    <input
+                      type="text"
+                      placeholder="Buscar categoria..."
+                      value={catSearch}
+                      onChange={e => setCatSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-white border border-slate-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                    />
+                  </div>
+                  <button
+                    onClick={() => { setShowArchived(!showArchived); fetchData(); }}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${showArchived ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}
+                  >
+                    {showArchived ? 'Ocultar Arquivadas' : 'Ver Arquivadas'}
+                  </button>
                   <div className="flex bg-slate-100 p-1 rounded-xl flex-1 md:flex-none">
                     <button onClick={() => setCategoryTab('INCOME')} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-xs font-bold transition-all ${categoryTab === 'INCOME' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Receitas</button>
                     <button onClick={() => setCategoryTab('EXPENSE')} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-xs font-bold transition-all ${categoryTab === 'EXPENSE' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Despesas</button>
@@ -259,19 +295,41 @@ const SettingsPage: React.FC = () => {
                     <button onClick={() => setIsAddingCat(false)} className="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-slate-200"><XCircle size={24} /></button>
                   </div>
                 )}
-                {categories.filter(c => c.type === categoryTab || (!c.type && categoryTab === 'EXPENSE')).map(cat => (
-                  <div key={cat.id} className="p-6 lg:p-8 flex items-center justify-between group hover:bg-slate-50/50 transition-all">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-4 h-4 rounded-full ${cat.color?.split(' ')[0] || 'bg-brand-500'}`} />
-                      <span className="font-bold text-slate-900 uppercase tracking-widest text-sm">{cat.name}</span>
+                {categories
+                  .filter(c => (c.type === categoryTab || (!c.type && categoryTab === 'EXPENSE')))
+                  .filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase()))
+                  .map(cat => (
+                    <div key={cat.id} className={`p-6 lg:p-8 flex items-center justify-between group hover:bg-slate-50/50 transition-all ${cat.is_archived ? 'opacity-50 grayscale' : ''}`}>
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className={`w-4 h-4 rounded-full ${cat.color?.split(' ')[0] || 'bg-brand-500'}`} />
+                        {editingCatId === cat.id ? (
+                          <div className="flex gap-2 flex-1 max-w-sm">
+                            <input
+                              autoFocus
+                              className="flex-1 bg-white border border-brand-200 rounded-xl px-4 py-2 font-bold text-slate-900 outline-none text-sm"
+                              value={editCatName}
+                              onChange={e => setEditCatName(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && saveEditCat()}
+                            />
+                            <button onClick={saveEditCat} className="p-2 bg-emerald-500 text-white rounded-xl"><Check size={16} /></button>
+                            <button onClick={() => setEditingCatId(null)} className="p-2 bg-slate-100 text-slate-400 rounded-xl"><XCircle size={16} /></button>
+                          </div>
+                        ) : (
+                          <span className="font-bold text-slate-900 uppercase tracking-widest text-sm">{cat.name}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => startEditingCat(cat)} className="p-3 text-slate-200 hover:text-brand-500 hover:bg-brand-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Editar"><Edit3 size={20} /></button>
+                        {cat.is_archived ? (
+                          <button onClick={() => archiveCategory(cat.id, false)} className="p-3 text-slate-200 hover:text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Desarquivar"><Check size={20} /></button>
+                        ) : (
+                          <button onClick={() => archiveCategory(cat.id, true)} className="p-3 text-slate-200 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Arquivar"><Archive size={20} /></button>
+                        )}
+                        <button onClick={() => deleteCategory(cat.id)} className="p-3 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Excluir"><Trash2 size={20} /></button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => archiveCategory(cat.id)} className="p-3 text-slate-200 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Arquivar"><Archive size={20} /></button>
-                      <button onClick={() => deleteCategory(cat.id)} className="p-3 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Excluir"><Trash2 size={20} /></button>
-                    </div>
-                  </div>
-                ))}
-                {categories.filter(c => c.type === categoryTab || (!c.type && categoryTab === 'EXPENSE')).length === 0 && !isAddingCat && (
+                  ))}
+                {categories.filter(c => (c.type === categoryTab || (!c.type && categoryTab === 'EXPENSE'))).filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase())).length === 0 && !isAddingCat && (
                   <div className="p-10 text-center text-slate-400 text-sm font-medium">Nenhuma categoria encontrada.</div>
                 )}
               </div>
