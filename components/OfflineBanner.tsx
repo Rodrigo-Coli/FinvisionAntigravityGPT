@@ -19,6 +19,8 @@ const OfflineBanner: React.FC = () => {
             offlineQueue.processQueue().finally(() => {
                 setSyncing(false);
                 setPendingCount(offlineQueue.getPendingCount());
+                // Força reload da página ou disparar evento para components atualizarem
+                window.dispatchEvent(new CustomEvent('offline-sync-completed'));
             });
         };
         const handleOffline = () => setIsOffline(true);
@@ -62,26 +64,38 @@ const OfflineBanner: React.FC = () => {
                 <div className="flex-1 min-w-0">
                     {isOffline ? (
                         <p className="text-sm font-bold">
-                            📡 Sem conexão — você está usando dados locais.
+                            📡 Offline — as alterações serão salvas localmente e enviadas depois.
                             {pendingCount > 0 && (
                                 <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-xs">
-                                    {pendingCount} lançamento{pendingCount > 1 ? 's' : ''} na fila
+                                    {pendingCount} item{pendingCount > 1 ? 's' : ''} na fila
                                 </span>
                             )}
                         </p>
                     ) : syncing ? (
-                        <p className="text-sm font-bold flex items-center gap-2">
+                        <p className="text-sm font-bold flex items-center gap-2 animate-pulse">
                             <RefreshCw size={14} className="animate-spin" />
-                            Sincronizando {pendingCount} lançamento{pendingCount > 1 ? 's' : ''}...
+                            Sincronizando {pendingCount} lançamento{pendingCount > 1 ? 's' : ''} com a nuvem...
                         </p>
                     ) : (
                         <p className="text-sm font-bold">
-                            ⚠️ {pendingCount} lançamento{pendingCount > 1 ? 's' : ''} aguardando sincronização
+                            ⚠️ Internet restabelecida — {pendingCount} lançamento{pendingCount > 1 ? 's' : ''} aguardando envio.
                         </p>
                     )}
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                    {!isOffline && pendingCount > 0 && !syncing && (
+                        <button
+                            onClick={() => {
+                                setSyncing(true);
+                                offlineQueue.processQueue().finally(() => setSyncing(false));
+                            }}
+                            className="flex items-center gap-1.5 bg-white text-amber-600 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-white/90 transition-colors shadow-sm"
+                        >
+                            <RefreshCw size={14} />
+                            Sincronizar Agora
+                        </button>
+                    )}
                     <button
                         onClick={openWhatsApp}
                         className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
