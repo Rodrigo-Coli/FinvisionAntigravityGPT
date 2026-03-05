@@ -235,10 +235,6 @@ const HistoryPage: React.FC = () => {
       if (hasMoreData) fetchedData.pop();
       setHasMore(hasMoreData);
 
-      // Extract unique owners for the filter
-      const uniqueOwners = ['Pessoal', ...new Set(fetchedData.map((t: any) => t.owner_name).filter(Boolean))];
-      setOwners(uniqueOwners as string[]);
-
       setTransactions(fetchedData.map((t: any) => {
         // Marcamos como incompleto se faltar algum campo que agora consideramos essencial
         // mas que no passado podia ser nulo. Isso não trava o sistema, apenas informa a UI.

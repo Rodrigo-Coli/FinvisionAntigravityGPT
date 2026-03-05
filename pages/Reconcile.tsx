@@ -55,6 +55,10 @@ const Reconcile: React.FC = () => {
   const [counterAccountId, setCounterAccountId] = useState<string>('');
   const [processingItemId, setProcessingItemId] = useState<string | null>(null);
 
+  // Filtros
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showOnlyDuplicates, setShowOnlyDuplicates] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -226,11 +230,24 @@ const Reconcile: React.FC = () => {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds(new Set(imported.map(t => t.id)));
+      setSelectedIds(new Set(filteredImported.map(t => t.id)));
     } else {
       setSelectedIds(new Set());
     }
   };
+
+  const applyBulkEdit = (field: string, value: any) => {
+    if (!value) return;
+    setImported(prev => prev.map(item =>
+      selectedIds.has(item.id) ? { ...item, [field]: value } : item
+    ));
+  };
+
+  const filteredImported = imported.filter(item => {
+    const matchesSearch = item.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesDuplicate = showOnlyDuplicates ? item.potential_duplicate : true;
+    return matchesSearch && matchesDuplicate;
+  });
 
   const handleIgnore = async (id: string) => {
     try {
@@ -462,23 +479,68 @@ const Reconcile: React.FC = () => {
               </div>
             </div>
 
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto mt-4 sm:mt-0">
+              <div className="relative w-full sm:w-64">
+                <Tag size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nome..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-white border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                />
+              </div>
+              <button
+                onClick={() => setShowOnlyDuplicates(!showOnlyDuplicates)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border shadow-sm ${showOnlyDuplicates ? 'bg-amber-500 border-amber-500 text-white shadow-amber-200' : 'bg-white border-slate-100 text-slate-400 hover:border-amber-200'}`}
+              >
+                <AlertCircle size={14} /> {showOnlyDuplicates ? 'Mostrando Duplicados' : 'Filtrar Duplicados'}
+              </button>
+            </div>
+
             {selectedIds.size > 0 && (
-              <div className="flex items-center gap-2 animate-in slide-in-from-right-2 duration-300">
-                <span className="text-[10px] font-bold text-slate-400 uppercase mr-2">{selectedIds.size} selecionado(s)</span>
-                <button
-                  onClick={handleBulkConfirm}
-                  disabled={isProcessing}
-                  className="px-4 py-2 bg-slate-900 text-white text-[9px] font-bold uppercase tracking-widest rounded-lg hover:bg-brand-600 transition-colors shadow-md shadow-slate-200"
-                >
-                  <Check size={14} className="inline mr-1" /> Confirmar Seleção
-                </button>
-                <button
-                  onClick={handleBulkIgnore}
-                  disabled={isProcessing}
-                  className="px-4 py-2 bg-amber-500 text-white text-[9px] font-bold uppercase tracking-widest rounded-lg hover:bg-amber-600 transition-colors shadow-md shadow-amber-100"
-                >
-                  <X size={14} className="inline mr-1" /> Ignorar Seleção
-                </button>
+              <div className="flex flex-wrap items-center gap-2 p-4 bg-slate-900 rounded-[24px] shadow-2xl animate-in zoom-in duration-300 w-full lg:w-auto">
+                <div className="flex items-center gap-2 px-3 border-r border-slate-700 mr-2">
+                  <span className="text-[10px] font-black text-brand-400 uppercase tracking-widest">{selectedIds.size}</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selecionados</span>
+                </div>
+
+                <div className="flex items-center gap-2 flex-1 sm:flex-none">
+                  <select
+                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px]"
+                    onChange={(e) => applyBulkEdit('category', e.target.value)}
+                    value=""
+                  >
+                    <option value="">Definir Categoria...</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+
+                  <select
+                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px]"
+                    onChange={(e) => applyBulkEdit('owner_name', e.target.value)}
+                    value=""
+                  >
+                    <option value="">Definir Entidade...</option>
+                    {owners.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleBulkConfirm}
+                    disabled={isProcessing}
+                    className="px-4 py-2 bg-brand-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-brand-500 transition-colors"
+                  >
+                    Confirmar Tudo
+                  </button>
+                  <button
+                    onClick={handleBulkIgnore}
+                    disabled={isProcessing}
+                    className="px-4 py-2 bg-slate-800 text-slate-400 text-[9px] font-bold uppercase tracking-widest rounded-lg hover:bg-rose-600 hover:text-white transition-all"
+                  >
+                    Ignorar
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -488,9 +550,9 @@ const Reconcile: React.FC = () => {
               <Loader2 size={40} className="animate-spin text-slate-200 mb-4" />
               <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Mapeando transações...</p>
             </div>
-          ) : imported.length > 0 ? (
+          ) : filteredImported.length > 0 ? (
             <div className="space-y-4">
-              {imported.map(item => {
+              {filteredImported.map(item => {
                 const isEditing = editingId === item.id;
                 const categoryValue = isEditing ? editForm.category : (item.category || 'Conciliação');
                 const isTransfer = categoryValue.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');

@@ -28,12 +28,13 @@ import {
   Search,
   ArrowUpRight,
   Archive,
+  Building2,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { DateUtils } from '../lib/dateUtils';
 
 const SettingsPage: React.FC = () => {
-  const [activeSection, setActiveSection] = useState<'general' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates'>('general');
+  const [activeSection, setActiveSection] = useState<'general' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities'>('general');
   const [settings, setSettings] = useState({
     email_notifications: true,
     auto_dark_mode: false,
@@ -44,8 +45,11 @@ const SettingsPage: React.FC = () => {
   const [categories, setCategories] = useState<any[]>([]);
   const [establishments, setEstablishments] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [entities, setEntities] = useState<string[]>([]);
   const [newCatName, setNewCatName] = useState('');
+  const [newEntityName, setNewEntityName] = useState('');
   const [isAddingCat, setIsAddingCat] = useState(false);
+  const [isAddingEntity, setIsAddingEntity] = useState(false);
   const [categoryTab, setCategoryTab] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
 
   useEffect(() => {
@@ -93,6 +97,11 @@ const SettingsPage: React.FC = () => {
         const { data } = await supabase.from('products').select('*').eq('user_id', user.id).eq('active', true).order('name');
         setProducts(data || []);
       }
+
+      if (activeSection === 'entities') {
+        const { data } = await supabase.from('entities').select('name').eq('user_id', user.id).order('name');
+        setEntities((data || []).map((e: any) => e.name));
+      }
     } catch (err) {
       console.error('Error:', err);
     } finally {
@@ -134,9 +143,30 @@ const SettingsPage: React.FC = () => {
     } catch (err) { setSettings(previousSettings); }
   };
 
+  const addEntity = async () => {
+    if (!newEntityName || !supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('entities').upsert({ user_id: user.id, name: newEntityName }, { onConflict: 'user_id, name' });
+      setNewEntityName(''); setIsAddingEntity(false); fetchData();
+    } catch (err) { alert('Erro ao adicionar'); }
+  };
+
+  const deleteEntity = async (name: string) => {
+    if (!supabase || !confirm(`Deseja excluir a entidade "${name}"? Registros existentes não serão alterados.`)) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('entities').delete().eq('user_id', user.id).eq('name', name);
+      fetchData();
+    } catch (err) { alert('Erro ao excluir'); }
+  };
+
   const menuItems = [
     { id: 'general', label: 'Preferências', icon: <SettingsIcon size={18} /> },
     { id: 'categories', label: 'Categorias', icon: <Tags size={18} /> },
+    { id: 'entities', label: 'Entidades / Donos', icon: <Building2 size={18} /> },
     { id: 'establishments', label: 'Estabelecimentos', icon: <Store size={18} /> },
     { id: 'rates', label: 'Taxas e Conversão', icon: <Percent size={18} /> },
     { id: 'backup', label: 'Backup e Dados', icon: <Cloud size={18} />, divider: true },
@@ -332,6 +362,49 @@ const SettingsPage: React.FC = () => {
                   <span className="font-bold text-slate-900">BR - Real</span>
                   <Check className="text-brand-600" />
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'entities' && (
+            <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden border-b-4 border-b-slate-100 animate-in slide-in-from-bottom-4 duration-500">
+              <div className="p-10 border-b border-slate-50 flex justify-between items-center bg-slate-50/20">
+                <div className="space-y-1">
+                  <h2 className="text-xl font-bold text-slate-900 italic">Entidades e Donos</h2>
+                  <p className="text-sm text-slate-400 font-medium">Gestão global de perfis de gastos.</p>
+                </div>
+                <button onClick={() => setIsAddingEntity(true)} className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all flex items-center gap-2">
+                  <Plus size={16} /> Nova Entidade
+                </button>
+              </div>
+              <div className="divide-y divide-slate-50">
+                {isAddingEntity && (
+                  <div className="p-10 flex gap-4 bg-brand-50/30">
+                    <input autoFocus className="flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm" placeholder="Nome da entidade (Ex: Família, Empresa, Pessoal)..." value={newEntityName} onChange={e => setNewEntityName(e.target.value)} />
+                    <button onClick={addEntity} className="w-16 h-16 bg-brand-600 text-white rounded-2xl flex items-center justify-center shadow-lg transition-transform hover:scale-105"><Check size={24} /></button>
+                    <button onClick={() => setIsAddingEntity(false)} className="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-slate-200"><XCircle size={24} /></button>
+                  </div>
+                )}
+                {entities.map((name) => (
+                  <div key={name} className="p-8 flex items-center justify-between group hover:bg-slate-50/50 transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-slate-100 text-slate-400 rounded-xl flex items-center justify-center group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors">
+                        <Building2 size={20} />
+                      </div>
+                      <span className="font-bold text-slate-900 uppercase tracking-widest text-sm">{name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {name !== 'Pessoal' && (
+                        <button onClick={() => deleteEntity(name)} className="p-3 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Excluir">
+                          <Trash2 size={20} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {entities.length === 0 && !isAddingEntity && (
+                  <div className="p-10 text-center text-slate-400 text-sm font-medium">Nenhuma entidade cadastrada.</div>
+                )}
               </div>
             </div>
           )}
