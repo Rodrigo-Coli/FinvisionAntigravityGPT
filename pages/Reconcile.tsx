@@ -53,6 +53,7 @@ const Reconcile: React.FC = () => {
   const [owners, setOwners] = useState<string[]>(['Pessoal']);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [counterAccountId, setCounterAccountId] = useState<string>('');
+  const [processingItemId, setProcessingItemId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -196,7 +197,7 @@ const Reconcile: React.FC = () => {
   const saveEdit = async (id: string) => {
     try {
       await ReconciliationService.updateTransactionStatus(id, editForm.status, editForm.owner_name);
-      setImported(prev => prev.map(t => t.id === id ? { ...t, owner_name: editForm.owner_name } : t));
+      setImported(prev => prev.map(t => t.id === id ? { ...t, owner_name: editForm.owner_name, category: editForm.category } : t));
       setEditingId(null);
     } catch (e) { alert("Erro ao salvar"); }
   };
@@ -317,6 +318,7 @@ const Reconcile: React.FC = () => {
     if (!targetId && !isBulk) return alert("Selecione um destino (Banco/Cartão)");
     if (!targetId) return; // Pula em bulk se não tiver destino
 
+    setProcessingItemId(item.id);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -374,6 +376,8 @@ const Reconcile: React.FC = () => {
     } catch (e) {
       if (!isBulk) alert("Erro na confirmação");
       throw e;
+    } finally {
+      setProcessingItemId(null);
     }
   };
 
@@ -502,7 +506,11 @@ const Reconcile: React.FC = () => {
 
                         {/* Status Icon */}
                         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${item.amount < 0 ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-500'}`}>
-                          <RefreshCw size={24} className={isEditing ? 'animate-spin' : ''} />
+                          {processingItemId === item.id ? (
+                            <Loader2 size={24} className="animate-spin" />
+                          ) : (
+                            <RefreshCw size={24} />
+                          )}
                         </div>
 
                         {/* Data Sections */}
@@ -609,23 +617,30 @@ const Reconcile: React.FC = () => {
 
                         {/* Actions */}
                         <div className="flex items-center gap-2 border-l border-slate-50 pl-6">
-                          {isEditing ? (
-                            <button onClick={() => saveEdit(item.id)} className="p-3 bg-brand-600 text-white rounded-xl shadow-lg shadow-brand-100 hover:bg-slate-900 transition-all"><Check size={20} /></button>
-                          ) : (
-                            <>
-                              {item.potential_duplicate ? (
-                                <div className="flex flex-col gap-2">
-                                  <button onClick={() => handleIgnore(item.id)} className="h-9 px-4 bg-amber-500 text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-amber-600 shadow-md shadow-amber-200 transition-all active:scale-95">Ignorar (Duplicado)</button>
-                                  <button onClick={() => handleConfirm(item)} className="h-9 px-4 border border-rose-200 text-rose-500 bg-white text-[9px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-rose-50 hover:border-rose-300 transition-all active:scale-95">Forçar Inserção</button>
-                                </div>
-                              ) : (
-                                <>
-                                  <button onClick={() => handleConfirm(item)} className="h-12 px-6 bg-slate-900 text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-xl hover:bg-brand-600 shadow-xl shadow-slate-200 transition-all active:scale-95">Confirmar</button>
-                                  <button onClick={() => handleIgnore(item.id)} className="p-3 text-slate-300 hover:text-rose-500 transition-colors"><XCircle size={20} /></button>
-                                </>
+                          <div className="flex flex-col gap-2">
+                            {/* Botão de Confirmar Principal (Sempre visível para facilitar) */}
+                            <button
+                              onClick={() => handleConfirm(item)}
+                              disabled={processingItemId === item.id}
+                              className={`h-12 px-6 ${item.amount < 0 ? 'bg-rose-600' : 'bg-emerald-600'} text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-xl hover:opacity-90 shadow-xl transition-all active:scale-95 disabled:opacity-50`}
+                            >
+                              {processingItemId === item.id ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'Confirmar'}
+                            </button>
+
+                            <div className="flex items-center gap-2">
+                              {isEditing && (
+                                <button onClick={() => saveEdit(item.id)} title="Apenas salvar rascunho" className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-all"><Check size={16} /></button>
                               )}
-                            </>
-                          )}
+
+                              {item.potential_duplicate && !isEditing && (
+                                <button onClick={() => handleIgnore(item.id)} className="h-9 px-3 bg-amber-500 text-white text-[8px] font-bold uppercase rounded-lg hover:bg-amber-600 transition-all">Ignorar</button>
+                              )}
+
+                              <button onClick={() => handleIgnore(item.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors">
+                                <XCircle size={18} />
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
