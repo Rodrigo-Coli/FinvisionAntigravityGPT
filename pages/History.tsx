@@ -506,9 +506,9 @@ const HistoryPage: React.FC = () => {
 
   // Summary Calculations based on chartViewFiltered (respects 'Pagos & Recebidos' toggle)
   const summary = chartViewFiltered.reduce((acc, t) => {
-    if (t.is_amortization) return acc;
+    if (t.is_amortization || t.type === 'TRANSFER') return acc;
     if (t.type === 'INCOME') acc.income += Number(t.amount);
-    else if (t.type === 'EXPENSE') acc.expense += Math.abs(Number(t.amount));
+    else if (t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT') acc.expense += Math.abs(Number(t.amount));
     return acc;
   }, { income: 0, expense: 0 });
   const balance = summary.income - summary.expense;

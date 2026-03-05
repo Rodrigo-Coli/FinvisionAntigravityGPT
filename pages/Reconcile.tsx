@@ -185,6 +185,9 @@ const Reconcile: React.FC = () => {
   };
 
   const startEditing = (item: ImportedTransaction, initialCategory?: string) => {
+    const isTrans = initialCategory?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') ||
+      item.category?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
+
     setEditingId(item.id);
     setEditForm({
       ...item,
@@ -337,11 +340,17 @@ const Reconcile: React.FC = () => {
         // Transação principal
         await supabase.from('transactions').insert({
           user_id: user.id, date: item.date, description: item.description,
-          amount: Math.abs(item.amount), type: item.amount < 0 ? 'EXPENSE' : 'INCOME',
+          amount: Math.abs(item.amount),
+          type: isTransfer ? 'TRANSFER' : (item.amount < 0 ? 'EXPENSE' : 'INCOME'),
           account_id: targetId, account_name: acc?.institution || 'Conta',
           category: categoryName,
           owner_name: owner, is_paid: true, paid_at: item.date,
-          metadata: { category_id: finalCategoryId, is_transfer: isTransfer, counter_account_id: isTransfer ? counterId : null }
+          metadata: {
+            category_id: finalCategoryId,
+            is_transfer: true,
+            transfer_side: item.amount < 0 ? 'SOURCE' : 'DESTINATION',
+            counter_account_id: isTransfer ? counterId : null
+          }
         });
         await supabase.rpc('recalculate_account_balance', { p_account_id: targetId });
 
@@ -352,12 +361,17 @@ const Reconcile: React.FC = () => {
             user_id: user.id, date: item.date,
             description: `[TRANSF] ${item.description}`,
             amount: Math.abs(item.amount),
-            type: item.amount < 0 ? 'INCOME' : 'EXPENSE', // Inverte o tipo
+            type: 'TRANSFER',
             account_id: counterId,
             account_name: counterAcc?.institution || 'Conta Destino',
             category: categoryName,
             owner_name: owner, is_paid: true, paid_at: item.date,
-            metadata: { category_id: finalCategoryId, is_transfer: true, source_transaction_id: item.id }
+            metadata: {
+              category_id: finalCategoryId,
+              is_transfer: true,
+              transfer_side: item.amount < 0 ? 'DESTINATION' : 'SOURCE',
+              source_transaction_id: item.id
+            }
           });
           await supabase.rpc('recalculate_account_balance', { p_account_id: counterId });
         }
