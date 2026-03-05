@@ -243,6 +243,27 @@ const Reconcile: React.FC = () => {
     ));
   };
 
+  const handleEntityChange = async (val: string, item?: any) => {
+    let finalValue = val;
+    if (val === 'NEW') {
+      const name = window.prompt("Nome da nova Entidade (ex: Empresa, Família, Pessoal):");
+      if (!name) return;
+      await FinanceService.ensureEntityExists(name);
+      await fetchOwners();
+      finalValue = name;
+    }
+
+    if (item) {
+      if (editingId === item.id) {
+        setEditForm({ ...editForm, owner_name: finalValue });
+      } else {
+        setImported(prev => prev.map(tx => tx.id === item.id ? { ...tx, owner_name: finalValue } : tx));
+      }
+    } else {
+      applyBulkEdit('owner_name', finalValue);
+    }
+  };
+
   const filteredImported = imported.filter(item => {
     const matchesSearch = item.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesDuplicate = showOnlyDuplicates ? item.potential_duplicate : true;
@@ -517,11 +538,12 @@ const Reconcile: React.FC = () => {
 
                   <select
                     className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px]"
-                    onChange={(e) => applyBulkEdit('owner_name', e.target.value)}
+                    onChange={(e) => handleEntityChange(e.target.value)}
                     value=""
                   >
                     <option value="">Definir Entidade...</option>
                     {owners.map(o => <option key={o} value={o}>{o}</option>)}
+                    <option value="NEW">+ Criar Nova...</option>
                   </select>
                 </div>
 
@@ -644,7 +666,7 @@ const Reconcile: React.FC = () => {
                               <Building2 size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
                               <select
                                 value={isEditing ? editForm.owner_name : (item.owner_name || 'Pessoal')}
-                                onChange={e => isEditing ? setEditForm({ ...editForm, owner_name: e.target.value }) : startEditing(item)}
+                                onChange={e => handleEntityChange(e.target.value, item)}
                                 className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none"
                               >
                                 {owners.map(o => <option key={o} value={o}>{o}</option>)}
@@ -665,7 +687,7 @@ const Reconcile: React.FC = () => {
                                   if (isEditing) setEditForm({ ...editForm, counterAccountId: e.target.value });
                                   else {
                                     startEditing(item);
-                                    setEditForm(prev => ({ ...prev, counterAccountId: e.target.value }));
+                                    setEditForm((prev: any) => ({ ...prev, counterAccountId: e.target.value }));
                                   }
                                 }}
                                 className="w-full bg-amber-50 border border-amber-100 rounded-xl text-[10px] font-bold p-2 outline-none appearance-none cursor-pointer text-amber-900"
