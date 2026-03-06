@@ -141,16 +141,6 @@ const HistoryPage: React.FC = () => {
     return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   };
 
-  const getAccentRegex = (s: string) => {
-    if (!s) return '';
-    // Escapar caracteres especiais de Regex
-    const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const map: Record<string, string> = {
-      'a': '[aáàãâä]', 'e': '[eéèêë]', 'i': '[iíìîï]', 'o': '[oóòõôö]', 'u': '[uúùûü]', 'c': '[cç]'
-    };
-    return escaped.toLowerCase().split('').map(c => map[c] || c).join('').replace(/\s+/g, '.*');
-  };
-
   // Build ilike pattern from search text for Supabase queries
   // Generates accent variants so 'mae' matches 'mãe'
   const buildSearchFilter = (s: string): string => {

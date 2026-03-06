@@ -253,8 +253,6 @@ const CreditCardsPage: React.FC = () => {
 
       setCurrentStatement(current || null);
 
-      setCurrentStatement(current || null);
-
       // Se não houver seleção manual, focar na atual
       const targetId = selectedStatementId === 'CURRENT' ? current?.id : selectedStatementId;
       await fetchTransactions(cardId, targetId === 'ALL' ? null : targetId);
@@ -281,31 +279,7 @@ const CreditCardsPage: React.FC = () => {
     return data || [];
   };
 
-  const fetchCurrentStatement = async (cardId: string) => {
-    if (!supabase) return null;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const openStatuses = ['OPEN', 'DUE', 'PENDING'];
-    const openTry = await supabase
-      .from('card_statements')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('card_id', cardId)
-      .in('status', openStatuses)
-      .order('due_date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (!openTry.error && openTry.data) return openTry.data;
-    const latestTry = await supabase
-      .from('card_statements')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('card_id', cardId)
-      .order('due_date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    return latestTry.data || null;
-  };
+
 
   const fetchTransactions = async (cardId: string, statementId?: string | null) => {
     if (!supabase) return;

@@ -111,8 +111,8 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
       {/* Mobile Menu Overlay */}
       <div className={`fixed inset-0 z-40 lg:hidden transition-all duration-300 ${isMenuOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
         <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm" onClick={() => setIsMenuOpen(false)} />
-        <div className={`absolute top-0 left-0 w-4/5 h-full bg-white shadow-2xl p-6 transition-all duration-300 transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-          <div className="flex items-center justify-between mb-10">
+        <div className={`absolute top-0 left-0 w-4/5 h-full bg-white shadow-2xl flex flex-col transition-all duration-300 transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+          <div className="flex items-center justify-between p-6 pb-4">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-brand-600 rounded-lg" />
               <span className="font-bold text-slate-900">FinVision Pro</span>
@@ -120,7 +120,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
             <button onClick={() => setIsMenuOpen(false)} className="text-slate-400"><X size={24} /></button>
           </div>
 
-          <div className="space-y-2">
+          <div className="flex-1 overflow-y-auto px-6 space-y-2">
             {items.map(item => (
               <Link
                 key={item.path}
@@ -137,7 +137,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
             ))}
           </div>
 
-          <div className="absolute bottom-8 left-6 right-6 pt-6 border-t border-slate-100">
+          <div className="p-6 pt-4 border-t border-slate-100">
             <button
               onClick={() => supabase?.auth.signOut()}
               className="flex items-center gap-4 w-full p-4 text-rose-500 font-bold"
