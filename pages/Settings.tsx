@@ -211,23 +211,39 @@ const SettingsPage: React.FC = () => {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-10">
-        {/* SIDEBAR NAVIGATION */}
-        <aside className="w-full lg:w-72 flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-4 lg:pb-0 scrollbar-hide shrink-0">
-          {menuItems.map((item) => (
-            <React.Fragment key={item.id}>
-              {item.divider && <div className="hidden lg:block h-px bg-slate-100 my-4 mx-4"></div>}
-              <button
-                onClick={() => setActiveSection(item.id as any)}
-                className={`flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-bold uppercase tracking-widest transition-all whitespace-nowrap ${activeSection === item.id
-                  ? 'bg-slate-900 text-white shadow-xl shadow-slate-200'
-                  : 'bg-white text-slate-400 hover:bg-slate-50 border border-slate-100'
-                  }`}
-              >
-                {item.icon}
-                {item.label}
-              </button>
-            </React.Fragment>
-          ))}
+        {/* SIDEBAR NAVIGATION — Dropdown on mobile, buttons on desktop */}
+        <aside className="w-full lg:w-72 shrink-0">
+          {/* Mobile: Dropdown select */}
+          <div className="block lg:hidden">
+            <select
+              value={activeSection}
+              onChange={e => setActiveSection(e.target.value as any)}
+              className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 outline-none shadow-sm appearance-none cursor-pointer"
+              style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 16px center' }}
+            >
+              {menuItems.map(item => (
+                <option key={item.id} value={item.id}>{item.label}</option>
+              ))}
+            </select>
+          </div>
+          {/* Desktop: Full sidebar buttons */}
+          <div className="hidden lg:flex flex-col gap-2">
+            {menuItems.map((item) => (
+              <React.Fragment key={item.id}>
+                {item.divider && <div className="h-px bg-slate-100 my-4 mx-4"></div>}
+                <button
+                  onClick={() => setActiveSection(item.id as any)}
+                  className={`flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-bold uppercase tracking-widest transition-all whitespace-nowrap ${activeSection === item.id
+                    ? 'bg-slate-900 text-white shadow-xl shadow-slate-200'
+                    : 'bg-white text-slate-400 hover:bg-slate-50 border border-slate-100'
+                    }`}
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
+              </React.Fragment>
+            ))}
+          </div>
         </aside>
 
         {/* CONTENT AREA */}

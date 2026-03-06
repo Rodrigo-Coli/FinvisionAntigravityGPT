@@ -21,7 +21,9 @@ import SettingsPage from './pages/Settings';
 import Goals from './pages/Goals';
 import Budget from './pages/Budget';
 import { TourProvider } from './contexts/TourContext';
+import { ToastProvider } from './contexts/ToastContext';
 import OfflineBanner from './components/OfflineBanner';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const App: React.FC = () => {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -80,46 +82,50 @@ const App: React.FC = () => {
   }
 
   return (
-    <HashRouter>
-      <OfflineBanner />
-      <TourProvider>
-        <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 font-sans">
-          {profile?.is_approved && <Nav user={profile} />}
-          <main className="flex-grow overflow-x-hidden min-w-0">
-            <Routes>
-              <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
-              <Route path="/signup" element={!session ? <Signup /> : <Navigate to="/" />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
+    <ErrorBoundary>
+      <HashRouter>
+        <OfflineBanner />
+        <TourProvider>
+          <ToastProvider>
+            <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 dark:bg-slate-900 font-sans">
+              {profile?.is_approved && <Nav user={profile} />}
+              <main className="flex-grow overflow-x-hidden min-w-0">
+                <Routes>
+                  <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
+                  <Route path="/signup" element={!session ? <Signup /> : <Navigate to="/" />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
 
-              {!session ? (
-                <Route path="*" element={<Navigate to="/login" replace />} />
-              ) : !profile?.is_approved ? (
-                <>
-                  <Route path="/pending" element={<PendingApproval user={profile || { email: session.user.email } as any} />} />
-                  <Route path="*" element={<Navigate to="/pending" replace />} />
-                </>
-              ) : (
-                <>
-                  <Route path="/" element={<Home user={profile} />} />
-                  <Route path="/accounts" element={<Accounts />} />
-                  <Route path="/cards" element={<CreditCardsPage />} />
-                  <Route path="/assets" element={<Assets />} />
-                  <Route path="/goals" element={<Goals user={profile} />} />
-                  <Route path="/budget" element={<Budget user={profile} />} />
-                  <Route path="/reconcile" element={<Reconcile />} />
-                  <Route path="/history" element={<HistoryPage />} />
-                  <Route path="/ai" element={<AIModule user={profile} />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  {profile.role === UserRole.ADMIN && <Route path="/admin/usuarios" element={<AdminUsers currentUser={profile} />} />}
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </>
-              )}
-            </Routes>
-          </main>
-        </div>
-      </TourProvider>
-    </HashRouter>
+                  {!session ? (
+                    <Route path="*" element={<Navigate to="/login" replace />} />
+                  ) : !profile?.is_approved ? (
+                    <>
+                      <Route path="/pending" element={<PendingApproval user={profile || { email: session.user.email } as any} />} />
+                      <Route path="*" element={<Navigate to="/pending" replace />} />
+                    </>
+                  ) : (
+                    <>
+                      <Route path="/" element={<Home user={profile} />} />
+                      <Route path="/accounts" element={<Accounts />} />
+                      <Route path="/cards" element={<CreditCardsPage />} />
+                      <Route path="/assets" element={<Assets />} />
+                      <Route path="/goals" element={<Goals user={profile} />} />
+                      <Route path="/budget" element={<Budget user={profile} />} />
+                      <Route path="/reconcile" element={<Reconcile />} />
+                      <Route path="/history" element={<HistoryPage />} />
+                      <Route path="/ai" element={<AIModule user={profile} />} />
+                      <Route path="/settings" element={<SettingsPage />} />
+                      {profile.role === UserRole.ADMIN && <Route path="/admin/usuarios" element={<AdminUsers currentUser={profile} />} />}
+                      <Route path="*" element={<Navigate to="/" replace />} />
+                    </>
+                  )}
+                </Routes>
+              </main>
+            </div>
+          </ToastProvider>
+        </TourProvider>
+      </HashRouter>
+    </ErrorBoundary>
   );
 };
 
