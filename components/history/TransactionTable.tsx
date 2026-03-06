@@ -557,9 +557,28 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                     </td>
 
                                     <td className="px-6 py-4 text-right">
-                                        <span className={`text-sm font-bold ${t.type === 'INCOME' ? 'text-emerald-600' : 'text-slate-900'}`}>
-                                            {t.type === 'EXPENSE' ? '-' : ''}{formatCurrency(amount)}
-                                        </span>
+                                        {editingRow?.id === t.id && editingRow.field === 'amount' ? (
+                                            <div className="flex items-center justify-end gap-1">
+                                                <span className="text-sm font-bold text-slate-400">{t.type === 'EXPENSE' ? '-' : ''}</span>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    autoFocus
+                                                    className="w-28 h-8 px-2 text-sm font-bold text-right bg-white border border-brand-500 rounded outline-none"
+                                                    value={editValue}
+                                                    onChange={e => setEditValue(e.target.value)}
+                                                    onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'amount', parseFloat(editValue))}
+                                                    onBlur={() => handleUpdate(t.id, 'amount', parseFloat(editValue))}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => { setEditingRow({ id: t.id, field: 'amount' }); setEditValue(Math.abs(t.amount).toString()); }}
+                                                className={`text-sm font-bold hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer ${t.type === 'INCOME' ? 'text-emerald-600' : 'text-slate-900'}`}
+                                            >
+                                                {t.type === 'EXPENSE' ? '-' : ''}{formatCurrency(amount)}
+                                            </button>
+                                        )}
                                     </td>
 
                                     {/* Desktop actions — always visible, not hover-only */}

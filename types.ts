@@ -159,6 +159,12 @@ export interface CreditCardDetailed {
   }[];
 }
 
+export interface Entity {
+  id: string;
+  name: string;
+  isArchived: boolean;
+}
+
 export interface Category {
   id: string;
   user_id: string;

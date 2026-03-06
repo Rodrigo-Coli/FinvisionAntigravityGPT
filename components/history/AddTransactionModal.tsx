@@ -145,15 +145,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Entidade / Solicitante</label>
-                            <select
+                            <input
+                                list="owners-list"
                                 value={form.ownerName}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => setAddField('ownerName', e.target.value)}
-                                className="w-full h-14 px-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
-                            >
-                                {owners.map((o: any) => (
-                                    <option key={o} value={o}>{o}</option>
+                                placeholder="Selecione ou digite..."
+                                className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
+                            />
+                            <datalist id="owners-list">
+                                {owners.sort((a, b) => a.localeCompare(b)).map((o: any) => (
+                                    <option key={o} value={o} />
                                 ))}
-                            </select>
+                            </datalist>
                         </div>
 
                         <div className="space-y-2">
@@ -199,15 +203,21 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                     </button>
                                 </div>
                             ) : (
-                                <select
-                                    value={form.category}
-                                    onChange={(e) => setAddField('category', e.target.value)}
-                                    className="w-full h-14 px-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
-                                >
-                                    {filteredCategories.map((c: any) => (
-                                        <option key={c.name} value={c.name}>{c.name}</option>
-                                    ))}
-                                </select>
+                                <div className="relative">
+                                    <input
+                                        list="add-categories-list"
+                                        value={form.category}
+                                        onFocus={(e) => e.target.select()}
+                                        onChange={(e) => setAddField('category', e.target.value)}
+                                        placeholder="Selecione ou digite..."
+                                        className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
+                                    />
+                                    <datalist id="add-categories-list">
+                                        {filteredCategories.sort((a, b) => a.name.localeCompare(b.name)).map((c: any) => (
+                                            <option key={c.name} value={c.name} />
+                                        ))}
+                                    </datalist>
+                                </div>
                             )}
                         </div>
 

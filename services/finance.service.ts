@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase/client';
-import { BankAccount, Transaction, CreditCardDetailed } from '../types';
+import { BankAccount, Transaction, CreditCardDetailed, Entity } from '../types';
 
 export const FinanceService = {
   // Contas
@@ -178,13 +178,17 @@ export const FinanceService = {
   },
 
   // Entidades (Proprietários)
-  getEntities: async (): Promise<string[]> => {
+  getEntities: async (includeArchived = false): Promise<string[]> => {
     if (!supabase) return ['Pessoal'];
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return ['Pessoal'];
 
-      const { data, error } = await supabase.from('entities').select('name').eq('user_id', user.id).order('name');
+      let query = supabase.from('entities').select('name').eq('user_id', user.id);
+      if (!includeArchived) query = query.eq('is_archived', false);
+
+      const { data, error } = await query.order('name');
+
       if (error) {
         // Fallback: se a tabela não existir, busca das transações
         const { data: txData } = await supabase.from('transactions').select('owner_name').not('owner_name', 'is', null);
@@ -194,6 +198,34 @@ export const FinanceService = {
     } catch (e) {
       return ['Pessoal'];
     }
+  },
+
+  archiveEntity: async (name: string, archive: boolean = true): Promise<void> => {
+    if (!supabase || !name || name === 'Pessoal') return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase.from('entities')
+      .update({ is_archived: archive })
+      .eq('user_id', user.id)
+      .eq('name', name);
+  },
+
+  getEntityObjects: async (includeArchived = false): Promise<Entity[]> => {
+    if (!supabase) return [];
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    let query = supabase.from('entities').select('*').eq('user_id', user.id);
+    if (!includeArchived) query = query.eq('is_archived', false);
+    const { data, error } = await query.order('name');
+    if (error) return [];
+
+    return (data || []).map((e: any) => ({
+      id: e.id,
+      name: e.name,
+      isArchived: e.is_archived
+    }));
   },
 
   ensureEntityExists: async (name: string): Promise<void> => {
