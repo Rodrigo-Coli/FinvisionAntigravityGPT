@@ -151,6 +151,66 @@ const HistoryPage: React.FC = () => {
     return escaped.toLowerCase().split('').map(c => map[c] || c).join('').replace(/\s+/g, '.*');
   };
 
+  // Build ilike pattern from search text for Supabase queries
+  // Generates accent variants so 'mae' matches 'mãe'
+  const buildSearchFilter = (s: string): string => {
+    if (!s) return '';
+    const term = s.trim();
+    if (!term) return '';
+
+    // Generate accent variant of the search term
+    const accentMap: Record<string, string[]> = {
+      'a': ['a', 'á', 'à', 'ã', 'â', 'ä'], 'e': ['e', 'é', 'è', 'ê', 'ë'],
+      'i': ['i', 'í', 'ì', 'î', 'ï'], 'o': ['o', 'ó', 'ò', 'õ', 'ô', 'ö'],
+      'u': ['u', 'ú', 'ù', 'û', 'ü'], 'c': ['c', 'ç']
+    };
+
+    // Generate the accented version of the term
+    const generateVariants = (text: string): string[] => {
+      const lower = text.toLowerCase();
+      const variants = new Set<string>([`%${lower}%`]);
+
+      // For each character that has accent variants, generate the accented version
+      let accented = '';
+      for (const ch of lower) {
+        const alternatives = accentMap[ch];
+        if (alternatives && alternatives.length > 1) {
+          // Add the most common accent for this character
+          accented += alternatives[1]; // e.g., 'a' -> 'á'
+        } else {
+          accented += ch;
+        }
+      }
+      if (accented !== lower) variants.add(`%${accented}%`);
+
+      // Also try common Portuguese accent patterns
+      const ptVariants: Record<string, string> = {
+        'mae': 'mãe', 'cao': 'cão', 'nao': 'não', 'sao': 'são',
+        'acai': 'açaí', 'cafe': 'café', 'voce': 'você',
+        'transferencia': 'transferência', 'servico': 'serviço',
+        'alimentacao': 'alimentação', 'educacao': 'educação',
+        'habitacao': 'habitação', 'prestacao': 'prestação',
+        'assinatura': 'assinatura', 'moradia': 'moradia'
+      };
+      const ptMatch = ptVariants[lower];
+      if (ptMatch) variants.add(`%${ptMatch}%`);
+
+      return Array.from(variants);
+    };
+
+    const patterns = generateVariants(term);
+    const fields = ['description', 'account_name', 'category', 'owner_name'];
+    const clauses: string[] = [];
+
+    for (const pattern of patterns) {
+      for (const field of fields) {
+        clauses.push(`${field}.ilike.${pattern}`);
+      }
+    }
+
+    return clauses.join(',');
+  };
+
   const fetchData = useCallback(async () => {
     const requestId = ++lastRequestId.current;
     setIsLoading(true);
@@ -210,10 +270,10 @@ const HistoryPage: React.FC = () => {
       if (maxPrice !== '') query = query.lte('amount', Number(maxPrice));
       if (filterOwner.length > 0) query = query.in('owner_name', filterOwner);
 
-      // Global Search in DB (Server-side Regex for accent-insensitivity)
+      // Global Search: use ilike for reliable Supabase/PostgREST compatibility
       if (debouncedSearch) {
-        const pattern = getAccentRegex(debouncedSearch.trim());
-        query = query.or(`description.iregex.${pattern},account_name.iregex.${pattern},category.iregex.${pattern},owner_name.iregex.${pattern}`);
+        const filterClause = buildSearchFilter(debouncedSearch);
+        if (filterClause) query = query.or(filterClause);
       }
 
       query = query.range(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
@@ -233,8 +293,8 @@ const HistoryPage: React.FC = () => {
       if (filterOwner.length > 0) chartQuery = chartQuery.in('owner_name', filterOwner);
 
       if (debouncedSearch) {
-        const pattern = getAccentRegex(debouncedSearch.trim());
-        chartQuery = chartQuery.or(`description.iregex.${pattern},account_name.iregex.${pattern},category.iregex.${pattern},owner_name.iregex.${pattern}`);
+        const filterClause = buildSearchFilter(debouncedSearch);
+        if (filterClause) chartQuery = chartQuery.or(filterClause);
       }
 
       const [{ data, count, error: fetchError }, { data: chartData }, dbEntities] = await Promise.all([
