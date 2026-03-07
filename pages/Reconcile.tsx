@@ -420,18 +420,23 @@ const Reconcile: React.FC = () => {
         const acc = realAccounts.find(a => a.id === targetId);
         const isTransfer = categoryName.toLowerCase().includes('transferencia') || categoryName.toLowerCase().includes('transferência');
 
-        // Transação principal
+        // 1. Define base amounts depending on if the original item was an expense (-) or income (+)
+        const originalAmount = Number(item.amount);
+        const sourceAmount = originalAmount;
+        const destAmount = originalAmount * -1; // Invert sign for the other leg
+
+        // Transação principal (a perna do arquivo/banco atual)
         await supabase.from('transactions').insert({
           user_id: user.id, date: item.date, description: item.description,
-          amount: Math.abs(item.amount),
-          type: isTransfer ? 'TRANSFER' : (item.amount < 0 ? 'EXPENSE' : 'INCOME'),
+          amount: sourceAmount,
+          type: isTransfer ? 'TRANSFER' : (sourceAmount < 0 ? 'EXPENSE' : 'INCOME'),
           account_id: targetId, account_name: acc?.institution || 'Conta',
           category: categoryName,
           owner_name: owner, is_paid: true, paid_at: item.date,
           metadata: {
             category_id: finalCategoryId,
-            is_transfer: true,
-            transfer_side: item.amount < 0 ? 'SOURCE' : 'DESTINATION',
+            is_transfer: isTransfer,
+            transfer_side: isTransfer ? (sourceAmount < 0 ? 'SOURCE' : 'DESTINATION') : null,
             counter_account_id: isTransfer ? counterId : null
           }
         });
@@ -443,7 +448,7 @@ const Reconcile: React.FC = () => {
           await supabase.from('transactions').insert({
             user_id: user.id, date: item.date,
             description: `[TRANSF] ${item.description}`,
-            amount: Math.abs(item.amount),
+            amount: destAmount,
             type: 'TRANSFER',
             account_id: counterId,
             account_name: counterAcc?.institution || 'Conta Destino',
@@ -452,7 +457,8 @@ const Reconcile: React.FC = () => {
             metadata: {
               category_id: finalCategoryId,
               is_transfer: true,
-              transfer_side: item.amount < 0 ? 'DESTINATION' : 'SOURCE',
+              transfer_side: destAmount < 0 ? 'SOURCE' : 'DESTINATION',
+              counter_account_id: targetId, // The other side is the main account
               source_transaction_id: item.id
             }
           });

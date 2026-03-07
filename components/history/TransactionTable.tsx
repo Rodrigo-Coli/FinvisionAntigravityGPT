@@ -565,7 +565,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     value={t.metadata?.counter_account_id || ''}
                                                     onChange={e => handleUpdate(t.id, 'counter_account_id', e.target.value)}
                                                 >
-                                                    <option value="">Destino...</option>
+                                                    <option value="">{t.metadata?.transfer_side === 'DESTINATION' ? 'Origem...' : 'Destino...'}</option>
                                                     {accounts.filter(a => a.id !== t.accountId).map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
                                                 </select>
                                             )}
