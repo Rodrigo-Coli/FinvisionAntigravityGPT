@@ -465,7 +465,7 @@ const Accounts: React.FC = () => {
 
               <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-100">
                 <button
-                  onClick={() => { setAdjustMode('initial'); setAdjustValue(adjustAccount.initialBalance); }}
+                  onClick={() => { setAdjustMode('initial'); setAdjustValue(adjustAccount.currentBalance); }}
                   className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase transition-all ${adjustMode === 'initial' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}
                 >
                   Saldo Inicial

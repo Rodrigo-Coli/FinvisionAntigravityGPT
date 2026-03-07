@@ -134,13 +134,28 @@ const HistoryPage: React.FC = () => {
 
   const location = useLocation();
 
-  // Read initial category from URL
+  // Read initial category or account from URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const cat = params.get('category');
+    const acc = params.get('account');
+
+    let hasChanged = false;
     if (cat) {
       setFilterCategory([cat]);
-      // Optional: remove it from URL so refreshing or navigating doesn't stick
+      hasChanged = true;
+    }
+
+    if (acc) {
+      setFilterAccount([acc]);
+      const tenYearsAgo = new Date();
+      tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
+      setStartDate(DateUtils.formatToISODate(tenYearsAgo));
+      setEndDate(DateUtils.formatToISODate(new Date()));
+      hasChanged = true;
+    }
+
+    if (hasChanged) {
       window.history.replaceState({}, document.title, window.location.pathname + window.location.hash.split('?')[0]);
     }
   }, [location.search]);
