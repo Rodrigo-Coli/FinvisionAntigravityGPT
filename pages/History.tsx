@@ -478,6 +478,25 @@ const HistoryPage: React.FC = () => {
     try {
       if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
         await supabase.from('transactions').update({ is_deleted: true }).eq('id', id);
+
+        // Deletar também a contraparte se for transferência
+        if (tx?.metadata?.is_transfer && tx.metadata?.counter_account_id) {
+          const { data: counterTxs } = await supabase.from('transactions')
+            .select('id, account_id')
+            .eq('date', tx.date)
+            .eq('amount', tx.amount)
+            .eq('description', tx.description)
+            .eq('account_id', tx.metadata.counter_account_id)
+            .eq('is_deleted', false)
+            .limit(1);
+
+          if (counterTxs && counterTxs.length > 0) {
+            await supabase.from('transactions').update({ is_deleted: true }).eq('id', counterTxs[0].id);
+            if (HistoryUtils.getStatus(tx) !== 'PENDING') {
+              await supabase.rpc('recalculate_account_balance', { p_account_id: counterTxs[0].account_id });
+            }
+          }
+        }
       } else {
         const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
         let query = supabase.from('transactions').update({ is_deleted: true }).filter('metadata->>' + (tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id'), 'eq', groupId);
