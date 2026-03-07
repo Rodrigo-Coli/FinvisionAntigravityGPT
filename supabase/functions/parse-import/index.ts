@@ -10,7 +10,7 @@ import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-serve(async (req) => {
+serve(async (req: any) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: { "Access-Control-Allow-Origin": "*" } });
 
   try {
