@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus,
   Search,
@@ -42,6 +43,7 @@ const Accounts: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
 
   // States for Balance Adjustment Modal
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -184,12 +186,12 @@ const Accounts: React.FC = () => {
       if (!user) throw new Error("Usuário não autenticado");
 
       if (adjustMode === 'initial') {
-        const delta = adjustValue - adjustAccount.initialBalance;
-        const newCurrentBalance = adjustAccount.currentBalance + delta;
+        const transactionsSum = adjustAccount.currentBalance - adjustAccount.initialBalance;
+        const newInitialBalance = adjustValue - transactionsSum;
 
         const updatePayload: any = {
-          initial_balance: adjustValue,
-          current_balance: newCurrentBalance
+          initial_balance: newInitialBalance,
+          current_balance: adjustValue
         };
 
         const { error } = await supabase
@@ -407,16 +409,25 @@ const Accounts: React.FC = () => {
                 <div className="pt-6 border-t border-slate-50 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${acc.includeInDashboard ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hidden xs:inline">
                       {acc.includeInDashboard ? 'No Dashboard' : 'Privada'}
                     </span>
                   </div>
-                  <button
-                    onClick={() => { setAdjustAccount(acc); setAdjustValue(acc.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-900 hover:text-white rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all"
-                  >
-                    <RefreshCw size={12} /> Ajustar Saldo
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => navigate(`/history?account=${acc.id}`)}
+                      className="flex items-center justify-center p-2.5 bg-brand-50 hover:bg-brand-600 text-brand-600 hover:text-white rounded-lg transition-all shadow-sm"
+                      title="Ver Extrato"
+                    >
+                      <HistoryIcon size={14} />
+                    </button>
+                    <button
+                      onClick={() => { setAdjustAccount(acc); setAdjustValue(acc.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-900 hover:text-white rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all"
+                    >
+                      <RefreshCw size={12} /> Ajustar Saldo
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -542,6 +553,20 @@ const Accounts: React.FC = () => {
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Saldo Inicial</label>
                   <input type="number" value={initialBalance} onChange={e => setInitialBalance(Number(e.target.value))} className="w-full h-12 px-4 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 font-medium text-sm transition-all" />
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-bold text-slate-900">Somar no Painel Geral</p>
+                  <p className="text-xs text-slate-500">Inclui o saldo desta conta nos cálculos de Patrimônio do Dashboard.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIncludeInDashboard(!includeInDashboard)}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${includeInDashboard ? 'bg-brand-500' : 'bg-slate-300'}`}
+                >
+                  <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${includeInDashboard ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
               </div>
 
               <div className="space-y-4">

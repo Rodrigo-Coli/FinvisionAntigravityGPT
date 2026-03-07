@@ -31,8 +31,18 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showBalance, setShowBalance] = useState(true);
+  const [showBalance, setShowBalance] = useState(() => {
+    return localStorage.getItem('finvision_privacy') !== 'hidden';
+  });
   const navigate = useNavigate();
+
+  const toggleBalance = () => {
+    setShowBalance(prev => {
+      const next = !prev;
+      localStorage.setItem('finvision_privacy', next ? 'visible' : 'hidden');
+      return next;
+    });
+  };
 
   // State for Chart Filters
   const initialStart = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
@@ -165,7 +175,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
                 </h2>
               </div>
               <button
-                onClick={() => setShowBalance(!showBalance)}
+                onClick={toggleBalance}
                 className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
               >
                 {showBalance ? <Eye size={18} /> : <EyeOff size={18} />}

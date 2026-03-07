@@ -13,7 +13,7 @@ export const DashboardService = {
     // 1. Accounts
     const { data: accounts, error: accErr } = await sb
       .from('accounts')
-      .select('current_balance, type')
+      .select('current_balance, type, include_in_dashboard')
       .eq('user_id', user.id)
       .eq('is_archived', false);
 
@@ -24,6 +24,8 @@ export const DashboardService = {
     let totalAssets = 0;
 
     (accounts || []).forEach((acc: any) => {
+      if (acc.include_in_dashboard === false) return; // Ignores private/registration accounts
+
       const balance = Number(acc.current_balance || 0);
       netWorth += balance;
       totalAssets += balance;
