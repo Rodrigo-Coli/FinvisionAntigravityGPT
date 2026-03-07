@@ -16,7 +16,8 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
-  Plus
+  Plus,
+  Check
 } from 'lucide-react';
 import { DashboardService } from '../services/dashboard.service';
 import { DateUtils } from '../lib/dateUtils';
@@ -33,32 +34,28 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
   const [showBalance, setShowBalance] = useState(true);
   const navigate = useNavigate();
 
+  // State for Chart Filters
+  const initialStart = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
+  const initialEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+  const [startDate, setStartDate] = useState(initialStart);
+  const [endDate, setEndDate] = useState(initialEnd);
+  const [viewMode, setViewMode] = useState<'ALL' | 'SETTLED'>('ALL');
+
   useEffect(() => {
     const loadData = async () => {
       try {
         const dashboardData = await DashboardService.getSummary(); // Changed from dashboardService.getDashboardData() to DashboardService.getSummary() to match original
         setData(dashboardData);
 
-        // Fetch recent transactions for the charts
-        const startOfMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
-        const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
-        const lastMonthStart = `${new Date().getFullYear()}-${String(new Date().getMonth()).padStart(2, '0')}-01`;
-
-        let queryDateStart = startOfMonth;
-        if (new Date().getMonth() === 0) {
-          queryDateStart = `${new Date().getFullYear() - 1}-12-01`;
-        } else {
-          queryDateStart = lastMonthStart;
-        }
-
-        if (!supabase) throw new Error("Supabase client is not available.");
-
+        // If the user wants a large range, we should ideally fetch dynamically,
+        // but for now, we'll fetch a wider net from the DB and let the component filter it.
+        // We fetch from the selected startDate to the selected endDate.
         const { data: txs, error: txError } = await supabase
           .from('transactions')
-          .select('*')
+          .select('id, date, type, amount, category, account_id, owner_name, description, is_paid, paid_amount')
           .eq('user_id', user.id)
-          .gte('date', queryDateStart)
-          .lte('date', endOfMonth)
+          .gte('date', startDate)
+          .lte('date', endDate)
           .order('date', { ascending: false });
 
         if (txError) {
@@ -74,7 +71,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       }
     };
     if (user?.id) loadData();
-  }, [user]);
+  }, [user, startDate, endDate]);
 
   const format = (v: number) => new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -114,8 +111,23 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
     );
   }
 
-  const startOfMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
-  const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+  const setDatePreset = (days: number | 'MONTH' | 'ALL') => {
+    const d = new Date();
+    if (days === 'ALL') {
+      setStartDate(`${new Date().getFullYear() - 5}-01-01`); // 5 years back
+      setEndDate(DateUtils.formatToISODate(new Date()));
+    } else if (days === 'MONTH') {
+      setStartDate(DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth(), 1)));
+      setEndDate(DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth() + 1, 0)));
+    } else {
+      const start = new Date(d);
+      start.setDate(d.getDate() - days);
+      setStartDate(DateUtils.formatToISODate(start));
+      setEndDate(DateUtils.formatToISODate(d));
+    }
+  };
+
+  const chartTransactions = viewMode === 'SETTLED' ? transactions.filter(t => !!t.is_paid) : transactions;
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 animate-in fade-in duration-500 min-w-0">
@@ -298,12 +310,46 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           </div>
 
           {/* HISTÓRICO DE DESPESAS (CHART) */}
-          <div className="mt-6 sm:mt-8">
-            <h3 className="text-lg font-bold text-slate-900 mb-4 sm:mb-6">Gráficos de Despesas</h3>
+          <div className="mt-6 sm:mt-8 space-y-4">
+            <h3 className="text-lg font-bold text-slate-900">Gráficos de Lançamentos</h3>
+
+            {/* QUICK DATE FILTERS + CUSTOM RANGE + VIEW MODE TOGGLE (Abridged for Home) */}
+            <div className="flex flex-col xl:flex-row items-start xl:items-center gap-4 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => setDatePreset('MONTH')} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Este Mês</button>
+                <button onClick={() => setDatePreset(30)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>30 Dias</button>
+                <button onClick={() => setDatePreset(90)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>3 Meses</button>
+              </div>
+
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100">
+                <Calendar size={14} className="text-slate-400" />
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-transparent text-[11px] font-bold outline-none w-28" />
+                <span className="text-slate-300">/</span>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-transparent text-[11px] font-bold outline-none w-28" />
+              </div>
+
+              <div className="hidden xl:block flex-1" />
+
+              <div className="flex bg-slate-100 p-1 rounded-xl gap-1 w-full xl:w-auto">
+                <button
+                  onClick={() => setViewMode('ALL')}
+                  className={`flex-1 xl:flex-none px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  Todos
+                </button>
+                <button
+                  onClick={() => setViewMode('SETTLED')}
+                  className={`flex-1 xl:flex-none flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'SETTLED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <Check size={12} /> Pagos & Recebidos
+                </button>
+              </div>
+            </div>
+
             <HistoryCharts
-              transactions={transactions}
-              startDate={startOfMonth}
-              endDate={endOfMonth}
+              transactions={chartTransactions}
+              startDate={startDate}
+              endDate={endDate}
               onCategoryClick={(cat) => navigate(`/history?category=${encodeURIComponent(cat)}`)}
             />
           </div>
