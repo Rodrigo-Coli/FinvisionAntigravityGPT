@@ -267,6 +267,34 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
     const EPS = 0.000001;
     const allOwners = owners;
 
+    // ─── Progressive Rendering (Virtual Scroll sem npm) ───────────────────────
+    const ROWS_PER_PAGE = 50;
+    const [visibleCount, setVisibleCount] = useState(ROWS_PER_PAGE);
+    const sentinelRef = useRef<HTMLDivElement>(null);
+
+    // Reset ao mudar transações (novo filtro, nova página, etc.)
+    useEffect(() => {
+        setVisibleCount(ROWS_PER_PAGE);
+    }, [transactions.length]);
+
+    // IntersectionObserver — carrega mais linhas ao chegar perto do fim
+    useEffect(() => {
+        if (!sentinelRef.current || visibleCount >= transactions.length) return;
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    setVisibleCount(prev => Math.min(prev + ROWS_PER_PAGE, transactions.length));
+                }
+            },
+            { rootMargin: '200px' }
+        );
+        observer.observe(sentinelRef.current);
+        return () => observer.disconnect();
+    }, [visibleCount, transactions.length]);
+
+    const visibleTransactions = transactions.slice(0, visibleCount);
+    const hasMore = visibleCount < transactions.length;
+
     const LoadingState = () => (
         <div className="py-32 flex flex-col items-center justify-center gap-4">
             <Loader2 className="w-10 h-10 text-brand-600 animate-spin" />
@@ -289,7 +317,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                     <p className="text-center text-slate-400 text-sm py-16">Nenhum lançamento encontrado.</p>
                 ) : (
                     <div className="divide-y divide-slate-50">
-                        {transactions.map(t => {
+                        {visibleTransactions.map(t => {
                             const amount = getAmount(t);
                             const remaining = getRemaining(t);
                             const status = getStatus(t);
@@ -458,7 +486,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                        {transactions.map(t => {
+                        {visibleTransactions.map(t => {
                             const amount = getAmount(t);
                             const remaining = getRemaining(t);
                             const status = getStatus(t);
@@ -618,6 +646,15 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                     </tbody>
                 </table>
             </div>
+
+            {/* Sentinel para carregamento progressivo */}
+            {hasMore && (
+                <div ref={sentinelRef} className="py-4 text-center">
+                    <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                        Mostrando {visibleCount} de {transactions.length} lançamentos...
+                    </p>
+                </div>
+            )}
         </div>
     );
 };
