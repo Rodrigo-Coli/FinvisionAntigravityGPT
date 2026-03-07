@@ -271,6 +271,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
     const ROWS_PER_PAGE = 50;
     const [visibleCount, setVisibleCount] = useState(ROWS_PER_PAGE);
     const sentinelRef = useRef<HTMLDivElement>(null);
+    const loadingRef = useRef(false);
 
     // Reset ao mudar transações (novo filtro, nova página, etc.)
     useEffect(() => {
@@ -279,18 +280,22 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
 
     // IntersectionObserver — carrega mais linhas ao chegar perto do fim
     useEffect(() => {
-        if (!sentinelRef.current || visibleCount >= transactions.length) return;
         const observer = new IntersectionObserver(
-            ([entry]) => {
-                if (entry.isIntersecting) {
-                    setVisibleCount(prev => Math.min(prev + ROWS_PER_PAGE, transactions.length));
+            (entries) => {
+                if (entries[0].isIntersecting && !loadingRef.current) {
+                    loadingRef.current = true;
+                    setTimeout(() => {
+                        setVisibleCount(prev => Math.min(prev + ROWS_PER_PAGE, transactions.length)); // Changed ITEMS_PER_PAGE to ROWS_PER_PAGE
+                        loadingRef.current = false;
+                    }, 50); // slight delay to prevent UI freeze
                 }
             },
-            { rootMargin: '200px' }
+            { root: null, rootMargin: '200px', threshold: 0 }
         );
-        observer.observe(sentinelRef.current);
+
+        if (sentinelRef.current) observer.observe(sentinelRef.current);
         return () => observer.disconnect();
-    }, [visibleCount, transactions.length]);
+    }, [transactions.length]); // Dependency array updated
 
     const visibleTransactions = transactions.slice(0, visibleCount);
     const hasMore = visibleCount < transactions.length;
@@ -648,10 +653,17 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
             </div>
 
             {/* Sentinel para carregamento progressivo */}
-            {hasMore && (
-                <div ref={sentinelRef} className="py-4 text-center">
+            {hasMore ? (
+                <div ref={sentinelRef} className="py-8 text-center flex flex-col items-center justify-center gap-2">
+                    <Loader2 size={20} className="animate-spin text-brand-500" />
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        Carregando mais lançamentos... ({visibleCount} de {transactions.length})
+                    </p>
+                </div>
+            ) : (
+                <div className="py-8 text-center">
                     <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-                        Mostrando {visibleCount} de {transactions.length} lançamentos...
+                        Fim do Histórico ({transactions.length} Lançamentos)
                     </p>
                 </div>
             )}
