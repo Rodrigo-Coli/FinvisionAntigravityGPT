@@ -493,6 +493,7 @@ const HistoryPage: React.FC = () => {
               };
             }
             if (field === 'account_id') {
+              updated.accountId = value;
               const acc = accounts.find(a => a.id === value);
               if (acc) updated.accountName = acc.institution;
             }
