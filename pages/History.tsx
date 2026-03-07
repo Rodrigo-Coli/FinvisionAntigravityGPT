@@ -56,6 +56,7 @@ type AddModalState =
       recurrencePeriod: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom';
       recurrenceDaysInterval: number;
       ownerName: string;
+      destinationAccountId?: string;
     };
   };
 
@@ -661,12 +662,33 @@ const HistoryPage: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      const isTransfer = f.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || f.description.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
+
       if (!f.isInstallment && !f.isRecurring) {
-        await supabase.from('transactions').insert({
-          user_id: user.id, date: f.date, description: f.description, amount, type: f.type,
-          account_id: f.accountId, category: f.category, is_paid: false, paid_amount: 0,
-          owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName
-        });
+        if (isTransfer && f.destinationAccountId) {
+          const accDest = accounts.find(a => a.id === f.destinationAccountId);
+          const accSrc = accounts.find(a => a.id === f.accountId);
+          await supabase.from('transactions').insert([
+            {
+              user_id: user.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
+              account_id: f.accountId, account_name: accSrc?.institution || 'Conta', category: f.category, is_paid: true, paid_amount: amount, paid_at: f.date,
+              owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
+              metadata: { is_transfer: true, transfer_side: 'SOURCE', counter_account_id: f.destinationAccountId }
+            },
+            {
+              user_id: user.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
+              account_id: f.destinationAccountId, account_name: accDest?.institution || 'Conta Destino', category: f.category, is_paid: true, paid_amount: amount, paid_at: f.date,
+              owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
+              metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: f.accountId }
+            }
+          ]);
+        } else {
+          await supabase.from('transactions').insert({
+            user_id: user.id, date: f.date, description: f.description, amount, type: f.type,
+            account_id: f.accountId, category: f.category, is_paid: false, paid_amount: 0,
+            owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName
+          });
+        }
       } else {
         const { TransactionSeriesUtils } = await import('../lib/transactionSeriesUtils');
         const series = TransactionSeriesUtils.generateSeries(
@@ -761,7 +783,7 @@ const HistoryPage: React.FC = () => {
             onClick={() => setAddModal({
               open: true,
               isSubmitting: false,
-              form: { date: DateUtils.formatToISODate(), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros', ownerName: 'Pessoal', isInstallment: false, installmentsCount: 2, isRecurring: false, recurrencePeriod: 'monthly', recurrenceDaysInterval: 30 }
+              form: { date: DateUtils.formatToISODate(), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros', ownerName: 'Pessoal', isInstallment: false, installmentsCount: 2, isRecurring: false, recurrencePeriod: 'monthly', recurrenceDaysInterval: 30, destinationAccountId: '' }
             })}
             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
           >

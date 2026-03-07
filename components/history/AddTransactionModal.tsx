@@ -21,6 +21,7 @@ interface AddTransactionModalProps {
         isRecurring: boolean;
         recurrencePeriod: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom';
         recurrenceDaysInterval: number;
+        destinationAccountId?: string;
     };
     setAddField: (field: string, value: any) => void;
     accounts: BankAccount[];
@@ -141,6 +142,22 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                     ))}
                                 </select>
                             </div>
+
+                            {(form.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || form.description.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer')) && (
+                                <div className="space-y-2 col-span-2 animate-in slide-in-from-top-2 duration-300">
+                                    <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest ml-1">Conta de Destino (Para onde foi o dinheiro?)</label>
+                                    <select
+                                        value={form.destinationAccountId || ''}
+                                        onChange={(e) => setAddField('destinationAccountId', e.target.value)}
+                                        className="w-full h-14 px-4 bg-brand-50 border border-brand-200 rounded-2xl font-bold text-brand-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
+                                    >
+                                        <option value="">Selecione a conta destino...</option>
+                                        {accounts.filter((acc: any) => acc.id !== form.accountId).map((acc: any) => (
+                                            <option key={acc.id} value={acc.id}>{acc.institution}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                         </div>
 
                         <div className="space-y-2">
