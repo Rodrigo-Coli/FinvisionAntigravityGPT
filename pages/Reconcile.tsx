@@ -420,23 +420,25 @@ const Reconcile: React.FC = () => {
         const acc = realAccounts.find(a => a.id === targetId);
         const isTransfer = categoryName.toLowerCase().includes('transferencia') || categoryName.toLowerCase().includes('transferência');
 
-        // 1. Define base amounts depending on if the original item was an expense (-) or income (+)
-        const originalAmount = Number(item.amount);
-        const sourceAmount = originalAmount;
-        const destAmount = originalAmount * -1; // Invert sign for the other leg
+        // Determine the absolute amount for storage
+        const absoluteAmount = Math.abs(Number(item.amount));
+
+        // Define which side is the SOURCE (who sent the money) and DESTINATION (who received it)
+        // If the imported item amount is negative (or it's a known expense), this account is the SOURCE.
+        const thisSideIsSource = Number(item.amount) < 0;
 
         // Transação principal (a perna do arquivo/banco atual)
         await supabase.from('transactions').insert({
           user_id: user.id, date: item.date, description: item.description,
-          amount: sourceAmount,
-          type: isTransfer ? 'TRANSFER' : (sourceAmount < 0 ? 'EXPENSE' : 'INCOME'),
+          amount: absoluteAmount,
+          type: isTransfer ? 'TRANSFER' : (thisSideIsSource ? 'EXPENSE' : 'INCOME'),
           account_id: targetId, account_name: acc?.institution || 'Conta',
           category: categoryName,
           owner_name: owner, is_paid: true, paid_at: item.date,
           metadata: {
             category_id: finalCategoryId,
             is_transfer: isTransfer,
-            transfer_side: isTransfer ? (sourceAmount < 0 ? 'SOURCE' : 'DESTINATION') : null,
+            transfer_side: isTransfer ? (thisSideIsSource ? 'SOURCE' : 'DESTINATION') : null,
             counter_account_id: isTransfer ? counterId : null
           }
         });
@@ -448,7 +450,7 @@ const Reconcile: React.FC = () => {
           await supabase.from('transactions').insert({
             user_id: user.id, date: item.date,
             description: `[TRANSF] ${item.description}`,
-            amount: destAmount,
+            amount: absoluteAmount,
             type: 'TRANSFER',
             account_id: counterId,
             account_name: counterAcc?.institution || 'Conta Destino',
@@ -457,7 +459,7 @@ const Reconcile: React.FC = () => {
             metadata: {
               category_id: finalCategoryId,
               is_transfer: true,
-              transfer_side: destAmount < 0 ? 'SOURCE' : 'DESTINATION',
+              transfer_side: thisSideIsSource ? 'DESTINATION' : 'SOURCE', // The opposite of the main leg
               counter_account_id: targetId, // The other side is the main account
               source_transaction_id: item.id
             }
@@ -465,10 +467,15 @@ const Reconcile: React.FC = () => {
           await supabase.rpc('recalculate_account_balance', { p_account_id: counterId });
         }
       } else {
+        let parsedCardAmt = typeof item.amount === 'string'
+          ? Number(item.amount.replace(/\./g, '').replace(',', '.'))
+          : Number(item.amount);
+        if (isNaN(parsedCardAmt)) parsedCardAmt = 0;
+
         const stmtId = await FinanceService.getOrCreateStatement(targetId, item.date);
         await supabase.from('card_transactions').insert({
           user_id: user.id, card_id: targetId, used_card_id: targetId, statement_id: stmtId,
-          date: item.date, description: item.description, amount: Math.abs(item.amount),
+          date: item.date, description: item.description, amount: Math.abs(parsedCardAmt),
           source: 'IMPORT', status: 'POSTED', owner_name: owner,
           category_id: finalCategoryId,
           metadata: { category_name: categoryName }

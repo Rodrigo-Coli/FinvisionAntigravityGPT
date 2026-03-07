@@ -592,7 +592,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                     <td className="px-6 py-4 text-right">
                                         {editingRow?.id === t.id && editingRow.field === 'amount' ? (
                                             <div className="flex items-center justify-end gap-1">
-                                                <span className="text-sm font-bold text-slate-400">{t.type === 'EXPENSE' ? '-' : ''}</span>
+                                                <span className="text-sm font-bold text-slate-400">{(t.type === 'EXPENSE' || (t.type === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '-' : ''}</span>
                                                 <input
                                                     type="number"
                                                     step="0.01"
@@ -607,9 +607,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                         ) : (
                                             <button
                                                 onClick={() => { setEditingRow({ id: t.id, field: 'amount' }); setEditValue(Math.abs(t.amount).toString()); }}
-                                                className={`text-sm font-bold hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer ${t.type === 'INCOME' ? 'text-emerald-600' : 'text-slate-900'}`}
+                                                className={`text-sm font-bold hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer 
+                                                    ${(t.type === 'INCOME' || (t.type === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE')) ? 'text-emerald-600' : 'text-rose-600'}`}
                                             >
-                                                {t.type === 'EXPENSE' ? '-' : ''}{formatCurrency(amount)}
+                                                {(t.type === 'EXPENSE' || (t.type === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '- ' : ''}{formatCurrency(amount)}
                                             </button>
                                         )}
                                     </td>
