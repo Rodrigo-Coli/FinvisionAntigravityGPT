@@ -380,7 +380,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                             >
                                                 {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
                                             </select>
-                                            <div className="flex items-center gap-1">
+                                            <div className="flex items-center gap-1 flex-wrap">
                                                 <CategoryPicker
                                                     value={t.category}
                                                     transactionType={t.type}
@@ -390,7 +390,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                 />
                                                 {t.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
                                                     <select
-                                                        className="text-[9px] font-black text-brand-600 bg-brand-50/50 px-2 py-0.5 rounded-lg outline-none cursor-pointer border border-brand-200"
+                                                        className="text-[9px] font-black text-brand-600 bg-brand-50/50 px-2 py-0.5 rounded-lg outline-none cursor-pointer border border-brand-200 max-w-[120px] truncate"
                                                         value={t.metadata?.counter_account_id || ''}
                                                         onChange={e => handleUpdate(t.id, 'counter_account_id', e.target.value)}
                                                     >
