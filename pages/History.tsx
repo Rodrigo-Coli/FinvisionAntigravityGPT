@@ -329,18 +329,18 @@ const HistoryPage: React.FC = () => {
       // 1. Appy Min/Max Filters
       if (minPrice !== '') {
         const minVal = Number(minPrice);
-        processedChartData = processedChartData.filter(t => t._trueAmount >= minVal);
-        processedTableData = processedTableData.filter(t => t._trueAmount >= minVal);
+        processedChartData = processedChartData.filter((t: any) => t._trueAmount >= minVal);
+        processedTableData = processedTableData.filter((t: any) => t._trueAmount >= minVal);
       }
       if (maxPrice !== '') {
         const maxVal = Number(maxPrice);
-        processedChartData = processedChartData.filter(t => t._trueAmount <= maxVal);
-        processedTableData = processedTableData.filter(t => t._trueAmount <= maxVal);
+        processedChartData = processedChartData.filter((t: any) => t._trueAmount <= maxVal);
+        processedTableData = processedTableData.filter((t: any) => t._trueAmount <= maxVal);
       }
 
       // 2. Apply complex Amount sorting in-memory if needed
       if (sortField === 'amount') {
-        processedTableData.sort((a, b) => {
+        processedTableData.sort((a: any, b: any) => {
           if (sortDirection === 'asc') return a._trueAmount - b._trueAmount;
           return b._trueAmount - a._trueAmount;
         });
