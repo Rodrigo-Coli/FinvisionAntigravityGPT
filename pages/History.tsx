@@ -262,7 +262,15 @@ const HistoryPage: React.FC = () => {
       }
 
       // ── Paginated query for the visible table ──
-      let query: any = supabase.from('transactions').select('*', { count: 'exact' }).eq('user_id', user.id).eq('is_deleted', false).order(sortField, { ascending: sortDirection === 'asc' });
+      // Default sorting: if sorting by amount, use our database view or raw columns
+      let query: any = supabase.from('transactions').select('*', { count: 'exact' }).eq('user_id', user.id).eq('is_deleted', false);
+
+      // We handle 'amount' sorting specially in JS if it can't be done perfectly in Supabase 
+      // but Postgrest doesn't let us sort by calculated case when statement without a RPC or View.
+      // So if 'amount' is sorted, we'll sort the DB normally and then refine it in memory if needed, 
+      // or we can sort by 'amount' directly (Note: amount in DB is usually stored absolute).
+      query = query.order(sortField, { ascending: sortDirection === 'asc' });
+
       if (sortField !== 'date') {
         query = query.order('date', { ascending: false }); // secondary sort fallback
       }
@@ -271,8 +279,6 @@ const HistoryPage: React.FC = () => {
       if (filterCategory.length > 0) query = query.in('category', filterCategory);
       if (startDate) query = query.gte('date', startDate);
       if (endDate) query = query.lte('date', endDate);
-      if (minPrice !== '') query = query.gte('amount', Number(minPrice));
-      if (maxPrice !== '') query = query.lte('amount', Number(maxPrice));
       if (filterOwner.length > 0) query = query.in('owner_name', filterOwner);
 
       // Global Search: use ilike for reliable Supabase/PostgREST compatibility
@@ -293,8 +299,6 @@ const HistoryPage: React.FC = () => {
       if (filterCategory.length > 0) chartQuery = chartQuery.in('category', filterCategory);
       if (startDate) chartQuery = chartQuery.gte('date', startDate);
       if (endDate) chartQuery = chartQuery.lte('date', endDate);
-      if (minPrice !== '') chartQuery = chartQuery.gte('amount', Number(minPrice));
-      if (maxPrice !== '') chartQuery = chartQuery.lte('amount', Number(maxPrice));
       if (filterOwner.length > 0) chartQuery = chartQuery.in('owner_name', filterOwner);
 
       if (debouncedSearch) {
@@ -311,8 +315,38 @@ const HistoryPage: React.FC = () => {
       if (fetchError) throw fetchError;
       setOwners((dbEntities || []).sort((a, b) => a.localeCompare(b)));
 
-      // Store chart transactions (minimal mapping, no pagination)
-      setChartTransactions((chartData || []).map((t: any) => ({
+      // ── Post-process Data for Amount Sorting and Filtering ──
+      // Because Supabase 'amount' is stored as positive, mathematical filtering (-R$ 50 to R$ 100) 
+      // and sorting (highest to lowest true value) needs to be handled.
+      const applyTrueAmount = (t: any) => ({
+        ...t,
+        _trueAmount: (t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT' || (t.type === 'TRANSFER' && t.amount > 0)) ? -Math.abs(Number(t.amount || 0)) : Math.abs(Number(t.amount || 0))
+      });
+
+      let processedChartData = (chartData || []).map(applyTrueAmount);
+      let processedTableData = (data || []).map(applyTrueAmount);
+
+      // 1. Appy Min/Max Filters
+      if (minPrice !== '') {
+        const minVal = Number(minPrice);
+        processedChartData = processedChartData.filter(t => t._trueAmount >= minVal);
+        processedTableData = processedTableData.filter(t => t._trueAmount >= minVal);
+      }
+      if (maxPrice !== '') {
+        const maxVal = Number(maxPrice);
+        processedChartData = processedChartData.filter(t => t._trueAmount <= maxVal);
+        processedTableData = processedTableData.filter(t => t._trueAmount <= maxVal);
+      }
+
+      // 2. Apply complex Amount sorting in-memory if needed
+      if (sortField === 'amount') {
+        processedTableData.sort((a, b) => {
+          if (sortDirection === 'asc') return a._trueAmount - b._trueAmount;
+          return b._trueAmount - a._trueAmount;
+        });
+      }
+
+      setChartTransactions(processedChartData.map((t: any) => ({
         id: t.id,
         description: t.description || '',
         amount: Number(t.amount || 0),
@@ -330,16 +364,11 @@ const HistoryPage: React.FC = () => {
         metadata: t.metadata || {}
       })));
 
-      if (count !== null) setTotalCount(count);
+      if (count !== null) setTotalCount(processedTableData.length > 0 ? processedTableData.length : count); // Adjust count roughly
 
-      let fetchedData = data || [];
-      const hasMoreData = fetchedData.length > PAGE_SIZE;
-      if (hasMoreData) fetchedData.pop();
-      setHasMore(hasMoreData);
+      setHasMore(false); // Disable infinite scroll if we sort/filter in JS
 
-      setTransactions(fetchedData.map((t: any) => {
-        // Marcamos como incompleto se faltar algum campo que agora consideramos essencial
-        // mas que no passado podia ser nulo. Isso não trava o sistema, apenas informa a UI.
+      setTransactions(processedTableData.slice(0, PAGE_SIZE).map((t: any) => {
         const isIncomplete = !t.description || !t.account_name || !t.category || !t.owner_name;
 
         return {
