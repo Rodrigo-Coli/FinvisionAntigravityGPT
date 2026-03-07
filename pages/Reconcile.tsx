@@ -605,11 +605,11 @@ const Reconcile: React.FC = () => {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selecionados</span>
                 </div>
 
-                <div className="flex items-center gap-2 flex-1 sm:flex-none">
+                <div className="flex flex-wrap items-center gap-2 flex-1">
                   <input
                     list="categories-list"
                     value={bulkCategory}
-                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px] placeholder:text-slate-500"
+                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500"
                     onChange={(e) => {
                       setBulkCategory(e.target.value);
                       applyBulkEdit('category', e.target.value);
@@ -620,7 +620,7 @@ const Reconcile: React.FC = () => {
                   <input
                     list="targets-list"
                     value={bulkTarget}
-                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px] placeholder:text-slate-500"
+                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500"
                     onChange={(e) => {
                       setBulkTarget(e.target.value);
                       handleTargetChange(e.target.value, false);
@@ -631,7 +631,7 @@ const Reconcile: React.FC = () => {
                   <input
                     list="entities-list"
                     value={bulkOwner}
-                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 min-w-[120px] placeholder:text-slate-500"
+                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500"
                     onChange={(e) => {
                       setBulkOwner(e.target.value);
                       const val = e.target.value;
@@ -642,7 +642,7 @@ const Reconcile: React.FC = () => {
                   />
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 w-full sm:w-auto ml-auto justify-end mt-2 sm:mt-0">
                   <button
                     onClick={handleBulkConfirm}
                     disabled={isProcessing}
