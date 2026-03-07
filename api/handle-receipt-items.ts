@@ -66,7 +66,7 @@ export default async function handler(req: any, res: any) {
         const response = await ai.models.generateContent({
             model,
             contents,
-            generationConfig: {
+            config: {
                 responseMimeType: "application/json"
             }
         });
@@ -79,8 +79,8 @@ export default async function handler(req: any, res: any) {
         let rawText = '';
         try {
             rawText = (response as any).text ||
-                (response.response && (response.response as any).text) ||
-                (response.response && typeof (response.response as any).text === 'function' && (response.response as any).text()) || '';
+                ((response as any).response && ((response as any).response as any).text) ||
+                ((response as any).response && typeof ((response as any).response as any).text === 'function' && ((response as any).response as any).text()) || '';
         } catch (e) {
             console.error('[AI-Labs] Erro ao extrair texto:', e);
         }

@@ -1,6 +1,6 @@
-
-import { fetchMock } from './api';
 import { ExtractedItem, PriceComparison } from '../types';
+
+const fetchMock = <T>(data: T, ms = 500): Promise<T> => new Promise(resolve => setTimeout(() => resolve(data), ms));
 
 export const AIService = {
   processReceipt: async (file: File | Blob): Promise<ExtractedItem[]> => {

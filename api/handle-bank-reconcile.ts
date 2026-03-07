@@ -136,7 +136,7 @@ export default async function handler(req: any, res: any) {
         response = await ai.models.generateContent({
           model: currentModel,
           contents,
-          generationConfig: {
+          config: {
             responseMimeType: "application/json",
             maxOutputTokens: 8192,
             responseSchema: {
