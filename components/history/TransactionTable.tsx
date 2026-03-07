@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2, Trash2, RotateCcw, Check, ChevronUp, ChevronDown, Search, Plus, X } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 import { Transaction, BankAccount } from '../../types';
@@ -171,11 +172,34 @@ const OwnerPicker: React.FC<OwnerPickerProps> = ({ value, allOwners, onSelect, c
     const [newName, setNewName] = useState('');
     const { triggerRef, openUp } = useDropdownDirection(open);
 
+    const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+
+    useEffect(() => {
+        if (open && triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            // Calcula se tem espaço pra baixo ou se precisa abrir pra cima
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const dropdownHeight = 250; // altura max aproximada
+            const shouldOpenUp = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+
+            setCoords({
+                top: shouldOpenUp ? rect.top - 4 /* margin */ : rect.bottom + 4,
+                left: rect.left,
+                width: rect.width
+            });
+        }
+    }, [open]);
+
     useEffect(() => {
         const handler = (e: MouseEvent) => {
-            if (triggerRef.current && !triggerRef.current.contains(e.target as Node)) {
-                setOpen(false); setCreating(false); setSearch(''); setNewName('');
-            }
+            // Se o clique foi no trigger
+            if (triggerRef.current && triggerRef.current.contains(e.target as Node)) return;
+
+            // Se o clique foi dentro do dropdown (que agora renderiza fora da árvore DOM no portal)
+            const dropdown = document.getElementById('owner-picker-portal');
+            if (dropdown && dropdown.contains(e.target as Node)) return;
+
+            setOpen(false); setCreating(false); setSearch(''); setNewName('');
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
@@ -202,8 +226,16 @@ const OwnerPicker: React.FC<OwnerPickerProps> = ({ value, allOwners, onSelect, c
                 <ChevronDown size={9} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
 
-            {open && (
-                <div className={`absolute z-50 ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden w-48 animate-in fade-in duration-150`}>
+            {open && createPortal(
+                <div id="owner-picker-portal"
+                    style={{
+                        position: 'fixed',
+                        top: openUp ? 'auto' : coords.top,
+                        bottom: openUp ? window.innerHeight - coords.top + 8 : 'auto',
+                        left: coords.left,
+                        minWidth: '12rem',
+                    }}
+                    className={`z-[9999] bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-150`}>
                     <div className="p-2 border-b border-slate-50 space-y-1.5">
                         <div className="relative">
                             <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
@@ -246,7 +278,8 @@ const OwnerPicker: React.FC<OwnerPickerProps> = ({ value, allOwners, onSelect, c
                             <p className="px-3 py-4 text-xs text-slate-300 text-center">Nenhuma entidade encontrada</p>
                         )}
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
