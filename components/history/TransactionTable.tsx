@@ -600,8 +600,8 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     className="w-28 h-8 px-2 text-sm font-bold text-right bg-white border border-brand-500 rounded outline-none"
                                                     value={editValue}
                                                     onChange={e => setEditValue(e.target.value)}
-                                                    onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'amount', parseFloat(editValue))}
-                                                    onBlur={() => handleUpdate(t.id, 'amount', parseFloat(editValue))}
+                                                    onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'amount', editValue)}
+                                                    onBlur={() => handleUpdate(t.id, 'amount', editValue)}
                                                 />
                                             </div>
                                         ) : (

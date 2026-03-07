@@ -440,6 +440,25 @@ const HistoryPage: React.FC = () => {
     try {
       let patch: any = { [field]: value };
 
+      if (field === 'amount') {
+        let parsedAmt = typeof value === 'string'
+          ? Number(value.replace(/\./g, '').replace(',', '.'))
+          : Number(value);
+        if (isNaN(parsedAmt)) parsedAmt = 0;
+
+        const isNegative = parsedAmt < 0;
+        patch = { amount: Math.abs(parsedAmt) };
+
+        if (tx && tx.type === 'TRANSFER') {
+          patch.metadata = {
+            ...(tx.metadata || {}),
+            transfer_side: isNegative ? 'SOURCE' : 'DESTINATION'
+          };
+        } else {
+          patch.type = isNegative ? 'EXPENSE' : 'INCOME';
+        }
+      }
+
       // Handle metadata fields
       if (field === 'counter_account_id') {
         patch = {
@@ -465,7 +484,7 @@ const HistoryPage: React.FC = () => {
         // Otimização de UI: atualiza a tela instantaneamente para não dar reload na tabela toda
         setTransactions(prev => prev.map(t => {
           if (t.id === id) {
-            let updated = { ...t, [field]: value };
+            let updated = { ...t, ...patch };
             if (field === 'counter_account_id') {
               updated = {
                 ...t,
