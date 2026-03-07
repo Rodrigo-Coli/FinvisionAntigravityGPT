@@ -9,6 +9,7 @@ interface HistoryChartsProps {
     setSelectedTimelineCategories?: (cats: string[] | ((prev: string[]) => string[])) => void;
     startDate?: string;
     endDate?: string;
+    onCategoryClick?: (category: string) => void;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -31,7 +32,8 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
     selectedTimelineCategories = [],
     setSelectedTimelineCategories = () => { },
     startDate = '',
-    endDate = ''
+    endDate = '',
+    onCategoryClick
 }) => {
     const [activeTab, setActiveTab] = useState<'categories' | 'mom' | 'timeline'>('categories');
 
@@ -280,11 +282,15 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                     const widthPct = (cat.value / maxCatIncValue) * 100;
 
                                     return (
-                                        <div key={cat.name} className="group">
+                                        <div
+                                            key={cat.name}
+                                            className={`group ${onCategoryClick ? 'cursor-pointer hover:bg-slate-50 transition-colors rounded-xl p-2 -m-2' : ''}`}
+                                            onClick={() => onCategoryClick?.(cat.name)}
+                                        >
                                             <div className="flex justify-between items-end mb-1">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                                                    <span className="text-sm font-bold text-slate-700">{cat.name}</span>
+                                                    <span className={`text-sm font-bold text-slate-700 ${onCategoryClick ? 'group-hover:text-emerald-600 transition-colors' : ''}`}>{cat.name}</span>
                                                     <span className="text-[10px] font-bold text-slate-400 ml-2">{pct.toFixed(1)}%</span>
                                                 </div>
                                                 <span className="text-xs font-bold text-slate-900">{HistoryUtils.formatCurrency(cat.value)}</span>
@@ -318,11 +324,15 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                     const widthPct = (cat.value / maxCatExpValue) * 100;
 
                                     return (
-                                        <div key={cat.name} className="group">
+                                        <div
+                                            key={cat.name}
+                                            className={`group ${onCategoryClick ? 'cursor-pointer hover:bg-slate-50 transition-colors rounded-xl p-2 -m-2' : ''}`}
+                                            onClick={() => onCategoryClick?.(cat.name)}
+                                        >
                                             <div className="flex justify-between items-end mb-1">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                                                    <span className="text-sm font-bold text-slate-700">{cat.name}</span>
+                                                    <span className={`text-sm font-bold text-slate-700 ${onCategoryClick ? 'group-hover:text-rose-600 transition-colors' : ''}`}>{cat.name}</span>
                                                     <span className="text-[10px] font-bold text-slate-400 ml-2">{pct.toFixed(1)}%</span>
                                                 </div>
                                                 <span className="text-xs font-bold text-slate-900">{HistoryUtils.formatCurrency(cat.value)}</span>

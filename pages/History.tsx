@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Plus, FileDown, Loader2, AlertCircle, Check, RefreshCw, Calendar, Tag, Landmark, User, ArrowRight, Trash, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -129,6 +130,19 @@ const HistoryPage: React.FC = () => {
     pendingAction: 'UPDATE' | 'DELETE';
     pendingPatch?: { field: string, value: any };
   }>({ show: false, tx: null, pendingAction: 'DELETE' });
+
+  const location = useLocation();
+
+  // Read initial category from URL
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const cat = params.get('category');
+    if (cat) {
+      setFilterCategory([cat]);
+      // Optional: remove it from URL so refreshing or navigating doesn't stick
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash.split('?')[0]);
+    }
+  }, [location.search]);
 
   // Debounce search effect
   useEffect(() => {
@@ -1007,6 +1021,10 @@ const HistoryPage: React.FC = () => {
         setSelectedTimelineCategories={setSelectedTimelineCategories}
         startDate={startDate}
         endDate={endDate}
+        onCategoryClick={(cat) => {
+          setFilterCategory([cat]);
+          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }}
       />
 
       <div />

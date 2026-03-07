@@ -304,6 +304,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
               transactions={transactions}
               startDate={startOfMonth}
               endDate={endOfMonth}
+              onCategoryClick={(cat) => navigate(`/history?category=${encodeURIComponent(cat)}`)}
             />
           </div>
 
