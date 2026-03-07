@@ -27,7 +27,17 @@ import OfflineBanner from './components/OfflineBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 
 const App: React.FC = () => {
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(() => {
+    const cached = localStorage.getItem('finvision_cached_profile');
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
 
@@ -63,11 +73,13 @@ const App: React.FC = () => {
         const newProfile = { id: uid, email: email || '', role: UserRole.USER, is_approved: true };
         const { data: created } = await supabase.from('profiles').upsert(newProfile).select().single();
         setProfile(created);
-      } else {
+        localStorage.setItem('finvision_cached_profile', JSON.stringify(created));
+      } else if (data) {
         setProfile(data);
+        localStorage.setItem('finvision_cached_profile', JSON.stringify(data));
       }
     } catch (e) {
-      console.warn(e);
+      console.warn('Failed to fetch profile (likely offline), using cached if available', e);
     } finally {
       setLoading(false);
     }

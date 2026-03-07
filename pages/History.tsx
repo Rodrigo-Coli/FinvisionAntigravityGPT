@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 
 import { Transaction, TransactionType, BankAccount } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
+import { offlineQueue } from '../lib/offlineQueue.service';
 import { HistoryUtils, EPS } from '../lib/historyUtils';
 import { DateUtils } from '../lib/dateUtils';
 import { FinanceService } from '../services/finance.service';
@@ -452,7 +453,12 @@ const HistoryPage: React.FC = () => {
         if (acc) patch.account_name = acc.institution;
       }
       if (field === 'owner_name' && value) {
-        await FinanceService.ensureEntityExists(value);
+        if (navigator.onLine) await FinanceService.ensureEntityExists(value);
+      }
+
+      if (!navigator.onLine && confirmedScope && confirmedScope !== 'ONLY_THIS') {
+        alert("Atenção: Edição de histórico em série (Múltiplos Lançamentos) está indisponível offline.");
+        return;
       }
 
       if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
@@ -475,6 +481,13 @@ const HistoryPage: React.FC = () => {
           }
           return t;
         }));
+
+        if (!navigator.onLine) {
+          offlineQueue.addAction('UPDATE_TRANSACTION', { id, updates: patch });
+          setSavingId(null);
+          setEditingRow(null);
+          return;
+        }
 
         const { error: err } = await supabase.from('transactions').update(patch).eq('id', id);
         if (err) {
@@ -518,8 +531,20 @@ const HistoryPage: React.FC = () => {
 
     if (!confirmedScope && !window.confirm('Excluir transação?')) return;
 
+    if (!navigator.onLine && confirmedScope && confirmedScope !== 'ONLY_THIS') {
+      alert("Atenção: Exclusão em série (Múltiplos Lançamentos) está indisponível offline.");
+      return;
+    }
+
     try {
       if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
+        if (!navigator.onLine) {
+          offlineQueue.addAction('DELETE_TRANSACTION', { id });
+          setTransactions(prev => prev.filter(t => t.id !== id));
+          setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' });
+          return;
+        }
+
         await supabase.from('transactions').update({ is_deleted: true }).eq('id', id);
 
         // Deletar também a contraparte se for transferência
@@ -587,6 +612,12 @@ const HistoryPage: React.FC = () => {
 
   const handleBulkUpdate = async () => {
     if (selectedIds.size === 0 || !supabase) return;
+
+    if (!navigator.onLine) {
+      alert("A edição em lote está indisponível sem conexão com a internet.");
+      return;
+    }
+
     if (!bulkDescription && !bulkAccount && !bulkCategory && !bulkOwner) {
       return alert("Preencha ao menos um campo para editar em lote.");
     }
@@ -643,6 +674,12 @@ const HistoryPage: React.FC = () => {
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0 || !supabase) return;
+
+    if (!navigator.onLine) {
+      alert("A exclusão em lote está indisponível sem conexão com a internet.");
+      return;
+    }
+
     if (!window.confirm(`Excluir ${selectedIds.size} lançamentos permanentemente?`)) return;
 
     setIsBulkUpdating(true);
@@ -722,23 +759,38 @@ const HistoryPage: React.FC = () => {
     setAddModal(prev => prev.open ? { ...prev, isSubmitting: true } : prev);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      // Em modo offline restrito, user pode vir nulo da rede.
+      const userId = user?.id || 'offline-user';
 
       const isTransfer = f.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || f.description.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
 
       if (!f.isInstallment && !f.isRecurring) {
+        if (!navigator.onLine) {
+          const fakeId = 'offline-' + Date.now();
+          const newTx = {
+            id: fakeId,
+            user_id: userId, date: f.date, description: f.description, amount, type: f.type,
+            account_id: f.accountId, category: f.category, is_paid: false, paid_amount: 0,
+            owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName
+          };
+          offlineQueue.addAction('CREATE_TRANSACTION', newTx);
+          setTransactions(prev => [newTx as any, ...prev]);
+          setAddModal({ open: false });
+          return;
+        }
+
         if (isTransfer && f.destinationAccountId) {
           const accDest = accounts.find(a => a.id === f.destinationAccountId);
           const accSrc = accounts.find(a => a.id === f.accountId);
           await supabase.from('transactions').insert([
             {
-              user_id: user.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
+              user_id: user?.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
               account_id: f.accountId, account_name: accSrc?.institution || 'Conta', category: f.category, is_paid: true, paid_amount: amount, paid_at: f.date,
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
               metadata: { is_transfer: true, transfer_side: 'SOURCE', counter_account_id: f.destinationAccountId }
             },
             {
-              user_id: user.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
+              user_id: user?.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
               account_id: f.destinationAccountId, account_name: accDest?.institution || 'Conta Destino', category: f.category, is_paid: true, paid_amount: amount, paid_at: f.date,
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
               metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: f.accountId }
@@ -746,7 +798,7 @@ const HistoryPage: React.FC = () => {
           ]);
         } else {
           await supabase.from('transactions').insert({
-            user_id: user.id, date: f.date, description: f.description, amount, type: f.type,
+            user_id: user?.id, date: f.date, description: f.description, amount, type: f.type,
             account_id: f.accountId, category: f.category, is_paid: false, paid_amount: 0,
             owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName
           });
@@ -759,10 +811,21 @@ const HistoryPage: React.FC = () => {
         );
         const groupId = crypto.randomUUID();
         const inserts = series.map(item => ({
-          user_id: user.id, date: item.date, description: item.description, amount: item.amount, type: item.type, account_id: item.accountId, category: item.category, is_paid: false, paid_amount: 0,
+          user_id: userId, date: item.date, description: item.description, amount: item.amount, type: item.type, account_id: item.accountId, category: item.category, is_paid: false, paid_amount: 0,
           owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
           metadata: { ...(f.isInstallment ? { installment_group_id: groupId, installment_number: (item as any).installmentNumber, installment_total: f.installmentsCount } : { recurrence_group_id: groupId }) }
         }));
+
+        if (!navigator.onLine) {
+          inserts.forEach(tx => {
+            const fakeId = 'offline-' + crypto.randomUUID();
+            offlineQueue.addAction('CREATE_TRANSACTION', { ...tx, id: fakeId });
+          });
+          setTransactions(prev => [...inserts.map(tx => ({ ...tx, id: 'offline-' + crypto.randomUUID(), account_name: accounts.find(a => a.id === tx.account_id)?.institution || 'Conta' })) as any, ...prev]);
+          setAddModal({ open: false });
+          return;
+        }
+
         const { error } = await supabase.from('transactions').insert(inserts);
         if (error) throw error;
       }

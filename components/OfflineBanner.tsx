@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { WifiOff, RefreshCw, MessageCircle, X } from 'lucide-react';
-import { offlineQueue } from '../lib/offlineQueue';
+import { offlineQueue } from '../lib/offlineQueue.service';
 
 const WHATSAPP_NUMBER = '5511999999999'; // Substituir pelo número real do suporte
 
@@ -18,24 +18,24 @@ const OfflineBanner: React.FC = () => {
             setSyncing(true);
             offlineQueue.processQueue().finally(() => {
                 setSyncing(false);
-                setPendingCount(offlineQueue.getPendingCount());
-                // Força reload da página ou disparar evento para components atualizarem
+                setPendingCount(offlineQueue.getQueue().length);
                 window.dispatchEvent(new CustomEvent('offline-sync-completed'));
             });
         };
         const handleOffline = () => setIsOffline(true);
+        const handleQueueUpdate = () => setPendingCount(offlineQueue.getQueue().length);
 
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
+        window.addEventListener('finvision_offline_queue_updated', handleQueueUpdate);
 
         // Check pending operations
-        setPendingCount(offlineQueue.getPendingCount());
-        const interval = setInterval(() => setPendingCount(offlineQueue.getPendingCount()), 5000);
+        setPendingCount(offlineQueue.getQueue().length);
 
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
-            clearInterval(interval);
+            window.removeEventListener('finvision_offline_queue_updated', handleQueueUpdate);
         };
     }, []);
 
