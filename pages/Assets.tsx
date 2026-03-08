@@ -182,7 +182,7 @@ const Assets: React.FC = () => {
               liability_id: liabilityId,
               is_paid: false,
               is_recurring: true,
-              metadata: { auto_generated: true, installment_number: i }
+              metadata: { auto_generated: true, installment_number: i, installment_group_id: liabilityId }
             });
           }
 
