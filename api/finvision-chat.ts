@@ -25,6 +25,12 @@ export default async function handler(req: any, res: any) {
         const filterStart = startDate || defaultStart;
         const filterEnd = endDate || defaultEnd;
 
+        // Calculate 6-month lookback for historical averages
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        sixMonthsAgo.setDate(1);
+        const historyStart = sixMonthsAgo.toISOString().split('T')[0];
+
         // ============================================
         // 0. ZERO-COST FAQ ROUTER (Bypass Gemini)
         // ============================================
@@ -57,7 +63,16 @@ export default async function handler(req: any, res: any) {
                 .limit(400),
             supabase.from('credit_cards').select('brand, limit, statement_closing_day').eq('user_id', userId),
             supabase.from('physical_assets').select('estimated_value').eq('user_id', userId),
-            supabase.from('liabilities').select('remaining_balance, total_amount, type').eq('user_id', userId)
+            supabase.from('liabilities').select('remaining_balance, total_amount, type').eq('user_id', userId),
+            // Fetch 6 months of historical data for averages
+            supabase.from('transactions')
+                .select('amount, type, category, date')
+                .eq('user_id', userId)
+                .is('is_deleted', false)
+                .is('is_amortization', false)
+                .neq('type', 'ADJUSTMENT')
+                .gte('date', historyStart)
+                .lt('date', filterStart)
         ]);
 
         const accounts = accountsRes.data || [];
@@ -65,6 +80,7 @@ export default async function handler(req: any, res: any) {
         const creditCards = cardsRes.data || [];
         const assetsData = assetsRes.data || [];
         const liabilitiesData = liabilitiesRes.data || [];
+        const historicalData = (arguments[0] as any).data || []; // Note: This mapping depends on Promise.all order expansion below
 
         const totalBalance = accounts.reduce((s: number, a: any) => s + Number(a.current_balance || 0), 0);
         const totalPhysicalAssets = assetsData.reduce((s: number, a: any) => s + Number(a.estimated_value || 0), 0);
@@ -99,6 +115,31 @@ export default async function handler(req: any, res: any) {
         const periodLabel = `De ${filterStart.split('-').reverse().join('/')} até ${filterEnd.split('-').reverse().join('/')}`;
 
         // =====================================
+        // 1.5 CALCULATE HISTORICAL AVERAGES
+        // =====================================
+        const historyRes = await supabase.from('transactions')
+            .select('amount, category, date')
+            .eq('user_id', userId)
+            .eq('type', 'EXPENSE')
+            .is('is_deleted', false)
+            .is('is_amortization', false)
+            .gte('date', historyStart)
+            .lt('date', filterStart);
+
+        const histTxs = historyRes.data || [];
+        const histCategoryTotals: Record<string, number> = {};
+        const monthsCaptured = new Set();
+        histTxs.forEach(t => {
+            const m = t.date.substring(0, 7);
+            monthsCaptured.add(m);
+            histCategoryTotals[t.category] = (histCategoryTotals[t.category] || 0) + Math.abs(t.amount);
+        });
+        const numMonths = monthsCaptured.size || 1;
+        const historicalAverages = Object.entries(histCategoryTotals)
+            .map(([cat, total]) => `${cat}: R$${(total / numMonths).toFixed(2)}/mês`)
+            .slice(0, 10).join(' | ');
+
+        // =====================================
         // 2. BUILD THE PROMPT TEXT (Token-Efficient)
         // =====================================
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
@@ -107,8 +148,14 @@ export default async function handler(req: any, res: any) {
 
         const systemPrompt = `# IDENTIDADE V2
 Você é a FinVision AI, a Assistente Financeira Premium e o "Private Banker" definitivo do software FinVision Pro.
-Tom: Especialista Financeiro executivo, extremamente educado, direto, claro e que usa emojis corporativos de forma estratégica (📊, 💼, 🚀).
-Objetivo: Leia os dados do usuário E ajude-o a usar a própria plataforma.
+Tom: Especialista Financeiro executivo, extremamente educado, NATURAL, DIRETO e CURTO. Evite introduções longas ou explicações óbvias. Vá direto ao ponto.
+Objetivo: Leia os dados do usuário, analise tendências históricas e ajude-o a usar a plataforma. Use emojis de forma cirúrgica (📊, 💼).
+
+# PERSONALIDADE E REGRAS DE RESPOSTA
+1. Linguagem de "Papo Reto": O usuário é ocupado. Se ele perguntar "Quanto gastei?", não diga "Baseado nos dados carregados do seu dashboard...", diga apenas "Você gastou R$ X em Y".
+2. Só explique detalhadamente se o usuário pedir (Ex: "Me explique como chegou a esse número"). 
+3. Se for uma resposta curta, mantenha em no máximo 2-3 parágrafos curtos.
+4. Use negrito para destacar valores e categorias.
 
 # MANUAL DO SISTEMA FINVISION PRO (Para Suporte Técnico)
 Se o usuário perguntar como fazer algo no aplicativo, use este conhecimento exato:
@@ -131,6 +178,10 @@ Este é o macro-cenário do usuário para você dar conselhos de planejamento es
 • Bens / Ativos Físicos: R$ ${totalPhysicalAssets.toFixed(2)}
 • Dívidas de Longo Prazo (Passivos): R$ ${totalDebt.toFixed(2)}
 • Patrimônio Líquido Total (Contas + Bens - Dívidas): R$ ${netWorth.toFixed(2)}
+
+# TENDÊNCIAS E MÉDIAS (Últimos ${numMonths} meses)
+• Médias Históricas por Categoria: ${historicalAverages || 'Dados insuficientes para média'}
+• Insight de Tendência: Se o gasto atual em uma categoria estiver 15%+ acima da média histórica, aponte isso de forma direta como um "Alerta de Desvio".
 
 • Contas Atuais: ${accounts.map((a: any) => `${a.institution}(R$${Number(a.current_balance).toFixed(2)})`).join(', ')}
 • Cartões Cadastrados: ${creditCards.map((c: any) => `${c.brand}(Lim:R$${c.limit})`).join(', ') || 'Nenhum'}
