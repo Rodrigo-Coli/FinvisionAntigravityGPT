@@ -130,6 +130,8 @@ interface HistoryFiltersProps {
     setFilterAccount: (v: string[]) => void;
     filterCategory: string[];
     setFilterCategory: (v: string[]) => void;
+    filterSubcategory: string[];
+    setFilterSubcategory: (v: string[]) => void;
     startDate: string;
     setStartDate: (v: string) => void;
     endDate: string;
@@ -142,6 +144,7 @@ interface HistoryFiltersProps {
     setFilterOwner: (v: string[]) => void;
     owners: string[];
     categories: string[];
+    subcategories: string[];
     accounts: BankAccount[];
     resetFilters: () => void;
 }
@@ -149,9 +152,9 @@ interface HistoryFiltersProps {
 export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
     search, setSearch, showFilters, setShowFilters,
     filterType, setFilterType, filterAccount, setFilterAccount,
-    filterCategory, setFilterCategory, startDate, setStartDate,
+    filterCategory, setFilterCategory, filterSubcategory, setFilterSubcategory, startDate, setStartDate,
     endDate, setEndDate, minPrice, setMinPrice, maxPrice, setMaxPrice,
-    filterOwner, setFilterOwner, owners, categories, accounts, resetFilters
+    filterOwner, setFilterOwner, owners, categories, subcategories, accounts, resetFilters
 }) => {
     return (
         <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
@@ -180,7 +183,7 @@ export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
             </div>
 
             {showFilters && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 pt-6 border-t border-slate-50 animate-in fade-in slide-in-from-top-4 duration-300">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 pt-6 border-t border-slate-50 animate-in fade-in slide-in-from-top-4 duration-300">
                     <div className="space-y-2">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                             <Calendar size={12} /> Período
@@ -209,6 +212,16 @@ export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
                         options={categories.map(c => ({ id: c, label: c }))}
                         selected={filterCategory}
                         onChange={setFilterCategory}
+                    />
+
+                    <SearchableMultiSelect
+                        label="Subcategoria"
+                        placeholder="Todas Subcategorias"
+                        searchPlaceholder="Buscar subcategoria..."
+                        icon={<Tag size={12} />}
+                        options={subcategories.map(s => ({ id: s, label: s }))}
+                        selected={filterSubcategory}
+                        onChange={setFilterSubcategory}
                     />
 
                     <SearchableMultiSelect

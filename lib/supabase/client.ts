@@ -9,5 +9,5 @@ export const isSupabaseConfigured = !!(
     supabaseUrl !== 'your-project-url'
 );
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseAnonKey) : null as any;
 

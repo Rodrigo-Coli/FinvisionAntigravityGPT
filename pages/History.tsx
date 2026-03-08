@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, FileDown, Loader2, AlertCircle, Check, RefreshCw, Calendar, Tag, Landmark, User, ArrowRight, Trash, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -9,6 +9,7 @@ import { offlineQueue } from '../lib/offlineQueue.service';
 import { HistoryUtils, EPS } from '../lib/historyUtils';
 import { DateUtils } from '../lib/dateUtils';
 import { FinanceService } from '../services/finance.service';
+import { ReconciliationService } from '../services/reconciliation.service';
 
 // Modular Components
 import { HistoryFilters } from '../components/history/HistoryFilters';
@@ -17,7 +18,9 @@ import { PaymentModal } from '../components/history/PaymentModal';
 import { AddTransactionModal } from '../components/history/AddTransactionModal';
 import { SeriesScopeModal, SeriesScope } from '../components/SeriesScopeModal';
 import { HistoryCharts } from '../components/history/HistoryCharts';
-import { ArrowDownRight, ArrowUpRight, Wallet } from 'lucide-react';
+import { DreReportModal } from '../components/history/DreReportModal';
+import { DreUtils, DreReport } from '../lib/dreUtils';
+import { ArrowDownRight, ArrowUpRight, Wallet, Building2 } from 'lucide-react';
 
 // Initial fallback categories
 const DEFAULT_CATEGORIES = [
@@ -52,6 +55,7 @@ type AddModalState =
       amount: string;
       accountId: string;
       category: string;
+      subcategory: string;
       isInstallment: boolean;
       installmentsCount: number;
       isRecurring: boolean;
@@ -68,6 +72,7 @@ const HistoryPage: React.FC = () => {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [availableCategories, setAvailableCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [categoryObjects, setCategoryObjects] = useState<{ name: string, type?: 'INCOME' | 'EXPENSE' }[]>(DEFAULT_CATEGORIES.map(c => ({ name: c })));
+  const [subcategories, setSubcategories] = useState<{ id: string; name: string; category_name?: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'ALL' | 'SETTLED'>('ALL');
@@ -82,10 +87,13 @@ const HistoryPage: React.FC = () => {
 
   // Filters
   const [showFilters, setShowFilters] = useState(false);
+  const [showDreModal, setShowDreModal] = useState(false);
+  const [dreReport, setDreReport] = useState<DreReport | null>(null);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
   const [filterAccount, setFilterAccount] = useState<string[]>([]);
   const [filterCategory, setFilterCategory] = useState<string[]>([]);
+  const [filterSubcategory, setFilterSubcategory] = useState<string[]>([]);
   const [filterOwner, setFilterOwner] = useState<string[]>([]);
 
   // (no longer used for pills, kept empty to avoid breaking HistoryCharts prop)
@@ -111,6 +119,7 @@ const HistoryPage: React.FC = () => {
   const [bulkDescription, setBulkDescription] = useState('');
   const [bulkAccount, setBulkAccount] = useState('');
   const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkSubcategory, setBulkSubcategory] = useState('');
   const [bulkOwner, setBulkOwner] = useState('');
   const [bulkCounterAccount, setBulkCounterAccount] = useState('');
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
@@ -133,6 +142,7 @@ const HistoryPage: React.FC = () => {
   }>({ show: false, tx: null, pendingAction: 'DELETE' });
 
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Read initial category or account from URL
   useEffect(() => {
@@ -262,8 +272,23 @@ const HistoryPage: React.FC = () => {
         lastSync: a.last_sync
       })).sort((a, b) => a.institution.localeCompare(b.institution)));
 
-      const { data: catData, error: catErr } = await supabase.from('categories').select('name, type').eq('user_id', user.id).eq('is_archived', false).order('name');
+      const { data: catData, error: catErr } = await supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name');
+
+      let subData: any[] = [];
+      try {
+        const { data: sData } = await supabase.from('subcategories').select('*').eq('user_id', user.id).order('name');
+        subData = sData || [];
+      } catch (e) {
+        console.warn("Subcategories table not found", e);
+      }
+
       if (!catErr && catData) {
+        const mappedSubcats = subData.map(sub => {
+          const parentCat = catData.find((c: any) => c.id === sub.category_id);
+          return { ...sub, category_name: parentCat?.name };
+        });
+        setSubcategories(mappedSubcats);
+
         const dbCategories = catData.map((c: any) => c.name);
         // Garantir nomes essenciais
         const essential = ['Outros', 'Conciliação'];
@@ -293,6 +318,7 @@ const HistoryPage: React.FC = () => {
       if (filterType !== 'ALL') query = query.eq('type', filterType);
       if (filterAccount.length > 0) query = query.in('account_id', filterAccount);
       if (filterCategory.length > 0) query = query.in('category', filterCategory);
+      if (filterSubcategory.length > 0) query = query.in('subcategory', filterSubcategory);
       if (startDate) query = query.gte('date', startDate);
       if (endDate) query = query.lte('date', endDate);
       if (filterOwner.length > 0) query = query.in('owner_name', filterOwner);
@@ -307,12 +333,13 @@ const HistoryPage: React.FC = () => {
 
       // ── Aggregation query for charts — same filters, no pagination, minimal columns ──
       let chartQuery: any = supabase.from('transactions')
-        .select('id, date, type, amount, category, is_amortization, account_id, owner_name, description, is_paid, paid_amount')
+        .select('id, date, type, amount, category, subcategory, is_amortization, account_id, owner_name, description, is_paid, paid_amount')
         .eq('user_id', user.id).eq('is_deleted', false)
         .order('date', { ascending: false });
       if (filterType !== 'ALL') chartQuery = chartQuery.eq('type', filterType);
       if (filterAccount.length > 0) chartQuery = chartQuery.in('account_id', filterAccount);
       if (filterCategory.length > 0) chartQuery = chartQuery.in('category', filterCategory);
+      if (filterSubcategory.length > 0) chartQuery = chartQuery.in('subcategory', filterSubcategory);
       if (startDate) chartQuery = chartQuery.gte('date', startDate);
       if (endDate) chartQuery = chartQuery.lte('date', endDate);
       if (filterOwner.length > 0) chartQuery = chartQuery.in('owner_name', filterOwner);
@@ -371,6 +398,7 @@ const HistoryPage: React.FC = () => {
         accountId: t.account_id,
         accountName: t.account_name ?? '',
         category: t.category ?? 'Outros',
+        subcategory: t.subcategory ?? undefined,
         owner_name: t.owner_name ?? 'Pessoal',
         isDeleted: !!t.is_deleted,
         isReconciled: !!t.is_reconciled,
@@ -396,6 +424,7 @@ const HistoryPage: React.FC = () => {
           accountId: t.account_id,
           accountName: t.account_name ?? 'Conta antiga',
           category: t.category ?? 'Outros',
+          subcategory: t.subcategory ?? undefined,
           owner_name: t.owner_name ?? 'Pessoal',
           isDeleted: t.is_deleted,
           isReconciled: t.is_reconciled,
@@ -412,13 +441,13 @@ const HistoryPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [filterType, filterAccount, filterCategory, startDate, endDate, minPrice, maxPrice, filterOwner, page, sortField, sortDirection, debouncedSearch]);
+  }, [filterType, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, page, sortField, sortDirection, debouncedSearch]);
 
   // Reset page to 0 when filters change
   useEffect(() => {
     setPage(0);
     setSelectedIds(new Set());
-  }, [filterType, JSON.stringify(filterAccount), JSON.stringify(filterCategory), startDate, endDate, minPrice, maxPrice, JSON.stringify(filterOwner), sortField, sortDirection, debouncedSearch]);
+  }, [filterType, JSON.stringify(filterAccount), JSON.stringify(filterCategory), JSON.stringify(filterSubcategory), startDate, endDate, minPrice, maxPrice, JSON.stringify(filterOwner), sortField, sortDirection, debouncedSearch]);
 
   useEffect(() => {
     if (isSupabaseConfigured) fetchData();
@@ -488,6 +517,15 @@ const HistoryPage: React.FC = () => {
       }
       if (field === 'owner_name' && value) {
         if (navigator.onLine) await FinanceService.ensureEntityExists(value);
+      }
+      if (field === 'category' && value) {
+        if (navigator.onLine) await ReconciliationService.ensureCategoryExists(value);
+      }
+      if (field === 'subcategory' && value && tx?.category) {
+        if (navigator.onLine) {
+          const catId = await ReconciliationService.ensureCategoryExists(tx.category);
+          if (catId) await ReconciliationService.ensureSubcategoryExists(catId, value);
+        }
       }
 
       if (!navigator.onLine && confirmedScope && confirmedScope !== 'ONLY_THIS') {
@@ -661,16 +699,25 @@ const HistoryPage: React.FC = () => {
 
     setIsBulkUpdating(true);
     try {
+      if (navigator.onLine) {
+        if (bulkOwner && bulkOwner !== 'Pessoal') await FinanceService.ensureEntityExists(bulkOwner);
+        if (bulkCategory) {
+          const catId = await ReconciliationService.ensureCategoryExists(bulkCategory);
+          if (catId && bulkSubcategory) await ReconciliationService.ensureSubcategoryExists(catId, bulkSubcategory);
+        }
+      }
+
       const patch: any = {};
       if (bulkDescription) patch.description = bulkDescription;
       if (bulkAccount) {
-        const acc = accounts.find(a => a.id === bulkAccount);
+        const acc = accounts.find(a => a.institution === bulkAccount || a.id === bulkAccount);
         if (acc) {
-          patch.account_id = bulkAccount;
+          patch.account_id = acc.id;
           patch.account_name = acc.institution;
         }
       }
       if (bulkCategory) patch.category = bulkCategory;
+      if (bulkSubcategory) patch.subcategory = bulkSubcategory;
       if (bulkOwner) patch.owner_name = bulkOwner;
 
       const ids = Array.from(selectedIds);
@@ -679,6 +726,7 @@ const HistoryPage: React.FC = () => {
 
       if (isTransfer && bulkCounterAccount) {
         patch.type = 'TRANSFER';
+        const counterAcc = accounts.find(a => a.institution === bulkCounterAccount || a.id === bulkCounterAccount);
         for (const id of ids) {
           const tx = transactions.find(t => t.id === id);
           const currentMetadata = tx?.metadata || {};
@@ -687,7 +735,7 @@ const HistoryPage: React.FC = () => {
             metadata: {
               ...currentMetadata,
               is_transfer: true,
-              counter_account_id: bulkCounterAccount
+              counter_account_id: counterAcc ? counterAcc.id : bulkCounterAccount
             }
           }).eq('id', id);
         }
@@ -698,7 +746,7 @@ const HistoryPage: React.FC = () => {
 
       await fetchData();
       setSelectedIds(new Set());
-      setBulkDescription(''); setBulkAccount(''); setBulkCategory(''); setBulkOwner(''); setBulkCounterAccount('');
+      setBulkDescription(''); setBulkAccount(''); setBulkCategory(''); setBulkSubcategory(''); setBulkOwner(''); setBulkCounterAccount('');
       alert("Lote atualizado com sucesso!");
     } catch (err) {
       alert("Erro ao atualizar lote");
@@ -747,16 +795,23 @@ const HistoryPage: React.FC = () => {
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Histórico');
-    if (format === 'xlsx') XLSX.writeFile(wb, `historico-${DateUtils.formatToISODate()}.xlsx`);
+    if (format === 'xlsx') XLSX.writeFile(wb, `historico_finvision_${new Date().getTime()}.xlsx`);
     else {
       const csv = XLSX.utils.sheet_to_csv(ws);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `historico-${DateUtils.formatToISODate()}.csv`;
+      link.download = `historico_finvision_${new Date().getTime()}.csv`;
       link.click();
     }
+  };
+
+  const handleGenerateDre = () => {
+    // Generate the DRE report using the currently filtered transactions mapped
+    const report = DreUtils.generateDreFromTransactions(transactions, startDate, endDate);
+    setDreReport(report);
+    setShowDreModal(true);
   };
 
   const openPayModal = (tx: Transaction) => {
@@ -797,6 +852,14 @@ const HistoryPage: React.FC = () => {
       // Em modo offline restrito, user pode vir nulo da rede.
       const userId = user?.id || 'offline-user';
 
+      if (navigator.onLine) {
+        if (f.ownerName && f.ownerName !== 'Pessoal') await FinanceService.ensureEntityExists(f.ownerName);
+        if (f.category) {
+          const catId = await ReconciliationService.ensureCategoryExists(f.category);
+          if (catId && f.subcategory) await ReconciliationService.ensureSubcategoryExists(catId, f.subcategory);
+        }
+      }
+
       const isTransfer = f.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || f.description.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
 
       if (!f.isInstallment && !f.isRecurring) {
@@ -805,7 +868,7 @@ const HistoryPage: React.FC = () => {
           const newTx = {
             id: fakeId,
             user_id: userId, date: f.date, description: f.description, amount, type: f.type,
-            account_id: f.accountId, category: f.category, is_paid: false, paid_amount: 0,
+            account_id: f.accountId, category: f.category, subcategory: f.subcategory || null, is_paid: false, paid_amount: 0,
             owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName
           };
           offlineQueue.addAction('CREATE_TRANSACTION', newTx);
@@ -820,13 +883,13 @@ const HistoryPage: React.FC = () => {
           await supabase.from('transactions').insert([
             {
               user_id: user?.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
-              account_id: f.accountId, account_name: accSrc?.institution || 'Conta', category: f.category, is_paid: true, paid_amount: amount, paid_at: f.date,
+              account_id: f.accountId, account_name: accSrc?.institution || 'Conta', category: f.category, subcategory: f.subcategory || null, is_paid: true, paid_amount: amount, paid_at: f.date,
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
               metadata: { is_transfer: true, transfer_side: 'SOURCE', counter_account_id: f.destinationAccountId }
             },
             {
               user_id: user?.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
-              account_id: f.destinationAccountId, account_name: accDest?.institution || 'Conta Destino', category: f.category, is_paid: true, paid_amount: amount, paid_at: f.date,
+              account_id: f.destinationAccountId, account_name: accDest?.institution || 'Conta Destino', category: f.category, subcategory: f.subcategory || null, is_paid: true, paid_amount: amount, paid_at: f.date,
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
               metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: f.accountId }
             }
@@ -834,19 +897,19 @@ const HistoryPage: React.FC = () => {
         } else {
           await supabase.from('transactions').insert({
             user_id: user?.id, date: f.date, description: f.description, amount, type: f.type,
-            account_id: f.accountId, category: f.category, is_paid: false, paid_amount: 0,
+            account_id: f.accountId, category: f.category, subcategory: f.subcategory || null, is_paid: false, paid_amount: 0,
             owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName
           });
         }
       } else {
         const { TransactionSeriesUtils } = await import('../lib/transactionSeriesUtils');
         const series = TransactionSeriesUtils.generateSeries(
-          { description: f.description, amount, category: f.category, accountId: f.accountId, type: f.type },
+          { description: f.description, amount, category: f.category, subcategory: f.subcategory || undefined, accountId: f.accountId, type: f.type },
           { type: f.isInstallment ? 'INSTALLMENT' : 'RECURRING', count: f.installmentsCount, period: f.recurrencePeriod, daysInterval: f.recurrenceDaysInterval, startDate: f.date, totalAmount: f.isInstallment ? amount : undefined }
         );
         const groupId = crypto.randomUUID();
         const inserts = series.map(item => ({
-          user_id: userId, date: item.date, description: item.description, amount: item.amount, type: item.type, account_id: item.accountId, category: item.category, is_paid: false, paid_amount: 0,
+          user_id: userId, date: item.date, description: item.description, amount: item.amount, type: item.type, account_id: item.accountId, category: item.category, subcategory: item.subcategory, is_paid: false, paid_amount: 0,
           owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
           metadata: { ...(f.isInstallment ? { installment_group_id: groupId, installment_number: (item as any).installmentNumber, installment_total: f.installmentsCount } : { recurrence_group_id: groupId }) }
         }));
@@ -943,15 +1006,45 @@ const HistoryPage: React.FC = () => {
             onClick={() => setAddModal({
               open: true,
               isSubmitting: false,
-              form: { date: DateUtils.formatToISODate(), description: '', type: 'EXPENSE', amount: '', accountId: accounts[0]?.id || '', category: 'Outros', ownerName: 'Pessoal', isInstallment: false, installmentsCount: 2, isRecurring: false, recurrencePeriod: 'monthly', recurrenceDaysInterval: 30, destinationAccountId: '' }
+              form: {
+                date: DateUtils.formatToISODate(),
+                description: '',
+                type: 'EXPENSE',
+                amount: '',
+                accountId: accounts.length > 0 ? accounts[0].id : '',
+                category: 'Outros',
+                subcategory: '',
+                ownerName: 'Pessoal',
+                isInstallment: false,
+                installmentsCount: 2,
+                isRecurring: false,
+                recurrencePeriod: 'monthly',
+                recurrenceDaysInterval: 30,
+                destinationAccountId: ''
+              }
             })}
             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
           >
             <Plus size={18} /> Novo Lançamento
           </button>
-          <button onClick={() => exportToXlsx('xlsx')} className="p-3 bg-white border border-slate-100 text-slate-400 rounded-xl hover:text-slate-900 transition-all shadow-sm">
-            <FileDown size={20} />
-          </button>
+
+          <div className="flex bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+            <button
+              onClick={handleGenerateDre}
+              className="px-4 py-3 text-slate-600 hover:text-brand-600 hover:bg-slate-50 transition-colors flex items-center gap-2 font-bold text-xs border-r border-slate-100"
+              title="Exportar DRE"
+            >
+              <Building2 size={18} />
+              <span className="hidden sm:inline">DRE</span>
+            </button>
+            <button
+              onClick={() => exportToXlsx('xlsx')}
+              className="p-3 text-slate-600 hover:text-emerald-600 hover:bg-slate-50 transition-colors"
+              title="Exportar Tabela Excel"
+            >
+              <FileDown size={18} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -976,44 +1069,70 @@ const HistoryPage: React.FC = () => {
 
             <div className="relative w-full md:w-44">
               <Landmark size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <select
+              <input
+                list="bulk-accounts-list"
                 value={bulkAccount}
                 onChange={(e) => setBulkAccount(e.target.value)}
+                placeholder="Trocar Conta..."
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
-              >
-                <option value="">Trocar Conta...</option>
+              />
+              <datalist id="bulk-accounts-list">
                 {accounts.map(acc => (
-                  <option key={acc.id} value={acc.id}>{acc.institution}</option>
+                  <option key={acc.id} value={acc.institution} />
                 ))}
-              </select>
+              </datalist>
             </div>
 
             <div className="relative w-full md:w-44">
               <Tag size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <select
+              <input
+                list="bulk-categories-list"
                 value={bulkCategory}
                 onChange={(e) => setBulkCategory(e.target.value)}
+                placeholder="Trocar Categoria..."
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
-              >
-                <option value="">Trocar Categoria...</option>
+              />
+              <datalist id="bulk-categories-list">
                 {availableCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
+                  <option key={cat} value={cat} />
                 ))}
-              </select>
+              </datalist>
             </div>
+
+            {bulkCategory && (
+              <div className="relative w-full md:w-44 animate-in zoom-in-95 duration-200">
+                <Tag size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  list="bulk-subcategories-list"
+                  value={bulkSubcategory}
+                  onChange={(e) => setBulkSubcategory(e.target.value)}
+                  placeholder="Trocar Subcat..."
+                  className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
+                />
+                <datalist id="bulk-subcategories-list">
+                  {subcategories
+                    .filter(s => s.category_name === bulkCategory)
+                    .map(s => (
+                      <option key={s.id} value={s.name} />
+                    ))}
+                </datalist>
+              </div>
+            )}
 
             <div className="relative w-full md:w-44">
               <User size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <select
+              <input
+                list="bulk-owners-list"
                 value={bulkOwner}
                 onChange={(e) => setBulkOwner(e.target.value)}
+                placeholder="Trocar Entidade..."
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
-              >
-                <option value="">Trocar Entidade...</option>
+              />
+              <datalist id="bulk-owners-list">
                 {owners.map(o => (
-                  <option key={o} value={o}>{o}</option>
+                  <option key={o} value={o} />
                 ))}
-              </select>
+              </datalist>
             </div>
 
             {(bulkCategory.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes('transferencia') || bulkCategory.toLowerCase().includes('transfer')) && (
@@ -1021,16 +1140,18 @@ const HistoryPage: React.FC = () => {
                 <ArrowRight size={14} className="text-brand-400" />
                 <div className="relative w-full md:w-44">
                   <Landmark size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-400" />
-                  <select
+                  <input
+                    list="bulk-counteraccounts-list"
                     value={bulkCounterAccount}
                     onChange={(e) => setBulkCounterAccount(e.target.value)}
+                    placeholder="Destino Transf..."
                     className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-brand-400 border border-brand-500/30 text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
-                  >
-                    <option value="">Destino Transf...</option>
+                  />
+                  <datalist id="bulk-counteraccounts-list">
                     {accounts.map(acc => (
-                      <option key={acc.id} value={acc.id}>{acc.institution}</option>
+                      <option key={acc.id} value={acc.institution} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
               </div>
             )}
@@ -1067,10 +1188,10 @@ const HistoryPage: React.FC = () => {
       <HistoryFilters
         search={search} setSearch={setSearch} showFilters={showFilters} setShowFilters={setShowFilters}
         filterType={filterType} setFilterType={setFilterType} filterAccount={filterAccount} setFilterAccount={setFilterAccount}
-        filterCategory={filterCategory} setFilterCategory={setFilterCategory} startDate={startDate} setStartDate={setStartDate}
+        filterCategory={filterCategory} setFilterCategory={setFilterCategory} filterSubcategory={filterSubcategory} setFilterSubcategory={setFilterSubcategory} startDate={startDate} setStartDate={setStartDate}
         endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
         filterOwner={filterOwner} setFilterOwner={setFilterOwner} owners={owners}
-        categories={availableCategories} accounts={accounts} resetFilters={resetFilters}
+        categories={availableCategories} subcategories={subcategories.map(s => s.name)} accounts={accounts} resetFilters={resetFilters}
       />
 
       {/* QUICK DATE FILTERS + CUSTOM RANGE + VIEW MODE TOGGLE */}
@@ -1158,7 +1279,7 @@ const HistoryPage: React.FC = () => {
 
       <TransactionTable
         transactions={viewFiltered} isLoading={isLoading} accounts={accounts}
-        categoryObjects={categoryObjects} onCreateCategory={handleCreateCategory}
+        categoryObjects={categoryObjects} subcategories={subcategories} onCreateCategory={handleCreateCategory}
         editingRow={editingRow} setEditingRow={setEditingRow} editValue={editValue} setEditValue={setEditValue}
         savingId={savingId} handleUpdate={handleUpdate} handleDelete={handleDelete} statusBadge={statusBadge}
         sortField={sortField} sortDirection={sortDirection} onSort={handleSort}
@@ -1238,7 +1359,7 @@ const HistoryPage: React.FC = () => {
       <AddTransactionModal show={addModal.open} onClose={() => setAddModal({ open: false })} onSubmit={createManualTransaction}
         isSubmitting={addModal.open ? addModal.isSubmitting : false} error={addModal.open ? addModal.error : null}
         form={addModal.open ? addModal.form : {} as any} setAddField={(f, v) => setAddModal(prev => prev.open ? { ...prev, form: { ...prev.form, [f]: v } } : prev)}
-        accounts={accounts} owners={owners} categoryObjects={categoryObjects} onCreateCategory={handleCreateCategory}
+        accounts={accounts} owners={owners} categoryObjects={categoryObjects} subcategories={subcategories} onCreateCategory={handleCreateCategory}
       />
 
       <SeriesScopeModal
@@ -1248,6 +1369,13 @@ const HistoryPage: React.FC = () => {
         actionLabel={seriesModal.pendingAction === 'DELETE' ? 'Excluir' : 'Salvar'}
         type={seriesModal.tx?.metadata?.recurrence_group_id ? 'RECURRING' : 'INSTALLMENT'}
       />
+
+      {showDreModal && dreReport && (
+        <DreReportModal
+          report={dreReport}
+          onClose={() => setShowDreModal(false)}
+        />
+      )}
     </div>
   );
 };

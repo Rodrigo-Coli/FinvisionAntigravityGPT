@@ -9,6 +9,7 @@ interface TransactionTableProps {
     isLoading: boolean;
     accounts: BankAccount[];
     categoryObjects: { name: string; type?: 'INCOME' | 'EXPENSE' }[];
+    subcategories: { id: string; name: string; category_name?: string }[];
     onCreateCategory: (name: string, type: 'INCOME' | 'EXPENSE') => Promise<void>;
     editingRow: { id: string; field: string } | null;
     setEditingRow: (v: { id: string; field: string } | null) => void;
@@ -157,6 +158,203 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({ value, transactionType,
     );
 };
 
+// ─── Subcategory Picker ───────────────────────────────────────────────────────
+interface SubcategoryPickerProps {
+    value?: string;
+    parentCategory: string;
+    subcategories: { id: string; name: string; category_name?: string }[];
+    onSelect: (subcat: string | null) => void;
+}
+
+const SubcategoryPicker: React.FC<SubcategoryPickerProps> = ({ value, parentCategory, subcategories, onSelect }) => {
+    const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const { triggerRef, openUp } = useDropdownDirection(open);
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (triggerRef.current && !triggerRef.current.contains(e.target as Node)) {
+                setOpen(false); setSearch('');
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const filtered = subcategories
+        .filter(s => s.category_name === parentCategory)
+        .filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    if (subcategories.filter(s => s.category_name === parentCategory).length === 0 && !value) return null;
+
+    return (
+        <div ref={triggerRef} className="relative inline-block ml-1">
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                className="text-[9px] font-bold uppercase text-brand-400 hover:text-brand-600 transition-colors flex items-center gap-1 leading-none border-l border-brand-200 pl-1"
+                title={value ? `Subcategoria: ${value}` : "Adicionar Subcategoria"}
+            >
+                {value || 'Subcat'}
+                <ChevronDown size={9} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
+
+            {open && (
+                <div className={`absolute z-50 ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden w-48 animate-in fade-in duration-150`}>
+                    <div className="p-2 border-b border-slate-50 space-y-1.5">
+                        <div className="relative">
+                            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
+                            <input
+                                autoFocus
+                                className="w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300"
+                                placeholder="Buscar subcategoria..."
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                        <button type="button"
+                            onClick={() => { onSelect(null); setOpen(false); setSearch(''); }}
+                            className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors hover:bg-slate-50 flex items-center gap-2 ${!value ? 'text-brand-600 font-bold bg-brand-50/50' : 'text-slate-400'}`}
+                        >
+                            {!value && <Check size={10} className="text-brand-600 shrink-0" />}
+                            Sem Subcategoria
+                        </button>
+                        {filtered.map(s => (
+                            <button key={s.id} type="button"
+                                onClick={() => { onSelect(s.name); setOpen(false); setSearch(''); }}
+                                className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors hover:bg-slate-50 flex items-center gap-2 ${s.name === value ? 'text-brand-600 font-bold bg-brand-50/50' : 'text-slate-700'}`}
+                            >
+                                {s.name === value && <Check size={10} className="text-brand-600 shrink-0" />}
+                                {s.name}
+                            </button>
+                        ))}
+                        {search.trim() && !filtered.some(s => s.name.toLowerCase() === search.trim().toLowerCase()) && (
+                            <button type="button"
+                                onClick={() => { onSelect(search.trim()); setOpen(false); setSearch(''); }}
+                                className="w-full text-left px-3 py-2 text-xs font-bold text-brand-600 bg-brand-50 hover:bg-brand-100 transition-colors flex items-center gap-2"
+                            >
+                                <Plus size={10} className="shrink-0" />
+                                Criar "{search.trim()}"
+                            </button>
+                        )}
+                        {filtered.length === 0 && !search.trim() && (
+                            <p className="px-3 py-4 text-xs text-slate-300 text-center">Nenhuma subcategoria</p>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ─── Account Picker ─────────────────────────────────────────────────────────────
+interface AccountPickerProps {
+    value: string;
+    accounts: BankAccount[];
+    onSelect: (accountId: string) => void;
+    compact?: boolean;
+    placeholder?: string;
+}
+
+const AccountPicker: React.FC<AccountPickerProps> = ({ value, accounts, onSelect, compact = false, placeholder = 'Conta' }) => {
+    const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const { triggerRef, openUp } = useDropdownDirection(open);
+    const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+
+    useEffect(() => {
+        if (open && triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const dropdownHeight = 250;
+            const shouldOpenUp = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+            setCoords({
+                top: shouldOpenUp ? rect.top - 4 : rect.bottom + 4,
+                left: rect.left,
+                width: Math.max(rect.width, 160) // ensure min width
+            });
+        }
+    }, [open]);
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (triggerRef.current && triggerRef.current.contains(e.target as Node)) return;
+            const dropdown = document.getElementById('account-picker-portal');
+            if (dropdown && dropdown.contains(e.target as Node)) return;
+            setOpen(false); setSearch('');
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const filtered = accounts
+        .filter(a => a.institution.toLowerCase().includes(search.toLowerCase()))
+        .sort((a, b) => a.institution.localeCompare(b.institution));
+
+    // Find current label to display
+    const currentAcc = accounts.find(a => a.id === value);
+    const displayLabel = currentAcc ? currentAcc.institution : placeholder;
+
+    return (
+        <div ref={triggerRef} className="relative inline-block">
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                className={compact
+                    ? "text-[9px] font-black uppercase text-brand-600 bg-brand-50/50 px-2 flex items-center gap-1 py-0.5 rounded-lg outline-none cursor-pointer border border-brand-200 max-w-[120px] truncate leading-none h-[18px]"
+                    : "text-[10px] font-bold uppercase text-slate-400 hover:text-slate-600 bg-transparent border-none p-0 outline-none cursor-pointer truncate flex items-center gap-1"}
+                title={displayLabel}
+            >
+                {displayLabel}
+                <ChevronDown size={9} className={`transition-transform shrink-0 ${open ? 'rotate-180' : ''}`} />
+            </button>
+
+            {open && createPortal(
+                <div id="account-picker-portal"
+                    style={{
+                        position: 'fixed',
+                        top: openUp ? 'auto' : coords.top,
+                        bottom: openUp ? window.innerHeight - coords.top + 8 : 'auto',
+                        left: coords.left,
+                        minWidth: '12rem',
+                    }}
+                    className={`z-[9999] bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-150`}>
+                    <div className="p-2 border-b border-slate-50 space-y-1.5">
+                        <div className="relative">
+                            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
+                            <input
+                                autoFocus
+                                className="w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300"
+                                placeholder={`Buscar ${placeholder.toLowerCase()}...`}
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                        {filtered.map(a => (
+                            <button key={a.id} type="button"
+                                onClick={() => { onSelect(a.id); setOpen(false); setSearch(''); }}
+                                className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 transition-colors flex items-center gap-2 ${a.id === value ? 'text-brand-600 font-bold bg-brand-50/50' : 'text-slate-700'}`}
+                            >
+                                {a.id === value && <Check size={10} className="text-brand-600 shrink-0" />}
+                                {a.institution}
+                            </button>
+                        ))}
+                        {filtered.length === 0 && (
+                            <p className="px-3 py-4 text-xs text-slate-300 text-center">Nenhuma conta encontrada</p>
+                        )}
+                    </div>
+                </div>,
+                document.body
+            )}
+        </div>
+    );
+};
+
 // ─── Owner Picker ─────────────────────────────────────────────────────────────
 interface OwnerPickerProps {
     value: string;
@@ -288,7 +486,7 @@ const OwnerPicker: React.FC<OwnerPickerProps> = ({ value, allOwners, onSelect, c
 // ─── Main Component ───────────────────────────────────────────────────────────
 export const TransactionTable: React.FC<TransactionTableProps> = ({
     transactions, isLoading, accounts,
-    categoryObjects, onCreateCategory,
+    categoryObjects, subcategories, onCreateCategory,
     editingRow, setEditingRow, editValue, setEditValue,
     savingId, handleUpdate, handleDelete,
     statusBadge, formatCurrency, getAmount, getPaidAmount, getRemaining, getStatus,
@@ -444,13 +642,11 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                     {/* Row 3: Account · Category | Owner badge | Status */}
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                                            <select
-                                                className="text-[10px] font-bold uppercase text-slate-400 bg-transparent border-none p-0 outline-none cursor-pointer w-full truncate"
+                                            <AccountPicker
                                                 value={t.accountId}
-                                                onChange={e => handleUpdate(t.id, 'account_id', e.target.value)}
-                                            >
-                                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
-                                            </select>
+                                                accounts={accounts}
+                                                onSelect={accId => handleUpdate(t.id, 'account_id', accId)}
+                                            />
                                             <div className="flex items-center gap-1 flex-wrap">
                                                 <CategoryPicker
                                                     value={t.category}
@@ -459,15 +655,20 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     onSelect={cat => handleUpdate(t.id, 'category', cat)}
                                                     onCreateCategory={onCreateCategory}
                                                 />
+                                                <SubcategoryPicker
+                                                    value={t.subcategory}
+                                                    parentCategory={t.category}
+                                                    subcategories={subcategories}
+                                                    onSelect={sub => handleUpdate(t.id, 'subcategory', sub)}
+                                                />
                                                 {t.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
-                                                    <select
-                                                        className="text-[9px] font-black text-brand-600 bg-brand-50/50 px-2 py-0.5 rounded-lg outline-none cursor-pointer border border-brand-200 max-w-[120px] truncate"
+                                                    <AccountPicker
+                                                        compact
+                                                        placeholder="Para..."
                                                         value={t.metadata?.counter_account_id || ''}
-                                                        onChange={e => handleUpdate(t.id, 'counter_account_id', e.target.value)}
-                                                    >
-                                                        <option value="">Para...</option>
-                                                        {accounts.filter(a => a.id !== t.accountId).map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
-                                                    </select>
+                                                        accounts={accounts.filter(a => a.id !== t.accountId)}
+                                                        onSelect={accId => handleUpdate(t.id, 'counter_account_id', accId)}
+                                                    />
                                                 )}
                                             </div>
                                         </div>
@@ -611,29 +812,34 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
 
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col gap-1">
-                                            <select
-                                                className="text-[10px] font-bold uppercase text-slate-400 bg-transparent border-none p-0 outline-none cursor-pointer hover:text-slate-900 transition-colors"
+                                            <AccountPicker
                                                 value={t.accountId}
-                                                onChange={e => handleUpdate(t.id, 'account_id', e.target.value)}
-                                            >
-                                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
-                                            </select>
-                                            <CategoryPicker
-                                                value={t.category}
-                                                transactionType={t.type}
-                                                categoryObjects={categoryObjects}
-                                                onSelect={cat => handleUpdate(t.id, 'category', cat)}
-                                                onCreateCategory={onCreateCategory}
+                                                accounts={accounts}
+                                                onSelect={accId => handleUpdate(t.id, 'account_id', accId)}
                                             />
+                                            <div className="flex items-center gap-1 flex-wrap">
+                                                <CategoryPicker
+                                                    value={t.category}
+                                                    transactionType={t.type}
+                                                    categoryObjects={categoryObjects}
+                                                    onSelect={cat => handleUpdate(t.id, 'category', cat)}
+                                                    onCreateCategory={onCreateCategory}
+                                                />
+                                                <SubcategoryPicker
+                                                    value={t.subcategory}
+                                                    parentCategory={t.category}
+                                                    subcategories={subcategories}
+                                                    onSelect={sub => handleUpdate(t.id, 'subcategory', sub)}
+                                                />
+                                            </div>
                                             {t.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
-                                                <select
-                                                    className="text-[9px] font-black text-brand-600 bg-brand-50/50 px-2 py-0.5 rounded-lg outline-none cursor-pointer border border-brand-200 w-fit"
+                                                <AccountPicker
+                                                    compact
+                                                    placeholder={t.metadata?.transfer_side === 'DESTINATION' ? 'Origem...' : 'Destino...'}
                                                     value={t.metadata?.counter_account_id || ''}
-                                                    onChange={e => handleUpdate(t.id, 'counter_account_id', e.target.value)}
-                                                >
-                                                    <option value="">{t.metadata?.transfer_side === 'DESTINATION' ? 'Origem...' : 'Destino...'}</option>
-                                                    {accounts.filter(a => a.id !== t.accountId).map(acc => <option key={acc.id} value={acc.id}>{acc.institution}</option>)}
-                                                </select>
+                                                    accounts={accounts.filter(a => a.id !== t.accountId)}
+                                                    onSelect={accId => handleUpdate(t.id, 'counter_account_id', accId)}
+                                                />
                                             )}
                                         </div>
                                     </td>

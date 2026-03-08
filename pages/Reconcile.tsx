@@ -41,6 +41,7 @@ const Reconcile: React.FC = () => {
   const [isLoadingQueue, setIsLoadingQueue] = useState(true);
   const [recentImports, setRecentImports] = useState<any[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [subcategories, setSubcategories] = useState<{ id: string; name: string; category_name?: string }[]>([]);
 
   // Novos estados para o Editor Inline
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -56,6 +57,7 @@ const Reconcile: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showOnlyDuplicates, setShowOnlyDuplicates] = useState(false);
   const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkSubcategory, setBulkSubcategory] = useState('');
   const [bulkOwner, setBulkOwner] = useState('');
   const [bulkTarget, setBulkTarget] = useState('');
 
@@ -72,6 +74,21 @@ const Reconcile: React.FC = () => {
   const fetchCategories = async () => {
     const dbCategories = await FinanceService.getCategories();
     setCategories(dbCategories);
+  };
+
+  const fetchSubcategories = async () => {
+    if (!supabase) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: cats } = await supabase.from('categories').select('id, name').eq('user_id', user.id);
+    const { data: subs } = await supabase.from('subcategories').select('*').eq('user_id', user.id);
+    if (subs && cats) {
+      const mapped = subs.map(s => {
+        const p = cats.find(c => c.id === s.category_id);
+        return { ...s, category_name: p?.name };
+      });
+      setSubcategories(mapped);
+    }
   };
 
   const fetchOwners = async () => {
@@ -113,6 +130,7 @@ const Reconcile: React.FC = () => {
       fetchQueue(),
       fetchRecentImports(),
       fetchCategories(),
+      fetchSubcategories(),
       fetchOwners(),
       fetchRealAccounts(),
       fetchRealCards()
@@ -218,6 +236,7 @@ const Reconcile: React.FC = () => {
       targetName: getTargetName(selectedTargetId),
       owner_name: item.owner_name || 'Pessoal',
       category: initialCategory || item.category || 'Conciliação',
+      subcategory: (item as any).subcategory || '',
       counterAccountId: counterAccountId,
       counterAccountName: getCounterpartName(counterAccountId)
     });
@@ -226,7 +245,7 @@ const Reconcile: React.FC = () => {
   const saveEdit = async (id: string) => {
     try {
       await ReconciliationService.updateTransactionStatus(id, editForm.status, editForm.owner_name);
-      setImported(prev => prev.map(t => t.id === id ? { ...t, owner_name: editForm.owner_name, category: editForm.category } : t));
+      setImported(prev => prev.map(t => t.id === id ? { ...t, owner_name: editForm.owner_name, category: editForm.category, subcategory: editForm.subcategory } as any : t));
       setEditingId(null);
     } catch (e) { alert("Erro ao salvar"); }
   };
@@ -376,7 +395,7 @@ const Reconcile: React.FC = () => {
       }
       setImported(prev => prev.filter(t => !selectedIds.has(t.id)));
       setSelectedIds(new Set());
-      setBulkCategory(''); setBulkOwner(''); setBulkTarget('');
+      setBulkCategory(''); setBulkSubcategory(''); setBulkOwner(''); setBulkTarget('');
     } catch (e) {
       alert("Erro ao ignorar itens selecionados");
     } finally {
@@ -402,7 +421,7 @@ const Reconcile: React.FC = () => {
         await handleConfirm(item, true); // true = silent/bulk
       }
 
-      setBulkCategory(''); setBulkOwner(''); setBulkTarget('');
+      setBulkCategory(''); setBulkSubcategory(''); setBulkOwner(''); setBulkTarget('');
       setSelectedIds(new Set());
     } catch (e) {
       alert("Erro ao confirmar itens selecionados. Alguns podem não ter sido processados.");
@@ -419,6 +438,7 @@ const Reconcile: React.FC = () => {
     const targetId = isEditing ? editForm.targetId : selectedTargetId;
     const owner = isEditing ? editForm.owner_name : (item.owner_name || 'Pessoal');
     const categoryName = isEditing ? editForm.category : (item.category || 'Conciliação');
+    const subcategoryName = isEditing ? editForm.subcategory : (item.subcategory || null);
     const counterId = isEditing ? editForm.counterAccountId : counterAccountId;
 
     if (!targetId && !isBulk) return alert("Selecione um destino (Banco/Cartão)");
@@ -433,6 +453,9 @@ const Reconcile: React.FC = () => {
       let finalCategoryId = null;
       if (categoryName) {
         finalCategoryId = await ReconciliationService.ensureCategoryExists(categoryName);
+      }
+      if (finalCategoryId && subcategoryName) {
+        await ReconciliationService.ensureSubcategoryExists(finalCategoryId, subcategoryName);
       }
       if (owner && owner !== 'Pessoal') {
         await FinanceService.ensureEntityExists(owner);
@@ -455,7 +478,7 @@ const Reconcile: React.FC = () => {
           amount: absoluteAmount,
           type: isTransfer ? 'TRANSFER' : (thisSideIsSource ? 'EXPENSE' : 'INCOME'),
           account_id: targetId, account_name: acc?.institution || 'Conta',
-          category: categoryName,
+          category: categoryName, subcategory: subcategoryName || null,
           owner_name: owner, is_paid: true, paid_at: item.date,
           metadata: {
             category_id: finalCategoryId,
@@ -476,7 +499,7 @@ const Reconcile: React.FC = () => {
             type: 'TRANSFER',
             account_id: counterId,
             account_name: counterAcc?.institution || 'Conta Destino',
-            category: categoryName,
+            category: categoryName, subcategory: subcategoryName || null,
             owner_name: owner, is_paid: true, paid_at: item.date,
             metadata: {
               category_id: finalCategoryId,
@@ -652,6 +675,19 @@ const Reconcile: React.FC = () => {
                     placeholder="Definir Categoria..."
                   />
 
+                  {bulkCategory && (
+                    <input
+                      list="subcategories-bulk-list"
+                      value={bulkSubcategory}
+                      className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500"
+                      onChange={(e) => {
+                        setBulkSubcategory(e.target.value);
+                        applyBulkEdit('subcategory', e.target.value);
+                      }}
+                      placeholder="Definir Subcategoria..."
+                    />
+                  )}
+
                   <input
                     list="targets-list"
                     value={bulkTarget}
@@ -794,9 +830,34 @@ const Reconcile: React.FC = () => {
                                   }
                                 }}
                                 placeholder="Categoria..."
+                                className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-1 focus:ring-brand-500 mb-2"
+                              />
+                            </div>
+
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Subcategoria</p>
+                            <div className="relative">
+                              <Tag size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                              <input
+                                list={`subcategories-list-${item.id}`}
+                                value={isEditing ? editForm.subcategory : ((item as any).subcategory || '')}
+                                onFocus={e => e.target.select()}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  if (isEditing) setEditForm({ ...editForm, subcategory: val });
+                                  else {
+                                    startEditing(item, categoryValue);
+                                    setEditForm((prev: any) => ({ ...prev, subcategory: val }));
+                                  }
+                                }}
+                                placeholder="Subcategoria..."
                                 className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-1 focus:ring-brand-500"
                               />
                             </div>
+                            <datalist id={`subcategories-list-${item.id}`}>
+                              {subcategories.filter(s => s.category_name === categoryValue).sort((a, b) => a.name.localeCompare(b.name)).map((s: any) => (
+                                <option key={s.id} value={s.name} />
+                              ))}
+                            </datalist>
                           </div>
 
                           {/* Col 4: Entity (Owner) */}

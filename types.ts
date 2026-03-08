@@ -84,6 +84,7 @@ export interface Transaction {
   accountId: string;
   accountName: string;
   category: string;
+  subcategory?: string;
   isDeleted?: boolean;
   isReconciled?: boolean;
   metadata?: Record<string, any>;

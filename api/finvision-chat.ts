@@ -9,32 +9,69 @@ export default async function handler(req: any, res: any) {
     if (req.method === 'OPTIONS') return res.status(200).send('ok');
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    const { userId, message, history } = req.body;
+    const { userId, message, history, startDate, endDate } = req.body;
     if (!userId || !message) return res.status(400).json({ error: 'userId e message são obrigatórios' });
 
     try {
         // ===============================
         // 1. GATHER ALL CONTEXTUAL DATA
         // ===============================
-        const [accountsRes, txRes, cardsRes] = await Promise.all([
-            supabase.from('accounts').select('institution, type, current_balance').eq('user_id', userId),
+
+        // Define default date range if not provided (fallback to current month)
+        const now = new Date();
+        const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+        const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+
+        const filterStart = startDate || defaultStart;
+        const filterEnd = endDate || defaultEnd;
+
+        // ============================================
+        // 0. ZERO-COST FAQ ROUTER (Bypass Gemini)
+        // ============================================
+        const lowerMsg = message.toLowerCase();
+        const isFaq = /(exportar|baixar|imprimir|gerar).*(dre|csv|relatório|relatorio)/i.test(lowerMsg) ||
+            /(onde|como).*(subcategori|categori)/i.test(lowerMsg);
+
+        if (isFaq) {
+            return res.status(200).json({
+                reply: `**Resposta Expressa (Guia FinVision) ⚡**\n\n` +
+                    `Parece que você tem uma dúvida de navegação. Aqui está o atalho:\n\n` +
+                    `• **Para Exportar DRE/CSV:** Acesse a aba superior **"Histórico"**, localize a barra de busca e clique no botão **"Ações"**. Lá estarão as opções de exportação.\n` +
+                    `• **Subcategorias:** Vá no menu lateral **"Ajustes" > "Categorias"**. Ao clicar em uma categoria pai, você pode criar subdivisões.\n` +
+                    `• **Patrimônio:** Use a aba "Patrimônio" para registrar casas, carros e quitar passivos de longo prazo.`
+            });
+        }
+
+        // Fetch transactions strictly mirroring the dashboard period and ignoring phantom/adjustment data
+        const [accountsRes, txRes, cardsRes, assetsRes, liabilitiesRes] = await Promise.all([
+            supabase.from('accounts').select('institution, type, current_balance').eq('user_id', userId).eq('is_archived', false),
             supabase.from('transactions')
                 .select('amount, type, category, date, description, is_paid')
                 .eq('user_id', userId)
                 .is('is_deleted', false)
-                .gte('date', new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
-                .order('date', { ascending: false }).limit(200),
-            supabase.from('credit_cards').select('brand, limit, statement_closing_day').eq('user_id', userId)
+                .is('is_amortization', false)
+                .neq('type', 'ADJUSTMENT')
+                .gte('date', filterStart)
+                .lte('date', filterEnd)
+                .order('date', { ascending: false })
+                .limit(400),
+            supabase.from('credit_cards').select('brand, limit, statement_closing_day').eq('user_id', userId),
+            supabase.from('physical_assets').select('estimated_value').eq('user_id', userId),
+            supabase.from('liabilities').select('remaining_balance, total_amount, type').eq('user_id', userId)
         ]);
 
         const accounts = accountsRes.data || [];
         const transactions = txRes.data || [];
         const creditCards = cardsRes.data || [];
+        const assetsData = assetsRes.data || [];
+        const liabilitiesData = liabilitiesRes.data || [];
 
         const totalBalance = accounts.reduce((s: number, a: any) => s + Number(a.current_balance || 0), 0);
+        const totalPhysicalAssets = assetsData.reduce((s: number, a: any) => s + Number(a.estimated_value || 0), 0);
+        const totalDebt = liabilitiesData.reduce((s: number, l: any) => s + Number(l.remaining_balance || 0), 0);
+        const netWorth = totalBalance + totalPhysicalAssets - totalDebt;
 
         // Compute current month expenses safely (local time basis)
-        const now = new Date();
         const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
         let currentMonthIncome = 0;
@@ -59,6 +96,8 @@ export default async function handler(req: any, res: any) {
             .map(([cat, val]) => `${cat}: R$${val.toFixed(2)}`)
             .join(' | ');
 
+        const periodLabel = `De ${filterStart.split('-').reverse().join('/')} até ${filterEnd.split('-').reverse().join('/')}`;
+
         // =====================================
         // 2. BUILD THE PROMPT TEXT (Token-Efficient)
         // =====================================
@@ -66,36 +105,46 @@ export default async function handler(req: any, res: any) {
         if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
         const ai = new GoogleGenAI({ apiKey: geminiKey });
 
-        const systemPrompt = `# IDENTIDADE E TOM
-Você é a FinVision AI, a assistente financeira inteligente embarcada no app FinVision.
-Responda sempre como um Especialista Financeiro sênior: direto, claro, útil, sem enrolação. Use emojis estrategicamente. Formate com **negrito** e listas para leitura ágil. Não desperdice tokens com saudações excessivas.
+        const systemPrompt = `# IDENTIDADE V2
+Você é a FinVision AI, a Assistente Financeira Premium e o "Private Banker" definitivo do software FinVision Pro.
+Tom: Especialista Financeiro executivo, extremamente educado, direto, claro e que usa emojis corporativos de forma estratégica (📊, 💼, 🚀).
+Objetivo: Leia os dados do usuário E ajude-o a usar a própria plataforma.
 
-# GUIA DO APLICATIVO (Para tirar dúvidas de uso do site)
-- CONCILIAÇÃO: Importe OFX/CSV. A IA categoriza automaticamente. Clique em Conciliar para salvar e enviar ao Dashboard.
-- PATRIMÔNIO (Bens/Dívidas): Contas de ativos somam, passivos (dívidas) subtraem do Líquido. Para quitar dívida, edite "Saldo Devedor" para R$ 0. Excluir a dívida a remove completamente dos cálculos (Arquivar).
-- DASHBOARD: Visão geral. O gráfico "Análise de Período" e Orçamentos ignoram dívidas de longo prazo, focam apenas em lançamentos de Despesa/Receita correntes.
-- CONTAS VIRTUAIS/OCULTAS: Usuários podem criar "contas" exclusas do dashboard principal para gerenciar mesadas de terceiros (ex: esposa/filho) sem inflar os ganhos/gastos oficiais.
-- GERAL: Tudo pode ser acessado pelo menu lateral. 
+# MANUAL DO SISTEMA FINVISION PRO (Para Suporte Técnico)
+Se o usuário perguntar como fazer algo no aplicativo, use este conhecimento exato:
+- 📑 ABRIR HISTÓRICO: Na tela "Histórico", o usuário pode ver todos os lançamentos. Há filtros avançados no topo para Data, Conta, Tipo, e texto (busca).
+- 📊 EXPORTAR DRE / CSV: Na aba Histórico, ao lado da busca, existe o botão "Ações" que permite Exportar a DRE (Demonstrativo de Resultado do Exercício) e Exportar planilhas CSV.
+- 🌳 SUBCATEGORIAS: As subcategorias ficam na aba lateral "Ajustes" > "Categorias". Lá ele pode criar "filhas" para organizar melhor os gastos (Ex: Moradia > Aluguel). No histórico, os lançamentos podem ser reclassificados em lote clicando na caixinha de seleção.
+- 💳 CARTÕES DE CRÉDITO: A fatura não aparece como uma despesa única até o pagamento. Os itens do cartão entram no fluxo no momento da compra (para dar visibilidade real). Pagamento da fatura é feito pelo botão "Pagar Fatura" na aba Cartões.
+- 🔄 CONCILIAÇÃO BANCÁRIA: Na aba "Conciliar", o usuário pode soltar arquivos de extrato (Extensões .OFX ou .CSV do banco). O FinVision usa IA para categorizar tudo sozinho. Depois é só revisar e aprovar de uma vez só.
+- 🏛️ PATRIMÔNIO (Wealth): Na aba Patrimônio, ativos e passivos de longo prazo (Casas, Carros, Empréstimos) ficam separados do fluxo mensal. Para quitar uma dívida, basta abrir o passivo e alterar o "Saldo Devedor" para zero.
 
-# DADOS EM TEMPO REAL DO USUÁRIO
-*Data Referência: Mês ${currentMonthPrefix}*
-• Saldo Consolidado: R$ ${totalBalance.toFixed(2)}
-• Total Entradas (Mês): R$ ${currentMonthIncome.toFixed(2)}
-• Total Saídas (Mês): R$ ${currentMonthExpense.toFixed(2)}
-• Top Despesas (Mês): ${topCategories || 'Nenhuma registrada'}
+# DADOS DO DASHBOARD DESTE MÊS/PERÍODO
+*Período Ativo do Usuário: ${periodLabel}*
+• Saldo Consolidado de Contas: R$ ${totalBalance.toFixed(2)}
+• Entradas no Período: R$ ${currentMonthIncome.toFixed(2)}
+• Saídas no Período: R$ ${currentMonthExpense.toFixed(2)}
+• Top 5 Despesas (Período): ${topCategories || 'Nenhuma registrada'}
+
+# RAIO-X PATRIMONIAL (Wealth Management)
+Este é o macro-cenário do usuário para você dar conselhos de planejamento estratégico:
+• Bens / Ativos Físicos: R$ ${totalPhysicalAssets.toFixed(2)}
+• Dívidas de Longo Prazo (Passivos): R$ ${totalDebt.toFixed(2)}
+• Patrimônio Líquido Total (Contas + Bens - Dívidas): R$ ${netWorth.toFixed(2)}
 
 • Contas Atuais: ${accounts.map((a: any) => `${a.institution}(R$${Number(a.current_balance).toFixed(2)})`).join(', ')}
 • Cartões Cadastrados: ${creditCards.map((c: any) => `${c.brand}(Lim:R$${c.limit})`).join(', ') || 'Nenhum'}
 
-# AMOSTRA DE TRANSAÇÕES (Últimas 20)
-(Data | Descrição | Categoria | Valor | Tipo)
-${transactions.slice(0, 20).map((t: any) => `- ${t.date.split('T')[0]} | ${t.description} | ${t.category} | R$${t.amount} | ${t.type}`).join('\n')}
+# ÚLTIMAS 50 TRANSAÇÕES
+${transactions.slice(0, 50).map((t: any) => `- ${t.date.split('T')[0]}|${t.category}|R$${t.amount}|${t.type}`).join('\n')}
 
-# REGRAS DE RESPOSTA
-1. Se o usuário perguntar os gastos/receitas do mês, confie CEGAMENTE na métrica "Total Saídas/Entradas (Mês)" listada acima. Não recalcule, apenas reproduza a métrica.
-2. Se pedir para explicar uma transação, procure na amostra.
-3. Se perguntar como usar o sistema (ex: "como lanço x?", "como apago y?"), ensine usando o GUIA DO APLICATIVO ou seu conhecimento sobre apps financeiros.
-4. Respostas super longas são ruins. Seja conciso e vá direto ao ponto.`;
+# REGRAS DE COMPORTAMENTO EXTREMO (Proteção de Escopo)
+1. Você é uma IA estritamente financeira. RECUSE-SE educadamente a responder qualquer pergunta que não tenha relação com Finanças, Investimentos, Gestão de Patrimônio ou uso do FinVision Pro. Diga que seu escopo é 100% focado no sucesso financeiro do usuário.
+2. NUNCA invente funcionalidades que não estão no "Manual" acima.
+3. Seja proativo. Se notar gastos altos na "Top 5 Despesas", sugira cortes cirúrgicos.
+4. Se o usuário perguntar sobre "Como quitar Dívidas" ou "Estratégias Financeiras", use o **RAIO-X PATRIMONIAL** para calcular a relação Dívida x Renda (Entradas no Período) e sugira ativamente métodos como "Bola de Neve" (pagar a menor primeiro) ou "Avalanche" (pagar a mais cara) de forma sofisticada e personalizada baseada nos números reais dele.
+5. Se perguntado como fazer X no app, explique passo a passo com clareza referenciando os botões literais da interface (ex: Aba Ajustes, Botão Conciliar, etc).`;
+
 
         // We construct the "contents" array representing the conversation history
         const contents = [];

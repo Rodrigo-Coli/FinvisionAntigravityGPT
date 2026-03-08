@@ -15,6 +15,7 @@ interface AddTransactionModalProps {
         amount: string;
         accountId: string;
         category: string;
+        subcategory: string;
         ownerName: string;
         isInstallment: boolean;
         installmentsCount: number;
@@ -27,6 +28,7 @@ interface AddTransactionModalProps {
     accounts: BankAccount[];
     owners: string[];
     categoryObjects: { name: string, type?: 'INCOME' | 'EXPENSE' }[];
+    subcategories: { id: string, name: string, category_name?: string }[];
     onCreateCategory: (name: string, type: 'INCOME' | 'EXPENSE') => Promise<void>;
 }
 
@@ -41,6 +43,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     accounts,
     owners,
     categoryObjects,
+    subcategories,
     onCreateCategory
 }) => {
     const [isCreatingCategory, setIsCreatingCategory] = useState(false);
@@ -177,65 +180,86 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             </datalist>
                         </div>
 
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria</label>
-                                {!isCreatingCategory && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsCreatingCategory(true)}
-                                        className="text-[10px] font-bold text-brand-600 hover:text-brand-700 uppercase tracking-widest"
-                                    >
-                                        + Criar Nova
-                                    </button>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria</label>
+                                    {!isCreatingCategory && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsCreatingCategory(true)}
+                                            className="text-[10px] font-bold text-brand-600 hover:text-brand-700 uppercase tracking-widest"
+                                        >
+                                            + Nova
+                                        </button>
+                                    )}
+                                </div>
+
+                                {isCreatingCategory ? (
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            autoFocus
+                                            value={newCategoryName}
+                                            onChange={(e) => setNewCategoryName(e.target.value)}
+                                            placeholder={`Nova ${form.type === 'INCOME' ? 'receita' : 'despesa'}...`}
+                                            className="flex-1 h-14 px-4 bg-slate-50 border border-brand-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-xs"
+                                            onKeyDown={(e) => e.key === 'Enter' && handleCreateCategorySubmit()}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleCreateCategorySubmit}
+                                            disabled={isSavingCategory}
+                                            className="h-14 w-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center hover:bg-brand-700 transition-all disabled:opacity-50"
+                                        >
+                                            {isSavingCategory ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsCreatingCategory(false)}
+                                            disabled={isSavingCategory}
+                                            className="h-14 w-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200 transition-all disabled:opacity-50"
+                                        >
+                                            <X size={20} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="relative">
+                                        <input
+                                            list="add-categories-list"
+                                            value={form.category}
+                                            onFocus={(e) => e.target.select()}
+                                            onChange={(e) => setAddField('category', e.target.value)}
+                                            placeholder="Selecione..."
+                                            className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
+                                        />
+                                        <datalist id="add-categories-list">
+                                            {filteredCategories.sort((a, b) => a.name.localeCompare(b.name)).map((c: any) => (
+                                                <option key={c.name} value={c.name} />
+                                            ))}
+                                        </datalist>
+                                    </div>
                                 )}
                             </div>
 
-                            {isCreatingCategory ? (
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="text"
-                                        autoFocus
-                                        value={newCategoryName}
-                                        onChange={(e) => setNewCategoryName(e.target.value)}
-                                        placeholder={`Nome da nova ${form.type === 'INCOME' ? 'receita' : 'despesa'}...`}
-                                        className="flex-1 h-14 px-4 bg-slate-50 border border-brand-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
-                                        onKeyDown={(e) => e.key === 'Enter' && handleCreateCategorySubmit()}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={handleCreateCategorySubmit}
-                                        disabled={isSavingCategory}
-                                        className="h-14 w-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center hover:bg-brand-700 transition-all disabled:opacity-50"
-                                    >
-                                        {isSavingCategory ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsCreatingCategory(false)}
-                                        disabled={isSavingCategory}
-                                        className="h-14 w-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200 transition-all disabled:opacity-50"
-                                    >
-                                        <X size={20} />
-                                    </button>
-                                </div>
-                            ) : (
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Subcategoria (Opcional)</label>
                                 <div className="relative">
                                     <input
-                                        list="add-categories-list"
-                                        value={form.category}
+                                        list="add-subcategories-list"
+                                        value={form.subcategory}
                                         onFocus={(e) => e.target.select()}
-                                        onChange={(e) => setAddField('category', e.target.value)}
-                                        placeholder="Selecione ou digite..."
+                                        onChange={(e) => setAddField('subcategory', e.target.value)}
+                                        placeholder="Selecione..."
                                         className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                                     />
-                                    <datalist id="add-categories-list">
-                                        {filteredCategories.sort((a, b) => a.name.localeCompare(b.name)).map((c: any) => (
-                                            <option key={c.name} value={c.name} />
+                                    <datalist id="add-subcategories-list">
+                                        {subcategories.filter(s => s.category_name === form.category).sort((a, b) => a.name.localeCompare(b.name)).map(s => (
+                                            <option key={s.id} value={s.name} />
                                         ))}
                                     </datalist>
                                 </div>
-                            )}
+                            </div>
                         </div>
 
                         {/* SERIES OPTIONS */}
