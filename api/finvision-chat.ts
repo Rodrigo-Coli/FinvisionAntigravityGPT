@@ -19,9 +19,10 @@ export default async function handler(req: any, res: any) {
         const [accountsRes, txRes, cardsRes] = await Promise.all([
             supabase.from('accounts').select('institution, type, current_balance').eq('user_id', userId),
             supabase.from('transactions')
-                .select('amount, type, category, date, description')
+                .select('amount, type, category, date, description, is_paid')
                 .eq('user_id', userId)
-                .gte('date', new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]) // last 45 days
+                .is('is_deleted', false)
+                .gte('date', new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
                 .order('date', { ascending: false }).limit(200),
             supabase.from('credit_cards').select('brand, limit, statement_closing_day').eq('user_id', userId)
         ]);
@@ -32,51 +33,69 @@ export default async function handler(req: any, res: any) {
 
         const totalBalance = accounts.reduce((s: number, a: any) => s + Number(a.current_balance || 0), 0);
 
-        // Compute current month expenses
-        const currentMonthPrefix = new Date().toISOString().substring(0, 7); // YYYY-MM
+        // Compute current month expenses safely (local time basis)
+        const now = new Date();
+        const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
         let currentMonthIncome = 0;
         let currentMonthExpense = 0;
-
         const categorySummary: Record<string, number> = {};
 
         transactions.forEach((t: any) => {
-            if (t.date.startsWith(currentMonthPrefix)) {
-                if (t.type === 'INCOME') currentMonthIncome += Number(t.amount);
-                else {
-                    currentMonthExpense += Number(t.amount);
-                    categorySummary[t.category] = (categorySummary[t.category] || 0) + Number(t.amount);
+            if (t.date && t.date.startsWith(currentMonthPrefix)) {
+                const amt = Math.abs(Number(t.amount) || 0);
+                if (t.type === 'INCOME') {
+                    currentMonthIncome += amt;
+                } else if (t.type === 'EXPENSE') {
+                    currentMonthExpense += amt;
+                    categorySummary[t.category] = (categorySummary[t.category] || 0) + amt;
                 }
             }
         });
 
+        const topCategories = Object.entries(categorySummary)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([cat, val]) => `${cat}: R$${val.toFixed(2)}`)
+            .join(' | ');
+
         // =====================================
-        // 2. BUILD THE PROMPT TEXT
+        // 2. BUILD THE PROMPT TEXT (Token-Efficient)
         // =====================================
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
         if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
         const ai = new GoogleGenAI({ apiKey: geminiKey });
 
-        const systemPrompt = `Você é o assistente FinVision AI, incorporado no aplicativo FinVision.
-Você tem acesso aos dados financeiros ao vivo do usuário para poder responder suas perguntas.
+        const systemPrompt = `# IDENTIDADE E TOM
+Você é a FinVision AI, a assistente financeira inteligente embarcada no app FinVision.
+Responda sempre como um Especialista Financeiro sênior: direto, claro, útil, sem enrolação. Use emojis estrategicamente. Formate com **negrito** e listas para leitura ágil. Não desperdice tokens com saudações excessivas.
 
-Se o usuário perguntar algo que possa ser respondido usando os dados abaixo, RESPONDA com base neles.
-Se ele pedir resumo, use os totais.
-Responda de forma direta, clara, como um analista financeiro conversando no WhatsApp usando emojis. Formate com markdown (**negrito** etc).
+# GUIA DO APLICATIVO (Para tirar dúvidas de uso do site)
+- CONCILIAÇÃO: Importe OFX/CSV. A IA categoriza automaticamente. Clique em Conciliar para salvar e enviar ao Dashboard.
+- PATRIMÔNIO (Bens/Dívidas): Contas de ativos somam, passivos (dívidas) subtraem do Líquido. Para quitar dívida, edite "Saldo Devedor" para R$ 0. Excluir a dívida a remove completamente dos cálculos (Arquivar).
+- DASHBOARD: Visão geral. O gráfico "Análise de Período" e Orçamentos ignoram dívidas de longo prazo, focam apenas em lançamentos de Despesa/Receita correntes.
+- CONTAS VIRTUAIS/OCULTAS: Usuários podem criar "contas" exclusas do dashboard principal para gerenciar mesadas de terceiros (ex: esposa/filho) sem inflar os ganhos/gastos oficiais.
+- GERAL: Tudo pode ser acessado pelo menu lateral. 
 
-DADOS AO VIVO DO USUÁRIO:
-- Saldo Total nas Contas: R$ ${totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-- Contas: ${accounts.map((a: any) => `${a.institution} (R$ ${a.current_balance})`).join(', ')}
-- Resumo Este Mês (${currentMonthPrefix}):
-  - Entradas: R$ ${currentMonthIncome.toLocaleString('pt-BR')}
-  - Saídas: R$ ${currentMonthExpense.toLocaleString('pt-BR')}
-- Top Categorias de Gasto (Mês atual):
-${Object.entries(categorySummary).sort((a, b) => b[1] - a[1]).slice(0, 5).map(c => `  - ${c[0]}: R$ ${c[1].toLocaleString('pt-BR')}`).join('\n')}
-- Cartões: ${creditCards.map((c: any) => `${c.brand} (Lim: R$ ${c.limit})`).join(', ')}
+# DADOS EM TEMPO REAL DO USUÁRIO
+*Data Referência: Mês ${currentMonthPrefix}*
+• Saldo Consolidado: R$ ${totalBalance.toFixed(2)}
+• Total Entradas (Mês): R$ ${currentMonthIncome.toFixed(2)}
+• Total Saídas (Mês): R$ ${currentMonthExpense.toFixed(2)}
+• Top Despesas (Mês): ${topCategories || 'Nenhuma registrada'}
 
-ÚLTIMAS TRANSAÇÕES (Amostra para contexto de perguntas específicas):
-${transactions.slice(0, 20).map((t: any) => `- ${t.date} | ${t.description} | ${t.category} | R$ ${t.amount} (${t.type})`).join('\n')}
+• Contas Atuais: ${accounts.map((a: any) => `${a.institution}(R$${Number(a.current_balance).toFixed(2)})`).join(', ')}
+• Cartões Cadastrados: ${creditCards.map((c: any) => `${c.brand}(Lim:R$${c.limit})`).join(', ') || 'Nenhum'}
 
-Se a pergunta do usuário requerer análise, leia a lista acima. Se o usuário perguntar algo que não consta no banco, informe que você visualiza apenas os últimos 45 dias de dados cadastrados.`;
+# AMOSTRA DE TRANSAÇÕES (Últimas 20)
+(Data | Descrição | Categoria | Valor | Tipo)
+${transactions.slice(0, 20).map((t: any) => `- ${t.date.split('T')[0]} | ${t.description} | ${t.category} | R$${t.amount} | ${t.type}`).join('\n')}
+
+# REGRAS DE RESPOSTA
+1. Se o usuário perguntar os gastos/receitas do mês, confie CEGAMENTE na métrica "Total Saídas/Entradas (Mês)" listada acima. Não recalcule, apenas reproduza a métrica.
+2. Se pedir para explicar uma transação, procure na amostra.
+3. Se perguntar como usar o sistema (ex: "como lanço x?", "como apago y?"), ensine usando o GUIA DO APLICATIVO ou seu conhecimento sobre apps financeiros.
+4. Respostas super longas são ruins. Seja conciso e vá direto ao ponto.`;
 
         // We construct the "contents" array representing the conversation history
         const contents = [];
