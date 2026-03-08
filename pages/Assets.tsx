@@ -32,6 +32,7 @@ const Assets: React.FC = () => {
 
   const [showModal, setShowModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<PhysicalAsset | null>(null);
+  const [editingLiability, setEditingLiability] = useState<any | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     category: 'REAL_ESTATE',
@@ -115,56 +116,67 @@ const Assets: React.FC = () => {
       const installmentsLeft = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
       const dueDay = parseInt(liabilityFormData.dueDay, 10) || 1;
 
-      // 1. Insert the Liability
-      const { data: newLiab, error } = await supabase.from('liabilities').insert([{
-        user_id: user.id,
-        name: liabilityFormData.name,
-        type: liabilityFormData.type,
-        total_amount: parseFloat(liabilityFormData.totalAmount) || 0,
-        remaining_balance: parseFloat(liabilityFormData.remainingBalance) || 0,
-        interest_rate: liabilityFormData.interestRate ? parseFloat(liabilityFormData.interestRate) : null,
-        installment_amount: installmentAmt,
-        installments_remaining: installmentsLeft,
-        due_day: dueDay,
-        linked_asset_id: liabilityFormData.linkedAssetId || null,
-      }]).select();
+      if (editingLiability) {
+        const { error } = await supabase.from('liabilities').update({
+          name: liabilityFormData.name,
+          type: liabilityFormData.type,
+          total_amount: parseFloat(liabilityFormData.totalAmount) || 0,
+          remaining_balance: parseFloat(liabilityFormData.remainingBalance) || 0,
+          interest_rate: liabilityFormData.interestRate ? parseFloat(liabilityFormData.interestRate) : null,
+          linked_asset_id: liabilityFormData.linkedAssetId || null,
+        }).eq('id', editingLiability.id);
+        if (error) throw error;
+      } else {
+        // 1. Insert the Liability
+        const { data: newLiab, error } = await supabase.from('liabilities').insert([{
+          user_id: user.id,
+          name: liabilityFormData.name,
+          type: liabilityFormData.type,
+          total_amount: parseFloat(liabilityFormData.totalAmount) || 0,
+          remaining_balance: parseFloat(liabilityFormData.remainingBalance) || 0,
+          interest_rate: liabilityFormData.interestRate ? parseFloat(liabilityFormData.interestRate) : null,
+          installment_amount: installmentAmt,
+          installments_remaining: installmentsLeft,
+          due_day: dueDay,
+          linked_asset_id: liabilityFormData.linkedAssetId || null,
+        }]).select();
 
-      if (error) throw error;
+        if (error) throw error;
 
-      // 2. If user filled out installment info, auto-generate future PENDING transactions
-      if (newLiab && newLiab.length > 0 && installmentAmt > 0 && installmentsLeft > 0) {
-        const liabilityId = newLiab[0].id;
-        const today = new Date();
-        const futureTransactions = [];
+        // 2. If user filled out installment info, auto-generate future PENDING transactions
+        if (newLiab && newLiab.length > 0 && installmentAmt > 0 && installmentsLeft > 0) {
+          const liabilityId = newLiab[0].id;
+          const today = new Date();
+          const futureTransactions = [];
 
-        // Generate the next N installments starting from next month
-        const MAX_GENERATE = Math.min(installmentsLeft, 240); // cap at 20 years
-        for (let i = 1; i <= MAX_GENERATE; i++) {
-          const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
-          // Handle months where day doesn't exist (e.g., Feb 29)
-          if (txDate.getDate() !== dueDay) {
-            txDate.setDate(0); // Last day of the previous month
+          const MAX_GENERATE = Math.min(installmentsLeft, 240);
+          for (let i = 1; i <= MAX_GENERATE; i++) {
+            const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
+            if (txDate.getDate() !== dueDay) {
+              txDate.setDate(0);
+            }
+            futureTransactions.push({
+              user_id: user.id,
+              description: `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
+              amount: installmentAmt,
+              date: txDate.toISOString().split('T')[0],
+              type: 'EXPENSE',
+              category: 'Financiamento/Dívida',
+              account_id: null,
+              is_amortization: true,
+              liability_id: liabilityId,
+              is_paid: false,
+              is_recurring: true,
+              metadata: { auto_generated: true, installment_number: i }
+            });
           }
-          futureTransactions.push({
-            user_id: user.id,
-            description: `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
-            amount: installmentAmt,
-            date: txDate.toISOString().split('T')[0],
-            type: 'EXPENSE',
-            category: 'Financiamento/Dívida',
-            account_id: null,
-            is_amortization: true,
-            liability_id: liabilityId,
-            is_paid: false,
-            is_recurring: true,
-            metadata: { auto_generated: true, installment_number: i }
-          });
-        }
 
-        await supabase.from('transactions').insert(futureTransactions);
+          await supabase.from('transactions').insert(futureTransactions);
+        }
       }
 
       setShowLiabilityModal(false);
+      setEditingLiability(null);
       setLiabilityFormData({ name: '', type: 'PERSONAL_LOAN', totalAmount: '', remainingBalance: '', interestRate: '', installmentAmount: '', installmentsRemaining: '', dueDay: '', linkedAssetId: '' });
       fetchData();
     } catch (err: any) {
@@ -219,13 +231,41 @@ const Assets: React.FC = () => {
           type: l.type,
           totalAmount: Number(l.total_amount),
           remainingBalance: Number(l.remaining_balance),
-          interestRate: l.interest_rate ? Number(l.interest_rate) : undefined
+          interestRate: l.interest_rate ? Number(l.interest_rate) : undefined,
+          linkedAssetId: l.linked_asset_id
         })));
       }
     } catch (e) {
       console.error(e);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const openEditLiability = (liability: any) => {
+    setEditingLiability(liability);
+    setLiabilityFormData({
+      name: liability.name,
+      type: liability.type,
+      totalAmount: String(liability.totalAmount),
+      remainingBalance: String(liability.remainingBalance),
+      interestRate: liability.interestRate ? String(liability.interestRate) : '',
+      installmentAmount: '',
+      installmentsRemaining: '',
+      dueDay: '',
+      linkedAssetId: liability.linkedAssetId || ''
+    });
+    setShowLiabilityModal(true);
+  };
+
+  const handleDeleteLiability = async (id: string) => {
+    if (!window.confirm("Certeza que deseja excluir este passivo? Ele será removido do seu patrimônio físico.")) return;
+    try {
+      const { error } = await supabase!.from('liabilities').delete().eq('id', id);
+      if (error) throw error;
+      fetchData();
+    } catch (err: any) {
+      alert(`Erro ao excluir passivo: ${err.message}`);
     }
   };
 
@@ -295,7 +335,7 @@ const Assets: React.FC = () => {
       </div>
 
       {/* NAVIGATION TABS */}
-      <div className="flex gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-fit">
+      <div className="flex gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full max-w-full overflow-x-auto scrollbar-hide">
         {[
           { id: 'overview', label: 'Visão Geral', icon: <LayoutGrid size={16} /> },
           { id: 'physical', label: 'Bens Físicos', icon: <Box size={16} /> },
@@ -488,10 +528,13 @@ const Assets: React.FC = () => {
               <div key={liability.id} className="bg-white rounded-[32px] border border-red-100 shadow-sm overflow-hidden group hover:border-red-200 transition-all duration-300">
                 <div className="p-8 space-y-6">
                   <div className="flex justify-between items-start">
-                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-red-50 text-red-600 shadow-lg shadow-current/5">
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-red-50 text-red-600 shadow-lg shadow-current/5 shrink-0">
                       <Landmark size={28} />
                     </div>
-                    <button className="p-2 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors"><MoreHorizontal size={20} /></button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openEditLiability(liability)} className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-brand-600 transition-colors px-2 py-1">Editar</button>
+                      <button onClick={() => handleDeleteLiability(liability.id)} className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-red-600 transition-colors px-2 py-1">Excluir</button>
+                    </div>
                   </div>
 
                   <div>
@@ -595,7 +638,7 @@ const Assets: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-slate-900">Nova Dívida / Passivo</h3>
+              <h3 className="font-bold text-slate-900">{editingLiability ? 'Editar Dívida / Passivo' : 'Nova Dívida / Passivo'}</h3>
               <button onClick={() => setShowLiabilityModal(false)} className="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-50">
                 <LayoutGrid size={20} />
               </button>
@@ -655,41 +698,43 @@ const Assets: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4 border-t border-slate-100 pt-4 mt-2">
-                <div>
-                  <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor da Parcela</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
-                    placeholder="0.00"
-                    value={liabilityFormData.installmentAmount}
-                    onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentAmount: e.target.value })}
-                  />
+              {!editingLiability && (
+                <div className="grid grid-cols-3 gap-4 border-t border-slate-100 pt-4 mt-2">
+                  <div>
+                    <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor da Parcela</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
+                      placeholder="0.00"
+                      value={liabilityFormData.installmentAmount}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentAmount: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Parcelas Restantes</label>
+                    <input
+                      type="number"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
+                      placeholder="Ex: 170"
+                      value={liabilityFormData.installmentsRemaining}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentsRemaining: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Dia Vencimento</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
+                      placeholder="Ex: 29"
+                      value={liabilityFormData.dueDay}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, dueDay: e.target.value })}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Parcelas Restantes</label>
-                  <input
-                    type="number"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
-                    placeholder="Ex: 170"
-                    value={liabilityFormData.installmentsRemaining}
-                    onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentsRemaining: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Dia Vencimento</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="31"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
-                    placeholder="Ex: 29"
-                    value={liabilityFormData.dueDay}
-                    onChange={(e) => setLiabilityFormData({ ...liabilityFormData, dueDay: e.target.value })}
-                  />
-                </div>
-              </div>
+              )}
 
               {physicalAssets.length > 0 && (
                 <div className="border-t border-slate-100 pt-4">
