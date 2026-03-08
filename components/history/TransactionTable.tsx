@@ -378,15 +378,48 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
 
                                     {/* Row 1: Date + Amount */}
                                     <div className="flex items-center justify-between">
-                                        <button
-                                            onClick={() => { setEditingRow({ id: t.id, field: 'date' }); setEditValue(t.date.split('T')[0]); }}
-                                            className="text-xs font-bold text-slate-400 active:text-brand-600 transition-colors"
-                                        >
-                                            {DateUtils.formatDisplayDate(t.date)}
-                                        </button>
-                                        <span className={`text-base font-bold ${t.type === 'INCOME' ? 'text-emerald-600' : 'text-slate-900'}`}>
-                                            {t.type === 'EXPENSE' ? '-' : ''}{formatCurrency(amount)}
-                                        </span>
+                                        {/* DATE */}
+                                        {editingRow?.id === t.id && editingRow.field === 'date' ? (
+                                            <input type="date" autoFocus
+                                                className="w-[110px] h-8 px-2 text-xs font-bold text-slate-600 bg-white border border-brand-500 rounded outline-none"
+                                                value={editValue.split('T')[0]}
+                                                onChange={e => setEditValue(e.target.value)}
+                                                onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'date', editValue)}
+                                                onBlur={() => handleUpdate(t.id, 'date', editValue)}
+                                            />
+                                        ) : (
+                                            <button
+                                                onClick={() => { setEditingRow({ id: t.id, field: 'date' }); setEditValue(t.date.split('T')[0]); }}
+                                                className="text-xs font-bold text-slate-400 active:text-brand-600 transition-colors"
+                                            >
+                                                {DateUtils.formatDisplayDate(t.date)}
+                                            </button>
+                                        )}
+
+                                        {/* AMOUNT */}
+                                        {editingRow?.id === t.id && editingRow.field === 'amount' ? (
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-sm font-bold text-slate-400">{(t.type === 'EXPENSE' || (t.type === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '-' : ''}</span>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    placeholder="0,00"
+                                                    autoFocus
+                                                    className="w-24 h-8 px-2 text-sm font-bold text-right bg-white border border-brand-500 rounded outline-none"
+                                                    value={editValue}
+                                                    onChange={e => setEditValue(e.target.value)}
+                                                    onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'amount', editValue)}
+                                                    onBlur={() => handleUpdate(t.id, 'amount', editValue)}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => { setEditingRow({ id: t.id, field: 'amount' }); setEditValue(Math.abs(t.amount).toString().replace('.', ',')); }}
+                                                className={`text-base font-bold bg-transparent border-none p-0 cursor-pointer active:text-brand-600 ${t.type === 'INCOME' || (t.type === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE') ? 'text-emerald-600' : 'text-slate-900'}`}
+                                            >
+                                                {t.type === 'EXPENSE' ? '-' : ''}{formatCurrency(amount)}
+                                            </button>
+                                        )}
                                     </div>
 
                                     {/* Row 2: Description */}

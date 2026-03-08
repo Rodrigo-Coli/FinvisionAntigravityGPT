@@ -28,13 +28,15 @@ export const ReconciliationService = {
     importSource,
     accountId,
     accountName,
-    onProgress
+    onProgress,
+    force = false
   }: {
     file: File;
     importSource: 'bank' | 'card' | 'smart';
     accountId: string;
     accountName: string;
     onProgress?: (step: string) => void;
+    force?: boolean;
   }) {
     if (!supabase) throw new Error("Supabase não configurado");
 
@@ -53,7 +55,7 @@ export const ReconciliationService = {
       .eq('source_type', importSource) // Evita deduplicar se mudou de 'bank' para 'smart'
       .maybeSingle();
 
-    if (existing) {
+    if (existing && !force) {
       if (existing.status === 'error') {
         onProgress?.("Reiniciando processamento...");
         await supabase.from('imports').update({
@@ -65,9 +67,11 @@ export const ReconciliationService = {
         return existing.id;
       }
 
-      if (existing.status === 'ready' || existing.status === 'processing') {
-        console.log("Arquivo já processado ou em andamento:", existing.id);
-        return existing.id;
+      if (existing.status === 'ready') {
+        throw new Error("ALREADY_PROCESSED");
+      }
+      if (existing.status === 'processing') {
+        throw new Error("Este arquivo já está sendo processado no momento. Aguarde a conclusão.");
       }
     }
 

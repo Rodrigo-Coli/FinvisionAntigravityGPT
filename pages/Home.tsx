@@ -24,6 +24,7 @@ import { DateUtils } from '../lib/dateUtils';
 import { useTour } from '../contexts/TourContext';
 import { HistoryCharts } from '../components/history/HistoryCharts';
 import CashFlowProjection from '../components/CashFlowProjection';
+import AIChat from '../components/AIChat';
 import { supabase } from '../lib/supabase/client';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
@@ -163,8 +164,8 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       </div>
 
       {/* BALANCE CARDS GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
-        <div id="tour-net-worth" className="lg:col-span-3 bg-brand-600 rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-500/30 group">
+      <div className="w-full">
+        <div id="tour-net-worth" className="w-full bg-brand-600 rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-500/30 group">
 
           <div className="relative z-10 flex flex-col h-full justify-between gap-6 sm:gap-8">
             <div className="flex justify-between items-start">
@@ -221,37 +222,6 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
             </div>
           </div>
         </div>
-
-        <div className="flex flex-col gap-4">
-          {/* Growth Widget */}
-          <div
-            onClick={() => navigate('/assets')}
-            className="flex-1 bg-white border border-slate-100 rounded-[24px] p-6 shadow-sm flex flex-col justify-between group cursor-pointer hover:border-brand-200 transition-all"
-          >
-            <div className="flex justify-between items-start">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Crescimento</p>
-              <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg"><ArrowUpRight size={14} /></div>
-            </div>
-            <div>
-              <h3 className="text-2xl font-bold text-slate-900 tracking-tight">{data.netWorthGrowth ? `${data.netWorthGrowth.toFixed(1)}%` : '--'}</h3>
-              <p className="text-[10px] text-slate-400 font-medium">Crescimento Patrimonial</p>
-            </div>
-          </div>
-
-          <div
-            onClick={() => navigate('/history')}
-            className="flex-1 bg-white border border-slate-100 rounded-[24px] p-6 shadow-sm flex flex-col justify-between group cursor-pointer hover:border-brand-200 transition-all"
-          >
-            <div className="flex justify-between items-start">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Despesas</p>
-              <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg"><ArrowDownRight size={14} className="rotate-0" /></div>
-            </div>
-            <div>
-              <h3 className="text-2xl font-bold text-slate-900 tracking-tight">{format(data.totalExpenses || 0)}</h3>
-              <p className="text-[10px] text-slate-400 font-medium">Este Mês (Estimado)</p>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* SMART ALERTS */}
@@ -269,9 +239,9 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         </div>
       )}
 
-      {/* CASH FLOW PROJECTION (12 MONTHS) */}
+      {/* CASH FLOW PROJECTION (6 MONTHS) */}
       <div id="tour-cash-flow">
-        <CashFlowProjection userId={user?.id} />
+        <CashFlowProjection userId={user?.id} currentBalance={data?.consolidatedBalance || 0} />
       </div>
 
       {/* MID SECTION: CREDIT CARDS & INSIGHTS */}
@@ -366,50 +336,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
         </div>
 
-        <div className="lg:col-span-4 space-y-6">
-          <h3 className="text-lg font-bold text-slate-900">Insights AI</h3>
-
-          <div className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm relative overflow-hidden group">
-            <div className="absolute top-0 left-0 w-32 h-32 bg-indigo-100/50 rounded-full blur-3xl -translate-x-10 -translate-y-10 group-hover:scale-150 transition-transform duration-1000" />
-
-            <div className="relative z-10 flex flex-col gap-6">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-indigo-50 border border-indigo-100 rounded-[20px] flex items-center justify-center text-indigo-600 shadow-sm">
-                  <Sparkles size={28} />
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900">Análise de Gastos</h4>
-                  <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Inteligência Ativa</p>
-                </div>
-              </div>
-
-              <p className="text-sm text-slate-500 leading-relaxed">
-                Seus gastos este mês totalizam <span className="text-indigo-600 font-bold">{format(data?.totalExpenses || 0)}</span>. Continue acompanhando para otimizar sua saúde financeira.
-              </p>
-
-              <div className="flex items-center gap-2 mt-2">
-                <button onClick={() => navigate('/history')} className="flex-1 py-3 text-[10px] font-bold text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-widest">Ignorar</button>
-                <button onClick={() => navigate('/ai')} className="flex-1 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-lg active:scale-95">Ver Mais</button>
-              </div>
-            </div>
-          </div>
-
-          <div
-            onClick={() => navigate('/history')}
-            className="bg-slate-900 rounded-[32px] p-6 text-white group cursor-pointer overflow-hidden relative shadow-lg shadow-slate-900/30 hover:scale-[1.02] transition-transform"
-          >
-            <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:rotate-12 transition-transform">
-              <Zap size={100} fill="currentColor" />
-            </div>
-            <div className="relative z-10 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black text-white/50 uppercase tracking-widest mb-1">Média Mensal</p>
-                <h3 className="text-2xl font-bold tracking-tight">{format(data?.lastMonthExpenses || 0)}</h3>
-              </div>
-              <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
-                <div className="h-full bg-brand-400 w-2/3" />
-              </div>
-            </div>
+        <div className="lg:col-span-4 space-y-6 min-w-0">
+          <h3 className="text-lg font-bold text-slate-900">Assistente AI Interativo</h3>
+          <div className="h-[500px]">
+            <AIChat userId={user?.id || ''} />
           </div>
         </div>
       </div>

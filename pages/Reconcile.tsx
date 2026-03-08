@@ -160,29 +160,51 @@ const Reconcile: React.FC = () => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !supabase) return;
-    setIsProcessing(true); setProgressStep("Iniciando...");
-    try {
-      let targetName = 'Importação Direta';
-      if (selectedTargetId) {
-        if (importSource === 'bank') {
-          targetName = realAccounts.find(a => a.id === selectedTargetId)?.institution || targetName;
-        } else {
-          targetName = realCards.find(c => c.id === selectedTargetId)?.name || targetName;
-        }
-      }
 
-      const importId = await ReconciliationService.startImport({
-        file,
-        importSource,
-        accountId: selectedTargetId,
-        accountName: targetName,
-        onProgress: setProgressStep
-      });
-      await ReconciliationService.pollImportStatus(importId, (imp) => {
-        if (imp.status === 'processing') setProgressStep("IA analisando...");
-      });
-      await fetchData();
-    } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); setProgressStep(null); }
+    // Extrai a logica para uma funcao recursiva para permitir force
+    const attemptUpload = async (force: boolean = false) => {
+      setIsProcessing(true); setProgressStep("Iniciando...");
+      try {
+        let targetName = 'Importação Direta';
+        if (selectedTargetId) {
+          if (importSource === 'bank') {
+            targetName = realAccounts.find(a => a.id === selectedTargetId)?.institution || targetName;
+          } else {
+            targetName = realCards.find(c => c.id === selectedTargetId)?.name || targetName;
+          }
+        }
+
+        const importId = await ReconciliationService.startImport({
+          file,
+          importSource,
+          accountId: selectedTargetId,
+          accountName: targetName,
+          onProgress: setProgressStep,
+          force
+        });
+        await ReconciliationService.pollImportStatus(importId, (imp) => {
+          if (imp.status === 'processing') setProgressStep("IA analisando...");
+        });
+        await fetchData();
+        // Clear input se sucesso
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } catch (err: any) {
+        if (err.message === "ALREADY_PROCESSED") {
+          // Trava o retry
+          if (window.confirm("Atenção: Este arquivo já foi processado anteriormente!\n\nImportar de novo pode duplicar TODOS os seus lançamentos no banco de dados.\n\nDeseja forçar a importação deste mesmo arquivo?")) {
+            await attemptUpload(true);
+          }
+        } else {
+          alert(err.message);
+        }
+      } finally {
+        setIsProcessing(false); setProgressStep(null);
+        // Em caso de cancelamento da sobreposiçao
+        if (fileInputRef.current && !force) fileInputRef.current.value = '';
+      }
+    };
+
+    await attemptUpload(false);
   };
 
   const startEditing = (item: ImportedTransaction, initialCategory?: string) => {
