@@ -147,6 +147,21 @@ const Assets: React.FC = () => {
         if (newLiab && newLiab.length > 0 && installmentAmt > 0 && installmentsLeft > 0) {
           const liabilityId = newLiab[0].id;
           const today = new Date();
+          const categoryName = 'Financiamento/Dívida';
+
+          // Garante que a categoria exista na conta do usuário
+          const { data: existingCat } = await supabase.from('categories')
+            .select('id').eq('user_id', user.id).eq('name', categoryName).single();
+
+          if (!existingCat) {
+            await supabase.from('categories').insert({
+              user_id: user.id,
+              name: categoryName,
+              type: 'EXPENSE',
+              color: 'bg-rose-50 text-rose-600'
+            });
+          }
+
           const futureTransactions = [];
 
           const MAX_GENERATE = Math.min(installmentsLeft, 240);
