@@ -703,7 +703,7 @@ const HistoryPage: React.FC = () => {
         if (bulkOwner && bulkOwner !== 'Pessoal') await FinanceService.ensureEntityExists(bulkOwner);
         if (bulkCategory) {
           const catId = await ReconciliationService.ensureCategoryExists(bulkCategory);
-          if (catId && bulkSubcategory) await ReconciliationService.ensureSubcategoryExists(catId, bulkSubcategory);
+          if (catId && bulkSubcategory) await (ReconciliationService as any).ensureSubcategoryExists(catId, bulkSubcategory);
         }
       }
 
@@ -856,7 +856,7 @@ const HistoryPage: React.FC = () => {
         if (f.ownerName && f.ownerName !== 'Pessoal') await FinanceService.ensureEntityExists(f.ownerName);
         if (f.category) {
           const catId = await ReconciliationService.ensureCategoryExists(f.category);
-          if (catId && f.subcategory) await ReconciliationService.ensureSubcategoryExists(catId, f.subcategory);
+          if (catId && f.subcategory) await (ReconciliationService as any).ensureSubcategoryExists(catId, f.subcategory);
         }
       }
 

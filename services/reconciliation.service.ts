@@ -263,6 +263,36 @@ export const ReconciliationService = {
     return created.id;
   },
 
+  async ensureSubcategoryExists(categoryId: string, subcategoryName: string): Promise<string> {
+    if (!supabase || !categoryId || !subcategoryName) return '';
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return '';
+
+    // Verifica se já existe (case-insensitive)
+    const { data: existing } = await supabase
+      .from('subcategories')
+      .select('id, name')
+      .eq('user_id', user.id)
+      .eq('category_id', categoryId)
+      .ilike('name', subcategoryName)
+      .maybeSingle();
+
+    if (existing) return existing.id;
+
+    // Cria nova
+    const { data: created, error } = await supabase
+      .from('subcategories')
+      .insert({ user_id: user.id, category_id: categoryId, name: subcategoryName })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error("Erro ao criar subcategoria auto:", error);
+      return '';
+    }
+    return created.id;
+  },
+
   async ensureAccountExists(accountName: string): Promise<string> {
     if (!supabase || !accountName) return '';
     const { data: { user } } = await supabase.auth.getUser();
