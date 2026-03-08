@@ -65,8 +65,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           .from('transactions')
           .select('id, date, type, amount, category, account_id, owner_name, description, is_paid, paid_amount')
           .eq('user_id', user.id)
-          .is('is_deleted', false) // Exclude soft-deleted transactions
-          .is('is_incomplete', false) // Exclude pending reconcile items
+          .eq('is_deleted', false)
           .gte('date', startDate)
           .lte('date', endDate)
           .order('date', { ascending: false });
