@@ -29,18 +29,18 @@ export const DreReportModal: React.FC<DreReportModalProps> = ({ report, onClose 
         data.push([]);
 
         data.push(['RECEITAS OPERACIONAIS BRUTAS', '', formatAmount(report.grossIncome)]);
-        Object.entries(report.incomeCategories).forEach(([catName, cat]) => {
+        Object.entries(report.incomeCategories).forEach(([catName, cat]: [string, any]) => {
             data.push([`  ${catName}`, '', formatAmount(cat.total)]);
-            Object.entries(cat.subcategories).forEach(([subName, total]) => {
+            Object.entries(cat.subcategories).forEach(([subName, total]: [string, any]) => {
                 data.push([`    ${subName}`, '', formatAmount(total)]);
             });
         });
 
         data.push([]);
         data.push(['(-) DESPESAS OPERACIONAIS', '', formatAmount(report.totalExpenses)]);
-        Object.entries(report.expenseCategories).forEach(([catName, cat]) => {
+        Object.entries(report.expenseCategories).forEach(([catName, cat]: [string, any]) => {
             data.push([`  ${catName}`, '', formatAmount(cat.total)]);
-            Object.entries(cat.subcategories).forEach(([subName, total]) => {
+            Object.entries(cat.subcategories).forEach(([subName, total]: [string, any]) => {
                 data.push([`    ${subName}`, '', formatAmount(total)]);
             });
         });
@@ -123,13 +123,13 @@ export const DreReportModal: React.FC<DreReportModalProps> = ({ report, onClose 
                                 <span>{formatAmount(report.grossIncome)}</span>
                             </div>
 
-                            {Object.values(report.incomeCategories).sort((a, b) => b.total - a.total).map((cat, idx) => (
+                            {Object.values(report.incomeCategories).sort((a: any, b: any) => b.total - a.total).map((cat: any, idx) => (
                                 <div key={`inc-${idx}`} className="mb-2">
                                     <div className="flex justify-between py-2 border-b border-slate-100 font-bold text-slate-700">
                                         <span className="pl-4">{cat.categoryName}</span>
                                         <span>{formatAmount(cat.total)}</span>
                                     </div>
-                                    {Object.entries(cat.subcategories).sort(([, a], [, b]) => b - a).map(([sub, val], subIdx) => (
+                                    {Object.entries(cat.subcategories).sort(([, a]: any, [, b]: any) => b - a).map(([sub, val]: any, subIdx) => (
                                         <div key={`inc-sub-${subIdx}`} className="flex justify-between py-1.5 border-b border-slate-50/50 text-slate-500 text-xs">
                                             <span className="pl-12 flex items-center gap-2"><div className="w-1 h-1 rounded-full bg-slate-300" /> {sub}</span>
                                             <span>{formatAmount(val)}</span>
@@ -146,13 +146,13 @@ export const DreReportModal: React.FC<DreReportModalProps> = ({ report, onClose 
                                 <span>{formatAmount(report.totalExpenses)}</span>
                             </div>
 
-                            {Object.values(report.expenseCategories).sort((a, b) => b.total - a.total).map((cat, idx) => (
+                            {Object.values(report.expenseCategories).sort((a: any, b: any) => b.total - a.total).map((cat: any, idx) => (
                                 <div key={`exp-${idx}`} className="mb-2">
                                     <div className="flex justify-between py-2 border-b border-slate-100 font-bold text-slate-700">
                                         <span className="pl-4">{cat.categoryName}</span>
                                         <span>{formatAmount(cat.total)}</span>
                                     </div>
-                                    {Object.entries(cat.subcategories).sort(([, a], [, b]) => b - a).map(([sub, val], subIdx) => (
+                                    {Object.entries(cat.subcategories).sort(([, a]: any, [, b]: any) => b - a).map(([sub, val]: any, subIdx) => (
                                         <div key={`exp-sub-${subIdx}`} className="flex justify-between py-1.5 border-b border-slate-50/50 text-slate-500 text-xs text-rose-900/40 print:text-slate-600">
                                             <span className="pl-12 flex items-center gap-2"><div className="w-1 h-1 rounded-full bg-rose-200 print:bg-slate-300" /> {sub}</span>
                                             <span>{formatAmount(val)}</span>

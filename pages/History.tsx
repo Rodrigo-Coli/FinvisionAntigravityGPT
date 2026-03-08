@@ -270,7 +270,7 @@ const HistoryPage: React.FC = () => {
         isArchived: a.is_archived,
         includeInDashboard: a.include_in_dashboard,
         lastSync: a.last_sync
-      })).sort((a, b) => a.institution.localeCompare(b.institution)));
+      })).sort((a: any, b: any) => a.institution.localeCompare(b.institution)));
 
       const { data: catData, error: catErr } = await supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name');
 
@@ -524,7 +524,7 @@ const HistoryPage: React.FC = () => {
       if (field === 'subcategory' && value && tx?.category) {
         if (navigator.onLine) {
           const catId = await ReconciliationService.ensureCategoryExists(tx.category);
-          if (catId) await ReconciliationService.ensureSubcategoryExists(catId, value);
+          if (catId) await (ReconciliationService as any).ensureSubcategoryExists(catId, value);
         }
       }
 

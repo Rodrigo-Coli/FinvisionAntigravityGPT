@@ -122,8 +122,8 @@ export const DashboardService = {
     // 5. Assets Summary
     const assetsSummary = [
       { name: 'Conta Corrente', value: Number(consolidatedBalance || 0), color: '#3b82f6' },
-      { name: 'Investimentos', value: (accounts || []).filter(a => a.type === 'INVESTMENT').reduce((s, a) => s + Number(a.current_balance || 0), 0), color: '#8b5cf6' },
-      { name: 'Bens Físicos', value: (physicalAssets || []).reduce((s, a) => s + Number(a.estimated_value || 0), 0), color: '#10b981' },
+      { name: 'Investimentos', value: (accounts || []).filter((a: any) => a.type === 'INVESTMENT').reduce((s: any, a: any) => s + Number(a.current_balance || 0), 0), color: '#8b5cf6' },
+      { name: 'Bens Físicos', value: (physicalAssets || []).reduce((s: any, a: any) => s + Number(a.estimated_value || 0), 0), color: '#10b981' },
     ];
 
     // 6. Net Worth Growth (comparing to previous month)

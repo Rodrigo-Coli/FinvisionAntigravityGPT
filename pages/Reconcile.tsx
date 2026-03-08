@@ -83,8 +83,8 @@ const Reconcile: React.FC = () => {
     const { data: cats } = await supabase.from('categories').select('id, name').eq('user_id', user.id);
     const { data: subs } = await supabase.from('subcategories').select('*').eq('user_id', user.id);
     if (subs && cats) {
-      const mapped = subs.map(s => {
-        const p = cats.find(c => c.id === s.category_id);
+      const mapped = subs.map((s: any) => {
+        const p = cats.find((c: any) => c.id === s.category_id);
         return { ...s, category_name: p?.name };
       });
       setSubcategories(mapped);
@@ -165,13 +165,13 @@ const Reconcile: React.FC = () => {
     try {
       const { data: imports } = await supabase.from('imports').select('id, status, created_at, document_id').order('created_at', { ascending: false }).limit(5);
       if (!imports) return;
-      const docIds = imports.filter(i => i.document_id).map(i => i.document_id);
+      const docIds = imports.filter((i: any) => i.document_id).map((i: any) => i.document_id);
       let docs: any[] = [];
       if (docIds.length > 0) {
         const { data } = await supabase.from('documents').select('id, original_name').in('id', docIds);
         docs = data || [];
       }
-      setRecentImports(imports.map(imp => ({ ...imp, original_name: docs.find(d => d.id === imp.document_id)?.original_name || 'Arquivo' })));
+      setRecentImports(imports.map((imp: any) => ({ ...imp, original_name: docs.find((d: any) => d.id === imp.document_id)?.original_name || 'Arquivo' })));
     } catch (e) { }
   };
 
@@ -455,7 +455,7 @@ const Reconcile: React.FC = () => {
         finalCategoryId = await ReconciliationService.ensureCategoryExists(categoryName);
       }
       if (finalCategoryId && subcategoryName) {
-        await ReconciliationService.ensureSubcategoryExists(finalCategoryId, subcategoryName);
+        await (ReconciliationService as any).ensureSubcategoryExists(finalCategoryId, subcategoryName);
       }
       if (owner && owner !== 'Pessoal') {
         await FinanceService.ensureEntityExists(owner);

@@ -192,7 +192,7 @@ export const FinanceService = {
       if (error) {
         // Fallback: se a tabela não existir, busca das transações
         const { data: txData } = await supabase.from('transactions').select('owner_name').not('owner_name', 'is', null);
-        return Array.from(new Set(['Pessoal', ...(txData || []).map(t => t.owner_name)])).sort() as string[];
+        return Array.from(new Set(['Pessoal', ...(txData || []).map((t: any) => t.owner_name)])).sort() as string[];
       }
       return Array.from(new Set(['Pessoal', ...(data || []).map((e: any) => e.name)])).sort() as string[];
     } catch (e) {
@@ -264,7 +264,7 @@ export const FinanceService = {
       if (!names.includes('Conciliação')) names.push('Conciliação');
       if (!names.includes('Outros')) names.push('Outros');
 
-      return Array.from(new Set(names)).sort();
+      return Array.from(new Set(names)).sort() as string[];
     } catch (e) {
       return [];
     }

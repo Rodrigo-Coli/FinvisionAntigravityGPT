@@ -236,7 +236,7 @@ const CreditCardsPage: React.FC = () => {
 
 
       // 2. Tentar encontrar a fatura que corresponde EXATAMENTE a este período de uso
-      let current = allStatements.find(s => s.month === targetMonth && s.year === targetYear);
+      let current = allStatements.find((s: any) => s.month === targetMonth && s.year === targetYear);
 
       // 3. Fallback inteligente: Se não houver fatura do mês atual, pega a fatura aberta mais antiga/próxima (a que deve ser paga logo)
       if (!current) {

@@ -110,7 +110,7 @@ const Accounts: React.FC = () => {
           isArchived: acc.is_archived || acc.status === 'archived',
           includeInDashboard: acc.include_in_dashboard !== false
         }))
-        .sort((a, b) => a.institution.localeCompare(b.institution));
+        .sort((a: any, b: any) => a.institution.localeCompare(b.institution));
 
       setAccounts(mapped);
     } catch (err) {

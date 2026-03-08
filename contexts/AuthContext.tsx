@@ -26,13 +26,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // Busca inicial
-        supabase.auth.getUser().then(({ data }) => {
+        supabase.auth.getUser().then(({ data }: any) => {
             setUser(data.user ? { id: data.user.id, email: data.user.email ?? undefined } : null);
             setLoading(false);
         });
 
         // Listener de mudanças de sessão (login, logout, expiração)
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
             if (session?.user) {
                 setUser({ id: session.user.id, email: session.user.email ?? undefined });
             } else {
