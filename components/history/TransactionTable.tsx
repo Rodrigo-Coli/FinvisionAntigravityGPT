@@ -1005,6 +1005,16 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                     </p>
                 </div>
             )}
+
+            {/* Hidden file input for attachment uploads */}
+            <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                multiple
+                onChange={handleFileChange}
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip"
+            />
         </div>
     );
 };
