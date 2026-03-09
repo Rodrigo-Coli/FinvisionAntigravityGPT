@@ -407,18 +407,18 @@ export const FinanceService = {
   getAttachmentUrl: async (documentId: string): Promise<string | null> => {
     if (!supabase) return null;
 
-    const { data: doc } = await supabase
+    const { data: doc, error: fetchErr } = await supabase
       .from('documents')
       .select('path')
       .eq('id', documentId)
       .single();
 
-    if (!doc) return null;
+    if (fetchErr || !doc) return null;
 
-    const { data } = supabase.storage
+    const { data, error } = await supabase.storage
       .from('finvision-documents')
-      .getPublicUrl(doc.path);
+      .createSignedUrl(doc.path, 60);
 
-    return data.publicUrl;
+    return error ? null : data.signedUrl;
   }
 };
