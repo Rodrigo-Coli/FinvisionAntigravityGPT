@@ -57,7 +57,7 @@ export const FinanceService = {
 
     let query = supabase
       .from('transactions')
-      .select('*, accounts(institution, name), attachments:documents(*)')
+      .select('*, accounts(institution, name), attachments:documents!documents_transaction_id_fkey(*)')
       .eq('user_id', user.id)
       .eq('is_deleted', false)
       .order('date', { ascending: false });
