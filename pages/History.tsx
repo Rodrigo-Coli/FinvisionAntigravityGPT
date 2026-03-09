@@ -306,7 +306,7 @@ const HistoryPage: React.FC = () => {
 
       // ── Paginated query for the visible table ──
       // Default sorting: if sorting by amount, use our database view or raw columns
-      let query: any = supabase.from('transactions').select('*', { count: 'exact' }).eq('user_id', user.id).eq('is_deleted', false);
+      let query: any = supabase.from('transactions').select('*, attachments:documents(*)', { count: 'exact' }).eq('user_id', user.id).eq('is_deleted', false);
 
       // We handle 'amount' sorting specially in JS if it can't be done perfectly in Supabase 
       // but Postgrest doesn't let us sort by calculated case when statement without a RPC or View.
@@ -335,7 +335,7 @@ const HistoryPage: React.FC = () => {
 
       // ── Aggregation query for charts — same filters, no pagination, minimal columns ──
       let chartQuery: any = supabase.from('transactions')
-        .select('id, date, type, amount, category, subcategory, is_amortization, account_id, owner_name, description, is_paid, paid_amount')
+        .select('id, date, type, amount, category, subcategory, is_amortization, account_id, owner_name, description, is_paid, paid_amount, attachments:documents(*)')
         .eq('user_id', user.id).eq('is_deleted', false)
         .order('date', { ascending: false });
       if (filterType !== 'ALL') chartQuery = chartQuery.eq('type', filterType);
@@ -435,7 +435,8 @@ const HistoryPage: React.FC = () => {
           paidAt: t.paid_at ?? undefined,
           parentId: t.parent_id ?? null,
           metadata: t.metadata ?? {},
-          is_incomplete: isIncomplete
+          is_incomplete: isIncomplete,
+          attachments: t.attachments || []
         };
       }));
     } catch (err) {
