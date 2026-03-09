@@ -155,7 +155,8 @@ const Reconcile: React.FC = () => {
         owner_name: t.owner_name || 'Pessoal',
         category: t.category,
         potential_duplicate: t.potential_duplicate,
-        duplicate_reason: t.duplicate_reason
+        duplicate_reason: t.duplicate_reason,
+        metadata: t.metadata
       })));
     } catch (err) { console.error(err); }
   };
@@ -444,6 +445,13 @@ const Reconcile: React.FC = () => {
     if (!targetId && !isBulk) return alert("Selecione um destino (Banco/Cartão)");
     if (!targetId) return; // Pula em bulk se não tiver destino
 
+    const isCardFromMeta = item.metadata?.target_type === 'card';
+    const isBankFromMeta = item.metadata?.target_type === 'account';
+
+    // Se o item ja vem com tipo fixo no metadado, respeitamos. 
+    // Caso contrario, respeitamos o modo global (importSource).
+    const effectiveIsCard = isCardFromMeta || (!isBankFromMeta && importSource === 'card');
+
     setProcessingItemId(item.id);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -461,7 +469,7 @@ const Reconcile: React.FC = () => {
         await FinanceService.ensureEntityExists(owner);
       }
 
-      if (importSource === 'bank') {
+      if (!effectiveIsCard) {
         const acc = realAccounts.find(a => a.id === targetId);
         const isTransfer = categoryName.toLowerCase().includes('transferencia') || categoryName.toLowerCase().includes('transferência');
 

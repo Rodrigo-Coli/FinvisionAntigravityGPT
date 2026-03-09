@@ -12,8 +12,9 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [reconcileMode, setReconcileMode] = useState<'total' | 'partial' | 'items'>('total');
   const [partialValue, setPartialValue] = useState<number>(0);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'done'>('idle');
-  const [selectedAccounts, setSelectedAccounts] = useState<any[]>([]);
-  const [targetAccount, setTargetAccount] = useState('');
+  const [targetId, setTargetId] = useState('');
+  const [targetType, setTargetType] = useState<'account' | 'card'>('account');
+  const [allTargets, setAllTargets] = useState<{ id: string; name: string; type: 'account' | 'card' }[]>([]);
 
   // States para Dados de Inteligência
   const [comparisonData, setComparisonData] = useState<any[]>([]);
@@ -42,13 +43,25 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   }, [activeTab]);
 
   const fetchAccounts = async () => {
-
-
     if (!supabase || !user) return;
-    const { data } = await supabase.from('accounts').select('id, institution').eq('user_id', user.id);
-    if (data) {
-      setSelectedAccounts(data);
-      if (data.length > 0) setTargetAccount(data[0].id);
+
+    const [accRes, cardRes] = await Promise.all([
+      supabase.from('accounts').select('id, institution').eq('user_id', user.id).eq('is_archived', false),
+      supabase.from('cards').select('id, name').eq('user_id', user.id).eq('is_archived', false)
+    ]);
+
+    const combined: { id: string; name: string; type: 'account' | 'card' }[] = [];
+    if (accRes.data) {
+      accRes.data.forEach((a: any) => combined.push({ id: a.id, name: a.institution, type: 'account' }));
+    }
+    if (cardRes.data) {
+      cardRes.data.forEach((c: any) => combined.push({ id: c.id, name: c.name, type: 'card' }));
+    }
+
+    setAllTargets(combined.sort((a, b) => a.name.localeCompare(b.name)));
+    if (combined.length > 0) {
+      setTargetId(combined[0].id);
+      setTargetType(combined[0].type);
     }
   };
 
@@ -138,13 +151,28 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   };
 
   const handleFinalize = async () => {
-    if (!receipt || !targetAccount) { alert("Selecione uma conta de origem."); return; }
+    if (!receipt || !targetId) { alert("Selecione um destino (Banco ou Cartão)."); return; }
     setSaveStatus('saving');
     try {
       await AIReconcileService.saveReceiptToLabs(receipt);
       const finalAmount = getReconcileAmount();
-      const accountName = selectedAccounts.find((a: any) => a.id === targetAccount)?.institution || 'Conta';
-      await AIReconcileService.saveToReconcileQueue([{ date: receipt.date, description: `Labs: ${receipt.merchant} (${reconcileMode}) ${receipt.currency !== 'BRL' ? '[' + receipt.currency + ']' : ''}`, amount: finalAmount, type: 'debit', source: 'AI Labs', confidence: 1 }], targetAccount, accountName);
+      const target = allTargets.find((t: any) => t.id === targetId);
+      const targetName = target?.name || 'Destino';
+
+      // Enviamos com metadados para indicar se é cartao ou banco
+      await AIReconcileService.saveToReconcileQueue(
+        [{
+          date: receipt.date,
+          description: `Labs: ${receipt.merchant} (${reconcileMode}) ${receipt.currency !== 'BRL' ? '[' + receipt.currency + ']' : ''}`,
+          amount: finalAmount,
+          type: 'debit',
+          source: 'AI Labs',
+          confidence: 1
+        }],
+        targetId,
+        targetName,
+        targetType
+      );
       setSaveStatus('done');
       setTimeout(() => { setReceipt(null); setSaveStatus('idle'); }, 2000);
     } catch (err: any) { console.error('Erro ao finalizar:', err); alert(err.message || 'Erro ao processar.'); setSaveStatus('idle'); }
@@ -300,12 +328,22 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Conta Financeira</label>
                       <select
-                        value={targetAccount}
-                        onChange={(e) => setTargetAccount(e.target.value)}
+                        value={targetId}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setTargetId(val);
+                          const t = allTargets.find(x => x.id === val);
+                          if (t) setTargetType(t.type);
+                        }}
                         className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500"
                       >
                         <option value="">Selecione...</option>
-                        {selectedAccounts.map((acc: any) => (<option key={acc.id} value={acc.id}>{acc.institution}</option>))}
+                        <optgroup label="Contas de Banco">
+                          {allTargets.filter(t => t.type === 'account').map((acc: any) => (<option key={acc.id} value={acc.id}>{acc.name}</option>))}
+                        </optgroup>
+                        <optgroup label="Cartões de Crédito">
+                          {allTargets.filter(t => t.type === 'card').map((card: any) => (<option key={card.id} value={card.id}>{card.name}</option>))}
+                        </optgroup>
                       </select>
                     </div>
 

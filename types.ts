@@ -220,6 +220,7 @@ export interface ImportedTransaction {
   category?: string;
   potential_duplicate?: boolean;
   duplicate_reason?: string;
+  metadata?: any;
 }
 
 export interface ReceiptItem {

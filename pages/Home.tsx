@@ -53,6 +53,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
   const [viewMode, setViewMode] = useState<'ALL' | 'SETTLED'>('ALL');
 
   useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
     const loadData = async () => {
       try {
         const dashboardData = await DashboardService.getSummary(); // Changed from dashboardService.getDashboardData() to DashboardService.getSummary() to match original
@@ -339,8 +343,8 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
         <div className="lg:col-span-4 space-y-6 min-w-0">
           <h3 className="text-lg font-bold text-slate-900">Assistente AI Interativo</h3>
-          <div className="h-[500px]">
-            <AIChat userId={user?.id || ''} />
+          <div className="h-[500px] lg:h-[700px]">
+            <AIChat userId={user?.id || ''} startDate={startDate} endDate={endDate} />
           </div>
         </div>
       </div>

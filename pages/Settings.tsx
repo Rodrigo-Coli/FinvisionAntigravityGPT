@@ -56,6 +56,13 @@ const SettingsPage: React.FC = () => {
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [editCatName, setEditCatName] = useState('');
 
+  // Subcategories state
+  const [subcategories, setSubcategories] = useState<any[]>([]);
+  const [expandedCat, setExpandedCat] = useState<string | null>(null);
+  const [newSubcatName, setNewSubcatName] = useState('');
+  const [editingSubcatId, setEditingSubcatId] = useState<string | null>(null);
+  const [editSubcatName, setEditSubcatName] = useState('');
+
   useEffect(() => {
     fetchData();
   }, [activeSection, showArchived]);
@@ -86,6 +93,13 @@ const SettingsPage: React.FC = () => {
         if (!showArchived) query = query.eq('is_archived', false);
         const { data } = await query;
         setCategories(data || []);
+
+        try {
+          const { data: subData } = await supabase.from('subcategories').select('*').eq('user_id', user.id).order('name');
+          setSubcategories(subData || []);
+        } catch (e) {
+          console.warn("Subcategories table might not exist yet", e);
+        }
       }
 
       if (activeSection === 'establishments') {
@@ -152,6 +166,32 @@ const SettingsPage: React.FC = () => {
       setEditingCatId(null);
       fetchData();
     } catch (err) { alert('Erro ao salvar'); }
+  };
+
+  // SUBCATEGORIES CRUD
+  const addSubcategory = async (categoryId: string) => {
+    if (!newSubcatName || !supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('subcategories').insert({ user_id: user.id, category_id: categoryId, name: newSubcatName });
+      setNewSubcatName('');
+      fetchData();
+    } catch (err) { alert('Erro ao adicionar subcategoria'); }
+  };
+
+  const deleteSubcategory = async (id: string) => {
+    if (!supabase || !confirm('Deseja excluir permanentemente a subcategoria?')) return;
+    try { await supabase.from('subcategories').delete().eq('id', id); fetchData(); } catch (err) { alert('Erro ao excluir subcategoria'); }
+  };
+
+  const saveEditSubcat = async () => {
+    if (!editingSubcatId || !editSubcatName || !supabase) return;
+    try {
+      await supabase.from('subcategories').update({ name: editSubcatName }).eq('id', editingSubcatId);
+      setEditingSubcatId(null);
+      fetchData();
+    } catch (err) { alert('Erro ao salvar subcategoria'); }
   };
 
   const updateSetting = async (key: string, value: any) => {
@@ -323,34 +363,81 @@ const SettingsPage: React.FC = () => {
                   .filter(c => (c.type === categoryTab || (!c.type && categoryTab === 'EXPENSE')))
                   .filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase()))
                   .map(cat => (
-                    <div key={cat.id} className={`p-6 lg:p-8 flex items-center justify-between group hover:bg-slate-50/50 transition-all ${cat.is_archived ? 'opacity-50 grayscale' : ''}`}>
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className={`w-4 h-4 rounded-full ${cat.color?.split(' ')[0] || 'bg-brand-500'}`} />
-                        {editingCatId === cat.id ? (
-                          <div className="flex gap-2 flex-1 max-w-sm">
-                            <input
-                              autoFocus
-                              className="flex-1 bg-white border border-brand-200 rounded-xl px-4 py-2 font-bold text-slate-900 outline-none text-sm"
-                              value={editCatName}
-                              onChange={e => setEditCatName(e.target.value)}
-                              onKeyDown={e => e.key === 'Enter' && saveEditCat()}
-                            />
-                            <button onClick={saveEditCat} className="p-2 bg-emerald-500 text-white rounded-xl"><Check size={16} /></button>
-                            <button onClick={() => setEditingCatId(null)} className="p-2 bg-slate-100 text-slate-400 rounded-xl"><XCircle size={16} /></button>
+                    <div key={cat.id} className="flex flex-col border-b border-slate-50 last:border-0 group">
+                      <div className={`p-6 lg:p-8 flex items-center justify-between hover:bg-slate-50/50 transition-all cursor-pointer ${cat.is_archived ? 'opacity-50 grayscale' : ''}`} onClick={() => setExpandedCat(expandedCat === cat.id ? null : cat.id)}>
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className={`w-4 h-4 rounded-full ${cat.color?.split(' ')[0] || 'bg-brand-500'}`} />
+                          {editingCatId === cat.id ? (
+                            <div className="flex gap-2 flex-1 max-w-sm" onClick={e => e.stopPropagation()}>
+                              <input
+                                autoFocus
+                                className="flex-1 bg-white border border-brand-200 rounded-xl px-4 py-2 font-bold text-slate-900 outline-none text-sm"
+                                value={editCatName}
+                                onChange={e => setEditCatName(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && saveEditCat()}
+                              />
+                              <button onClick={saveEditCat} className="p-2 bg-emerald-500 text-white rounded-xl"><Check size={16} /></button>
+                              <button onClick={() => setEditingCatId(null)} className="p-2 bg-slate-100 text-slate-400 rounded-xl"><XCircle size={16} /></button>
+                            </div>
+                          ) : (
+                            <span className="font-bold text-slate-900 uppercase tracking-widest text-sm flex items-center gap-2">
+                              {cat.name}
+                              <ChevronRight size={16} className={`text-slate-300 transition-transform ${expandedCat === cat.id ? 'rotate-90' : ''}`} />
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                          <button onClick={() => startEditingCat(cat)} className="p-3 text-slate-200 hover:text-brand-500 hover:bg-brand-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Editar"><Edit3 size={20} /></button>
+                          {cat.is_archived ? (
+                            <button onClick={() => archiveCategory(cat.id, false)} className="p-3 text-slate-200 hover:text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Desarquivar"><Check size={20} /></button>
+                          ) : (
+                            <button onClick={() => archiveCategory(cat.id, true)} className="p-3 text-slate-200 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Arquivar"><Archive size={20} /></button>
+                          )}
+                          <button onClick={() => deleteCategory(cat.id)} className="p-3 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Excluir"><Trash2 size={20} /></button>
+                        </div>
+                      </div>
+
+                      {/* Subcategories View */}
+                      {expandedCat === cat.id && (
+                        <div className="pl-14 pr-6 pb-6 bg-slate-50/30 animate-in slide-in-from-top-2 duration-300">
+                          <div className="pl-6 border-l-2 border-slate-200 space-y-2">
+                            {subcategories.filter(s => s.category_id === cat.id).map(sub => (
+                              <div key={sub.id} className="flex items-center justify-between group/sub py-2 px-4 rounded-xl hover:bg-white transition-all">
+                                {editingSubcatId === sub.id ? (
+                                  <div className="flex gap-2 flex-1 max-w-sm">
+                                    <input
+                                      autoFocus
+                                      className="flex-1 bg-white border border-brand-200 rounded-xl px-3 py-1 font-bold text-slate-700 outline-none text-xs"
+                                      value={editSubcatName}
+                                      onChange={e => setEditSubcatName(e.target.value)}
+                                      onKeyDown={e => e.key === 'Enter' && saveEditSubcat()}
+                                    />
+                                    <button onClick={saveEditSubcat} className="p-1.5 bg-emerald-500 text-white rounded-lg"><Check size={14} /></button>
+                                    <button onClick={() => setEditingSubcatId(null)} className="p-1.5 bg-slate-100 text-slate-400 rounded-lg"><XCircle size={14} /></button>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs font-bold text-slate-600 tracking-wide">{sub.name}</span>
+                                )}
+                                <div className="flex items-center gap-1">
+                                  <button onClick={() => { setEditingSubcatId(sub.id); setEditSubcatName(sub.name); }} className="p-2 text-slate-300 hover:text-brand-500 transition-colors opacity-0 group-hover/sub:opacity-100" title="Editar"><Edit3 size={14} /></button>
+                                  <button onClick={() => deleteSubcategory(sub.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover/sub:opacity-100" title="Excluir"><Trash2 size={14} /></button>
+                                </div>
+                              </div>
+                            ))}
+
+                            <div className="flex gap-2 mt-2 px-4 max-w-sm">
+                              <input
+                                className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none placeholder:text-slate-300 focus:border-brand-500/30 transition-colors"
+                                placeholder="Nova subcategoria..."
+                                value={newSubcatName}
+                                onChange={e => setNewSubcatName(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && addSubcategory(cat.id)}
+                              />
+                              <button onClick={() => addSubcategory(cat.id)} disabled={!newSubcatName} className="p-2 bg-slate-900 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-all"><Plus size={16} /></button>
+                            </div>
                           </div>
-                        ) : (
-                          <span className="font-bold text-slate-900 uppercase tracking-widest text-sm">{cat.name}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => startEditingCat(cat)} className="p-3 text-slate-200 hover:text-brand-500 hover:bg-brand-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Editar"><Edit3 size={20} /></button>
-                        {cat.is_archived ? (
-                          <button onClick={() => archiveCategory(cat.id, false)} className="p-3 text-slate-200 hover:text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Desarquivar"><Check size={20} /></button>
-                        ) : (
-                          <button onClick={() => archiveCategory(cat.id, true)} className="p-3 text-slate-200 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Arquivar"><Archive size={20} /></button>
-                        )}
-                        <button onClick={() => deleteCategory(cat.id)} className="p-3 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Excluir"><Trash2 size={20} /></button>
-                      </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 {categories.filter(c => (c.type === categoryTab || (!c.type && categoryTab === 'EXPENSE'))).filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase())).length === 0 && !isAddingCat && (

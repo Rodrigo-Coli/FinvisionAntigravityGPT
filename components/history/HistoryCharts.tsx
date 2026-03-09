@@ -69,13 +69,11 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
 
         const catArrayExpense = Object.entries(categoriesExpense)
             .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 8);
+            .sort((a, b) => b.value - a.value);
 
         const catArrayIncome = Object.entries(categoriesIncome)
             .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 8);
+            .sort((a, b) => b.value - a.value);
 
         // ── MÊS A MÊS: detect the latest month in the transaction set and compare with the previous one ──
         let latestYear = 0;
@@ -272,7 +270,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                             <p className="text-[10px] font-black text-emerald-600/50 uppercase tracking-widest mb-2">Total Recebido ({currMonthLabel})</p>
                             <h4 className="text-3xl font-bold text-emerald-600">{HistoryUtils.formatCurrency(totalCurrentMonthIncome)}</h4>
                         </div>
-                        <div className="space-y-4">
+                        <div className="space-y-4 max-h-[460px] overflow-y-auto pr-2 custom-scrollbar">
                             {categoryDataIncome.length === 0 ? (
                                 <p className="text-slate-400 text-sm py-4 italic">Nenhuma receita registrada neste mês.</p>
                             ) : (
@@ -314,7 +312,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                             <p className="text-[10px] font-black text-rose-600/50 uppercase tracking-widest mb-2">Total Gasto ({currMonthLabel})</p>
                             <h4 className="text-3xl font-bold text-rose-600">{HistoryUtils.formatCurrency(totalCurrentMonthExpense)}</h4>
                         </div>
-                        <div className="space-y-4">
+                        <div className="space-y-4 max-h-[460px] overflow-y-auto pr-2 custom-scrollbar">
                             {categoryDataExpense.length === 0 ? (
                                 <p className="text-slate-400 text-sm py-4 italic">Nenhuma despesa registrada neste mês.</p>
                             ) : (

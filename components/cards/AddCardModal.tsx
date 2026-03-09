@@ -26,6 +26,8 @@ interface AddCardModalProps {
     setParentCardId: (v: string) => void;
     additionalLabel: string;
     setAdditionalLabel: (v: string) => void;
+    title?: string;
+    buttonLabel?: string;
 }
 
 export const AddCardModal: React.FC<AddCardModalProps> = ({
@@ -52,7 +54,9 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
     parentCardId,
     setParentCardId,
     additionalLabel,
-    setAdditionalLabel
+    setAdditionalLabel,
+    title = "Novo Cartão",
+    buttonLabel = "Salvar Cartão"
 }) => {
     if (!show) return null;
 
@@ -65,7 +69,7 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
             <div className="bg-white rounded-t-[32px] sm:rounded-[40px] w-full max-w-lg shadow-2xl relative overflow-hidden animate-in slide-in-from-bottom sm:zoom-in duration-300">
                 <div className="p-8 lg:p-10">
                     <div className="flex items-center justify-between mb-8">
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Novo Cartão</h2>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{title}</h2>
                         <button
                             onClick={() => !isAnyModalBusy && onClose()}
                             disabled={isAnyModalBusy}
@@ -211,7 +215,7 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
                                 className="w-full h-14 bg-brand-600 text-white font-black rounded-2xl hover:bg-brand-700 shadow-xl shadow-brand-500/30 transition-all active:scale-95 uppercase text-xs tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
                             >
                                 {isSaving ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
-                                Salvar Cartão
+                                {buttonLabel}
                             </button>
                         </div>
                     </form>

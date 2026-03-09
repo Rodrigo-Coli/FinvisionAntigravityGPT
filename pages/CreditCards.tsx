@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, Edit2, Archive, Trash2 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { FinanceService } from '../services/finance.service';
 import { DateUtils } from '../lib/dateUtils';
@@ -76,6 +76,7 @@ const CreditCardsPage: React.FC = () => {
   const [parentCardId, setParentCardId] = useState('');
   const [additionalLabel, setAdditionalLabel] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   // Series Scope Modal State
   const [seriesModal, setSeriesModal] = useState<{
@@ -505,6 +506,63 @@ const CreditCardsPage: React.FC = () => {
     }
   };
 
+  const handleEditClick = () => {
+    if (!selectedCard) return;
+    setNewName(selectedCard.name);
+    setNewBrand(selectedCard.brand);
+    setNewLast4(selectedCard.last4);
+    setNewLimit(selectedCard.limit_total);
+    setNewClosingDay(selectedCard.closing_day);
+    setNewDueDay(selectedCard.due_day);
+    setIsAdditional(selectedCard.is_additional);
+    setParentCardId(selectedCard.parent_card_id || '');
+    setAdditionalLabel(selectedCard.additional_label || '');
+    setIsEditing(true);
+    setShowAddModal(true);
+  };
+
+  const handleArchiveCard = async () => {
+    if (!selectedCard || !supabase) return;
+    if (!confirm(`Arquivar o cartão "${selectedCard.name}"? Ele não aparecerá mais na lista ativa.`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('cards')
+        .update({ is_archived: true, status: 'archived' })
+        .eq('id', selectedCard.id);
+
+      if (error) throw error;
+
+      const updatedCards = cards.filter(c => c.id !== selectedCard.id);
+      setCards(updatedCards);
+      setSelectedCard(updatedCards.length > 0 ? updatedCards[0] : null);
+    } catch (err) {
+      console.error('Erro ao arquivar cartão:', err);
+      alert('Erro ao arquivar cartão.');
+    }
+  };
+
+  const handleDeleteCard = async () => {
+    if (!selectedCard || !supabase) return;
+    if (!confirm(`EXCLUIR PERMANENTEMENTE o cartão "${selectedCard.name}"? Isso removerá todas as faturas e transações vinculadas.`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('cards')
+        .delete()
+        .eq('id', selectedCard.id);
+
+      if (error) throw error;
+
+      const updatedCards = cards.filter(c => c.id !== selectedCard.id);
+      setCards(updatedCards);
+      setSelectedCard(updatedCards.length > 0 ? updatedCards[0] : null);
+    } catch (err) {
+      console.error('Erro ao excluir cartão:', err);
+      alert('Erro ao excluir cartão. Verifique se há transações impedindo a exclusão.');
+    }
+  };
+
   const handleAddCard = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) return;
@@ -517,7 +575,7 @@ const CreditCardsPage: React.FC = () => {
         name: newName,
         brand: newBrand,
         last4: newLast4,
-        limit_total: newLimit, // Nome sincronizado com o SQL
+        limit_total: newLimit,
         closing_day: newClosingDay,
         due_day: newDueDay,
         is_archived: false,
@@ -525,11 +583,26 @@ const CreditCardsPage: React.FC = () => {
         parent_card_id: isAdditional ? parentCardId : null,
         additional_label: isAdditional ? additionalLabel : null,
       };
-      const { data, error } = await supabase.from('cards').insert([payload]).select().single();
-      if (error) throw error;
-      setCards((prev) => [...prev, data]);
-      if (!selectedCard) setSelectedCard(data);
+
+      if (isEditing && selectedCard) {
+        const { data, error } = await supabase
+          .from('cards')
+          .update(payload)
+          .eq('id', selectedCard.id)
+          .select()
+          .single();
+        if (error) throw error;
+        setCards((prev) => prev.map(c => c.id === data.id ? data : c));
+        setSelectedCard(data);
+      } else {
+        const { data, error } = await supabase.from('cards').insert([payload]).select().single();
+        if (error) throw error;
+        setCards((prev) => [...prev, data]);
+        if (!selectedCard) setSelectedCard(data);
+      }
+
       setShowAddModal(false);
+      setIsEditing(false);
       resetForm();
     } catch (err: any) {
       console.error('Erro ao salvar cartão:', err);
@@ -746,8 +819,28 @@ const CreditCardsPage: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="flex gap-4 sm:gap-6 w-full sm:w-auto justify-between sm:justify-end">
-                    {/* Datas removidas daqui para evitar redundância com o StatementSummary abaixo */}
+                  <div className="flex gap-2 sm:gap-3 w-full sm:w-auto justify-end">
+                    <button
+                      onClick={handleEditClick}
+                      className="p-2.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-xl transition-all"
+                      title="Editar Cartão"
+                    >
+                      <Edit2 size={18} />
+                    </button>
+                    <button
+                      onClick={handleArchiveCard}
+                      className="p-2.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-xl transition-all"
+                      title="Arquivar Cartão"
+                    >
+                      <Archive size={18} />
+                    </button>
+                    <button
+                      onClick={handleDeleteCard}
+                      className="p-2.5 text-rose-400 hover:bg-rose-50 hover:text-rose-600 rounded-xl transition-all"
+                      title="Excluir Cartão"
+                    >
+                      <Trash2 size={18} />
+                    </button>
                   </div>
                 </div>
 
@@ -872,8 +965,10 @@ const CreditCardsPage: React.FC = () => {
       {/* Modals */}
       <AddCardModal
         show={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => { setShowAddModal(false); setIsEditing(false); resetForm(); }}
         onSubmit={handleAddCard}
+        title={isEditing ? 'Editar Cartão' : 'Novo Cartão'}
+        buttonLabel={isEditing ? 'Salvar Alterações' : 'Salvar Cartão'}
         isSaving={isSaving}
         isAnyModalBusy={isAnyModalBusy}
         cards={cards}

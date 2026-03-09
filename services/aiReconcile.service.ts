@@ -66,7 +66,7 @@ export const AIReconcileService = {
     return await res.json();
   },
 
-  async saveToReconcileQueue(items: ReconcileItem[], accountId: string, accountName: string) {
+  async saveToReconcileQueue(items: ReconcileItem[], accountId: string, accountName: string, targetType?: 'account' | 'card') {
     if (!supabase) throw new Error("Supabase is not configured");
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("No user found");
@@ -79,7 +79,7 @@ export const AIReconcileService = {
       status: "READY_TO_RECONCILE",
       account_id: accountId,
       account_name: accountName,
-      metadata: { ai_processed: true, confidence: item.confidence },
+      metadata: { ai_processed: true, confidence: item.confidence, target_type: targetType },
     }));
 
     const { error } = await supabase.from("imported_transactions").insert(payload);
