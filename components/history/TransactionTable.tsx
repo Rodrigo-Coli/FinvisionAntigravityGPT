@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, Trash2, RotateCcw, Check, ChevronUp, ChevronDown, Search, Plus, X } from 'lucide-react';
+import { Loader2, Trash2, RotateCcw, Check, ChevronUp, ChevronDown, Search, Plus, X, Paperclip, Eye, Download, Upload } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 import { Transaction, BankAccount } from '../../types';
 
@@ -33,6 +33,9 @@ interface TransactionTableProps {
     selectedIds: Set<string>;
     onToggleSelect: (id: string) => void;
     onSelectAll: (checked: boolean) => void;
+    onUploadAttachment: (id: string, file: File) => Promise<void>;
+    onDeleteAttachment: (id: string, documentId: string) => Promise<void>;
+    onViewAttachment: (documentId: string) => Promise<void>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -493,8 +496,20 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
     openPayModal, reopenTransaction,
     sortField, sortDirection, onSort,
     owners,
-    selectedIds, onToggleSelect, onSelectAll
+    selectedIds, onToggleSelect, onSelectAll,
+    onUploadAttachment, onDeleteAttachment, onViewAttachment
 }) => {
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [uploadingForId, setUploadingForId] = useState<string | null>(null);
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file && uploadingForId) {
+            await onUploadAttachment(uploadingForId, file);
+            setUploadingForId(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
     const EPS = 0.000001;
     const allOwners = owners;
 
@@ -679,6 +694,29 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                             compact
                                         />
                                         {statusBadge(t)}
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            {t.attachments && t.attachments.length > 0 ? (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {t.attachments.map(doc => (
+                                                        <div key={doc.id} className="group relative flex items-center gap-1 p-1.5 bg-brand-50 text-brand-600 rounded-lg hover:bg-brand-100 transition-all">
+                                                            <button onClick={() => onViewAttachment(doc.id)} title={doc.original_name}>
+                                                                <Eye size={12} />
+                                                            </button>
+                                                            <button onClick={() => onDeleteAttachment(t.id, doc.id)} className="text-rose-400 hover:text-rose-600">
+                                                                <X size={10} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    <button onClick={() => { setUploadingForId(t.id); fileInputRef.current?.click(); }} className="p-1.5 bg-slate-100 text-slate-400 rounded-lg hover:text-brand-600" title="Adicionar anexo">
+                                                        <Plus size={12} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button onClick={() => { setUploadingForId(t.id); fileInputRef.current?.click(); }} className="p-2 bg-slate-100 text-slate-400 rounded-lg hover:text-brand-600">
+                                                    <Paperclip size={12} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Row 4: Action buttons — ALWAYS VISIBLE on mobile */}
@@ -754,6 +792,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                             <th className="px-6 py-5 text-right cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => onSort('amount')}>
                                 <div className="flex items-center justify-end gap-1">Valor {sortField === 'amount' && (sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</div>
                             </th>
+                            <th className="px-6 py-5 text-center w-20">Anexo</th>
                             <th className="px-6 py-5 text-right w-36">Ações</th>
                         </tr>
                     </thead>
@@ -886,6 +925,31 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                 {(t.type === 'EXPENSE' || (t.type === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '-' : ''}{formatCurrency(amount)}
                                             </button>
                                         )}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center justify-center gap-1.5 flex-wrap max-w-[120px] mx-auto">
+                                            {t.attachments && t.attachments.length > 0 ? (
+                                                <>
+                                                    {t.attachments.map(doc => (
+                                                        <div key={doc.id} className="group relative flex items-center gap-1 p-1.5 bg-brand-50 text-brand-600 rounded-lg hover:bg-brand-100 transition-all shadow-sm">
+                                                            <button onClick={() => onViewAttachment(doc.id)} title={doc.original_name}>
+                                                                <Eye size={12} />
+                                                            </button>
+                                                            <button onClick={() => onDeleteAttachment(t.id, doc.id)} className="text-rose-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <X size={10} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    <button onClick={() => { setUploadingForId(t.id); fileInputRef.current?.click(); }} className="p-1.5 text-slate-300 hover:text-brand-600 transition-colors" title="Adicionar anexo">
+                                                        <Plus size={12} />
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <button onClick={() => { setUploadingForId(t.id); fileInputRef.current?.click(); }} className="p-2 text-slate-300 hover:text-brand-600 transition-all" title="Anexar comprovante">
+                                                    <Paperclip size={14} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
 
                                     {/* Desktop actions — always visible, not hover-only */}

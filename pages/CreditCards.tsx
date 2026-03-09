@@ -56,6 +56,7 @@ const CreditCardsPage: React.FC = () => {
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrencePeriod, setRecurrencePeriod] = useState<'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom'>('monthly');
   const [recurrenceDaysInterval, setRecurrenceDaysInterval] = useState(1);
+  const [txFiles, setTxFiles] = useState<File[]>([]);
 
   // PAY STATEMENT
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -412,11 +413,54 @@ const CreditCardsPage: React.FC = () => {
     }
   };
 
+  const handleUploadAttachment = async (id: string, file: File) => {
+    try {
+      setSavingRowId(id);
+      const documentId = await FinanceService.uploadAttachment(file, 'card');
+      const { error } = await supabase!.from('card_transactions').update({ document_id: documentId }).eq('id', id);
+      if (error) throw error;
+      setTransactions(prev => prev.map(t => t.id === id ? { ...t, document_id: documentId } : t));
+    } catch (err) {
+      console.error('Erro ao anexar arquivo:', err);
+      alert('Erro ao anexar arquivo.');
+    } finally {
+      setSavingRowId(null);
+    }
+  };
+
+  const handleDeleteAttachment = async (documentId: string, transactionId: string) => {
+    if (!confirm('Remover este comprovante?')) return;
+    try {
+      setSavingRowId(transactionId);
+      await FinanceService.deleteAttachment(documentId);
+      const { error } = await supabase!.from('card_transactions').update({ document_id: null }).eq('id', transactionId);
+      if (error) throw error;
+      setTransactions(prev => prev.map(t => t.id === transactionId ? { ...t, document_id: null } : t));
+    } catch (err) {
+      console.error('Erro ao remover anexo:', err);
+      alert('Erro ao remover anexo.');
+    } finally {
+      setSavingRowId(null);
+    }
+  };
+
+  const handleViewAttachment = async (documentId: string) => {
+    try {
+      const url = await FinanceService.getAttachmentUrl(documentId);
+      if (url) window.open(url, '_blank');
+      else alert('Não foi possível carregar o comprovante.');
+    } catch (err) {
+      console.error('Erro ao visualizar anexo:', err);
+    }
+  };
+
   const handleAddManualTx = async () => {
     if (!supabase || !txCardId) return;
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      // The file upload is now handled AFTER transaction creation to link multiple files
 
       if (!isInstallment && !isRecurring) {
         // Fluxo Simples
@@ -434,8 +478,19 @@ const CreditCardsPage: React.FC = () => {
 
         const targetStmtId = await FinanceService.getOrCreateStatement(txCardId, txDate);
         payload.statement_id = targetStmtId;
-        const { error } = await supabase.from('card_transactions').insert([payload]);
+        const { data: txData, error } = await supabase.from('card_transactions').insert([payload]).select('id').single();
         if (error) throw error;
+
+        // Handle Attachments (Multi-upload)
+        if (txData?.id && txFiles && txFiles.length > 0) {
+          for (const file of txFiles) {
+            try {
+              await FinanceService.uploadAttachment(file, txData.id, true);
+            } catch (uploadErr) {
+              console.error(`Erro ao subir anexo ${file.name}:`, uploadErr);
+            }
+          }
+        }
       } else {
         // Fluxo Série (Parcelado ou Recorrente)
         const type = isInstallment ? 'INSTALLMENT' : 'RECURRING';
@@ -450,7 +505,7 @@ const CreditCardsPage: React.FC = () => {
             amount: Number(txAmount || 0),
             category_id: txCategoryId || undefined,
             is_manual: true,
-            source: 'MANUAL'
+            source: 'MANUAL',
           },
           {
             type,
@@ -487,8 +542,19 @@ const CreditCardsPage: React.FC = () => {
             recurrence_group_id: isRecurring ? groupId : null
           });
         }
-        const { error } = await supabase.from('card_transactions').insert(inserts);
+        const { data: insertsData, error } = await supabase.from('card_transactions').insert(inserts).select('id');
         if (error) throw error;
+
+        // Attach to the FIRST transaction of the series (common practice)
+        if (insertsData?.[0]?.id && txFiles && txFiles.length > 0) {
+          for (const file of txFiles) {
+            try {
+              await FinanceService.uploadAttachment(file, insertsData[0].id, true);
+            } catch (uploadErr) {
+              console.error(`Erro ao subir anexo ${file.name}:`, uploadErr);
+            }
+          }
+        }
       }
 
       setShowAddTxModal(false);
@@ -498,6 +564,7 @@ const CreditCardsPage: React.FC = () => {
       setIsInstallment(false);
       setIsRecurring(false);
       setInstallmentsCount(1);
+      setTxFiles([]);
 
       await loadCardContext(txCardId);
     } catch (err: any) {
@@ -951,6 +1018,9 @@ const CreditCardsPage: React.FC = () => {
                     onUpdateTxLocal={updateTxLocal}
                     onSaveTxPatch={saveTxPatch}
                     onDeleteTx={handleDeleteTx}
+                    onUploadAttachment={handleUploadAttachment}
+                    onDeleteAttachment={handleDeleteAttachment}
+                    onViewAttachment={handleViewAttachment}
                     showStatementScope={selectedStatementId !== 'ALL'}
                     statements={statements}
                     isLocked={currentStatement?.status === 'PAID'}
@@ -1019,6 +1089,8 @@ const CreditCardsPage: React.FC = () => {
         setRecurrencePeriod={setRecurrencePeriod}
         recurrenceDaysInterval={recurrenceDaysInterval}
         setRecurrenceDaysInterval={setRecurrenceDaysInterval}
+        txFiles={txFiles}
+        setTxFiles={setTxFiles}
       />
 
       <PayStatementModal

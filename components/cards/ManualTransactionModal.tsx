@@ -30,6 +30,8 @@ interface ManualTransactionModalProps {
     setRecurrencePeriod?: (v: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom') => void;
     recurrenceDaysInterval?: number;
     setRecurrenceDaysInterval?: (v: number) => void;
+    txFiles?: File[];
+    setTxFiles?: (v: File[]) => void;
 }
 
 export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
@@ -58,7 +60,9 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     recurrencePeriod = 'monthly',
     setRecurrencePeriod,
     recurrenceDaysInterval = 1,
-    setRecurrenceDaysInterval
+    setRecurrenceDaysInterval,
+    txFiles = [],
+    setTxFiles
 }) => {
     if (!show) return null;
 
@@ -221,6 +225,59 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                             </select>
                         </div>
 
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Anexos ({txFiles?.length || 0})</label>
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                                <div className="space-y-2">
+                                    {txFiles && txFiles.length > 0 ? (
+                                        txFiles.map((f, idx) => (
+                                            <div key={idx} className="flex items-center justify-between gap-2 p-2 bg-white rounded-xl border border-slate-100 shadow-sm animate-in slide-in-from-left-2 transition-all">
+                                                <div className="flex items-center gap-2 overflow-hidden">
+                                                    <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                                                    <span className="text-xs font-bold text-slate-700 truncate">{f.name}</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newFiles = [...(txFiles || [])];
+                                                        newFiles.splice(idx, 1);
+                                                        setTxFiles?.(newFiles);
+                                                    }}
+                                                    className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="py-2 text-center">
+                                            <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Nenhum arquivo selecionado</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <input
+                                    type="file"
+                                    id="manual-tx-file"
+                                    className="hidden"
+                                    multiple
+                                    onChange={(e) => {
+                                        const newFiles = Array.from(e.target.files || []);
+                                        setTxFiles?.([...(txFiles || []), ...newFiles]);
+                                        e.target.value = '';
+                                    }}
+                                    accept="image/*,application/pdf"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => document.getElementById('manual-tx-file')?.click()}
+                                    className="w-full py-3 bg-white border-2 border-dashed border-slate-200 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-2 shadow-sm"
+                                >
+                                    Selecionar Arquivos
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="flex flex-col sm:flex-row gap-4 pt-4">
                             <button
                                 type="button"
@@ -241,7 +298,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 };

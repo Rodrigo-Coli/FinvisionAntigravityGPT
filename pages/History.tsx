@@ -63,6 +63,8 @@ type AddModalState =
       recurrenceDaysInterval: number;
       ownerName: string;
       destinationAccountId?: string;
+      documentId?: string;
+      files?: File[];
     };
   };
 
@@ -658,6 +660,47 @@ const HistoryPage: React.FC = () => {
     }
   };
 
+  const handleUploadAttachment = async (id: string, file: File) => {
+    setSavingId(id);
+    try {
+      await FinanceService.uploadAttachment(file, id, false);
+      await fetchData();
+    } catch (err: any) {
+      alert(`Erro ao fazer upload: ${err.message}`);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleDeleteAttachment = async (txId: string, documentId: string) => {
+    if (!txId || !documentId) return;
+    if (!window.confirm('Excluir este anexo?')) return;
+
+    setSavingId(txId);
+    try {
+      await FinanceService.deleteAttachment(documentId);
+      await fetchData();
+    } catch (err: any) {
+      alert(`Erro ao excluir anexo: ${err.message}`);
+    } finally {
+      setSavingId(txId); // mantenho para feedback visual
+      setTimeout(() => setSavingId(null), 500);
+    }
+  };
+
+  const handleViewAttachment = async (documentId: string) => {
+    try {
+      const url = await FinanceService.getAttachmentUrl(documentId);
+      if (url) {
+        window.open(url, '_blank');
+      } else {
+        alert('Anexo não encontrado');
+      }
+    } catch (err: any) {
+      alert(`Erro ao abrir anexo: ${err.message}`);
+    }
+  };
+
   const resetFilters = () => {
     setFilterType('ALL'); setFilterAccount([]); setFilterCategory([]);
     setStartDate(DateUtils.formatToISODate(firstDay));
@@ -849,7 +892,6 @@ const HistoryPage: React.FC = () => {
     setAddModal(prev => prev.open ? { ...prev, isSubmitting: true } : prev);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      // Em modo offline restrito, user pode vir nulo da rede.
       const userId = user?.id || 'offline-user';
 
       if (navigator.onLine) {
@@ -861,6 +903,7 @@ const HistoryPage: React.FC = () => {
       }
 
       const isTransfer = f.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || f.description.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
+      let createdTxId: string | null = null;
 
       if (!f.isInstallment && !f.isRecurring) {
         if (!navigator.onLine) {
@@ -880,7 +923,7 @@ const HistoryPage: React.FC = () => {
         if (isTransfer && f.destinationAccountId) {
           const accDest = accounts.find(a => a.id === f.destinationAccountId);
           const accSrc = accounts.find(a => a.id === f.accountId);
-          await supabase.from('transactions').insert([
+          const { data, error: insertErr } = await supabase.from('transactions').insert([
             {
               user_id: user?.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
               account_id: f.accountId, account_name: accSrc?.institution || 'Conta', category: f.category, subcategory: f.subcategory || null, is_paid: true, paid_amount: amount, paid_at: f.date,
@@ -893,13 +936,17 @@ const HistoryPage: React.FC = () => {
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
               metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: f.accountId }
             }
-          ]);
+          ]).select('id');
+          if (insertErr) throw insertErr;
+          createdTxId = data?.[0]?.id;
         } else {
-          await supabase.from('transactions').insert({
+          const { data, error: insertErr } = await supabase.from('transactions').insert({
             user_id: user?.id, date: f.date, description: f.description, amount, type: f.type,
             account_id: f.accountId, category: f.category, subcategory: f.subcategory || null, is_paid: false, paid_amount: 0,
             owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName
-          });
+          }).select('id');
+          if (insertErr) throw insertErr;
+          createdTxId = data?.[0]?.id;
         }
       } else {
         const { TransactionSeriesUtils } = await import('../lib/transactionSeriesUtils');
@@ -924,13 +971,26 @@ const HistoryPage: React.FC = () => {
           return;
         }
 
-        const { error } = await supabase.from('transactions').insert(inserts);
-        if (error) throw error;
+        const { data, error: insertErr } = await supabase.from('transactions').insert(inserts).select('id');
+        if (insertErr) throw insertErr;
+        createdTxId = data?.[0]?.id;
       }
+
+      // Handle Attachments (Multi-upload)
+      if (createdTxId && f.files && f.files.length > 0) {
+        for (const file of f.files) {
+          try {
+            await FinanceService.uploadAttachment(file, createdTxId, false);
+          } catch (uploadErr) {
+            console.error(`Erro ao subir anexo ${file.name}:`, uploadErr);
+          }
+        }
+      }
+
       setAddModal({ open: false });
       await fetchData();
-    } catch (err) {
-      setAddModal(prev => prev.open ? { ...prev, isSubmitting: false, error: 'Erro ao adicionar transação.' } : prev);
+    } catch (err: any) {
+      setAddModal(prev => prev.open ? { ...prev, isSubmitting: false, error: err.message || 'Erro ao adicionar transação.' } : prev);
     }
   };
 
@@ -1020,7 +1080,8 @@ const HistoryPage: React.FC = () => {
                 isRecurring: false,
                 recurrencePeriod: 'monthly',
                 recurrenceDaysInterval: 30,
-                destinationAccountId: ''
+                destinationAccountId: '',
+                files: []
               }
             })}
             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
@@ -1289,6 +1350,9 @@ const HistoryPage: React.FC = () => {
         selectedIds={selectedIds}
         onToggleSelect={handleToggleSelect}
         onSelectAll={handleSelectAll}
+        onUploadAttachment={handleUploadAttachment}
+        onDeleteAttachment={handleDeleteAttachment}
+        onViewAttachment={handleViewAttachment}
         reopenTransaction={async (t) => {
           if (!supabase || !window.confirm('Deseja reabrir este lançamento?')) return;
           try {

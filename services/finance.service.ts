@@ -57,7 +57,7 @@ export const FinanceService = {
 
     let query = supabase
       .from('transactions')
-      .select('*, accounts(institution, name)')
+      .select('*, accounts(institution, name), attachments:documents(*)')
       .eq('user_id', user.id)
       .eq('is_deleted', false)
       .order('date', { ascending: false });
@@ -78,7 +78,8 @@ export const FinanceService = {
       category: t.category,
       isPaid: t.is_paid,
       paidAmount: Number(t.paid_amount),
-      paidAt: t.paid_at
+      paidAt: t.paid_at,
+      attachments: t.attachments || []
     }));
   },
 
@@ -292,5 +293,130 @@ export const FinanceService = {
         });
       }
     } catch (e) { }
+  },
+
+  // --- ANEXOS ---
+  uploadAttachment: async (file: File, txId?: string, isCard: boolean = false, source: string = 'manual'): Promise<string> => {
+    if (!supabase) throw new Error('Supabase not configured');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Usuário não autenticado');
+
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${user.id}/${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+    const filePath = `receipts/${fileName}`;
+
+    // 1. Upload para o Storage
+    const { error: uploadError } = await supabase.storage
+      .from('finvision-documents')
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    // 2. Criar registro na tabela documents
+    const docPayload: any = {
+      user_id: user.id,
+      bucket: 'finvision-documents',
+      path: filePath,
+      original_name: file.name,
+      mime_type: file.type,
+      size_bytes: file.size,
+      source: source
+    };
+
+    if (txId) {
+      if (isCard) docPayload.card_transaction_id = txId;
+      else docPayload.transaction_id = txId;
+    }
+
+    const { data: doc, error: docError } = await supabase
+      .from('documents')
+      .insert(docPayload)
+      .select('id')
+      .single();
+
+    if (docError) {
+      // Cleanup storage if db record fails
+      await supabase.storage.from('finvision-documents').remove([filePath]);
+      throw docError;
+    }
+
+    // 3. Se for uma transação única (legado ou simplificado), podemos opcionalmente atualizar o document_id da transação
+    // Mas o novo fluxo de múltiplos anexos prefere buscar via query na tabela documents.
+    if (txId) {
+      const table = isCard ? 'card_transactions' : 'transactions';
+      await supabase.from(table).update({ document_id: doc.id }).eq('id', txId);
+    }
+
+    return doc.id;
+  },
+
+  getAttachments: async (txId: string, isCard: boolean = false): Promise<any[]> => {
+    if (!supabase) return [];
+
+    const query = supabase.from('documents').select('*');
+    if (isCard) query.eq('card_transaction_id', txId);
+    else query.eq('transaction_id', txId);
+
+    const { data, error } = await query.order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  },
+
+  getAttachmentUrls: async (txId: string, isCard: boolean = false): Promise<{ id: string, name: string, url: string }[]> => {
+    if (!supabase) return [];
+
+    const docs = await FinanceService.getAttachments(txId, isCard);
+    const results = [];
+
+    for (const doc of docs) {
+      const { data } = supabase.storage
+        .from('finvision-documents')
+        .getPublicUrl(doc.path);
+
+      results.push({
+        id: doc.id,
+        name: doc.original_name,
+        url: data.publicUrl
+      });
+    }
+
+    return results;
+  },
+
+  deleteAttachment: async (documentId: string): Promise<void> => {
+    if (!supabase) return;
+
+    // 1. Buscar info do documento
+    const { data: doc, error: fetchErr } = await supabase
+      .from('documents')
+      .select('path')
+      .eq('id', documentId)
+      .single();
+
+    if (fetchErr || !doc) return;
+
+    // 2. Remover do Storage
+    await supabase.storage.from('finvision-documents').remove([doc.path]);
+
+    // 3. Remover da tabela (o cascade ou update nas transações deve ser manual ou via trigger)
+    await supabase.from('documents').delete().eq('id', documentId);
+  },
+
+  getAttachmentUrl: async (documentId: string): Promise<string | null> => {
+    if (!supabase) return null;
+
+    const { data: doc } = await supabase
+      .from('documents')
+      .select('path')
+      .eq('id', documentId)
+      .single();
+
+    if (!doc) return null;
+
+    const { data } = supabase.storage
+      .from('finvision-documents')
+      .getPublicUrl(doc.path);
+
+    return data.publicUrl;
   }
 };

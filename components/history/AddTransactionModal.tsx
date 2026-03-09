@@ -23,6 +23,8 @@ interface AddTransactionModalProps {
         recurrencePeriod: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom';
         recurrenceDaysInterval: number;
         destinationAccountId?: string;
+        documentId?: string;
+        files?: File[];
     };
     setAddField: (field: string, value: any) => void;
     accounts: BankAccount[];
@@ -333,6 +335,60 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                     )}
                                 </div>
                             )}
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Anexos ({form.files?.length || 0})</label>
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                                <div className="space-y-2">
+                                    {form.files && form.files.length > 0 ? (
+                                        form.files.map((f, idx) => (
+                                            <div key={idx} className="flex items-center justify-between gap-2 p-2 bg-white rounded-xl border border-slate-100 shadow-sm animate-in slide-in-from-left-2 transition-all">
+                                                <div className="flex items-center gap-2 overflow-hidden">
+                                                    <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                                                    <span className="text-xs font-bold text-slate-700 truncate">{f.name}</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newFiles = [...(form.files || [])];
+                                                        newFiles.splice(idx, 1);
+                                                        setAddField('files', newFiles);
+                                                    }}
+                                                    className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="py-2 text-center">
+                                            <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Nenhum arquivo selecionado</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <input
+                                    type="file"
+                                    id="add-transaction-file"
+                                    className="hidden"
+                                    multiple
+                                    onChange={(e) => {
+                                        const newFiles = Array.from(e.target.files || []);
+                                        setAddField('files', [...(form.files || []), ...newFiles]);
+                                        // Reset input so same file can be selected again if removed
+                                        e.target.value = '';
+                                    }}
+                                    accept="image/*,application/pdf"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => document.getElementById('add-transaction-file')?.click()}
+                                    className="w-full py-3 bg-white border-2 border-dashed border-slate-200 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <Plus size={14} /> Adicionar Arquivos
+                                </button>
+                            </div>
                         </div>
 
                         {error && (

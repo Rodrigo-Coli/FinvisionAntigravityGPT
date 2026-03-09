@@ -108,6 +108,20 @@ export interface Transaction {
   installment_total?: number;
   installment_group_id?: string;
   is_incomplete?: boolean;    // Flag para dados legados que precisam de revisão
+  document_id?: string;       // Link para anexo principal (legado)
+  attachments?: Document[];   // Lista de múltiplos anexos
+}
+
+export interface Document {
+  id: string;
+  user_id: string;
+  bucket: string;
+  path: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  source: string;
+  created_at: string;
 }
 
 export interface ReconcileItem {

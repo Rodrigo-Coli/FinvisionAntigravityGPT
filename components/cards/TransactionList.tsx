@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, Plus, Loader2, Tags, Trash2 } from 'lucide-react';
+import { Clock, Plus, Loader2, Tags, Trash2, Eye, Paperclip, X } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 
 interface TransactionListProps {
@@ -14,6 +14,9 @@ interface TransactionListProps {
     showStatementScope: boolean;
     statements: any[];
     isLocked?: boolean;
+    onUploadAttachment?: (id: string, file: File) => Promise<void>;
+    onDeleteAttachment?: (documentId: string, transactionId: string) => Promise<void>;
+    onViewAttachment?: (documentId: string) => Promise<void>;
 }
 
 export const TransactionList: React.FC<TransactionListProps> = ({
@@ -27,7 +30,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     onDeleteTx,
     showStatementScope,
     statements,
-    isLocked = false
+    isLocked = false,
+    onUploadAttachment,
+    onDeleteAttachment,
+    onViewAttachment
 }) => {
     return (
         <div className="mt-8">
@@ -73,7 +79,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                 <div className="col-span-2 text-[8px]">Categoria</div>
                                 <div className="col-span-2 text-[8px]">Entidade</div>
                                 <div className="col-span-2 text-[8px]">Fatura / Mês</div>
-                                <div className="col-span-2 text-right text-[8px]">Valor</div>
+                                <div className="col-span-1 text-right text-[8px]">Anexo</div>
                                 <div className="col-span-1 text-right text-[8px]">Ação</div>
                             </div>
 
@@ -166,7 +172,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                         </div>
 
                                         {/* Amount */}
-                                        <div className="col-span-2">
+                                        <div className="col-span-1">
                                             <input
                                                 type="number"
                                                 value={Number(tx.amount || 0)}
@@ -175,6 +181,45 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                 onBlur={(e) => onSaveTxPatch(tx.id, { amount: Number(e.target.value) })}
                                                 className={`w-full text-[10px] font-black text-right bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all ${isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
                                             />
+                                        </div>
+
+                                        {/* Attachment */}
+                                        <div className="col-span-1 flex items-center justify-end gap-2">
+                                            {tx.document_id ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => onViewAttachment?.(tx.document_id)}
+                                                        className="p-1.5 bg-brand-50 text-brand-600 rounded-lg hover:bg-brand-100 transition-all"
+                                                        title="Visualizar Comprovante"
+                                                    >
+                                                        <Eye size={12} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => onDeleteAttachment?.(tx.document_id, tx.id)}
+                                                        className="p-1.5 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-all"
+                                                        title="Remover Anexo"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <button
+                                                    onClick={() => {
+                                                        const input = document.createElement('input');
+                                                        input.type = 'file';
+                                                        input.accept = 'image/*,application/pdf';
+                                                        input.onchange = (e: any) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) onUploadAttachment?.(tx.id, file);
+                                                        };
+                                                        input.click();
+                                                    }}
+                                                    className="p-1.5 bg-slate-50 text-slate-400 rounded-lg hover:text-brand-600 hover:bg-brand-50 transition-all"
+                                                    title="Anexar Comprovante"
+                                                >
+                                                    <Paperclip size={12} />
+                                                </button>
+                                            )}
                                         </div>
 
                                         {/* Actions */}
