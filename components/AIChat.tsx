@@ -8,7 +8,7 @@ interface ChatMessage {
     timestamp: Date;
 }
 
-const AIChat: React.FC<{ userId: string }> = ({ userId }) => {
+const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }> = ({ userId, startDate, endDate }) => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -56,6 +56,8 @@ const AIChat: React.FC<{ userId: string }> = ({ userId }) => {
                 body: JSON.stringify({
                     userId,
                     message: query,
+                    startDate,
+                    endDate,
                     history: messages.map(m => ({ role: m.role, content: m.content }))
                 })
             });
@@ -92,16 +94,16 @@ const AIChat: React.FC<{ userId: string }> = ({ userId }) => {
     ];
 
     return (
-        <div className="bg-white border border-slate-100 rounded-[32px] shadow-sm overflow-hidden flex flex-col h-[500px]">
+        <div className="bg-white border border-slate-100 rounded-[32px] shadow-sm overflow-hidden flex flex-col h-full">
             {/* Header */}
-            <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-900 text-white">
+            <div className="p-4 sm:p-6 border-b border-slate-50 flex items-center justify-between bg-slate-900 text-white">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
-                        <Sparkles size={20} className="text-brand-400" />
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/10 rounded-xl flex items-center justify-center">
+                        <Sparkles size={18} className="text-brand-400" />
                     </div>
                     <div>
-                        <h3 className="font-bold text-sm tracking-tight">FinVision AI</h3>
-                        <p className="text-[9px] font-bold text-white/50 uppercase tracking-widest">Seu private banker</p>
+                        <h3 className="font-bold text-xs sm:text-sm tracking-tight">FinVision AI</h3>
+                        <p className="text-[8px] sm:text-[9px] font-bold text-white/50 uppercase tracking-widest">Seu private banker</p>
                     </div>
                 </div>
                 <button
@@ -114,37 +116,37 @@ const AIChat: React.FC<{ userId: string }> = ({ userId }) => {
             </div>
 
             {/* Chat Area */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/30">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6 bg-slate-50/30">
                 {messages.map((msg) => (
-                    <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div key={msg.id} className={`flex gap-2 sm:gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         {msg.role === 'assistant' && (
-                            <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center shrink-0 border border-brand-100 mt-1">
-                                <Bot size={14} className="text-brand-600" />
+                            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-brand-50 flex items-center justify-center shrink-0 border border-brand-100 mt-1">
+                                <Bot size={12} className="text-brand-600" />
                             </div>
                         )}
-                        <div className={`max-w-[80%] rounded-[20px] p-4 ${msg.role === 'user'
-                                ? 'bg-brand-600 text-white rounded-br-none shadow-brand-500/20 shadow-lg'
-                                : 'bg-white border border-slate-100 text-slate-700 shadow-sm rounded-bl-none'
+                        <div className={`max-w-[85%] sm:max-w-[80%] rounded-[20px] p-3 sm:p-4 ${msg.role === 'user'
+                            ? 'bg-brand-600 text-white rounded-br-none shadow-brand-500/20 shadow-lg'
+                            : 'bg-white border border-slate-100 text-slate-700 shadow-sm rounded-bl-none'
                             }`}>
-                            <div className="text-sm prose prose-sm prose-slate leading-relaxed">
+                            <div className="text-xs sm:text-sm prose prose-sm prose-slate leading-relaxed">
                                 {msg.content.split('\n').map((line, i) => (
                                     <p key={i} className="mb-1 last:mb-0" dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
                                 ))}
                             </div>
-                            <span className={`text-[8px] font-bold uppercase tracking-widest mt-2 block opacity-50 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
+                            <span className={`text-[7px] sm:text-[8px] font-bold uppercase tracking-widest mt-2 block opacity-50 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
                                 {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                         </div>
                     </div>
                 ))}
                 {isLoading && (
-                    <div className="flex gap-3">
-                        <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center shrink-0 border border-brand-100">
-                            <Bot size={14} className="text-brand-600" />
+                    <div className="flex gap-2 sm:gap-3">
+                        <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-brand-50 flex items-center justify-center shrink-0 border border-brand-100">
+                            <Bot size={12} className="text-brand-600" />
                         </div>
-                        <div className="bg-white border border-slate-100 p-4 rounded-[20px] rounded-bl-none shadow-sm flex items-center gap-2 text-brand-600">
-                            <Loader2 size={16} className="animate-spin" />
-                            <span className="text-[10px] font-bold uppercase tracking-widest">Analisando seus dados...</span>
+                        <div className="bg-white border border-slate-100 p-3 sm:p-4 rounded-[20px] rounded-bl-none shadow-sm flex items-center gap-2 text-brand-600">
+                            <Loader2 size={14} className="animate-spin" />
+                            <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest">Analisando seus dados...</span>
                         </div>
                     </div>
                 )}
