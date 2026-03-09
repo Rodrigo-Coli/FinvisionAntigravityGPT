@@ -369,15 +369,17 @@ export const FinanceService = {
     const results = [];
 
     for (const doc of docs) {
-      const { data } = supabase.storage
+      const { data, error } = await supabase.storage
         .from('finvision-documents')
-        .getPublicUrl(doc.path);
+        .createSignedUrl(doc.path, 60); // URL válida por 60 segundos
 
-      results.push({
-        id: doc.id,
-        name: doc.original_name,
-        url: data.publicUrl
-      });
+      if (!error && data) {
+        results.push({
+          id: doc.id,
+          name: doc.original_name,
+          url: data.signedUrl
+        });
+      }
     }
 
     return results;
