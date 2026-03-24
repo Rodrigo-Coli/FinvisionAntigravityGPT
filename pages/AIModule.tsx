@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, Box, LayoutGrid, Brain, ShieldCheck, AlertTriangle, Target, Lightbulb } from 'lucide-react';
+import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, Box, LayoutGrid, Brain, ShieldCheck, AlertTriangle, Target, Lightbulb, Trophy, ChevronRight, ChevronDown } from 'lucide-react';
 import { AIReconcileService } from '../services/aiReconcile.service';
 import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
@@ -23,6 +23,13 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [targetSegment, setTargetSegment] = useState<string>('Mercado');
   const [shoppingList, setShoppingList] = useState<any[]>([]);
 
+  // Vista por estabelecimento
+  const [comparatorView, setComparatorView] = useState<'product' | 'merchant'>('product');
+  const [merchantData, setMerchantData] = useState<any[]>([]);
+  const [isLoadingMerchants, setIsLoadingMerchants] = useState(false);
+  const [expandedMerchant, setExpandedMerchant] = useState<string | null>(null);
+  const [merchantSearch, setMerchantSearch] = useState('');
+
   // Wealth Advisor states
   const [wealthAnalysis, setWealthAnalysis] = useState<string>('');
   const [wealthMeta, setWealthMeta] = useState<any>(null);
@@ -41,6 +48,12 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       fetchIntelligenceData();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'comparative' && comparatorView === 'merchant' && merchantData.length === 0) {
+      fetchMerchantData();
+    }
+  }, [comparatorView, activeTab]);
 
   const fetchAccounts = async () => {
     if (!supabase || !user) return;
@@ -87,6 +100,18 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       console.error('Erro ao carregar inteligência:', err);
     } finally {
       setIsLoadingIntelligence(false);
+    }
+  };
+
+  const fetchMerchantData = async () => {
+    setIsLoadingMerchants(true);
+    try {
+      const data = await AIReconcileService.getMerchantView();
+      setMerchantData(data);
+    } catch (err) {
+      console.error('Erro ao carregar lojas:', err);
+    } finally {
+      setIsLoadingMerchants(false);
     }
   };
 
@@ -161,7 +186,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       const description = `Labs: ${receipt.merchant} ${receipt.currency !== 'BRL' ? '[' + receipt.currency + ']' : ''}`;
 
       if (targetType === 'card') {
-        // Fluxo direto: salva no cartão sem passar pelo Reconcile
         await AIReconcileService.saveDirectToCard({
           cardId: targetId,
           date: receipt.date || new Date().toISOString().split('T')[0],
@@ -169,7 +193,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           amount: finalAmount,
         });
       } else {
-        // Fluxo padrão: fila de conciliação
         await AIReconcileService.saveToReconcileQueue(
           [{
             date: receipt.date,
@@ -191,6 +214,11 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+  // Merchant view: filtra lojas pelo search
+  const filteredMerchants = merchantData.filter(m =>
+    !merchantSearch || m.name.toLowerCase().includes(merchantSearch.toLowerCase())
+  );
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
@@ -376,68 +404,202 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         )}
 
         {activeTab === 'comparative' && (
-          <div className="space-y-8">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="relative flex-grow">
-                <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input
-                  type="text"
-                  placeholder="O que você está procurando?"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full h-16 bg-white border border-slate-100 rounded-[28px] pl-16 pr-6 font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-brand-500/10 shadow-sm"
-                />
+          <div className="space-y-6">
+            {/* Toggle Por Produto / Por Estabelecimento */}
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+              <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+                <button
+                  onClick={() => setComparatorView('product')}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold transition-all ${comparatorView === 'product' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  <Tag size={14} />
+                  Por Produto
+                </button>
+                <button
+                  onClick={() => { setComparatorView('merchant'); if (merchantData.length === 0) fetchMerchantData(); }}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold transition-all ${comparatorView === 'merchant' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  <Store size={14} />
+                  Por Estabelecimento
+                </button>
               </div>
-              <div className="flex gap-2 p-1.5 bg-slate-50 rounded-[28px]">
-                {['Mercado', 'Restaurante', 'Loja'].map(seg => (
-                  <button
-                    key={seg}
-                    onClick={() => setTargetSegment(seg)}
-                    className={`px-8 py-3 rounded-[22px] text-[10px] font-bold uppercase tracking-widest transition-all ${targetSegment === seg ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                  >
-                    {seg}
-                  </button>
-                ))}
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {isLoadingIntelligence ? (
-                Array(6).fill(0).map((_, i) => <div key={i} className="h-64 bg-slate-50 animate-pulse rounded-[40px]" />)
+              {/* Search bar contextual */}
+              {comparatorView === 'product' ? (
+                <div className="flex flex-col sm:flex-row gap-3 flex-grow sm:max-w-2xl">
+                  <div className="relative flex-grow">
+                    <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <input
+                      type="text"
+                      placeholder="Buscar produto..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full h-12 bg-white border border-slate-100 rounded-2xl pl-12 pr-5 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500/20 shadow-sm text-sm"
+                    />
+                  </div>
+                  <div className="flex gap-1 p-1 bg-slate-50 rounded-2xl border border-slate-100">
+                    {['Mercado', 'Restaurante', 'Loja'].map(seg => (
+                      <button
+                        key={seg}
+                        onClick={() => setTargetSegment(seg)}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${targetSegment === seg ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        {seg}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ) : (
-                comparisonData
-                  .filter((p: any) => !targetSegment || p.merchantCategory === targetSegment)
-                  .filter((p: any) => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()))
-                  .map((product: any) => (
-                    <div key={product.id} className="bg-white rounded-[32px] border border-slate-100 p-8 shadow-sm hover:border-brand-200 transition-all group overflow-hidden relative">
-                      <div className="flex justify-between items-start mb-6">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${product.trend === 'down' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                          {product.trend === 'down' ? <TrendingDown size={24} /> : <TrendingUp size={24} />}
-                        </div>
-                        <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-lg">{product.category}</span>
-                      </div>
-
-                      <h3 className="text-xl font-bold text-slate-900 mb-6 uppercase truncate">{product.name}</h3>
-
-                      <div className="space-y-4 pt-6 border-t border-slate-50">
-                        <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl">
-                          <div className="space-y-0.5">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Melhor Oferta</span>
-                            <p className="text-xs font-bold text-slate-900 uppercase truncate max-w-[140px]">{product.bestMerchant}</p>
-                          </div>
-                          <span className="text-xl font-bold text-emerald-600">{formatCurrency(product.minPrice)}</span>
-                        </div>
-                        <button
-                          onClick={() => !shoppingList.find(i => i.id === product.id) && setShoppingList([...shoppingList, product])}
-                          className="w-full h-12 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-brand-600 transition-all"
-                        >
-                          Adicionar à Lista
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                <div className="relative flex-grow sm:max-w-xs">
+                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Buscar estabelecimento..."
+                    value={merchantSearch}
+                    onChange={(e) => setMerchantSearch(e.target.value)}
+                    className="w-full h-12 bg-white border border-slate-100 rounded-2xl pl-12 pr-5 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500/20 shadow-sm text-sm"
+                  />
+                </div>
               )}
             </div>
+
+            {/* Vista Por Produto */}
+            {comparatorView === 'product' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {isLoadingIntelligence ? (
+                  Array(6).fill(0).map((_, i) => <div key={i} className="h-64 bg-slate-50 animate-pulse rounded-[40px]" />)
+                ) : comparisonData
+                  .filter((p: any) => !targetSegment || p.merchantCategory === targetSegment)
+                  .filter((p: any) => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                  .length === 0 ? (
+                  <div className="col-span-3 py-20 border-2 border-dashed border-slate-100 rounded-[40px] flex flex-col items-center justify-center text-slate-300 gap-4">
+                    <Store size={48} />
+                    <p className="font-bold uppercase tracking-widest text-xs">Nenhum produto encontrado</p>
+                    <p className="text-[10px] text-slate-400 font-medium">Escaneia cupons para comparar preços entre lojas.</p>
+                  </div>
+                ) : (
+                  comparisonData
+                    .filter((p: any) => !targetSegment || p.merchantCategory === targetSegment)
+                    .filter((p: any) => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                    .map((product: any) => (
+                      <div key={product.id} className="bg-white rounded-[32px] border border-slate-100 p-8 shadow-sm hover:border-brand-200 transition-all group overflow-hidden relative">
+                        <div className="flex justify-between items-start mb-6">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${product.trend === 'down' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                            {product.trend === 'down' ? <TrendingDown size={24} /> : <TrendingUp size={24} />}
+                          </div>
+                          <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-lg">{product.category}</span>
+                        </div>
+
+                        <h3 className="text-xl font-bold text-slate-900 mb-6 uppercase truncate">{product.name}</h3>
+
+                        <div className="space-y-4 pt-6 border-t border-slate-50">
+                          <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl">
+                            <div className="space-y-0.5">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase">Melhor Oferta</span>
+                              <p className="text-xs font-bold text-slate-900 uppercase truncate max-w-[140px]">{product.bestMerchant}</p>
+                            </div>
+                            <span className="text-xl font-bold text-emerald-600">{formatCurrency(product.minPrice)}</span>
+                          </div>
+                          <button
+                            onClick={() => !shoppingList.find(i => i.id === product.id) && setShoppingList([...shoppingList, product])}
+                            className="w-full h-12 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-brand-600 transition-all"
+                          >
+                            Adicionar à Lista
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            )}
+
+            {/* Vista Por Estabelecimento */}
+            {comparatorView === 'merchant' && (
+              <div className="space-y-4">
+                {isLoadingMerchants ? (
+                  Array(3).fill(0).map((_, i) => <div key={i} className="h-24 bg-slate-50 animate-pulse rounded-[28px]" />)
+                ) : filteredMerchants.length === 0 ? (
+                  <div className="py-20 border-2 border-dashed border-slate-100 rounded-[40px] flex flex-col items-center justify-center text-slate-300 gap-4">
+                    <Store size={48} />
+                    <p className="font-bold uppercase tracking-widest text-xs">Nenhum estabelecimento encontrado</p>
+                    <p className="text-[10px] text-slate-400 font-medium">Escaneia cupons fiscais para popular sua base de lojas.</p>
+                  </div>
+                ) : filteredMerchants.map((merchant: any) => {
+                  const isExpanded = expandedMerchant === merchant.name;
+                  const cheapestCount = merchant.items.filter((i: any) => i.isCheapest).length;
+
+                  return (
+                    <div key={merchant.name} className="bg-white rounded-[28px] border border-slate-100 shadow-sm overflow-hidden transition-all hover:border-brand-100">
+                      {/* Merchant header — clicável para expandir */}
+                      <button
+                        className="w-full p-6 flex items-center justify-between gap-4 text-left"
+                        onClick={() => setExpandedMerchant(isExpanded ? null : merchant.name)}
+                      >
+                        <div className="flex items-center gap-5">
+                          <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white shrink-0">
+                            <Store size={20} />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-slate-900 uppercase tracking-tight text-base">{merchant.name}</h3>
+                            <div className="flex items-center gap-3 mt-0.5">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                {merchant.visitCount} {merchant.visitCount === 1 ? 'visita' : 'visitas'} · {merchant.items.length} {merchant.items.length === 1 ? 'produto' : 'produtos'}
+                              </span>
+                              {merchant.lastVisit && (
+                                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                                  · Última: {new Date(merchant.lastVisit).toLocaleDateString('pt-BR')}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 shrink-0">
+                          {cheapestCount > 0 && (
+                            <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-xl">
+                              <Trophy size={12} />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">
+                                {cheapestCount} mais barato{cheapestCount > 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          )}
+                          <div className="text-slate-400">
+                            {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Items list — expandido */}
+                      {isExpanded && (
+                        <div className="border-t border-slate-50 divide-y divide-slate-50">
+                          {merchant.items
+                            .sort((a: any, b: any) => (b.isCheapest ? 1 : 0) - (a.isCheapest ? 1 : 0))
+                            .map((item: any, idx: number) => (
+                              <div key={idx} className="flex items-center justify-between px-6 py-4 hover:bg-slate-50/50 transition-all">
+                                <div className="flex items-center gap-4">
+                                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${item.isCheapest ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-400'}`}>
+                                    {item.isCheapest ? <Trophy size={14} /> : <Tag size={14} />}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-slate-900 text-sm uppercase">{item.name}</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.category}{item.is_promo ? ' · 🏷 Promoção' : ''}</p>
+                                  </div>
+                                </div>
+                                <div className="text-right shrink-0 pl-4">
+                                  <p className={`font-bold text-base ${item.isCheapest ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                    {formatCurrency(item.unit_price)}
+                                  </p>
+                                  <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">por {item.unit}</p>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -530,9 +692,9 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
             </div>
           </div>
         )}
+
         {activeTab === 'wealth' && (
           <div className="space-y-8">
-            {/* Hero header */}
             <div className="bg-slate-900 rounded-[40px] p-10 md:p-16 text-white relative overflow-hidden">
               <div className="absolute -top-10 -right-10 w-64 h-64 bg-brand-500/10 rounded-full blur-3xl" />
               <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
@@ -555,7 +717,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
               </div>
             </div>
 
-            {/* Metadata cards - show only after analysis */}
             {wealthMeta && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 {[
@@ -573,7 +734,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
               </div>
             )}
 
-            {/* Analysis report */}
             {wealthAnalysis && (
               <div className="bg-white border border-slate-100 rounded-[40px] shadow-sm overflow-hidden">
                 <div className="px-10 py-6 border-b border-slate-50 flex items-center gap-3">
@@ -594,7 +754,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
               </div>
             )}
 
-            {/* Empty state */}
             {!wealthAnalysis && !isLoadingWealth && (
               <div className="py-20 border-2 border-dashed border-slate-100 rounded-[40px] flex flex-col items-center justify-center text-slate-300 gap-4">
                 <Brain size={48} />
