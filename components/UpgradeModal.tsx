@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Check, Loader2, Tag, X } from 'lucide-react';
+import { Sparkles, Check, Loader2, Tag, Calendar } from 'lucide-react';
 import { useSubscription } from './SubscriptionGate';
+
+type Period = 'monthly' | 'semiannual' | 'annual';
+
+const PERIOD_LABELS: Record<Period, string> = {
+  monthly: 'Mensal',
+  semiannual: 'Semestral',
+  annual: 'Anual',
+};
 
 const PLAN_HIGHLIGHTS: Record<string, string[]> = {
   essencial: ['10 scans de IA/mês', 'Conciliação bancária', 'Importação OFX', 'Metas e orçamentos'],
@@ -13,13 +21,13 @@ export default function UpgradeModal() {
   const [visible, setVisible] = useState(false);
   const [plans, setPlans] = useState<any[]>([]);
   const [selectedPlan, setSelectedPlan] = useState('pro');
+  const [period, setPeriod] = useState<Period>('monthly');
   const [couponCode, setCouponCode] = useState('');
   const [couponMsg, setCouponMsg] = useState('');
   const [loadingCoupon, setLoadingCoupon] = useState(false);
   const [loadingCheckout, setLoadingCheckout] = useState(false);
 
   useEffect(() => {
-    // Show when trial expired
     if (!isAdmin && subscription) {
       const isExpired = subscription.status === 'trialing' &&
         subscription.trial_ends_at &&
@@ -30,12 +38,42 @@ export default function UpgradeModal() {
   }, [subscription, isAdmin]);
 
   useEffect(() => {
-    // Load paid plans
     fetch('/api/public-plans')
       .then(r => r.json())
       .then(data => setPlans((data || []).filter((p: any) => p.price_cents > 0 && p.slug !== 'especial')))
       .catch(() => {});
   }, []);
+
+  const getPlanPrice = (plan: any, p: Period): number => {
+    if (!plan) return 0;
+    if (p === 'semiannual') return plan.price_cents_semiannual || plan.price_cents * 6;
+    if (p === 'annual') return plan.price_cents_annual || plan.price_cents * 12;
+    return plan.price_cents;
+  };
+
+  const getMonthlyEquivalent = (plan: any, p: Period): number => {
+    if (!plan) return 0;
+    const total = getPlanPrice(plan, p);
+    if (p === 'semiannual') return Math.round(total / 6);
+    if (p === 'annual') return Math.round(total / 12);
+    return total;
+  };
+
+  const getDiscount = (plan: any, p: Period): number => {
+    if (!plan) return 0;
+    if (p === 'semiannual') return plan.discount_semiannual_percent || 10;
+    if (p === 'annual') return plan.discount_annual_percent || 20;
+    return 0;
+  };
+
+  const formatBRL = (cents: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100);
+
+  const getAsaasCycle = (p: Period) => {
+    if (p === 'semiannual') return 'SEMIANNUALLY';
+    if (p === 'annual') return 'YEARLY';
+    return 'MONTHLY';
+  };
 
   const validateCoupon = async () => {
     if (!couponCode.trim()) return;
@@ -48,12 +86,8 @@ export default function UpgradeModal() {
         body: JSON.stringify({ userId: (window as any).__userId, couponCode }),
       });
       const data = await res.json();
-      if (res.ok) {
-        setCouponMsg(`✅ ${data.message}`);
-        if (data.success) setTimeout(() => window.location.reload(), 1500);
-      } else {
-        setCouponMsg(`❌ ${data.error}`);
-      }
+      setCouponMsg(res.ok ? `✅ ${data.message}` : `❌ ${data.error}`);
+      if (res.ok && data.success) setTimeout(() => window.location.reload(), 1500);
     } catch {
       setCouponMsg('❌ Erro ao validar cupom.');
     } finally {
@@ -70,13 +104,14 @@ export default function UpgradeModal() {
         body: JSON.stringify({
           userId: (window as any).__userId,
           planSlug: selectedPlan,
+          period,
           paymentMethod: 'PIX',
           couponCode: couponCode || undefined,
         }),
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`✅ Assinatura criada! Você receberá o PIX por e-mail em breve.\nPlano: ${data.plan}`);
+        alert(`✅ Assinatura criada! Você receberá o PIX por e-mail.\nPlano: ${data.plan} (${data.period})`);
         window.location.reload();
       } else {
         alert(`Erro: ${data.error}`);
@@ -90,8 +125,10 @@ export default function UpgradeModal() {
 
   if (!visible) return null;
 
-  const formatPrice = (cents: number) => `R$ ${(cents / 100).toFixed(2).replace('.', ',')}` ;
   const selectedPlanData = plans.find(p => p.slug === selectedPlan);
+  const discount = getDiscount(selectedPlanData, period);
+  const monthlyEquiv = getMonthlyEquivalent(selectedPlanData, period);
+  const totalPrice = getPlanPrice(selectedPlanData, period);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
@@ -106,23 +143,51 @@ export default function UpgradeModal() {
           <p className="text-slate-400 mt-2 font-medium">Escolha um plano para continuar usando o FinVision.</p>
         </div>
 
-        <div className="p-8 space-y-6">
+        <div className="p-8 space-y-5">
+          {/* Period toggle */}
+          <div>
+            <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl">
+              {(['monthly', 'semiannual', 'annual'] as Period[]).map(p => {
+                const disc = p === 'semiannual' ? (selectedPlanData?.discount_semiannual_percent || 10)
+                           : p === 'annual' ? (selectedPlanData?.discount_annual_percent || 20) : 0;
+                return (
+                  <button key={p} onClick={() => setPeriod(p)}
+                    className={`relative flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      period === p ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    }`}>
+                    {PERIOD_LABELS[p]}
+                    {disc > 0 && (
+                      <span className="absolute -top-2 -right-1 bg-emerald-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">
+                        -{disc}%
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {period !== 'monthly' && selectedPlanData && (
+              <p className="text-xs text-emerald-600 font-bold text-center mt-2">
+                Economia de {discount}% — equivalente a {formatBRL(monthlyEquiv)}/mês
+              </p>
+            )}
+          </div>
+
           {/* Plan selector */}
           <div className="grid grid-cols-3 gap-3">
             {plans.map(plan => (
-              <button
-                key={plan.slug}
-                onClick={() => setSelectedPlan(plan.slug)}
+              <button key={plan.slug} onClick={() => setSelectedPlan(plan.slug)}
                 className={`p-4 rounded-2xl border-2 text-left transition-all ${
                   selectedPlan === plan.slug
                     ? 'border-brand-500 bg-brand-50'
                     : 'border-slate-100 hover:border-slate-200'
-                }`}
-              >
+                }`}>
                 <p className="font-black text-slate-900 text-sm">{plan.name}</p>
-                <p className="text-brand-600 font-bold text-xs mt-0.5">{formatPrice(plan.price_cents)}<span className="text-slate-400">/mês</span></p>
+                <p className="text-brand-600 font-bold text-xs mt-0.5">
+                  {formatBRL(getMonthlyEquivalent(plan, period))}
+                  <span className="text-slate-400">/mês</span>
+                </p>
                 {plan.slug === 'pro' && (
-                  <span className="inline-block mt-1.5 px-2 py-0.5 bg-brand-600 text-white text-[9px] font-bold uppercase tracking-wider rounded-full">Popular</span>
+                  <span className="inline-block mt-1 px-2 py-0.5 bg-brand-600 text-white text-[9px] font-bold uppercase tracking-wider rounded-full">Popular</span>
                 )}
               </button>
             ))}
@@ -130,13 +195,28 @@ export default function UpgradeModal() {
 
           {/* Highlights */}
           {selectedPlanData && PLAN_HIGHLIGHTS[selectedPlan] && (
-            <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
               {PLAN_HIGHLIGHTS[selectedPlan].map((h, i) => (
-                <div key={i} className="flex items-center gap-3 text-sm text-slate-600">
-                  <Check size={16} className="text-emerald-500 shrink-0" />
-                  {h}
+                <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
+                  <Check size={14} className="text-emerald-500 shrink-0" />{h}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Price summary */}
+          {selectedPlanData && (
+            <div className="bg-slate-50 rounded-2xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total {PERIOD_LABELS[period]}</p>
+                <p className="text-2xl font-black text-slate-900">{formatBRL(totalPrice)}</p>
+              </div>
+              {period !== 'monthly' && (
+                <div className="bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-xl">
+                  <p className="text-[10px] font-bold uppercase tracking-widest">Economia</p>
+                  <p className="text-lg font-black">{discount}% off</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -145,19 +225,14 @@ export default function UpgradeModal() {
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Tag size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={couponCode}
+                <input type="text" value={couponCode}
                   onChange={e => setCouponCode(e.target.value.toUpperCase())}
-                  placeholder="Código de cupom"
+                  placeholder="Código de cupom (opcional)"
                   className="w-full h-11 bg-slate-50 rounded-xl pl-10 pr-4 font-bold text-slate-900 text-sm border-none focus:ring-2 focus:ring-brand-400"
                 />
               </div>
-              <button
-                onClick={validateCoupon}
-                disabled={!couponCode.trim() || loadingCoupon}
-                className="px-4 h-11 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest disabled:opacity-40 hover:bg-brand-600 transition-all"
-              >
+              <button onClick={validateCoupon} disabled={!couponCode.trim() || loadingCoupon}
+                className="px-4 h-11 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest disabled:opacity-40 hover:bg-brand-600 transition-all">
                 {loadingCoupon ? <Loader2 size={14} className="animate-spin" /> : 'Aplicar'}
               </button>
             </div>
@@ -165,13 +240,10 @@ export default function UpgradeModal() {
           </div>
 
           {/* CTA */}
-          <button
-            onClick={startCheckout}
-            disabled={loadingCheckout || !selectedPlan}
-            className="w-full h-14 bg-brand-600 text-white rounded-2xl font-bold text-sm uppercase tracking-widest hover:bg-brand-700 transition-all shadow-xl shadow-brand-500/20 disabled:opacity-40 active:scale-95 flex items-center justify-center gap-3"
-          >
+          <button onClick={startCheckout} disabled={loadingCheckout || !selectedPlan}
+            className="w-full h-14 bg-brand-600 text-white rounded-2xl font-bold text-sm uppercase tracking-widest hover:bg-brand-700 transition-all shadow-xl shadow-brand-500/20 disabled:opacity-40 active:scale-95 flex items-center justify-center gap-3">
             {loadingCheckout ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-            {loadingCheckout ? 'Aguarde...' : `Assinar via PIX — ${selectedPlanData ? formatPrice(selectedPlanData.price_cents) : '...'}/mês`}
+            {loadingCheckout ? 'Aguarde...' : `Assinar ${PERIOD_LABELS[period]} via PIX — ${selectedPlanData ? formatBRL(totalPrice) : '...'}`}
           </button>
 
           <p className="text-center text-xs text-slate-400 font-medium">
