@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, Box, LayoutGrid, Brain, ShieldCheck, AlertTriangle, Target, Lightbulb, Trophy, ChevronRight, ChevronDown } from 'lucide-react';
+import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, Box, LayoutGrid, Brain, ShieldCheck, AlertTriangle, Target, Lightbulb, Trophy, ChevronRight, ChevronDown, Pencil, X, Save } from 'lucide-react';
 import { AIReconcileService } from '../services/aiReconcile.service';
 import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
@@ -29,6 +29,11 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [isLoadingMerchants, setIsLoadingMerchants] = useState(false);
   const [expandedMerchant, setExpandedMerchant] = useState<string | null>(null);
   const [merchantSearch, setMerchantSearch] = useState('');
+
+  // Edit inline de preço manual
+  const [editingPrice, setEditingPrice] = useState<{ merchantName: string; productId: string } | null>(null);
+  const [editPriceValue, setEditPriceValue] = useState('');
+  const [isSavingPrice, setIsSavingPrice] = useState(false);
 
   // Wealth Advisor states
   const [wealthAnalysis, setWealthAnalysis] = useState<string>('');
@@ -112,6 +117,41 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       console.error('Erro ao carregar lojas:', err);
     } finally {
       setIsLoadingMerchants(false);
+    }
+  };
+
+  const handleSaveManualPrice = async (item: any, merchantName: string) => {
+    const newPrice = parseFloat(editPriceValue.replace(',', '.'));
+    if (isNaN(newPrice) || newPrice <= 0) {
+      alert('Informe um valor válido.');
+      return;
+    }
+    setIsSavingPrice(true);
+    try {
+      await AIReconcileService.addManualPrice({
+        productId: item.productId,
+        merchantName,
+        newPrice,
+        unit: item.unit,
+      });
+      // Atualiza localmente o state de merchantData p/ refletir o novo preço sem recarregar tudo
+      setMerchantData(prev => prev.map(m => {
+        if (m.name !== merchantName) return m;
+        return {
+          ...m,
+          items: m.items.map((i: any) =>
+            i.productId === item.productId
+              ? { ...i, unit_price: newPrice }
+              : i
+          )
+        };
+      }));
+      setEditingPrice(null);
+      setEditPriceValue('');
+    } catch (err: any) {
+      alert(err.message || 'Erro ao salvar preço.');
+    } finally {
+      setIsSavingPrice(false);
     }
   };
 
@@ -574,25 +614,78 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                         <div className="border-t border-slate-50 divide-y divide-slate-50">
                           {merchant.items
                             .sort((a: any, b: any) => (b.isCheapest ? 1 : 0) - (a.isCheapest ? 1 : 0))
-                            .map((item: any, idx: number) => (
-                              <div key={idx} className="flex items-center justify-between px-6 py-4 hover:bg-slate-50/50 transition-all">
-                                <div className="flex items-center gap-4">
-                                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${item.isCheapest ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-400'}`}>
-                                    {item.isCheapest ? <Trophy size={14} /> : <Tag size={14} />}
+                            .map((item: any, idx: number) => {
+                              const isEditingThis = editingPrice?.merchantName === merchant.name && editingPrice?.productId === item.productId;
+
+                              return (
+                                <div key={idx} className="flex items-center justify-between px-6 py-4 hover:bg-slate-50/50 transition-all gap-4">
+                                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${item.isCheapest ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-400'}`}>
+                                      {item.isCheapest ? <Trophy size={14} /> : <Tag size={14} />}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="font-bold text-slate-900 text-sm uppercase truncate">{item.name}</p>
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.category}{item.is_promo ? ' · 🏷 Promoção' : ''}</p>
+                                    </div>
                                   </div>
-                                  <div>
-                                    <p className="font-bold text-slate-900 text-sm uppercase">{item.name}</p>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.category}{item.is_promo ? ' · 🏷 Promoção' : ''}</p>
+
+                                  {/* Preço + edit inline */}
+                                  <div className="flex items-center gap-3 shrink-0">
+                                    {isEditingThis ? (
+                                      <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                                        <span className="text-sm font-bold text-slate-400">R$</span>
+                                        <input
+                                          autoFocus
+                                          type="text"
+                                          inputMode="decimal"
+                                          value={editPriceValue}
+                                          onChange={e => setEditPriceValue(e.target.value)}
+                                          onKeyDown={e => {
+                                            if (e.key === 'Enter') handleSaveManualPrice(item, merchant.name);
+                                            if (e.key === 'Escape') { setEditingPrice(null); setEditPriceValue(''); }
+                                          }}
+                                          className="w-24 h-9 px-3 bg-white border border-brand-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-400"
+                                          placeholder="0,00"
+                                        />
+                                        <button
+                                          onClick={() => handleSaveManualPrice(item, merchant.name)}
+                                          disabled={isSavingPrice}
+                                          className="w-9 h-9 bg-emerald-500 text-white rounded-xl flex items-center justify-center hover:bg-emerald-600 transition-all"
+                                        >
+                                          {isSavingPrice ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                        </button>
+                                        <button
+                                          onClick={() => { setEditingPrice(null); setEditPriceValue(''); }}
+                                          className="w-9 h-9 bg-slate-100 text-slate-500 rounded-xl flex items-center justify-center hover:bg-slate-200 transition-all"
+                                        >
+                                          <X size={14} />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <div className="text-right">
+                                          <p className={`font-bold text-base ${item.isCheapest ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                            {formatCurrency(item.unit_price)}
+                                          </p>
+                                          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">por {item.unit}</p>
+                                        </div>
+                                        <button
+                                          onClick={e => {
+                                            e.stopPropagation();
+                                            setEditingPrice({ merchantName: merchant.name, productId: item.productId });
+                                            setEditPriceValue(item.unit_price.toFixed(2).replace('.', ','));
+                                          }}
+                                          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-300 hover:text-brand-500 hover:bg-brand-50 transition-all"
+                                          title="Atualizar preço manualmente"
+                                        >
+                                          <Pencil size={14} />
+                                        </button>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
-                                <div className="text-right shrink-0 pl-4">
-                                  <p className={`font-bold text-base ${item.isCheapest ? 'text-emerald-600' : 'text-slate-900'}`}>
-                                    {formatCurrency(item.unit_price)}
-                                  </p>
-                                  <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">por {item.unit}</p>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                         </div>
                       )}
                     </div>
