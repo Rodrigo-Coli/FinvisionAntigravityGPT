@@ -23,7 +23,7 @@ function prettySupabaseError(err: any) {
 export const AIReconcileService = {
   async processFinancialDocument(file: File): Promise<ReconcileItem[]> {
     const base64Data = await this.fileToBase64(file);
-    const mimeType = file.type || "application/octet-stream";
+    const mimeType = file.type.startsWith('image/') ? 'image/jpeg' : (file.type || "application/octet-stream");
     const baseUrl = getApiBaseUrl();
     const url = `${baseUrl}/api/handle-bank-reconcile`;
 
@@ -42,7 +42,7 @@ export const AIReconcileService = {
     const fileArray = Array.isArray(files) ? files : [files];
     const encodedFiles = await Promise.all(fileArray.map(async (file) => ({
       base64: await this.fileToBase64(file),
-      mimeType: file.type || "image/jpeg",
+      mimeType: file.type.startsWith('image/') ? 'image/jpeg' : (file.type || "image/jpeg"),
       fileName: file.name
     })));
 
@@ -79,7 +79,13 @@ export const AIReconcileService = {
       status: "READY_TO_RECONCILE",
       account_id: accountId,
       account_name: accountName,
-      metadata: { ai_processed: true, confidence: item.confidence, target_type: targetType },
+      metadata: {
+        ai_processed: true,
+        confidence: item.confidence,
+        target_type: targetType,
+        original_account_id: accountId,
+        original_account_name: accountName,
+      },
     }));
 
     const { error } = await supabase.from("imported_transactions").insert(payload);
@@ -114,7 +120,7 @@ export const AIReconcileService = {
     for (let i = 0; i < receipt.items.length; i++) {
       const item = receipt.items[i];
       const productName = (item.normalized_name || item.description).toUpperCase().trim();
-      const searchName = productName.replace(/[-]/g, ' '); // Troca hífen por espaço para busca flexível
+      const searchName = productName.replace(/[-]/g, ' ');
 
       const { data: product } = await supabase.from('products')
         .select('id')
@@ -125,13 +131,11 @@ export const AIReconcileService = {
       let productId = product?.id;
 
       if (!productId) {
-        // Tentativa de busca por descrição original se o normalizado não bateu
         const { data: altProd } = await supabase.from('products')
           .select('id')
           .eq('user_id', user.id)
           .ilike('name', item.description)
           .maybeSingle();
-
         productId = altProd?.id;
       }
 
@@ -227,9 +231,47 @@ export const AIReconcileService = {
 
   fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = (error) => reject(error);
+        return;
+      }
+
       const reader = new FileReader();
       reader.readAsDataURL(file);
-      reader.onload = () => resolve((reader.result as string).split(",")[1]);
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          const MAX_DIMENSION = 1600;
+          if (width > height && width > MAX_DIMENSION) {
+            height *= MAX_DIMENSION / width;
+            width = MAX_DIMENSION;
+          } else if (height > MAX_DIMENSION) {
+            width *= MAX_DIMENSION / height;
+            height = MAX_DIMENSION;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve((reader.result as string).split(",")[1]);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          resolve(compressedDataUrl.split(',')[1]);
+        };
+        img.onerror = (error) => reject(error);
+        img.src = e.target?.result as string;
+      };
       reader.onerror = (error) => reject(error);
     });
   },
