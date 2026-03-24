@@ -66,6 +66,26 @@ export const AIReconcileService = {
     return await res.json();
   },
 
+  // Fluxo DIRETO para cartão de crédito — pula o Reconcile
+  async saveDirectToCard({ cardId, date, description, amount }: { cardId: string; date: string; description: string; amount: number }) {
+    if (!supabase) throw new Error("Supabase is not configured");
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("No user found");
+
+    const { error } = await supabase.from("card_transactions").insert({
+      user_id: user.id,
+      card_id: cardId,
+      date,
+      description,
+      amount: Math.abs(amount),
+      status: "pending",
+      is_manual: true,
+      source: "ai_labs",
+    });
+    if (error) throw new Error(prettySupabaseError(error));
+    return true;
+  },
+
   async saveToReconcileQueue(items: ReconcileItem[], accountId: string, accountName: string, targetType?: 'account' | 'card') {
     if (!supabase) throw new Error("Supabase is not configured");
     const { data: { user } } = await supabase.auth.getUser();
@@ -120,7 +140,7 @@ export const AIReconcileService = {
     for (let i = 0; i < receipt.items.length; i++) {
       const item = receipt.items[i];
       const productName = (item.normalized_name || item.description).toUpperCase().trim();
-      const searchName = productName.replace(/[-]/g, ' ');
+      const searchName = productName.replace(/[-]/g, ' '); // Troca hífen por espaço para busca flexível
 
       const { data: product } = await supabase.from('products')
         .select('id')
@@ -131,11 +151,13 @@ export const AIReconcileService = {
       let productId = product?.id;
 
       if (!productId) {
+        // Tentativa de busca por descrição original se o normalizado não bateu
         const { data: altProd } = await supabase.from('products')
           .select('id')
           .eq('user_id', user.id)
           .ilike('name', item.description)
           .maybeSingle();
+
         productId = altProd?.id;
       }
 
@@ -247,7 +269,7 @@ export const AIReconcileService = {
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-
+          
           const MAX_DIMENSION = 1600;
           if (width > height && width > MAX_DIMENSION) {
             height *= MAX_DIMENSION / width;
@@ -265,7 +287,8 @@ export const AIReconcileService = {
             return;
           }
           ctx.drawImage(img, 0, 0, width, height);
-
+          
+          // Force jpeg to reduce size significantly
           const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
           resolve(compressedDataUrl.split(',')[1]);
         };
