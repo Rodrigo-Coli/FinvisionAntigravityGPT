@@ -11,6 +11,8 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import PendingApproval from './pages/PendingApproval';
 import AdminUsers from './pages/AdminUsers';
+import AdminPlans from './pages/AdminPlans';
+import Landing from './pages/Landing';
 import Accounts from './pages/Accounts';
 import HistoryPage from './pages/History';
 import CreditCardsPage from './pages/CreditCards';
@@ -94,6 +96,8 @@ const App: React.FC = () => {
     );
   }
 
+  const isAdmin = profile?.role === 'admin' || (profile as any)?.role === UserRole.ADMIN;
+
   return (
     <ErrorBoundary>
       <AuthProvider>
@@ -105,6 +109,8 @@ const App: React.FC = () => {
                 {profile?.is_approved && <Nav user={profile} />}
                 <main className="flex-grow overflow-x-hidden min-w-0">
                   <Routes>
+                    {/* Public routes */}
+                    <Route path="/landing" element={<Landing />} />
                     <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
                     <Route path="/signup" element={!session ? <Signup /> : <Navigate to="/" />} />
                     <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -129,7 +135,12 @@ const App: React.FC = () => {
                         <Route path="/history" element={<HistoryPage />} />
                         <Route path="/ai" element={<AIModule user={profile} />} />
                         <Route path="/settings" element={<SettingsPage />} />
-                        {profile.role === UserRole.ADMIN && <Route path="/admin/usuarios" element={<AdminUsers currentUser={profile} />} />}
+                        {profile.role === UserRole.ADMIN && (
+                          <Route path="/admin/usuarios" element={<AdminUsers currentUser={profile} />} />
+                        )}
+                        {isAdmin && (
+                          <Route path="/admin/planos" element={<AdminPlans />} />
+                        )}
                         <Route path="*" element={<Navigate to="/" replace />} />
                       </>
                     )}

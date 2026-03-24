@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle } from 'lucide-react';
+import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, Shield } from 'lucide-react';
 import { Profile } from '../types';
 import { supabase } from '../lib/supabase/client';
 import { useTour } from '../contexts/TourContext';
@@ -9,6 +9,8 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { startTour } = useTour();
+
+  const isAdmin = (user as any)?.role === 'admin';
 
   const items = [
     { label: 'Início', path: '/', icon: <Home size={20} /> },
@@ -21,6 +23,11 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { label: 'Orçamento', path: '/budget', icon: <PieChart size={20} /> },
     { label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },
     { label: 'Ajustes', path: '/settings', icon: <Settings size={20} /> },
+  ];
+
+  const adminItems = [
+    { label: 'Usuários', path: '/admin/usuarios', icon: <Shield size={20} /> },
+    { label: 'Planos & Cupons', path: '/admin/planos', icon: <Sparkles size={20} /> },
   ];
 
   return (
@@ -52,6 +59,33 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
               {item.label}
             </Link>
           ))}
+
+          {/* Admin section */}
+          {isAdmin && (
+            <>
+              <div className="pt-4 pb-1 px-4">
+                <p className="text-[9px] font-bold text-slate-300 uppercase tracking-[0.2em]">Admin</p>
+              </div>
+              {adminItems.map(item => (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`group flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all relative ${location.pathname === item.path
+                    ? 'text-brand-600 font-bold'
+                    : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
+                    }`}
+                >
+                  {location.pathname === item.path && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-brand-600 rounded-r-full" />
+                  )}
+                  <span className={`${location.pathname === item.path ? 'text-brand-600' : 'text-slate-300 group-hover:text-slate-500'}`}>
+                    {item.icon}
+                  </span>
+                  {item.label}
+                </Link>
+              ))}
+            </>
+          )}
         </nav>
 
         <div className="mt-auto pt-6 border-t border-slate-50 space-y-4">
@@ -61,7 +95,9 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
             </div>
             <div className="flex flex-col truncate">
               <span className="text-sm font-bold text-slate-900 truncate">{user.email.split('@')[0]}</span>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Premium Plan</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                {isAdmin ? 'Admin' : 'Premium Plan'}
+              </span>
             </div>
           </div>
 
@@ -135,6 +171,28 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
                 {item.label}
               </Link>
             ))}
+
+            {isAdmin && (
+              <>
+                <div className="pt-4 pb-1 px-2">
+                  <p className="text-[9px] font-bold text-slate-300 uppercase tracking-[0.2em]">Admin</p>
+                </div>
+                {adminItems.map(item => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setIsMenuOpen(false)}
+                    className={`flex items-center gap-4 p-4 rounded-2xl text-sm font-bold ${location.pathname === item.path
+                      ? 'bg-brand-50 text-brand-600'
+                      : 'text-slate-400 hover:bg-slate-50'
+                      }`}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </Link>
+                ))}
+              </>
+            )}
           </div>
 
           <div className="p-6 pt-4 border-t border-slate-100">
