@@ -180,7 +180,6 @@ const Reconcile: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file || !supabase) return;
 
-    // Extrai a logica para uma funcao recursiva para permitir force
     const attemptUpload = async (force: boolean = false) => {
       setIsProcessing(true); setProgressStep("Iniciando...");
       try {
@@ -205,11 +204,9 @@ const Reconcile: React.FC = () => {
           if (imp.status === 'processing') setProgressStep("IA analisando...");
         });
         await fetchData();
-        // Clear input se sucesso
         if (fileInputRef.current) fileInputRef.current.value = '';
       } catch (err: any) {
         if (err.message === "ALREADY_PROCESSED") {
-          // Trava o retry
           if (window.confirm("Atenção: Este arquivo já foi processado anteriormente!\n\nImportar de novo pode duplicar TODOS os seus lançamentos no banco de dados.\n\nDeseja forçar a importação deste mesmo arquivo?")) {
             await attemptUpload(true);
           }
@@ -218,7 +215,6 @@ const Reconcile: React.FC = () => {
         }
       } finally {
         setIsProcessing(false); setProgressStep(null);
-        // Em caso de cancelamento da sobreposiçao
         if (fileInputRef.current && !force) fileInputRef.current.value = '';
       }
     };
@@ -419,7 +415,7 @@ const Reconcile: React.FC = () => {
       const itemsToConfirm = imported.filter(t => selectedIds.has(t.id));
 
       for (const item of itemsToConfirm) {
-        await handleConfirm(item, true); // true = silent/bulk
+        await handleConfirm(item, true);
       }
 
       setBulkCategory(''); setBulkSubcategory(''); setBulkOwner(''); setBulkTarget('');
@@ -429,14 +425,24 @@ const Reconcile: React.FC = () => {
     } finally {
       setIsProcessing(false);
       setProgressStep(null);
-      fetchData(); // Recarrega para garantir saldos e lista limpa
+      fetchData();
     }
   };
 
   const handleConfirm = async (item: any, isBulk: boolean = false) => {
     if (!supabase) return;
     const isEditing = item.id === editingId && !isBulk;
-    const targetId = isEditing ? editForm.targetId : selectedTargetId;
+
+    // If the item was created by AI Labs, use its original destination from metadata.
+    // Otherwise fall back to the user's current panel selection (importSource + selectedTargetId).
+    const hasOriginalDest = !!item.metadata?.original_account_id;
+    const targetId = hasOriginalDest
+      ? item.metadata.original_account_id
+      : (isEditing ? editForm.targetId : selectedTargetId);
+    const effectiveIsCard = hasOriginalDest
+      ? item.metadata.target_type === 'card'
+      : (item.metadata?.target_type === 'card' || (item.metadata?.target_type !== 'account' && importSource === 'card'));
+
     const owner = isEditing ? editForm.owner_name : (item.owner_name || 'Pessoal');
     const categoryName = isEditing ? editForm.category : (item.category || 'Conciliação');
     const subcategoryName = isEditing ? editForm.subcategory : (item.subcategory || null);
@@ -444,13 +450,6 @@ const Reconcile: React.FC = () => {
 
     if (!targetId && !isBulk) return alert("Selecione um destino (Banco/Cartão)");
     if (!targetId) return; // Pula em bulk se não tiver destino
-
-    const isCardFromMeta = item.metadata?.target_type === 'card';
-    const isBankFromMeta = item.metadata?.target_type === 'account';
-
-    // Se o item ja vem com tipo fixo no metadado, respeitamos. 
-    // Caso contrario, respeitamos o modo global (importSource).
-    const effectiveIsCard = isCardFromMeta || (!isBankFromMeta && importSource === 'card');
 
     setProcessingItemId(item.id);
     try {
@@ -473,14 +472,9 @@ const Reconcile: React.FC = () => {
         const acc = realAccounts.find(a => a.id === targetId);
         const isTransfer = categoryName.toLowerCase().includes('transferencia') || categoryName.toLowerCase().includes('transferência');
 
-        // Determine the absolute amount for storage
         const absoluteAmount = Math.abs(Number(item.amount));
-
-        // Define which side is the SOURCE (who sent the money) and DESTINATION (who received it)
-        // If the imported item amount is negative (or it's a known expense), this account is the SOURCE.
         const thisSideIsSource = Number(item.amount) < 0;
 
-        // Transação principal (a perna do arquivo/banco atual)
         await supabase.from('transactions').insert({
           user_id: user.id, date: item.date, description: item.description,
           amount: absoluteAmount,
@@ -497,7 +491,6 @@ const Reconcile: React.FC = () => {
         });
         await supabase.rpc('recalculate_account_balance', { p_account_id: targetId });
 
-        // Se for transferência e tiver conta de contrapartida, cria a perna espelhada
         if (isTransfer && counterId && counterId !== 'NONE') {
           const counterAcc = realAccounts.find(a => a.id === counterId);
           await supabase.from('transactions').insert({
@@ -512,8 +505,8 @@ const Reconcile: React.FC = () => {
             metadata: {
               category_id: finalCategoryId,
               is_transfer: true,
-              transfer_side: thisSideIsSource ? 'DESTINATION' : 'SOURCE', // The opposite of the main leg
-              counter_account_id: targetId, // The other side is the main account
+              transfer_side: thisSideIsSource ? 'DESTINATION' : 'SOURCE',
+              counter_account_id: targetId,
               source_transaction_id: item.id
             }
           });
@@ -536,7 +529,6 @@ const Reconcile: React.FC = () => {
       }
       await ReconciliationService.updateTransactionStatus(item.id, 'OK');
 
-      // Refresh lists if new items were likely created (only for single confirm, bulk handles at end via fetchData)
       if (!isBulk) {
         if (categoryName && !categories.includes(categoryName)) fetchCategories();
         if (owner && !owners.includes(owner)) fetchOwners();
@@ -756,7 +748,6 @@ const Reconcile: React.FC = () => {
                   <div key={item.id} className={`bg-white border transition-all duration-300 rounded-[32px] overflow-hidden ${isEditing ? 'border-brand-500 shadow-2xl ring-4 ring-brand-500/5' : 'border-slate-100 shadow-sm hover:shadow-md'} ${selectedIds.has(item.id) ? 'border-brand-200 bg-brand-50/5' : ''}`}>
                     <div className="p-8">
                       <div className="flex flex-col lg:flex-row gap-6">
-                        {/* Multi-select Checkbox */}
                         <div className="flex items-center">
                           <input
                             type="checkbox"
@@ -766,7 +757,6 @@ const Reconcile: React.FC = () => {
                           />
                         </div>
 
-                        {/* Status Icon */}
                         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${item.amount < 0 ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-500'}`}>
                           {processingItemId === item.id ? (
                             <Loader2 size={24} className="animate-spin" />
@@ -775,9 +765,7 @@ const Reconcile: React.FC = () => {
                           )}
                         </div>
 
-                        {/* Data Sections */}
                         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-                          {/* Col 1: Desc & Date */}
                           <div className="lg:col-span-1 space-y-1">
                             {isEditing ? (
                               <input
@@ -805,7 +793,6 @@ const Reconcile: React.FC = () => {
                             )}
                           </div>
 
-                          {/* Col 2: Target Selection */}
                           <div className="space-y-1">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Destino</p>
                             <div className="relative">
@@ -821,7 +808,6 @@ const Reconcile: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Col 3: Category */}
                           <div className="space-y-1">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Categoria</p>
                             <div className="relative">
@@ -868,7 +854,6 @@ const Reconcile: React.FC = () => {
                             </datalist>
                           </div>
 
-                          {/* Col 4: Entity (Owner) */}
                           <div className="space-y-1">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Entidade</p>
                             <div className="relative">
@@ -888,7 +873,6 @@ const Reconcile: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Col 5: Counterparty (Transfer only) */}
                           {isTransfer && (
                             <div className="space-y-1 animate-in zoom-in-95 duration-200">
                               <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest flex items-center gap-1">
@@ -912,7 +896,6 @@ const Reconcile: React.FC = () => {
                             </div>
                           )}
 
-                          {/* Col 6: Value */}
                           <div className="text-right flex flex-col justify-center">
                             <span className={`text-lg font-bold tracking-tighter ${item.amount < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                               {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.amount)}
@@ -920,10 +903,8 @@ const Reconcile: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Actions */}
                         <div className="flex items-center gap-2 border-l border-slate-50 pl-6">
                           <div className="flex flex-col gap-2">
-                            {/* Botão de Confirmar Principal (Sempre visível para facilitar) */}
                             <button
                               onClick={() => handleConfirm(item)}
                               disabled={processingItemId === item.id}
