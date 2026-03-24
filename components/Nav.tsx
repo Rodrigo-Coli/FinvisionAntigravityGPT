@@ -26,7 +26,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
   return (
     <>
       {/* Sidebar Desktop */}
-      <aside className="hidden lg:flex flex-col w-64 h-screen bg-white border-r border-slate-100 sticky top-0 z-50 p-6">
+      <aside className="hidden lg:flex flex-col w-64 h-screen bg-white border-r border-slate-100 sticky top-0 z-50 p-6 overflow-y-auto">
         <div className="flex items-center gap-3 mb-12 px-2">
           <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-black italic shadow-lg shadow-brand-500/20">F</div>
           <span className="text-xl font-bold tracking-tight text-slate-900">FinVision Pro</span>
