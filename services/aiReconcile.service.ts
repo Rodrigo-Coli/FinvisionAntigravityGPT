@@ -86,6 +86,58 @@ export const AIReconcileService = {
     return true;
   },
 
+  // Atualização MANUAL de preço de um produto — insere novo product_prices com hoje
+  async addManualPrice({
+    productId,
+    merchantName,
+    newPrice,
+    unit,
+  }: {
+    productId: string;
+    merchantName: string;
+    newPrice: number;
+    unit: string;
+  }) {
+    if (!supabase) throw new Error("Supabase is not configured");
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("No user found");
+
+    const today = new Date().toISOString().split('T')[0];
+
+    // Cria um ai_document "manual" para manter o vínculo com o merchant
+    const { data: doc, error: docErr } = await supabase
+      .from('ai_documents')
+      .insert({
+        user_id: user.id,
+        merchant_raw: merchantName,
+        document_date: today,
+        total_amount: newPrice,
+        status: 'processed',
+        source: 'manual_price_update',
+        ocr_structured: { manual: true, updated_at: today },
+      })
+      .select('id')
+      .single();
+
+    if (docErr) throw new Error(prettySupabaseError(docErr));
+
+    // Insere novo preço no histórico
+    const { error: priceErr } = await supabase.from('product_prices').insert({
+      user_id: user.id,
+      product_id: productId,
+      document_id: doc.id,
+      document_date: today,
+      unit_price: newPrice,
+      total_price: newPrice,
+      quantity: 1,
+      is_promo: false,
+      exclude_from_stats: false,
+    });
+
+    if (priceErr) throw new Error(prettySupabaseError(priceErr));
+    return true;
+  },
+
   async saveToReconcileQueue(items: ReconcileItem[], accountId: string, accountName: string, targetType?: 'account' | 'card') {
     if (!supabase) throw new Error("Supabase is not configured");
     const { data: { user } } = await supabase.auth.getUser();
@@ -298,7 +350,6 @@ export const AIReconcileService = {
           isCheapest,
         });
       } else if (item.unit_price < merchantMap[merchant].items[existing].unit_price) {
-        // Atualiza se este preço é mais recente/menor
         merchantMap[merchant].items[existing].unit_price = item.unit_price;
         merchantMap[merchant].items[existing].isCheapest = isCheapest;
       }
