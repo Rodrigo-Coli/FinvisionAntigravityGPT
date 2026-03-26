@@ -73,21 +73,22 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                 ) : (
                     <div className="overflow-x-auto">
                         <div className="min-w-[900px]">
-                            <div className="grid grid-cols-12 gap-4 px-6 py-4 bg-slate-50/50 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100">
+                            <div className="grid grid-cols-12 gap-2 px-6 py-4 bg-slate-50/50 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 italic">
                                 <div className="col-span-1 text-[8px]">Data</div>
                                 <div className="col-span-2 text-[8px]">Descrição</div>
                                 <div className="col-span-2 text-[8px]">Categoria</div>
-                                <div className="col-span-2 text-[8px]">Entidade</div>
+                                <div className="col-span-2 text-[8px]">Subcategoria</div>
+                                <div className="col-span-1 text-[8px]">Entidade</div>
                                 <div className="col-span-2 text-[8px]">Fatura / Mês</div>
-                                <div className="col-span-1 text-right text-[8px]">Anexo</div>
-                                <div className="col-span-1 text-right text-[8px]">Ação</div>
+                                <div className="col-span-1 text-right text-[8px]">Valor</div>
+                                <div className="col-span-1 text-right text-[8px]">Ações</div>
                             </div>
 
                             <div className="divide-y divide-slate-50">
                                 {transactions.map((tx) => (
                                     <div
                                         key={tx.id}
-                                        className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-slate-50/30 transition-colors"
+                                        className="grid grid-cols-12 gap-2 px-6 py-4 items-center hover:bg-slate-50/30 transition-colors"
                                     >
                                         {/* Date */}
                                         <div className="col-span-1">
@@ -96,7 +97,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                 value={String(tx.date).slice(0, 10)}
                                                 onChange={(e) => onUpdateTxLocal(tx.id, { date: e.target.value })}
                                                 onBlur={(e) => onSaveTxPatch(tx.id, { date: e.target.value })}
-                                                className="w-full text-[10px] font-bold bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                                                className="w-full text-[10px] font-bold bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                             />
                                         </div>
 
@@ -107,7 +108,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                 value={tx.description || ''}
                                                 onChange={(e) => onUpdateTxLocal(tx.id, { description: e.target.value })}
                                                 onBlur={(e) => onSaveTxPatch(tx.id, { description: e.target.value })}
-                                                className="w-full text-[10px] font-bold bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all truncate"
+                                                className="w-full text-[10px] font-bold bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all truncate shadow-sm"
                                             />
                                         </div>
 
@@ -121,7 +122,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                         onUpdateTxLocal(tx.id, { category_id: val });
                                                         onSaveTxPatch(tx.id, { category_id: val });
                                                     }}
-                                                    className="w-full text-[10px] font-bold bg-white border border-slate-200 rounded-xl px-2 py-1.5 pl-6 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 appearance-none transition-all"
+                                                    className="w-full text-[10px] font-bold bg-white border border-slate-200 rounded-xl px-2 py-1.5 pl-6 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 appearance-none transition-all shadow-sm"
                                                 >
                                                     <option value="">Sem categoria</option>
                                                     {categories.map((c) => (
@@ -134,8 +135,20 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                             </div>
                                         </div>
 
-                                        {/* Entity */}
+                                        {/* Subcategory */}
                                         <div className="col-span-2">
+                                            <input
+                                                type="text"
+                                                value={tx.subcategory || ''}
+                                                placeholder="..."
+                                                onChange={(e) => onUpdateTxLocal(tx.id, { subcategory: e.target.value })}
+                                                onBlur={(e) => onSaveTxPatch(tx.id, { subcategory: e.target.value })}
+                                                className="w-full text-[10px] font-bold bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all truncate shadow-sm"
+                                            />
+                                        </div>
+
+                                        {/* Entity */}
+                                        <div className="col-span-1">
                                             <select
                                                 value={tx.owner_name || 'Pessoal'}
                                                 onChange={(e) => {
@@ -143,7 +156,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                     onUpdateTxLocal(tx.id, { owner_name: val });
                                                     onSaveTxPatch(tx.id, { owner_name: val === 'Pessoal' ? null : val });
                                                 }}
-                                                className="w-full text-[10px] font-bold bg-white border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                                                className="w-full text-[10px] font-bold bg-white border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                             >
                                                 {['Pessoal', ...new Set(transactions.map(t => t.owner_name).filter(Boolean))].map(o => (
                                                     <option key={o} value={o}>{o}</option>
@@ -160,7 +173,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                     onUpdateTxLocal(tx.id, { statement_id: val });
                                                     onSaveTxPatch(tx.id, { statement_id: val });
                                                 }}
-                                                className="w-full text-[10px] font-black uppercase text-slate-500 bg-white border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                                                className="w-full text-[10px] font-black uppercase text-slate-500 bg-white border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                             >
                                                 <option value="">Nenhuma Fatura</option>
                                                 {statements.map(s => (
@@ -179,61 +192,46 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                 disabled={isLocked}
                                                 onChange={(e) => onUpdateTxLocal(tx.id, { amount: Number(e.target.value) })}
                                                 onBlur={(e) => onSaveTxPatch(tx.id, { amount: Number(e.target.value) })}
-                                                className={`w-full text-[10px] font-black text-right bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all ${isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                className={`w-full text-[10px] font-black text-right bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm ${isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
                                             />
                                         </div>
 
-                                        {/* Attachment */}
-                                        <div className="col-span-1 flex items-center justify-end gap-2">
+                                        {/* Actions Combined (Attachment + Delete) */}
+                                        <div className="col-span-1 flex items-center justify-end gap-1">
                                             {tx.document_id ? (
-                                                <>
-                                                    <button
-                                                        onClick={() => onViewAttachment?.(tx.document_id)}
-                                                        className="p-1.5 bg-brand-50 text-brand-600 rounded-lg hover:bg-brand-100 transition-all"
-                                                        title="Visualizar Comprovante"
-                                                    >
-                                                        <Eye size={12} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => onDeleteAttachment?.(tx.document_id, tx.id)}
-                                                        className="p-1.5 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-all"
-                                                        title="Remover Anexo"
-                                                    >
-                                                        <X size={12} />
-                                                    </button>
-                                                </>
+                                                <button
+                                                    onClick={() => onViewAttachment?.(tx.document_id)}
+                                                    className="p-1 px-1.5 bg-brand-50 text-brand-600 rounded-lg hover:bg-brand-100 transition-all"
+                                                    title="Ver"
+                                                >
+                                                    <Paperclip size={10} />
+                                                </button>
                                             ) : (
                                                 <button
                                                     onClick={() => {
                                                         const input = document.createElement('input');
                                                         input.type = 'file';
-                                                        input.accept = 'image/*,application/pdf';
                                                         input.onchange = (e: any) => {
                                                             const file = e.target.files?.[0];
                                                             if (file) onUploadAttachment?.(tx.id, file);
                                                         };
                                                         input.click();
                                                     }}
-                                                    className="p-1.5 bg-slate-50 text-slate-400 rounded-lg hover:text-brand-600 hover:bg-brand-50 transition-all"
-                                                    title="Anexar Comprovante"
+                                                    className="p-1 px-1.5 text-slate-300 hover:text-brand-600 transition-all"
                                                 >
-                                                    <Paperclip size={12} />
+                                                    <Paperclip size={10} />
                                                 </button>
                                             )}
-                                        </div>
 
-                                        {/* Actions */}
-                                        <div className="col-span-1 flex items-center justify-end font-mono">
                                             {savingRowId === tx.id ? (
-                                                <Loader2 size={14} className="animate-spin text-brand-600" />
+                                                <Loader2 size={12} className="animate-spin text-brand-600" />
                                             ) : (
                                                 <button
                                                     onClick={() => !isLocked && onDeleteTx(tx.id)}
                                                     disabled={isLocked}
-                                                    className={`p-1.5 rounded-lg transition-all ${isLocked ? 'text-slate-200 cursor-not-allowed' : 'bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50'}`}
-                                                    title={isLocked ? "Fatura paga - reabra para excluir" : "Excluir"}
+                                                    className={`p-1 px-1.5 rounded-lg transition-all ${isLocked ? 'text-slate-200' : 'text-slate-300 hover:text-rose-600 hover:bg-rose-50'}`}
                                                 >
-                                                    <Trash2 size={14} />
+                                                    <Trash2 size={12} />
                                                 </button>
                                             )}
                                         </div>

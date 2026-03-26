@@ -65,6 +65,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         // If the user wants a large range, we should ideally fetch dynamically,
         // but for now, we'll fetch a wider net from the DB and let the component filter it.
         // We fetch from the selected startDate to the selected endDate.
+        // Fetch bank transactions
         const { data: txs, error: txError } = await supabase
           .from('transactions')
           .select('id, date, type, amount, category, account_id, owner_name, description, is_paid, paid_amount')
@@ -74,11 +75,31 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           .lte('date', endDate)
           .order('date', { ascending: false });
 
-        if (txError) {
-          console.error("Error fetching transactions:", txError);
+        // Fetch card transactions with category name join
+        const { data: cardTxs, error: cardTxError } = await supabase
+          .from('card_transactions')
+          .select('id, date, amount, description, categories(name)')
+          .eq('user_id', user.id)
+          .gte('date', startDate)
+          .lte('date', endDate);
+
+        if (txError || cardTxError) {
+          console.error("Error fetching transactions:", txError || cardTxError);
           setError('Erro ao carregar transações.');
-        } else if (txs) {
-          setTransactions(txs);
+        } else {
+          // Normalizing card transactions to match main transaction shape
+          const normalizedCardTxs = (cardTxs || []).map((ct: any) => ({
+            id: ct.id,
+            date: ct.date,
+            type: 'EXPENSE', // Card charges are always expenses for analysis
+            amount: Number(ct.amount),
+            category: ct.categories?.name || 'Cartão de Crédito',
+            description: ct.description,
+            is_paid: true, // Card spends are "committed" expenses
+            paid_amount: Number(ct.amount)
+          }));
+
+          setTransactions([...(txs || []), ...normalizedCardTxs]);
         }
       } catch (err: any) {
         setError('Erro ao carregar o resumo financeiro.');

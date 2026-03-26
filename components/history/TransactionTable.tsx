@@ -654,51 +654,58 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                         </button>
                                     )}
 
-                                    {/* Row 3: Account · Category | Owner badge | Status */}
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                                            <AccountPicker
-                                                value={t.accountId}
-                                                accounts={accounts}
-                                                onSelect={accId => handleUpdate(t.id, 'account_id', accId)}
-                                            />
-                                            <div className="flex items-center gap-1 flex-wrap">
-                                                <CategoryPicker
-                                                    value={t.category}
-                                                    transactionType={t.type}
-                                                    categoryObjects={categoryObjects}
-                                                    onSelect={cat => handleUpdate(t.id, 'category', cat)}
-                                                    onCreateCategory={onCreateCategory}
+                                    {/* Row 3: Account · Category · Owner · Status */}
+                                    <div className="flex flex-col gap-3">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="flex flex-col gap-1 flex-1 min-w-0">
+                                                <AccountPicker
+                                                    value={t.accountId}
+                                                    accounts={accounts}
+                                                    onSelect={accId => handleUpdate(t.id, 'account_id', accId)}
                                                 />
-                                                <SubcategoryPicker
-                                                    value={t.subcategory}
-                                                    parentCategory={t.category}
-                                                    subcategories={subcategories}
-                                                    onSelect={sub => handleUpdate(t.id, 'subcategory', sub)}
-                                                />
-                                                {t.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
-                                                    <AccountPicker
-                                                        compact
-                                                        placeholder="Para..."
-                                                        value={t.metadata?.counter_account_id || ''}
-                                                        accounts={accounts.filter(a => a.id !== t.accountId)}
-                                                        onSelect={accId => handleUpdate(t.id, 'counter_account_id', accId)}
+                                                <div className="flex items-center gap-1 flex-wrap">
+                                                    <CategoryPicker
+                                                        value={t.category}
+                                                        transactionType={t.type}
+                                                        categoryObjects={categoryObjects}
+                                                        onSelect={cat => handleUpdate(t.id, 'category', cat)}
+                                                        onCreateCategory={onCreateCategory}
                                                     />
-                                                )}
+                                                    <SubcategoryPicker
+                                                        value={t.subcategory}
+                                                        parentCategory={t.category}
+                                                        subcategories={subcategories}
+                                                        onSelect={sub => handleUpdate(t.id, 'subcategory', sub)}
+                                                    />
+                                                    {t.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
+                                                        <AccountPicker
+                                                            compact
+                                                            placeholder="Para..."
+                                                            value={t.metadata?.counter_account_id || ''}
+                                                            accounts={accounts.filter(a => a.id !== t.accountId)}
+                                                            onSelect={accId => handleUpdate(t.id, 'counter_account_id', accId)}
+                                                        />
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                                <OwnerPicker
+                                                    value={t.owner_name || 'Pessoal'}
+                                                    allOwners={allOwners}
+                                                    onSelect={owner => handleUpdate(t.id, 'owner_name', owner === 'Pessoal' ? null : owner)}
+                                                    compact
+                                                />
+                                                {statusBadge(t)}
                                             </div>
                                         </div>
-                                        <OwnerPicker
-                                            value={t.owner_name || 'Pessoal'}
-                                            allOwners={allOwners}
-                                            onSelect={owner => handleUpdate(t.id, 'owner_name', owner === 'Pessoal' ? null : owner)}
-                                            compact
-                                        />
-                                        {statusBadge(t)}
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            {t.attachments && t.attachments.length > 0 ? (
+
+                                        {/* ATTACHMENTS Dedicated Section */}
+                                        {(t.attachments && t.attachments.length > 0) ? (
+                                            <div className="flex flex-wrap items-center gap-2 p-2.5 bg-slate-50 border border-slate-100/50 rounded-2xl">
+                                                <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] mr-1">Anexos:</span>
                                                 <div className="flex flex-wrap gap-1.5">
                                                     {t.attachments.map(doc => (
-                                                        <div key={doc.id} className="group relative flex items-center gap-1 p-1.5 bg-brand-50 text-brand-600 rounded-lg hover:bg-brand-100 transition-all">
+                                                        <div key={doc.id} className="group relative flex items-center gap-1 p-1.5 bg-white border border-slate-100 text-brand-600 rounded-lg hover:bg-brand-50 transition-all shadow-sm">
                                                             <button onClick={() => onViewAttachment(doc.id)} title={doc.original_name}>
                                                                 <Eye size={12} />
                                                             </button>
@@ -707,16 +714,25 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                             </button>
                                                         </div>
                                                     ))}
-                                                    <button onClick={() => { setUploadingForId(t.id); fileInputRef.current?.click(); }} className="p-1.5 bg-slate-100 text-slate-400 rounded-lg hover:text-brand-600" title="Adicionar anexo">
+                                                    <button
+                                                        onClick={() => { setUploadingForId(t.id); fileInputRef.current?.click(); }}
+                                                        className="p-1.5 bg-white border border-dashed border-slate-200 text-slate-400 rounded-lg hover:text-brand-600 transition-colors"
+                                                        title="Adicionar anexo"
+                                                    >
                                                         <Plus size={12} />
                                                     </button>
                                                 </div>
-                                            ) : (
-                                                <button onClick={() => { setUploadingForId(t.id); fileInputRef.current?.click(); }} className="p-2 bg-slate-100 text-slate-400 rounded-lg hover:text-brand-600">
-                                                    <Paperclip size={12} />
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center justify-end">
+                                                <button
+                                                    onClick={() => { setUploadingForId(t.id); fileInputRef.current?.click(); }}
+                                                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 text-slate-400 rounded-lg hover:bg-brand-50 hover:text-brand-600 transition-all text-[10px] font-bold uppercase tracking-wider"
+                                                >
+                                                    <Paperclip size={12} /> Anexar Comprovante
                                                 </button>
-                                            )}
-                                        </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Row 4: Action buttons — ALWAYS VISIBLE on mobile */}

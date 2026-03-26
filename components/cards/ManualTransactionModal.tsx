@@ -12,12 +12,15 @@ interface ManualTransactionModalProps {
     setTxCardId: (v: string) => void;
     txDate: string;
     setTxDate: (v: string) => void;
-    txAmount: number;
-    setTxAmount: (v: number) => void;
+    txAmount: number | string;
+    setTxAmount: (v: number | string) => void;
     txDescription: string;
     setTxDescription: (v: string) => void;
     txCategoryId: string;
     setTxCategoryId: (v: string) => void;
+    txSubcategory: string;
+    setTxSubcategory: (v: string) => void;
+    subcategories: { id: string, name: string, category_name?: string }[];
 
     // --- NEW: RECURRENCE & INSTALLMENTS ---
     isInstallment?: boolean;
@@ -51,6 +54,9 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     setTxDescription,
     txCategoryId,
     setTxCategoryId,
+    txSubcategory,
+    setTxSubcategory,
+    subcategories,
     isInstallment = false,
     setIsInstallment,
     installmentsCount = 1,
@@ -118,7 +124,10 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                 <input
                                     type="number"
                                     value={txAmount}
-                                    onChange={(e) => setTxAmount(Number(e.target.value))}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setTxAmount(val === '' ? '' : val); // Permite limpar o campo (zero problem)
+                                    }}
                                     placeholder="0,00"
                                     className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                                 />
@@ -209,20 +218,48 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                             )}
                         </div>
 
-                        <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Categoria (Opcional)</label>
-                            <select
-                                value={txCategoryId}
-                                onChange={(e) => setTxCategoryId(e.target.value)}
-                                className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
-                            >
-                                <option value="">Sem categoria</option>
-                                {categories.map((c) => (
-                                    <option key={c.id} value={c.id}>
-                                        {c.name}
-                                    </option>
-                                ))}
-                            </select>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Categoria (Opcional)</label>
+                                <select
+                                    value={txCategoryId}
+                                    onChange={(e) => setTxCategoryId(e.target.value)}
+                                    className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
+                                >
+                                    <option value="">Sem categoria</option>
+                                    {categories.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Subcategoria (Opcional)</label>
+                                <div className="relative">
+                                    <input
+                                        list="card-subcategories-list"
+                                        value={txSubcategory}
+                                        onFocus={(e) => e.target.select()}
+                                        onChange={(e) => setTxSubcategory(e.target.value)}
+                                        placeholder="Selecione ou digite..."
+                                        className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
+                                    />
+                                    <datalist id="card-subcategories-list">
+                                        {subcategories
+                                            .filter(s => {
+                                                const cat = categories.find(c => c.id === txCategoryId);
+                                                return !txCategoryId || s.category_name === cat?.name;
+                                            })
+                                            .sort((a, b) => a.name.localeCompare(b.name))
+                                            .map(s => (
+                                                <option key={s.id} value={s.name} />
+                                            ))
+                                        }
+                                    </datalist>
+                                </div>
+                            </div>
                         </div>
 
                         <div className="space-y-2">
@@ -298,7 +335,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                         </div>
                     </div>
                 </div>
-            </div >
-        </div >
+            </div>
+        </div>
     );
 };

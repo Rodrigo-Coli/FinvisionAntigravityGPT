@@ -9,10 +9,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
-import PendingApproval from './pages/PendingApproval';
 import AdminUsers from './pages/AdminUsers';
-import AdminPlans from './pages/AdminPlans';
-import Landing from './pages/Landing';
 import Accounts from './pages/Accounts';
 import HistoryPage from './pages/History';
 import CreditCardsPage from './pages/CreditCards';
@@ -27,15 +24,23 @@ import { ToastProvider } from './contexts/ToastContext';
 import { AuthProvider } from './contexts/AuthContext';
 import OfflineBanner from './components/OfflineBanner';
 import ErrorBoundary from './components/ErrorBoundary';
-import { SubscriptionProvider } from './components/SubscriptionGate';
-import TrialBanner from './components/TrialBanner';
-import UpgradeModal from './components/UpgradeModal';
+import DemoMode from './pages/DemoMode';
+import DemoBanner from './components/DemoBanner';
+import Landing from './pages/Landing';
+
+if (window.location.pathname === '/demo' || window.location.pathname === '/demo/') {
+  window.location.replace('/#/demo');
+}
 
 const App: React.FC = () => {
   const [profile, setProfile] = useState<Profile | null>(() => {
     const cached = localStorage.getItem('finvision_cached_profile');
     if (cached) {
-      try { return JSON.parse(cached); } catch { return null; }
+      try {
+        return JSON.parse(cached);
+      } catch (e) {
+        return null;
+      }
     }
     return null;
   });
@@ -43,7 +48,10 @@ const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
 
   useEffect(() => {
-    if (!supabase) { setLoading(false); return; }
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
 
     supabase.auth.getSession().then(({ data: { session } }: any) => {
       setSession(session);
@@ -54,7 +62,10 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       setSession(session);
       if (session?.user) fetchProfile(session.user.id, session.user.email);
-      else { setProfile(null); setLoading(false); }
+      else {
+        setProfile(null);
+        setLoading(false);
+      }
     });
 
     return () => subscription?.unsubscribe();
@@ -62,8 +73,6 @@ const App: React.FC = () => {
 
   const fetchProfile = async (uid: string, email?: string) => {
     if (!supabase) return;
-    // Expose userId globally for UpgradeModal (safe — same-origin only)
-    (window as any).__userId = uid;
     try {
       const { data, error } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
       if (!data && !error) {
@@ -85,13 +94,11 @@ const App: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
         <p className="mt-4 text-slate-500 font-bold uppercase tracking-widest text-[10px]">Carregando FinVision Pro</p>
       </div>
     );
   }
-
-  const isAdmin = profile?.role === 'admin' || (profile as any)?.role === UserRole.ADMIN;
 
   return (
     <ErrorBoundary>
@@ -100,18 +107,30 @@ const App: React.FC = () => {
           <OfflineBanner />
           <TourProvider>
             <ToastProvider>
-              {/* SubscriptionProvider wraps everything when user is logged in */}
-              {profile?.is_approved && profile?.id ? (
-                <SubscriptionProvider userId={profile.id}>
-                  <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 dark:bg-slate-900 font-sans">
-                    <Nav user={profile} />
-                    <main className="flex-grow overflow-x-hidden min-w-0">
-                      <Routes>
-                        <Route path="/landing" element={<Landing />} />
-                        <Route path="/login" element={<Navigate to="/" />} />
-                        <Route path="/signup" element={<Navigate to="/" />} />
-                        <Route path="/forgot-password" element={<ForgotPassword />} />
-                        <Route path="/reset-password" element={<ResetPassword />} />
+              <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 dark:bg-slate-900 font-sans">
+                {session && profile && <Nav user={profile} />}
+                <main className="flex-grow overflow-x-hidden min-w-0 flex flex-col">
+                  {session && profile && <DemoBanner />}
+                  <Routes>
+                    <Route path="/demo" element={<DemoMode />} />
+                    <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
+                    <Route path="/signup" element={!session ? <Signup /> : <Navigate to="/" />} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
+
+                    {!session ? (
+                      <>
+                        <Route path="/" element={<Landing />} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                      </>
+                    ) : !profile ? (
+                      <Route path="*" element={
+                        <div className="flex h-screen items-center justify-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                        </div>
+                      } />
+                    ) : (
+                      <>
                         <Route path="/" element={<Home user={profile} />} />
                         <Route path="/accounts" element={<Accounts />} />
                         <Route path="/cards" element={<CreditCardsPage />} />
@@ -122,44 +141,13 @@ const App: React.FC = () => {
                         <Route path="/history" element={<HistoryPage />} />
                         <Route path="/ai" element={<AIModule user={profile} />} />
                         <Route path="/settings" element={<SettingsPage />} />
-                        {profile.role === UserRole.ADMIN && (
-                          <Route path="/admin/usuarios" element={<AdminUsers currentUser={profile} />} />
-                        )}
-                        {isAdmin && (
-                          <Route path="/admin/planos" element={<AdminPlans />} />
-                        )}
+                        {profile.role === UserRole.ADMIN && <Route path="/admin/usuarios" element={<AdminUsers currentUser={profile} />} />}
                         <Route path="*" element={<Navigate to="/" replace />} />
-                      </Routes>
-                    </main>
-                  </div>
-                  {/* Global SaaS UI */}
-                  <TrialBanner />
-                  <UpgradeModal />
-                </SubscriptionProvider>
-              ) : (
-                <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 font-sans">
-                  {profile?.is_approved && <Nav user={profile!} />}
-                  <main className="flex-grow overflow-x-hidden min-w-0">
-                    <Routes>
-                      <Route path="/landing" element={<Landing />} />
-                      <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
-                      <Route path="/signup" element={!session ? <Signup /> : <Navigate to="/" />} />
-                      <Route path="/forgot-password" element={<ForgotPassword />} />
-                      <Route path="/reset-password" element={<ResetPassword />} />
-                      {!session ? (
-                        <Route path="*" element={<Navigate to="/login" replace />} />
-                      ) : !profile?.is_approved ? (
-                        <>
-                          <Route path="/pending" element={<PendingApproval user={profile || { email: session.user.email } as any} />} />
-                          <Route path="*" element={<Navigate to="/pending" replace />} />
-                        </>
-                      ) : (
-                        <Route path="*" element={<Navigate to="/" replace />} />
-                      )}
-                    </Routes>
-                  </main>
-                </div>
-              )}
+                      </>
+                    )}
+                  </Routes>
+                </main>
+              </div>
             </ToastProvider>
           </TourProvider>
         </HashRouter>

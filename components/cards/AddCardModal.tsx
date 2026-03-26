@@ -14,8 +14,8 @@ interface AddCardModalProps {
     setNewBrand: (v: string) => void;
     newLast4: string;
     setNewLast4: (v: string) => void;
-    newLimit: number;
-    setNewLimit: (v: number) => void;
+    newLimit: number | string;
+    setNewLimit: (v: number | string) => void;
     newClosingDay: number;
     setNewClosingDay: (v: number) => void;
     newDueDay: number;
@@ -124,7 +124,10 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
                                     type="number"
                                     required
                                     value={newLimit}
-                                    onChange={(e) => setNewLimit(Number(e.target.value))}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setNewLimit(val === '' ? '' : Number(val));
+                                    }}
                                     className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
                                 />
                             </div>

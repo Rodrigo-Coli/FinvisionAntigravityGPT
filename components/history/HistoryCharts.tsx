@@ -57,6 +57,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
 
         transactions.forEach(t => {
             if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+            if (t.category === 'Cartão de Crédito') return; // Excluir categoria de provisionamento para evitar duplicidade
             const amt = Math.abs(Number(t.amount));
             if (t.type === 'EXPENSE') {
                 categoriesExpense[t.category] = (categoriesExpense[t.category] || 0) + amt;
@@ -103,6 +104,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
 
         transactions.forEach(t => {
             if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+            if (t.category === 'Cartão de Crédito') return;
             const d = new Date(t.date);
             const m = d.getMonth(); const y = d.getFullYear();
             const day = d.getDate() - 1;
@@ -144,6 +146,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                 const tMap = new Map();
                 transactions.forEach(t => {
                     if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+                    if (t.category === 'Cartão de Crédito') return;
                     if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
                     const ym = t.date.split('T')[0].substring(0, 7);
                     if (!tMap.has(ym)) tMap.set(ym, { income: 0, expense: 0, balance: 0 });
@@ -167,6 +170,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                 const tMap = new Map();
                 transactions.forEach(t => {
                     if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+                    if (t.category === 'Cartão de Crédito') return;
                     if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
                     const ymd = t.date.split('T')[0];
                     if (!tMap.has(ymd)) tMap.set(ymd, { income: 0, expense: 0, balance: 0 });

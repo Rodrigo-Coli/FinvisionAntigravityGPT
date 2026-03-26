@@ -14,8 +14,8 @@ interface PayStatementModalProps {
     setPayAccountId: (v: string) => void;
     payDate: string;
     setPayDate: (v: string) => void;
-    payAmount: number;
-    setPayAmount: (v: number) => void;
+    payAmount: number | string;
+    setPayAmount: (v: number | string) => void;
     getAccountLabel: (a: any) => string;
 }
 
@@ -97,7 +97,10 @@ export const PayStatementModal: React.FC<PayStatementModalProps> = ({
                                 <input
                                     type="number"
                                     value={payAmount}
-                                    onChange={(e) => setPayAmount(Number(e.target.value))}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setPayAmount(val === '' ? '' : Number(val));
+                                    }}
                                     className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
                                 />
                                 <p className="mt-2 text-[10px] text-slate-400 font-bold ml-1 italic">Total em aberto: {formatCurrency(statementOpen)}</p>

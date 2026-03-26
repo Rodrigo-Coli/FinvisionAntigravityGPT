@@ -50,7 +50,7 @@ const Accounts: React.FC = () => {
   const [adjustAccount, setAdjustAccount] = useState<BankAccount | null>(null);
   const [hasTransactions, setHasTransactions] = useState(false);
   const [adjustMode, setAdjustMode] = useState<'initial' | 'transaction'>('transaction');
-  const [adjustValue, setAdjustValue] = useState<number>(0);
+  const [adjustValue, setAdjustValue] = useState<number | string>('');
   const [adjustDate, setAdjustDate] = useState(DateUtils.formatToISODate());
   const [adjustDesc, setAdjustDesc] = useState('Ajuste de Saldo');
   const [adjustCat, setAdjustCat] = useState('Ajustes');
@@ -60,8 +60,8 @@ const Accounts: React.FC = () => {
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [institution, setInstitution] = useState('');
   const [type, setType] = useState<AccountType>('CHECKING');
-  const [initialBalance, setInitialBalance] = useState<number>(0);
-  const [limit, setLimit] = useState<number>(0);
+  const [initialBalance, setInitialBalance] = useState<number | string>('');
+  const [limit, setLimit] = useState<number | string>('');
   const [currency, setCurrency] = useState('BRL');
   const [color, setColor] = useState('#3b82f6');
   const [includeInDashboard, setIncludeInDashboard] = useState(true);
@@ -133,8 +133,8 @@ const Accounts: React.FC = () => {
       const payload: any = {
         institution,
         type,
-        initial_balance: initialBalance,
-        limit,
+        initial_balance: Number(initialBalance),
+        limit: Number(limit),
         currency,
         color,
         include_in_dashboard: includeInDashboard,
@@ -153,7 +153,7 @@ const Accounts: React.FC = () => {
           .insert([{
             ...payload,
             user_id: user.id,
-            current_balance: initialBalance
+            current_balance: Number(initialBalance)
           }]);
         if (error) throw error;
       }
@@ -187,7 +187,7 @@ const Accounts: React.FC = () => {
 
       if (adjustMode === 'initial') {
         const transactionsSum = adjustAccount.currentBalance - adjustAccount.initialBalance;
-        const newInitialBalance = adjustValue - transactionsSum;
+        const newInitialBalance = Number(adjustValue) - transactionsSum;
 
         const updatePayload: any = {
           initial_balance: newInitialBalance,
@@ -202,7 +202,7 @@ const Accounts: React.FC = () => {
 
         if (error) throw error;
       } else {
-        const delta = adjustValue - adjustAccount.currentBalance;
+        const delta = Number(adjustValue) - adjustAccount.currentBalance;
 
         if (delta === 0) {
           alert("O novo saldo é igual ao saldo atual. Informe um valor diferente.");
@@ -253,8 +253,8 @@ const Accounts: React.FC = () => {
     setIsEditing(null);
     setInstitution('');
     setType('CHECKING');
-    setInitialBalance(0);
-    setLimit(0);
+    setInitialBalance('');
+    setLimit('');
     setCurrency('BRL');
     setColor('#3b82f6');
     setIncludeInDashboard(true);
@@ -298,7 +298,7 @@ const Accounts: React.FC = () => {
     (filterCurrency !== 'ALL' ? 1 : 0) +
     (filterDashboard !== 'ALL' ? 1 : 0);
 
-  const currentDelta = adjustAccount ? adjustValue - (adjustMode === 'initial' ? adjustAccount.initialBalance : adjustAccount.currentBalance) : 0;
+  const currentDelta = adjustAccount ? Number(adjustValue) - (adjustMode === 'initial' ? adjustAccount.initialBalance : adjustAccount.currentBalance) : 0;
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
@@ -487,7 +487,10 @@ const Accounts: React.FC = () => {
                       type="number"
                       step="0.01"
                       value={adjustValue}
-                      onChange={e => setAdjustValue(Number(e.target.value))}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setAdjustValue(val === '' ? '' : Number(val));
+                      }}
                       className="w-full h-14 pl-12 pr-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-2xl text-slate-900 outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                     />
                   </div>
@@ -551,7 +554,15 @@ const Accounts: React.FC = () => {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Saldo Inicial</label>
-                  <input type="number" value={initialBalance} onChange={e => setInitialBalance(Number(e.target.value))} className="w-full h-12 px-4 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 font-medium text-sm transition-all" />
+                  <input
+                    type="number"
+                    value={initialBalance}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setInitialBalance(val === '' ? '' : Number(val));
+                    }}
+                    className="w-full h-12 px-4 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 font-medium text-sm transition-all"
+                  />
                 </div>
               </div>
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, FileDown, Loader2, AlertCircle, Check, RefreshCw, Calendar, Tag, Landmark, User, ArrowRight, Trash, X } from 'lucide-react';
+import { Plus, FileDown, Loader2, AlertCircle, Check, RefreshCw, Calendar, Tag, Landmark, User, ArrowRight, Trash, X, Sparkles } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 import { Transaction, TransactionType, BankAccount } from '../types';
@@ -351,9 +351,22 @@ const HistoryPage: React.FC = () => {
         if (filterClause) chartQuery = chartQuery.or(filterClause);
       }
 
-      const [{ data, count, error: fetchError }, { data: chartData }, dbEntities] = await Promise.all([
+      // NEW: Additional query for card transactions for the charts
+      let cardChartQuery: any = supabase.from('card_transactions')
+        .select('id, date, amount, description, categories(name)')
+        .eq('user_id', user.id)
+        .order('date', { ascending: false });
+
+      if (startDate) cardChartQuery = cardChartQuery.gte('date', startDate);
+      if (endDate) cardChartQuery = cardChartQuery.lte('date', endDate);
+      // For card transactions, we only apply category filter if the user selected one
+      // Since card_transactions uses ID, we'd need more logic to filter by name here, 
+      // but for now we'll fetch all in the date range and filter in JS to keep it simple and consistent.
+
+      const [{ data, count, error: fetchError }, { data: chartData }, { data: cardChartData }, dbEntities] = await Promise.all([
         query,
         chartQuery,
+        cardChartQuery,
         FinanceService.getEntities()
       ]);
       if (requestId !== lastRequestId.current) return;
@@ -368,8 +381,27 @@ const HistoryPage: React.FC = () => {
         _trueAmount: (t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT' || (t.type === 'TRANSFER' && t.amount > 0)) ? -Math.abs(Number(t.amount || 0)) : Math.abs(Number(t.amount || 0))
       });
 
-      let processedChartData = (chartData || []).map(applyTrueAmount);
+      // Normalize card transactions
+      const normalizedCardChartData = (cardChartData || []).map((ct: any) => ({
+        id: ct.id,
+        date: ct.date,
+        type: 'EXPENSE',
+        amount: Number(ct.amount),
+        category: ct.categories?.name || 'Cartão de Crédito',
+        description: ct.description,
+        is_paid: true,
+        paid_amount: Number(ct.amount),
+        is_amortization: false,
+        metadata: {}
+      }));
+
+      let processedChartData = [...(chartData || []), ...normalizedCardChartData].map(applyTrueAmount);
       let processedTableData = (data || []).map(applyTrueAmount);
+
+      // Apply Filter Category to card transactions too (if selected)
+      if (filterCategory.length > 0) {
+        processedChartData = processedChartData.filter((t: any) => filterCategory.includes(t.category));
+      }
 
       // 1. Appy Min/Max Filters
       if (minPrice !== '') {
@@ -724,6 +756,57 @@ const HistoryPage: React.FC = () => {
       setSelectedIds(new Set(transactions.map(t => t.id)));
     } else {
       setSelectedIds(new Set());
+    }
+  };
+
+  const [isCategorizingAI, setIsCategorizingAI] = useState(false);
+
+  const handleSmartCategorize = async () => {
+    if (selectedIds.size === 0 || !supabase) return;
+    if (!navigator.onLine) {
+      alert("Auto-Categorizar por IA exige conexão com a internet.");
+      return;
+    }
+
+    setIsCategorizingAI(true);
+    try {
+      const selectedTxs = transactions.filter(t => selectedIds.has(t.id));
+      const needsCategory = selectedTxs.filter(t => !t.category || t.category === '' || t.category === 'Outros' || t.category === 'Conciliação');
+      const uniqueDescriptions = Array.from(new Set(needsCategory.map(t => t.description)));
+
+      if (uniqueDescriptions.length === 0) {
+        alert("As transações selecionadas já possuem categorias específicas definidas. Selecione transações sem categoria.");
+        return;
+      }
+
+      const res = await fetch('/api/categorize-transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descriptions: uniqueDescriptions, categories: subcategories })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.message);
+
+      const mapping = new Map(data.data.map((d: any) => [d.description, d]));
+      
+      let updatedCount = 0;
+      for (const tx of needsCategory) {
+        const match = mapping.get(tx.description);
+        if (match && (match as any).category) {
+          const patch = { category: (match as any).category, subcategory: (match as any).subcategory || '' };
+          await supabase.from('transactions').update(patch).eq('id', tx.id);
+          updatedCount++;
+        }
+      }
+
+      await fetchData();
+      setSelectedIds(new Set());
+      alert(`IA categorizou ${updatedCount} transações aplicando seus padrões.`);
+    } catch (err: any) {
+      console.error(err);
+      alert("Erro na IA: " + err.message);
+    } finally {
+      setIsCategorizingAI(false);
     }
   };
 
@@ -1221,8 +1304,16 @@ const HistoryPage: React.FC = () => {
 
           <div className="flex items-center gap-2 ml-auto">
             <button
+              onClick={handleSmartCategorize}
+              disabled={isCategorizingAI || isBulkUpdating}
+              className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-brand-600 to-indigo-600 border border-indigo-500/30 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:shadow-[0_0_15px_rgba(79,70,229,0.4)] transition-all active:scale-95 disabled:opacity-50"
+            >
+              {isCategorizingAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {isCategorizingAI ? 'Analisando...' : 'IA Auto-Categorizar'}
+            </button>
+            <button
               onClick={handleBulkUpdate}
-              disabled={isBulkUpdating}
+              disabled={isBulkUpdating || isCategorizingAI}
               className="flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-brand-500 transition-all active:scale-95 disabled:opacity-50"
             >
               {isBulkUpdating ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}

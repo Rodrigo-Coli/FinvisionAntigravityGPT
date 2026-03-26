@@ -46,8 +46,10 @@ const CreditCardsPage: React.FC = () => {
   const [showAddTxModal, setShowAddTxModal] = useState(false);
   const [txDate, setTxDate] = useState<string>(() => DateUtils.formatToISODate());
   const [txDescription, setTxDescription] = useState('');
-  const [txAmount, setTxAmount] = useState<number>(0);
+  const [txAmount, setTxAmount] = useState<number | string>('');
   const [txCategoryId, setTxCategoryId] = useState<string>('');
+  const [txSubcategory, setTxSubcategory] = useState<string>('');
+  const [subcategories, setSubcategories] = useState<{ id: string, name: string, category_name?: string }[]>([]);
   const [txCardId, setTxCardId] = useState<string>('');
 
   // New Series States
@@ -63,14 +65,14 @@ const CreditCardsPage: React.FC = () => {
   const [showPayModal, setShowPayModal] = useState(false);
   const [payAccountId, setPayAccountId] = useState<string>('');
   const [payDate, setPayDate] = useState<string>(() => DateUtils.formatToISODate());
-  const [payAmount, setPayAmount] = useState<number>(0);
+  const [payAmount, setPayAmount] = useState<number | string>('');
   const [isPaying, setIsPaying] = useState(false);
 
   // Form states for new card
   const [newName, setNewName] = useState('');
   const [newBrand, setNewBrand] = useState('Visa');
   const [newLast4, setNewLast4] = useState('');
-  const [newLimit, setNewLimit] = useState<number>(0);
+  const [newLimit, setNewLimit] = useState<number | string>('');
   const [newClosingDay, setNewClosingDay] = useState<number>(5);
   const [newDueDay, setNewDueDay] = useState<number>(15);
   const [isAdditional, setIsAdditional] = useState(false);
@@ -93,6 +95,7 @@ const CreditCardsPage: React.FC = () => {
     if (isSupabaseConfigured) {
       fetchCards();
       fetchCategories();
+      fetchSubcategories();
       fetchAccounts();
     }
   }, []);
@@ -180,6 +183,27 @@ const CreditCardsPage: React.FC = () => {
       setCategories(data || []);
     } catch (err) {
       console.error('Erro ao buscar categorias:', err);
+    }
+  };
+
+  const fetchSubcategories = async () => {
+    if (!supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data, error } = await supabase
+        .from('subcategories')
+        .select('id, name, categories(name)')
+        .eq('user_id', user.id)
+        .order('name', { ascending: true });
+      if (error) throw error;
+      setSubcategories((data || []).map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        category_name: s.categories?.name
+      })));
+    } catch (err) {
+      console.error('Erro ao buscar subcategorias:', err);
     }
   };
 
@@ -475,6 +499,7 @@ const CreditCardsPage: React.FC = () => {
           is_manual: true,
         };
         if (txCategoryId) payload.category_id = txCategoryId;
+        if (txSubcategory) payload.subcategory = txSubcategory;
 
         const targetStmtId = await FinanceService.getOrCreateStatement(txCardId, txDate);
         payload.statement_id = targetStmtId;
@@ -517,6 +542,8 @@ const CreditCardsPage: React.FC = () => {
           }
         );
 
+        // Ensure subcategory exists or handle if needed
+
         // Salvar cada item da série corrigindo a fatura
         const groupId = crypto.randomUUID();
         const inserts = [];
@@ -539,7 +566,8 @@ const CreditCardsPage: React.FC = () => {
             installment_group_id: isInstallment ? groupId : null,
             is_recurring: item.is_recurring,
             recurrence_period: item.recurrence_period,
-            recurrence_group_id: isRecurring ? groupId : null
+            recurrence_group_id: isRecurring ? groupId : null,
+            subcategory: txSubcategory || null
           });
         }
         const { data: insertsData, error } = await supabase.from('card_transactions').insert(inserts).select('id');
@@ -559,8 +587,9 @@ const CreditCardsPage: React.FC = () => {
 
       setShowAddTxModal(false);
       setTxDescription('');
-      setTxAmount(0);
+      setTxAmount('');
       setTxDate(DateUtils.formatToISODate());
+      setTxSubcategory('');
       setIsInstallment(false);
       setIsRecurring(false);
       setInstallmentsCount(1);
@@ -642,7 +671,7 @@ const CreditCardsPage: React.FC = () => {
         name: newName,
         brand: newBrand,
         last4: newLast4,
-        limit_total: newLimit,
+        limit_total: Number(newLimit),
         closing_day: newClosingDay,
         due_day: newDueDay,
         is_archived: false,
@@ -683,7 +712,7 @@ const CreditCardsPage: React.FC = () => {
     setNewName('');
     setNewBrand('Visa');
     setNewLast4('');
-    setNewLimit(0);
+    setNewLimit('');
     setNewClosingDay(5);
     setNewDueDay(15);
     setIsAdditional(false);
@@ -1049,7 +1078,7 @@ const CreditCardsPage: React.FC = () => {
         newLast4={newLast4}
         setNewLast4={setNewLast4}
         newLimit={newLimit}
-        setNewLimit={setNewLimit}
+        setNewLimit={(v) => setNewLimit(v === '' ? '' : v)}
         newClosingDay={newClosingDay}
         setNewClosingDay={setNewClosingDay}
         newDueDay={newDueDay}
@@ -1069,6 +1098,7 @@ const CreditCardsPage: React.FC = () => {
         isAnyModalBusy={isAnyModalBusy}
         cards={cards}
         categories={categories}
+        subcategories={subcategories}
         txCardId={txCardId}
         setTxCardId={setTxCardId}
         txDate={txDate}
@@ -1079,6 +1109,8 @@ const CreditCardsPage: React.FC = () => {
         setTxDescription={setTxDescription}
         txCategoryId={txCategoryId}
         setTxCategoryId={setTxCategoryId}
+        txSubcategory={txSubcategory}
+        setTxSubcategory={setTxSubcategory}
         isInstallment={isInstallment}
         setIsInstallment={setIsInstallment}
         installmentsCount={installmentsCount}
@@ -1107,7 +1139,7 @@ const CreditCardsPage: React.FC = () => {
         payDate={payDate}
         setPayDate={setPayDate}
         payAmount={payAmount}
-        setPayAmount={setPayAmount}
+        setPayAmount={(v) => setPayAmount(v === '' ? '' : v)}
         getAccountLabel={getAccountLabel}
       />
 

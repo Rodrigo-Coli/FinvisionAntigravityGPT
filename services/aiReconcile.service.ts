@@ -66,7 +66,6 @@ export const AIReconcileService = {
     return await res.json();
   },
 
-  // Fluxo DIRETO para cartão de crédito — pula o Reconcile
   async saveDirectToCard({ cardId, date, description, amount }: { cardId: string; date: string; description: string; amount: number }) {
     if (!supabase) throw new Error("Supabase is not configured");
     const { data: { user } } = await supabase.auth.getUser();
@@ -83,58 +82,6 @@ export const AIReconcileService = {
       source: "ai_labs",
     });
     if (error) throw new Error(prettySupabaseError(error));
-    return true;
-  },
-
-  // Atualização MANUAL de preço de um produto — insere novo product_prices com hoje
-  async addManualPrice({
-    productId,
-    merchantName,
-    newPrice,
-    unit,
-  }: {
-    productId: string;
-    merchantName: string;
-    newPrice: number;
-    unit: string;
-  }) {
-    if (!supabase) throw new Error("Supabase is not configured");
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("No user found");
-
-    const today = new Date().toISOString().split('T')[0];
-
-    // Cria um ai_document "manual" para manter o vínculo com o merchant
-    const { data: doc, error: docErr } = await supabase
-      .from('ai_documents')
-      .insert({
-        user_id: user.id,
-        merchant_raw: merchantName,
-        document_date: today,
-        total_amount: newPrice,
-        status: 'processed',
-        source: 'manual_price_update',
-        ocr_structured: { manual: true, updated_at: today },
-      })
-      .select('id')
-      .single();
-
-    if (docErr) throw new Error(prettySupabaseError(docErr));
-
-    // Insere novo preço no histórico
-    const { error: priceErr } = await supabase.from('product_prices').insert({
-      user_id: user.id,
-      product_id: productId,
-      document_id: doc.id,
-      document_date: today,
-      unit_price: newPrice,
-      total_price: newPrice,
-      quantity: 1,
-      is_promo: false,
-      exclude_from_stats: false,
-    });
-
-    if (priceErr) throw new Error(prettySupabaseError(priceErr));
     return true;
   },
 
@@ -282,92 +229,6 @@ export const AIReconcileService = {
 
     if (error) throw new Error(prettySupabaseError(error));
     return data || [];
-  },
-
-  // Vista "Por Estabelecimento": agrupa itens por loja e indica os mais baratos
-  async getMerchantView() {
-    if (!supabase) throw new Error("Supabase is not configured");
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("No user found");
-
-    // Busca todos os itens com produto e documento (loja)
-    const { data, error } = await supabase
-      .from('ai_document_items')
-      .select(`
-        id,
-        raw_description,
-        unit_price,
-        quantity,
-        unit,
-        is_promo,
-        document_id,
-        product_id,
-        products ( id, name, category ),
-        ai_documents ( id, merchant_raw, document_date, ocr_structured )
-      `)
-      .eq('user_id', user.id)
-      .not('product_id', 'is', null)
-      .order('document_id', { ascending: false });
-
-    if (error) throw new Error(prettySupabaseError(error));
-    const items = data || [];
-
-    // Para cada produto, encontra o preço mínimo global
-    const globalMinByProduct: Record<string, number> = {};
-    for (const item of items) {
-      const pid = (item.products as any)?.id;
-      if (!pid) continue;
-      if (globalMinByProduct[pid] === undefined || item.unit_price < globalMinByProduct[pid]) {
-        globalMinByProduct[pid] = item.unit_price;
-      }
-    }
-
-    // Agrupa por merchant_raw
-    const merchantMap: Record<string, { name: string; visitCount: number; lastVisit: string; items: any[] }> = {};
-    for (const item of items) {
-      const merchant = (item.ai_documents as any)?.merchant_raw || 'Desconhecido';
-      const docDate = (item.ai_documents as any)?.document_date || '';
-      const prod = item.products as any;
-      if (!merchantMap[merchant]) {
-        merchantMap[merchant] = { name: merchant, visitCount: 0, lastVisit: docDate, items: [] };
-      }
-      if (docDate > merchantMap[merchant].lastVisit) merchantMap[merchant].lastVisit = docDate;
-
-      const pid = prod?.id;
-      const isCheapest = pid && globalMinByProduct[pid] !== undefined && item.unit_price <= globalMinByProduct[pid];
-
-      // Deduplicar por produto — manter o registro mais recente
-      const existing = merchantMap[merchant].items.findIndex((i: any) => i.productId === pid);
-      if (existing === -1) {
-        merchantMap[merchant].items.push({
-          id: item.id,
-          productId: pid,
-          name: prod?.name || item.raw_description,
-          category: prod?.category || 'Geral',
-          unit_price: item.unit_price,
-          unit: item.unit || 'un',
-          is_promo: item.is_promo,
-          isCheapest,
-        });
-      } else if (item.unit_price < merchantMap[merchant].items[existing].unit_price) {
-        merchantMap[merchant].items[existing].unit_price = item.unit_price;
-        merchantMap[merchant].items[existing].isCheapest = isCheapest;
-      }
-    }
-
-    // Conta visitas (documentos únicos por merchant)
-    const docMerchants: Record<string, Set<string>> = {};
-    for (const item of items) {
-      const merchant = (item.ai_documents as any)?.merchant_raw || 'Desconhecido';
-      const docId = item.document_id;
-      if (!docMerchants[merchant]) docMerchants[merchant] = new Set();
-      docMerchants[merchant].add(docId);
-    }
-    for (const m in merchantMap) {
-      merchantMap[m].visitCount = docMerchants[m]?.size || 0;
-    }
-
-    return Object.values(merchantMap).sort((a, b) => b.visitCount - a.visitCount);
   },
 
   async getPriceHistory(productId: string) {

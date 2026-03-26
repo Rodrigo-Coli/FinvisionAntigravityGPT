@@ -182,8 +182,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             </datalist>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className={`${isCreatingCategory ? 'col-span-1 sm:col-span-2' : ''} space-y-2 transition-all duration-300`}>
                                 <div className="flex items-center justify-between">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria</label>
                                     {!isCreatingCategory && (
@@ -198,32 +198,34 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 </div>
 
                                 {isCreatingCategory ? (
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 animate-in slide-in-from-top-1 duration-300">
                                         <input
                                             type="text"
                                             autoFocus
                                             value={newCategoryName}
                                             onChange={(e) => setNewCategoryName(e.target.value)}
                                             placeholder={`Nova ${form.type === 'INCOME' ? 'receita' : 'despesa'}...`}
-                                            className="flex-1 h-14 px-4 bg-slate-50 border border-brand-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-xs"
+                                            className="flex-1 h-14 px-4 bg-brand-50 border border-brand-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-xs"
                                             onKeyDown={(e) => e.key === 'Enter' && handleCreateCategorySubmit()}
                                         />
-                                        <button
-                                            type="button"
-                                            onClick={handleCreateCategorySubmit}
-                                            disabled={isSavingCategory}
-                                            className="h-14 w-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center hover:bg-brand-700 transition-all disabled:opacity-50"
-                                        >
-                                            {isSavingCategory ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsCreatingCategory(false)}
-                                            disabled={isSavingCategory}
-                                            className="h-14 w-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200 transition-all disabled:opacity-50"
-                                        >
-                                            <X size={20} />
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleCreateCategorySubmit}
+                                                disabled={isSavingCategory}
+                                                className="h-14 w-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center hover:bg-brand-700 transition-all disabled:opacity-50 shadow-lg shadow-brand-500/20"
+                                            >
+                                                {isSavingCategory ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsCreatingCategory(false)}
+                                                disabled={isSavingCategory}
+                                                className="h-14 w-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200 transition-all disabled:opacity-50"
+                                            >
+                                                <X size={20} />
+                                            </button>
+                                        </div>
                                     </div>
                                 ) : (
                                     <div className="relative">
@@ -244,24 +246,26 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 )}
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Subcategoria (Opcional)</label>
-                                <div className="relative">
-                                    <input
-                                        list="add-subcategories-list"
-                                        value={form.subcategory}
-                                        onFocus={(e) => e.target.select()}
-                                        onChange={(e) => setAddField('subcategory', e.target.value)}
-                                        placeholder="Selecione..."
-                                        className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
-                                    />
-                                    <datalist id="add-subcategories-list">
-                                        {subcategories.filter(s => s.category_name === form.category).sort((a, b) => a.name.localeCompare(b.name)).map(s => (
-                                            <option key={s.id} value={s.name} />
-                                        ))}
-                                    </datalist>
+                            {!isCreatingCategory && (
+                                <div className="space-y-2 animate-in fade-in duration-300">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Subcategoria (Opcional)</label>
+                                    <div className="relative">
+                                        <input
+                                            list="add-subcategories-list"
+                                            value={form.subcategory}
+                                            onFocus={(e) => e.target.select()}
+                                            onChange={(e) => setAddField('subcategory', e.target.value)}
+                                            placeholder="Selecione..."
+                                            className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
+                                        />
+                                        <datalist id="add-subcategories-list">
+                                            {subcategories.filter(s => s.category_name === form.category).sort((a, b) => a.name.localeCompare(b.name)).map(s => (
+                                                <option key={s.id} value={s.name} />
+                                            ))}
+                                        </datalist>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
 
                         {/* SERIES OPTIONS */}

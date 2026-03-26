@@ -14,20 +14,48 @@ export default function DemoMode() {
         return;
       }
       
-      // Sign out current user first if any
       await supabase.auth.signOut();
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: 'demo@finvision.app',
+      // Gerar email randômico para isolar os ambientes de testes de cada visitante
+      const demoEmail = `demo+${Date.now()}@finvision.app`;
+
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: demoEmail,
         password: 'FinvisionDemo2025!'
       });
 
-      if (signInError) {
-        setError('Erro ao carregar ambiente de demonstração: ' + signInError.message);
-      } else {
-        localStorage.setItem('is_finvision_demo', 'true');
-        navigate('/');
+      if (signUpError || !signUpData.user) {
+        setError('Erro ao carregar ambiente de demonstração: ' + (signUpError?.message || 'Falha no servidor.'));
+        return;
       }
+
+      // Se a engine de Auth (GoTrue) estiver requerindo e-mail para emitir a sessão, efetuamos login manual usando a senha padrão:
+      if (!signUpData.session) {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: demoEmail,
+          password: 'FinvisionDemo2025!'
+        });
+        if (signInErr) {
+          setError('Erro ao fazer login no ambiente de demonstração.');
+          return;
+        }
+      }
+
+      // Clona e cria fake data específico para ESSE uuid através do RPC
+      const { error: rpcError } = await supabase.rpc('clone_demo_data', {
+        new_uid: signUpData.user.id
+      });
+
+      if (rpcError) {
+        console.warn('Erro populando dados demo. Ambiente será carregado vazio:', rpcError);
+      }
+
+      localStorage.setItem('is_finvision_demo', 'true');
+      
+      // Dá tempo do banco finalizar os triggers de accounts/profiles de entrada
+      setTimeout(() => {
+        navigate('/');
+      }, 500);
     }
 
     loginDemo();
