@@ -46,6 +46,7 @@ export default async function handler(req: any, res: any) {
     // 2. Get user
     const { data: { user } } = await supabase.auth.admin.getUserById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user.email) return res.status(400).json({ error: 'User email is required' });
 
     // 3. Resolve price for period
     const p: Period = period;

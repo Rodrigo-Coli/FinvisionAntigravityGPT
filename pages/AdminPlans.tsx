@@ -44,7 +44,7 @@ export default function AdminPlans() {
   const fetchPlans = async () => {
     if (!supabase) return;
     const { data } = await supabase.from('plans').select('*').order('sort_order');
-    if (data) setPlans(data.map(p => ({ ...p, _dirty: false })));
+    if (data) setPlans(data.map((p: any) => ({ ...p, _dirty: false })));
     setLoading(false);
   };
 
