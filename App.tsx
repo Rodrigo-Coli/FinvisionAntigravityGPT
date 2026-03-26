@@ -22,8 +22,11 @@ import Budget from './pages/Budget';
 import { TourProvider } from './contexts/TourContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { SubscriptionProvider } from './contexts/SubscriptionContext';
 import OfflineBanner from './components/OfflineBanner';
 import ErrorBoundary from './components/ErrorBoundary';
+import TrialBanner from './components/TrialBanner';
+import UpgradeModal from './components/UpgradeModal';
 import DemoMode from './pages/DemoMode';
 import DemoBanner from './components/DemoBanner';
 import Landing from './pages/Landing';
@@ -103,11 +106,14 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <HashRouter>
-          <OfflineBanner />
-          <TourProvider>
-            <ToastProvider>
-              <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 dark:bg-slate-900 font-sans">
+        <SubscriptionProvider>
+          <HashRouter>
+            <OfflineBanner />
+            <TrialBanner />
+            <UpgradeModal />
+            <TourProvider>
+              <ToastProvider>
+                <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 dark:bg-slate-900 font-sans">
                 {session && profile && <Nav user={profile} />}
                 <main className="flex-grow overflow-x-hidden min-w-0 flex flex-col">
                   {session && profile && <DemoBanner />}
@@ -151,6 +157,7 @@ const App: React.FC = () => {
             </ToastProvider>
           </TourProvider>
         </HashRouter>
+        </SubscriptionProvider>
       </AuthProvider>
     </ErrorBoundary>
   );
