@@ -39,7 +39,9 @@ const SettingsPage: React.FC = () => {
     email_notifications: true,
     auto_dark_mode: false,
     iof_rate: 6.38,
-    spread_rate: 4.00
+    spread_rate: 4.00,
+    whatsapp_enabled: false,
+    whatsapp_number: ''
   });
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
@@ -83,7 +85,9 @@ const SettingsPage: React.FC = () => {
             email_notifications: data.email_notifications,
             auto_dark_mode: data.auto_dark_mode,
             iof_rate: data.iof_rate || 6.38,
-            spread_rate: data.spread_rate || 4.00
+            spread_rate: data.spread_rate || 4.00,
+            whatsapp_enabled: data.whatsapp_enabled || false,
+            whatsapp_number: data.whatsapp_number || ''
           });
         }
       }
@@ -304,6 +308,27 @@ const SettingsPage: React.FC = () => {
                   <button onClick={() => updateSetting('email_notifications', !settings.email_notifications)} className={`w-14 h-8 rounded-full p-1 transition-all ${settings.email_notifications ? 'bg-brand-600' : 'bg-slate-200'}`}>
                     <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${settings.email_notifications ? 'translate-x-6' : 'translate-x-0'}`} />
                   </button>
+                </div>
+
+                <div className="flex flex-col md:flex-row md:items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all gap-4">
+                  <div>
+                    <p className="font-bold text-slate-900 flex items-center gap-2"><Smartphone size={16} /> Notificações via WhatsApp</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Lembretes de faturas e vencimentos financeiros automáticos.</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    {settings.whatsapp_enabled && (
+                      <input 
+                        type="text" 
+                        placeholder="+55 11 99999-9999" 
+                        value={settings.whatsapp_number} 
+                        onChange={e => updateSetting('whatsapp_number', e.target.value)}
+                        className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold w-40 outline-none focus:border-brand-500 transition-colors"
+                      />
+                    )}
+                    <button onClick={() => updateSetting('whatsapp_enabled', !settings.whatsapp_enabled)} className={`w-14 h-8 shrink-0 rounded-full p-1 transition-all ${settings.whatsapp_enabled ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                      <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${settings.whatsapp_enabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">

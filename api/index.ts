@@ -12,6 +12,7 @@ import parseCardStatement from '../server/parse-card-statement';
 import parseStatement from '../server/parse-statement';
 import processImport from '../server/process-import';
 import publicPlans from '../server/public-plans';
+import notifyBillsDue from '../server/notify-bills-due';
 
 export default async function handler(req: any, res: any) {
   const urlParts = req.url?.split('?')[0].split('/').filter(Boolean);
@@ -28,6 +29,7 @@ export default async function handler(req: any, res: any) {
     case 'handle-import-worker': return handleImportWorker(req, res);
     case 'handle-receipt-items': return handleReceiptItems(req, res);
     case 'handle-wealth-analysis': return handleWealthAnalysis(req, res);
+    case 'notify-bills-due': return notifyBillsDue(req, res);
     case 'parse-card-statement': return parseCardStatement(req, res);
     case 'parse-statement': return parseStatement(req, res);
     case 'process-import': return processImport(req, res);
