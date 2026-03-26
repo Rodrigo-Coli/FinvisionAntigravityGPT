@@ -44,10 +44,33 @@ export default async function handler(req: any, res: any) {
       .gte('date', todayStr)
       .lte('date', tomorrowStr);
 
+    // Get open credit card statements due today or tomorrow
+    const { data: statements } = await supabase
+      .from('card_statements')
+      .select('id, total_amount, paid_amount, due_date, user_id, cards(name)')
+      .eq('status', 'OPEN')
+      .in('user_id', userIds)
+      .gte('due_date', todayStr)
+      .lte('due_date', tomorrowStr);
+
     const userExpenses: Record<string, any[]> = {};
     expenses?.forEach(exp => {
       if (!userExpenses[exp.user_id]) userExpenses[exp.user_id] = [];
-      userExpenses[exp.user_id].push(exp);
+      userExpenses[exp.user_id].push({ ...exp, is_card: false });
+    });
+
+    statements?.forEach(stmt => {
+      if (!userExpenses[stmt.user_id]) userExpenses[stmt.user_id] = [];
+      const amountDue = (stmt.total_amount || 0) - (stmt.paid_amount || 0);
+      if (amountDue > 0) {
+        userExpenses[stmt.user_id].push({
+          id: stmt.id,
+          description: `Fatura ${Array.isArray(stmt.cards) ? (stmt.cards[0] as any)?.name : (stmt.cards as any)?.name || 'Cartão'}`,
+          amount: amountDue,
+          date: stmt.due_date,
+          is_card: true
+        });
+      }
     });
 
     let sentCount = 0;
@@ -66,7 +89,8 @@ export default async function handler(req: any, res: any) {
         hasBills = true;
         msg += `🔴 *Vencendo HOJE:*\n`;
         dueToday.forEach(e => {
-          msg += `- ${e.description}: R$ ${e.amount.toFixed(2)}\n`;
+          const icon = e.is_card ? '💳' : '📄';
+          msg += `- ${icon} ${e.description}: R$ ${e.amount.toFixed(2)}\n`;
         });
         msg += '\n';
       }
@@ -75,7 +99,8 @@ export default async function handler(req: any, res: any) {
         hasBills = true;
         msg += `🟡 *Vencendo Amanhã:*\n`;
         dueTomorrow.forEach(e => {
-          msg += `- ${e.description}: R$ ${e.amount.toFixed(2)}\n`;
+          const icon = e.is_card ? '💳' : '📄';
+          msg += `- ${icon} ${e.description}: R$ ${e.amount.toFixed(2)}\n`;
         });
       }
 
