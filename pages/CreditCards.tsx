@@ -118,7 +118,7 @@ const CreditCardsPage: React.FC = () => {
   const getCardColor = (brand: string) => {
     const b = (brand || '').toLowerCase();
     if (b.includes('visa')) return 'bg-brand-600';
-    if (b.includes('master')) return 'bg-slate-900';
+    if (b.includes('master')) return 'bg-brand-900';
     if (b.includes('elo')) return 'bg-orange-500';
     if (b.includes('amex')) return 'bg-emerald-600';
     return 'bg-slate-600';
@@ -879,7 +879,7 @@ const CreditCardsPage: React.FC = () => {
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-black transition-all"
+            className="px-8 py-4 bg-brand-900 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-black transition-all"
           >
             Cadastrar Cartão
           </button>
@@ -985,7 +985,7 @@ const CreditCardsPage: React.FC = () => {
                               fetchTransactions(selectedCard.id, val);
                             }
                           }}
-                          className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[200px]"
+                          className="bg-slate-50 dark:bg-brand-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[200px]"
                         >
                           <option value="CURRENT">Fatura Atual</option>
                           <option value="ALL">Todo o Histórico</option>
@@ -1012,7 +1012,7 @@ const CreditCardsPage: React.FC = () => {
                                 placeholder="O que procura?"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl pl-4 pr-10 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all w-full xl:w-48"
+                                className="bg-slate-50 dark:bg-brand-900 border border-slate-100 dark:border-slate-700 rounded-2xl pl-4 pr-10 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all w-full xl:w-48"
                               />
                             </div>
                           </div>
@@ -1023,7 +1023,7 @@ const CreditCardsPage: React.FC = () => {
                             <select
                               value={filterCategory}
                               onChange={(e) => setFilterCategory(e.target.value)}
-                              className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[140px]"
+                              className="bg-slate-50 dark:bg-brand-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[140px]"
                             >
                               <option value="ALL">Todas</option>
                               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
