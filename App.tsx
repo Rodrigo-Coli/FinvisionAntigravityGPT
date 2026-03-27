@@ -19,6 +19,7 @@ import Reconcile from './pages/Reconcile';
 import SettingsPage from './pages/Settings';
 import Goals from './pages/Goals';
 import Budget from './pages/Budget';
+import Reports from './pages/Reports';
 import { TourProvider } from './contexts/TourContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -30,6 +31,8 @@ import UpgradeModal from './components/UpgradeModal';
 import DemoMode from './pages/DemoMode';
 import DemoBanner from './components/DemoBanner';
 import Landing from './pages/Landing';
+import Terms from './pages/Terms';
+import Privacy from './pages/Privacy';
 
 if (window.location.pathname === '/demo' || window.location.pathname === '/demo/') {
   window.location.replace('/#/demo');
@@ -123,6 +126,8 @@ const App: React.FC = () => {
                     <Route path="/signup" element={!session ? <Signup /> : <Navigate to="/" />} />
                     <Route path="/forgot-password" element={<ForgotPassword />} />
                     <Route path="/reset-password" element={<ResetPassword />} />
+                    <Route path="/terms" element={<Terms />} />
+                    <Route path="/privacy" element={<Privacy />} />
 
                     {!session ? (
                       <>
@@ -147,6 +152,7 @@ const App: React.FC = () => {
                         <Route path="/history" element={<HistoryPage />} />
                         <Route path="/ai" element={<AIModule user={profile} />} />
                         <Route path="/settings" element={<SettingsPage />} />
+                        <Route path="/reports" element={<Reports />} />
                         {profile.role === UserRole.ADMIN && <Route path="/admin/usuarios" element={<AdminUsers currentUser={profile} />} />}
                         <Route path="*" element={<Navigate to="/" replace />} />
                       </>
