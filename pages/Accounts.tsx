@@ -423,7 +423,7 @@ const Accounts: React.FC = () => {
                     </button>
                     <button
                       onClick={() => { setAdjustAccount(acc); setAdjustValue(acc.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
-                      className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-900 hover:text-white rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all"
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-brand-900 hover:text-white rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all"
                     >
                       <RefreshCw size={12} /> Ajustar Saldo
                     </button>
@@ -452,7 +452,7 @@ const Accounts: React.FC = () => {
       {/* ADJUST MODAL */}
       {showAdjustModal && adjustAccount && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowAdjustModal(false)} />
+          <div className="absolute inset-0 bg-brand-900/40 backdrop-blur-sm" onClick={() => setShowAdjustModal(false)} />
           <div className="bg-white rounded-[32px] w-full max-w-md shadow-2xl relative overflow-hidden animate-in zoom-in duration-300">
             <div className="p-8 space-y-8">
               <div className="flex items-center justify-between">
@@ -509,7 +509,7 @@ const Accounts: React.FC = () => {
                 <button
                   onClick={handleSaveAdjustment}
                   disabled={isSavingAdjust || currentDelta === 0}
-                  className="flex-2 w-full py-4 bg-slate-900 text-white rounded-2xl font-bold uppercase text-xs shadow-xl transition-all active:scale-95 disabled:opacity-50"
+                  className="flex-2 w-full py-4 bg-brand-900 text-white rounded-2xl font-bold uppercase text-xs shadow-xl transition-all active:scale-95 disabled:opacity-50"
                 >
                   {isSavingAdjust ? <Loader2 className="animate-spin h-4 w-4 mx-auto" /> : 'Confirmar Ajuste'}
                 </button>
@@ -522,7 +522,7 @@ const Accounts: React.FC = () => {
       {/* NEW ACCOUNT MODAL */}
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowModal(false)} />
+          <div className="absolute inset-0 bg-brand-900/40 backdrop-blur-sm" onClick={() => setShowModal(false)} />
           <div className="bg-white rounded-[40px] w-full max-w-lg shadow-2xl relative overflow-hidden animate-in zoom-in duration-300">
             <div className="p-8 lg:p-10 space-y-8">
               <div className="flex items-center justify-between">
@@ -612,7 +612,7 @@ const Accounts: React.FC = () => {
       {/* FILTER MODAL */}
       {showFilters && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowFilters(false)} />
+          <div className="absolute inset-0 bg-brand-900/40 backdrop-blur-sm" onClick={() => setShowFilters(false)} />
           <div className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl relative overflow-hidden animate-in slide-in-from-bottom-4 duration-300 p-8 space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold">Filtros Avançados</h3>
@@ -632,7 +632,7 @@ const Accounts: React.FC = () => {
             </div>
             <div className="flex gap-3 pt-4">
               <button onClick={() => { setFilterType('ALL'); setShowFilters(false); }} className="flex-1 h-12 text-slate-400 font-bold text-xs uppercase">Limpar</button>
-              <button onClick={() => setShowFilters(false)} className="flex-2 w-full h-12 bg-slate-900 text-white rounded-xl font-bold uppercase text-xs">Aplicar</button>
+              <button onClick={() => setShowFilters(false)} className="flex-2 w-full h-12 bg-brand-900 text-white rounded-xl font-bold uppercase text-xs">Aplicar</button>
             </div>
           </div>
         </div>
