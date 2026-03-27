@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase/client';
-import { Check, X, Save, Loader2, Shield, Settings, Tag, Users, ChevronDown, ChevronRight, Plus, Trash2, Copy } from 'lucide-react';
+import { Check, X, Save, Loader2, Shield, Settings, Tag, Users, ChevronDown, ChevronRight, Plus, Trash2, Copy, Zap, Info } from 'lucide-react';
+import TokenCalculator from '../components/admin/TokenCalculator';
 
 const FEATURE_CATALOG: { key: string; label: string; group: string }[] = [
   { key: 'dashboard',              label: 'Dashboard Financeiro',      group: 'Core' },
@@ -71,12 +72,16 @@ export default function AdminPlans() {
       price_cents: plan.price_cents,
       price_cents_semiannual: plan.price_cents_semiannual,
       price_cents_annual: plan.price_cents_annual,
+      price_cents_5years: plan.price_cents_5years || 0,
+      price_cents_10years: plan.price_cents_10years || 0,
+      price_cents_lifetime: plan.price_cents_lifetime || 0,
       discount_semiannual_percent: plan.discount_semiannual_percent,
       discount_annual_percent: plan.discount_annual_percent,
       ai_scans_limit: plan.ai_scans_limit,
       trial_days: plan.trial_days,
       features: plan.features,
       is_active: plan.is_active,
+      version: plan.version || 1,
       updated_at: new Date().toISOString(),
     }).eq('id', plan.id);
     if (!error) setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, _dirty: false } : p));
@@ -122,7 +127,7 @@ export default function AdminPlans() {
   return (
     <div className="max-w-[1400px] mx-auto px-4 sm:px-10 py-8 space-y-8">
       <div className="flex items-center gap-4">
-        <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white"><Shield size={22} /></div>
+        <div className="w-12 h-12 bg-brand-900 rounded-2xl flex items-center justify-center text-white"><Shield size={22} /></div>
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Painel Admin</h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Gestão de Planos · Cupons · Usuários</p>
@@ -139,104 +144,105 @@ export default function AdminPlans() {
       </div>
 
       {activeTab === 'plans' && (
-        <div className="space-y-4">
-          {plans.map(plan => {
-            const isExpanded = expandedPlan === plan.id;
-            return (
-              <div key={plan.id} className={`bg-white rounded-[28px] border shadow-sm overflow-hidden transition-all ${plan._dirty ? 'border-brand-200' : 'border-slate-100'}`}>
-                <div className="p-6 flex flex-wrap items-center gap-4">
-                  <button onClick={() => setExpandedPlan(isExpanded ? null : plan.id)} className="flex items-center gap-4 min-w-[180px]">
-                    <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white text-xs font-bold uppercase">{plan.slug[0]}</div>
-                    <div>
-                      <h3 className="font-bold text-slate-900">{plan.name}</h3>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        {plan.ai_scans_limit === -1 ? 'IA Ilimitada' : plan.ai_scans_limit === 0 ? 'Sem IA' : `${plan.ai_scans_limit} scans/mês`}
-                      </p>
-                    </div>
-                  </button>
+        <div className="space-y-8">
+          {/* AI COST CALCULATOR INTEGRATION */}
+          <TokenCalculator usdToBrl={5.85} />
 
-                  {/* Pricing grid */}
-                  <div className="flex flex-wrap gap-3 flex-1">
-                    {[
-                      { label: 'Mensal (R¢)', field: 'price_cents' },
-                      { label: 'Semestral (R¢)', field: 'price_cents_semiannual' },
-                      { label: 'Anual (R¢)', field: 'price_cents_annual' },
-                      { label: '% off Semestral', field: 'discount_semiannual_percent' },
-                      { label: '% off Anual', field: 'discount_annual_percent' },
-                      { label: 'IA scans (-1=∞)', field: 'ai_scans_limit' },
-                      { label: 'Trial dias', field: 'trial_days' },
-                    ].map(f => (
-                      <div key={f.field} className="space-y-0.5">
-                        <label className="text-[9px] font-bold text-slate-300 uppercase tracking-widest ml-1">{f.label}</label>
-                        <input type="number" value={plan[f.field] ?? 0}
-                          onChange={e => update(plan.id, f.field, parseFloat(e.target.value) || 0)}
-                          className="w-28 h-9 bg-slate-50 rounded-xl px-3 text-sm font-bold text-slate-900 border-none focus:ring-2 focus:ring-brand-400"
-                        />
-                      </div>
-                    ))}
-                    {/* Preview */}
-                    {plan.price_cents > 0 && (
-                      <div className="space-y-0.5">
-                        <label className="text-[9px] font-bold text-slate-300 uppercase tracking-widest ml-1">Preview</label>
-                        <div className="h-9 flex flex-col justify-center px-2 text-[10px] font-bold text-slate-500">
-                          <span>{fmt(plan.price_cents)}/mês</span>
-                          <span className="text-emerald-600">{fmt(plan.price_cents_semiannual || 0)}/6m</span>
-                          <span className="text-emerald-700">{fmt(plan.price_cents_annual || 0)}/12m</span>
-                        </div>
-                      </div>
-                    )}
-                    {/* Active toggle */}
-                    <div className="flex items-center gap-2 mt-5">
-                      <label className="text-[10px] font-bold text-slate-400">Ativo</label>
-                      <button onClick={() => update(plan.id, 'is_active', !plan.is_active)}
-                        className={`w-10 h-5 rounded-full transition-all ${plan.is_active ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-                        <div className={`w-4 h-4 bg-white rounded-full shadow transition-all mx-0.5 ${plan.is_active ? 'translate-x-5' : 'translate-x-0'}`} />
-                      </button>
-                    </div>
-                  </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-4">
+               <h2 className="text-lg font-bold text-slate-800">Catálogo de Ofertas</h2>
+               <div className="p-2 bg-blue-50 text-blue-600 rounded-lg flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
+                  <Info size={14} /> Mudanças de preço só valem para NOVOS usuários por padrão
+               </div>
+            </div>
 
-                  <div className="flex items-center gap-2">
-                    {plan._dirty && (
-                      <button onClick={() => savePlan(plan)} disabled={saving === plan.id}
-                        className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-brand-700 transition-all">
-                        {saving === plan.id ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                        Salvar
-                      </button>
-                    )}
-                    <button onClick={() => setExpandedPlan(isExpanded ? null : plan.id)}
-                      className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-all">
-                      {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            {plans.map(plan => {
+              const isExpanded = expandedPlan === plan.id;
+              return (
+                <div key={plan.id} className={`bg-white rounded-[28px] border shadow-sm overflow-hidden transition-all ${plan._dirty ? 'border-brand-200' : 'border-slate-100'}`}>
+                  <div className="p-6 flex flex-wrap items-center gap-4">
+                    <button onClick={() => setExpandedPlan(isExpanded ? null : plan.id)} className="flex items-center gap-4 min-w-[180px]">
+                      <div className="w-10 h-10 bg-brand-900 rounded-xl flex items-center justify-center text-white text-xs font-bold uppercase">{plan.slug[0]}</div>
+                      <div>
+                        <h3 className="font-bold text-slate-900">{plan.name}</h3>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                          {plan.ai_scans_limit === -1 ? 'IA Ilimitada' : plan.ai_scans_limit === 0 ? 'Sem IA' : `${plan.ai_scans_limit} scans/mês`}
+                        </p>
+                      </div>
                     </button>
-                  </div>
-                </div>
 
-                {isExpanded && (
-                  <div className="border-t border-slate-50 p-6 space-y-6">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Funcionalidades — novas features adicionadas ao catálogo aparecem aqui automaticamente</p>
-                    {featureGroups.map(group => (
-                      <div key={group} className="space-y-3">
-                        <h4 className="text-[10px] font-bold text-slate-300 uppercase tracking-widest border-b border-slate-50 pb-1">{group}</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                          {FEATURE_CATALOG.filter(f => f.group === group).map(feat => {
-                            const enabled = !!plan.features?.[feat.key];
-                            return (
-                              <button key={feat.key} onClick={() => toggleFeature(plan.id, feat.key)}
-                                className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${enabled ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-slate-200'}`}>
-                                <div className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 ${enabled ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
-                                  {enabled ? <Check size={12} /> : <X size={12} />}
-                                </div>
-                                <span className="text-[11px] font-bold leading-tight">{feat.label}</span>
-                              </button>
-                            );
-                          })}
+                    <div className="flex flex-wrap gap-3 flex-1">
+                      {[
+                        { label: 'Mensal (R¢)', field: 'price_cents' },
+                        { label: 'Anual (R¢)', field: 'price_cents_annual' },
+                        { label: '5 Anos (R¢)', field: 'price_cents_5years' },
+                        { label: '10 Anos (R¢)', field: 'price_cents_10years' },
+                        { label: 'Vitalício (R¢)', field: 'price_cents_lifetime' },
+                        { label: 'Versão Plano', field: 'version' },
+                        { label: 'IA scans (-1=∞)', field: 'ai_scans_limit' },
+                        { label: 'Trial dias', field: 'trial_days' },
+                      ].map(f => (
+                        <div key={f.field} className="space-y-0.5">
+                          <label className="text-[9px] font-bold text-slate-300 uppercase tracking-widest ml-1">{f.label}</label>
+                          <input type="number" value={plan[f.field] ?? 0}
+                            onChange={e => update(plan.id, f.field, parseFloat(e.target.value) || 0)}
+                            className="w-28 h-9 bg-slate-50 rounded-xl px-3 text-sm font-bold text-slate-900 border-none focus:ring-2 focus:ring-brand-400"
+                          />
                         </div>
+                      ))}
+                      
+                      <div className="flex items-center gap-2 mt-5">
+                        <label className="text-[10px] font-bold text-slate-400">Ativo</label>
+                        <button onClick={() => update(plan.id, 'is_active', !plan.is_active)}
+                          className={`w-10 h-5 rounded-full transition-all ${plan.is_active ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                          <div className={`w-4 h-4 bg-white rounded-full shadow transition-all mx-0.5 ${plan.is_active ? 'translate-x-5' : 'translate-x-0'}`} />
+                        </button>
                       </div>
-                    ))}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {plan._dirty && (
+                        <button onClick={() => savePlan(plan)} disabled={saving === plan.id}
+                          className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-brand-700 transition-all">
+                          {saving === plan.id ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                          Salvar
+                        </button>
+                      )}
+                      <button onClick={() => setExpandedPlan(isExpanded ? null : plan.id)}
+                        className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-all">
+                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </button>
+                    </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
+
+                  {isExpanded && (
+                    <div className="border-t border-slate-50 p-6 space-y-6">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Funcionalidades — novas features adicionadas ao catálogo aparecem aqui automaticamente</p>
+                      {featureGroups.map(group => (
+                        <div key={group} className="space-y-3">
+                          <h4 className="text-[10px] font-bold text-slate-300 uppercase tracking-widest border-b border-slate-50 pb-1">{group}</h4>
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                            {FEATURE_CATALOG.filter(f => f.group === group).map(feat => {
+                              const enabled = !!plan.features?.[feat.key];
+                              return (
+                                <button key={feat.key} onClick={() => toggleFeature(plan.id, feat.key)}
+                                  className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${enabled ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-slate-200'}`}>
+                                  <div className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 ${enabled ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                                    {enabled ? <Check size={12} /> : <X size={12} />}
+                                  </div>
+                                  <span className="text-[11px] font-bold leading-tight">{feat.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -288,7 +294,7 @@ export default function AdminPlans() {
               </div>
             </div>
             <button onClick={saveCoupon} disabled={savingCoupon || !newCoupon.code.trim()}
-              className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-brand-600 transition-all disabled:opacity-40">
+              className="flex items-center gap-2 px-6 py-3 bg-brand-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-brand-600 transition-all disabled:opacity-40">
               {savingCoupon ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
               Criar Cupom
             </button>
@@ -301,7 +307,7 @@ export default function AdminPlans() {
                 <div key={coupon.id} className="p-5 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
                     <button onClick={() => copyCode(coupon.code)}
-                      className="flex items-center gap-2 bg-slate-900 text-white px-3 py-1.5 rounded-lg font-bold text-sm hover:bg-brand-600 transition-all">
+                      className="flex items-center gap-2 bg-brand-900 text-white px-3 py-1.5 rounded-lg font-bold text-sm hover:bg-brand-600 transition-all">
                       {copiedCode === coupon.code ? <Check size={12} /> : <Copy size={12} />}
                       {coupon.code}
                     </button>
