@@ -20,11 +20,13 @@ import {
   Check
 } from 'lucide-react';
 import { DashboardService } from '../services/dashboard.service';
+import { DashboardSkeleton } from '../components/Skeleton';
 import { DateUtils } from '../lib/dateUtils';
 import { useTour } from '../contexts/TourContext';
 import { HistoryCharts } from '../components/history/HistoryCharts';
 import CashFlowProjection from '../components/CashFlowProjection';
 import AIChat from '../components/AIChat';
+import ContextualHelp from '../components/ContextualHelp';
 import { supabase } from '../lib/supabase/client';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
@@ -130,12 +132,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen space-y-4">
-        <div className="w-10 h-10 border-2 border-slate-200 border-t-brand-600 rounded-full animate-spin" />
-        <p className="text-slate-400 font-medium tracking-widest text-[10px] uppercase">Carregando FinVision...</p>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (error || !data) {
@@ -143,7 +140,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       <div className="flex flex-col items-center justify-center min-h-screen space-y-6">
         <AlertCircle className="text-rose-500" size={40} />
         <p className="text-slate-500 font-medium">{error || 'Falha na conexão.'}</p>
-        <button onClick={() => window.location.reload()} className="px-6 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase">Recarregar</button>
+        <button onClick={() => window.location.reload()} className="px-6 py-2 bg-brand-900 text-white rounded-xl text-xs font-bold uppercase">Recarregar</button>
       </div>
     );
   }
@@ -171,7 +168,13 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       {/* HEADER ROW */}
       <div className="flex flex-wrap justify-between items-center gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Visão Geral</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Visão Geral</h1>
+            <ContextualHelp 
+              title="Dicas do Dashboard" 
+              description="Aqui você monitora seu Patrimônio Líquido (Bens - Dívidas) e o Fluxo de Caixa projetado para os próximos meses. Use o Assistant AI à direita para tirar dúvidas sobre seus gastos."
+            />
+          </div>
           <p className="text-sm text-slate-400 font-medium">Monitorando sua saúde financeira com excelência.</p>
         </div>
         <div className="flex items-center gap-3">
