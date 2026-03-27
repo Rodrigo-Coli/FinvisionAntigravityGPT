@@ -128,7 +128,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ currentUser }) => {
                   <tr key={profile.id} className="hover:bg-slate-50/30 transition-all group">
                     <td className="px-10 py-8">
                       <div className="flex items-center gap-5">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-sm ${profile.role === UserRole.ADMIN ? 'bg-slate-900 shadow-slate-200' : 'bg-brand-400 shadow-brand-100'}`}>
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-sm ${profile.role === UserRole.ADMIN ? 'bg-brand-900 shadow-slate-200' : 'bg-brand-400 shadow-brand-100'}`}>
                           {profile.email.charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">
@@ -142,7 +142,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ currentUser }) => {
                         onClick={() => toggleRole(profile.id, profile.role)}
                         disabled={updatingId === profile.id}
                         className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all ${profile.role === UserRole.ADMIN
-                          ? 'bg-slate-900 border-slate-900 text-white'
+                          ? 'bg-brand-900 border-slate-900 text-white'
                           : 'bg-white border-slate-100 text-slate-400 hover:text-slate-900 hover:border-slate-900'
                           }`}
                       >
@@ -165,7 +165,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ currentUser }) => {
                         disabled={updatingId === profile.id}
                         className={`min-w-[120px] h-11 px-6 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${profile.is_approved
                           ? 'bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white'
-                          : 'bg-brand-600 text-white hover:bg-slate-900 shadow-lg shadow-brand-100'
+                          : 'bg-brand-600 text-white hover:bg-brand-900 shadow-lg shadow-brand-100'
                           }`}
                       >
                         {updatingId === profile.id ? 'Sinc...' : profile.is_approved ? 'Bloquear' : 'Autorizar'}
