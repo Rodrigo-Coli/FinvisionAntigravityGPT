@@ -75,7 +75,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     return (
         <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4">
             <div
-                className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+                className="absolute inset-0 bg-brand-900/60 backdrop-blur-sm"
                 onClick={() => !isAnyModalBusy && onClose()}
             ></div>
 

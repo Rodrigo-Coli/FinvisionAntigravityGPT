@@ -73,7 +73,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
     return (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isSubmitting && onClose()}></div>
+            <div className="absolute inset-0 bg-brand-900/60 backdrop-blur-sm" onClick={() => !isSubmitting && onClose()}></div>
 
             <div className="bg-white rounded-t-[32px] sm:rounded-[40px] w-full max-w-lg shadow-2xl relative overflow-hidden animate-in slide-in-from-bottom sm:zoom-in duration-300">
                 <div className="p-8 lg:p-10">

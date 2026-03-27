@@ -55,7 +55,7 @@ export const OCRScanner: React.FC<OCRScannerProps> = ({
                         </div>
                         <h3 className="text-3xl font-black text-slate-900 mb-3 tracking-tight">Envie seu documento</h3>
                         <p className="text-slate-500 font-medium mb-10 max-w-sm mx-auto text-lg leading-relaxed">Extratos, cupons ou faturas. Nossa IA normaliza tudo instantaneamente.</p>
-                        <button className="px-12 py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/40 hover:bg-brand-600 transition-all active:scale-95">
+                        <button className="px-12 py-5 bg-brand-900 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/40 hover:bg-brand-600 transition-all active:scale-95">
                             Selecionar Arquivo
                         </button>
                     </div>

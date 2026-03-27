@@ -373,7 +373,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                             </div>
 
                             <div className="flex flex-col items-center gap-4 relative">
-                                <div className="absolute -top-12 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xl border border-slate-700 flex items-center gap-2">
+                                <div className="absolute -top-12 px-4 py-2 bg-brand-900 text-white rounded-xl text-xs font-bold shadow-xl border border-slate-700 flex items-center gap-2">
                                     {isBetterIncome ? <TrendingUp size={14} className="text-emerald-400" /> : <TrendingDown size={14} className="text-rose-400" />}
                                     {isBetterIncome ? '+' : '-'}{Math.abs(momPercentChangeIncome).toFixed(1)}%
                                 </div>
@@ -406,7 +406,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                             </div>
 
                             <div className="flex flex-col items-center gap-4 relative">
-                                <div className="absolute -top-12 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xl border border-slate-700 flex items-center gap-2">
+                                <div className="absolute -top-12 px-4 py-2 bg-brand-900 text-white rounded-xl text-xs font-bold shadow-xl border border-slate-700 flex items-center gap-2">
                                     {isWorseExpense ? <TrendingUp size={14} className="text-rose-400" /> : <TrendingDown size={14} className="text-emerald-400" />}
                                     {isWorseExpense ? '+' : '-'}{Math.abs(momPercentChangeExpense).toFixed(1)}%
                                 </div>

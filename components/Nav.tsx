@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle } from 'lucide-react';
+import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown } from 'lucide-react';
 import { Profile } from '../types';
 import { supabase } from '../lib/supabase/client';
 import { useTour } from '../contexts/TourContext';
@@ -20,6 +20,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { label: 'Metas', path: '/goals', icon: <Target size={20} /> },
     { label: 'Orçamento', path: '/budget', icon: <PieChart size={20} /> },
     { label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },
+    { label: 'Relatórios', path: '/reports', icon: <FileDown size={20} /> },
     { label: 'Ajustes', path: '/settings', icon: <Settings size={20} /> },
   ];
 
@@ -67,13 +68,6 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
 
           <div className="flex flex-col gap-2">
             <button
-              onClick={() => startTour()}
-              className="flex items-center justify-center gap-3 w-full px-4 py-2.5 text-brand-600 bg-brand-50 hover:bg-brand-100 rounded-xl transition-all text-xs font-bold uppercase tracking-widest"
-            >
-              <HelpCircle size={16} />
-              Tour Interativo
-            </button>
-            <button
               onClick={() => supabase?.auth.signOut()}
               className="flex items-center justify-center gap-3 w-full px-4 py-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all text-sm font-medium"
             >
@@ -99,9 +93,6 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
         </Link>
 
         <div className="flex items-center gap-2">
-          <button onClick={() => startTour()} className="p-2 text-brand-600 bg-brand-50 rounded-lg">
-            <HelpCircle size={20} />
-          </button>
           <button className="p-2 text-slate-400">
             <Bell size={20} />
           </button>
@@ -110,7 +101,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
 
       {/* Mobile Menu Overlay */}
       <div className={`fixed inset-0 z-40 lg:hidden transition-all duration-300 ${isMenuOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
-        <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm" onClick={() => setIsMenuOpen(false)} />
+        <div className="absolute inset-0 bg-brand-900/20 backdrop-blur-sm" onClick={() => setIsMenuOpen(false)} />
         <div className={`absolute top-0 left-0 w-4/5 h-full bg-white shadow-2xl flex flex-col transition-all duration-300 transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="flex items-center justify-between p-6 pb-4">
             <div className="flex items-center gap-3">

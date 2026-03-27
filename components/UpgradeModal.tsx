@@ -21,7 +21,7 @@ export default function UpgradeModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-xl">
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-brand-900/90 backdrop-blur-xl">
       <div className="bg-white rounded-3xl max-w-md w-full p-8 text-center shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-rose-500 to-orange-500" />
         

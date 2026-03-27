@@ -13,6 +13,7 @@ import parseStatement from '../server/parse-statement';
 import processImport from '../server/process-import';
 import publicPlans from '../server/public-plans';
 import notifyBillsDue from '../server/notify-bills-due';
+import whatsappWebhook from '../server/whatsapp-webhook';
 
 export default async function handler(req: any, res: any) {
   const urlParts = req.url?.split('?')[0].split('/').filter(Boolean);
@@ -34,6 +35,7 @@ export default async function handler(req: any, res: any) {
     case 'parse-statement': return parseStatement(req, res);
     case 'process-import': return processImport(req, res);
     case 'public-plans': return publicPlans(req, res);
+    case 'whatsapp-webhook': return whatsappWebhook(req, res);
     default:
       return res.status(404).json({ error: 'Endpoint router not found: ' + funcName });
   }

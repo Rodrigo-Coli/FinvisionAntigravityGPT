@@ -132,7 +132,7 @@ const CashFlowProjection: React.FC<{ userId: string, currentBalance: number }> =
                                         return (
                                             <div key={i} className="flex-1 min-w-0 flex flex-col items-center gap-3 relative group">
                                                 {/* Tooltip Hover */}
-                                                <div className="absolute -top-12 opacity-0 group-hover:opacity-100 bg-slate-900 text-white p-2 rounded-lg text-[10px] whitespace-nowrap z-10 transition-opacity pointer-events-none shadow-xl">
+                                                <div className="absolute -top-12 opacity-0 group-hover:opacity-100 bg-brand-900 text-white p-2 rounded-lg text-[10px] whitespace-nowrap z-10 transition-opacity pointer-events-none shadow-xl">
                                                     <div className="font-bold border-b border-white/10 pb-1 mb-1">{p.monthLabel}</div>
                                                     <div className="text-emerald-400">Receitas Pendentes: {fmt(p.projectedIncome)}</div>
                                                     <div className="text-rose-400">Despesas Pendentes: {fmt(p.projectedExpense)}</div>

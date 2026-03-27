@@ -129,7 +129,7 @@ const BudgetPage: React.FC<{ user: any }> = ({ user }) => {
                         {currentMonth.split('-').reverse().join('/')} • Defina limites por categoria e monitore em tempo real.
                     </p>
                 </div>
-                <button onClick={openAdd} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-xs font-bold uppercase tracking-widest shadow-lg hover:scale-105 active:scale-95 transition-all">
+                <button onClick={openAdd} className="flex items-center gap-2 px-6 py-3 bg-brand-900 text-white rounded-2xl text-xs font-bold uppercase tracking-widest shadow-lg hover:scale-105 active:scale-95 transition-all">
                     <Plus size={16} /> Novo Limite
                 </button>
             </div>
@@ -198,7 +198,7 @@ const BudgetPage: React.FC<{ user: any }> = ({ user }) => {
 
             {/* Modal */}
             {showModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-sm animate-in fade-in">
                     <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
                         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                             <h3 className="font-bold text-slate-900">{editingBudget ? 'Editar Limite' : 'Novo Limite de Orçamento'}</h3>

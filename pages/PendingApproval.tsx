@@ -81,7 +81,7 @@ const PendingApproval: React.FC<PendingApprovalProps> = ({ user }) => {
             <button
               onClick={handleCheckStatus}
               disabled={checking}
-              className="w-full h-16 bg-slate-900 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-brand-600 transition-all shadow-xl shadow-slate-200 disabled:opacity-50"
+              className="w-full h-16 bg-brand-900 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-brand-600 transition-all shadow-xl shadow-slate-200 disabled:opacity-50"
             >
               {checking ? <Loader2 className="animate-spin" size={20} /> : <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />}
               <span className="uppercase tracking-widest text-xs">Atualizar Status</span>

@@ -19,7 +19,7 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
         <div className="lg:col-span-3 space-y-6 animate-in fade-in duration-700">
             <div className="bg-white rounded-[48px] border border-slate-200/50 shadow-2xl overflow-hidden flex flex-col md:flex-row h-[650px]">
                 {/* Left Side: Control Panel */}
-                <div className="md:w-[380px] bg-slate-900 p-12 flex flex-col justify-between text-white relative">
+                <div className="md:w-[380px] bg-brand-900 p-12 flex flex-col justify-between text-white relative">
                     <div className="absolute top-0 right-0 p-12 opacity-[0.03] pointer-events-none">
                         <Mic size={240} />
                     </div>

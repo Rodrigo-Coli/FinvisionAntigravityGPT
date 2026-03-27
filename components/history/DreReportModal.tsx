@@ -55,7 +55,7 @@ export const DreReportModal: React.FC<DreReportModalProps> = ({ report, onClose 
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 print:p-0 print:bg-white sm:p-6 fade-in print:block">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-900/60 backdrop-blur-sm p-4 print:p-0 print:bg-white sm:p-6 fade-in print:block">
             <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col h-full max-h-[90vh] print:max-h-none print:shadow-none print:h-auto print:rounded-none">
 
                 {/* Cabeçalho */}

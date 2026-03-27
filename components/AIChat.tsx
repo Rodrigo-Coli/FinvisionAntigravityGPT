@@ -96,7 +96,7 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
     return (
         <div className="bg-white border border-slate-100 rounded-[32px] shadow-sm overflow-hidden flex flex-col h-full">
             {/* Header */}
-            <div className="p-4 sm:p-6 border-b border-slate-50 flex items-center justify-between bg-slate-900 text-white">
+            <div className="p-4 sm:p-6 border-b border-slate-50 flex items-center justify-between bg-brand-900 text-white">
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/10 rounded-xl flex items-center justify-center">
                         <Sparkles size={18} className="text-brand-400" />

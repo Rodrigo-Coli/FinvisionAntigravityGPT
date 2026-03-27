@@ -29,7 +29,7 @@ export const StatementSummary: React.FC<StatementSummaryProps> = ({
             {/* TOP INFO & ACTIONS */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div className="flex items-center gap-5">
-                    <div className="w-16 h-16 rounded-[22px] bg-slate-900 flex items-center justify-center text-white shadow-xl shadow-slate-900/10">
+                    <div className="w-16 h-16 rounded-[22px] bg-brand-900 flex items-center justify-center text-white shadow-xl shadow-slate-900/10">
                         <Wallet size={32} />
                     </div>
                     <div>

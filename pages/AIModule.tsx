@@ -249,7 +249,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       </div>
                       <h3 className="text-3xl font-bold text-slate-900 mb-3 tracking-tight">O que você comprou?</h3>
                       <p className="text-slate-400 font-medium mb-10 max-w-xs mx-auto text-lg leading-relaxed">Envie um Cupom Fiscal para extrair itens e comparar preços.</p>
-                      <button className="px-10 py-4 bg-slate-900 text-white rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl transition-all hover:bg-brand-600">Selecionar Cupom</button>
+                      <button className="px-10 py-4 bg-brand-900 text-white rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl transition-all hover:bg-brand-600">Selecionar Cupom</button>
                     </div>
                   )}
                 </div>
@@ -304,7 +304,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
               {receipt && (
                 <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl p-8 sticky top-24 space-y-8">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg"><Check size={24} /></div>
+                    <div className="w-12 h-12 bg-brand-900 text-white rounded-2xl flex items-center justify-center shadow-lg"><Check size={24} /></div>
                     <div>
                       <h3 className="font-bold text-slate-900 text-xl">Confirmar</h3>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
@@ -330,7 +330,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                     ))}
                   </div>
 
-                  <div className="p-6 bg-slate-900 rounded-[32px] text-white space-y-2">
+                  <div className="p-6 bg-brand-900 rounded-[32px] text-white space-y-2">
                     <div className="flex justify-between items-center opacity-40">
                       <span className="text-[10px] font-bold uppercase tracking-widest">Valor Conciliado</span>
                       <Calculator size={14} />
@@ -430,7 +430,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                         </div>
                         <button
                           onClick={() => !shoppingList.find(i => i.id === product.id) && setShoppingList([...shoppingList, product])}
-                          className="w-full h-12 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-brand-600 transition-all"
+                          className="w-full h-12 bg-brand-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-brand-600 transition-all"
                         >
                           Adicionar à Lista
                         </button>
@@ -444,7 +444,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
         {activeTab === 'shopping' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 bg-slate-900 rounded-[40px] p-12 text-white relative overflow-hidden">
+            <div className="lg:col-span-2 bg-brand-900 rounded-[40px] p-12 text-white relative overflow-hidden">
               <div className="relative z-10">
                 <h2 className="text-4xl font-bold tracking-tighter mb-4 italic">Lista Otimizada</h2>
                 <p className="text-slate-400 text-lg max-w-lg mb-12">Economize comprando itens onde eles são mais baratos.</p>
@@ -489,7 +489,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         {activeTab === 'history' && (
           <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="bg-slate-900 rounded-[40px] p-12 text-white overflow-hidden relative">
+              <div className="bg-brand-900 rounded-[40px] p-12 text-white overflow-hidden relative">
                 <div className="relative z-10 space-y-4">
                   <div className="flex items-center gap-3">
                     <BarChart3 size={20} className="text-brand-400" />
@@ -534,7 +534,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         {activeTab === 'wealth' && (
           <div className="space-y-8">
             {/* Hero header */}
-            <div className="bg-slate-900 rounded-[40px] p-10 md:p-16 text-white relative overflow-hidden">
+            <div className="bg-brand-900 rounded-[40px] p-10 md:p-16 text-white relative overflow-hidden">
               <div className="absolute -top-10 -right-10 w-64 h-64 bg-brand-500/10 rounded-full blur-3xl" />
               <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
                 <div className="w-20 h-20 bg-white/5 border border-white/10 rounded-[28px] flex items-center justify-center shrink-0">

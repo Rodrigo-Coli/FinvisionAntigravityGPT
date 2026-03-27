@@ -44,7 +44,7 @@ const ForgotPassword: React.FC = () => {
                 Verifique sua caixa de entrada para o link de recuperação. Não esqueça de checar o spam.
               </p>
               <div className="mt-10">
-                <Link to="/login" className="block w-full h-14 bg-slate-900 text-white rounded-2xl font-bold flex items-center justify-center uppercase tracking-widest text-[10px] hover:bg-brand-600 transition-all shadow-xl shadow-slate-200">Retornar ao Login</Link>
+                <Link to="/login" className="block w-full h-14 bg-brand-900 text-white rounded-2xl font-bold flex items-center justify-center uppercase tracking-widest text-[10px] hover:bg-brand-600 transition-all shadow-xl shadow-slate-200">Retornar ao Login</Link>
               </div>
             </div>
           ) : (
@@ -80,7 +80,7 @@ const ForgotPassword: React.FC = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full h-16 bg-slate-900 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-brand-600 transition-all shadow-xl shadow-slate-200 disabled:opacity-50 active:scale-[0.98]"
+                  className="w-full h-16 bg-brand-900 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-brand-600 transition-all shadow-xl shadow-slate-200 disabled:opacity-50 active:scale-[0.98]"
                 >
                   {loading ? <Loader2 className="animate-spin" size={20} /> : <Mail size={20} />}
                   <span className="uppercase tracking-widest text-xs">Enviar Link de Resgate</span>
