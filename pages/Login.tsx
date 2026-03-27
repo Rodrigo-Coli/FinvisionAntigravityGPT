@@ -36,7 +36,7 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-white p-6 animate-in fade-in duration-700">
       <div className="max-w-md w-full p-4">
         <div className="text-center mb-12">
-          <div className="w-20 h-20 bg-slate-900 rounded-[28px] flex items-center justify-center text-white font-bold italic text-3xl mx-auto mb-6 shadow-2xl shadow-slate-200">
+          <div className="w-20 h-20 bg-brand-900 rounded-[28px] flex items-center justify-center text-white font-bold italic text-3xl mx-auto mb-6 shadow-2xl shadow-slate-200">
             FV
           </div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">FinVision Pro</h1>
@@ -97,7 +97,7 @@ const Login: React.FC = () => {
             <button
               type="submit"
               disabled={loading || !isSupabaseConfigured}
-              className="w-full h-16 bg-slate-900 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-brand-600 transition-all shadow-xl shadow-slate-200 disabled:opacity-50 active:scale-[0.98]"
+              className="w-full h-16 bg-brand-900 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-brand-600 transition-all shadow-xl shadow-slate-200 disabled:opacity-50 active:scale-[0.98]"
             >
               {loading ? <Loader2 className="animate-spin" size={20} /> : <LogIn size={20} />}
               <span className="uppercase tracking-widest text-xs">Entrar no Sistema</span>
