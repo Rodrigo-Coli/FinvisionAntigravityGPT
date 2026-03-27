@@ -19,11 +19,8 @@ export const TourProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [run, setRun] = useState(false);
 
   useEffect(() => {
-    const done = localStorage.getItem('finvision_tour_completed');
-    if (!done) {
-      const t = setTimeout(() => setRun(true), 1200);
-      return () => clearTimeout(t);
-    }
+    // Tour automático removido a pedido do usuário. 
+    // O contexto permanece caso queira disparar manualmente via botão no futuro.
   }, []);
 
   const startTour = () => setRun(true);
