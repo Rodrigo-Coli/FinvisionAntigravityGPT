@@ -320,7 +320,7 @@ const Assets: React.FC = () => {
 
       {/* SUMMARY BANNER */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-slate-900 md:col-span-1 rounded-[32px] p-8 text-white relative overflow-hidden group">
+        <div className="bg-brand-900 md:col-span-1 rounded-[32px] p-8 text-white relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-bl-[100px] -translate-y-10 translate-x-10" />
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Total Consolidado</p>
           <h3 className="text-3xl font-bold tracking-tight">{formatCurrency(totalNetWorth)}</h3>
@@ -435,7 +435,7 @@ const Assets: React.FC = () => {
               <div key={asset.id} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden group hover:border-brand-200 transition-all duration-300">
                 <div className="p-8 space-y-6">
                   <div className="flex justify-between items-start">
-                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${asset.category === 'REAL_ESTATE' ? 'bg-blue-50 text-blue-600' : 'bg-slate-900 text-white'} shadow-lg shadow-current/5`}>
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${asset.category === 'REAL_ESTATE' ? 'bg-blue-50 text-blue-600' : 'bg-brand-900 text-white'} shadow-lg shadow-current/5`}>
                       {asset.category === 'REAL_ESTATE' ? <Home size={28} /> : <Car size={28} />}
                     </div>
                     <button onClick={() => openEditAsset(asset)} className="p-2 text-slate-400 hover:bg-slate-50 hover:text-brand-600 rounded-xl transition-colors">
@@ -476,7 +476,7 @@ const Assets: React.FC = () => {
                 <div className="flex flex-col lg:flex-row gap-12 lg:items-center">
                   <div className="flex-1 space-y-8">
                     <div className="flex items-center gap-5">
-                      <div className="w-16 h-16 bg-slate-900 text-white rounded-[22px] flex items-center justify-center font-bold text-2xl shadow-xl shadow-slate-900/10 shrink-0">
+                      <div className="w-16 h-16 bg-brand-900 text-white rounded-[22px] flex items-center justify-center font-bold text-2xl shadow-xl shadow-slate-900/10 shrink-0">
                         {broker.name.charAt(0)}
                       </div>
                       <div>
@@ -582,7 +582,7 @@ const Assets: React.FC = () => {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-bold text-slate-900">Novo Bem Físico</h3>
@@ -650,7 +650,7 @@ const Assets: React.FC = () => {
       )}
 
       {showLiabilityModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-bold text-slate-900">{editingLiability ? 'Editar Dívida / Passivo' : 'Nova Dívida / Passivo'}</h3>
