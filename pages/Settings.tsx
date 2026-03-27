@@ -29,12 +29,15 @@ import {
   ArrowUpRight,
   Archive,
   Building2,
+  Gem,
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
+import { useSubscription } from '../contexts/SubscriptionContext';
 import { DateUtils } from '../lib/dateUtils';
 
 const SettingsPage: React.FC = () => {
-  const [activeSection, setActiveSection] = useState<'general' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities'>('general');
+  const [activeSection, setActiveSection] = useState<'general' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription'>('general');
+  const { subscription, loadingSub } = useSubscription();
   const [settings, setSettings] = useState({
     email_notifications: true,
     auto_dark_mode: false,
@@ -237,6 +240,7 @@ const SettingsPage: React.FC = () => {
 
   const menuItems = [
     { id: 'general', label: 'Preferências', icon: <SettingsIcon size={18} /> },
+    { id: 'subscription', label: 'Meu Plano', icon: <Gem size={18} /> },
     { id: 'categories', label: 'Categorias', icon: <Tags size={18} /> },
     { id: 'entities', label: 'Entidades / Donos', icon: <Building2 size={18} /> },
     { id: 'establishments', label: 'Estabelecimentos', icon: <Store size={18} /> },
@@ -278,7 +282,7 @@ const SettingsPage: React.FC = () => {
                 <button
                   onClick={() => setActiveSection(item.id as any)}
                   className={`flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-bold uppercase tracking-widest transition-all whitespace-nowrap ${activeSection === item.id
-                    ? 'bg-slate-900 text-white shadow-xl shadow-slate-200'
+                    ? 'bg-brand-900 text-white shadow-xl shadow-slate-200'
                     : 'bg-white text-slate-400 hover:bg-slate-50 border border-slate-100'
                     }`}
                 >
@@ -292,6 +296,76 @@ const SettingsPage: React.FC = () => {
 
         {/* CONTENT AREA */}
         <main className="flex-1 space-y-8 min-w-0">
+          {activeSection === 'subscription' && (
+            <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+              <div className="bg-brand-900 rounded-[40px] p-12 text-white relative overflow-hidden shadow-2xl">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl opacity-50" />
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center border border-white/20">
+                        <Gem size={28} />
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-[0.3em] bg-white/20 px-4 py-2 rounded-full border border-white/10">Plano Oficial Produtor</span>
+                    </div>
+                    <h2 className="text-4xl font-black tracking-tight">{subscription?.plans?.name || 'Carregando...'}</h2>
+                    <div className="flex items-center gap-4 text-brand-200 font-bold text-sm">
+                      <div className="flex items-center gap-2">
+                        <Shield size={16} />
+                        Status: <span className="text-white uppercase tracking-widest text-xs">{subscription?.status || 'Active'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock size={16} />
+                        Expira: <span className="text-white">{subscription?.current_period_end ? DateUtils.formatDisplayDate(subscription.current_period_end) : 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20 min-w-[240px]">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-300 mb-4 text-center">Limites Disponíveis</p>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs font-bold">
+                          <span>Escaneamentos IA</span>
+                          <span>94 / {subscription?.plans?.ai_scans_limit || 100}</span>
+                        </div>
+                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                          <div className="h-full bg-white w-[94%]" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="bg-white rounded-[40px] border border-slate-100 p-10 shadow-sm">
+                  <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-3 italic">
+                    <Check className="text-brand-600" /> Benefícios Ativos
+                  </h3>
+                  <ul className="space-y-4">
+                    {['Relatórios Financeiros Ilimitados', 'Conciliação Bancária com IA', 'Insights de Patrimônio Consolidado', 'Multi-Moedas e Taxas em Tempo Real', 'Suporte Prioritário Via WhatsApp'].map((feat, i) => (
+                      <li key={i} className="flex items-center gap-3 text-sm font-medium text-slate-500">
+                        <div className="w-1.5 h-1.5 bg-brand-400 rounded-full" />
+                        {feat}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="bg-white rounded-[40px] border border-slate-100 p-10 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 mb-4 italic">Precisa de mais?</h3>
+                    <p className="text-sm text-slate-500 font-medium">Sua conta atual permite gerenciar até 10 entidades simultâneas. Para limites corporativos ou white-label, entre em contato.</p>
+                  </div>
+                  <button className="mt-8 w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-black transition-all">
+                    Upgrade para Business
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeSection === 'general' && (
             <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm p-10 space-y-10">
               <div className="space-y-2">
@@ -373,7 +447,7 @@ const SettingsPage: React.FC = () => {
                     <button onClick={() => setCategoryTab('INCOME')} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-xs font-bold transition-all ${categoryTab === 'INCOME' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Receitas</button>
                     <button onClick={() => setCategoryTab('EXPENSE')} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-xs font-bold transition-all ${categoryTab === 'EXPENSE' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Despesas</button>
                   </div>
-                  <button onClick={() => setIsAddingCat(true)} className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all flex items-center gap-2"><Plus size={16} /> Novo</button>
+                  <button onClick={() => setIsAddingCat(true)} className="px-6 py-3 bg-brand-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all flex items-center gap-2"><Plus size={16} /> Novo</button>
                 </div>
               </div>
               <div className="divide-y divide-slate-50">
@@ -458,7 +532,7 @@ const SettingsPage: React.FC = () => {
                                 onChange={e => setNewSubcatName(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && addSubcategory(cat.id)}
                               />
-                              <button onClick={() => addSubcategory(cat.id)} disabled={!newSubcatName} className="p-2 bg-slate-900 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-all"><Plus size={16} /></button>
+                              <button onClick={() => addSubcategory(cat.id)} disabled={!newSubcatName} className="p-2 bg-brand-900 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed hover:bg-brand-600 transition-all"><Plus size={16} /></button>
                             </div>
                           </div>
                         </div>
@@ -519,7 +593,7 @@ const SettingsPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm p-10 space-y-10">
                 <div className="space-y-4">
-                  <div className="w-16 h-16 bg-slate-900 text-white rounded-[24px] flex items-center justify-center shadow-xl"><Percent size={32} /></div>
+                  <div className="w-16 h-16 bg-brand-900 text-white rounded-[24px] flex items-center justify-center shadow-xl"><Percent size={32} /></div>
                   <div>
                     <h2 className="text-2xl font-bold text-slate-900 italic">Conversão</h2>
                     <p className="text-sm text-slate-400 font-medium">Parâmetros para câmbio internacional.</p>
@@ -574,7 +648,7 @@ const SettingsPage: React.FC = () => {
                   >
                     {showArchived ? 'Ocultar Arquivadas' : 'Ver Arquivadas'}
                   </button>
-                  <button onClick={() => setIsAddingEntity(true)} className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all flex items-center gap-2">
+                  <button onClick={() => setIsAddingEntity(true)} className="px-6 py-3 bg-brand-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all flex items-center gap-2">
                     <Plus size={16} /> Nova Entidade
                   </button>
                 </div>
@@ -646,7 +720,7 @@ const SettingsPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-slate-900 rounded-[40px] p-12 text-white relative overflow-hidden shadow-2xl">
+              <div className="bg-brand-900 rounded-[40px] p-12 text-white relative overflow-hidden shadow-2xl">
                 <div className="absolute top-[-20px] right-[-20px] opacity-10"><Cloud size={200} /></div>
                 <div className="relative z-10 space-y-8">
                   <div className="space-y-2">
