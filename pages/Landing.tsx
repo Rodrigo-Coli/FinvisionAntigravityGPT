@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase/client';
 import { 
   ArrowRight, Sparkles, Brain, ShieldCheck, 
@@ -68,9 +68,27 @@ export default function Landing() {
           </div>
 
           <button className="md:hidden text-white p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-            {mobileMenuOpen ? <X /> : <Menu />}
+            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
+
+        {/* MOBILE MENU OVERLAY */}
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 z-[60] md:hidden bg-[#020617] p-8 flex flex-col items-center justify-center space-y-8 animate-in fade-in zoom-in duration-300">
+            <button className="absolute top-6 right-6 text-white p-2" onClick={() => setMobileMenuOpen(false)}>
+              <X size={32} />
+            </button>
+            <div className="w-16 h-16 bg-gradient-to-br from-brand-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white mb-4">
+              <Sparkles size={32} />
+            </div>
+            <a href="#inteligencia" onClick={() => setMobileMenuOpen(false)} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest">A Mágica da IA</a>
+            <a href="#ecosystem" onClick={() => setMobileMenuOpen(false)} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest">Ecossistema</a>
+            <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest">Licenças</a>
+            <div className="w-full h-px bg-white/10 my-4" />
+            <button onClick={() => { setMobileMenuOpen(false); navigate('/login'); }} className="text-lg font-bold text-white uppercase tracking-widest">Acessar Conta</button>
+            <button onClick={() => { setMobileMenuOpen(false); navigate('/demo'); }} className="w-full py-5 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-[0.2em]">Vivenciar Demo</button>
+          </div>
+        )}
       </nav>
 
       <main>
@@ -107,7 +125,7 @@ export default function Landing() {
 
           {/* SaaS Mockup / Hero Animated DOM */}
           <div className="relative max-w-[1000px] mx-auto mt-24 px-6 animate-in fade-in slide-in-from-bottom-24 duration-1000 delay-500 z-10">
-            <div className="relative rounded-3xl border border-white/10 bg-slate-900/60 backdrop-blur-2xl shadow-[0_0_100px_rgba(79,70,229,0.15)] p-4 md:p-8 overflow-hidden transform perspective-1000 rotate-x-12 scale-100 hover:scale-[1.02] transition-transform duration-1000 group">
+            <div className="relative rounded-3xl border border-white/10 bg-brand-900/60 backdrop-blur-2xl shadow-[0_0_100px_rgba(79,70,229,0.15)] p-4 md:p-8 overflow-hidden transform perspective-1000 rotate-x-12 scale-100 hover:scale-[1.02] transition-transform duration-1000 group">
               
               {/* Fake Dashboard Header */}
               <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-6">
@@ -178,7 +196,7 @@ export default function Landing() {
         </section>
 
         {/* 3. SOCIAL PROOF (BANK INTEGRATIONS) */}
-        <section className="py-10 border-y border-white/5 bg-slate-900/30 relative z-10">
+        <section className="py-10 border-y border-white/5 bg-brand-900/30 relative z-10">
           <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-8">Compatível com extratos das maiores instituições</p>
             <div className="flex flex-wrap justify-center gap-12 md:gap-24 opacity-40 grayscale contrast-200">
@@ -234,7 +252,7 @@ export default function Landing() {
               </div>
 
               {/* BENTO ITEM 2: Inflação Pessoal (Span 1) */}
-              <div className="bg-slate-900 border border-white/10 rounded-[40px] p-8 relative overflow-hidden group">
+              <div className="bg-brand-900 border border-white/10 rounded-[40px] p-8 relative overflow-hidden group">
                 <div className="absolute bottom-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform duration-700">
                   <TrendingUp size={120} />
                 </div>
@@ -248,7 +266,7 @@ export default function Landing() {
               </div>
 
               {/* BENTO ITEM 3: Escâner de Cupom (Span 1) */}
-              <div className="bg-slate-900 border border-white/10 rounded-[40px] p-8 relative overflow-hidden group">
+              <div className="bg-brand-900 border border-white/10 rounded-[40px] p-8 relative overflow-hidden group">
                 <div className="absolute top-10 right-10 opacity-30 group-hover:opacity-100 transition-opacity duration-500 delay-100">
                    <div className="w-16 h-16 border-2 border-dashed border-brand-500 rounded-xl animate-spin-slow"></div>
                 </div>
@@ -281,7 +299,7 @@ export default function Landing() {
                 { icon: <Box size={24} />, title: "Patrimônio e Dívidas", color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", desc: "Registre imóveis, veículos, consórcios e financiamentos calculando amortização." },
                 { icon: <Store size={24} />, title: "Lista de Compras IA", color: "text-rose-400", bg: "bg-rose-500/10", border: "border-rose-500/20", desc: "Aviso algorítmico te enviando exatamente para o Mercado onde seus itens são mais baratos." }
               ].map((ft, i) => (
-                <div key={i} className="bg-slate-900 border border-white/5 rounded-[32px] p-8 hover:bg-slate-800 transition-colors">
+                <div key={i} className="bg-brand-900 border border-white/5 rounded-[32px] p-8 hover:bg-slate-800 transition-colors">
                   <div className={`w-14 h-14 ${ft.bg} ${ft.border} border rounded-2xl flex items-center justify-center ${ft.color} mb-6`}>{ft.icon}</div>
                   <h3 className="text-xl font-bold mb-3 text-white">{ft.title}</h3>
                   <p className="text-slate-400 text-sm leading-relaxed font-medium">{ft.desc}</p>
@@ -337,10 +355,10 @@ export default function Landing() {
                   <tr className="border-b border-white/10">
                     <th className="p-6 font-bold text-slate-500 uppercase tracking-widest text-xs w-[40%]">Capacidade Operacional</th>
                     <th className="p-6 text-center border-l border-white/5 w-[20%]">
-                      <span className="inline-block bg-slate-900 px-3 py-1 rounded-md text-slate-500 font-bold text-[10px] uppercase tracking-widest">Planilhas Excel</span>
+                      <span className="inline-block bg-brand-900 px-3 py-1 rounded-md text-slate-500 font-bold text-[10px] uppercase tracking-widest">Planilhas Excel</span>
                     </th>
                     <th className="p-6 text-center border-l border-white/5 w-[20%]">
-                      <span className="inline-block bg-slate-900 px-3 py-1 rounded-md text-slate-500 font-bold text-[10px] uppercase tracking-widest">Apps Genéricos</span>
+                      <span className="inline-block bg-brand-900 px-3 py-1 rounded-md text-slate-500 font-bold text-[10px] uppercase tracking-widest">Apps Genéricos</span>
                     </th>
                     <th className="p-6 text-center border-l border-brand-500/30 bg-brand-900/10 w-[20%]">
                       <span className="inline-block bg-brand-500 text-white px-4 py-1.5 rounded-md font-black text-[10px] uppercase tracking-[0.2em] shadow-lg">FinVision Pro</span>
@@ -379,7 +397,7 @@ export default function Landing() {
         {/* TESTEMUNHOS REMOVIDOS PARA MANTER CUIDADO COM FRAUD ALERTS DE PÚBLICO ALTA RENDA */}
 
         {/* PRICING BOLD */}
-        <section id="pricing" className="py-32 relative z-10 bg-slate-900 border-t border-white/5">
+        <section id="pricing" className="py-32 relative z-10 bg-brand-900 border-t border-white/5">
           <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
             <div className="text-center mb-20">
               <span className="text-[10px] font-black text-brand-400 uppercase tracking-[0.3em] mb-4 block">Invista em Organização</span>
@@ -472,9 +490,9 @@ export default function Landing() {
           <p className="text-slate-400 text-sm mb-10 max-w-sm">Elevando a barra do controle financeiro com tecnologia de inteligência artificial de ponta.</p>
           
           <div className="flex gap-8 mb-10 border-b border-white/5 pb-10 w-full justify-center">
-            <a href="#" className="font-bold text-[10px] uppercase tracking-widest hover:text-white transition-colors">Termos de Uso</a>
-            <a href="#" className="font-bold text-[10px] uppercase tracking-widest hover:text-white transition-colors">Privacidade</a>
-            <a href="#" className="font-bold text-[10px] uppercase tracking-widest hover:text-white transition-colors">Contato</a>
+            <Link to="/terms" className="font-bold text-[10px] uppercase tracking-widest hover:text-white transition-colors">Termos de Uso</Link>
+            <Link to="/privacy" className="font-bold text-[10px] uppercase tracking-widest hover:text-white transition-colors">Privacidade</Link>
+            <a href="mailto:suporte@automanow.com.br" className="font-bold text-[10px] uppercase tracking-widest hover:text-white transition-colors">Contato</a>
           </div>
 
           <p className="text-[10px] font-bold uppercase tracking-widest">© {new Date().getFullYear()} FinVision Software LTDA. O Motor por Trás do Seu Sucesso.</p>
