@@ -623,10 +623,10 @@ const Reconcile: React.FC = () => {
             <div className="space-y-4">
               <p className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em]">Fluxo de Entrada</p>
               <div className="grid grid-cols-3 gap-2">
-                <button onClick={() => setImportSource('bank')} className={`flex flex-col items-center gap-3 p-4 rounded-3xl border text-[9px] font-bold uppercase transition-all ${importSource === 'bank' ? 'bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-200' : 'bg-slate-50 border-slate-50 text-slate-400'}`}>
+                <button onClick={() => setImportSource('bank')} className={`flex flex-col items-center gap-3 p-4 rounded-3xl border text-[9px] font-bold uppercase transition-all ${importSource === 'bank' ? 'bg-brand-900 border-slate-900 text-white shadow-xl shadow-slate-200' : 'bg-slate-50 border-slate-50 text-slate-400'}`}>
                   <Building2 size={20} /> Banco
                 </button>
-                <button onClick={() => setImportSource('card')} className={`flex flex-col items-center gap-3 p-4 rounded-3xl border text-[9px] font-bold uppercase transition-all ${importSource === 'card' ? 'bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-200' : 'bg-slate-50 border-slate-50 text-slate-400'}`}>
+                <button onClick={() => setImportSource('card')} className={`flex flex-col items-center gap-3 p-4 rounded-3xl border text-[9px] font-bold uppercase transition-all ${importSource === 'card' ? 'bg-brand-900 border-slate-900 text-white shadow-xl shadow-slate-200' : 'bg-slate-50 border-slate-50 text-slate-400'}`}>
                   <CreditCard size={20} /> Cartão
                 </button>
                 <button onClick={() => setImportSource('smart')} className={`flex flex-col items-center gap-3 p-4 rounded-3xl border text-[9px] font-bold uppercase transition-all ${importSource === 'smart' ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-200' : 'bg-slate-50 border-slate-50 text-slate-400'}`}>
@@ -715,7 +715,7 @@ const Reconcile: React.FC = () => {
             </div>
 
             {selectedIds.size > 0 && (
-              <div className="sticky top-4 z-[50] mt-4 flex flex-wrap items-center gap-2 p-4 bg-slate-900 rounded-[24px] shadow-2xl animate-in zoom-in duration-300 w-full mb-6">
+              <div className="sticky top-4 z-[50] mt-4 flex flex-wrap items-center gap-2 p-4 bg-brand-900 rounded-[24px] shadow-2xl animate-in zoom-in duration-300 w-full mb-6">
                 <div className="flex items-center gap-2 px-3 border-r border-slate-700 mr-2">
                   <span className="text-[10px] font-black text-brand-400 uppercase tracking-widest">{selectedIds.size}</span>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selecionados</span>
