@@ -20,6 +20,7 @@ import { SeriesScopeModal, SeriesScope } from '../components/SeriesScopeModal';
 import { HistoryCharts } from '../components/history/HistoryCharts';
 import { DreReportModal } from '../components/history/DreReportModal';
 import { DreUtils, DreReport } from '../lib/dreUtils';
+import ContextualHelp from '../components/ContextualHelp';
 import { ArrowDownRight, ArrowUpRight, Wallet, Building2 } from 'lucide-react';
 
 // Initial fallback categories
@@ -1135,7 +1136,13 @@ const HistoryPage: React.FC = () => {
       {/* HEADER SECTION */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Histórico Financeiro</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-slate-900">Histórico Financeiro</h1>
+            <ContextualHelp 
+              title="Gestão de Lançamentos" 
+              description="Nesta tela você pode filtrar transações por categoria, conta ou período. Clique em 'Novo Lançamento' para adicionar manualmente ou use o 'Conciliador' no menu lateral para importar extratos bancários de forma massiva."
+            />
+          </div>
           <p className="text-sm text-slate-400 font-medium">Gestão detalhada e conciliação de lançamentos.</p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -1195,7 +1202,7 @@ const HistoryPage: React.FC = () => {
 
       {/* BARRA DE EDIÇÃO EM LOTE - Estilo Conciliação (AGORA NO TOPO PARA VISIBILIDADE) */}
       {selectedIds.size > 0 && (
-        <div className="sticky top-4 z-[100] flex flex-wrap items-center gap-3 p-4 bg-slate-900 rounded-[30px] shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500 border border-slate-800 mb-6">
+        <div className="sticky top-4 z-[100] flex flex-wrap items-center gap-3 p-4 bg-brand-900 rounded-[30px] shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500 border border-slate-800 mb-6">
           <div className="flex items-center gap-3 px-4 border-r border-slate-700 mr-2">
             <div className="w-8 h-8 bg-brand-500 rounded-full flex items-center justify-center text-white text-xs font-black">
               {selectedIds.size}
