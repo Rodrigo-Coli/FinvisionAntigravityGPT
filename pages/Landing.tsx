@@ -29,9 +29,9 @@ export default function Landing() {
           setPlans(data);
         } else {
           setPlans([
-            { id: '1', name: 'Essencial', price_monthly: 19.90, price_annual: 199.00, max_ai_interactions: 10, features: ['1 Gestão de Conta', 'Dashboard Inteligente', 'Suporte Básico'] },
-            { id: '2', name: 'Pro Master', price_monthly: 69.90, price_annual: 699.00, max_ai_interactions: 150, features: ['Contas Ilimitadas', 'Inteligência Artificial FinVision', 'Diagnóstico Patrimonial', 'Fila de Conciliação', 'Suporte Prioritário'], featured: true },
-            { id: '3', name: 'Private', price_monthly: 149.90, price_annual: 1499.00, max_ai_interactions: 9999, features: ['Wealth Advisor Dedicado', 'Escâner Neural de Cupons', 'Inflação Pessoal Exata', 'Gestão Multi-moedas Ouro'] }
+            { id: '1', name: 'Essencial', price_monthly: 19.90, price_annual: 199.00, max_ai_interactions: 60, features: ['1 Gestão de Conta', '60 Ações IA/mês', 'Suporte Básico'] },
+            { id: '2', name: 'Plus', price_monthly: 39.90, price_annual: 399.00, max_ai_interactions: 125, features: ['Contas Ilimitadas', '125 Ações IA/mês', 'Diagnóstico Patrimonial', 'Fila de Conciliação'], featured: true },
+            { id: '3', name: 'Pro', price_monthly: 49.90, price_annual: 499.00, max_ai_interactions: 175, features: ['Wealth Advisor Dedicado', '175 Ações IA/mês', 'Inflação Pessoal Exata', 'Gestão Multi-moedas'] }
           ]);
         }
       } catch (e) {}
@@ -40,6 +40,15 @@ export default function Landing() {
     fetchPlans();
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Bloqueio de scroll ao abrir menu mobile
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+  }, [mobileMenuOpen]);
 
   return (
     <div className="min-h-screen bg-[#020617] text-white font-sans selection:bg-brand-500/30 selection:text-brand-300 overflow-x-hidden">
@@ -71,25 +80,35 @@ export default function Landing() {
             {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
-
-        {/* MOBILE MENU OVERLAY */}
-        {mobileMenuOpen && (
-          <div className="fixed inset-0 z-[60] md:hidden bg-[#020617] p-8 flex flex-col items-center justify-center space-y-8 animate-in fade-in zoom-in duration-300">
-            <button className="absolute top-6 right-6 text-white p-2" onClick={() => setMobileMenuOpen(false)}>
-              <X size={32} />
-            </button>
-            <div className="w-16 h-16 bg-gradient-to-br from-brand-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white mb-4">
-              <Sparkles size={32} />
-            </div>
-            <a href="#inteligencia" onClick={() => setMobileMenuOpen(false)} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest">A Mágica da IA</a>
-            <a href="#ecosystem" onClick={() => setMobileMenuOpen(false)} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest">Ecossistema</a>
-            <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest">Licenças</a>
-            <div className="w-full h-px bg-white/10 my-4" />
-            <button onClick={() => { setMobileMenuOpen(false); navigate('/login'); }} className="text-lg font-bold text-white uppercase tracking-widest">Acessar Conta</button>
-            <button onClick={() => { setMobileMenuOpen(false); navigate('/demo'); }} className="w-full py-5 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-[0.2em]">Vivenciar Demo</button>
-          </div>
-        )}
       </nav>
+
+      {/* MOBILE MENU OVERLAY (Z-100 PARA FICAR ACIMA DE TUDO) */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-[100] md:hidden bg-[#020617] h-screen w-screen flex flex-col items-center justify-center animate-in fade-in slide-in-from-top duration-300">
+          <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center bg-[#020617]/80 backdrop-blur-md border-b border-white/5">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-brand-600 to-indigo-600 rounded-lg flex items-center justify-center text-white">
+                <Sparkles size={16} />
+              </div>
+              <span className="text-lg font-black tracking-tight text-white">FinVision<span className="text-brand-400">Pro</span></span>
+            </div>
+            <button className="text-white p-2" onClick={() => setMobileMenuOpen(false)}>
+              <X size={28} />
+            </button>
+          </div>
+          
+          <div className="flex flex-col items-center gap-8 w-full px-8 mt-16">
+            <a href="#inteligencia" onClick={() => setMobileMenuOpen(false)} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">A Mágica da IA</a>
+            <a href="#ecosystem" onClick={() => setMobileMenuOpen(false)} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">Ecossistema</a>
+            <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">Licenças</a>
+            
+            <div className="w-full h-px bg-white/10 my-4" />
+            
+            <button onClick={() => { setMobileMenuOpen(false); navigate('/login'); }} className="w-full py-4 text-lg font-bold text-white uppercase tracking-widest bg-white/5 rounded-2xl border border-white/10">Acessar Conta</button>
+            <button onClick={() => { setMobileMenuOpen(false); navigate('/demo'); }} className="w-full py-5 bg-white text-slate-900 rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl">Vivenciar Demo</button>
+          </div>
+        </div>
+      )}
 
       <main>
         {/* 2. HERO SECTION ÉPICA */}
@@ -394,8 +413,6 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* TESTEMUNHOS REMOVIDOS PARA MANTER CUIDADO COM FRAUD ALERTS DE PÚBLICO ALTA RENDA */}
-
         {/* PRICING BOLD */}
         <section id="pricing" className="py-32 relative z-10 bg-brand-900 border-t border-white/5">
           <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
@@ -450,6 +467,7 @@ export default function Landing() {
             </div>
           </div>
         </section>
+
         {/* FAQ SECTION */}
         <section className="py-32 relative z-10 bg-[#020617] border-t border-white/5">
           <div className="max-w-3xl mx-auto px-6 lg:px-8">
