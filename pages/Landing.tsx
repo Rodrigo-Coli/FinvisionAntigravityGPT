@@ -123,11 +123,11 @@ export default function Landing() {
               <Brain size={14} /> Introduzindo O Wealth Advisor Autônomo
             </div>
             
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white/90 to-slate-500 mb-8 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-1000 leading-[1.05]">
-              O primeiro Private Banker<br className="hidden md:block"/>que cabe no seu bolso.
+            <h1 className="text-xl sm:text-3xl md:text-5xl lg:text-7xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white/90 to-slate-500 mb-8 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-1000 leading-[1.05]">
+              O primeiro Private Banker <br className="hidden md:block" /> que cabe no seu bolso.
             </h1>
             
-            <p className="text-lg md:text-xl text-slate-400 font-medium mb-14 max-w-2xl mx-auto leading-relaxed animate-in fade-in slide-in-from-bottom-10 duration-1000 delay-150">
+            <p className="text-sm sm:text-base md:text-xl text-slate-400 font-medium mb-14 max-w-2xl mx-auto leading-relaxed animate-in fade-in slide-in-from-bottom-10 duration-1000 delay-150">
               Esqueça o trabalho braçal de planilhas. <span className="text-white italic">Orquestre sua riqueza</span>. O FinVision importa, cataloga e diagnostica seu patrimônio automaticamente com extrema precisão utilizando IA.
             </p>
 

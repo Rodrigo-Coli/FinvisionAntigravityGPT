@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, HashRouter } from 'react-router-dom';
 import { supabase } from './lib/supabase/client';
 import { Profile, UserRole } from './types';
 import Nav from './components/Nav';
+import ScrollToTop from './components/common/ScrollToTop';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -111,6 +112,7 @@ const App: React.FC = () => {
       <AuthProvider>
         <SubscriptionProvider>
           <HashRouter>
+            <ScrollToTop />
             <OfflineBanner />
             <TrialBanner />
             <UpgradeModal />
