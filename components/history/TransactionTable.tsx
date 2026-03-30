@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, Trash2, RotateCcw, Check, ChevronUp, ChevronDown, Search, Plus, X, Paperclip, Eye, Download, Upload } from 'lucide-react';
+import { Loader2, Trash2, RotateCcw, Check, ChevronUp, ChevronDown, Search, Plus, X, Paperclip, Eye, Download, Upload, Pencil } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 import { Transaction, BankAccount } from '../../types';
 
@@ -605,7 +605,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                 onClick={() => { setEditingRow({ id: t.id, field: 'date' }); setEditValue(t.date.split('T')[0]); }}
                                                 className="text-xs font-bold text-slate-400 active:text-brand-600 transition-colors"
                                             >
-                                                {DateUtils.formatDisplayDate(t.date)}
+                                                <div className="flex items-center gap-1.5">
+                                                    {DateUtils.formatDisplayDate(t.date)}
+                                                    <Pencil size={10} className="text-slate-200" />
+                                                </div>
                                             </button>
                                         )}
 
@@ -650,7 +653,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                             onClick={() => { setEditingRow({ id: t.id, field: 'description' }); setEditValue(t.description); }}
                                             className="text-sm font-bold text-slate-900 text-left w-full active:text-brand-600"
                                         >
-                                            {t.description || 'Sem descrição'}
+                                            <div className="flex items-center gap-1.5">
+                                                {t.description || 'Sem descrição'}
+                                                <Pencil size={11} className="text-slate-200" />
+                                            </div>
                                         </button>
                                     )}
 
@@ -860,7 +866,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                         ) : (
                                             <button onClick={() => { setEditingRow({ id: t.id, field: 'description' }); setEditValue(t.description); }}
                                                 className="text-sm font-bold text-slate-900 text-left hover:text-brand-600 transition-colors">
-                                                {t.description || 'Sem descrição'}
+                                                <div className="flex items-center gap-2 group/edit">
+                                                    {t.description || 'Sem descrição'}
+                                                    <Pencil size={12} className="text-slate-200 group-hover/edit:text-brand-500 transition-colors" />
+                                                </div>
                                             </button>
                                         )}
                                     </td>

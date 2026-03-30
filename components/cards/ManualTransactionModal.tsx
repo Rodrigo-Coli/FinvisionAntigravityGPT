@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, CheckCircle2 } from 'lucide-react';
+import { X, CheckCircle2, Camera } from 'lucide-react';
 
 interface ManualTransactionModalProps {
     show: boolean;
@@ -79,9 +79,9 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                 onClick={() => !isAnyModalBusy && onClose()}
             ></div>
 
-            <div className="bg-white rounded-t-[32px] sm:rounded-[40px] w-full max-w-lg shadow-2xl relative overflow-hidden animate-in slide-in-from-bottom sm:zoom-in duration-300">
+            <div className="bg-white rounded-t-[32px] sm:rounded-[40px] w-full max-w-lg shadow-2xl relative animate-in slide-in-from-bottom sm:zoom-in duration-300 max-h-[92vh] flex flex-col">
                 <div className="p-8 lg:p-10">
-                    <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center justify-between mb-8 sticky top-0 bg-white z-10">
                         <h2 className="text-2xl font-black text-slate-900 tracking-tight">Novo Gasto</h2>
                         <button
                             onClick={() => !isAnyModalBusy && onClose()}
@@ -92,7 +92,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                         </button>
                     </div>
 
-                    <div className="space-y-6">
+                    <div className="overflow-y-auto pr-2 -mr-2 space-y-6 flex-1 custom-scrollbar" style={{ maxHeight: 'calc(92vh - 120px)' }}>
                         <div>
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Cartão de Destino</label>
                             <select
@@ -305,13 +305,30 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                     }}
                                     accept="image/*,application/pdf"
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => document.getElementById('manual-tx-file')?.click()}
-                                    className="w-full py-3 bg-white border-2 border-dashed border-slate-200 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-2 shadow-sm"
-                                >
-                                    Selecionar Arquivos
-                                </button>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => document.getElementById('manual-tx-file')?.click()}
+                                            className="flex-1 py-3 bg-white border-2 border-dashed border-slate-200 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-2 shadow-sm"
+                                        >
+                                            Arquivos
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const input = document.getElementById('manual-tx-file') as HTMLInputElement;
+                                                if (input) {
+                                                    input.setAttribute('capture', 'environment');
+                                                    input.click();
+                                                    // Reset after a delay so normal clicks don't always trigger camera
+                                                    setTimeout(() => input.removeAttribute('capture'), 500);
+                                                }
+                                            }}
+                                            className="flex-1 py-3 bg-brand-50 text-brand-600 border-2 border-dashed border-brand-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-100 transition-all flex items-center justify-center gap-2 shadow-sm"
+                                        >
+                                            <Camera size={14} /> Tirar Foto
+                                        </button>
+                                    </div>
                             </div>
                         </div>
 

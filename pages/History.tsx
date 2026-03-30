@@ -973,8 +973,22 @@ const HistoryPage: React.FC = () => {
     if (!supabase || !addModal.open) return;
     const f = addModal.form;
     const amount = Math.abs(Number(f.amount.replace(',', '.')));
-    if (!f.description || !f.accountId || isNaN(amount)) return;
-    setAddModal(prev => prev.open ? { ...prev, isSubmitting: true } : prev);
+    
+    // Improved Validation
+    if (!f.description.trim()) {
+      setAddModal(prev => prev.open ? { ...prev, error: 'A descrição é obrigatória.' } : prev);
+      return;
+    }
+    if (!f.accountId) {
+      setAddModal(prev => prev.open ? { ...prev, error: 'Selecione uma conta bancária.' } : prev);
+      return;
+    }
+    if (isNaN(amount) || amount <= 0) {
+      setAddModal(prev => prev.open ? { ...prev, error: 'O valor deve ser um número válido maior que zero.' } : prev);
+      return;
+    }
+
+    setAddModal(prev => prev.open ? { ...prev, isSubmitting: true, error: null } : prev);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const userId = user?.id || 'offline-user';

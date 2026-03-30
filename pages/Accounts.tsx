@@ -74,6 +74,16 @@ const Accounts: React.FC = () => {
 
   useEffect(() => {
     fetchAccounts();
+    
+    // Check for auto-open state from navigation
+    const state = window.history.state?.usr;
+    if (state?.openModal) {
+      resetForm();
+      if (state.defaultType) setType(state.defaultType);
+      setShowModal(true);
+      // Clear state to avoid reopening on refresh
+      window.history.replaceState({}, document.title);
+    }
   }, []);
 
   const fetchAccounts = async () => {

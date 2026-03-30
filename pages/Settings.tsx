@@ -700,11 +700,11 @@ const SettingsPage: React.FC = () => {
                     <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center border border-indigo-100"><Database size={24} /></div>
                     <h3 className="font-bold text-slate-900 text-xl tracking-tight">Infraestrutura</h3>
                   </div>
-                  <p className="text-slate-400 font-medium leading-relaxed italic">Seus dados estão sincronizados via <span className="font-bold text-slate-600 uppercase text-xs tracking-widest">Supabase Cloud</span> com segurança de ponta a ponta.</p>
+                  <p className="text-slate-400 font-medium leading-relaxed italic">Seus dados estão sincronizados via <span className="font-bold text-slate-600 uppercase text-xs tracking-widest">FinVision Vault™</span> com tecnologia de banco de dados inteligente.</p>
 
                   <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border ${isSupabaseConfigured ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
                     {isSupabaseConfigured ? <Check size={14} /> : <XCircle size={14} />}
-                    {isSupabaseConfigured ? 'Nuvem Conectada' : 'Modo Offline'}
+                    {isSupabaseConfigured ? 'Vault Conectado' : 'Acesso Local'}
                   </div>
                 </div>
 

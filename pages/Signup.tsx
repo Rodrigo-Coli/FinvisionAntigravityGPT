@@ -18,10 +18,23 @@ const Signup: React.FC = () => {
       setError('Configuração do Cloud pendente.');
       return;
     }
+
+    // Security check: Block signups from localhost
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      setError('Por razões de segurança, a criação de contas é permitida apenas no domínio oficial de produção.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
+      const { data: authData, error: authError } = await supabase.auth.signUp({ 
+        email, 
+        password,
+        options: {
+          emailRedirectTo: window.location.origin
+        }
+      });
       if (authError) throw authError;
       if (authData.user) {
         await supabase.from('profiles').upsert({ id: authData.user.id, email: authData.user.email, role: UserRole.USER, is_approved: false });

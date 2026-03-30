@@ -169,7 +169,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       <div className="flex flex-wrap justify-between items-center gap-3">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Visão Geral</h1>
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight italic">Visão Geral</h1>
             <ContextualHelp 
               title="Dicas do Dashboard" 
               description="Aqui você monitora seu Patrimônio Líquido (Bens - Dívidas) e o Fluxo de Caixa projetado para os próximos meses. Use o Assistant AI à direita para tirar dúvidas sobre seus gastos."
@@ -200,7 +200,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
             <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <p className="text-white/70 text-sm font-medium uppercase tracking-widest text-[10px]">Patrimônio Líquido</p>
-                <h2 className={`text-4xl sm:text-5xl font-bold tracking-tight transition-all duration-300 ${!showBalance && 'blur-xl select-none'}`}>
+                <h2 className={`text-3xl sm:text-4xl font-black tracking-tighter transition-all duration-300 ${!showBalance && 'blur-xl select-none'}`}>
                   {showBalance ? format(data.netWorth) : 'R$ 00.000,00'}
                 </h2>
               </div>
@@ -320,7 +320,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
           {/* HISTÓRICO DE DESPESAS (CHART) */}
           <div className="mt-6 sm:mt-8 space-y-4">
-            <h3 className="text-lg font-bold text-slate-900">Gráficos de Lançamentos</h3>
+            <h3 className="text-lg font-black text-slate-900 italic">Análise de Fluxo</h3>
 
             {/* QUICK DATE FILTERS + CUSTOM RANGE + VIEW MODE TOGGLE (Abridged for Home) */}
             <div className="flex flex-col xl:flex-row items-start xl:items-center gap-4 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">

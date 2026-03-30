@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus,
   Home,
@@ -24,6 +25,7 @@ import { PhysicalAsset, InvestmentBroker, Liability } from '../types';
 import { supabase } from '../lib/supabase/client';
 
 const Assets: React.FC = () => {
+  const navigate = useNavigate();
   const [activeView, setActiveView] = useState<'overview' | 'physical' | 'investments' | 'liabilities'>('overview');
   const [physicalAssets, setPhysicalAssets] = useState<PhysicalAsset[]>([]);
   const [brokers, setBrokers] = useState<InvestmentBroker[]>([]);
@@ -470,7 +472,20 @@ const Assets: React.FC = () => {
         )}
 
         {activeView === 'investments' && (
-          <div className="space-y-8">
+          <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="flex justify-between items-center mb-4">
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-slate-900 tracking-tight">Carteira de Investimentos</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">Visão consolidada por instituição</p>
+              </div>
+              <button 
+                onClick={() => navigate('/accounts', { state: { openModal: true, defaultType: 'INVESTMENT' } })}
+                className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
+              >
+                <Plus size={14} /> Novo Investimento
+              </button>
+            </div>
+
             {brokers.map(broker => (
               <div key={broker.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden p-8 lg:p-12">
                 <div className="flex flex-col lg:flex-row gap-12 lg:items-center">

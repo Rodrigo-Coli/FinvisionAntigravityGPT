@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Loader2, CheckCircle2, AlertCircle, Plus, Check } from 'lucide-react';
+import { X, Loader2, CheckCircle2, AlertCircle, Plus, Camera, Check } from 'lucide-react';
 import { BankAccount } from '../../types';
 
 interface AddTransactionModalProps {
@@ -88,7 +88,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         </button>
                     </div>
 
-                    <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2 scrollbar-hide">
+                    <div className="space-y-6 max-h-[75vh] overflow-y-auto pr-2 custom-scrollbar">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data</label>
@@ -385,13 +385,34 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                     }}
                                     accept="image/*,application/pdf"
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => document.getElementById('add-transaction-file')?.click()}
-                                    className="w-full py-3 bg-white border-2 border-dashed border-slate-200 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-2"
-                                >
-                                    <Plus size={14} /> Adicionar Arquivos
-                                </button>
+                                <input
+                                    type="file"
+                                    id="add-transaction-camera"
+                                    className="hidden"
+                                    capture="environment"
+                                    accept="image/*"
+                                    onChange={(e) => {
+                                        const newFiles = Array.from(e.target.files || []);
+                                        setAddField('files', [...(form.files || []), ...newFiles]);
+                                        e.target.value = '';
+                                    }}
+                                />
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => document.getElementById('add-transaction-file')?.click()}
+                                        className="py-3 bg-white border border-slate-200 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Plus size={14} /> Arquivos
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => document.getElementById('add-transaction-camera')?.click()}
+                                        className="py-3 bg-brand-50 border border-brand-100 text-brand-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-100 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Camera size={14} /> Tirar Foto
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
