@@ -7,16 +7,16 @@
   ],
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/index"
-    },
-    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
   ],
   "functions": {
-    "api/index.ts": {
+    "api/finvision-chat.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/handle-wealth-analysis.ts": {
       "maxDuration": 60,
       "memory": 1024
     }
