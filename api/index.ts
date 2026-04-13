@@ -1,20 +1,20 @@
-import asaasCreateSubscription from '../server/asaas-create-subscription';
-import applyCoupon from '../server/apply-coupon';
-import asaasWebhook from '../server/asaas-webhook';
-import categorizeTransactions from '../server/categorize-transactions';
-import finvisionChat from '../server/finvision-chat';
-import handleBankReconcile from '../server/handle-bank-reconcile';
-import handleCardReconcile from '../server/handle-card-reconcile';
-import handleImportWorker from '../server/handle-import-worker';
-import handleReceiptItems from '../server/handle-receipt-items';
-import handleWealthAnalysis from '../server/handle-wealth-analysis';
-import parseCardStatement from '../server/parse-card-statement';
-import parseStatement from '../server/parse-statement';
-import processImport from '../server/process-import';
-import publicPlans from '../server/public-plans';
-import notifyBillsDue from '../server/notify-bills-due';
-import whatsappWebhook from '../server/whatsapp-webhook';
-import vapidPublicKey from '../server/vapid-public-key';
+import asaasCreateSubscription from './_handlers/asaas-create-subscription';
+import applyCoupon from './_handlers/apply-coupon';
+import asaasWebhook from './_handlers/asaas-webhook';
+import categorizeTransactions from './_handlers/categorize-transactions';
+import finvisionChat from './_handlers/finvision-chat';
+import handleBankReconcile from './_handlers/handle-bank-reconcile';
+import handleCardReconcile from './_handlers/handle-card-reconcile';
+import handleImportWorker from './_handlers/handle-import-worker';
+import handleReceiptItems from './_handlers/handle-receipt-items';
+import handleWealthAnalysis from './_handlers/handle-wealth-analysis';
+import parseCardStatement from './_handlers/parse-card-statement';
+import parseStatement from './_handlers/parse-statement';
+import processImport from './_handlers/process-import';
+import publicPlans from './_handlers/public-plans';
+import notifyBillsDue from './_handlers/notify-bills-due';
+import whatsappWebhook from './_handlers/whatsapp-webhook';
+import vapidPublicKey from './_handlers/vapid-public-key';
 
 export default async function handler(req: any, res: any) {
   const urlParts = req.url?.split('?')[0].split('/').filter(Boolean);
@@ -47,5 +47,3 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: `Internal Server Error in ${funcName}: ${error.message}` });
   }
 }
-
-
