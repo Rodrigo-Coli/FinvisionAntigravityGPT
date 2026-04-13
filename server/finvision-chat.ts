@@ -49,6 +49,7 @@ export default async function handler(req: any, res: any) {
         }
 
         // Fetch transactions strictly mirroring the dashboard period and ignoring phantom/adjustment data
+        console.log(`[FinVisionChat] Buscando dados para userId: ${userId} no período: ${filterStart} a ${filterEnd}`);
         const [accountsRes, txRes, cardsRes, assetsRes, liabilitiesRes, historyRes] = await Promise.all([
             supabase.from('accounts').select('institution, type, current_balance').eq('user_id', userId).eq('is_archived', false),
             supabase.from('transactions')
@@ -74,6 +75,7 @@ export default async function handler(req: any, res: any) {
                 .gte('date', historyStart)
                 .lt('date', filterStart)
         ]);
+        console.log(`[FinVisionChat] Dados recuperados: contas=${accountsRes.data?.length}, txs=${txRes.data?.length}, hist=${historyRes.data?.length}`);
 
         const accounts = accountsRes.data || [];
         const transactions = txRes.data || [];
@@ -207,14 +209,16 @@ ${transactions.slice(0, 50).map((t: any) => `- ${t.date.split('T')[0]}|${t.categ
         // Add current message
         contents.push({ role: 'user', parts: [{ text: message }] });
 
+        console.log(`[FinVisionChat] Gerando resposta com Gemini...`);
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-flash',
             contents: contents,
             config: {
                 systemInstruction: systemPrompt,
                 temperature: 0.5,
             }
         });
+        console.log(`[FinVisionChat] Resposta da IA gerada com sucesso.`);
 
         const rawText = typeof (response as any).text === 'function' ? (response as any).text() : ((response as any).text || '');
 
