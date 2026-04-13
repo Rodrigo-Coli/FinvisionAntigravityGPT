@@ -66,7 +66,14 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
                 })
             });
 
-            const data = await response.json();
+            let data;
+            const textRes = await response.text();
+            try {
+                data = JSON.parse(textRes);
+            } catch (e) {
+                throw new Error('Servidor retornou formato inválido (Possível erro no Vercel).');
+            }
+
             if (!response.ok) throw new Error(data.error || 'Erro de comunicação com AI');
 
             const assistantMsg: ChatMessage = {
