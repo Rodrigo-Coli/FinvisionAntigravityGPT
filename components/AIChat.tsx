@@ -71,7 +71,7 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
             try {
                 data = JSON.parse(textRes);
             } catch (e) {
-                throw new Error('Servidor retornou formato inválido (Possível erro no Vercel).');
+                throw new Error('Serviço temporariamente indisponível. Por favor, tente novamente em instantes ou verifique sua conexão.');
             }
 
             if (!response.ok) throw new Error(data.error || 'Erro de comunicação com AI');
