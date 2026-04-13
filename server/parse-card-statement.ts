@@ -4,8 +4,8 @@ import { GoogleGenAI, Type } from '@google/genai';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://dummy.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Fix: Full implementation of the credit card statement parsing API handler

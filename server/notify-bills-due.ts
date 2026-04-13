@@ -1,9 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
+import webpush from 'web-push';
 
 const supabase = createClient(
-  process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+  process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy'
 );
+
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    'mailto:suporte@finvision.com.br',
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+}
 
 export default async function handler(req: any, res: any) {
   // CRON Authentication
@@ -22,15 +31,17 @@ export default async function handler(req: any, res: any) {
     const todayStr = today.toISOString().split('T')[0];
     const tomorrowStr = tomorrow.toISOString().split('T')[0];
     
-    // Get all users with WhatsApp enabled
-    const { data: users } = await supabase
+    // Get all users with WhatsApp OR Push enabled
+    const { data: allUsers } = await supabase
       .from('user_settings')
-      .select('user_id, whatsapp_number')
-      .eq('whatsapp_enabled', true)
-      .not('whatsapp_number', 'is', null)
-      .not('whatsapp_number', 'eq', '');
+      .select('user_id, whatsapp_number, whatsapp_enabled, push_subscription, push_enabled');
 
-    if (!users || users.length === 0) return res.status(200).json({ message: 'No users subscribed.' });
+    const users = allUsers?.filter(u => 
+      (u.whatsapp_enabled && u.whatsapp_number) || 
+      (u.push_enabled && u.push_subscription)
+    ) || [];
+
+    if (users.length === 0) return res.status(200).json({ message: 'No users subscribed.' });
 
     const userIds = users.map(u => u.user_id);
 
@@ -112,7 +123,7 @@ export default async function handler(req: any, res: any) {
       console.log(`Sending to ${u.whatsapp_number}: ${dueToday.length + dueTomorrow.length} bills.`);
 
       // Send via Evolution API Integration
-      if (process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY && process.env.EVOLUTION_INSTANCE) {
+      if (u.whatsapp_enabled && u.whatsapp_number && process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY && process.env.EVOLUTION_INSTANCE) {
         const payload = {
           number: u.whatsapp_number,
           options: { delay: 1200, presence: "composing" },
@@ -126,8 +137,25 @@ export default async function handler(req: any, res: any) {
           },
           body: JSON.stringify(payload)
         }).catch(err => console.error('Evolution API Error:', err));
-      } else {
-        console.log('Evolution API not configured. Notification skipped.');
+      } else if (u.whatsapp_enabled) {
+        console.log('Evolution API not configured. WhatsApp Notification skipped.');
+      }
+
+      // Send via Web Push API
+      if (u.push_enabled && u.push_subscription && process.env.VAPID_PUBLIC_KEY) {
+        try {
+          const pushPayload = JSON.stringify({
+            title: 'FinVision Pro: Contas a Pagar',
+            body: `Você tem ${dueToday.length + dueTomorrow.length} vencimento(s) precisando de revisão hoje.`,
+            icon: '/logo.png', // Fallback icon path (can be absolute url)
+            url: 'https://finvision.automanow.com.br/#/dashboard'
+          });
+          
+          await webpush.sendNotification(u.push_subscription, pushPayload);
+          console.log(`Web Push sent successfully to ${u.user_id}`);
+        } catch (pushErr) {
+          console.error(`Error sending Web Push to ${u.user_id}:`, pushErr);
+        }
       }
 
       sentCount++;
