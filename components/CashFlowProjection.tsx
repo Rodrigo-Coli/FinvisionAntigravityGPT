@@ -82,9 +82,9 @@ const CashFlowProjection: React.FC<{ userId: string, currentBalance: number }> =
     const firstNegIdx = projections.findIndex(p => p.isNegative);
 
     return (
-        <div className="bg-white border border-slate-100 rounded-[32px] shadow-sm overflow-hidden">
+        <div className="bg-white border border-slate-100 rounded-[24px] sm:rounded-[32px] shadow-sm overflow-hidden">
             <div
-                className="px-8 py-5 border-b border-slate-50 flex items-center justify-between cursor-pointer hover:bg-slate-50/30 transition-colors"
+                className="px-4 sm:px-8 py-4 sm:py-5 border-b border-slate-50 flex items-start sm:items-center justify-between cursor-pointer hover:bg-slate-50/30 transition-colors gap-3"
                 onClick={() => setCollapsed(c => !c)}
             >
                 <div className="flex items-center gap-3">
@@ -96,9 +96,9 @@ const CashFlowProjection: React.FC<{ userId: string, currentBalance: number }> =
                         <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Baseado no Saldo + Pendências (6 meses)</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
                     {negMonths > 0 && !isLoading && (
-                        <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[9px] font-bold uppercase tracking-widest">
+                        <span className="px-2 sm:px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[8px] sm:text-[9px] font-bold uppercase tracking-widest">
                             {negMonths} {negMonths === 1 ? 'mês projetado negativo' : 'meses projetados no vermelho'}
                         </span>
                     )}
@@ -107,7 +107,7 @@ const CashFlowProjection: React.FC<{ userId: string, currentBalance: number }> =
             </div>
 
             {!collapsed && (
-                <div className="p-8">
+                <div className="p-4 sm:p-8">
                     {isLoading ? (
                         <div className="h-40 flex items-center justify-center text-slate-300"><Activity size={32} className="animate-pulse" /></div>
                     ) : projections.length === 0 ? (
@@ -123,34 +123,34 @@ const CashFlowProjection: React.FC<{ userId: string, currentBalance: number }> =
                                 </div>
                             )}
 
-                            {/* Chart */}
-                            <div className="overflow-x-auto">
-                                <div className="flex gap-4 min-w-[700px] items-end justify-between h-56 pt-10">
+                            {/* Chart - responsive: no min-width, bars adapt to screen */}
+                            <div className="w-full">
+                                <div className="flex gap-2 sm:gap-4 items-end justify-between h-48 sm:h-56 pt-8 sm:pt-10">
                                     {projections.map((p, i) => {
                                         const incH = Math.max((p.projectedIncome / maxBar) * 100, 2);
                                         const expH = Math.max((p.projectedExpense / maxBar) * 100, 2);
                                         return (
-                                            <div key={i} className="flex-1 min-w-0 flex flex-col items-center gap-3 relative group">
+                                            <div key={i} className="flex-1 min-w-0 flex flex-col items-center gap-2 sm:gap-3 relative group">
                                                 {/* Tooltip Hover */}
                                                 <div className="absolute -top-12 opacity-0 group-hover:opacity-100 bg-brand-900 text-white p-2 rounded-lg text-[10px] whitespace-nowrap z-10 transition-opacity pointer-events-none shadow-xl">
                                                     <div className="font-bold border-b border-white/10 pb-1 mb-1">{p.monthLabel}</div>
-                                                    <div className="text-emerald-400">Receitas Pendentes: {fmt(p.projectedIncome)}</div>
-                                                    <div className="text-rose-400">Despesas Pendentes: {fmt(p.projectedExpense)}</div>
-                                                    <div className="text-slate-200 font-bold mt-1 pt-1 border-t border-white/10">Saldo Fim do Mês: {fmt(p.projectedBalance)}</div>
+                                                    <div className="text-emerald-400">Receitas: {fmt(p.projectedIncome)}</div>
+                                                    <div className="text-rose-400">Despesas: {fmt(p.projectedExpense)}</div>
+                                                    <div className="text-slate-200 font-bold mt-1 pt-1 border-t border-white/10">Saldo: {fmt(p.projectedBalance)}</div>
                                                 </div>
 
                                                 {/* Projected Balance Top Label */}
-                                                <span className={`text-[10px] font-black ${p.isNegative ? 'text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full' : 'text-slate-600'}`}>
+                                                <span className={`text-[9px] sm:text-[10px] font-black leading-tight ${p.isNegative ? 'text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded-full' : 'text-slate-600'}`}>
                                                     {fmt(p.projectedBalance)}
                                                 </span>
 
-                                                <div className="w-full flex gap-1 items-end h-32 justify-center">
+                                                <div className="w-full flex gap-0.5 sm:gap-1 items-end h-28 sm:h-32 justify-center">
                                                     {/* Income Bar */}
-                                                    <div className="w-6 rounded-t-md transition-all bg-emerald-400 hover:bg-emerald-500 flex flex-col justify-between items-center overflow-hidden" style={{ height: `${incH}%` }} />
+                                                    <div className="w-3 sm:w-6 rounded-t-md transition-all bg-emerald-400 hover:bg-emerald-500" style={{ height: `${incH}%` }} />
                                                     {/* Expense Bar */}
-                                                    <div className="w-6 rounded-t-md transition-all bg-rose-400 hover:bg-rose-500 flex flex-col justify-between items-center overflow-hidden" style={{ height: `${expH}%` }} />
+                                                    <div className="w-3 sm:w-6 rounded-t-md transition-all bg-rose-400 hover:bg-rose-500" style={{ height: `${expH}%` }} />
                                                 </div>
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest break-words text-center">{p.monthLabel}</span>
+                                                <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center truncate w-full">{p.monthLabel}</span>
                                             </div>
                                         );
                                     })}

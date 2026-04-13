@@ -230,7 +230,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
     const isBetterIncome = momPercentChangeIncome > 0;
 
     return (
-        <div className="bg-white border border-slate-100 rounded-[32px] p-6 sm:p-8 shadow-sm mb-6 animate-in fade-in">
+        <div className="bg-white border border-slate-100 rounded-[24px] sm:rounded-[32px] p-4 sm:p-8 shadow-sm mb-6 animate-in fade-in min-w-0">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-8">
                 <div>
                     <h3 className="text-lg font-bold text-slate-900 flex items-center gap-3">
@@ -243,30 +243,30 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                 </div>
 
                 {/* Toggle Tabs */}
-                <div className="flex bg-slate-50 p-1 rounded-xl w-full sm:w-auto">
+                <div className="flex bg-slate-50 p-1 rounded-xl w-full sm:w-auto overflow-x-auto scrollbar-hide">
                     <button
                         onClick={() => setActiveTab('categories')}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'categories' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'categories' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                     >
-                        <PieChart size={14} /> Categorias
+                        <PieChart size={13} /> Categorias
                     </button>
                     <button
                         onClick={() => setActiveTab('timeline')}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'timeline' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'timeline' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                     >
-                        <Activity size={14} /> Linha do Tempo
+                        <Activity size={13} /> Linha do Tempo
                     </button>
                     <button
                         onClick={() => setActiveTab('mom')}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'mom' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'mom' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                     >
-                        <BarChart3 size={14} /> Mês a Mês
+                        <BarChart3 size={13} /> Mês a Mês
                     </button>
                 </div>
             </div>
 
             {activeTab === 'categories' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-12 items-start">
 
                     {/* Income Column */}
                     <div className="space-y-6">
@@ -435,8 +435,8 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                     {timelineData.length === 0 ? (
                         <p className="text-slate-400 text-sm text-center py-12">Não há dados suficientes para a linha do tempo com as categorias selecionadas.</p>
                     ) : (
-                        <div className="w-full overflow-x-auto pb-4">
-                            <div className="min-w-[700px] relative">
+                        <div className="w-full overflow-x-auto pb-4 scrollbar-hide">
+                            <div className="min-w-[500px] sm:min-w-[700px] relative">
                                 {(() => {
                                     const height = 300;
                                     const width = 800;

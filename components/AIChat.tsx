@@ -98,7 +98,7 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
     ];
 
     return (
-        <div className="bg-white border border-slate-100 rounded-[32px] shadow-sm overflow-hidden flex flex-col h-full">
+        <div className="bg-white border border-slate-100 rounded-[24px] sm:rounded-[32px] shadow-sm overflow-hidden flex flex-col h-full min-w-0">
             {/* Header */}
             <div className="p-4 sm:p-6 border-b border-slate-50 flex items-center justify-between bg-brand-900 text-white">
                 <div className="flex items-center gap-3">
@@ -159,12 +159,12 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
 
             {/* Quick Prompts */}
             {messages.length <= 1 && (
-                <div className="px-6 pb-2 pt-2 bg-slate-50/30 overflow-x-auto flex gap-2 no-scrollbar">
+                <div className="px-3 sm:px-6 pb-2 pt-2 bg-slate-50/30 flex flex-wrap gap-2">
                     {quickPrompts.map((prompt, i) => (
                         <button
                             key={i}
                             onClick={() => handleSend(prompt)}
-                            className="shrink-0 px-4 py-2 bg-white border border-slate-200 hover:border-brand-300 rounded-full text-[10px] font-bold text-slate-600 transition-colors whitespace-nowrap shadow-sm"
+                            className="px-3 py-2 bg-white border border-slate-200 hover:border-brand-300 rounded-full text-[10px] font-bold text-slate-600 transition-colors shadow-sm"
                         >
                             {prompt}
                         </button>
