@@ -11,6 +11,12 @@
       "destination": "/index.html"
     }
   ],
+  "functions": {
+    "api/finvision-chat.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  },
   "headers": [
     {
       "source": "/sw.js",

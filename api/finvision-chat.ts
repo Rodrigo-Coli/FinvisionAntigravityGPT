@@ -225,7 +225,13 @@ ${transactions.slice(0, 50).map((t: any) => `- ${t.date.split('T')[0]}|${t.categ
         return res.status(200).json({ reply: rawText });
 
     } catch (err: any) {
-        console.error('[FinVisionChat] Erro:', err.message);
-        return res.status(500).json({ error: err.message });
+        console.error('[FinVisionChat] Erro Crítico:', err);
+        // Retornamos o erro de forma amigável no JSON para não quebrar a interface com um Error 500 genérico
+        return res.status(200).json({ 
+            reply: `**Ops, tivemos um probleminha técnico!** 🤖\n\n` +
+                   `Não consegui processar sua análise agora. Isso pode ser devido a uma instabilidade na API da Inteligência Artificial ou nos dados do Supabase.\n\n` +
+                   `**Detalhes do erro:** \`${err.message}\`\n\n` +
+                   `Por favor, tente novamente em alguns instantes.`
+        });
     }
 }
