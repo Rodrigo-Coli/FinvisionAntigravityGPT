@@ -1159,13 +1159,13 @@ const HistoryPage: React.FC = () => {
           </div>
           <p className="text-sm text-slate-400 font-medium">Gestão detalhada e conciliação de lançamentos.</p>
         </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
           <button
             onClick={fetchData}
-            className="p-3 bg-white border border-slate-100 text-slate-400 rounded-xl hover:text-brand-600 transition-all shadow-sm"
+            className="p-3 bg-white border border-slate-100 text-slate-400 rounded-xl hover:text-brand-600 transition-all shadow-sm shrink-0"
             title="Recarregar Dados"
           >
-            <RefreshCw size={20} className={isLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
           </button>
           <button
             onClick={() => setAddModal({
@@ -1189,26 +1189,27 @@ const HistoryPage: React.FC = () => {
                 files: []
               }
             })}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
+            className="flex-1 min-w-[140px] sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
           >
-            <Plus size={18} /> Novo Lançamento
+            <Plus size={18} />
+            <span>Novo Lançamento</span>
           </button>
 
-          <div className="flex bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="flex bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden shrink-0">
             <button
               onClick={handleGenerateDre}
-              className="px-4 py-3 text-slate-600 hover:text-brand-600 hover:bg-slate-50 transition-colors flex items-center gap-2 font-bold text-xs border-r border-slate-100"
+              className="px-3 py-3 text-slate-600 hover:text-brand-600 hover:bg-slate-50 transition-colors flex items-center gap-1.5 font-bold text-xs border-r border-slate-100"
               title="Exportar DRE"
             >
-              <Building2 size={18} />
-              <span className="hidden sm:inline">DRE</span>
+              <Building2 size={16} />
+              <span className="hidden md:inline">DRE</span>
             </button>
             <button
               onClick={() => exportToXlsx('xlsx')}
-              className="p-3 text-slate-600 hover:text-emerald-600 hover:bg-slate-50 transition-colors"
-              title="Exportar Tabela Excel"
+              className="px-3 py-3 text-slate-600 hover:text-emerald-600 hover:bg-slate-50 transition-colors"
+              title="Exportar Excel"
             >
-              <FileDown size={18} />
+              <FileDown size={16} />
             </button>
           </div>
         </div>
@@ -1369,40 +1370,44 @@ const HistoryPage: React.FC = () => {
       />
 
       {/* QUICK DATE FILTERS + CUSTOM RANGE + VIEW MODE TOGGLE */}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
-        {/* Date presets */}
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setDatePreset('MONTH')} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Este Mês</button>
-          <button onClick={() => setDatePreset(30)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>30 Dias</button>
-          <button onClick={() => setDatePreset(90)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>3 Meses</button>
-          <button onClick={() => setDatePreset('ALL')} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${!startDate && !endDate ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Tudo</button>
+      <div className="flex flex-col gap-3 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+        {/* Row 1: Date presets + View mode toggle */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Date presets */}
+          <div className="flex gap-1.5 flex-wrap">
+            <button onClick={() => setDatePreset('MONTH')} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Este Mês</button>
+            <button onClick={() => setDatePreset(30)} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>30 Dias</button>
+            <button onClick={() => setDatePreset(90)} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>3 Meses</button>
+            <button onClick={() => setDatePreset('ALL')} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${!startDate && !endDate ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Tudo</button>
+          </div>
+
+          {/* Spacer */}
+          <div className="hidden sm:block flex-1" />
+
+          {/* View mode toggle - goes to second row on very small screens */}
+          <div className="flex bg-slate-100 p-1 rounded-xl gap-1 w-full sm:w-auto">
+            <button
+              onClick={() => setViewMode('ALL')}
+              className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setViewMode('SETTLED')}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'SETTLED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Check size={12} />
+              <span className="hidden xs:inline">Pagos &</span> Recebidos
+            </button>
+          </div>
         </div>
 
-        {/* Custom Range picker always visible */}
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100">
-          <Calendar size={14} className="text-slate-400" />
-          <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none w-28" />
-          <span className="text-slate-300">/</span>
-          <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none w-28" />
-        </div>
-
-        {/* Spacer */}
-        <div className="hidden lg:block flex-1" />
-
-        {/* View mode toggle */}
-        <div className="flex bg-slate-100 p-1 rounded-xl gap-1 w-full lg:w-auto">
-          <button
-            onClick={() => setViewMode('ALL')}
-            className={`flex-1 lg:flex-none px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-          >
-            Todos os Lançamentos
-          </button>
-          <button
-            onClick={() => setViewMode('SETTLED')}
-            className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'SETTLED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-          >
-            <Check size={12} /> Pagos & Recebidos
-          </button>
+        {/* Row 2: Custom date range picker */}
+        <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl border border-slate-100 w-full sm:w-auto">
+          <Calendar size={14} className="text-slate-400 shrink-0" />
+          <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
+          <span className="text-slate-300 shrink-0">–</span>
+          <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
         </div>
       </div>
 

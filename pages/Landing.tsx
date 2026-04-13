@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase/client';
 import { 
@@ -24,14 +24,14 @@ export default function Landing() {
     const fetchPlans = async () => {
       if (!supabase) return;
       try {
-        const { data } = await supabase.from('plans').select('*').order('price_monthly', { ascending: true });
+        const { data } = await supabase.from('plans').select('*').eq('is_active', true).order('sort_order', { ascending: true });
         if (data && data.length > 0) {
           setPlans(data);
         } else {
           setPlans([
-            { id: '1', name: 'Essencial', price_monthly: 19.90, price_annual: 199.00, max_ai_interactions: 60, features: ['1 Gestão de Conta', '60 Ações IA/mês', 'Suporte Básico'] },
-            { id: '2', name: 'Plus', price_monthly: 39.90, price_annual: 399.00, max_ai_interactions: 125, features: ['Contas Ilimitadas', '125 Ações IA/mês', 'Diagnóstico Patrimonial', 'Fila de Conciliação'], featured: true },
-            { id: '3', name: 'Pro', price_monthly: 49.90, price_annual: 499.00, max_ai_interactions: 175, features: ['Wealth Advisor Dedicado', '175 Ações IA/mês', 'Inflação Pessoal Exata', 'Gestão Multi-moedas'] }
+            { id: '1', name: 'Essencial', slug: 'essential', price_cents: 1990, price_cents_annual: 19900, ai_scans_limit: 60, features: ['1 Gestão de Conta', '60 Ações IA/mês', 'Suporte Básico'] },
+            { id: '2', name: 'Plus', slug: 'plus', price_cents: 3990, price_cents_annual: 39900, ai_scans_limit: 125, features: ['Contas Ilimitadas', '125 Ações IA/mês', 'Diagnóstico Patrimonial', 'Fila de Conciliação'], featured: true },
+            { id: '3', name: 'Pro', slug: 'pro', price_cents: 4990, price_cents_annual: 49900, ai_scans_limit: 175, features: ['Wealth Advisor Dedicado', '175 Ações IA/mês', 'Inflação Pessoal Exata', 'Gestão Multi-moedas'] }
           ]);
         }
       } catch (e) {}
@@ -438,21 +438,25 @@ export default function Landing() {
                   <div>
                     <h3 className={`text-3xl font-black tracking-tight mb-2 ${plan.featured ? 'text-white' : 'text-slate-300'}`}>{plan.name}</h3>
                     <div className="flex items-baseline gap-2 mb-8">
-                      <span className="text-5xl font-black tracking-tighter">R${(annualBilling ? plan.price_annual / 12 : plan.price_monthly).toFixed(2).replace('.', ',')}</span>
+                      <span className="text-5xl font-black tracking-tighter">R${(annualBilling ? (plan.price_cents_annual || plan.price_cents * 10) / 12 / 100 : (plan.price_cents / 100)).toFixed(2).replace('.', ',')}</span>
                       <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">/mês</span>
                     </div>
 
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-8 border-b border-white/10 pb-8">
-                      {annualBilling ? `R$${plan.price_annual.toFixed(2)} faturado 1x por ano.` : 'Faturado mensalmente. Cancele quando quiser.'}
+                      {annualBilling ? `R$${((plan.price_cents_annual || plan.price_cents * 10) / 100).toFixed(2)} faturado 1x por ano.` : 'Faturado mensalmente. Cancele quando quiser.'}
                     </p>
 
                     <ul className="space-y-6 mb-12">
-                      {plan.features?.map((ft: string, j: number) => (
-                        <li key={j} className="flex items-start gap-4">
-                          <div className={`mt-0.5 rounded-full p-1 border ${plan.featured ? 'bg-brand-500/20 border-brand-500/50 text-brand-400' : 'bg-white/5 border-white/10 text-slate-400'}`}><Check size={12} strokeWidth={3} /></div>
-                          <span className={`text-sm font-bold ${plan.featured ? 'text-white' : 'text-slate-300'}`}>{ft}</span>
-                        </li>
-                      ))}
+                      {(() => {
+                        const FEAT_LABELS: Record<string, string> = { dashboard: 'Dashboard Financeiro', accounts: 'Contas Bancárias', cards: 'Cartões de Crédito', manual_transactions: 'Transações Manuais', categories: 'Categorias', reports_basic: 'Relatórios Básicos', reconcile: 'Conciliação Bancária', ofx_import: 'Importação OFX/CSV', ai_scanner: 'Scanner de Cupom IA', goals: 'Metas Financeiras', budgets: 'Orçamentos', physical_assets: 'Bens Físicos', liabilities: 'Dívidas e Passivos', reports_advanced: 'Relatórios Avançados', multi_user: 'Multi-usuário', priority_support: 'Suporte Prioritário', ai_comparator: 'Comparador de Preços', ai_diagnosis: 'Diagnóstico Patrimonial', ai_shopping_list: 'Lista de Compras' };
+                        const feats = Array.isArray(plan.features) ? plan.features : typeof plan.features === 'object' && plan.features ? Object.entries(plan.features).filter(([,v]) => v).slice(0, 6).map(([k]) => FEAT_LABELS[k] || k) : [];
+                        return feats.map((ft: any, j: number) => (
+                          <li key={j} className="flex items-start gap-4">
+                            <div className={`mt-0.5 rounded-full p-1 border ${plan.featured ? 'bg-brand-500/20 border-brand-500/50 text-brand-400' : 'bg-white/5 border-white/10 text-slate-400'}`}><Check size={12} strokeWidth={3} /></div>
+                            <span className={`text-sm font-bold ${plan.featured ? 'text-white' : 'text-slate-300'}`}>{String(ft)}</span>
+                          </li>
+                        ));
+                      })()}
                     </ul>
                   </div>
 
@@ -519,3 +523,6 @@ export default function Landing() {
     </div>
   );
 }
+
+
+
