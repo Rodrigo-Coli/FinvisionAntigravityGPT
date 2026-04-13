@@ -66,6 +66,8 @@ export default async function handler(req: any, res: any) {
       case 'whatsapp-webhook':
         module = await import('./_handlers/whatsapp-webhook');
         break;
+      case 'debug':
+        return res.status(200).json({ status: 'Unified Router is Active', timestamp: new Date().toISOString() });
       case 'index':
         return res.status(200).json({ status: 'API Router is online', framework: 'Vite/Vercel' });
       default:
