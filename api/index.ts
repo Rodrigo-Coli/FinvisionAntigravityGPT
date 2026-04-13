@@ -1,22 +1,5 @@
-import finvisionChat from '../src/api-handlers/finvision-chat';
-import handleWealthAnalysis from '../src/api-handlers/handle-wealth-analysis';
-import notifyBillsDue from '../src/api-handlers/notify-bills-due';
-import vapidPublicKey from '../src/api-handlers/vapid-public-key';
-import asaasWebhook from '../src/api-handlers/asaas-webhook';
-import whatsappWebhook from '../src/api-handlers/whatsapp-webhook';
-import processImport from '../src/api-handlers/process-import';
-import categorizeTransactions from '../src/api-handlers/categorize-transactions';
-import handleBankReconcile from '../src/api-handlers/handle-bank-reconcile';
-import handleCardReconcile from '../src/api-handlers/handle-card-reconcile';
-import asaasCreateSubscription from '../src/api-handlers/asaas-create-subscription';
-import publicPlans from '../src/api-handlers/public-plans';
-import applyCoupon from '../src/api-handlers/apply-coupon';
-import handleImportWorker from '../src/api-handlers/handle-import-worker';
-import handleReceiptItems from '../src/api-handlers/handle-receipt-items';
-import parseCardStatement from '../src/api-handlers/parse-card-statement';
-import parseStatement from '../src/api-handlers/parse-statement';
-
 export default async function handler(req: any, res: any) {
+  // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -27,31 +10,48 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const url = req.url?.split('?')[0];
+  const url = (req.url || '').split('?')[0];
+  const urlParts = url.split('/').filter(Boolean);
+  const funcName = urlParts.length > 0 ? urlParts[urlParts.length - 1] : '';
 
   try {
-    if (url === '/api/finvision-chat' || url === '/finvision-chat') return await finvisionChat(req, res);
-    if (url === '/api/handle-wealth-analysis' || url === '/handle-wealth-analysis') return await handleWealthAnalysis(req, res);
-    if (url === '/api/notify-bills-due' || url === '/notify-bills-due') return await notifyBillsDue(req, res);
-    if (url === '/api/vapid-public-key' || url === '/vapid-public-key') return await vapidPublicKey(req, res);
-    if (url === '/api/asaas-webhook' || url === '/asaas-webhook') return await asaasWebhook(req, res);
-    if (url === '/api/whatsapp-webhook' || url === '/whatsapp-webhook') return await whatsappWebhook(req, res);
-    if (url === '/api/process-import' || url === '/process-import') return await processImport(req, res);
-    if (url === '/api/categorize-transactions' || url === '/categorize-transactions') return await categorizeTransactions(req, res);
-    if (url === '/api/handle-bank-reconcile' || url === '/handle-bank-reconcile') return await handleBankReconcile(req, res);
-    if (url === '/api/handle-card-reconcile' || url === '/handle-card-reconcile') return await handleCardReconcile(req, res);
-    if (url === '/api/asaas-create-subscription' || url === '/asaas-create-subscription') return await asaasCreateSubscription(req, res);
-    if (url === '/api/public-plans' || url === '/public-plans') return await publicPlans(req, res);
-    if (url === '/api/apply-coupon' || url === '/apply-coupon') return await applyCoupon(req, res);
-    if (url === '/api/handle-import-worker' || url === '/handle-import-worker') return await handleImportWorker(req, res);
-    if (url === '/api/handle-receipt-items' || url === '/handle-receipt-items') return await handleReceiptItems(req, res);
-    if (url === '/api/parse-card-statement' || url === '/parse-card-statement') return await parseCardStatement(req, res);
-    if (url === '/api/parse-statement' || url === '/parse-statement') return await parseStatement(req, res);
+    console.log(`[Router] Loading endpoint: ${funcName} (URL: ${url})`);
     
-    // Add debugging fallback so we don't get 500
-    return res.status(404).json({ error: 'END_POINT_NOT_MAPPED', url: req.url });
+    // Switch to dynamic indexing for resilience
+    switch (funcName) {
+      case 'finvision-chat': return (await import('../src/api-handlers/finvision-chat')).default(req, res);
+      case 'handle-wealth-analysis': return (await import('../src/api-handlers/handle-wealth-analysis')).default(req, res);
+      case 'notify-bills-due': return (await import('../src/api-handlers/notify-bills-due')).default(req, res);
+      case 'vapid-public-key': return (await import('../src/api-handlers/vapid-public-key')).default(req, res);
+      case 'asaas-webhook': return (await import('../src/api-handlers/asaas-webhook')).default(req, res);
+      case 'whatsapp-webhook': return (await import('../src/api-handlers/whatsapp-webhook')).default(req, res);
+      case 'process-import': return (await import('../src/api-handlers/process-import')).default(req, res);
+      case 'categorize-transactions': return (await import('../src/api-handlers/categorize-transactions')).default(req, res);
+      case 'handle-bank-reconcile': return (await import('../src/api-handlers/handle-bank-reconcile')).default(req, res);
+      case 'handle-card-reconcile': return (await import('../src/api-handlers/handle-card-reconcile')).default(req, res);
+      case 'asaas-create-subscription': return (await import('../src/api-handlers/asaas-create-subscription')).default(req, res);
+      case 'public-plans': return (await import('../src/api-handlers/public-plans')).default(req, res);
+      case 'apply-coupon': return (await import('../src/api-handlers/apply-coupon')).default(req, res);
+      case 'handle-import-worker': return (await import('../src/api-handlers/handle-import-worker')).default(req, res);
+      case 'handle-receipt-items': return (await import('../src/api-handlers/handle-receipt-items')).default(req, res);
+      case 'parse-card-statement': return (await import('../src/api-handlers/parse-card-statement')).default(req, res);
+      case 'parse-statement': return (await import('../src/api-handlers/parse-statement')).default(req, res);
+      
+      default:
+        // Try fallback check if url starts with /api but didn't match via funcName
+        if (url.startsWith('/api/')) {
+            const potentialFunc = url.replace('/api/', '');
+            console.log(`[Router] Fallback attempt for: ${potentialFunc}`);
+        }
+        return res.status(404).json({ error: 'END_POINT_NOT_MAPPED', funcName, url });
+    }
   } catch (error: any) {
-    console.error(`Error handling ${url}:`, error);
-    return res.status(500).json({ error: 'INTERNAL_ROUTER_ERROR', message: error.message });
+    console.error(`[Router] Fatal error loading API endpoint ${funcName}:`, error);
+    return res.status(500).json({ 
+        error: 'INTERNAL_ROUTER_ERROR', 
+        funcName,
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 }
