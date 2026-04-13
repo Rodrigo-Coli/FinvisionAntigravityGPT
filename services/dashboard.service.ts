@@ -29,7 +29,7 @@ export const DashboardService = {
       const balance = Number(acc.current_balance || 0);
       netWorth += balance;
       totalAssets += balance;
-      if (['CHECKING', 'SAVINGS', 'CASH'].includes(acc.type)) {
+      if (['CHECKING', 'SAVINGS', 'CASH'].includes((acc.type || '').toUpperCase())) {
         consolidatedBalance += balance;
       }
     });

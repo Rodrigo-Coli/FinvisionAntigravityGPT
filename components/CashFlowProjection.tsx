@@ -132,11 +132,13 @@ const CashFlowProjection: React.FC<{ userId: string, currentBalance: number }> =
                                         return (
                                             <div key={i} className="flex-1 min-w-0 flex flex-col items-center gap-2 sm:gap-3 relative group">
                                                 {/* Tooltip Hover */}
-                                                <div className="absolute -top-12 opacity-0 group-hover:opacity-100 bg-brand-900 text-white p-2 rounded-lg text-[10px] whitespace-nowrap z-10 transition-opacity pointer-events-none shadow-xl">
+                                                <div className={`absolute bottom-full mb-3 opacity-0 group-hover:opacity-100 bg-brand-900 text-white p-2.5 rounded-xl text-[10px] whitespace-nowrap z-50 transition-opacity pointer-events-none shadow-xl ${i === 0 ? 'left-0' : i === projections.length - 1 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}>
                                                     <div className="font-bold border-b border-white/10 pb-1 mb-1">{p.monthLabel}</div>
                                                     <div className="text-emerald-400">Receitas: {fmt(p.projectedIncome)}</div>
                                                     <div className="text-rose-400">Despesas: {fmt(p.projectedExpense)}</div>
                                                     <div className="text-slate-200 font-bold mt-1 pt-1 border-t border-white/10">Saldo: {fmt(p.projectedBalance)}</div>
+                                                    {/* Seta do Tooltip */}
+                                                    <div className={`absolute -bottom-1 w-2 h-2 rotate-45 bg-brand-900 ${i === 0 ? 'left-4' : i === projections.length - 1 ? 'right-4' : 'left-1/2 -translate-x-1/2'}`} />
                                                 </div>
 
                                                 {/* Projected Balance Top Label */}
