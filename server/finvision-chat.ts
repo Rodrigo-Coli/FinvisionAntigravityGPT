@@ -49,7 +49,7 @@ export default async function handler(req: any, res: any) {
         }
 
         // Fetch transactions strictly mirroring the dashboard period and ignoring phantom/adjustment data
-        const [accountsRes, txRes, cardsRes, assetsRes, liabilitiesRes] = await Promise.all([
+        const [accountsRes, txRes, cardsRes, assetsRes, liabilitiesRes, historyRes] = await Promise.all([
             supabase.from('accounts').select('institution, type, current_balance').eq('user_id', userId).eq('is_archived', false),
             supabase.from('transactions')
                 .select('amount, type, category, date, description, is_paid')
@@ -80,7 +80,7 @@ export default async function handler(req: any, res: any) {
         const creditCards = cardsRes.data || [];
         const assetsData = assetsRes.data || [];
         const liabilitiesData = liabilitiesRes.data || [];
-        const historicalData = (arguments[0] as any).data || []; // Note: This mapping depends on Promise.all order expansion below
+        const historicalData = historyRes?.data || [];
 
         const totalBalance = accounts.reduce((s: number, a: any) => s + Number(a.current_balance || 0), 0);
         const totalPhysicalAssets = assetsData.reduce((s: number, a: any) => s + Number(a.estimated_value || 0), 0);
@@ -117,19 +117,11 @@ export default async function handler(req: any, res: any) {
         // =====================================
         // 1.5 CALCULATE HISTORICAL AVERAGES
         // =====================================
-        const historyRes = await supabase.from('transactions')
-            .select('amount, category, date')
-            .eq('user_id', userId)
-            .eq('type', 'EXPENSE')
-            .is('is_deleted', false)
-            .is('is_amortization', false)
-            .gte('date', historyStart)
-            .lt('date', filterStart);
-
-        const histTxs = historyRes.data || [];
+        // Use the already fetched historicalData from Promise.all array instead of fetching again
+        const histTxs = historicalData.filter((t: any) => t.type === 'EXPENSE') || [];
         const histCategoryTotals: Record<string, number> = {};
         const monthsCaptured = new Set();
-        histTxs.forEach(t => {
+        histTxs.forEach((t: any) => {
             const m = t.date.substring(0, 7);
             monthsCaptured.add(m);
             histCategoryTotals[t.category] = (histCategoryTotals[t.category] || 0) + Math.abs(t.amount);
