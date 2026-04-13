@@ -30,10 +30,12 @@ import {
   Archive,
   Building2,
   Gem,
+  BellRing
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { DateUtils } from '../lib/dateUtils';
+import { subscribeUserToPush } from '../lib/pushUtils';
 
 const SettingsPage: React.FC = () => {
   const [activeSection, setActiveSection] = useState<'general' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription'>('general');
@@ -44,7 +46,8 @@ const SettingsPage: React.FC = () => {
     iof_rate: 6.38,
     spread_rate: 4.00,
     whatsapp_enabled: false,
-    whatsapp_number: ''
+    whatsapp_number: '',
+    push_enabled: false
   });
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
@@ -90,7 +93,8 @@ const SettingsPage: React.FC = () => {
             iof_rate: data.iof_rate || 6.38,
             spread_rate: data.spread_rate || 4.00,
             whatsapp_enabled: data.whatsapp_enabled || false,
-            whatsapp_number: data.whatsapp_number || ''
+            whatsapp_number: data.whatsapp_number || '',
+            push_enabled: data.push_enabled || false
           });
         }
       }
@@ -384,7 +388,7 @@ const SettingsPage: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="flex flex-col md:flex-row md:items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all gap-4">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all gap-4">
                   <div>
                     <p className="font-bold text-slate-900 flex items-center gap-2"><Smartphone size={16} /> Notificações via WhatsApp</p>
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Lembretes de faturas e vencimentos financeiros automáticos.</p>
@@ -403,6 +407,29 @@ const SettingsPage: React.FC = () => {
                       <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${settings.whatsapp_enabled ? 'translate-x-6' : 'translate-x-0'}`} />
                     </button>
                   </div>
+                </div>
+
+                <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">
+                  <div>
+                    <p className="font-bold text-slate-900 flex items-center gap-2"><BellRing size={16} /> Notificações do Dispositivo</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Receba sinais push no celular e desktop (<br/><span className="text-amber-500 italic">No iOS: Instale este App na Tela de Início</span>).</p>
+                  </div>
+                  <button onClick={async () => {
+                    const willEnable = !settings.push_enabled;
+                    if (willEnable) {
+                      const sub = await subscribeUserToPush();
+                      if (sub) {
+                        updateSetting('push_subscription', sub);
+                        updateSetting('push_enabled', true);
+                      } else {
+                        alert('Por favor, permita o acesso às notificações para ativar este recurso.');
+                      }
+                    } else {
+                      updateSetting('push_enabled', false);
+                    }
+                  }} className={`w-14 h-8 rounded-full p-1 transition-all ${settings.push_enabled ? 'bg-brand-600' : 'bg-slate-200'}`}>
+                    <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${settings.push_enabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
                 </div>
 
                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">

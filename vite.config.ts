@@ -7,7 +7,13 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
       registerType: 'autoUpdate',
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}']
+      },
       includeAssets: ['favicon.ico'],
       manifest: {
         name: 'FinVision Pro',
@@ -36,25 +42,6 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/svg+xml',
             purpose: 'any maskable'
-          }
-        ]
-      },
-      workbox: {
-        // Cache all app assets offline
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // Network-first for Supabase API calls
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-cache',
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 86400 // 24h
-              },
-              networkTimeoutSeconds: 10
-            }
           }
         ]
       },

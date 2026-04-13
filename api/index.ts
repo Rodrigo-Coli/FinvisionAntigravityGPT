@@ -14,12 +14,14 @@ import processImport from '../server/process-import';
 import publicPlans from '../server/public-plans';
 import notifyBillsDue from '../server/notify-bills-due';
 import whatsappWebhook from '../server/whatsapp-webhook';
+import vapidPublicKey from '../server/vapid-public-key';
 
 export default async function handler(req: any, res: any) {
   const urlParts = req.url?.split('?')[0].split('/').filter(Boolean);
   const funcName = urlParts && urlParts.length > 0 ? urlParts[urlParts.length - 1] : '';
 
   switch (funcName) {
+    case 'vapid-public-key': return vapidPublicKey(req, res);
     case 'apply-coupon': return applyCoupon(req, res);
     case 'asaas-create-subscription': return asaasCreateSubscription(req, res);
     case 'asaas-webhook': return asaasWebhook(req, res);
