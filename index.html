@@ -72,6 +72,36 @@
       scrollbar-width: none;
     }
 
+    /* Prevent horizontal overflow on all elements (mobile fix) */
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html {
+      /* instant scrollTo behavior so programmatic scroll resets work */
+      scroll-behavior: auto;
+      overflow-x: hidden;
+    }
+
+    body {
+      overflow-x: hidden;
+    }
+
+    /* Utility: break long words to prevent overflow */
+    .overflow-wrap-anywhere {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    /* No scrollbar on chat chips row */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
     .clip-path-half {
       clip-path: polygon(0 0, 100% 0, 100% 50%, 0 50%);
     }

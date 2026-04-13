@@ -13,6 +13,7 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const chatContainerRef = useRef<HTMLDivElement>(null);
 
     // Initial greeting
     useEffect(() => {
@@ -26,8 +27,11 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
         }
     }, [messages.length]);
 
+    // Scroll only the chat container, NOT the whole page
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
     };
 
     useEffect(() => {
@@ -116,7 +120,7 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
             </div>
 
             {/* Chat Area */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6 bg-slate-50/30">
+            <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6 bg-slate-50/30">
                 {messages.map((msg) => (
                     <div key={msg.id} className={`flex gap-2 sm:gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         {msg.role === 'assistant' && (
@@ -124,11 +128,11 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
                                 <Bot size={12} className="text-brand-600" />
                             </div>
                         )}
-                        <div className={`max-w-[85%] sm:max-w-[80%] rounded-[20px] p-3 sm:p-4 ${msg.role === 'user'
+                        <div className={`min-w-0 max-w-[80%] rounded-[20px] p-3 sm:p-4 ${msg.role === 'user'
                             ? 'bg-brand-600 text-white rounded-br-none shadow-brand-500/20 shadow-lg'
                             : 'bg-white border border-slate-100 text-slate-700 shadow-sm rounded-bl-none'
                             }`}>
-                            <div className="text-xs sm:text-sm prose prose-sm prose-slate leading-relaxed">
+                            <div className="text-xs sm:text-sm leading-relaxed break-words overflow-wrap-anywhere">
                                 {msg.content.split('\n').map((line, i) => (
                                     <p key={i} className="mb-1 last:mb-0" dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
                                 ))}
