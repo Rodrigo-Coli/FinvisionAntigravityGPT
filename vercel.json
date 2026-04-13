@@ -12,7 +12,7 @@
     }
   ],
   "functions": {
-    "api/finvision-chat.ts": {
+    "api/index.ts": {
       "maxDuration": 60,
       "memory": 1024
     }
