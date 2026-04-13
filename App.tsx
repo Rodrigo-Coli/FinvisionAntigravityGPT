@@ -34,6 +34,7 @@ import DemoBanner from './components/DemoBanner';
 import Landing from './pages/Landing';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
+import UpdateAlert from './components/UpdateAlert';
 
 if (window.location.pathname === '/demo' || window.location.pathname === '/demo/') {
   window.location.replace('/#/demo');
@@ -112,6 +113,7 @@ const App: React.FC = () => {
       <AuthProvider>
         <SubscriptionProvider>
           <HashRouter>
+            <UpdateAlert />
             <ScrollToTop />
             <OfflineBanner />
             <TrialBanner />

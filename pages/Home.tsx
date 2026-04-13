@@ -281,28 +281,28 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
             <button onClick={() => navigate('/cards')} className="text-xs font-bold text-brand-600 hover:underline">Ver Mais</button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             {data?.creditCards?.map((card, i) => (
-              <div key={i} onClick={() => navigate('/cards')} className="bg-white border border-slate-100/80 rounded-[24px] p-5 shadow-sm hover:border-brand-100 transition-all group cursor-pointer">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="bg-slate-50 p-2 py-3 rounded-lg flex items-center justify-center min-w-[50px]">
-                    {getCardLogo(card.brand)}
+              <div key={i} onClick={() => navigate('/cards')} className="bg-white border border-slate-100/80 rounded-[20px] p-4 shadow-sm hover:border-brand-100 transition-all cursor-pointer">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-slate-50 p-2 rounded-lg flex items-center justify-center w-10 h-10">
+                      {getCardLogo(card.brand)}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 leading-tight">{card.brand}</p>
+                      <p className="text-[10px] text-slate-400">****1234</p>
+                    </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs font-bold text-slate-900">{card.brand}</p>
-                    <p className="text-[10px] text-slate-400 tracking-widest">****1234</p>
+                    <p className="text-[9px] text-slate-400">limite</p>
+                    <p className="text-[10px] font-bold text-slate-500">{showBalance ? format(card.limit || 0) : '---'}</p>
                   </div>
                 </div>
-
-                <div className="flex items-end justify-between">
-                  <div className="space-y-0.5">
-                    <h4 className={`text-xl font-bold text-slate-900 ${!showBalance && 'blur-md'}`}>{showBalance ? format(card.current) : 'R$ ••••'}</h4>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[9px] text-slate-400 font-medium italic">de {format(card.limit || 0)}</p>
-                  </div>
-                </div>
-                <div className="mt-4 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                <h4 className={`text-lg font-bold text-slate-900 mb-2 ${!showBalance && 'blur-md'}`}>
+                  {showBalance ? format(card.current) : 'R$ ••••'}
+                </h4>
+                <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                   <div
                     className={`h-full ${card.color.includes('brand') ? 'bg-brand-500' : 'bg-slate-950'} rounded-full opacity-60 transition-all duration-1000`}
                     style={{ width: `${Math.min((card.current / (card.limit || 1)) * 100, 100)}%` }}
@@ -311,47 +311,49 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
               </div>
             ))}
             {(!data?.creditCards || data.creditCards.length === 0) && (
-              <div onClick={() => navigate('/cards')} className="col-span-1 md:col-span-2 py-10 border border-dashed border-slate-200 rounded-[24px] flex flex-col items-center justify-center grayscale opacity-50 cursor-pointer hover:opacity-100 transition-opacity">
-                <CreditCardIcon size={40} className="text-slate-300" />
-                <p className="text-xs font-bold text-slate-400 uppercase mt-4">Nenhum cartão encontrado</p>
+              <div onClick={() => navigate('/cards')} className="col-span-full py-8 border border-dashed border-slate-200 rounded-[20px] flex flex-col items-center justify-center opacity-60 cursor-pointer hover:opacity-100 transition-opacity">
+                <CreditCardIcon size={32} className="text-slate-300" />
+                <p className="text-xs font-bold text-slate-400 uppercase mt-3">Nenhum cartão cadastrado</p>
               </div>
             )}
           </div>
 
           {/* HISTÓRICO DE DESPESAS (CHART) */}
-          <div className="mt-6 sm:mt-8 space-y-4">
+          <div className="mt-4 sm:mt-8 space-y-3">
             <h3 className="text-lg font-black text-slate-900 italic">Análise de Fluxo</h3>
 
-            {/* QUICK DATE FILTERS + CUSTOM RANGE + VIEW MODE TOGGLE (Abridged for Home) */}
-            <div className="flex flex-col xl:flex-row items-start xl:items-center gap-4 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
-              <div className="flex flex-wrap gap-2">
-                <button onClick={() => setDatePreset('MONTH')} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Este Mês</button>
-                <button onClick={() => setDatePreset(30)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>30 Dias</button>
-                <button onClick={() => setDatePreset(90)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>3 Meses</button>
+            {/* QUICK DATE FILTERS */}
+            <div className="flex flex-col gap-3 bg-white p-3 sm:p-4 rounded-3xl border border-slate-100 shadow-sm">
+              {/* Row 1: chips + view mode */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex gap-1.5 flex-wrap">
+                  <button onClick={() => setDatePreset('MONTH')} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Este Mês</button>
+                  <button onClick={() => setDatePreset(30)} className="px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider bg-slate-50 text-slate-500 hover:bg-slate-100 transition-all">30 Dias</button>
+                  <button onClick={() => setDatePreset(90)} className="px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider bg-slate-50 text-slate-500 hover:bg-slate-100 transition-all">3 Meses</button>
+                </div>
+                <div className="hidden sm:block flex-1" />
+                <div className="flex bg-slate-100 p-1 rounded-xl gap-1 w-full sm:w-auto">
+                  <button
+                    onClick={() => setViewMode('ALL')}
+                    className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    onClick={() => setViewMode('SETTLED')}
+                    className={`flex-1 sm:flex-none flex items-center justify-center gap-1 px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'SETTLED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}
+                  >
+                    <Check size={10} /> Pagos
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100">
-                <Calendar size={14} className="text-slate-400" />
-                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-transparent text-[11px] font-bold outline-none w-28" />
-                <span className="text-slate-300">/</span>
-                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-transparent text-[11px] font-bold outline-none w-28" />
-              </div>
-
-              <div className="hidden xl:block flex-1" />
-
-              <div className="flex bg-slate-100 p-1 rounded-xl gap-1 w-full xl:w-auto">
-                <button
-                  onClick={() => setViewMode('ALL')}
-                  className={`flex-1 xl:flex-none px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  Todos
-                </button>
-                <button
-                  onClick={() => setViewMode('SETTLED')}
-                  className={`flex-1 xl:flex-none flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'SETTLED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  <Check size={12} /> Pagos & Recebidos
-                </button>
+              {/* Row 2: date range */}
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl border border-slate-100">
+                <Calendar size={13} className="text-slate-400 shrink-0" />
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
+                <span className="text-slate-300 shrink-0">–</span>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
               </div>
             </div>
 
@@ -365,9 +367,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
         </div>
 
-        <div className="lg:col-span-4 space-y-6 min-w-0">
+        {/* AI CHAT: below charts on mobile, side column on desktop */}
+        <div className="lg:col-span-4 space-y-4 min-w-0">
           <h3 className="text-lg font-bold text-slate-900">Assistente AI Interativo</h3>
-          <div className="h-[500px] lg:h-[700px]">
+          <div className="h-[420px] sm:h-[500px] lg:h-[700px]">
             <AIChat userId={user?.id || ''} startDate={startDate} endDate={endDate} />
           </div>
         </div>
