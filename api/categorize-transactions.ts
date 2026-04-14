@@ -62,17 +62,17 @@ Importante:
       }
     };
 
-    const genModel = ai.getGenerativeModel({ model });
-    const result = await genModel.generateContent({
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
+      config: {
         responseMimeType: "application/json",
         responseSchema: schema,
         temperature: 0.2
       }
     });
 
-    const text = result.response.text() || "[]";
+    const text = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || "[]";
     const parsed = JSON.parse(text);
 
     return res.status(200).json({ ok: true, data: parsed });

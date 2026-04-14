@@ -46,10 +46,10 @@ export default async function handler(req: any, res: any) {
     let rawText = '';
     for (const modelName of fallbackModels) {
       try {
-        const genModel = ai.getGenerativeModel({ model: modelName });
-        const result = await genModel.generateContent({
+        const response = await ai.models.generateContent({
+          model: modelName,
           contents,
-          generationConfig: {
+          config: {
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
@@ -76,9 +76,11 @@ export default async function handler(req: any, res: any) {
             }
           }
         });
-        rawText = result.response.text();
+        rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
         if (rawText) break;
-      } catch (e) { console.error(`Falha no modelo ${modelName}`); }
+      } catch (e) {
+        console.error(`Falha no modelo ${modelName}:`, e);
+      }
     }
 
     if (!rawText) throw new Error('A IA não retornou dados.');

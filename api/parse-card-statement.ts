@@ -31,14 +31,14 @@ export default async function handler(req: any, res: any) {
 
     if (!process.env.GEMINI_API_KEY && !process.env.API_KEY) throw new Error('GEMINI_API_KEY não configurada.');
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.API_KEY || '' });
-    const modelName = 'gemini-1.5-flash';
+    const modelName = 'gemini-2.5-flash';
 
     const prompt = `Você é um especialista em conciliação bancária. Analise o extrato de cartão de crédito. Extraia todas as transações individuais para uma lista estruturada. REGRAS: 1. Campo 'date' deve ser YYYY-MM-DD. 2. Campo 'amount' deve ser um número float absoluto. 3. Identifique o merchant e parcelamento se houver. Retorne APENAS um objeto JSON.`;
 
-    const genModel = ai.getGenerativeModel({ model: modelName });
-    const result = await genModel.generateContent({
+    const response = await ai.models.generateContent({
+      model: modelName,
       contents: [{ parts: [{ text: prompt }, { inlineData: { data: buffer.toString('base64'), mimeType: imp.documents.mime_type } }] }],
-      generationConfig: {
+      config: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -47,7 +47,7 @@ export default async function handler(req: any, res: any) {
       }
     });
 
-    const parsedData = JSON.parse(result.response.text() || '{"transactions":[]}');
+    const parsedData = JSON.parse((response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '{"transactions":[]}');
     const processedTxs = parsedData.transactions || [];
 
     const txsToInsert = processedTxs.map((t: any) => {

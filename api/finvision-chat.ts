@@ -187,19 +187,16 @@ ${transactions.slice(0, 50).map((t: any) => `- ${t.date.split('T')[0]}|${t.categ
         }
         contents.push({ role: 'user', parts: [{ text: message }] });
 
-        const genModel = ai.getGenerativeModel({
+        const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            systemInstruction: systemPrompt,
-        });
-
-        const result = await genModel.generateContent({
             contents,
-            generationConfig: {
+            config: {
+                systemInstruction: systemPrompt,
                 temperature: 0.7,
             }
         });
 
-        const rawText = result.response.text();
+        const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
 
         return res.status(200).json({ reply: rawText });
 

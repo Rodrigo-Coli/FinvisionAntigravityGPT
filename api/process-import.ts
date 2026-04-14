@@ -153,22 +153,22 @@ async function parseCSV(content: string): Promise<any[]> {
 async function processWithGemini(buffer: Buffer, mimeType: string, context: string): Promise<any[]> {
   if (!process.env.GEMINI_API_KEY && !process.env.API_KEY) throw new Error('GEMINI_API_KEY não configurada.');
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.API_KEY || '' });
-  const modelName = 'gemini-1.5-flash';
+  const modelName = 'gemini-2.5-flash';
   const prompt = `Extraia as transações financeiras deste documento (${mimeType}). Responda APENAS JSON: { "transactions": [{ "date": "YYYY-MM-DD", "description": "...", "amount": -12.34 }] } Regras: Despesas NEGATIVAS, Entradas POSITIVAS. Contexto: ${context}`;
   
-  const genModel = ai.getGenerativeModel({ model: modelName });
-  const result = await genModel.generateContent({
+  const response = await (ai as any).models.generateContent({
+    model: modelName,
     contents: [{
       parts: [
         { text: prompt },
         { inlineData: { data: buffer.toString('base64'), mimeType } }
       ]
     }],
-    generationConfig: { responseMimeType: "application/json" }
+    config: { responseMimeType: "application/json" }
   });
 
   try {
-    const text = result.response.text();
+    const text = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
     return JSON.parse(text || '{}').transactions || [];
   } catch { return []; }
 }

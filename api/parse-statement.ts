@@ -38,7 +38,7 @@ export default async function handler(req: any, res: any) {
 
     if (!process.env.GEMINI_API_KEY && !process.env.API_KEY) throw new Error('GEMINI_API_KEY não configurada.');
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.API_KEY || '' });
-    const modelName = 'gemini-1.5-flash';
+    const modelName = 'gemini-2.5-flash';
 
     const prompt = `Você é um especialista em conciliação bancária. Analise o extrato/comprovante fornecido. Extraia todas as transações individuais para uma lista JSON. REGRAS: 1. Campo 'date' deve ser YYYY-MM-DD. 2. Campo 'amount' deve ser um número float. 3. Se for despesa/saída/débito, o 'amount' deve ser NEGATIVO. 4. Se for receita/entrada/crédito, o 'amount' deve ser POSITIVO. 5. Descrição deve ser limpa. Contexto: Conta=${account_name || 'Desconhecida'}, Origem=${import_source || 'Desconhecida'}. REMOVA: Linhas de SALDO, TOTAL, ETC. Retorne APENAS JSON: {"transactions": [{"date": "YYYY-MM-DD", "description": "texto", "amount": -123.45, "category": "opcional"}]}`;
 
@@ -46,10 +46,10 @@ export default async function handler(req: any, res: any) {
     if (isTextFile) contentsParts = [{ text: prompt }, { text: `CONTEÚDO DO ARQUIVO:\n${buffer.toString('utf-8').substring(0, 30000)}` }];
     else contentsParts = [{ text: prompt }, { inlineData: { data: buffer.toString('base64'), mimeType: doc.mime_type || 'application/pdf' } }];
 
-    const genModel = ai.getGenerativeModel({ model: modelName });
-    const result = await genModel.generateContent({
+    const response = await ai.models.generateContent({
+      model: modelName,
       contents: [{ parts: contentsParts }],
-      generationConfig: {
+      config: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -59,7 +59,7 @@ export default async function handler(req: any, res: any) {
       }
     });
 
-    const parsed = JSON.parse(result.response.text() || '{"transactions":[]}');
+    const parsed = JSON.parse((response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '{"transactions":[]}');
     const transactions = parsed.transactions || [];
 
     if (transactions.length > 0) {
