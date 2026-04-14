@@ -592,17 +592,13 @@ const HistoryPage: React.FC = () => {
         }));
 
         if (!navigator.onLine) {
-          offlineQueue.addAction('UPDATE_TRANSACTION', { id, updates: patch });
+          await FinanceService.updateTransaction(id, patch);
           setSavingId(null);
           setEditingRow(null);
           return;
         }
 
-        const { error: err } = await supabase.from('transactions').update(patch).eq('id', id);
-        if (err) {
-          await fetchData(); // rollback visual em caso de erro no banco
-          throw err;
-        }
+        await FinanceService.updateTransaction(id, patch);
       } else {
         const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
         let query = supabase.from('transactions').update(patch).filter('metadata->>' + (tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id'), 'eq', groupId);
@@ -648,13 +644,13 @@ const HistoryPage: React.FC = () => {
     try {
       if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
         if (!navigator.onLine) {
-          offlineQueue.addAction('DELETE_TRANSACTION', { id });
+          await FinanceService.deleteTransaction(id);
           setTransactions(prev => prev.filter(t => t.id !== id));
           setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' });
           return;
         }
 
-        await supabase.from('transactions').update({ is_deleted: true }).eq('id', id);
+        await FinanceService.deleteTransaction(id);
 
         // Deletar também a contraparte se for transferência
         if (tx?.metadata?.is_transfer && tx.metadata?.counter_account_id) {
@@ -1006,15 +1002,13 @@ const HistoryPage: React.FC = () => {
 
       if (!f.isInstallment && !f.isRecurring) {
         if (!navigator.onLine) {
-          const fakeId = 'offline-' + Date.now();
           const newTx = {
-            id: fakeId,
-            user_id: userId, date: f.date, description: f.description, amount, type: f.type,
+            date: f.date, description: f.description, amount, type: f.type,
             account_id: f.accountId, category: f.category, subcategory: f.subcategory || null, is_paid: false, paid_amount: 0,
             owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName
           };
-          offlineQueue.addAction('CREATE_TRANSACTION', newTx);
-          setTransactions(prev => [newTx as any, ...prev]);
+          const saved = await FinanceService.saveTransaction(newTx);
+          setTransactions(prev => [saved as any, ...prev]);
           setAddModal({ open: false });
           return;
         }
