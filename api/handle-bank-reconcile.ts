@@ -48,10 +48,35 @@ export default async function handler(req: any, res: any) {
     let rawText = '';
     for (const currentModel of fallbackModels) {
       try {
-        const response = await ai.models.generateContent({
-           model: currentModel, contents, config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { transactions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { date: { type: Type.STRING }, description: { type: Type.STRING }, amount: { type: Type.NUMBER }, category: { type: Type.STRING }, account_name: { type: Type.STRING }, category_name: { type: Type.STRING } }, required: ["date", "description", "amount"] } } }, required: ["transactions"] } }
+        const genModel = ai.getGenerativeModel({ model: currentModel });
+        const result = await genModel.generateContent({
+          contents,
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                transactions: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      date: { type: Type.STRING },
+                      description: { type: Type.STRING },
+                      amount: { type: Type.NUMBER },
+                      category: { type: Type.STRING },
+                      account_name: { type: Type.STRING },
+                      category_name: { type: Type.STRING }
+                    },
+                    required: ["date", "description", "amount"]
+                  }
+                }
+              },
+              required: ["transactions"]
+            }
+          }
         });
-        rawText = (response as any).text || (response.response && (response.response as any).text) || (typeof (response as any).text === 'function' && (response as any).text()) || '';
+        rawText = result.response.text();
         if (rawText) break;
       } catch (e) { console.error(`Falha no modelo ${currentModel}`); }
     }

@@ -187,27 +187,19 @@ ${transactions.slice(0, 50).map((t: any) => `- ${t.date.split('T')[0]}|${t.categ
         }
         contents.push({ role: 'user', parts: [{ text: message }] });
 
-        const result = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
-            contents: contents,
-            config: {
-                systemInstruction: systemPrompt,
-                temperature: 0.5,
+        const genModel = ai.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            systemInstruction: systemPrompt,
+        });
+
+        const result = await genModel.generateContent({
+            contents,
+            generationConfig: {
+                temperature: 0.7,
             }
         });
 
-        let rawText = '';
-        if (result) {
-            if (typeof result.text === 'string') {
-                rawText = result.text;
-            } else if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
-                rawText = result.candidates[0].content.parts[0].text;
-            } else {
-                throw new Error('A IA não retornou um texto válido.');
-            }
-        } else {
-            throw new Error('A IA não retornou nenhuma resposta.');
-        }
+        const rawText = result.response.text();
 
         return res.status(200).json({ reply: rawText });
 

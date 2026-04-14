@@ -26,17 +26,19 @@ export default async function handler(req: any, res: any) {
 
     const { data: fileBlob, error: dlErr } = await supabase.storage.from(imp.documents.bucket).download(imp.documents.path);
     if (dlErr || !fileBlob) throw new Error('Falha ao baixar arquivo do storage');
-
+    
     const buffer = Buffer.from(await fileBlob.arrayBuffer());
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const model = 'gemini-3-flash-preview';
+
+    if (!process.env.GEMINI_API_KEY && !process.env.API_KEY) throw new Error('GEMINI_API_KEY não configurada.');
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.API_KEY || '' });
+    const modelName = 'gemini-1.5-flash';
 
     const prompt = `Você é um especialista em conciliação bancária. Analise o extrato de cartão de crédito. Extraia todas as transações individuais para uma lista estruturada. REGRAS: 1. Campo 'date' deve ser YYYY-MM-DD. 2. Campo 'amount' deve ser um número float absoluto. 3. Identifique o merchant e parcelamento se houver. Retorne APENAS um objeto JSON.`;
 
-    const response = await ai.models.generateContent({
-      model,
+    const genModel = ai.getGenerativeModel({ model: modelName });
+    const result = await genModel.generateContent({
       contents: [{ parts: [{ text: prompt }, { inlineData: { data: buffer.toString('base64'), mimeType: imp.documents.mime_type } }] }],
-      config: {
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -45,7 +47,7 @@ export default async function handler(req: any, res: any) {
       }
     });
 
-    const parsedData = JSON.parse(response.text || '{"transactions":[]}');
+    const parsedData = JSON.parse(result.response.text() || '{"transactions":[]}');
     const processedTxs = parsedData.transactions || [];
 
     const txsToInsert = processedTxs.map((t: any) => {

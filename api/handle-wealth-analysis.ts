@@ -112,16 +112,19 @@ Com base nesses dados, forneça um Diagnóstico Patrimonial completo com:
 4. **🎯 Plano de Ação (3 prioridades)** (o que fazer AGORA, em 6 e em 12 meses)
 5. **💡 Oportunidades Identificadas** (incluindo: vale vender consórcio no mercado secundário? Vale antecipar parcelas? Comprar imóvel para renda?)`;
 
-        const response = await ai.models.generateContent({
+        const genModel = ai.getGenerativeModel({
             model: 'gemini-2.5-flash',
+            systemInstruction: systemPrompt,
+        });
+
+        const result = await genModel.generateContent({
             contents: [{ parts: [{ text: userPrompt }] }],
-            config: {
-                systemInstruction: systemPrompt,
+            generationConfig: {
                 temperature: 0.7,
             }
         });
 
-        const rawText = typeof (response as any).text === 'function' ? (response as any).text() : ((response as any).text || '');
+        const rawText = result.response.text();
         if (!rawText) throw new Error('FinVision AI não retornou análise.');
 
         return res.status(200).json({

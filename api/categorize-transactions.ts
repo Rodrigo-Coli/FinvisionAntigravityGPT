@@ -62,17 +62,17 @@ Importante:
       }
     };
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
+    const genModel = ai.getGenerativeModel({ model });
+    const result = await genModel.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: schema,
         temperature: 0.2
       }
     });
 
-    const text = response.text || "[]";
+    const text = result.response.text() || "[]";
     const parsed = JSON.parse(text);
 
     return res.status(200).json({ ok: true, data: parsed });

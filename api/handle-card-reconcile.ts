@@ -46,10 +46,37 @@ export default async function handler(req: any, res: any) {
     let rawText = '';
     for (const modelName of fallbackModels) {
       try {
-        const response = await ai.models.generateContent({
-           model: modelName, contents, config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { transactions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { date: { type: Type.STRING }, description: { type: Type.STRING }, amount: { type: Type.NUMBER }, merchant_normalized: { type: Type.STRING }, installment_number: { type: Type.NUMBER }, installment_total: { type: Type.NUMBER }, category_name: { type: Type.STRING }, card_name: { type: Type.STRING } }, required: ["date", "description", "amount"] } } }, required: ["transactions"] } }
+        const genModel = ai.getGenerativeModel({ model: modelName });
+        const result = await genModel.generateContent({
+          contents,
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                transactions: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      date: { type: Type.STRING },
+                      description: { type: Type.STRING },
+                      amount: { type: Type.NUMBER },
+                      merchant_normalized: { type: Type.STRING },
+                      installment_number: { type: Type.NUMBER },
+                      installment_total: { type: Type.NUMBER },
+                      category_name: { type: Type.STRING },
+                      card_name: { type: Type.STRING }
+                    },
+                    required: ["date", "description", "amount"]
+                  }
+                }
+              },
+              required: ["transactions"]
+            }
+          }
         });
-        rawText = (response as any).text || (response.response && (response.response as any).text) || (typeof (response as any).text === 'function' && (response as any).text()) || '';
+        rawText = result.response.text();
         if (rawText) break;
       } catch (e) { console.error(`Falha no modelo ${modelName}`); }
     }
