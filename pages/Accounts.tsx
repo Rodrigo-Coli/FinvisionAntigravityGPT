@@ -533,8 +533,8 @@ const Accounts: React.FC = () => {
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-brand-900/40 backdrop-blur-sm" onClick={() => setShowModal(false)} />
-          <div className="bg-white rounded-[40px] w-full max-w-lg shadow-2xl relative overflow-hidden animate-in zoom-in duration-300">
-            <div className="p-8 lg:p-10 space-y-8">
+          <div className="bg-white rounded-[32px] sm:rounded-[40px] w-full max-w-lg shadow-2xl relative overflow-hidden animate-in zoom-in duration-300 flex flex-col max-h-[95vh] sm:max-h-[90vh]">
+            <div className="p-6 sm:p-8 lg:p-10 space-y-6 sm:space-y-8 overflow-y-auto">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-slate-900">{isEditing ? 'Editar Conta' : 'Nova Conta'}</h2>
                 <button onClick={() => setShowModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-all"><X size={24} /></button>
@@ -605,11 +605,11 @@ const Accounts: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <button onClick={() => setShowModal(false)} className="flex-1 h-14 text-slate-400 font-bold text-xs uppercase tracking-widest">Cancelar</button>
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2">
+                <button onClick={() => setShowModal(false)} className="order-2 sm:order-1 flex-1 h-12 sm:h-14 text-slate-400 font-bold text-xs uppercase tracking-widest hover:bg-slate-50 rounded-xl transition-all">Cancelar</button>
                 <button
                   onClick={handleSaveAccount}
-                  className="flex-2 w-full h-14 bg-brand-600 text-white rounded-2xl font-bold uppercase text-xs shadow-xl shadow-brand-500/20 transition-all active:scale-95"
+                  className="order-1 sm:order-2 flex-2 w-full h-12 sm:h-14 bg-brand-600 text-white rounded-xl sm:rounded-2xl font-bold uppercase text-xs shadow-xl shadow-brand-500/20 transition-all active:scale-95"
                 >
                   {isEditing ? 'Atualizar Conta' : 'Salvar Conta'}
                 </button>
