@@ -1,3 +1,62 @@
+// Static Imports
+// @ts-ignore
+import applyCoupon from './_lib/apply-coupon';
+// @ts-ignore
+import asaasCreateSubscription from './_lib/asaas-create-subscription';
+// @ts-ignore
+import asaasWebhook from './_lib/asaas-webhook';
+// @ts-ignore
+import categorizeTransactions from './_lib/categorize-transactions';
+// @ts-ignore
+import finvisionChat from './_lib/finvision-chat';
+// @ts-ignore
+import handleBankReconcile from './_lib/handle-bank-reconcile';
+// @ts-ignore
+import handleCardReconcile from './_lib/handle-card-reconcile';
+// @ts-ignore
+import handleImportWorker from './_lib/handle-import-worker';
+// @ts-ignore
+import handleReceiptItems from './_lib/handle-receipt-items';
+// @ts-ignore
+import handleWealthAnalysis from './_lib/handle-wealth-analysis';
+// @ts-ignore
+import health from './_lib/health';
+// @ts-ignore
+import notifyBillsDue from './_lib/notify-bills-due';
+// @ts-ignore
+import parseCardStatement from './_lib/parse-card-statement';
+// @ts-ignore
+import parseStatement from './_lib/parse-statement';
+// @ts-ignore
+import processImport from './_lib/process-import';
+// @ts-ignore
+import publicPlans from './_lib/public-plans';
+// @ts-ignore
+import vapidPublicKey from './_lib/vapid-public-key';
+// @ts-ignore
+import whatsappWebhook from './_lib/whatsapp-webhook';
+
+const handlers: Record<string, any> = {
+    'apply-coupon': applyCoupon,
+    'asaas-create-subscription': asaasCreateSubscription,
+    'asaas-webhook': asaasWebhook,
+    'categorize-transactions': categorizeTransactions,
+    'finvision-chat': finvisionChat,
+    'handle-bank-reconcile': handleBankReconcile,
+    'handle-card-reconcile': handleCardReconcile,
+    'handle-import-worker': handleImportWorker,
+    'handle-receipt-items': handleReceiptItems,
+    'handle-wealth-analysis': handleWealthAnalysis,
+    'health': health,
+    'notify-bills-due': notifyBillsDue,
+    'parse-card-statement': parseCardStatement,
+    'parse-statement': parseStatement,
+    'process-import': processImport,
+    'public-plans': publicPlans,
+    'vapid-public-key': vapidPublicKey,
+    'whatsapp-webhook': whatsappWebhook
+};
+
 export default async function handler(req: any, res: any) {
     // CORS Configuration
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -10,86 +69,18 @@ export default async function handler(req: any, res: any) {
     const path = req.url.split('?')[0].replace('/api/', '');
 
     try {
-        let handler;
-        switch (path) {
-            case 'health':
-                // @ts-ignore
-                handler = (await import('./_lib/health')).default;
-                break;
-            case 'finvision-chat':
-                // @ts-ignore
-                handler = (await import('./_lib/finvision-chat')).default;
-                break;
-            case 'public-plans':
-                // @ts-ignore
-                handler = (await import('./_lib/public-plans')).default;
-                break;
-            case 'apply-coupon':
-                // @ts-ignore
-                handler = (await import('./_lib/apply-coupon')).default;
-                break;
-            case 'asaas-create-subscription':
-                // @ts-ignore
-                handler = (await import('./_lib/asaas-create-subscription')).default;
-                break;
-            case 'asaas-webhook':
-                // @ts-ignore
-                handler = (await import('./_lib/asaas-webhook')).default;
-                break;
-            case 'categorize-transactions':
-                // @ts-ignore
-                handler = (await import('./_lib/categorize-transactions')).default;
-                break;
-            case 'handle-bank-reconcile':
-                // @ts-ignore
-                handler = (await import('./_lib/handle-bank-reconcile')).default;
-                break;
-            case 'handle-card-reconcile':
-                // @ts-ignore
-                handler = (await import('./_lib/handle-card-reconcile')).default;
-                break;
-            case 'handle-import-worker':
-                // @ts-ignore
-                handler = (await import('./_lib/handle-import-worker')).default;
-                break;
-            case 'handle-receipt-items':
-                // @ts-ignore
-                handler = (await import('./_lib/handle-receipt-items')).default;
-                break;
-            case 'handle-wealth-analysis':
-                // @ts-ignore
-                handler = (await import('./_lib/handle-wealth-analysis')).default;
-                break;
-            case 'notify-bills-due':
-                // @ts-ignore
-                handler = (await import('./_lib/notify-bills-due')).default;
-                break;
-            case 'parse-card-statement':
-                // @ts-ignore
-                handler = (await import('./_lib/parse-card-statement')).default;
-                break;
-            case 'parse-statement':
-                // @ts-ignore
-                handler = (await import('./_lib/parse-statement')).default;
-                break;
-            case 'process-import':
-                // @ts-ignore
-                handler = (await import('./_lib/process-import')).default;
-                break;
-            case 'vapid-public-key':
-                // @ts-ignore
-                handler = (await import('./_lib/vapid-public-key')).default;
-                break;
-            case 'whatsapp-webhook':
-                // @ts-ignore
-                handler = (await import('./_lib/whatsapp-webhook')).default;
-                break;
-            default:
-                return res.status(404).json({ error: `Route /api/${path} not found.` });
+        const handlerModule = handlers[path];
+        if (!handlerModule) {
+            return res.status(404).json({ 
+                error: `Route /api/${path} not found.`,
+                available: Object.keys(handlers)
+            });
         }
 
-        if (typeof handler === 'function') {
-            return await handler(req, res);
+        const handlerFunc = handlerModule.default || handlerModule;
+
+        if (typeof handlerFunc === 'function') {
+            return await handlerFunc(req, res);
         } else {
             return res.status(500).json({ error: `Handler for ${path} is not a function.` });
         }

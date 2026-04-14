@@ -19,18 +19,33 @@ const CashFlowProjection: React.FC<{ userId: string, currentBalance: number }> =
 
     const buildProjection = async () => {
         const sb = supabase;
-        if (!sb) return;
+        if (!sb || !userId) {
+            console.warn('[Projection] Supabase client or userId missing');
+            setIsLoading(false);
+            return;
+        }
+
+        console.log('[Projection] Starting calculation for user:', userId, 'Current balance:', currentBalance);
         setIsLoading(true);
+        
         try {
             // Get all pending future transactions (including installments)
             const today = new Date();
             const futureEnd = new Date(today.getFullYear(), today.getMonth() + 7, 0); // Next 6 months + current
-            const { data: pendingTx } = await sb.from('transactions')
+            
+            const { data: pendingTx, error } = await sb.from('transactions')
                 .select('amount, type, date')
                 .eq('user_id', userId)
                 .eq('is_paid', false)
                 .gte('date', today.toISOString().split('T')[0])
                 .lte('date', futureEnd.toISOString().split('T')[0]);
+
+            if (error) {
+                console.error('[Projection] Error fetching transactions:', error);
+                throw error;
+            }
+
+            console.log(`[Projection] Found ${pendingTx?.length || 0} pending transactions`);
 
             const monthlyData: Record<string, { income: number; expense: number }> = {};
             (pendingTx || []).forEach((t: any) => {
@@ -42,7 +57,7 @@ const CashFlowProjection: React.FC<{ userId: string, currentBalance: number }> =
 
             // Iterate through the next 6 months
             const result: MonthProjection[] = [];
-            let rollingBalance = currentBalance;
+            let rollingBalance = Number(currentBalance) || 0;
 
             for (let i = 0; i < 6; i++) {
                 const dt = new Date(today.getFullYear(), today.getMonth() + i, 1);
@@ -52,8 +67,6 @@ const CashFlowProjection: React.FC<{ userId: string, currentBalance: number }> =
                 const inc = monthlyData[key]?.income || 0;
                 const exp = monthlyData[key]?.expense || 0;
 
-                // For the current month (i===0), the rolling balance represents the end-of-month projected balance, 
-                // which is currentBalance + pendingIncome - pendingExpense
                 rollingBalance = rollingBalance + inc - exp;
 
                 result.push({
@@ -64,8 +77,14 @@ const CashFlowProjection: React.FC<{ userId: string, currentBalance: number }> =
                     isNegative: rollingBalance < 0
                 });
             }
+            
+            console.log('[Projection] Calculation complete. Results:', result.length, 'months');
             setProjections(result);
-        } finally { setIsLoading(false); }
+        } catch (err) {
+            console.error('[Projection] Critical error in buildProjection:', err);
+        } finally { 
+            setIsLoading(false); 
+        }
     };
 
     const fmt = (v: number) => {
