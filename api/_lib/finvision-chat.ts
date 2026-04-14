@@ -212,13 +212,7 @@ ${transactions.slice(0, 50).map((t: any) => `- ${t.date.split('T')[0]}|${t.categ
         let rawText = '';
         try {
             // Step 1: Initialize AI Client
-            let ai;
-            try {
-                ai = new GoogleGenAI({ apiKey: geminiKey });
-            } catch (initErr: any) {
-                console.error('[FinVisionChat] SDK Initialization Error:', initErr);
-                throw new Error(`Erro ao inicializar motor de IA: ${initErr.message}`);
-            }
+            const ai = new GoogleGenAI({ apiKey: geminiKey });
 
             // Step 2: Generate Content
             const result = await ai.models.generateContent({
