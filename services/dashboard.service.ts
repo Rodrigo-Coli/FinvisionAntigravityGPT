@@ -171,6 +171,20 @@ export const DashboardService = {
     };
   },
 
+  getCachedSummary: (): DashboardData | null => {
+    const cached = localStorage.getItem('finvision_dashboard_summary');
+    if (!cached) return null;
+    try {
+      return JSON.parse(cached);
+    } catch (e) {
+      return null;
+    }
+  },
+
+  setCachedSummary: (data: DashboardData): void => {
+    localStorage.setItem('finvision_dashboard_summary', JSON.stringify(data));
+  },
+
   refreshBalance: async (): Promise<number> => {
     // This could trigger a sync in the future
     return 0;

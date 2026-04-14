@@ -241,6 +241,47 @@ export const FinanceService = {
     } catch (e) { }
   },
 
+  // Transações com Suporte Offline
+  saveTransaction: async (tx: any): Promise<any> => {
+    if (!supabase) return null;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Usuário não autenticado');
+
+    if (!navigator.onLine) {
+      const { offlineQueue } = await import('../lib/offlineQueue.service');
+      const fakeId = tx.id || 'offline-' + Date.now();
+      const payload = { ...tx, id: fakeId, user_id: user.id };
+      offlineQueue.addAction('CREATE_TRANSACTION', payload);
+      return { id: fakeId, ...payload };
+    }
+
+    const { data, error } = await supabase.from('transactions').insert([{ ...tx, user_id: user.id }]).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  updateTransaction: async (id: string, updates: any): Promise<void> => {
+    if (!supabase) return;
+    if (!navigator.onLine) {
+      const { offlineQueue } = await import('../lib/offlineQueue.service');
+      offlineQueue.addAction('UPDATE_TRANSACTION', { id, updates });
+      return;
+    }
+    const { error } = await supabase.from('transactions').update(updates).eq('id', id);
+    if (error) throw error;
+  },
+
+  deleteTransaction: async (id: string): Promise<void> => {
+    if (!supabase) return;
+    if (!navigator.onLine) {
+      const { offlineQueue } = await import('../lib/offlineQueue.service');
+      offlineQueue.addAction('DELETE_TRANSACTION', { id });
+      return;
+    }
+    const { error } = await supabase.from('transactions').update({ is_deleted: true }).eq('id', id);
+    if (error) throw error;
+  },
+
   // Categorias
   getCategories: async (): Promise<string[]> => {
     if (!supabase) return [];

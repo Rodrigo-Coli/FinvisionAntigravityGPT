@@ -30,9 +30,14 @@ import ContextualHelp from '../components/ContextualHelp';
 import { supabase } from '../lib/supabase/client';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [data, setData] = useState<DashboardData | null>(() => DashboardService.getCachedSummary());
+  const [transactions, setTransactions] = useState<any[]>(() => {
+    try {
+      const cached = localStorage.getItem('finvision_cached_home_txs');
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) { return []; }
+  });
+  const [isLoading, setIsLoading] = useState(!data);
   const [error, setError] = useState<string | null>(null);
   const [showBalance, setShowBalance] = useState(() => {
     return localStorage.getItem('finvision_privacy') !== 'hidden';
@@ -61,12 +66,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const dashboardData = await DashboardService.getSummary(); // Changed from dashboardService.getDashboardData() to DashboardService.getSummary() to match original
+        const dashboardData = await DashboardService.getSummary();
         setData(dashboardData);
+        DashboardService.setCachedSummary(dashboardData);
 
-        // If the user wants a large range, we should ideally fetch dynamically,
-        // but for now, we'll fetch a wider net from the DB and let the component filter it.
-        // We fetch from the selected startDate to the selected endDate.
         // Fetch bank transactions
         const { data: txs, error: txError } = await supabase
           .from('transactions')
@@ -77,7 +80,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           .lte('date', endDate)
           .order('date', { ascending: false });
 
-        // Fetch card transactions with category name join
+        // Fetch card transactions
         const { data: cardTxs, error: cardTxError } = await supabase
           .from('card_transactions')
           .select('id, date, amount, description, categories(name)')
@@ -87,24 +90,25 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
         if (txError || cardTxError) {
           console.error("Error fetching transactions:", txError || cardTxError);
-          setError('Erro ao carregar transações.');
+          if (!data) setError('Erro ao carregar transações.');
         } else {
-          // Normalizing card transactions to match main transaction shape
           const normalizedCardTxs = (cardTxs || []).map((ct: any) => ({
             id: ct.id,
             date: ct.date,
-            type: 'EXPENSE', // Card charges are always expenses for analysis
+            type: 'EXPENSE',
             amount: Number(ct.amount),
             category: ct.categories?.name || 'Cartão de Crédito',
             description: ct.description,
-            is_paid: true, // Card spends are "committed" expenses
+            is_paid: true,
             paid_amount: Number(ct.amount)
           }));
 
-          setTransactions([...(txs || []), ...normalizedCardTxs]);
+          const allTxs = [...(txs || []), ...normalizedCardTxs];
+          setTransactions(allTxs);
+          localStorage.setItem('finvision_cached_home_txs', JSON.stringify(allTxs));
         }
       } catch (err: any) {
-        setError('Erro ao carregar o resumo financeiro.');
+        if (!data) setError('Erro ao carregar o resumo financeiro.');
       } finally {
         setIsLoading(false);
       }
