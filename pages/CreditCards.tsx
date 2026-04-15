@@ -54,7 +54,7 @@ const CreditCardsPage: React.FC = () => {
 
   // New Series States
   const [isInstallment, setIsInstallment] = useState(false);
-  const [installmentsCount, setInstallmentsCount] = useState<number | string>(1);
+  const [installmentsCount, setInstallmentsCount] = useState<number | string>('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrencePeriod, setRecurrencePeriod] = useState<'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom'>('monthly');
   const [recurrenceDaysInterval, setRecurrenceDaysInterval] = useState(1);
@@ -518,7 +518,9 @@ const CreditCardsPage: React.FC = () => {
             }
           }
         }
-        if (targetStmtId) await FinanceService.syncStatementToHistory(targetStmtId);
+        if (targetStmtId) {
+          await FinanceService.syncStatementToHistory(targetStmtId);
+        }
       } else {
         // Fluxo Série (Parcelado ou Recorrente)
         const type = isInstallment ? 'INSTALLMENT' : 'RECURRING';
