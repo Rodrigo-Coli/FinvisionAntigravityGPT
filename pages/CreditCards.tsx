@@ -54,7 +54,7 @@ const CreditCardsPage: React.FC = () => {
 
   // New Series States
   const [isInstallment, setIsInstallment] = useState(false);
-  const [installmentsCount, setInstallmentsCount] = useState(1);
+  const [installmentsCount, setInstallmentsCount] = useState<number | string>(1);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrencePeriod, setRecurrencePeriod] = useState<'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom'>('monthly');
   const [recurrenceDaysInterval, setRecurrenceDaysInterval] = useState(1);
@@ -383,6 +383,7 @@ const CreditCardsPage: React.FC = () => {
       setSavingRowId(null);
       setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' });
       if (selectedCard?.id) loadCardContext(selectedCard.id);
+      if (tx?.statement_id) await FinanceService.syncStatementToHistory(tx.statement_id);
     }
   };
 
@@ -430,6 +431,7 @@ const CreditCardsPage: React.FC = () => {
       }
 
       if (selectedCard?.id) loadCardContext(selectedCard.id);
+      if (tx?.statement_id) await FinanceService.syncStatementToHistory(tx.statement_id);
     } catch (err) {
       console.error('Erro ao excluir transação:', err);
     } finally {
@@ -515,7 +517,7 @@ const CreditCardsPage: React.FC = () => {
               console.error(`Erro ao subir anexo ${file.name}:`, uploadErr);
             }
           }
-        }
+        if (targetStmtId) await FinanceService.syncStatementToHistory(targetStmtId);
       } else {
         // Fluxo Série (Parcelado ou Recorrente)
         const type = isInstallment ? 'INSTALLMENT' : 'RECURRING';
@@ -582,6 +584,12 @@ const CreditCardsPage: React.FC = () => {
               console.error(`Erro ao subir anexo ${file.name}:`, uploadErr);
             }
           }
+        }
+
+        // Sync all affected statements
+        const uniqueStmtIds = Array.from(new Set(inserts.map(i => i.statement_id)));
+        for (const sid of uniqueStmtIds) {
+          if (sid) await FinanceService.syncStatementToHistory(sid);
         }
       }
 
@@ -789,33 +797,8 @@ const CreditCardsPage: React.FC = () => {
 
       if (upErr) throw upErr;
 
-      // --- NEW: Record the payment in bank transactions table ---
-      const selectedAcc = accounts.find(a => a.id === payAccountId);
-      const { error: txErr } = await supabase.from('transactions').insert([{
-        user_id: user.id,
-        account_id: payAccountId,
-        account_name: selectedAcc?.institution || selectedAcc?.name || 'Conta Bancária',
-        date: payDate,
-        description: `Pagamento Cartão: ${selectedCard.name}`,
-        category: 'Pagamentos',
-        type: 'EXPENSE',
-        amount: Math.abs(cleanPayAmount),
-        is_paid: true,
-        is_deleted: false,
-        paid_at: payDate,
-        paid_amount: Math.abs(cleanPayAmount),
-        metadata: {
-          card_id: selectedCard.id,
-          statement_id: targetStatementId,
-          type: 'CARD_PAYMENT_SETTLEMENT',
-          payment_source_account: payAccountId
-        }
-      }]);
-
-      if (txErr) {
-        console.error('Erro ao registrar transação de pagamento:', txErr);
-        alert("A fatura foi baixada, mas houve um erro ao registrar a saída no seu histórico bancário: " + txErr.message);
-      }
+      // --- SYNC WITH HISTORY (Confirming Payment) ---
+      await FinanceService.syncStatementToHistory(targetStatementId, payAccountId);
 
       setShowPayModal(false);
       navigate('/history');

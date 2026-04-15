@@ -25,8 +25,8 @@ interface ManualTransactionModalProps {
     // --- NEW: RECURRENCE & INSTALLMENTS ---
     isInstallment?: boolean;
     setIsInstallment?: (v: boolean) => void;
-    installmentsCount?: number;
-    setInstallmentsCount?: (v: number) => void;
+    installmentsCount?: number | string;
+    setInstallmentsCount?: (v: number | string) => void;
     isRecurring?: boolean;
     setIsRecurring?: (v: boolean) => void;
     recurrencePeriod?: 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom';
@@ -179,7 +179,10 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                         type="number"
                                         min="2"
                                         value={installmentsCount}
-                                        onChange={(e) => setInstallmentsCount?.(Number(e.target.value))}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setInstallmentsCount?.(val === '' ? '' : Number(val));
+                                        }}
                                         className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"
                                     />
                                     <p className="text-[8px] text-slate-400 mt-2 italic font-medium">

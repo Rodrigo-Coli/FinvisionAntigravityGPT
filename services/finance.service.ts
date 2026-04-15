@@ -461,5 +461,82 @@ export const FinanceService = {
       .createSignedUrl(doc.path, 60);
 
     return error ? null : data.signedUrl;
+  },
+
+  syncStatementToHistory: async (statementId: string, overrideAccountId?: string): Promise<void> => {
+    if (!supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // 1. Obter dados da fatura
+      const { data: stmt, error: stmtErr } = await supabase
+        .from('card_statements')
+        .select(`
+          *,
+          cards (
+            name
+          )
+        `)
+        .eq('id', statementId)
+        .single();
+      
+      if (stmtErr || !stmt) return;
+
+      const amount = Math.abs(Number(stmt.total_amount || 0));
+
+      // 2. Localizar conta para o lançamento
+      let targetAccountId = overrideAccountId;
+
+      if (!targetAccountId) {
+        const { data: accounts } = await supabase
+          .from('accounts')
+          .select('id, institution, name')
+          .eq('user_id', user.id)
+          .eq('is_archived', false);
+
+        const bradescoAcc = (accounts || []).find(a => 
+          (a.institution || '').toLowerCase().includes('bradesco') || 
+          (a.name || '').toLowerCase().includes('bradesco')
+        );
+
+        targetAccountId = bradescoAcc?.id || (accounts?.[0]?.id);
+      }
+
+      if (!targetAccountId) return;
+
+      // 3. Upsert na tabela de transações usando query direta no jsonb
+      const { data: queryTx } = await supabase
+        .from('transactions')
+        .select('id')
+        .eq('user_id', user.id)
+        .filter('metadata->>card_statement_id', 'eq', statementId)
+        .maybeSingle();
+
+      const payload: any = {
+        user_id: user.id,
+        account_id: targetAccountId,
+        description: `Fatura Cartão: ${stmt.cards?.name || 'Cartão'} (${stmt.month}/${stmt.year})`,
+        amount: amount,
+        date: stmt.due_date,
+        type: 'TRANSFER',
+        category: 'Pagamento de Fatura',
+        is_paid: stmt.status === 'PAID',
+        paid_amount: stmt.status === 'PAID' ? amount : 0,
+        paid_at: stmt.status === 'PAID' ? new Date().toISOString() : null,
+        metadata: {
+          card_statement_id: statementId,
+          is_provision: true
+        }
+      };
+
+      if (queryTx) {
+        await supabase.from('transactions').update(payload).eq('id', queryTx.id);
+      } else if (amount > 0) {
+        await supabase.from('transactions').insert([payload]);
+      }
+    } catch (err) {
+      console.error('Erro ao sincronizar fatura com histórico:', err);
+    }
   }
 };
