@@ -495,7 +495,7 @@ export const FinanceService = {
           .eq('user_id', user.id)
           .eq('is_archived', false);
 
-        const bradescoAcc = (accounts || []).find(a => 
+        const bradescoAcc = (accounts || []).find((a: any) => 
           (a.institution || '').toLowerCase().includes('bradesco') || 
           (a.name || '').toLowerCase().includes('bradesco')
         );

@@ -537,7 +537,7 @@ const CreditCardsPage: React.FC = () => {
           },
           {
             type,
-            count: installmentsCount,
+            count: Number(installmentsCount || 1),
             period: recurrencePeriod,
             daysInterval: recurrenceDaysInterval,
             startDate: txDate,
