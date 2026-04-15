@@ -517,6 +517,7 @@ const CreditCardsPage: React.FC = () => {
               console.error(`Erro ao subir anexo ${file.name}:`, uploadErr);
             }
           }
+        }
         if (targetStmtId) await FinanceService.syncStatementToHistory(targetStmtId);
       } else {
         // Fluxo Série (Parcelado ou Recorrente)
