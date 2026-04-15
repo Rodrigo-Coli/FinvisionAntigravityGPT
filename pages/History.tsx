@@ -322,8 +322,18 @@ const HistoryPage: React.FC = () => {
       if (filterAccount.length > 0) query = query.in('account_id', filterAccount);
       if (filterCategory.length > 0) query = query.in('category', filterCategory);
       if (filterSubcategory.length > 0) query = query.in('subcategory', filterSubcategory);
-      if (startDate) query = query.gte('date', startDate);
-      if (endDate) query = query.lte('date', endDate);
+      const todayRaw = new Date();
+      const sixtyDaysAhead = new Date(todayRaw.getFullYear(), todayRaw.getMonth(), todayRaw.getDate() + 60);
+      const futureLimit = sixtyDaysAhead.toISOString().split('T')[0];
+
+      if (startDate && endDate) {
+        // Broaden query to include future provisions, then filter in JS if needed or use complex OR
+        // For simplicity and pagination, we expand the range slightly for provisions
+        query = query.or(`and(date.gte.${startDate},date.lte.${endDate}),and(metadata->>is_provision.eq.true,date.gte.${startDate},date.lte.${futureLimit})`);
+      } else {
+        if (startDate) query = query.gte('date', startDate);
+        if (endDate) query = query.lte('date', endDate);
+      }
       if (filterOwner.length > 0) query = query.in('owner_name', filterOwner);
 
       // Global Search: use ilike for reliable Supabase/PostgREST compatibility
@@ -343,8 +353,12 @@ const HistoryPage: React.FC = () => {
       if (filterAccount.length > 0) chartQuery = chartQuery.in('account_id', filterAccount);
       if (filterCategory.length > 0) chartQuery = chartQuery.in('category', filterCategory);
       if (filterSubcategory.length > 0) chartQuery = chartQuery.in('subcategory', filterSubcategory);
-      if (startDate) chartQuery = chartQuery.gte('date', startDate);
-      if (endDate) chartQuery = chartQuery.lte('date', endDate);
+      if (startDate && endDate) {
+        chartQuery = chartQuery.or(`and(date.gte.${startDate},date.lte.${endDate}),and(metadata->>is_provision.eq.true,date.gte.${startDate},date.lte.${futureLimit})`);
+      } else {
+        if (startDate) chartQuery = chartQuery.gte('date', startDate);
+        if (endDate) chartQuery = chartQuery.lte('date', endDate);
+      }
       if (filterOwner.length > 0) chartQuery = chartQuery.in('owner_name', filterOwner);
 
       if (debouncedSearch) {
