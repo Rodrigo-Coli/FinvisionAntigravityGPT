@@ -480,6 +480,7 @@ const CreditCardsPage: React.FC = () => {
     }
   };
 
+  const handleAddManualTx = async () => {
     const parseNumeric = (val: any, fallback = 0): number => {
       if (typeof val === 'number') return val;
       const s = String(val || '').replace(',', '.').trim();
