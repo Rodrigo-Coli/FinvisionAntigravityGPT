@@ -519,7 +519,7 @@ export const FinanceService = {
         description: `Fatura Cartão: ${stmt.cards?.name || 'Cartão'} (${stmt.month}/${stmt.year})`,
         amount: amount,
         date: stmt.due_date,
-        type: 'TRANSFER',
+        type: 'BILL_PAYMENT',
         category: 'Pagamento de Fatura',
         is_paid: stmt.status === 'PAID',
         paid_amount: stmt.status === 'PAID' ? amount : 0,
