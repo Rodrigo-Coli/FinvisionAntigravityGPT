@@ -527,7 +527,8 @@ export const FinanceService = {
         metadata: {
           card_statement_id: statementId,
           is_provision: true
-        }
+        },
+        is_deleted: false
       };
 
       if (queryTx) {

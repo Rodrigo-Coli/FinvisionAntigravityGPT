@@ -972,6 +972,20 @@ const HistoryPage: React.FC = () => {
         }).eq('id', payModal.tx.id);
       }
       await supabase.rpc('recalculate_account_balance', { p_account_id: payModal.tx.accountId });
+      
+      // Sincronização Bidirecional: Se for pagamento de fatura, atualiza o status na tabela de cartões
+      if (payModal.tx.type === 'BILL_PAYMENT') {
+        const stmtId = payModal.tx.metadata?.card_statement_id || payModal.tx.metadata?.statement_id;
+        if (stmtId) {
+          const isFullyPaid = amount >= payModal.remaining - 0.01;
+          const { data: stmt } = await supabase.from('card_statements').select('paid_amount').eq('id', stmtId).maybeSingle();
+          await supabase.from('card_statements').update({
+            status: isFullyPaid ? 'PAID' : 'OPEN',
+            paid_amount: (stmt?.paid_amount || 0) + amount
+          }).eq('id', stmtId);
+        }
+      }
+
       setPayModal({ open: false });
       await fetchData();
     } catch (err) {
@@ -1486,11 +1500,14 @@ const HistoryPage: React.FC = () => {
             if (!user) return;
             const isCardPayment = t.type === 'BILL_PAYMENT' || t.description.toLowerCase().includes('pagamento cartão');
             if (isCardPayment) {
-              const statementId = (t as any).metadata?.statement_id;
+              const statementId = (t as any).metadata?.card_statement_id || (t as any).metadata?.statement_id;
               if (statementId) {
                 const { data: stmCur } = await supabase.from('card_statements').select('paid_amount').eq('id', statementId).maybeSingle();
                 if (stmCur) {
-                  await supabase.from('card_statements').update({ status: 'OPEN', paid_amount: Math.max(0, Number(stmCur.paid_amount) - Math.abs(t.amount)) }).eq('id', statementId);
+                  await supabase.from('card_statements').update({ 
+                    status: 'OPEN', 
+                    paid_amount: Math.max(0, Number(stmCur.paid_amount) - Math.abs(t.amount)) 
+                  }).eq('id', statementId);
                 }
               }
               await supabase.from('transactions').update({ is_paid: false, paid_amount: 0, paid_at: null }).eq('id', t.id);

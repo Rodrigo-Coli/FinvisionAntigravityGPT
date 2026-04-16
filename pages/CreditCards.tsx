@@ -860,7 +860,7 @@ const CreditCardsPage: React.FC = () => {
       await FinanceService.syncStatementToHistory(statementId, undefined, false);
 
       // 3. Atualizar context
-      if (selectedCard?.id) loadCardContext(selectedCard.id);
+      if (selectedCard?.id) await loadCardContext(selectedCard.id);
       
       alert("Fatura reaberta com sucesso!");
     } catch (err: any) {

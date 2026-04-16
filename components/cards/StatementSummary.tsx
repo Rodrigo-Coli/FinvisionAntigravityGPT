@@ -47,30 +47,30 @@ export const StatementSummary: React.FC<StatementSummaryProps> = ({
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="flex items-center justify-end gap-2 w-full md:w-auto mt-4 md:mt-0">
                     <button
                         onClick={onRefresh}
-                        className="flex-1 md:flex-none p-3.5 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-xl transition-all"
+                        className="p-3 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-xl transition-all h-11 flex items-center justify-center"
                         title="Atualizar"
                     >
-                        <RefreshCw size={20} />
+                        <RefreshCw size={18} />
                     </button>
                     <button
                         onClick={onPay}
                         disabled={statementTotal <= 0 || statementOpen <= 0}
-                        className={`flex-1 md:flex-grow-0 px-8 py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all inline-flex items-center justify-center gap-2 ${statementTotal <= 0 || statementOpen <= 0
+                        className={`px-6 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all inline-flex items-center justify-center gap-2 h-11 ${statementTotal <= 0 || statementOpen <= 0
                             ? 'bg-slate-50 text-slate-300 cursor-not-allowed'
                             : 'bg-brand-600 text-white hover:bg-brand-700 shadow-lg shadow-brand-500/20 active:scale-95'
                             }`}
                     >
-                        <Landmark size={16} />
+                        <Landmark size={14} />
                         Pagar Agora
                     </button>
 
                     {(currentStatement?.status === 'PAID' || (statementTotal > 0 && statementOpen === 0)) && (
                         <button
                             onClick={onReopen}
-                            className="flex-1 md:flex-none px-6 py-3.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95"
+                            className="px-6 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 h-11 flex items-center justify-center min-w-[140px]"
                         >
                             Reabrir Fatura
                         </button>
