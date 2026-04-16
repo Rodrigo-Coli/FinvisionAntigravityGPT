@@ -463,7 +463,7 @@ export const FinanceService = {
     return error ? null : data.signedUrl;
   },
 
-  syncStatementToHistory: async (statementId: string, overrideAccountId?: string): Promise<void> => {
+  syncStatementToHistory: async (statementId: string, overrideAccountId?: string, overridePaid?: boolean): Promise<void> => {
     if (!supabase) return;
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -521,9 +521,9 @@ export const FinanceService = {
         date: stmt.due_date,
         type: 'BILL_PAYMENT',
         category: 'Pagamento de Fatura',
-        is_paid: stmt.status === 'PAID',
-        paid_amount: stmt.status === 'PAID' ? amount : 0,
-        paid_at: stmt.status === 'PAID' ? new Date().toISOString() : null,
+        is_paid: overridePaid !== undefined ? overridePaid : stmt.status === 'PAID',
+        paid_amount: (overridePaid !== undefined ? overridePaid : stmt.status === 'PAID') ? amount : 0,
+        paid_at: (overridePaid !== undefined ? overridePaid : stmt.status === 'PAID') ? new Date().toISOString() : null,
         metadata: {
           card_statement_id: statementId,
           is_provision: true
