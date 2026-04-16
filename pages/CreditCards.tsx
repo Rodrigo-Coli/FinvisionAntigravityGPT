@@ -519,7 +519,7 @@ const CreditCardsPage: React.FC = () => {
 
         // OPTIMISTIC UI: Fechar modal e limpar campos IMEDIATAMENTE após o insert básico
         setShowAddTxModal(false);
-        resetForm();
+        resetTxForm();
         loadCardContext(txCardId); // Background refresh
 
         // Processos em Background (sem await para não travar o fechamento do modal)
@@ -594,7 +594,7 @@ const CreditCardsPage: React.FC = () => {
 
         // OPTIMISTIC UI para séries
         setShowAddTxModal(false);
-        resetForm();
+        resetTxForm();
         loadCardContext(txCardId);
 
         (async () => {
@@ -625,7 +625,7 @@ const CreditCardsPage: React.FC = () => {
     }
   };
 
-  const resetForm = () => {
+  const resetTxForm = () => {
     setTxDescription('');
     setTxAmount('');
     setTxDate(DateUtils.formatToISODate());
@@ -733,7 +733,7 @@ const CreditCardsPage: React.FC = () => {
 
       setShowAddModal(false);
       setIsEditing(false);
-      resetForm();
+      resetCardForm();
     } catch (err: any) {
       console.error('Erro ao salvar cartão:', err);
       alert('Erro ao salvar cartão: ' + (err.message || 'Verifique sua conexão.'));
@@ -742,7 +742,7 @@ const CreditCardsPage: React.FC = () => {
     }
   };
 
-  const resetForm = () => {
+  const resetCardForm = () => {
     setNewName('');
     setNewBrand('Visa');
     setNewLast4('');
