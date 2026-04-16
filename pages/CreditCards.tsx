@@ -1073,7 +1073,7 @@ const CreditCardsPage: React.FC = () => {
       {/* Modals */}
       <AddCardModal
         show={showAddModal}
-        onClose={() => { setShowAddModal(false); setIsEditing(false); resetForm(); }}
+        onClose={() => { setShowAddModal(false); setIsEditing(false); resetCardForm(); }}
         onSubmit={handleAddCard}
         title={isEditing ? 'Editar Cartão' : 'Novo Cartão'}
         buttonLabel={isEditing ? 'Salvar Alterações' : 'Salvar Cartão'}
