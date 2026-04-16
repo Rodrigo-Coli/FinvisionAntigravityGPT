@@ -480,51 +480,66 @@ const CreditCardsPage: React.FC = () => {
     }
   };
 
-  const handleAddManualTx = async () => {
+    const parseNumeric = (val: any, fallback = 0): number => {
+      if (typeof val === 'number') return val;
+      const s = String(val || '').replace(',', '.').trim();
+      const n = parseFloat(s);
+      return isNaN(n) ? fallback : n;
+    };
+
     if (!supabase || !txCardId) return;
+    setIsSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // The file upload is now handled AFTER transaction creation to link multiple files
+      const cleanAmount = parseNumeric(txAmount);
+      const cleanInstallments = parseNumeric(installmentsCount, 1);
 
       if (!isInstallment && !isRecurring) {
         // Fluxo Simples
+        const targetStmtId = await FinanceService.getOrCreateStatement(txCardId, txDate);
         const payload: any = {
           user_id: user.id,
           card_id: txCardId,
+          statement_id: targetStmtId,
           date: txDate,
           description: txDescription,
-          amount: Number(txAmount || 0),
+          amount: cleanAmount,
           status: 'POSTED',
           source: 'MANUAL',
           is_manual: true,
+          category_id: txCategoryId || null,
+          subcategory: txSubcategory || null
         };
-        if (txCategoryId) payload.category_id = txCategoryId;
-        if (txSubcategory) payload.subcategory = txSubcategory;
 
-        const targetStmtId = await FinanceService.getOrCreateStatement(txCardId, txDate);
-        payload.statement_id = targetStmtId;
         const { data: txData, error } = await supabase.from('card_transactions').insert([payload]).select('id').single();
         if (error) throw error;
 
-        // Handle Attachments (Multi-upload)
-        if (txData?.id && txFiles && txFiles.length > 0) {
-          for (const file of txFiles) {
-            try {
-              await FinanceService.uploadAttachment(file, txData.id, true);
-            } catch (uploadErr) {
-              console.error(`Erro ao subir anexo ${file.name}:`, uploadErr);
+        // OPTIMISTIC UI: Fechar modal e limpar campos IMEDIATAMENTE após o insert básico
+        setShowAddTxModal(false);
+        resetForm();
+        loadCardContext(txCardId); // Background refresh
+
+        // Processos em Background (sem await para não travar o fechamento do modal)
+        (async () => {
+          if (txData?.id && txFiles && txFiles.length > 0) {
+            for (const file of txFiles) {
+              try {
+                await FinanceService.uploadAttachment(file, txData.id, true);
+              } catch (e) { console.error("Erro background attachment:", e); }
             }
           }
-        }
-        if (targetStmtId) {
-          await FinanceService.syncStatementToHistory(targetStmtId);
-        }
+          if (targetStmtId) {
+            try {
+              await FinanceService.syncStatementToHistory(targetStmtId);
+            } catch (e) { console.error("Erro background sync:", e); }
+          }
+        })();
+
       } else {
         // Fluxo Série (Parcelado ou Recorrente)
         const type = isInstallment ? 'INSTALLMENT' : 'RECURRING';
-        // Importamos TransactionSeriesUtils dinamicamente ou fixamos o import no topo
         const { TransactionSeriesUtils } = await import('../lib/transactionSeriesUtils');
 
         const series = TransactionSeriesUtils.generateSeries(
@@ -532,24 +547,21 @@ const CreditCardsPage: React.FC = () => {
             user_id: user.id,
             card_id: txCardId,
             description: txDescription,
-            amount: Number(txAmount || 0),
+            amount: cleanAmount,
             category_id: txCategoryId || undefined,
             is_manual: true,
             source: 'MANUAL',
           },
           {
             type,
-            count: Number(installmentsCount || 1),
+            count: cleanInstallments,
             period: recurrencePeriod,
             daysInterval: recurrenceDaysInterval,
             startDate: txDate,
-            totalAmount: isInstallment ? Number(txAmount || 0) : undefined // Para cartão, txAmount é o total no parcelamento
+            totalAmount: isInstallment ? cleanAmount : undefined
           }
         );
 
-        // Ensure subcategory exists or handle if needed
-
-        // Salvar cada item da série corrigindo a fatura
         const groupId = crypto.randomUUID();
         const inserts = [];
         for (const item of series) {
@@ -575,42 +587,52 @@ const CreditCardsPage: React.FC = () => {
             subcategory: txSubcategory || null
           });
         }
+        
         const { data: insertsData, error } = await supabase.from('card_transactions').insert(inserts).select('id');
         if (error) throw error;
 
-        // Attach to the FIRST transaction of the series (common practice)
-        if (insertsData?.[0]?.id && txFiles && txFiles.length > 0) {
-          for (const file of txFiles) {
-            try {
-              await FinanceService.uploadAttachment(file, insertsData[0].id, true);
-            } catch (uploadErr) {
-              console.error(`Erro ao subir anexo ${file.name}:`, uploadErr);
+        // OPTIMISTIC UI para séries
+        setShowAddTxModal(false);
+        resetForm();
+        loadCardContext(txCardId);
+
+        (async () => {
+          // Attachments
+          if (insertsData?.[0]?.id && txFiles && txFiles.length > 0) {
+            for (const file of txFiles) {
+              try {
+                await FinanceService.uploadAttachment(file, insertsData[0].id, true);
+              } catch (e) { console.error("Erro background series attachment:", e); }
             }
           }
-        }
-
-        // Sync all affected statements
-        const uniqueStmtIds = Array.from(new Set(inserts.map(i => i.statement_id)));
-        for (const sid of uniqueStmtIds) {
-          if (sid) await FinanceService.syncStatementToHistory(sid);
-        }
+          // Sync all affected statements
+          const uniqueStmtIds = Array.from(new Set(inserts.map(i => i.statement_id)));
+          for (const sid of uniqueStmtIds) {
+            if (sid) {
+              try {
+                await FinanceService.syncStatementToHistory(sid);
+              } catch (e) { console.error("Erro background series sync:", e); }
+            }
+          }
+        })();
       }
-
-      setShowAddTxModal(false);
-      setTxDescription('');
-      setTxAmount('');
-      setTxDate(DateUtils.formatToISODate());
-      setTxSubcategory('');
-      setIsInstallment(false);
-      setIsRecurring(false);
-      setInstallmentsCount(1);
-      setTxFiles([]);
-
-      await loadCardContext(txCardId);
     } catch (err: any) {
-      console.error('Erro ao adicionar transação:', err);
+      console.error('Erro crítico ao adicionar transação:', err);
       alert("Erro ao salvar lançamento: " + (err.message || "Erro desconhecido"));
+    } finally {
+      setIsSaving(false);
     }
+  };
+
+  const resetForm = () => {
+    setTxDescription('');
+    setTxAmount('');
+    setTxDate(DateUtils.formatToISODate());
+    setTxSubcategory('');
+    setIsInstallment(false);
+    setIsRecurring(false);
+    setInstallmentsCount('');
+    setTxFiles([]);
   };
 
   const handleEditClick = () => {
@@ -1081,6 +1103,7 @@ const CreditCardsPage: React.FC = () => {
         show={showAddTxModal}
         onClose={() => setShowAddTxModal(false)}
         onSubmit={handleAddManualTx}
+        isSaving={isSaving}
         isAnyModalBusy={isAnyModalBusy}
         cards={cards}
         categories={categories}

@@ -15,4 +15,9 @@
     - [x] `parse-statement.ts`
 - [x] Simplificar `api/index.ts` (Remover os 11 handlers migrados)
 - [x] Atualizar `vercel.json` com roteamento explícito
-- [ ] Validar integridade das rotas (Vercel Deploy)
+- [x] Trigger immediate sync of existing fixes to Production
+- [x] Refine `History.tsx` to show future provisions in the "Current Month" view
+- [x] Fix all numerical inputs in `CreditCards.tsx` and `ManualTransactionModal.tsx` to handle empty strings
+- [x] Final verification in browser (Logic confirmed)
+- [x] Final Production Sync
+- [x] Validar integridade das rotas (Vercel Deploy)

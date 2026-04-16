@@ -1,10 +1,11 @@
 import React from 'react';
-import { X, CheckCircle2, Camera } from 'lucide-react';
+import { X, CheckCircle2, Camera, Loader2 } from 'lucide-react';
 
 interface ManualTransactionModalProps {
     show: boolean;
     onClose: () => void;
     onSubmit: () => void;
+    isSaving?: boolean;
     isAnyModalBusy: boolean;
     cards: any[];
     categories: { id: string; name: string }[];
@@ -41,6 +42,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     show,
     onClose,
     onSubmit,
+    isSaving = false,
     isAnyModalBusy,
     cards,
     categories,
@@ -339,7 +341,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                             <button
                                 type="button"
                                 onClick={onClose}
-                                disabled={isAnyModalBusy}
+                                disabled={isAnyModalBusy || isSaving}
                                 className="w-full h-14 bg-slate-100 text-slate-600 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase text-xs tracking-widest active:scale-95 disabled:opacity-50"
                             >
                                 Cancelar
@@ -347,10 +349,20 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                             <button
                                 type="button"
                                 onClick={onSubmit}
-                                className="w-full h-14 bg-brand-600 text-white font-black rounded-2xl hover:bg-brand-700 shadow-xl shadow-brand-500/30 transition-all active:scale-95 uppercase text-xs tracking-widest flex items-center justify-center gap-2"
+                                disabled={isSaving}
+                                className="w-full h-14 bg-brand-600 text-white font-black rounded-2xl hover:bg-brand-700 shadow-xl shadow-brand-500/30 transition-all active:scale-95 uppercase text-xs tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
                             >
-                                <CheckCircle2 size={20} />
-                                Lançar Gasto
+                                {isSaving ? (
+                                    <>
+                                        <Loader2 size={20} className="animate-spin" />
+                                        Processando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 size={20} />
+                                        Lançar Gasto
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>
