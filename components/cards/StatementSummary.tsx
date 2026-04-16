@@ -70,7 +70,7 @@ export const StatementSummary: React.FC<StatementSummaryProps> = ({
                     {(currentStatement?.status === 'PAID' || (statementTotal > 0 && statementOpen === 0)) && (
                         <button
                             onClick={onReopen}
-                            className="px-6 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 h-11 flex items-center justify-center min-w-[140px]"
+                            className="px-6 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 h-11 flex items-center justify-center"
                         >
                             Reabrir Fatura
                         </button>
