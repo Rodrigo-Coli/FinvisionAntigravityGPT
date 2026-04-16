@@ -826,6 +826,11 @@ const CreditCardsPage: React.FC = () => {
       // --- SYNC WITH HISTORY (Confirming Payment) ---
       await FinanceService.syncStatementToHistory(targetStatementId, payAccountId, true);
 
+      // --- NEW: Recalcular saldo após pagamento ---
+      if (payAccountId) {
+        await supabase.rpc('recalculate_account_balance', { p_account_id: payAccountId });
+      }
+
       setShowPayModal(false);
       navigate('/history');
 
@@ -859,7 +864,19 @@ const CreditCardsPage: React.FC = () => {
       // Isso garantirá que a transação de pagamento de fatura seja marcada como is_paid = false
       await FinanceService.syncStatementToHistory(statementId, undefined, false);
 
-      // 3. Atualizar context
+      // 3. Recalcular saldo (Se tivermos o ID da conta vinculado à transação original)
+      const { data: tx } = await supabase
+        .from('transactions')
+        .select('account_id')
+        .eq('metadata->>card_statement_id', statementId)
+        .eq('is_deleted', false) // Use false aqui pois syncStatementToHistory acabou de restaurar
+        .maybeSingle();
+      
+      if (tx?.account_id) {
+        await supabase.rpc('recalculate_account_balance', { p_account_id: tx.account_id });
+      }
+
+      // 4. Atualizar context
       if (selectedCard?.id) await loadCardContext(selectedCard.id);
       
       alert("Fatura reaberta com sucesso!");
