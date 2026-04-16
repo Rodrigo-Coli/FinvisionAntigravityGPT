@@ -1493,7 +1493,7 @@ const HistoryPage: React.FC = () => {
                   await supabase.from('card_statements').update({ status: 'OPEN', paid_amount: Math.max(0, Number(stmCur.paid_amount) - Math.abs(t.amount)) }).eq('id', statementId);
                 }
               }
-              await supabase.from('transactions').update({ is_deleted: true }).eq('id', t.id);
+              await supabase.from('transactions').update({ is_paid: false, paid_amount: 0, paid_at: null }).eq('id', t.id);
             } else {
               await supabase.from('transactions').update({ is_paid: false, paid_amount: 0, paid_at: null }).eq('id', t.id);
             }

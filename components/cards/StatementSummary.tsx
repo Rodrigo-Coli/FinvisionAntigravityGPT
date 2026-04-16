@@ -10,6 +10,7 @@ interface StatementSummaryProps {
     formatDateBR: (d?: string) => string;
     onRefresh: () => void;
     onPay: () => void;
+    onReopen: () => void;
     statementBadge: React.ReactNode;
 }
 
@@ -22,6 +23,7 @@ export const StatementSummary: React.FC<StatementSummaryProps> = ({
     formatDateBR,
     onRefresh,
     onPay,
+    onReopen,
     statementBadge
 }) => {
     return (
@@ -64,6 +66,15 @@ export const StatementSummary: React.FC<StatementSummaryProps> = ({
                         <Landmark size={16} />
                         Pagar Agora
                     </button>
+
+                    {(currentStatement?.status === 'PAID' || (statementTotal > 0 && statementOpen === 0)) && (
+                        <button
+                            onClick={onReopen}
+                            className="flex-1 md:flex-none px-6 py-3.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95"
+                        >
+                            Reabrir Fatura
+                        </button>
+                    )}
                 </div>
             </div>
 

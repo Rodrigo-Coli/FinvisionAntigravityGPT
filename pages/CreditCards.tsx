@@ -839,6 +839,38 @@ const CreditCardsPage: React.FC = () => {
     }
   };
 
+  const handleReopenStatement = async (statementId: string) => {
+    if (!supabase || !window.confirm("Deseja reabrir esta fatura? Isso reverterá o pagamento no histórico.")) return;
+    
+    setIsPaying(true);
+    try {
+      // 1. Resetar status e valor pago na fatura
+      const { error: upErr } = await supabase
+        .from('card_statements')
+        .update({
+          status: 'OPEN',
+          paid_amount: 0
+        })
+        .eq('id', statementId);
+
+      if (upErr) throw upErr;
+
+      // 2. Sincronizar com histórico passando 'false' para o overridePaid
+      // Isso garantirá que a transação de pagamento de fatura seja marcada como is_paid = false
+      await FinanceService.syncStatementToHistory(statementId, undefined, false);
+
+      // 3. Atualizar context
+      if (selectedCard?.id) loadCardContext(selectedCard.id);
+      
+      alert("Fatura reaberta com sucesso!");
+    } catch (err: any) {
+      console.error('Erro ao reabrir fatura:', err);
+      alert("Erro ao reabrir fatura: " + (err.message || "Erro desconhecido"));
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
   const statementBadge = (() => {
     // Se o total calculado for maior que o pago, garantimos que mostre como "Aberta" ou "Pendente"
     // independente do que a DB diga (evita delay de sync)
@@ -958,6 +990,7 @@ const CreditCardsPage: React.FC = () => {
                   formatDateBR={formatDateBR}
                   onRefresh={() => loadCardContext(selectedCard.id)}
                   onPay={() => { setPayAmount(statementOpen); setShowPayModal(true); }}
+                  onReopen={() => currentStatement?.id && handleReopenStatement(currentStatement.id)}
                   statementBadge={statementBadge}
                 />
 
