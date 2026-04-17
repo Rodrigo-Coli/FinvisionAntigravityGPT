@@ -1139,7 +1139,7 @@ const HistoryPage: React.FC = () => {
         }
       }
 
-      const isTransfer = f.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || f.description.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
+      const isTransfer = (f.category?.toLowerCase() || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || (f.description?.toLowerCase() || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
       let createdTxId: string | null = null;
       const targetAcc = accounts.find(a => a.id === f.accountId);
       const accountName = targetAcc?.institution || 'Conta';

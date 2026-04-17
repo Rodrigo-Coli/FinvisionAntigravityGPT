@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { TrendingUp, TrendingDown, PieChart, BarChart3, Activity, Filter } from 'lucide-react';
+import { TrendingUp, TrendingDown, PieChart, BarChart3, Activity, Filter, Plus, Trash2, Calendar, Settings } from 'lucide-react';
 import { Transaction } from '../../types';
 import { HistoryUtils } from '../../lib/historyUtils';
 
@@ -37,11 +37,16 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
 }) => {
     const [activeTab, setActiveTab] = useState<'categories' | 'mom' | 'timeline'>('categories');
     
-    // Internal filters for charts
     const [internalStartDate, setInternalStartDate] = useState(propStartDate);
     const [internalEndDate, setInternalEndDate] = useState(propEndDate);
     const [showInternalFilters, setShowInternalFilters] = useState(false);
     const [momCompareMonths, setMomCompareMonths] = useState(3);
+    
+    // Custom Comparison Slots
+    const [momMode, setMomMode] = useState<'recent' | 'custom'>('recent');
+    const [customSlots, setCustomSlots] = useState<{ id: string, label: string, start: string, end: string }[]>([
+        { id: '1', label: 'Slot 1', start: propStartDate || '', end: propEndDate || '' }
+    ]);
 
     const chartFilteredTransactions = useMemo(() => {
         if (!internalStartDate && !internalEndDate) return transactions;
@@ -97,33 +102,55 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
         const monthsOffset = momCompareMonths || 2;
         const momMonths: { year: number, month: number, label: string, income: number, expense: number }[] = [];
         
-        const now = new Date();
-        for (let i = 0; i < monthsOffset; i++) {
-            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            momMonths.push({
-                year: d.getFullYear(),
-                month: d.getMonth(),
-                label: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
-                income: 0,
-                expense: 0
+        interface MomBar { label: string; income: number; expense: number; }
+        let momBars: MomBar[] = [];
+
+        if (momMode === 'recent') {
+            const monthsOffset = momCompareMonths;
+            const momMonthsByDate: { year: number, month: number, label: string, income: number, expense: number }[] = [];
+            const now = new Date();
+            for (let i = 0; i < monthsOffset; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                momMonthsByDate.push({
+                    year: d.getFullYear(),
+                    month: d.getMonth(),
+                    label: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+                    income: 0,
+                    expense: 0
+                });
+            }
+
+            activeTx.forEach(t => {
+                if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+                if (t.category === 'Cartão de Crédito') return;
+                const d = new Date(t.date);
+                const m = d.getMonth(); const y = d.getFullYear();
+                const amt = Math.abs(Number(t.amount));
+
+                const target = momMonthsByDate.find(mm => mm.month === m && mm.year === y);
+                if (target) {
+                    if (t.type === 'INCOME') target.income += amt;
+                    else target.expense += amt;
+                }
+            });
+            
+            momBars = momMonthsByDate.reverse().map(m => ({ label: m.label, income: m.income, expense: m.expense }));
+        } else {
+            momBars = customSlots.map(slot => {
+                let inc = 0; let exp = 0;
+                activeTx.forEach(t => {
+                    if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+                    if (t.category === 'Cartão de Crédito') return;
+                    const ymd = t.date.split('T')[0];
+                    if (ymd >= slot.start && ymd <= slot.end) {
+                        const amt = Math.abs(Number(t.amount));
+                        if (t.type === 'INCOME') inc += amt;
+                        else exp += amt;
+                    }
+                });
+                return { label: slot.label, income: inc, expense: exp };
             });
         }
-
-        activeTx.forEach(t => {
-            if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
-            if (t.category === 'Cartão de Crédito') return;
-            const d = new Date(t.date);
-            const m = d.getMonth(); const y = d.getFullYear();
-            const amt = Math.abs(Number(t.amount));
-
-            const target = momMonths.find(mm => mm.month === m && mm.year === y);
-            if (target) {
-                if (t.type === 'INCOME') target.income += amt;
-                else target.expense += amt;
-            }
-        });
-        
-        momMonths.reverse(); // Show oldest to newest
 
         // ── TIMELINE ──
         let minDateStr = '9999-12-31';
@@ -189,21 +216,21 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
         }
 
         return {
-            categoryDataExpense: catArrayExpense,
             categoryDataIncome: catArrayIncome,
-            momData: momMonths,
-            totalCurrentMonthExpense: totalAllExpense,   // <-- uses ALL period total for the Categories tab header
-            totalCurrentMonthIncome: totalAllIncome,     // <-- same
-            momPercentChangeExpense: 0, // Simplified for multi-month
-            momPercentChangeIncome: 0,
-            timelineData: timelineArray
+            categoryDataExpense: catArrayExpense,
+            totalCurrentMonthIncome: totalAllIncome,
+            totalCurrentMonthExpense: totalAllExpense,
+            maxCatExpValue,
+            maxCatIncValue,
+            momData: momBars,
+            timelineData: timelineArray,
+            maxTimelineValue
         };
-    }, [chartFilteredTransactions, selectedTimelineCategories, momCompareMonths]);
+    }, [chartFilteredTransactions, momMode, customSlots, momCompareMonths, selectedTimelineCategories]);
 
 
     if (transactions.length === 0) return null;
 
-    const maxCatExpValue = categoryDataExpense.length > 0 ? categoryDataExpense[0].value : 1;
     const maxCatIncValue = categoryDataIncome.length > 0 ? categoryDataIncome[0].value : 1;
     // Build the period label from the actual date filters (not from transaction data)
     const currMonthLabel = (() => {
@@ -243,29 +270,33 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
 
                 {/* Toggle Tabs */}
                 <div className="flex bg-slate-50 p-1 rounded-xl w-full sm:w-auto overflow-x-auto scrollbar-hide">
+                    {activeTab !== 'categories' && (
+                        <>
+                            <button
+                                onClick={() => setShowInternalFilters(!showInternalFilters)}
+                                className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${showInternalFilters ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-100'}`}
+                                title="Filtros Internos"
+                            >
+                                <Filter size={13} />
+                            </button>
+                            <div className="w-px h-4 bg-slate-200 self-center mx-1" />
+                        </>
+                    )}
                     <button
-                        onClick={() => setShowInternalFilters(!showInternalFilters)}
-                        className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${showInternalFilters ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-100'}`}
-                        title="Filtros Internos"
-                    >
-                        <Filter size={13} />
-                    </button>
-                    <div className="w-px h-4 bg-slate-200 self-center mx-1" />
-                    <button
-                        onClick={() => setActiveTab('categories')}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'categories' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        onClick={() => { setActiveTab('categories'); setShowInternalFilters(false); }}
+                        className={`flex-shrink-0 flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'categories' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                     >
                         <PieChart size={13} /> Categorias
                     </button>
                     <button
                         onClick={() => setActiveTab('timeline')}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'timeline' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        className={`flex-shrink-0 flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'timeline' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                     >
                         <Activity size={13} /> Linha do Tempo
                     </button>
                     <button
                         onClick={() => setActiveTab('mom')}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'mom' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        className={`flex-shrink-0 flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'mom' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                     >
                         <BarChart3 size={13} /> Mês a Mês
                     </button>
@@ -281,16 +312,92 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                         <input type="date" value={internalEndDate} onChange={e => setInternalEndDate(e.target.value)} className="bg-white border border-slate-100 rounded-lg px-2 py-1.5 text-[10px] font-bold outline-none" />
                     </div>
                     {activeTab === 'mom' && (
-                        <div className="flex items-center gap-2 border-l border-slate-200 pl-4">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Meses Comparação:</span>
-                            <select value={momCompareMonths} onChange={e => setMomCompareMonths(Number(e.target.value))} className="bg-white border border-slate-100 rounded-lg px-2 py-1.5 text-[10px] font-bold outline-none">
-                                <option value={2}>Últimos 2 meses</option>
-                                <option value={3}>Últimos 3 meses</option>
-                                <option value={6}>Últimos 6 meses</option>
-                            </select>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 border-l border-slate-200 pl-4 w-full sm:w-auto">
+                            <div className="flex bg-white border border-slate-200 p-0.5 rounded-lg">
+                                <button
+                                    onClick={() => setMomMode('recent')}
+                                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${momMode === 'recent' ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}
+                                >
+                                    Recentes
+                                </button>
+                                <button
+                                    onClick={() => setMomMode('custom')}
+                                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${momMode === 'custom' ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-slate-600'}`}
+                                >
+                                    Personalizado
+                                </button>
+                            </div>
+
+                            {momMode === 'recent' ? (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Meses:</span>
+                                    <select value={momCompareMonths} onChange={e => setMomCompareMonths(Number(e.target.value))} className="bg-white border border-slate-100 rounded-lg px-2 py-1.5 text-[10px] font-bold outline-none">
+                                        <option value={2}>Últimos 2</option>
+                                        <option value={3}>Últimos 3</option>
+                                        <option value={6}>Últimos 6</option>
+                                    </select>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => setCustomSlots(prev => [...prev, { id: Date.now().toString(), label: `Período ${prev.length + 1}`, start: internalStartDate || '', end: internalEndDate || '' }])}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 text-brand-600 rounded-lg text-[10px] font-bold hover:bg-brand-100 transition-all"
+                                >
+                                    <Plus size={12} /> Adicionar Slot
+                                </button>
+                            )}
                         </div>
                     )}
-                    <button onClick={() => { setInternalStartDate(propStartDate); setInternalEndDate(propEndDate); }} className="text-[10px] font-bold text-rose-500 hover:text-rose-600 uppercase tracking-widest ml-auto">Resetar</button>
+                    <button onClick={() => { setInternalStartDate(propStartDate); setInternalEndDate(propEndDate); setMomMode('recent'); }} className="text-[10px] font-bold text-rose-500 hover:text-rose-600 uppercase tracking-widest ml-auto">Resetar</button>
+                </div>
+            )}
+
+            {/* MoM Custom Slots Editor Panel */}
+            {activeTab === 'mom' && momMode === 'custom' && showInternalFilters && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-8 animate-in slide-in-from-top-2">
+                    {customSlots.map((slot, idx) => (
+                        <div key={slot.id} className="p-3 bg-white border border-slate-100 rounded-xl space-y-2 shadow-sm group relative">
+                            <button
+                                onClick={() => setCustomSlots(prev => prev.filter(s => s.id !== slot.id))}
+                                className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                            >
+                                <Trash2 size={12} />
+                            </button>
+                            <input
+                                type="text"
+                                value={slot.label}
+                                onChange={e => {
+                                    const next = [...customSlots];
+                                    next[idx].label = e.target.value;
+                                    setCustomSlots(next);
+                                }}
+                                className="w-full text-[10px] font-bold text-slate-700 outline-none bg-slate-50 border border-slate-100 rounded-lg px-2 py-1"
+                                placeholder="Nome do Slot"
+                            />
+                            <div className="flex items-center gap-1">
+                                <input
+                                    type="date"
+                                    value={slot.start}
+                                    onChange={e => {
+                                        const next = [...customSlots];
+                                        next[idx].start = e.target.value;
+                                        setCustomSlots(next);
+                                    }}
+                                    className="flex-1 text-[9px] font-medium text-slate-500 outline-none bg-slate-50 border border-slate-100 rounded-lg px-2 py-1"
+                                />
+                                <span className="text-slate-300">/</span>
+                                <input
+                                    type="date"
+                                    value={slot.end}
+                                    onChange={e => {
+                                        const next = [...customSlots];
+                                        next[idx].end = e.target.value;
+                                        setCustomSlots(next);
+                                    }}
+                                    className="flex-1 text-[9px] font-medium text-slate-500 outline-none bg-slate-50 border border-slate-100 rounded-lg px-2 py-1"
+                                />
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
 

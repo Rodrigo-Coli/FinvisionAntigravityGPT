@@ -683,7 +683,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                         subcategories={subcategories}
                                                         onSelect={sub => handleUpdate(t.id, 'subcategory', sub)}
                                                     />
-                                                    {t.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
+                                                    {(t.category?.toLowerCase() || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
                                                         <AccountPicker
                                                             compact
                                                             placeholder="Para..."
@@ -896,7 +896,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     onSelect={sub => handleUpdate(t.id, 'subcategory', sub)}
                                                 />
                                             </div>
-                                            {t.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
+                                            {(t.category?.toLowerCase() || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
                                                 <AccountPicker
                                                     compact
                                                     placeholder={t.metadata?.transfer_side === 'DESTINATION' ? 'Origem...' : 'Destino...'}
