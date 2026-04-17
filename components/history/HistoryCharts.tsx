@@ -104,13 +104,17 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
         let totalAllIncome = 0;
 
         activeTx.forEach(t => {
-            if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+            if (t.is_amortization) return;
             if (t.category === 'Cartão de Crédito') return; // Excluir categoria de provisionamento para evitar duplicidade
-            const amt = Math.abs(Number(t.amount));
-            if (t.type === 'EXPENSE') {
+
+            const type = (t.type || '').toUpperCase();
+            const amt = Math.abs(Number(t.amount || 0));
+
+            // Categorize based on type
+            if (type === 'EXPENSE' || type === 'BILL_PAYMENT' || (type === 'ADJUSTMENT' && Number(t.amount) < 0)) {
                 categoriesExpense[t.category] = (categoriesExpense[t.category] || 0) + amt;
                 totalAllExpense += amt;
-            } else {
+            } else if (type === 'INCOME' || (type === 'ADJUSTMENT' && Number(t.amount) >= 0)) {
                 categoriesIncome[t.category] = (categoriesIncome[t.category] || 0) + amt;
                 totalAllIncome += amt;
             }
@@ -147,16 +151,21 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             }
 
             activeTx.forEach(t => {
-                if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+                if (t.is_amortization) return;
                 if (t.category === 'Cartão de Crédito') return;
+
+                const type = (t.type || '').toUpperCase();
+                const amt = Math.abs(Number(t.amount || 0));
                 const d = new Date(t.date);
                 const m = d.getMonth(); const y = d.getFullYear();
-                const amt = Math.abs(Number(t.amount));
 
                 const target = momMonthsByDate.find(mm => mm.month === m && mm.year === y);
                 if (target) {
-                    if (t.type === 'INCOME') target.income += amt;
-                    else target.expense += amt;
+                    if (type === 'EXPENSE' || type === 'BILL_PAYMENT' || (type === 'ADJUSTMENT' && Number(t.amount) < 0)) {
+                        target.expense += amt;
+                    } else if (type === 'INCOME' || (type === 'ADJUSTMENT' && Number(t.amount) >= 0)) {
+                        target.income += amt;
+                    }
                 }
             });
             
@@ -165,13 +174,19 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             momBars = customSlots.map(slot => {
                 let inc = 0; let exp = 0;
                 activeTx.forEach(t => {
-                    if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+                    if (t.is_amortization) return;
                     if (t.category === 'Cartão de Crédito') return;
+                    
+                    const type = (t.type || '').toUpperCase();
                     const ymd = t.date.split('T')[0];
+
                     if (ymd >= slot.start && ymd <= slot.end) {
-                        const amt = Math.abs(Number(t.amount));
-                        if (t.type === 'INCOME') inc += amt;
-                        else exp += amt;
+                        const amt = Math.abs(Number(t.amount || 0));
+                        if (type === 'EXPENSE' || type === 'BILL_PAYMENT' || (type === 'ADJUSTMENT' && Number(t.amount) < 0)) {
+                            exp += amt;
+                        } else if (type === 'INCOME' || (type === 'ADJUSTMENT' && Number(t.amount) >= 0)) {
+                            inc += amt;
+                        }
                     }
                 });
                 return { label: slot.label, income: inc, expense: exp };
@@ -200,14 +215,21 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             if (diffDays > 90) {
                 const tMap = new Map();
                 activeTx.forEach(t => {
-                    if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+                    if (t.is_amortization) return;
                     if (t.category === 'Cartão de Crédito') return;
                     if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
+
+                    const type = (t.type || '').toUpperCase();
                     const ym = t.date.split('T')[0].substring(0, 7);
                     if (!tMap.has(ym)) tMap.set(ym, { income: 0, expense: 0, balance: 0 });
                     const b = tMap.get(ym);
-                    if (t.type === 'INCOME') b.income += Number(t.amount);
-                    if (t.type === 'EXPENSE') b.expense += Math.abs(Number(t.amount));
+                    const amt = Math.abs(Number(t.amount || 0));
+
+                    if (type === 'EXPENSE' || type === 'BILL_PAYMENT' || (type === 'ADJUSTMENT' && Number(t.amount) < 0)) {
+                        b.expense += amt;
+                    } else if (type === 'INCOME' || (type === 'ADJUSTMENT' && Number(t.amount) >= 0)) {
+                        b.income += amt;
+                    }
                     b.balance = b.income - b.expense;
                 });
                 let cy = Number(minDateStr.substring(0, 4));
@@ -224,14 +246,21 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             } else {
                 const tMap = new Map();
                 activeTx.forEach(t => {
-                    if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+                    if (t.is_amortization) return;
                     if (t.category === 'Cartão de Crédito') return;
                     if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
+
+                    const type = (t.type || '').toUpperCase();
                     const ymd = t.date.split('T')[0];
                     if (!tMap.has(ymd)) tMap.set(ymd, { income: 0, expense: 0, balance: 0 });
                     const b = tMap.get(ymd);
-                    if (t.type === 'INCOME') b.income += Number(t.amount);
-                    if (t.type === 'EXPENSE') b.expense += Math.abs(Number(t.amount));
+                    const amt = Math.abs(Number(t.amount || 0));
+
+                    if (type === 'EXPENSE' || type === 'BILL_PAYMENT' || (type === 'ADJUSTMENT' && Number(t.amount) < 0)) {
+                        b.expense += amt;
+                    } else if (type === 'INCOME' || (type === 'ADJUSTMENT' && Number(t.amount) >= 0)) {
+                        b.income += amt;
+                    }
                     b.balance = b.income - b.expense;
                 });
                 let curr = new Date(minDateStr + 'T00:00:00');
