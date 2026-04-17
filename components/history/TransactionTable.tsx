@@ -631,9 +631,9 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                         ) : (
                                             <button
                                                 onClick={() => { setEditingRow({ id: t.id, field: 'amount' }); setEditValue(Math.abs(t.amount).toString().replace('.', ',')); }}
-                                                className={`text-base font-bold bg-transparent border-none p-0 cursor-pointer active:text-brand-600 ${t.type === 'INCOME' || (t.type === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE') ? 'text-emerald-600' : 'text-slate-900'}`}
+                                                className={`text-base font-bold bg-transparent border-none p-0 cursor-pointer active:text-brand-600 ${t.type?.toUpperCase() === 'INCOME' ? 'text-emerald-600' : (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE') ? 'text-emerald-600' : 'text-slate-900'}`}
                                             >
-                                                {t.type === 'EXPENSE' ? '-' : ''}{formatCurrency(amount)}
+                                                {(t.type?.toUpperCase() === 'EXPENSE' || t.type?.toUpperCase() === 'BILL_PAYMENT' || (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '-' : ''}{formatCurrency(amount)}
                                             </button>
                                         )}
                                     </div>
@@ -945,9 +945,9 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                             <button
                                                 onClick={() => { setEditingRow({ id: t.id, field: 'amount' }); setEditValue(Math.abs(t.amount).toString().replace('.', ',')); }}
                                                 className={`text-sm font-bold hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer 
-                                                    ${(t.type === 'INCOME' || (t.type === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE')) ? 'text-emerald-600' : 'text-rose-600'}`}
+                                                    ${(t.type?.toUpperCase() === 'INCOME' || (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE')) ? 'text-emerald-600' : 'text-rose-600'}`}
                                             >
-                                                {(t.type === 'EXPENSE' || (t.type === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '-' : ''}{formatCurrency(amount)}
+                                                {(t.type?.toUpperCase() === 'EXPENSE' || t.type?.toUpperCase() === 'BILL_PAYMENT' || (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '-' : ''}{formatCurrency(amount)}
                                             </button>
                                         )}
                                     </td>
