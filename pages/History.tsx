@@ -245,9 +245,9 @@ const HistoryPage: React.FC = () => {
     return clauses.join(',');
   };
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (isSilent: boolean = false) => {
     const requestId = ++lastRequestId.current;
-    setIsLoading(true);
+    if (!isSilent) setIsLoading(true);
     setError(null);
 
     try {
@@ -493,6 +493,102 @@ const HistoryPage: React.FC = () => {
     }
   }, [filterType, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, page, sortField, sortDirection, debouncedSearch]);
 
+  const refreshCharts = useCallback(async () => {
+    if (!supabase) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const todayRaw = new Date();
+    const sixtyDaysAhead = new Date(todayRaw.getFullYear(), todayRaw.getMonth(), todayRaw.getDate() + 60);
+    const futureLimit = sixtyDaysAhead.toISOString().split('T')[0];
+
+    let chartQuery: any = supabase.from('transactions')
+      .select('id, date, type, amount, category, subcategory, is_amortization, account_id, owner_name, description, is_paid, paid_amount, attachments:documents!documents_transaction_id_fkey(*)')
+      .eq('user_id', user.id).eq('is_deleted', false)
+      .order('date', { ascending: false });
+    if (filterType !== 'ALL') chartQuery = chartQuery.eq('type', filterType);
+    if (filterAccount.length > 0) chartQuery = chartQuery.in('account_id', filterAccount);
+    if (filterCategory.length > 0) chartQuery = chartQuery.in('category', filterCategory);
+    if (filterSubcategory.length > 0) chartQuery = chartQuery.in('subcategory', filterSubcategory);
+    if (startDate && endDate) {
+      chartQuery = chartQuery.or(`and(date.gte.${startDate},date.lte.${endDate}),and(metadata->>is_provision.eq.true,date.gte.${startDate},date.lte.${futureLimit})`);
+    } else {
+      if (startDate) chartQuery = chartQuery.gte('date', startDate);
+      if (endDate) chartQuery = chartQuery.lte('date', endDate);
+    }
+    if (filterOwner.length > 0) chartQuery = chartQuery.in('owner_name', filterOwner);
+
+    if (debouncedSearch) {
+      const filterClause = buildSearchFilter(debouncedSearch);
+      if (filterClause) chartQuery = chartQuery.or(filterClause);
+    }
+
+    let cardChartQuery: any = supabase.from('card_transactions')
+      .select('id, date, amount, description, categories(name)')
+      .eq('user_id', user.id)
+      .order('date', { ascending: false });
+
+    if (startDate) cardChartQuery = cardChartQuery.gte('date', startDate);
+    if (endDate) cardChartQuery = cardChartQuery.lte('date', endDate);
+
+    const [{ data: chartData }, { data: cardChartData }] = await Promise.all([
+      chartQuery,
+      cardChartQuery
+    ]);
+
+    const applyTrueAmount = (t: any) => ({
+      ...t,
+      _trueAmount: (t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT' || (t.type === 'TRANSFER' && t.amount > 0)) ? -Math.abs(Number(t.amount || 0)) : Math.abs(Number(t.amount || 0))
+    });
+
+    const normalizedCardChartData = (cardChartData || []).map((ct: any) => ({
+      id: ct.id,
+      date: ct.date,
+      type: 'EXPENSE',
+      amount: Number(ct.amount),
+      category: ct.categories?.name || 'Cartão de Crédito',
+      description: ct.description,
+      is_paid: true,
+      paid_amount: Number(ct.amount),
+      is_amortization: false,
+      metadata: {}
+    }));
+
+    let processedChartData = [...(chartData || []), ...normalizedCardChartData].map(applyTrueAmount);
+
+    if (filterCategory.length > 0) {
+      processedChartData = processedChartData.filter((t: any) => filterCategory.includes(t.category));
+    }
+
+    if (minPrice !== '') {
+      const minVal = Number(minPrice);
+      processedChartData = processedChartData.filter((t: any) => t._trueAmount >= minVal);
+    }
+    if (maxPrice !== '') {
+      const maxVal = Number(maxPrice);
+      processedChartData = processedChartData.filter((t: any) => t._trueAmount <= maxVal);
+    }
+
+    setChartTransactions(processedChartData.map((t: any) => ({
+      id: t.id,
+      description: t.description || '',
+      amount: Number(t.amount || 0),
+      date: t.date,
+      type: t.type as TransactionType,
+      accountId: t.account_id,
+      accountName: t.account_name ?? '',
+      category: t.category ?? 'Outros',
+      subcategory: t.subcategory ?? undefined,
+      owner_name: t.owner_name ?? 'Pessoal',
+      isDeleted: !!t.is_deleted,
+      isReconciled: !!t.is_reconciled,
+      isPaid: !!t.is_paid,
+      paidAmount: Number(t.paid_amount || 0),
+      is_amortization: !!t.is_amortization,
+      metadata: t.metadata || {}
+    })));
+  }, [filterType, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, debouncedSearch]);
+
   // Reset page to 0 when filters change
   useEffect(() => {
     setPage(0);
@@ -621,7 +717,7 @@ const HistoryPage: React.FC = () => {
         if (err) throw err;
 
         // Reload completo só quando altera parcelas e assinaturas (múltiplas linhas)
-        await fetchData();
+        await fetchData(true);
       }
 
       if (tx && (HistoryUtils.getStatus(tx) !== 'PENDING') && (field === 'amount' || field === 'type' || field === 'account_id')) {
@@ -707,8 +803,20 @@ const HistoryPage: React.FC = () => {
   const handleUploadAttachment = async (id: string, file: File) => {
     setSavingId(id);
     try {
+      if (!supabase) return;
       await FinanceService.uploadAttachment(file, id, false);
-      await fetchData();
+      
+      // Fetch specifically the new attachments for this transaction to avoid full reload
+      const { data: newAttachments } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('transaction_id', id);
+
+      if (newAttachments) {
+        setTransactions(prev => prev.map(t => 
+          t.id === id ? { ...t, attachments: newAttachments } : t
+        ));
+      }
     } catch (err: any) {
       alert(`Erro ao fazer upload: ${err.message}`);
     } finally {
@@ -723,11 +831,16 @@ const HistoryPage: React.FC = () => {
     setSavingId(txId);
     try {
       await FinanceService.deleteAttachment(documentId);
-      await fetchData();
+      
+      // Update local state by removing the attachment
+      setTransactions(prev => prev.map(t => 
+        t.id === txId 
+          ? { ...t, attachments: t.attachments?.filter((a: any) => a.id !== documentId) } 
+          : t
+      ));
     } catch (err: any) {
       alert(`Erro ao excluir anexo: ${err.message}`);
     } finally {
-      setSavingId(txId); // mantenho para feedback visual
       setTimeout(() => setSavingId(null), 500);
     }
   };
@@ -987,32 +1100,32 @@ const HistoryPage: React.FC = () => {
       }
 
       setPayModal({ open: false });
-      await fetchData();
+      await fetchData(true); // Silent refresh
     } catch (err) {
       setPayModal(prev => prev.open ? { ...prev, isSubmitting: false, error: 'Erro ao processar pagamento.' } : prev);
     }
   };
 
-  const createManualTransaction = async () => {
-    if (!supabase || !addModal.open) return;
-    const f = addModal.form;
+  const createManualTransaction = async (formData: any) => {
+    if (!supabase) return;
+    const f = formData;
     const amount = Math.abs(Number(f.amount.replace(',', '.')));
     
     // Improved Validation
     if (!f.description.trim()) {
-      setAddModal(prev => prev.open ? { ...prev, error: 'A descrição é obrigatória.' } : prev);
+      setAddModal(prev => ({ ...prev, error: 'A descrição é obrigatória.' }));
       return;
     }
     if (!f.accountId) {
-      setAddModal(prev => prev.open ? { ...prev, error: 'Selecione uma conta bancária.' } : prev);
+      setAddModal(prev => ({ ...prev, error: 'Selecione uma conta bancária.' }));
       return;
     }
     if (isNaN(amount) || amount <= 0) {
-      setAddModal(prev => prev.open ? { ...prev, error: 'O valor deve ser um número válido maior que zero.' } : prev);
+      setAddModal(prev => ({ ...prev, error: 'O valor deve ser um número válido maior que zero.' }));
       return;
     }
 
-    setAddModal(prev => prev.open ? { ...prev, isSubmitting: true, error: null } : prev);
+    setAddModal(prev => ({ ...prev, isSubmitting: true, error: null }));
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const userId = user?.id || 'offline-user';
@@ -1027,6 +1140,8 @@ const HistoryPage: React.FC = () => {
 
       const isTransfer = f.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || f.description.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
       let createdTxId: string | null = null;
+      const targetAcc = accounts.find(a => a.id === f.accountId);
+      const accountName = targetAcc?.institution || 'Conta';
 
       if (!f.isInstallment && !f.isRecurring) {
         if (!navigator.onLine) {
@@ -1109,9 +1224,32 @@ const HistoryPage: React.FC = () => {
       }
 
       setAddModal({ open: false });
-      await fetchData();
+      
+      // Optimistic UI for simple transactions
+      if (!f.isInstallment && !f.isRecurring && createdTxId) {
+        const newLocalTx: Transaction = {
+          id: createdTxId,
+          description: f.description,
+          amount: amount,
+          date: f.date,
+          type: f.type,
+          accountId: f.accountId,
+          accountName: accountName,
+          category: f.category,
+          subcategory: f.subcategory,
+          owner_name: f.ownerName,
+          isPaid: false,
+          paidAmount: 0,
+          metadata: { is_transfer: isTransfer },
+          attachments: []
+        };
+        setTransactions(prev => [newLocalTx, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        await fetchData(true); // Silent refresh
+      } else {
+        await fetchData(true);
+      }
     } catch (err: any) {
-      setAddModal(prev => prev.open ? { ...prev, isSubmitting: false, error: err.message || 'Erro ao adicionar transação.' } : prev);
+      setAddModal(prev => ({ ...prev, isSubmitting: false, error: err.message || 'Erro ao criar transação.' }));
     }
   };
 
@@ -1314,7 +1452,7 @@ const HistoryPage: React.FC = () => {
                 list="bulk-owners-list"
                 value={bulkOwner}
                 onChange={(e) => setBulkOwner(e.target.value)}
-                placeholder="Trocar Entidade..."
+                placeholder="Pessoa ou Empresa..."
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
               />
               <datalist id="bulk-owners-list">
@@ -1565,7 +1703,7 @@ const HistoryPage: React.FC = () => {
 
       <AddTransactionModal show={addModal.open} onClose={() => setAddModal({ open: false })} onSubmit={createManualTransaction}
         isSubmitting={addModal.open ? addModal.isSubmitting : false} error={addModal.open ? addModal.error : null}
-        form={addModal.open ? addModal.form : {} as any} setAddField={(f, v) => setAddModal(prev => prev.open ? { ...prev, form: { ...prev.form, [f]: v } } : prev)}
+        initialForm={addModal.open ? addModal.form : {} as any}
         accounts={accounts} owners={owners} categoryObjects={categoryObjects} subcategories={subcategories} onCreateCategory={handleCreateCategory}
       />
 

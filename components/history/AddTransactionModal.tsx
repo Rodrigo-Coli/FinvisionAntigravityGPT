@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Loader2, CheckCircle2, AlertCircle, Plus, Camera, Check } from 'lucide-react';
 import { BankAccount } from '../../types';
 
 interface AddTransactionModalProps {
     show: boolean;
     onClose: () => void;
-    onSubmit: () => void;
+    onSubmit: (formData: any) => void;
     isSubmitting: boolean;
     error?: string | null;
-    form: {
+    initialForm: {
         date: string;
         description: string;
         type: 'INCOME' | 'EXPENSE';
@@ -26,7 +26,6 @@ interface AddTransactionModalProps {
         documentId?: string;
         files?: File[];
     };
-    setAddField: (field: string, value: any) => void;
     accounts: BankAccount[];
     owners: string[];
     categoryObjects: { name: string, type?: 'INCOME' | 'EXPENSE' }[];
@@ -40,19 +39,30 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     onSubmit,
     isSubmitting,
     error,
-    form,
-    setAddField,
+    initialForm,
     accounts,
     owners,
     categoryObjects,
     subcategories,
     onCreateCategory
 }) => {
+    const [form, setForm] = useState(initialForm);
     const [isCreatingCategory, setIsCreatingCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [isSavingCategory, setIsSavingCategory] = useState(false);
 
+    // Sync local state when initialForm changes (e.g. when modal opens)
+    useEffect(() => {
+        if (show) {
+            setForm(initialForm);
+        }
+    }, [show, initialForm]);
+
     if (!show) return null;
+
+    const setAddField = (field: string, value: any) => {
+        setForm(prev => ({ ...prev, [field]: value }));
+    };
 
     const filteredCategories = categoryObjects.filter(
         (c: any) => !c.type || c.type === form.type
@@ -78,7 +88,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             <div className="bg-white rounded-t-[32px] sm:rounded-[40px] w-full max-w-lg shadow-2xl relative overflow-hidden animate-in slide-in-from-bottom sm:zoom-in duration-300">
                 <div className="p-8 lg:p-10">
                     <div className="flex items-center justify-between mb-8">
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Nova Transação</h2>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Novo Lançamento</h2>
                         <button
                             onClick={() => !isSubmitting && onClose()}
                             disabled={isSubmitting}
@@ -118,7 +128,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 type="text"
                                 value={form.description}
                                 onChange={(e) => setAddField('description', e.target.value)}
-                                placeholder="Ex: Aluguel, Mercado, Cliente X..."
+                                placeholder="Ex: Fornecedor, Cliente, Parceiro..."
                                 className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                             />
                         </div>
@@ -166,7 +176,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Entidade / Solicitante</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pessoa ou Empresa</label>
                             <input
                                 list="owners-list"
                                 value={form.ownerName}
@@ -434,7 +444,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             </button>
                             <button
                                 type="button"
-                                onClick={onSubmit}
+                                onClick={() => onSubmit(form)}
                                 disabled={isSubmitting}
                                 className="w-full h-14 bg-brand-600 text-white font-black rounded-2xl hover:bg-brand-700 shadow-xl shadow-brand-500/30 transition-all active:scale-95 uppercase text-xs tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
                             >

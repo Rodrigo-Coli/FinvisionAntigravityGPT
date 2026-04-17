@@ -225,9 +225,9 @@ export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
                     />
 
                     <SearchableMultiSelect
-                        label="Entidade"
-                        placeholder="Todas Entidades"
-                        searchPlaceholder="Buscar entidade..."
+                        label="Pessoa ou Empresa"
+                        placeholder="Todas Pessoas/Empresas"
+                        searchPlaceholder="Buscar pessoa ou empresa..."
                         icon={<User size={12} />}
                         options={owners.map(o => ({ id: o, label: o }))}
                         selected={filterOwner}
