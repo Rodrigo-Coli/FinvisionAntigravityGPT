@@ -374,7 +374,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                             </div>
                                         </div>
                                     );
-                                )
+                                })
                             )}
                         </div>
                     </div>
