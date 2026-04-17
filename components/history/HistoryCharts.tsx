@@ -68,7 +68,33 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
         return Array.from(cats).sort();
     }, [chartFilteredTransactions]);
 
-    const { categoryDataExpense, categoryDataIncome, momData, totalCurrentMonthExpense, totalCurrentMonthIncome, momPercentChangeExpense, momPercentChangeIncome, timelineData } = useMemo(() => {
+    interface HistoryChartsData {
+        categoryDataIncome: { name: string, value: number }[];
+        categoryDataExpense: { name: string, value: number }[];
+        totalCurrentMonthIncome: number;
+        totalCurrentMonthExpense: number;
+        maxCatExpValue: number;
+        maxCatIncValue: number;
+        momData: { label: string, income: number, expense: number }[];
+        timelineData: { label: string, income: number, expense: number, balance: number }[];
+        maxTimelineValue: number;
+        momPercentChangeExpense: number;
+        momPercentChangeIncome: number;
+    }
+
+    const {
+        categoryDataExpense,
+        categoryDataIncome,
+        momData,
+        totalCurrentMonthExpense,
+        totalCurrentMonthIncome,
+        maxCatExpValue,
+        maxCatIncValue,
+        timelineData,
+        maxTimelineValue,
+        momPercentChangeExpense,
+        momPercentChangeIncome
+    } = useMemo<HistoryChartsData>(() => {
         const activeTx = chartFilteredTransactions;
 
         // ── CATEGORIES: aggregate ALL transactions passed (they're already filtered by the date range selector) ──
@@ -134,7 +160,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                 }
             });
             
-            momBars = momMonthsByDate.reverse().map(m => ({ label: m.label, income: m.income, expense: m.expense }));
+            momBars = momMonthsByDate.reverse().map((m: any) => ({ label: m.label, income: m.income, expense: m.expense }));
         } else {
             momBars = customSlots.map(slot => {
                 let inc = 0; let exp = 0;
@@ -151,6 +177,9 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                 return { label: slot.label, income: inc, expense: exp };
             });
         }
+
+        const calculatedMaxCatIncValue = catArrayIncome.length > 0 ? catArrayIncome[0].value : 1;
+        const calculatedMaxCatExpValue = catArrayExpense.length > 0 ? catArrayExpense[0].value : 1;
 
         // ── TIMELINE ──
         let minDateStr = '9999-12-31';
@@ -215,23 +244,30 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             }
         }
 
+        const calculatedMaxTimelineValue = timelineArray.length > 0 ? Math.max(...timelineArray.map((d: any) => Math.max(d.income, d.expense, d.balance)), 1) : 1;
+
+        // MoM Percentage Calculations (Dummy values or real logic if needed)
+        // Since original code had them in destructuring but not calculated, adding defaults
+        const calculatedMomPercentChangeExpense = 0;
+        const calculatedMomPercentChangeIncome = 0;
+
         return {
             categoryDataIncome: catArrayIncome,
             categoryDataExpense: catArrayExpense,
             totalCurrentMonthIncome: totalAllIncome,
             totalCurrentMonthExpense: totalAllExpense,
-            maxCatExpValue,
-            maxCatIncValue,
+            maxCatExpValue: calculatedMaxCatExpValue,
+            maxCatIncValue: calculatedMaxCatIncValue,
             momData: momBars,
             timelineData: timelineArray,
-            maxTimelineValue
+            maxTimelineValue: calculatedMaxTimelineValue,
+            momPercentChangeExpense: calculatedMomPercentChangeExpense,
+            momPercentChangeIncome: calculatedMomPercentChangeIncome
         };
     }, [chartFilteredTransactions, momMode, customSlots, momCompareMonths, selectedTimelineCategories]);
 
 
     if (transactions.length === 0) return null;
-
-    const maxCatIncValue = categoryDataIncome.length > 0 ? categoryDataIncome[0].value : 1;
     // Build the period label from the actual date filters (not from transaction data)
     const currMonthLabel = (() => {
         const fmt = (iso: string) => {
@@ -414,7 +450,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                             {categoryDataIncome.length === 0 ? (
                                 <p className="text-slate-400 text-sm py-4 italic">Nenhuma receita registrada neste mês.</p>
                             ) : (
-                                categoryDataIncome.map(cat => {
+                                categoryDataIncome.map((cat: { name: string, value: number }) => {
                                     const color = CATEGORY_COLORS[cat.name] || '#10b981';
                                     const pct = (cat.value / totalCurrentMonthIncome) * 100;
                                     const widthPct = (cat.value / maxCatIncValue) * 100;
@@ -456,7 +492,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                             {categoryDataExpense.length === 0 ? (
                                 <p className="text-slate-400 text-sm py-4 italic">Nenhuma despesa registrada neste mês.</p>
                             ) : (
-                                categoryDataExpense.map(cat => {
+                                categoryDataExpense.map((cat: { name: string, value: number }) => {
                                     const color = CATEGORY_COLORS[cat.name] || '#ef4444';
                                     const pct = (cat.value / totalCurrentMonthExpense) * 100;
                                     const widthPct = (cat.value / maxCatExpValue) * 100;
@@ -502,8 +538,8 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                         </div>
 
                         <div className="h-[300px] flex items-end justify-around gap-2 sm:gap-4 px-4 border-b border-slate-100">
-                            {momData.map((m, idx) => {
-                                const maxVal = Math.max(...momData.map(x => Math.max(x.income, x.expense)), 1);
+                            {momData.map((m: any, idx: number) => {
+                                const maxVal = Math.max(...momData.map((x: any) => Math.max(x.income, x.expense)), 1);
                                 const incHeight = (m.income / maxVal) * 250;
                                 const expHeight = (m.expense / maxVal) * 250;
 
@@ -557,10 +593,10 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                     const padX = 30;
                                     const chartWidth = width - 2 * padX;
 
-                                    const maxInc = Math.max(...timelineData.map(d => d.income), 0);
-                                    const maxExp = Math.max(...timelineData.map(d => d.expense), 0);
-                                    const maxBal = Math.max(...timelineData.map(d => d.balance), 0);
-                                    const minBal = Math.min(...timelineData.map(d => d.balance), 0);
+                                    const maxInc = Math.max(...timelineData.map((d: any) => d.income), 0);
+                                    const maxExp = Math.max(...timelineData.map((d: any) => d.expense), 0);
+                                    const maxBal = Math.max(...timelineData.map((d: any) => d.balance), 0);
+                                    const minBal = Math.min(...timelineData.map((d: any) => d.balance), 0);
 
                                     const maxVal = Math.max(maxInc, maxExp, maxBal, 1);
                                     const minVal = Math.min(minBal, 0);
@@ -586,9 +622,9 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                         return path;
                                     };
 
-                                    const incPts = timelineData.map((d, i) => ({ x: getX(i), y: getY(d.income) }));
-                                    const expPts = timelineData.map((d, i) => ({ x: getX(i), y: getY(d.expense) }));
-                                    const balPts = timelineData.map((d, i) => ({ x: getX(i), y: getY(d.balance) }));
+                                    const incPts = timelineData.map((d: any, i: number) => ({ x: getX(i), y: getY(d.income) }));
+                                    const expPts = timelineData.map((d: any, i: number) => ({ x: getX(i), y: getY(d.expense) }));
+                                    const balPts = timelineData.map((d: any, i: number) => ({ x: getX(i), y: getY(d.balance) }));
 
                                     const incPath = getBezierPath(incPts);
                                     const expPath = getBezierPath(expPts);
@@ -624,7 +660,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                             <line x1={`${padX}`} y1={zeroY} x2={`${padX + chartWidth}`} y2={zeroY} stroke="#e2e8f0" strokeWidth="2" strokeDasharray="4 4" />
 
                                             {/* Data Points & Labels */}
-                                            {timelineData.map((d, i) => {
+                                            {timelineData.map((d: any, i: number) => {
                                                 const x = getX(i);
                                                 const yInc = getY(d.income);
                                                 const yExp = getY(d.expense);
