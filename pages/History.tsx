@@ -597,8 +597,9 @@ const HistoryPage: React.FC = () => {
 
   useEffect(() => {
     if (isSupabaseConfigured) fetchData();
-    window.addEventListener('offline-sync-completed', fetchData);
-    return () => window.removeEventListener('offline-sync-completed', fetchData);
+    const handleSyncComplete = () => fetchData();
+    window.addEventListener('offline-sync-completed', handleSyncComplete);
+    return () => window.removeEventListener('offline-sync-completed', handleSyncComplete);
   }, [fetchData]);
 
   const handleSort = (field: string) => {
@@ -1321,7 +1322,7 @@ const HistoryPage: React.FC = () => {
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
           <button
-            onClick={fetchData}
+            onClick={() => fetchData()}
             className="p-3 bg-white border border-slate-100 text-slate-400 rounded-xl hover:text-brand-600 transition-all shadow-sm shrink-0"
             title="Recarregar Dados"
           >

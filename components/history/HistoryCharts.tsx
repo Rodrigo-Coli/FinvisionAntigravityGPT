@@ -40,6 +40,8 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
     // Internal filters for charts
     const [internalStartDate, setInternalStartDate] = useState(propStartDate);
     const [internalEndDate, setInternalEndDate] = useState(propEndDate);
+    const [showInternalFilters, setShowInternalFilters] = useState(false);
+    const [momCompareMonths, setMomCompareMonths] = useState(3);
 
     const chartFilteredTransactions = useMemo(() => {
         if (!internalStartDate && !internalEndDate) return transactions;
