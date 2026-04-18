@@ -754,14 +754,8 @@ const SettingsPage: React.FC = () => {
                   </div>
                   <button className="flex items-center gap-3 px-10 py-5 bg-white text-slate-900 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl hover:bg-brand-400 hover:text-white transition-all">
                     <Download size={20} /> Iniciar Backup Completo
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                {categories.filter(c => (c.type === categoryTab || (!c.type && categoryTab === 'EXPENSE'))).filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase())).length === 0 && !isAddingCat && (
-                  <div className="p-10 text-center text-slate-400 text-sm font-medium">Nenhuma categoria encontrada.</div>
-                )}
+                  </button>
+                </div>
               </div>
             </div>
           )}
