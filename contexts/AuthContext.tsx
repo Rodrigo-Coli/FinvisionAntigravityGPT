@@ -35,6 +35,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
             if (session?.user) {
                 setUser({ id: session.user.id, email: session.user.email ?? undefined });
+                // Se um usuário real logar (não demo), limpamos o flag de demonstração
+                if (session.user.email && !session.user.email.startsWith('demo')) {
+                    localStorage.removeItem('is_finvision_demo');
+                }
             } else {
                 setUser(null);
             }
