@@ -35,11 +35,15 @@ export async function subscribeUserToPush(): Promise<PushSubscription | null> {
     // 2. Fetch VAPID Public Key from Backend
     const response = await fetch('/api/vapid-public-key');
     if (!response.ok) {
-      console.error('VAPID Fetch failed:', response.status);
-      throw new Error('Não foi possível obter a chave do servidor de notificações.');
+      const errorText = await response.text();
+      console.error('VAPID Fetch failed:', response.status, errorText);
+      throw new Error(`Servidor respondeu com erro ${response.status}: ${errorText || 'Sem detalhes'}`);
     }
     const { publicKey } = await response.json();
-    if (!publicKey) throw new Error('Chave VAPID vazia no servidor.');
+    if (!publicKey) {
+      console.error('VAPID_PUBLIC_KEY não encontrada no process.env do servidor (Vercel).');
+      throw new Error('Chave VAPID retornou vazia (undefined/null) do servidor.');
+    }
     
     const applicationServerKey = urlBase64ToUint8Array(publicKey);
 
