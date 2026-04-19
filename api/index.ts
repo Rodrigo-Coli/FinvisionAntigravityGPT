@@ -1,24 +1,24 @@
 // Static Imports for remaining grouped functions
 // @ts-ignore
-import applyCoupon from './_lib/apply-coupon';
+import applyCoupon from '../lib/api-handlers/apply-coupon';
 // @ts-ignore
-import asaasCreateSubscription from './_lib/asaas-create-subscription';
+import asaasCreateSubscription from '../lib/api-handlers/asaas-create-subscription';
 // @ts-ignore
-import handleImportWorker from './_lib/handle-import-worker';
+import handleImportWorker from '../lib/api-handlers/handle-import-worker';
 // @ts-ignore
-import handleReceiptItems from './_lib/handle-receipt-items';
+import handleReceiptItems from '../lib/api-handlers/handle-receipt-items';
 // @ts-ignore
-import health from './_lib/health';
+import health from '../lib/api-handlers/health';
 // @ts-ignore
-import publicPlans from './_lib/public-plans';
+import publicPlans from '../lib/api-handlers/public-plans';
 // @ts-ignore
-import vapidPublicKey from './_lib/vapid-public-key';
+import vapidPublicKey from '../lib/api-handlers/vapid-public-key';
 // @ts-ignore
-import asaasWebhook from './_lib/asaas-webhook';
+import asaasWebhook from '../lib/api-handlers/asaas-webhook';
 // @ts-ignore
-import whatsappWebhook from './_lib/whatsapp-webhook';
+import whatsappWebhook from '../lib/api-handlers/whatsapp-webhook';
 // @ts-ignore
-import notifyBillsDue from './_lib/notify-bills-due';
+import notifyBillsDue from '../lib/api-handlers/notify-bills-due';
 
 const handlers: Record<string, any> = {
     'apply-coupon': applyCoupon,
