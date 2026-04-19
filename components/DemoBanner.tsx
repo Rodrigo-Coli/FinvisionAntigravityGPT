@@ -1,19 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { LogOut, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase/client';
-import { useAuth } from '../contexts/AuthContext';
 
 export default function DemoBanner() {
   const [isDemo, setIsDemo] = useState(false);
-  const { user } = useAuth();
 
   useEffect(() => {
-    const isLocalDemo = localStorage.getItem('is_finvision_demo') === 'true';
-    const isDemoUser = !!(user?.email?.startsWith('demo') || user?.email?.includes('guest'));
-    
-    // Só mostra se for demo local E (não tiver usuário logado OU o usuário for de demonstração)
-    setIsDemo(isLocalDemo && (!user || isDemoUser));
-  }, [user]);
+    setIsDemo(localStorage.getItem('is_finvision_demo') === 'true');
+  }, []);
 
   const exitDemo = async () => {
     if (!supabase) return;

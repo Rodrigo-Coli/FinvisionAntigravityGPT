@@ -22,7 +22,6 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },
     { label: 'Relatórios', path: '/reports', icon: <FileDown size={20} /> },
     { label: 'Ajustes', path: '/settings', icon: <Settings size={20} /> },
-    ...(user.role === 'admin' ? [{ label: 'Admin', path: '/admin/usuarios', icon: <Settings size={20} /> }] : []),
   ];
 
   return (

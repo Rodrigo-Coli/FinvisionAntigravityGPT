@@ -26,7 +26,6 @@ export async function subscribeUserToPush(): Promise<PushSubscription | null> {
   try {
     // 1. Request Permission
     const permission = await Notification.requestPermission();
-    console.log('Permission status:', permission);
     if (permission !== 'granted') {
       console.warn('Notification permission denied.');
       return null;
@@ -35,21 +34,13 @@ export async function subscribeUserToPush(): Promise<PushSubscription | null> {
     // 2. Fetch VAPID Public Key from Backend
     const response = await fetch('/api/vapid-public-key');
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('VAPID Fetch failed:', response.status, errorText);
-      throw new Error(`Servidor respondeu com erro ${response.status}: ${errorText || 'Sem detalhes'}`);
+      throw new Error('Failed to fetch VAPID public key.');
     }
     const { publicKey } = await response.json();
-    if (!publicKey) {
-      console.error('VAPID_PUBLIC_KEY não encontrada no process.env do servidor (Vercel).');
-      throw new Error('Chave VAPID retornou vazia (undefined/null) do servidor.');
-    }
-    
     const applicationServerKey = urlBase64ToUint8Array(publicKey);
 
     // 3. Get Service Worker Registration
     const registration = await navigator.serviceWorker.ready;
-    console.log('SW Ready for push registration');
 
     // 4. Subscribe
     const subscription = await registration.pushManager.subscribe({
@@ -57,15 +48,9 @@ export async function subscribeUserToPush(): Promise<PushSubscription | null> {
       applicationServerKey: applicationServerKey as any
     });
 
-    console.log('Push subscription success:', !!subscription);
     return subscription;
-  } catch (err: any) {
-    console.error('Push Subscription Error Details:', err);
-    if (err.name === 'NotAllowedError') {
-      alert('A permissão foi negada. Por favor, limpe as permissões deste site nas configurações do seu navegador para tentar novamente.');
-    } else {
-      alert(`Erro na ativação: ${err.message || 'Erro desconhecido'}`);
-    }
+  } catch (err) {
+    console.error('Failed to subscribe to push notifications:', err);
     return null;
   }
 }

@@ -12,9 +12,9 @@
     { "src": "/api/handle-wealth-analysis", "dest": "/api/handle-wealth-analysis.ts" },
     { "src": "/api/handle-bank-reconcile", "dest": "/api/handle-bank-reconcile.ts" },
     { "src": "/api/handle-card-reconcile", "dest": "/api/handle-card-reconcile.ts" },
-    { "src": "/api/asaas-webhook", "dest": "/api/index.ts" },
-    { "src": "/api/whatsapp-webhook", "dest": "/api/index.ts" },
-    { "src": "/api/notify-bills-due", "dest": "/api/index.ts" },
+    { "src": "/api/asaas-webhook", "dest": "/api/asaas-webhook.ts" },
+    { "src": "/api/whatsapp-webhook", "dest": "/api/whatsapp-webhook.ts" },
+    { "src": "/api/notify-bills-due", "dest": "/api/notify-bills-due.ts" },
     { "src": "/api/parse-card-statement", "dest": "/api/parse-card-statement.ts" },
     { "src": "/api/parse-statement", "dest": "/api/parse-statement.ts" },
     {

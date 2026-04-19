@@ -16,45 +16,32 @@ export default defineConfig({
       },
       includeAssets: ['favicon.ico'],
       manifest: {
-        id: "/finvision-pro",
-        name: "FinVision Pro",
-        short_name: "FinVision",
-        description: "Gestão financeira pessoal premium — offline-ready",
-        theme_color: "#4f46e5",
-        background_color: "#f8fafc",
-        display: "standalone",
-        orientation: "portrait-primary",
-        start_url: "/",
-        lang: "pt-BR",
+        name: 'FinVision Pro',
+        short_name: 'FinVision',
+        description: 'Gestão financeira pessoal premium — offline-ready',
+        theme_color: '#4f46e5',
+        background_color: '#f8fafc',
+        display: 'standalone',
+        orientation: 'portrait-primary',
+        start_url: '/',
+        lang: 'pt-BR',
         icons: [
           {
-            src: "favicon.ico",
-            sizes: "64x64 32x32 24x24 16x16",
-            type: "image/x-icon"
+            src: 'favicon.ico',
+            sizes: '64x64 32x32 24x24 16x16',
+            type: 'image/x-icon'
           },
           {
-            src: "logo.png",
-            sizes: "192x192",
-            type: "image/png",
-            purpose: "any"
+            src: 'logo.svg',
+            sizes: '192x192',
+            type: 'image/svg+xml',
+            purpose: 'any maskable'
           },
           {
-            src: "logo.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "any"
-          },
-          {
-            src: "logo.png",
-            sizes: "192x192",
-            type: "image/png",
-            purpose: "maskable"
-          },
-          {
-            src: "logo.svg",
-            sizes: "192x192",
-            type: "image/svg+xml",
-            purpose: "any"
+            src: 'logo.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml',
+            purpose: 'any maskable'
           }
         ]
       },

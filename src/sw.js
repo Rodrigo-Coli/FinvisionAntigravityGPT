@@ -31,17 +31,12 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: pushData.body,
-    icon: '/logo.png',
-    badge: '/logo.png',
+    icon: pushData.icon || '/logo.png', // Ensure you have a logo.png in public/
+    badge: '/favicon.ico',
     data: {
       url: pushData.url || '/'
     },
-    vibrate: [100, 50, 100],
-    actions: [
-      { action: 'open', title: 'Abrir App' }
-    ],
-    tag: 'finvision-notification', // Evita duplicados
-    renotify: true
+    vibrate: [200, 100, 200, 100, 200, 100, 200]
   };
 
   event.waitUntil(
