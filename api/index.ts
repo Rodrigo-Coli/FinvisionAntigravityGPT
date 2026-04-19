@@ -13,6 +13,12 @@ import health from './_lib/health';
 import publicPlans from './_lib/public-plans';
 // @ts-ignore
 import vapidPublicKey from './_lib/vapid-public-key';
+// @ts-ignore
+import asaasWebhook from './_lib/asaas-webhook';
+// @ts-ignore
+import whatsappWebhook from './_lib/whatsapp-webhook';
+// @ts-ignore
+import notifyBillsDue from './_lib/notify-bills-due';
 
 const handlers: Record<string, any> = {
     'apply-coupon': applyCoupon,
@@ -21,7 +27,10 @@ const handlers: Record<string, any> = {
     'handle-receipt-items': handleReceiptItems,
     'health': health,
     'public-plans': publicPlans,
-    'vapid-public-key': vapidPublicKey
+    'vapid-public-key': vapidPublicKey,
+    'asaas-webhook': asaasWebhook,
+    'whatsapp-webhook': whatsappWebhook,
+    'notify-bills-due': notifyBillsDue
 };
 
 export default async function handler(req: any, res: any) {
