@@ -958,7 +958,7 @@ const SettingsPage: React.FC = () => {
             Forçar Recarregamento do App
           </button>
           <p className="text-[10px] text-slate-400 font-mono tracking-tight uppercase">
-            FinVision Pro v2.1.3-ATOMIC-FIX
+            FinVision Pro v2.1.4-FINAL-STABLE
           </p>
         </div>
       </div>
