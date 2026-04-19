@@ -36,6 +36,17 @@ export default async function handler(req: any, res: any) {
     // Normalize path: remove /api/ prefix, leading slashes, trailing slashes and query params
     let path = req.url.split('?')[0].replace(/^\/api\/?/, '').replace(/\/$/, '');
 
+    // DIRECT HANDLE for VAPID KEY (Solves the 12 functions limit by consolidation)
+    if (path === 'vapid-public-key') {
+        const publicKey = process.env.VAPID_PUBLIC_KEY;
+        if (!publicKey) {
+            console.error('SERVER_ERROR: VAPID_PUBLIC_KEY missing in Env Vars.');
+            return res.status(500).json({ error: 'Chave VAPID_PUBLIC_KEY não configurada no servidor Vercel.' });
+        }
+        res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+        return res.status(200).json({ publicKey });
+    }
+
     try {
         const handlerModule = handlers[path];
         if (!handlerModule) {
