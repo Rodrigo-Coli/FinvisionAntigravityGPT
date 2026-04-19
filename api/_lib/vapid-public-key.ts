@@ -7,7 +7,7 @@ export default async function handler(req: any, res: any) {
   const publicKey = process.env.VAPID_PUBLIC_KEY;
 
   if (!publicKey) {
-    return res.status(500).json({ error: 'VAPID public key not configured on server' });
+    return res.status(500).json({ error: 'VAPID_PUBLIC_KEY não encontrada no process.env do servidor (Vercel).' });
   }
 
   // Set appropriate CORS and caching headers 

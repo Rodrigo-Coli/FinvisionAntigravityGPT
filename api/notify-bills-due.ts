@@ -35,7 +35,7 @@ export default async function handler(req: any, res: any) {
     if (filteredUsers.length === 0) return res.status(200).json({ message: 'No users.' });
 
     const userIds = filteredUsers.map(u => u.user_id);
-    const { data: expenses } = await supabase.from('transactions').select('description, amount, date, user_id').eq('type', 'EXPENSE').eq('is_paid', false).in('user_id', userIds).gte('date', todayStr).lte('date', tomorrowStr);
+    const { data: expenses } = await supabase.from('transactions').select('description, amount, date, user_id').in('type', ['EXPENSE', 'BILL_PAYMENT', 'expense', 'bill_payment']).eq('is_paid', false).in('user_id', userIds).gte('date', todayStr).lte('date', tomorrowStr);
     const { data: statements } = await supabase.from('card_statements').select('total_amount, paid_amount, due_date, user_id, cards(name)').eq('status', 'OPEN').in('user_id', userIds).gte('due_date', todayStr).lte('due_date', tomorrowStr);
 
     const userExpenses: Record<string, any[]> = {};

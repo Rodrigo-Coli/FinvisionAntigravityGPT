@@ -1,5 +1,5 @@
 // FinVision Pro — Service Worker (offline-first cache)
-const CACHE_NAME = 'finvision-v1';
+const CACHE_NAME = 'finvision-v2';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
@@ -50,6 +50,59 @@ self.addEventListener('fetch', (event) => {
                 }
                 return response;
             }).catch(() => caches.match('/index.html')); // SPA fallback
+        })
+    );
+});
+
+// Push Notifications Listener
+self.addEventListener('push', (event) => {
+    let data = { title: 'FinVision Pro', body: 'Nova atualização disponível!' };
+    
+    try {
+        if (event.data) {
+            data = event.data.json();
+        }
+    } catch (e) {
+        data = { title: 'FinVision Pro', body: event.data.text() };
+    }
+
+    const options = {
+        body: data.body,
+        icon: '/logo.svg',
+        badge: '/logo.svg',
+        data: {
+            url: data.url || '/'
+        },
+        vibrate: [100, 50, 100],
+        actions: [
+            { action: 'open', title: 'Abrir App' }
+        ]
+    };
+
+    event.waitUntil(
+        self.registration.showNotification(data.title, options)
+    );
+});
+
+// Notification Click Listener
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    
+    const urlToOpen = event.notification.data.url || '/';
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+            // Se já tiver uma aba aberta, foca nela
+            for (let i = 0; i < windowClients.length; i++) {
+                const client = windowClients[i];
+                if (client.url.includes(urlToOpen) && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            // Se não, abre uma nova
+            if (clients.openWindow) {
+                return clients.openWindow(urlToOpen);
+            }
         })
     );
 });

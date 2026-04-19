@@ -33,13 +33,15 @@ export default async function handler(req: any, res: any) {
 
     if (req.method === 'OPTIONS') return res.status(200).end();
 
-    const path = req.url.split('?')[0].replace('/api/', '');
+    // Normalize path: remove /api/ prefix, leading slashes, trailing slashes and query params
+    let path = req.url.split('?')[0].replace(/^\/api\/?/, '').replace(/\/$/, '');
 
     try {
         const handlerModule = handlers[path];
         if (!handlerModule) {
             return res.status(404).json({ 
                 error: `Route /api/${path} not found in router.`,
+                received_path: path,
                 available_in_router: Object.keys(handlers)
             });
         }
