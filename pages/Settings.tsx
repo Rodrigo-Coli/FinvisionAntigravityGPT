@@ -948,7 +948,7 @@ const SettingsPage: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
+        </main>
 
         <div className="mt-12 pt-8 border-t border-slate-200 text-center space-y-4">
           <button 
