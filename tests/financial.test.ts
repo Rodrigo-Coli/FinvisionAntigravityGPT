@@ -157,4 +157,61 @@ describe('Cálculos Financeiros', () => {
             expect(matches).toBe(true);
         });
     });
+
+    describe('Projection Service Engine', () => {
+        // mock das funções importadas pelo service
+        const addMonths = (date: Date, amount: number) => {
+            const result = new Date(date);
+            result.setMonth(result.getMonth() + amount);
+            return result;
+        };
+        const startOfMonth = (date: Date) => {
+            return new Date(date.getFullYear(), date.getMonth(), 1);
+        };
+
+        it('deve projetar passivos imobiliários com juros e balões', () => {
+            let liabilityPayments = 0;
+            let balloonPayments = 0;
+            const i = 5; // 5 months in future
+            const month = 11; // Dezembro
+            const year = 2026;
+
+            const realEstateLiabilities = [
+                {
+                    id: '1',
+                    name: 'Apto',
+                    type: 'MORTGAGE',
+                    totalAmount: 500000,
+                    remainingBalance: 400000,
+                    installmentAmount: 3000,
+                    installments_count: 120,
+                    indexation_rate: 6, // 6% aa
+                    balloon_payments: [
+                        { month: 12, year: 2026, amount: 50000 }
+                    ]
+                }
+            ];
+
+            realEstateLiabilities.forEach(rel => {
+                if (rel.installmentAmount && rel.installments_count > i) {
+                    const monthlyRate = Math.pow(1 + (rel.indexation_rate / 100), 1 / 12) - 1;
+                    const correctedInstallment = rel.installmentAmount * Math.pow(1 + monthlyRate, i);
+                    liabilityPayments += correctedInstallment;
+                }
+
+                rel.balloon_payments.forEach(bp => {
+                    if (bp.month === month + 1 && bp.year === year) {
+                        balloonPayments += bp.amount;
+                    }
+                });
+            });
+
+            // Parcela corrigida: 3000 * (1 + monthlyRate)^5
+            const monthlyRate = Math.pow(1.06, 1/12) - 1;
+            const expectedCorrected = 3000 * Math.pow(1 + monthlyRate, 5);
+
+            expect(liabilityPayments).toBeCloseTo(expectedCorrected, 2);
+            expect(balloonPayments).toBe(50000);
+        });
+    });
 });

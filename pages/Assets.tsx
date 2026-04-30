@@ -104,7 +104,12 @@ const Assets: React.FC = () => {
     installmentAmount: '',
     installmentsRemaining: '',
     dueDay: '',
-    linkedAssetId: ''
+    linkedAssetId: '',
+    indexationRate: '',
+    balloonMonth: '',
+    balloonYear: '',
+    balloonAmount: '',
+    balloons: [] as { month: number; year: number; amount: number }[]
   });
 
   const handleSaveLiability = async (e: React.FormEvent) => {
@@ -126,6 +131,11 @@ const Assets: React.FC = () => {
           remaining_balance: parseFloat(liabilityFormData.remainingBalance) || 0,
           interest_rate: liabilityFormData.interestRate ? parseFloat(liabilityFormData.interestRate) : null,
           linked_asset_id: liabilityFormData.linkedAssetId || null,
+          metadata: {
+            ...editingLiability.metadata,
+            indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
+            balloons: liabilityFormData.balloons
+          }
         }).eq('id', editingLiability.id);
         if (error) throw error;
       } else {
@@ -141,6 +151,10 @@ const Assets: React.FC = () => {
           installments_remaining: installmentsLeft,
           due_day: dueDay,
           linked_asset_id: liabilityFormData.linkedAssetId || null,
+          metadata: {
+            indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
+            balloons: liabilityFormData.balloons
+          }
         }]).select();
 
         if (error) throw error;
@@ -194,7 +208,7 @@ const Assets: React.FC = () => {
 
       setShowLiabilityModal(false);
       setEditingLiability(null);
-      setLiabilityFormData({ name: '', type: 'PERSONAL_LOAN', totalAmount: '', remainingBalance: '', interestRate: '', installmentAmount: '', installmentsRemaining: '', dueDay: '', linkedAssetId: '' });
+      setLiabilityFormData({ name: '', type: 'PERSONAL_LOAN', totalAmount: '', remainingBalance: '', interestRate: '', installmentAmount: '', installmentsRemaining: '', dueDay: '', linkedAssetId: '', indexationRate: '', balloonMonth: '', balloonYear: '', balloonAmount: '', balloons: [] });
       fetchData();
     } catch (err: any) {
       alert(`Erro ao salvar: ${err.message}`);
@@ -249,7 +263,8 @@ const Assets: React.FC = () => {
           totalAmount: Number(l.total_amount),
           remainingBalance: Number(l.remaining_balance),
           interestRate: l.interest_rate ? Number(l.interest_rate) : undefined,
-          linkedAssetId: l.linked_asset_id
+          linkedAssetId: l.linked_asset_id,
+          metadata: l.metadata
         })));
       }
     } catch (e) {
@@ -270,7 +285,12 @@ const Assets: React.FC = () => {
       installmentAmount: '',
       installmentsRemaining: '',
       dueDay: '',
-      linkedAssetId: liability.linkedAssetId || ''
+      linkedAssetId: liability.linkedAssetId || '',
+      indexationRate: liability.metadata?.indexationRate ? String(liability.metadata.indexationRate) : '',
+      balloonMonth: '',
+      balloonYear: '',
+      balloonAmount: '',
+      balloons: liability.metadata?.balloons || []
     });
     setShowLiabilityModal(true);
   };
@@ -784,6 +804,89 @@ const Assets: React.FC = () => {
                     ))}
                   </select>
                   <p className="text-[9px] text-slate-400 mt-1 font-medium">Vinculando, o FinVision calcula o equity real do bem (Valor - Dívida).</p>
+                </div>
+              )}
+
+              {liabilityFormData.type === 'MORTGAGE' && (
+                <div className="border-t border-slate-100 pt-4 space-y-4">
+                  <h4 className="text-xs font-bold text-brand-600 uppercase tracking-widest">Opções de Financiamento Imobiliário</h4>
+                  
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Índice de Correção Anual Estimado (Ex: INCC/IPCA %)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      placeholder="Ex: 5.5"
+                      value={liabilityFormData.indexationRate}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, indexationRate: e.target.value })}
+                    />
+                    <p className="text-[9px] text-slate-400 mt-1 font-medium">Usado para projetar o valor corrigido no fluxo de caixa.</p>
+                  </div>
+
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Adicionar Intermediária / Balão</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        placeholder="Mês (1-12)"
+                        className="w-1/3 bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                        value={liabilityFormData.balloonMonth}
+                        onChange={(e) => setLiabilityFormData({ ...liabilityFormData, balloonMonth: e.target.value })}
+                      />
+                      <input
+                        type="number"
+                        placeholder="Ano"
+                        className="w-1/3 bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                        value={liabilityFormData.balloonYear}
+                        onChange={(e) => setLiabilityFormData({ ...liabilityFormData, balloonYear: e.target.value })}
+                      />
+                      <input
+                        type="number"
+                        placeholder="Valor R$"
+                        className="w-1/3 bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                        value={liabilityFormData.balloonAmount}
+                        onChange={(e) => setLiabilityFormData({ ...liabilityFormData, balloonAmount: e.target.value })}
+                      />
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        if (liabilityFormData.balloonMonth && liabilityFormData.balloonYear && liabilityFormData.balloonAmount) {
+                          setLiabilityFormData({
+                            ...liabilityFormData,
+                            balloons: [...liabilityFormData.balloons, {
+                              month: Number(liabilityFormData.balloonMonth),
+                              year: Number(liabilityFormData.balloonYear),
+                              amount: Number(liabilityFormData.balloonAmount)
+                            }],
+                            balloonMonth: '',
+                            balloonYear: '',
+                            balloonAmount: ''
+                          });
+                        }
+                      }}
+                      className="w-full py-2 bg-brand-100 text-brand-700 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-brand-200 transition-colors"
+                    >
+                      + Adicionar Parcela Extra
+                    </button>
+
+                    {liabilityFormData.balloons.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {liabilityFormData.balloons.map((b, idx) => (
+                          <div key={idx} className="flex justify-between text-xs bg-white p-2 rounded border border-slate-100">
+                            <span className="font-medium text-slate-600">{b.month}/{b.year}</span>
+                            <span className="font-bold text-brand-600">R$ {b.amount}</span>
+                            <button type="button" onClick={() => {
+                              const newBalloons = [...liabilityFormData.balloons];
+                              newBalloons.splice(idx, 1);
+                              setLiabilityFormData({ ...liabilityFormData, balloons: newBalloons });
+                            }} className="text-red-500 font-bold hover:underline">X</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

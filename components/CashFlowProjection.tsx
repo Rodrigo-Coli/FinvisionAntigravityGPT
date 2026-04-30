@@ -1,188 +1,144 @@
-import React, { useState, useEffect } from 'react';
-import { Activity, ChevronDown, ChevronUp, Info } from 'lucide-react';
-import { supabase } from '../lib/supabase/client';
+import React, { useMemo } from 'react';
+import { CashFlowProjectionItem } from '../types';
+import { TrendingUp, TrendingDown, Info } from 'lucide-react';
+import { formatCurrency } from '../lib/historyUtils';
 
-interface MonthProjection {
-    monthLabel: string;
-    projectedIncome: number;
-    projectedExpense: number;
-    projectedBalance: number;
-    isNegative: boolean;
+interface CashFlowProjectionProps {
+  data: CashFlowProjectionItem[];
+  isLoading?: boolean;
 }
 
-const CashFlowProjection: React.FC<{ userId: string, currentBalance: number }> = ({ userId, currentBalance }) => {
-    const [projections, setProjections] = useState<MonthProjection[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [collapsed, setCollapsed] = useState(false);
+export function CashFlowProjection({ data, isLoading }: CashFlowProjectionProps) {
+  const { maxBalance, minBalance } = useMemo(() => {
+    if (!data || data.length === 0) return { maxBalance: 100, minBalance: 0 };
+    
+    let max = -Infinity;
+    let min = Infinity;
+    
+    data.forEach(d => {
+      if (d.endingBalance > max) max = d.endingBalance;
+      if (d.startingBalance > max) max = d.startingBalance;
+      if (d.endingBalance < min) min = d.endingBalance;
+      if (d.startingBalance < min) min = d.startingBalance;
+    });
 
-    useEffect(() => { if (userId) buildProjection(); }, [userId, currentBalance]);
+    // Add 10% padding
+    const padding = (max - min) * 0.1 || 100;
+    return { maxBalance: max + padding, minBalance: Math.min(0, min - padding) };
+  }, [data]);
 
-    const buildProjection = async () => {
-        const sb = supabase;
-        if (!sb || !userId) {
-            console.warn('[Projection] Supabase client or userId missing');
-            setIsLoading(false);
-            return;
-        }
-
-        console.log('[Projection] Starting calculation for user:', userId, 'Current balance:', currentBalance);
-        setIsLoading(true);
-        
-        try {
-            // Get all pending future transactions (including installments)
-            const today = new Date();
-            const futureEnd = new Date(today.getFullYear(), today.getMonth() + 7, 0); // Next 6 months + current
-            
-            const { data: pendingTx, error } = await sb.from('transactions')
-                .select('amount, type, date')
-                .eq('user_id', userId)
-                .eq('is_paid', false)
-                .gte('date', today.toISOString().split('T')[0])
-                .lte('date', futureEnd.toISOString().split('T')[0]);
-
-            if (error) {
-                console.error('[Projection] Error fetching transactions:', error);
-                throw error;
-            }
-
-            console.log(`[Projection] Found ${pendingTx?.length || 0} pending transactions`);
-
-            const monthlyData: Record<string, { income: number; expense: number }> = {};
-            (pendingTx || []).forEach((t: any) => {
-                const key = t.date.substring(0, 7); // YYYY-MM
-                if (!monthlyData[key]) monthlyData[key] = { income: 0, expense: 0 };
-                if (t.type === 'INCOME') monthlyData[key].income += Number(t.amount);
-                else monthlyData[key].expense += Number(t.amount);
-            });
-
-            // Iterate through the next 6 months
-            const result: MonthProjection[] = [];
-            let rollingBalance = Number(currentBalance) || 0;
-
-            for (let i = 0; i < 6; i++) {
-                const dt = new Date(today.getFullYear(), today.getMonth() + i, 1);
-                const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-                const monthLabel = dt.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. ', '/');
-
-                const inc = monthlyData[key]?.income || 0;
-                const exp = monthlyData[key]?.expense || 0;
-
-                rollingBalance = rollingBalance + inc - exp;
-
-                result.push({
-                    monthLabel,
-                    projectedIncome: Math.round(inc),
-                    projectedExpense: Math.round(exp),
-                    projectedBalance: Math.round(rollingBalance),
-                    isNegative: rollingBalance < 0
-                });
-            }
-            
-            console.log('[Projection] Calculation complete. Results:', result.length, 'months');
-            setProjections(result);
-        } catch (err) {
-            console.error('[Projection] Critical error in buildProjection:', err);
-        } finally { 
-            setIsLoading(false); 
-        }
-    };
-
-    const fmt = (v: number) => {
-        const abs = Math.abs(v);
-        if (abs >= 1000) return `${v < 0 ? '-' : ''}R$${(abs / 1000).toFixed(1)}k`;
-        return `${v < 0 ? '-' : ''}R$${Math.round(abs)}`;
-    };
-
-    const maxExp = projections.length > 0 ? Math.max(...projections.map(p => Math.abs(p.projectedExpense)), 100) : 100;
-    const maxInc = projections.length > 0 ? Math.max(...projections.map(p => Math.abs(p.projectedIncome)), 100) : 100;
-    const maxBar = Math.max(maxExp, maxInc);
-
-    const negMonths = projections.filter(p => p.isNegative).length;
-    const firstNegIdx = projections.findIndex(p => p.isNegative);
-
+  if (isLoading) {
     return (
-        <div className="bg-white border border-slate-100 rounded-[24px] sm:rounded-[32px] shadow-sm overflow-hidden">
-            <div
-                className="px-4 sm:px-8 py-4 sm:py-5 border-b border-slate-50 flex items-start sm:items-center justify-between cursor-pointer hover:bg-slate-50/30 transition-colors gap-3"
-                onClick={() => setCollapsed(c => !c)}
-            >
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                        <Activity size={18} />
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-slate-900 text-sm">Projeção de Caixa Real</h3>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Baseado no Saldo + Pendências (6 meses)</p>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
-                    {negMonths > 0 && !isLoading && (
-                        <span className="px-2 sm:px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[8px] sm:text-[9px] font-bold uppercase tracking-widest">
-                            {negMonths} {negMonths === 1 ? 'mês projetado negativo' : 'meses projetados no vermelho'}
-                        </span>
-                    )}
-                    {collapsed ? <ChevronDown size={18} className="text-slate-400" /> : <ChevronUp size={18} className="text-slate-400" />}
-                </div>
-            </div>
-
-            {!collapsed && (
-                <div className="p-4 sm:p-8">
-                    {isLoading ? (
-                        <div className="h-40 flex items-center justify-center text-slate-300"><Activity size={32} className="animate-pulse" /></div>
-                    ) : projections.length === 0 ? (
-                        <p className="text-center text-slate-400 text-sm py-10">Sem lançamentos programados para o futuro.</p>
-                    ) : (
-                        <>
-                            {firstNegIdx >= 0 && (
-                                <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3">
-                                    <Info size={16} className="text-red-500 shrink-0" />
-                                    <p className="text-xs text-red-700 font-medium">
-                                        Seu saldo consolidado pode ficar negativo em <strong>{projections[firstNegIdx].monthLabel}</strong> considerando os gastos já programados.
-                                    </p>
-                                </div>
-                            )}
-
-                            {/* Chart - responsive: no min-width, bars adapt to screen */}
-                            <div className="w-full">
-                                <div className="flex gap-2 sm:gap-4 items-end justify-between h-48 sm:h-56 pt-8 sm:pt-10">
-                                    {projections.map((p, i) => {
-                                        const incH = Math.max((p.projectedIncome / maxBar) * 100, 2);
-                                        const expH = Math.max((p.projectedExpense / maxBar) * 100, 2);
-                                        return (
-                                            <div key={i} className="flex-1 min-w-0 flex flex-col items-center gap-2 sm:gap-3 relative group">
-                                                {/* Tooltip Hover */}
-                                                <div className={`absolute bottom-full mb-3 opacity-0 group-hover:opacity-100 bg-brand-900 text-white p-2.5 rounded-xl text-[10px] whitespace-nowrap z-50 transition-opacity pointer-events-none shadow-xl ${i === 0 ? 'left-0' : i === projections.length - 1 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}>
-                                                    <div className="font-bold border-b border-white/10 pb-1 mb-1">{p.monthLabel}</div>
-                                                    <div className="text-emerald-400">Receitas: {fmt(p.projectedIncome)}</div>
-                                                    <div className="text-rose-400">Despesas: {fmt(p.projectedExpense)}</div>
-                                                    <div className="text-slate-200 font-bold mt-1 pt-1 border-t border-white/10">Saldo: {fmt(p.projectedBalance)}</div>
-                                                    {/* Seta do Tooltip */}
-                                                    <div className={`absolute -bottom-1 w-2 h-2 rotate-45 bg-brand-900 ${i === 0 ? 'left-4' : i === projections.length - 1 ? 'right-4' : 'left-1/2 -translate-x-1/2'}`} />
-                                                </div>
-
-                                                {/* Projected Balance Top Label */}
-                                                <span className={`text-[9px] sm:text-[10px] font-black leading-tight ${p.isNegative ? 'text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded-full' : 'text-slate-600'}`}>
-                                                    {fmt(p.projectedBalance)}
-                                                </span>
-
-                                                <div className="w-full flex gap-0.5 sm:gap-1 items-end h-28 sm:h-32 justify-center">
-                                                    {/* Income Bar */}
-                                                    <div className="w-3 sm:w-6 rounded-t-md transition-all bg-emerald-400 hover:bg-emerald-500" style={{ height: `${incH}%` }} />
-                                                    {/* Expense Bar */}
-                                                    <div className="w-3 sm:w-6 rounded-t-md transition-all bg-rose-400 hover:bg-rose-500" style={{ height: `${expH}%` }} />
-                                                </div>
-                                                <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center truncate w-full">{p.monthLabel}</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
-            )}
-        </div>
+      <div className="bg-slate-900 rounded-xl p-6 border border-slate-800 animate-pulse h-80 flex items-center justify-center">
+        <div className="text-slate-500">Calculando projeções avançadas...</div>
+      </div>
     );
-};
+  }
 
-export default CashFlowProjection;
+  if (!data || data.length === 0) {
+    return null;
+  }
+
+  const range = maxBalance - minBalance;
+
+  return (
+    <div className="bg-slate-900 rounded-xl p-6 border border-slate-800 shadow-xl overflow-hidden">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            Projeção Avançada de Fluxo de Caixa
+          </h2>
+          <p className="text-slate-400 text-sm mt-1">
+            Simulação para os próximos {data.length} meses considerando despesas fixas, recorrentes e imobiliárias.
+          </p>
+        </div>
+        <div className="flex gap-4">
+          <div className="flex items-center gap-2 text-xs text-slate-300">
+            <span className="w-3 h-3 rounded-full bg-emerald-500" /> Positivo
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-300">
+            <span className="w-3 h-3 rounded-full bg-rose-500" /> Negativo
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-300">
+            <span className="w-3 h-3 rounded-full bg-amber-500" /> Balão / Parcelas Extras
+          </div>
+        </div>
+      </div>
+
+      <div className="relative h-64 mt-8 flex items-end justify-between gap-2 overflow-x-auto pb-6">
+        {/* Zero Line */}
+        {minBalance < 0 && (
+          <div 
+            className="absolute left-0 right-0 border-t border-dashed border-slate-600 z-0" 
+            style={{ bottom: `${(Math.abs(minBalance) / range) * 100}%` }}
+          />
+        )}
+
+        {data.map((item, i) => {
+          const isNegative = item.endingBalance < 0;
+          const heightPct = Math.max(0, (Math.abs(item.endingBalance) / range) * 100);
+          const bottomPos = minBalance < 0 
+            ? (item.endingBalance >= 0 ? (Math.abs(minBalance) / range) * 100 : ((Math.abs(minBalance) - Math.abs(item.endingBalance)) / range) * 100)
+            : 0;
+
+          // Calcule o quão impactante foram as despesas extras (balões e passivos)
+          const hasHeavyLiabilities = item.balloonPayments > 0 || item.liabilityPayments > (item.projectedIncome * 0.5);
+
+          return (
+            <div key={item.date} className="relative flex flex-col items-center flex-1 min-w-[60px] group z-10">
+              {/* Tooltip on Hover */}
+              <div className="absolute -top-24 left-1/2 -translate-x-1/2 bg-slate-800 text-xs text-white p-3 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 w-48 border border-slate-700">
+                <p className="font-bold border-b border-slate-700 pb-1 mb-2 text-center">{item.label}</p>
+                <div className="flex justify-between text-emerald-400 mb-1">
+                  <span>Receitas:</span>
+                  <span>{formatCurrency(item.projectedIncome + item.recurringIncome)}</span>
+                </div>
+                <div className="flex justify-between text-rose-400 mb-1">
+                  <span>Despesas Fixas:</span>
+                  <span>-{formatCurrency(item.projectedExpense + item.recurringExpense)}</span>
+                </div>
+                {(item.liabilityPayments > 0 || item.balloonPayments > 0) && (
+                  <div className="flex justify-between text-amber-400 mb-2 border-t border-slate-700 pt-1 mt-1">
+                    <span>Imóveis/Passivos:</span>
+                    <span>-{formatCurrency(item.liabilityPayments + item.balloonPayments)}</span>
+                  </div>
+                )}
+                <div className={`flex justify-between font-bold border-t border-slate-700 pt-2 ${isNegative ? 'text-rose-500' : 'text-blue-400'}`}>
+                  <span>Saldo Previsto:</span>
+                  <span>{formatCurrency(item.endingBalance)}</span>
+                </div>
+              </div>
+
+              {/* Bar */}
+              <div 
+                className={`w-full max-w-[40px] rounded-t-sm transition-all duration-300 relative ${
+                  isNegative ? 'bg-rose-500/80 hover:bg-rose-400' : 'bg-emerald-500/80 hover:bg-emerald-400'
+                }`}
+                style={{ 
+                  height: `${Math.max(2, heightPct)}%`, 
+                  position: 'absolute',
+                  bottom: `${bottomPos}%`
+                }}
+              >
+                {/* Warning indicator for balloon payments inside the bar */}
+                {item.balloonPayments > 0 && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-amber-500 ring-2 ring-slate-900" />
+                )}
+              </div>
+
+              {/* X-Axis Label */}
+              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-slate-400 font-medium whitespace-nowrap">
+                {item.label.split('/')[0]}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-slate-800 flex items-center text-sm text-slate-400 gap-2">
+        <Info className="w-4 h-4 text-blue-400" />
+        <p>A projeção considera juros compostos em financiamentos imobiliários e inclui gastos do cartão de crédito nas despesas futuras.</p>
+      </div>
+    </div>
+  );
+}

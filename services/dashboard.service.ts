@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase/client';
 import { DashboardData } from '../types';
+import { projectionService } from './projection.service';
 
 export const DashboardService = {
   getSummary: async (): Promise<DashboardData> => {
@@ -134,16 +135,49 @@ export const DashboardService = {
     // 7. Liabilities (Debts/Passivos)
     const { data: liabilitiesData, error: liabErr } = await sb
       .from('liabilities')
-      .select('remaining_balance, type')
+      .select('*')
       .eq('user_id', user.id);
 
-    let totalLiabilities = 0;
+    const liabilitiesForProj: any[] = [];
+    const realEstateLiabilitiesForProj: any[] = [];
     if (!liabErr && liabilitiesData) {
       liabilitiesData.forEach((liab: any) => {
         totalLiabilities += Number(liab.remaining_balance || 0);
+        liabilitiesForProj.push({
+          ...liab,
+          installmentAmount: Number(liab.installment_amount || 0),
+          installmentsRemaining: Number(liab.installments_remaining || 0)
+        });
+        
+        if (liab.type === 'MORTGAGE' || liab.metadata?.isRealEstate) {
+          realEstateLiabilitiesForProj.push({
+             ...liab,
+             installmentAmount: Number(liab.installment_amount || 0),
+             installments_count: Number(liab.installments_remaining || 0),
+             indexation_rate: Number(liab.metadata?.indexationRate || 0),
+             balloon_payments: liab.metadata?.balloons || []
+          });
+        }
       });
       netWorth -= totalLiabilities; // Net Worth = Assets - Liabilities
     }
+
+    // 7.5 Projected Cash Flow (Advanced Engine)
+    // Fetch future and recurring transactions
+    const { data: futureTxs } = await sb
+      .from('transactions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('is_deleted', false)
+      .or(`date.gte.${new Date().toISOString()},is_recurring.eq.true`);
+
+    const projectedCashFlow = projectionService.calculateFutureCashFlow(
+      consolidatedBalance,
+      futureTxs || [],
+      liabilitiesForProj,
+      realEstateLiabilitiesForProj,
+      12 // project next 12 months
+    );
 
     // 8. Smart Alerts Generation
     const smartAlerts: any[] = [];
@@ -167,7 +201,8 @@ export const DashboardService = {
       cashFlow,
       assets: assetsSummary,
       totalExpenses: Number(totalExpenses || 0),
-      netWorthGrowth: Number(netWorthGrowth || 0)
+      netWorthGrowth: Number(netWorthGrowth || 0),
+      projectedCashFlow
     };
   },
 

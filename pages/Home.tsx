@@ -270,7 +270,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
       {/* CASH FLOW PROJECTION (6 MONTHS) */}
       <div id="tour-cash-flow">
-        <CashFlowProjection userId={user?.id} currentBalance={data?.consolidatedBalance || 0} />
+        <CashFlowProjection data={data?.projectedCashFlow || []} isLoading={isLoading} />
       </div>
 
       {/* MID SECTION: CREDIT CARDS & INSIGHTS */}

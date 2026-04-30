@@ -49,6 +49,7 @@ export interface DashboardData {
     value: number;
     color: string;
   }[];
+  projectedCashFlow?: CashFlowProjectionItem[];
 }
 
 export type AccountType = 'CHECKING' | 'SAVINGS' | 'INVESTMENT' | 'CASH';
@@ -272,6 +273,32 @@ export interface Liability {
   installmentsRemaining?: number;
   dueDay?: number;
   metadata?: any;
+}
+
+export interface BalloonPayment {
+  month: number;
+  year: number;
+  amount: number;
+}
+
+export interface RealEstateLiability extends Liability {
+  installments_count: number;
+  balloon_payments: BalloonPayment[];
+  indexation_rate: number; // Ex: IPCA or INCC yearly estimate
+}
+
+export interface CashFlowProjectionItem {
+  date: string; // YYYY-MM
+  label: string; // Ex: "Out/2026"
+  startingBalance: number;
+  projectedIncome: number;
+  projectedExpense: number;
+  recurringIncome: number;
+  recurringExpense: number;
+  liabilityPayments: number;
+  balloonPayments: number;
+  netCashFlow: number;
+  endingBalance: number;
 }
 
 export interface Goal {
