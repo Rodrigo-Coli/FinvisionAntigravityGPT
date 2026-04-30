@@ -138,6 +138,7 @@ export const DashboardService = {
       .select('*')
       .eq('user_id', user.id);
 
+    let totalLiabilities = 0;
     const liabilitiesForProj: any[] = [];
     const realEstateLiabilitiesForProj: any[] = [];
     if (!liabErr && liabilitiesData) {

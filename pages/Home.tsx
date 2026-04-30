@@ -24,7 +24,7 @@ import { DashboardSkeleton } from '../components/Skeleton';
 import { DateUtils } from '../lib/dateUtils';
 import { useTour } from '../contexts/TourContext';
 import { HistoryCharts } from '../components/history/HistoryCharts';
-import CashFlowProjection from '../components/CashFlowProjection';
+import { CashFlowProjection } from '../components/CashFlowProjection';
 import AIChat from '../components/AIChat';
 import ContextualHelp from '../components/ContextualHelp';
 import { supabase } from '../lib/supabase/client';
