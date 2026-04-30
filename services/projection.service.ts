@@ -34,6 +34,9 @@ export const projectionService = {
 
       // 1. Lógica para transações recorrentes e futuras (já registradas com data futura)
       transactions.forEach(t => {
+        // Pula transações de amortização geradas para financiamentos (elas são calculadas via liabilities)
+        if (t.is_amortization && t.liability_id) return;
+        
         const tDate = parseISO(t.date);
         
         // Transação fixa no futuro para este mês exato

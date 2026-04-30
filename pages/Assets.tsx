@@ -23,6 +23,7 @@ import {
 import { PhysicalAsset, InvestmentBroker, Liability } from '../types';
 
 import { supabase } from '../lib/supabase/client';
+import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModal';
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
@@ -33,6 +34,7 @@ const Assets: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   const [showModal, setShowModal] = useState(false);
+  const [showWizardModal, setShowWizardModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<PhysicalAsset | null>(null);
   const [editingLiability, setEditingLiability] = useState<any | null>(null);
   const [formData, setFormData] = useState({
@@ -332,12 +334,20 @@ const Assets: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Patrimônio Líquido</h1>
           <p className="text-sm text-slate-400 font-medium">Bens físicos e ativos financeiros consolidados.</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
-        >
-          <Plus size={18} /> Novo Ativo
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowWizardModal(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-white border border-brand-200 text-brand-600 rounded-xl text-sm font-bold shadow-sm hover:bg-brand-50 hover:scale-105 transition-transform active:scale-95"
+          >
+            <Building2 size={18} /> Aquisição Imobiliária
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
+          >
+            <Plus size={18} /> Novo Ativo
+          </button>
+        </div>
       </div>
 
       {/* SUMMARY BANNER */}
@@ -897,6 +907,15 @@ const Assets: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+      {showWizardModal && (
+        <RealEstateWizardModal 
+          onClose={() => setShowWizardModal(false)}
+          onSuccess={() => {
+            setShowWizardModal(false);
+            fetchData();
+          }}
+        />
       )}
     </div>
   );
