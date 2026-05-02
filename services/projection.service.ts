@@ -92,13 +92,17 @@ export const projectionService = {
         const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
         const label = dt.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. ', '/');
         const md = monthlyData[key] || { income: 0, expense: 0, recurringIncome: 0, recurringExpense: 0, liabilityPayments: 0, balloonPayments: 0 };
+        
         const startingBalance = rollingBalance;
-        rollingBalance = rollingBalance + (md.income + md.recurringIncome) - (md.expense + md.recurringExpense + md.liabilityPayments + md.balloonPayments);
+        const netCashFlow = (md.income + md.recurringIncome) - (md.expense + md.recurringExpense + md.liabilityPayments + md.balloonPayments);
+        rollingBalance = rollingBalance + netCashFlow;
+
         result.push({
             date: key, label, startingBalance,
             projectedIncome: md.income, recurringIncome: md.recurringIncome,
             projectedExpense: md.expense, recurringExpense: md.recurringExpense,
             liabilityPayments: md.liabilityPayments, balloonPayments: md.balloonPayments,
+            netCashFlow,
             endingBalance: rollingBalance
         });
     }
@@ -118,6 +122,7 @@ export const projectionService = {
             date: d.toISOString().substring(0, 7), label,
             startingBalance: rolling, projectedIncome: 0, recurringIncome: 0,
             projectedExpense: 0, recurringExpense: 0, liabilityPayments: 0, balloonPayments: 0,
+            netCashFlow: 0,
             endingBalance: rolling
         });
     }
