@@ -1374,7 +1374,7 @@ const HistoryPage: React.FC = () => {
                 files: []
               }
             })}
-            className="flex-1 min-w-[140px] sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
+            className="hidden sm:flex flex-1 min-w-[140px] sm:flex-none items-center justify-center gap-2 px-4 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
           >
             <Plus size={18} />
             <span>Novo Lançamento</span>

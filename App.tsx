@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, HashRouter } from 'react-router-dom';
 import { supabase } from './lib/supabase/client';
 import { Profile, UserRole } from './types';
 import Nav from './components/Nav';
+import FloatingActions from './components/FloatingActions';
 import ScrollToTop from './components/common/ScrollToTop';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -121,7 +122,12 @@ const App: React.FC = () => {
             <TourProvider>
               <ToastProvider>
                 <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 dark:bg-slate-900 font-sans">
-                {session && profile && <Nav user={profile} />}
+                {session && profile && (
+                  <>
+                    <Nav user={profile} />
+                    <FloatingActions />
+                  </>
+                )}
                 <main className="flex-grow overflow-x-hidden min-w-0 flex flex-col">
                   {session && profile && <DemoBanner />}
                   <Routes>

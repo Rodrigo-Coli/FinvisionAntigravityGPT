@@ -922,12 +922,22 @@ const CreditCardsPage: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Cartões de Crédito</h1>
           <p className="text-sm text-slate-400 font-medium">Controle de faturas, limites e gastos adicionais.</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95 whitespace-nowrap"
-        >
-          <Plus size={18} /> Adicionar Cartão
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 transition-all active:scale-95"
+          >
+            <Plus size={18} />
+            <span>Adicionar Cartão</span>
+          </button>
+          <button
+            onClick={() => setShowAddTxModal(true)}
+            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl font-semibold shadow-lg shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95"
+          >
+            <Plus size={18} />
+            <span>Lançamento</span>
+          </button>
+        </div>
       </div>
 
       {loading ? (
