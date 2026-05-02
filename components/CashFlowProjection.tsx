@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { CashFlowProjectionItem } from '../types';
-import { TrendingUp, TrendingDown, Info, Activity } from 'lucide-react';
+import { Activity, ChevronDown, ChevronUp, Info, TrendingUp, TrendingDown } from 'lucide-react';
 import { formatCurrency } from '../lib/historyUtils';
 
 interface CashFlowProjectionProps {
@@ -8,151 +8,158 @@ interface CashFlowProjectionProps {
   isLoading?: boolean;
 }
 
-export function CashFlowProjection({ data, isLoading }: CashFlowProjectionProps) {
-  const { maxBalance, minBalance } = useMemo(() => {
-    if (!data || data.length === 0) return { maxBalance: 100, minBalance: 0 };
+export default function CashFlowProjection({ data, isLoading }: CashFlowProjectionProps) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  const { maxBar, negMonths, firstNegIdx } = useMemo(() => {
+    if (!data || data.length === 0) return { maxBar: 100, negMonths: 0, firstNegIdx: -1 };
     
-    let max = -Infinity;
-    let min = Infinity;
-    
-    data.forEach(d => {
-      if (d.endingBalance > max) max = d.endingBalance;
-      if (d.startingBalance > max) max = d.startingBalance;
-      if (d.endingBalance < min) min = d.endingBalance;
-      if (d.startingBalance < min) min = d.startingBalance;
+    let max = 100;
+    let negCount = 0;
+    let firstNeg = -1;
+
+    data.forEach((d, i) => {
+      const inc = d.projectedIncome + d.recurringIncome;
+      const exp = d.projectedExpense + d.recurringExpense + d.liabilityPayments + d.balloonPayments;
+      
+      if (inc > max) max = inc;
+      if (exp > max) max = exp;
+      if (d.endingBalance < 0) {
+        negCount++;
+        if (firstNeg === -1) firstNeg = i;
+      }
     });
 
-    // Add 10% padding
-    const padding = (max - min) * 0.1 || 100;
-    return { maxBalance: max + padding, minBalance: Math.min(0, min - padding) };
+    return { maxBar: max, negMonths: negCount, firstNegIdx: firstNeg };
   }, [data]);
+
+  const fmt = (v: number) => {
+    const abs = Math.abs(v);
+    if (abs >= 1000000) return `${v < 0 ? '-' : ''}R$${(abs / 1000000).toFixed(1)}M`;
+    if (abs >= 1000) return `${v < 0 ? '-' : ''}R$${(abs / 1000).toFixed(1)}k`;
+    return `${v < 0 ? '-' : ''}R$${Math.round(abs)}`;
+  };
 
   if (isLoading) {
     return (
       <div className="bg-white rounded-[24px] sm:rounded-[32px] p-6 border border-slate-100 animate-pulse h-80 flex items-center justify-center">
-        <div className="text-slate-400">Calculando projeções avançadas...</div>
+        <Activity size={32} className="text-brand-400 animate-spin" />
       </div>
     );
   }
 
-  if (!data || data.length === 0) {
-    return null;
-  }
-
-  const range = maxBalance - minBalance;
+  if (!data || data.length === 0) return null;
 
   return (
-    <div className="bg-white rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 border border-slate-100 shadow-sm overflow-hidden">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                <Activity size={18} />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                Projeção Avançada de Fluxo
-              </h2>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                Simulação (12 meses) considerando despesas e passivos imobiliários.
+    <div className="bg-white border border-slate-100 rounded-[24px] sm:rounded-[32px] shadow-sm overflow-hidden">
+      {/* HEADER SECTION */}
+      <div
+        className="px-4 sm:px-8 py-4 sm:py-5 border-b border-slate-50 flex items-start sm:items-center justify-between cursor-pointer hover:bg-slate-50/30 transition-colors gap-3"
+        onClick={() => setCollapsed(c => !c)}
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <Activity size={18} />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-900 text-sm">Projeção Avançada de Fluxo</h3>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Baseado no Saldo + Pendências + Crédito (12 meses)</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+          {negMonths > 0 && (
+            <span className="px-2 sm:px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[8px] sm:text-[9px] font-bold uppercase tracking-widest">
+              {negMonths} {negMonths === 1 ? 'mês negativo' : 'meses no vermelho'}
+            </span>
+          )}
+          {collapsed ? <ChevronDown size={18} className="text-slate-400" /> : <ChevronUp size={18} className="text-slate-400" />}
+        </div>
+      </div>
+
+      {!collapsed && (
+        <div className="p-4 sm:p-8">
+          {firstNegIdx >= 0 && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3">
+              <Info size={16} className="text-red-500 shrink-0" />
+              <p className="text-xs text-red-700 font-medium">
+                Seu saldo consolidado pode ficar negativo em <strong>{data[firstNegIdx].label}</strong> considerando os gastos e faturas programados.
               </p>
             </div>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-3 sm:gap-4">
-          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" /> Positivo
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-400" /> Negativo
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> Balão / Parcelas Extras
-          </div>
-        </div>
-      </div>
+          )}
 
-      <div className="relative h-64 mt-8 flex items-end justify-between gap-2 overflow-x-auto pb-6">
-        {/* Zero Line */}
-        {minBalance < 0 && (
-          <div 
-            className="absolute left-0 right-0 border-t border-dashed border-slate-200 z-0" 
-            style={{ bottom: `${(Math.abs(minBalance) / range) * 100}%` }}
-          />
-        )}
+          {/* Chart Container - com scroll horizontal se necessário no mobile */}
+          <div className="w-full overflow-x-auto pb-4">
+            <div className="flex gap-2 sm:gap-4 items-end justify-between min-w-[600px] h-64 pt-10">
+              {data.map((item, i) => {
+                const totalInc = item.projectedIncome + item.recurringIncome;
+                const totalExp = item.projectedExpense + item.recurringExpense + item.liabilityPayments + item.balloonPayments;
+                
+                const incH = Math.max((totalInc / maxBar) * 100, 2);
+                const expH = Math.max((totalExp / maxBar) * 100, 2);
+                const isNegative = item.endingBalance < 0;
 
-        {data.map((item, i) => {
-          const isNegative = item.endingBalance < 0;
-          const heightPct = Math.max(0, (Math.abs(item.endingBalance) / range) * 100);
-          const bottomPos = minBalance < 0 
-            ? (item.endingBalance >= 0 ? (Math.abs(minBalance) / range) * 100 : ((Math.abs(minBalance) - Math.abs(item.endingBalance)) / range) * 100)
-            : 0;
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-3 relative group">
+                    {/* Tooltip Hover */}
+                    <div className={`absolute bottom-full mb-3 opacity-0 group-hover:opacity-100 bg-brand-900 text-white p-3 rounded-xl text-[10px] whitespace-nowrap z-50 transition-opacity pointer-events-none shadow-xl border border-white/10 w-44 ${i === 0 ? 'left-0' : i === data.length - 1 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}>
+                      <div className="font-bold border-b border-white/10 pb-1.5 mb-1.5 text-center">{item.label}</div>
+                      <div className="flex justify-between text-emerald-400 mb-1">
+                        <span>Receitas:</span>
+                        <span>{formatCurrency(totalInc)}</span>
+                      </div>
+                      <div className="flex justify-between text-rose-400 mb-1">
+                        <span>Despesas*:</span>
+                        <span>-{formatCurrency(totalExp)}</span>
+                      </div>
+                      <div className={`flex justify-between font-bold mt-2 pt-2 border-t border-white/10 ${isNegative ? 'text-rose-400' : 'text-white'}`}>
+                        <span>Saldo Final:</span>
+                        <span>{formatCurrency(item.endingBalance)}</span>
+                      </div>
+                      <p className="text-[8px] text-white/40 mt-2 text-center">*Inclui crédito e passivos</p>
+                      {/* Tooltip Arrow */}
+                      <div className={`absolute -bottom-1 w-2 h-2 rotate-45 bg-brand-900 ${i === 0 ? 'left-4' : i === data.length - 1 ? 'right-4' : 'left-1/2 -translate-x-1/2'}`} />
+                    </div>
 
-          // Calcule o quão impactante foram as despesas extras (balões e passivos)
-          const hasHeavyLiabilities = item.balloonPayments > 0 || item.liabilityPayments > (item.projectedIncome * 0.5);
+                    {/* Projected Balance Top Label */}
+                    <span className={`text-[9px] font-black leading-tight px-1.5 py-0.5 rounded-full ${isNegative ? 'text-rose-600 bg-rose-50' : 'text-slate-600 bg-slate-50'}`}>
+                      {fmt(item.endingBalance)}
+                    </span>
 
-          return (
-            <div key={item.date} className="relative flex flex-col items-center flex-1 min-w-[50px] sm:min-w-[60px] group z-10">
-              {/* Tooltip on Hover */}
-              <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-brand-900 text-xs text-white p-3 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 w-48 border border-white/10">
-                <p className="font-bold border-b border-white/10 pb-1 mb-2 text-center">{item.label}</p>
-                <div className="flex justify-between text-emerald-400 mb-1">
-                  <span>Receitas:</span>
-                  <span>{formatCurrency(item.projectedIncome + item.recurringIncome)}</span>
-                </div>
-                <div className="flex justify-between text-rose-400 mb-1">
-                  <span>Despesas:</span>
-                  <span>-{formatCurrency(item.projectedExpense + item.recurringExpense)}</span>
-                </div>
-                {(item.liabilityPayments > 0 || item.balloonPayments > 0) && (
-                  <div className="flex justify-between text-amber-400 mb-2 border-t border-white/10 pt-1 mt-1">
-                    <span>Imóveis/Passivos:</span>
-                    <span>-{formatCurrency(item.liabilityPayments + item.balloonPayments)}</span>
+                    <div className="w-full flex gap-0.5 sm:gap-1.5 items-end h-32 justify-center">
+                      {/* Income Bar (Consolidada) */}
+                      <div 
+                        className="w-3 sm:w-5 rounded-t-md transition-all bg-emerald-400 hover:bg-emerald-500 shadow-sm" 
+                        style={{ height: `${incH}%` }} 
+                        title={`Receita: ${formatCurrency(totalInc)}`}
+                      />
+                      {/* Expense Bar (Consolidada com Passivos/Balões/Cartões) */}
+                      <div 
+                        className="w-3 sm:w-5 rounded-t-md transition-all bg-rose-400 hover:bg-rose-500 shadow-sm" 
+                        style={{ height: `${expH}%` }} 
+                        title={`Despesa: ${formatCurrency(totalExp)}`}
+                      >
+                        {(item.balloonPayments > 0 || item.liabilityPayments > 0) && (
+                           <div className="w-full h-1 bg-amber-400/50 mt-auto" title="Contém Balões/Parcelas Extras" />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* X-Axis Label */}
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider text-center truncate w-full">
+                      {item.label.split('/')[0]}
+                    </span>
                   </div>
-                )}
-                <div className={`flex justify-between font-bold border-t border-white/10 pt-2 ${isNegative ? 'text-rose-400' : 'text-white'}`}>
-                  <span>Saldo Previsto:</span>
-                  <span>{formatCurrency(item.endingBalance)}</span>
-                </div>
-                {/* Tooltip Arrow */}
-                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-brand-900" />
-              </div>
-
-              {/* Bar */}
-              <div 
-                className={`w-full max-w-[32px] sm:max-w-[40px] rounded-t-md transition-all duration-300 relative ${
-                  isNegative ? 'bg-rose-400 hover:bg-rose-500' : 'bg-emerald-400 hover:bg-emerald-500'
-                }`}
-                style={{ 
-                  height: `${Math.max(2, heightPct)}%`, 
-                  position: 'absolute',
-                  bottom: `${bottomPos}%`
-                }}
-              >
-                {/* Warning indicator for balloon payments inside the bar */}
-                {item.balloonPayments > 0 && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-white shadow-sm" />
-                )}
-              </div>
-
-              {/* Projected Balance Top Label */}
-              <span className={`absolute text-[9px] sm:text-[10px] font-black leading-tight bg-white/50 px-1 py-0.5 rounded-full ${isNegative ? 'text-rose-500' : 'text-slate-600'}`} style={{ bottom: `${bottomPos + heightPct}%`, marginBottom: '16px' }}>
-                  {formatCurrency(item.endingBalance).replace('R$', '').trim()}
-              </span>
-
-              {/* X-Axis Label */}
-              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider whitespace-nowrap">
-                {item.label.split('/')[0]}
-              </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
+          </div>
 
-      <div className="mt-8 pt-4 border-t border-slate-50 flex items-center text-xs text-slate-400 gap-2 font-medium">
-        <Info className="w-4 h-4 text-brand-400 shrink-0" />
-        <p>A projeção inclui gastos do cartão de crédito nas despesas futuras e juros de financiamento imobiliário.</p>
-      </div>
+          <div className="mt-8 pt-4 border-t border-slate-50 flex items-center text-[10px] text-slate-400 gap-2 font-medium">
+            <Info className="w-4 h-4 text-brand-400 shrink-0" />
+            <p>A projeção avançada consolida faturas de cartão e parcelas extras de imóveis nas barras de despesa.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

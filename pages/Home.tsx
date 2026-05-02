@@ -22,14 +22,12 @@ import {
 import { DashboardService } from '../services/dashboard.service';
 import { DashboardSkeleton } from '../components/Skeleton';
 import { DateUtils } from '../lib/dateUtils';
-import { useTour } from '../contexts/TourContext';
 import { HistoryCharts } from '../components/history/HistoryCharts';
-import { CashFlowProjection } from '../components/CashFlowProjection';
+import CashFlowProjection from '../components/CashFlowProjection';
 import AIChat from '../components/AIChat';
 import ContextualHelp from '../components/ContextualHelp';
 import { supabase } from '../lib/supabase/client';
-import { ProjectionService } from '../services/projection.service';
-import { CashFlowProjectionItem } from '../types';
+import { projectionService } from '../services/projection.service';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
   const [data, setData] = useState<DashboardData | null>(() => DashboardService.getCachedSummary());
@@ -39,12 +37,13 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       return cached ? JSON.parse(cached) : [];
     } catch (e) { return []; }
   });
+  const [projectedData, setProjectedData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(!data);
+  const [isProjecting, setIsProjecting] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showBalance, setShowBalance] = useState(() => {
     return localStorage.getItem('finvision_privacy') !== 'hidden';
   });
-  const [projectedCashFlow, setProjectedCashFlow] = useState<CashFlowProjectionItem[]>([]);
   const navigate = useNavigate();
 
   const toggleBalance = () => {
@@ -72,6 +71,14 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         const dashboardData = await DashboardService.getSummary();
         setData(dashboardData);
         DashboardService.setCachedSummary(dashboardData);
+
+        // Load 12-month projections
+        if (user?.id) {
+            setIsProjecting(true);
+            const proj = await projectionService.getProjectedCashFlow(user.id, dashboardData.consolidatedBalance, 12);
+            setProjectedData(proj);
+            setIsProjecting(false);
+        }
 
         // Fetch bank transactions
         const { data: txs, error: txError } = await supabase
@@ -109,10 +116,6 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           const allTxs = [...(txs || []), ...normalizedCardTxs];
           setTransactions(allTxs);
           localStorage.setItem('finvision_cached_home_txs', JSON.stringify(allTxs));
-
-          // Fetch 12-month projection
-          const projection = await ProjectionService.getProjectedCashFlow(user.id, dashboardData.consolidatedBalance, 12);
-          setProjectedCashFlow(projection);
         }
       } catch (err: any) {
         if (!data) setError('Erro ao carregar o resumo financeiro.');
@@ -129,16 +132,12 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
     minimumFractionDigits: 2
   }).format(v);
 
-  // Helper function for credit card icons matching image
   const getCardLogo = (brand: string) => {
     const b = brand.toLowerCase();
     const fallback = <CreditCardIcon size={18} className="text-slate-400" />;
-
-    // Usando URLs mais estáveis e leves (Vector Logo Zone)
-    if (b.includes('visa')) return <img src="https://www.vectorlogo.zone/logos/visa/visa-ar21.svg" className="h-3 object-contain" alt="Visa" onError={(e) => (e.currentTarget.style.display = 'none')} />;
-    if (b.includes('master')) return <img src="https://www.vectorlogo.zone/logos/mastercard/mastercard-ar21.svg" className="h-5 object-contain" alt="Mastercard" onError={(e) => (e.currentTarget.style.display = 'none')} />;
-    if (b.includes('amex')) return <img src="https://www.vectorlogo.zone/logos/amex/amex-ar21.svg" className="h-4 object-contain" alt="Amex" onError={(e) => (e.currentTarget.style.display = 'none')} />;
-
+    if (b.includes('visa')) return <img src="https://www.vectorlogo.zone/logos/visa/visa-ar21.svg" className="h-3 object-contain" alt="Visa" />;
+    if (b.includes('master')) return <img src="https://www.vectorlogo.zone/logos/mastercard/mastercard-ar21.svg" className="h-5 object-contain" alt="Mastercard" />;
+    if (b.includes('amex')) return <img src="https://www.vectorlogo.zone/logos/amex/amex-ar21.svg" className="h-4 object-contain" alt="Amex" />;
     return fallback;
   };
 
@@ -159,7 +158,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
   const setDatePreset = (days: number | 'MONTH' | 'ALL') => {
     const d = new Date();
     if (days === 'ALL') {
-      setStartDate(`${new Date().getFullYear() - 5}-01-01`); // 5 years back
+      setStartDate(`${new Date().getFullYear() - 5}-01-01`);
       setEndDate(DateUtils.formatToISODate(new Date()));
     } else if (days === 'MONTH') {
       setStartDate(DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth(), 1)));
@@ -175,7 +174,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
   const chartTransactions = viewMode === 'SETTLED' ? transactions.filter(t => !!t.is_paid) : transactions;
 
   return (
-    <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 animate-in fade-in duration-500 min-w-0">
+    <div className="max-w-[1600px] mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 animate-in fade-in duration-500 min-w-0 pb-24">
       {/* HEADER ROW */}
       <div className="flex flex-wrap justify-between items-center gap-3">
         <div>
@@ -183,7 +182,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
             <h1 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight italic">Visão Geral</h1>
             <ContextualHelp 
               title="Dicas do Dashboard" 
-              description="Aqui você monitora seu Patrimônio Líquido (Bens - Dívidas) e o Fluxo de Caixa projetado para os próximos meses. Use o Assistant AI à direita para tirar dúvidas sobre seus gastos."
+              description="Aqui você monitora seu Patrimônio Líquido e o Fluxo de Caixa projetado. Use o Assistente AI para tirar dúvidas."
             />
           </div>
           <p className="text-sm text-slate-400 font-medium">Monitorando sua saúde financeira com excelência.</p>
@@ -202,7 +201,6 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       {/* BALANCE CARDS GRID */}
       <div className="w-full">
         <div id="tour-net-worth" className="w-full bg-brand-600 rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-500/30 group">
-
           <div className="relative z-10 flex flex-col h-full justify-between gap-6 sm:gap-8">
             <div className="flex justify-between items-start">
               <div className="space-y-1">
@@ -220,14 +218,12 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
             </div>
 
             <div className="space-y-4">
-              {/* Assets vs Liabilities Breakdown Bar */}
               <div className={`h-2 w-full rounded-full overflow-hidden flex shadow-inner ${(data.totalAssets || 0) === 0 && (data.totalLiabilities || 0) === 0 ? 'bg-white/20' : 'bg-rose-500'}`}>
                 <div
                   className={`h-full transition-all duration-1000 ${(data.totalAssets || 0) === 0 && (data.totalLiabilities || 0) === 0 ? 'bg-transparent' : 'bg-emerald-400'}`}
                   style={{ width: `${Math.min(100, Math.max(0, (data.totalAssets || 0) / ((data.totalAssets || 0) + (data.totalLiabilities || 0) || 1) * 100))}%` }}
                 />
               </div>
-
               <div className="flex justify-between items-end text-white text-xs">
                 <div>
                   <div className="flex items-center gap-1.5 mb-0.5">
@@ -260,24 +256,9 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         </div>
       </div>
 
-      {/* SMART ALERTS */}
-      {data?.alerts && data.alerts.length > 0 && (
-        <div className="flex flex-col gap-3">
-          {data.alerts.map((alert: any) => (
-            <div key={alert.id} className={`flex items-start gap-4 p-4 rounded-2xl border ${alert.type === 'critical' ? 'bg-rose-50 border-rose-100 text-rose-700' : 'bg-orange-50 border-orange-100 text-orange-700'}`}>
-              <AlertCircle size={20} className="shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-bold uppercase tracking-widest text-[10px] mb-0.5">Alerta Inteligente</p>
-                <p className="text-sm font-medium">{alert.message}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* CASH FLOW PROJECTION (12 MONTHS) */}
+      {/* CASH FLOW PROJECTION (CONSOLIDATED GRAPHS) */}
       <div id="tour-cash-flow">
-        <CashFlowProjection data={projectedCashFlow.length > 0 ? projectedCashFlow : (data?.projectedCashFlow || [])} isLoading={isLoading} />
+        <CashFlowProjection data={projectedData} isLoading={isProjecting} />
       </div>
 
       {/* MID SECTION: CREDIT CARDS & INSIGHTS */}
@@ -317,21 +298,12 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
                 </div>
               </div>
             ))}
-            {(!data?.creditCards || data.creditCards.length === 0) && (
-              <div onClick={() => navigate('/cards')} className="col-span-full py-8 border border-dashed border-slate-200 rounded-[20px] flex flex-col items-center justify-center opacity-60 cursor-pointer hover:opacity-100 transition-opacity">
-                <CreditCardIcon size={32} className="text-slate-300" />
-                <p className="text-xs font-bold text-slate-400 uppercase mt-3">Nenhum cartão cadastrado</p>
-              </div>
-            )}
           </div>
 
-          {/* HISTÓRICO DE DESPESAS (CHART) */}
+          {/* HISTÓRICO DE DESPESAS */}
           <div className="mt-4 sm:mt-8 space-y-3">
             <h3 className="text-lg font-black text-slate-900 italic">Análise de Fluxo</h3>
-
-            {/* QUICK DATE FILTERS */}
             <div className="flex flex-col gap-3 bg-white p-3 sm:p-4 rounded-3xl border border-slate-100 shadow-sm">
-              {/* Row 1: chips + view mode */}
               <div className="flex flex-wrap items-center gap-2">
                 <div className="flex gap-1.5 flex-wrap">
                   <button onClick={() => setDatePreset('MONTH')} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Este Mês</button>
@@ -340,22 +312,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
                 </div>
                 <div className="hidden sm:block flex-1" />
                 <div className="flex bg-slate-100 p-1 rounded-xl gap-1 w-full sm:w-auto">
-                  <button
-                    onClick={() => setViewMode('ALL')}
-                    className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}
-                  >
-                    Todos
-                  </button>
-                  <button
-                    onClick={() => setViewMode('SETTLED')}
-                    className={`flex-1 sm:flex-none flex items-center justify-center gap-1 px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'SETTLED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}
-                  >
-                    <Check size={10} /> Pagos
-                  </button>
+                  <button onClick={() => setViewMode('ALL')} className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Todos</button>
+                  <button onClick={() => setViewMode('SETTLED')} className={`flex-1 sm:flex-none flex items-center justify-center gap-1 px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'SETTLED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}><Check size={10} /> Pagos</button>
                 </div>
               </div>
-
-              {/* Row 2: date range */}
               <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl border border-slate-100">
                 <Calendar size={13} className="text-slate-400 shrink-0" />
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
@@ -363,18 +323,11 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
               </div>
             </div>
-
-            <HistoryCharts
-              transactions={chartTransactions}
-              startDate={startDate}
-              endDate={endDate}
-              onCategoryClick={(cat) => navigate(`/history?category=${encodeURIComponent(cat)}`)}
-            />
+            <HistoryCharts transactions={chartTransactions} startDate={startDate} endDate={endDate} onCategoryClick={(cat) => navigate(`/history?category=${encodeURIComponent(cat)}`)} />
           </div>
-
         </div>
 
-        {/* AI CHAT: below charts on mobile, side column on desktop */}
+        {/* AI CHAT */}
         <div className="lg:col-span-4 space-y-4 min-w-0">
           <h3 className="text-lg font-bold text-slate-900">Assistente AI Interativo</h3>
           <div className="h-[420px] sm:h-[500px] lg:h-[700px]">
@@ -383,7 +336,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         </div>
       </div>
 
-      {/* FLOATING ACTION BUTTONS (MOBILE FIRST) */}
+      {/* FLOATING ACTION BUTTONS */}
       <div className="fixed bottom-6 right-6 sm:bottom-10 sm:right-10 flex flex-col gap-3 z-50 animate-in slide-in-from-bottom duration-700">
         <button
           onClick={() => navigate('/cards?add=true')}
@@ -405,11 +358,5 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
     </div>
   );
 };
-
-const ArrowDownRight: React.FC<{ size?: number; className?: string }> = ({ size = 20, className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M7 7l10 10M17 7v10H7" />
-  </svg>
-);
 
 export default Home;
