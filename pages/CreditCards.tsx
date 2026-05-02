@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Loader2, Edit2, Archive, Trash2 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { FinanceService } from '../services/finance.service';
@@ -23,6 +23,7 @@ type Account = {
 
 const CreditCardsPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [cards, setCards] = useState<any[]>([]);
   const [selectedCard, setSelectedCard] = useState<any | null>(null);
   const [statements, setStatements] = useState<any[]>([]);
@@ -99,6 +100,14 @@ const CreditCardsPage: React.FC = () => {
       fetchAccounts();
     }
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('add') === 'true') {
+      setShowAddTxModal(true);
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash.split('?')[0]);
+    }
+  }, [location.search]);
 
   useEffect(() => {
     if (selectedCard) {

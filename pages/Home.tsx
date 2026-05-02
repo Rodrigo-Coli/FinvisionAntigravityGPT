@@ -28,6 +28,8 @@ import { CashFlowProjection } from '../components/CashFlowProjection';
 import AIChat from '../components/AIChat';
 import ContextualHelp from '../components/ContextualHelp';
 import { supabase } from '../lib/supabase/client';
+import { ProjectionService } from '../services/projection.service';
+import { CashFlowProjectionItem } from '../types';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
   const [data, setData] = useState<DashboardData | null>(() => DashboardService.getCachedSummary());
@@ -42,6 +44,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
   const [showBalance, setShowBalance] = useState(() => {
     return localStorage.getItem('finvision_privacy') !== 'hidden';
   });
+  const [projectedCashFlow, setProjectedCashFlow] = useState<CashFlowProjectionItem[]>([]);
   const navigate = useNavigate();
 
   const toggleBalance = () => {
@@ -106,6 +109,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           const allTxs = [...(txs || []), ...normalizedCardTxs];
           setTransactions(allTxs);
           localStorage.setItem('finvision_cached_home_txs', JSON.stringify(allTxs));
+
+          // Fetch 12-month projection
+          const projection = await ProjectionService.getProjectedCashFlow(user.id, dashboardData.consolidatedBalance, 12);
+          setProjectedCashFlow(projection);
         }
       } catch (err: any) {
         if (!data) setError('Erro ao carregar o resumo financeiro.');
@@ -183,7 +190,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/history')}
+            onClick={() => navigate('/history?add=true')}
             className="flex items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
           >
             <Plus size={18} />
@@ -268,9 +275,9 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         </div>
       )}
 
-      {/* CASH FLOW PROJECTION (6 MONTHS) */}
+      {/* CASH FLOW PROJECTION (12 MONTHS) */}
       <div id="tour-cash-flow">
-        <CashFlowProjection data={data?.projectedCashFlow || []} isLoading={isLoading} />
+        <CashFlowProjection data={projectedCashFlow.length > 0 ? projectedCashFlow : (data?.projectedCashFlow || [])} isLoading={isLoading} />
       </div>
 
       {/* MID SECTION: CREDIT CARDS & INSIGHTS */}
@@ -376,8 +383,27 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         </div>
       </div>
     </div>
-  );
-};
+
+      {/* FLOATING ACTION BUTTONS (MOBILE FIRST) */}
+      <div className="fixed bottom-6 right-6 sm:bottom-10 sm:right-10 flex flex-col gap-3 z-50 animate-in slide-in-from-bottom duration-700">
+        <button
+          onClick={() => navigate('/cards?add=true')}
+          className="w-14 h-14 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-500/30 hover:scale-110 active:scale-95 transition-all group"
+          title="Lançamento de Cartão"
+        >
+          <CreditCardIcon size={24} />
+          <span className="absolute right-full mr-4 px-3 py-1.5 bg-slate-900 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block">CARTÃO DE CRÉDITO</span>
+        </button>
+        <button
+          onClick={() => navigate('/history?add=true')}
+          className="w-14 h-14 bg-brand-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-brand-500/30 hover:scale-110 active:scale-95 transition-all group"
+          title="Nova Transação Bancária"
+        >
+          <Plus size={28} />
+          <span className="absolute right-full mr-4 px-3 py-1.5 bg-slate-900 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block">NOVO LANÇAMENTO</span>
+        </button>
+      </div>
+    </div>
 
 const ArrowDownRight: React.FC<{ size?: number; className?: string }> = ({ size = 20, className = "" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>

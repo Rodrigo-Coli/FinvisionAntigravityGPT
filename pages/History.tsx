@@ -147,11 +147,12 @@ const HistoryPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Read initial category or account from URL
+  // Read initial category, account or actions from URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const cat = params.get('category');
     const acc = params.get('account');
+    const addParam = params.get('add');
 
     let hasChanged = false;
     if (cat) {
@@ -165,6 +166,29 @@ const HistoryPage: React.FC = () => {
       tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
       setStartDate(DateUtils.formatToISODate(tenYearsAgo));
       setEndDate(DateUtils.formatToISODate(new Date()));
+      hasChanged = true;
+    }
+
+    if (addParam === 'true') {
+      setAddModal({
+        open: true,
+        isSubmitting: false,
+        form: {
+          date: DateUtils.formatToISODate(new Date()),
+          description: '',
+          type: 'EXPENSE',
+          amount: '',
+          accountId: '',
+          category: '',
+          subcategory: '',
+          isInstallment: false,
+          installmentsCount: 2,
+          isRecurring: false,
+          recurrencePeriod: 'monthly',
+          recurrenceDaysInterval: 30,
+          ownerName: 'Pessoal'
+        }
+      });
       hasChanged = true;
     }
 
