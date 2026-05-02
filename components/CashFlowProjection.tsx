@@ -88,8 +88,8 @@ export default function CashFlowProjection({ data, isLoading }: CashFlowProjecti
           )}
 
           {/* Chart Container - com scroll horizontal se necessário no mobile */}
-          <div className="w-full overflow-x-auto pb-4">
-            <div className="flex gap-2 sm:gap-4 items-end justify-between min-w-[600px] h-64 pt-10">
+          <div className="w-full overflow-x-auto pb-4 scrollbar-hide">
+            <div className="flex gap-2 sm:gap-4 items-end justify-between min-w-[500px] sm:min-w-[600px] h-64 pt-10 px-2">
               {data.map((item, i) => {
                 const totalInc = item.projectedIncome + item.recurringIncome;
                 const totalExp = item.projectedExpense + item.recurringExpense + item.liabilityPayments + item.balloonPayments;

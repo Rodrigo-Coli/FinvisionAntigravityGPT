@@ -199,8 +199,8 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       </div>
 
       {/* BALANCE CARDS GRID */}
-      <div className="w-full">
-        <div id="tour-net-worth" className="w-full bg-brand-600 rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-500/30 group">
+      <div className="w-full max-w-full overflow-hidden">
+        <div id="tour-net-worth" className="w-full bg-brand-600 rounded-[24px] sm:rounded-[32px] p-5 sm:p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-500/30 group">
           <div className="relative z-10 flex flex-col h-full justify-between gap-6 sm:gap-8">
             <div className="flex justify-between items-start">
               <div className="space-y-1">
@@ -242,7 +242,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-2 pt-4 border-t border-white/10 text-white font-medium text-xs">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 pt-4 border-t border-white/10 text-white font-medium text-[10px] sm:text-xs flex-wrap">
               <div className="px-2 py-0.5 bg-white/20 rounded-md shrink-0">Saldo Bancário Consolidado</div>
               <span className={`font-bold ${!showBalance && 'blur-md'}`}>{showBalance ? format(data.consolidatedBalance) : '---'}</span>
               <button
