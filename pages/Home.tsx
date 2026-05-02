@@ -382,7 +382,6 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           </div>
         </div>
       </div>
-    </div>
 
       {/* FLOATING ACTION BUTTONS (MOBILE FIRST) */}
       <div className="fixed bottom-6 right-6 sm:bottom-10 sm:right-10 flex flex-col gap-3 z-50 animate-in slide-in-from-bottom duration-700">
@@ -404,6 +403,8 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         </button>
       </div>
     </div>
+  );
+};
 
 const ArrowDownRight: React.FC<{ size?: number; className?: string }> = ({ size = 20, className = "" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
