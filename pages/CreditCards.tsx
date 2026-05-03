@@ -79,8 +79,12 @@ const CreditCardsPage: React.FC = () => {
   const [isAdditional, setIsAdditional] = useState(false);
   const [parentCardId, setParentCardId] = useState('');
   const [additionalLabel, setAdditionalLabel] = useState('');
+  const [defaultCategory, setDefaultCategory] = useState('Pessoal');
+  const [defaultSubcategory, setDefaultSubcategory] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [defaultOwner, setDefaultOwner] = useState('Pessoal');
+  const [owners, setOwners] = useState<string[]>([]);
 
   // Series Scope Modal State
   const [seriesModal, setSeriesModal] = useState<{
@@ -98,6 +102,7 @@ const CreditCardsPage: React.FC = () => {
       fetchCategories();
       fetchSubcategories();
       fetchAccounts();
+      fetchOwners();
     }
   }, []);
 
@@ -236,6 +241,17 @@ const CreditCardsPage: React.FC = () => {
     } catch (err) {
       console.error('Erro ao buscar contas:', err);
     }
+  };
+
+  const fetchOwners = async () => {
+    if (!supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data, error } = await supabase.from('entities').select('name').eq('user_id', user.id).eq('is_archived', false);
+      if (error) throw error;
+      setOwners(['Pessoal', ...(data || []).map((o: any) => o.name)]);
+    } catch (err) { console.error(err); }
   };
 
   const getAccountLabel = (a: Account) => {
@@ -656,6 +672,9 @@ const CreditCardsPage: React.FC = () => {
     setIsAdditional(selectedCard.is_additional);
     setParentCardId(selectedCard.parent_card_id || '');
     setAdditionalLabel(selectedCard.additional_label || '');
+    setDefaultCategory(selectedCard.default_category || 'Pessoal');
+    setDefaultSubcategory(selectedCard.default_subcategory || '');
+    setDefaultOwner(selectedCard.default_owner || 'Pessoal');
     setIsEditing(true);
     setShowAddModal(true);
   };
@@ -721,6 +740,9 @@ const CreditCardsPage: React.FC = () => {
         is_additional: isAdditional,
         parent_card_id: isAdditional ? parentCardId : null,
         additional_label: isAdditional ? additionalLabel : null,
+        default_category: defaultCategory,
+        default_subcategory: defaultSubcategory,
+        default_owner: defaultOwner
       };
 
       if (isEditing && selectedCard) {
@@ -761,6 +783,9 @@ const CreditCardsPage: React.FC = () => {
     setIsAdditional(false);
     setParentCardId('');
     setAdditionalLabel('');
+    setDefaultCategory('Pessoal');
+    setDefaultSubcategory('');
+    setDefaultOwner('Pessoal');
   };
 
   const handlePayStatement = async () => {
@@ -1167,6 +1192,15 @@ const CreditCardsPage: React.FC = () => {
         setParentCardId={setParentCardId}
         additionalLabel={additionalLabel}
         setAdditionalLabel={setAdditionalLabel}
+        defaultCategory={defaultCategory}
+        setDefaultCategory={setDefaultCategory}
+        defaultSubcategory={defaultSubcategory}
+        setDefaultSubcategory={setDefaultSubcategory}
+        defaultOwner={defaultOwner}
+        setDefaultOwner={setDefaultOwner}
+        entities={owners}
+        categories={categories}
+        subcategories={subcategories}
       />
 
       <ManualTransactionModal

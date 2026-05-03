@@ -37,7 +37,8 @@ const Reconcile: React.FC = () => {
   const [isLoadingTargets, setIsLoadingTargets] = useState(false);
   const [progressStep, setProgressStep] = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState('');
-  const [importSource, setImportSource] = useState<'bank' | 'card' | 'smart'>('bank');
+  const [selectedTargetName, setSelectedTargetName] = useState('');
+  const [importSource, setImportSource] = useState<'bank' | 'card' | 'smart'>('smart');
   const [isLoadingQueue, setIsLoadingQueue] = useState(true);
   const [recentImports, setRecentImports] = useState<any[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -270,10 +271,12 @@ const Reconcile: React.FC = () => {
       item.category?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
 
     setEditingId(item.id);
+    const initialTargetType = item.metadata?.target_type || importSource === 'card' ? 'card' : 'bank';
     setEditForm({
       ...item,
       targetId: selectedTargetId,
       targetName: getTargetName(selectedTargetId),
+      targetType: initialTargetType,
       owner_name: item.owner_name || 'Pessoal',
       category: initialCategory || item.category || 'Conciliação',
       subcategory: (item as any).subcategory || '',
@@ -360,24 +363,53 @@ const Reconcile: React.FC = () => {
     }
   };
 
-  const getTargetName = (id: string) => {
-    if (importSource === 'bank') {
-      return realAccounts.find(a => a.id === id)?.institution || '';
+  const getTargetName = (id: string, typeOverride?: 'bank' | 'card') => {
+    const effectiveType = typeOverride || importSource;
+    if (effectiveType === 'bank' || effectiveType === 'smart') {
+      const acc = realAccounts.find(a => a.id === id);
+      if (acc) return acc.institution;
     }
-    return realCards.find(c => c.id === id)?.name || '';
+    const card = realCards.find(c => c.id === id);
+    if (card) return card.name;
+    
+    // Tentativa final em ambos
+    return realAccounts.find(a => a.id === id)?.institution || realCards.find(c => c.id === id)?.name || '';
   };
 
   const handleTargetChange = (name: string, isEdit: boolean, item?: any) => {
     let foundId = '';
-    const list = importSource === 'bank' ? realAccounts : realCards;
+    let foundType: 'bank' | 'card' | 'smart' = isEdit ? editForm.targetType : importSource;
+    
+    // Tenta no tipo atual primeiro
+    const list = (foundType === 'bank' || foundType === 'smart') ? realAccounts : realCards;
     const match = list.find(a => (a.institution || a.name) === name);
-    if (match) foundId = match.id;
+    
+    if (match) {
+      foundId = match.id;
+    } else {
+      // Tenta no outro tipo
+      const otherList = (foundType === 'bank' || foundType === 'smart') ? realCards : realAccounts;
+      const otherMatch = otherList.find(a => (a.institution || a.name) === name);
+      if (otherMatch) {
+        foundId = otherMatch.id;
+        foundType = (foundType === 'bank' || foundType === 'smart') ? 'card' : 'bank';
+      }
+    }
 
     if (isEdit && item) {
-      setEditForm((prev: any) => ({ ...prev, targetName: name, targetId: foundId || prev.targetId }));
+      setEditForm((prev: any) => ({ 
+        ...prev, 
+        targetName: name, 
+        targetId: foundId || prev.targetId,
+        targetType: foundType
+      }));
     } else {
       setSelectedTargetName(name);
-      if (foundId) setSelectedTargetId(foundId);
+      if (foundId) {
+        setSelectedTargetId(foundId);
+        // Se mudou o tipo globalmente, atualizamos o importSource para refletir no datalist
+        if (foundType !== importSource) setImportSource(foundType);
+      }
     }
   };
 
@@ -474,17 +506,18 @@ const Reconcile: React.FC = () => {
 
   const handleConfirm = async (item: any, isBulk: boolean = false) => {
     if (!supabase) return;
-    const isEditing = item.id === editingId && !isBulk;
-
-    // If the item was created by AI Labs, use its original destination from metadata.
-    // Otherwise fall back to the user's current panel selection (importSource + selectedTargetId).
     const hasOriginalDest = !!item.metadata?.original_account_id;
     const targetId = hasOriginalDest
       ? item.metadata.original_account_id
       : (isEditing ? editForm.targetId : selectedTargetId);
-    const effectiveIsCard = hasOriginalDest
-      ? item.metadata.target_type === 'card'
-      : (item.metadata?.target_type === 'card' || (item.metadata?.target_type !== 'account' && importSource === 'card'));
+    
+    // Determine if the target is a card
+    const isTargetInCards = realCards.some(c => c.id === targetId);
+    const isTargetInAccounts = realAccounts.some(a => a.id === targetId);
+
+    const effectiveIsCard = isEditing 
+      ? editForm.targetType === 'card' 
+      : (isTargetInCards || (item.metadata?.target_type === 'card' && !isTargetInAccounts));
 
     const owner = isEditing ? editForm.owner_name : (item.owner_name || 'Pessoal');
     const categoryName = isEditing ? editForm.category : (item.category || 'Conciliação');
@@ -680,7 +713,7 @@ const Reconcile: React.FC = () => {
                     value={selectedTargetName}
                     onFocus={e => e.target.select()}
                     onChange={e => handleTargetChange(e.target.value, false)}
-                    placeholder={importSource === 'bank' ? "Filtrar por Banco..." : "Filtrar por Cartão..."}
+                    placeholder="Escolher Destino (Banco ou Cartão)..."
                     className="w-full pl-10 pr-4 py-2 bg-white border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-brand-500/20 transition-all shadow-sm"
                   />
                 </div>
@@ -746,15 +779,30 @@ const Reconcile: React.FC = () => {
                     />
                   )}
 
+                  <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
+                    <button 
+                      onClick={() => setImportSource('bank')} 
+                      className={`px-3 py-1.5 rounded-md text-[8px] font-black uppercase transition-all ${importSource === 'bank' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}
+                    >
+                      Banco
+                    </button>
+                    <button 
+                      onClick={() => setImportSource('card')} 
+                      className={`px-3 py-1.5 rounded-md text-[8px] font-black uppercase transition-all ${importSource === 'card' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}
+                    >
+                      Cartão
+                    </button>
+                  </div>
+
                   <input
                     list="targets-list"
                     value={bulkTarget}
-                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500"
+                    className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[150px] placeholder:text-slate-500"
                     onChange={(e) => {
                       setBulkTarget(e.target.value);
                       handleTargetChange(e.target.value, false);
                     }}
-                    placeholder="Definir Destino..."
+                    placeholder={`Destino (${importSource === 'bank' ? 'Banco' : 'Cartão'})...`}
                   />
 
                   <input
@@ -804,7 +852,7 @@ const Reconcile: React.FC = () => {
                 const isTransfer = categoryValue.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
                 return (
                   <div key={item.id} className={`bg-white border transition-all duration-300 rounded-[32px] overflow-hidden ${isEditing ? 'border-brand-500 shadow-2xl ring-4 ring-brand-500/5' : 'border-slate-100 shadow-sm hover:shadow-md'} ${selectedIds.has(item.id) ? 'border-brand-200 bg-brand-50/5' : ''}`}>
-                    <div className="p-8">
+                    <div className="p-4 sm:p-8">
                       <div className="flex flex-col lg:flex-row gap-6">
                         {/* Multi-select Checkbox */}
                         <div className="flex items-center">
@@ -844,7 +892,7 @@ const Reconcile: React.FC = () => {
                               <input type="text" value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} className="w-full bg-slate-50 border-none rounded-xl text-xs font-bold p-2 outline-none focus:ring-2 focus:ring-brand-500" />
                             ) : (
                               <div className="space-y-1">
-                                <h4 className="text-xs font-bold text-slate-900 truncate uppercase" title={item.description}>{item.description}</h4>
+                                <h4 className="text-xs font-bold text-slate-900 truncate uppercase max-w-[150px] sm:max-w-none" title={item.description}>{item.description}</h4>
                                 {item.potential_duplicate && (
                                   <div className="flex items-start gap-1 p-1.5 bg-amber-50 rounded-lg border border-amber-100">
                                     <AlertCircle size={10} className="text-amber-500 mt-0.5 shrink-0" />
@@ -857,15 +905,29 @@ const Reconcile: React.FC = () => {
 
                           {/* Col 2: Target Selection */}
                           <div className="space-y-1">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Destino</p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Destino</p>
+                              {isEditing && (
+                                <button 
+                                  onClick={() => setEditForm({ ...editForm, targetType: editForm.targetType === 'bank' ? 'card' : 'bank', targetName: '', targetId: '' })}
+                                  className={`text-[8px] font-black px-2 py-0.5 rounded-full transition-all ${editForm.targetType === 'bank' ? 'bg-slate-100 text-slate-400' : 'bg-brand-100 text-brand-600'}`}
+                                >
+                                  {editForm.targetType === 'bank' ? 'CONTA' : 'CARTÃO'}
+                                </button>
+                              )}
+                            </div>
                             <div className="relative">
-                              <Landmark size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                              {isEditing ? (
+                                editForm.targetType === 'bank' ? <Building2 size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" /> : <CreditCard size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                              ) : (
+                                (item.metadata?.target_type === 'card' || importSource === 'card') ? <CreditCard size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" /> : <Landmark size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                              )}
                               <input
-                                list="targets-list"
+                                list={isEditing ? (editForm.targetType === 'bank' ? 'accounts-list-full' : 'cards-list-full') : 'targets-list'}
                                 value={isEditing ? editForm.targetName : getTargetName(selectedTargetId)}
                                 onFocus={e => e.target.select()}
                                 onChange={e => handleTargetChange(e.target.value, isEditing, item)}
-                                placeholder={importSource === 'bank' ? "Buscar banco..." : "Buscar cartão..."}
+                                placeholder="Destino..."
                                 className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-1 focus:ring-brand-500"
                               />
                             </div>
@@ -1018,10 +1080,17 @@ const Reconcile: React.FC = () => {
         {categories.map(c => <option key={c} value={c} />)}
       </datalist>
 
+      <datalist id="accounts-list-full">
+        {realAccounts.map(a => <option key={a.id} value={a.institution} />)}
+      </datalist>
+
+      <datalist id="cards-list-full">
+        {realCards.map(c => <option key={c.id} value={c.name} />)}
+      </datalist>
+
       <datalist id="targets-list">
-        {importSource === 'bank'
-          ? realAccounts.map(a => <option key={a.id} value={a.institution} />)
-          : realCards.map(c => <option key={c.id} value={c.name} />)}
+        {realAccounts.map(a => <option key={a.id} value={a.institution} />)}
+        {realCards.map(c => <option key={c.id} value={c.name} />)}
       </datalist>
 
       <datalist id="entities-list">

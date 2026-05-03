@@ -190,12 +190,18 @@ export const FinanceService = {
 
       const { data, error } = await query.order('name');
 
-      if (error) {
-        // Fallback: se a tabela não existir, busca das transações
-        const { data: txData } = await supabase.from('transactions').select('owner_name').not('owner_name', 'is', null);
-        return Array.from(new Set(['Pessoal', ...(txData || []).map((t: any) => t.owner_name)])).sort() as string[];
-      }
-      return Array.from(new Set(['Pessoal', ...(data || []).map((e: any) => e.name)])).sort() as string[];
+      // Sempre buscamos das transações para garantir que nada ficou de fora
+      const { data: txData } = await supabase.from('transactions').select('owner_name').eq('user_id', user.id).not('owner_name', 'is', null);
+      const { data: cardTxData } = await supabase.from('card_transactions').select('owner_name').eq('user_id', user.id).not('owner_name', 'is', null);
+      
+      const allOwners = [
+        'Pessoal',
+        ...(data || []).map((e: any) => e.name),
+        ...(txData || []).map((t: any) => t.owner_name),
+        ...(cardTxData || []).map((t: any) => t.owner_name)
+      ];
+
+      return Array.from(new Set(allOwners.filter(Boolean))).sort() as string[];
     } catch (e) {
       return ['Pessoal'];
     }
@@ -475,7 +481,10 @@ export const FinanceService = {
         .select(`
           *,
           cards (
-            name
+            name,
+            default_category,
+            default_subcategory,
+            default_owner
           )
         `)
         .eq('id', statementId)
@@ -520,7 +529,9 @@ export const FinanceService = {
         amount: amount,
         date: stmt.due_date,
         type: 'BILL_PAYMENT',
-        category: 'Pagamento de Fatura',
+        category: stmt.cards?.default_category || 'Pagamento de Fatura',
+        subcategory: stmt.cards?.default_subcategory || null,
+        owner_name: stmt.cards?.default_owner || 'Pessoal',
         is_paid: overridePaid !== undefined ? overridePaid : stmt.status === 'PAID',
         paid_amount: (overridePaid !== undefined ? overridePaid : stmt.status === 'PAID') ? amount : 0,
         paid_at: (overridePaid !== undefined ? overridePaid : stmt.status === 'PAID') ? new Date().toISOString() : null,
@@ -539,5 +550,26 @@ export const FinanceService = {
     } catch (err) {
       console.error('Erro ao sincronizar fatura com histórico:', err);
     }
+  },
+
+  reconcileCardTransaction: async (data: any): Promise<void> => {
+    if (!supabase) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const statementId = await FinanceService.getOrCreateStatement(data.card_id, data.date);
+    
+    const { error } = await supabase.from('card_transactions').insert([{
+      ...data,
+      user_id: user.id,
+      statement_id: statementId,
+      status: 'POSTED',
+      source: 'RECONCILIATION'
+    }]);
+    
+    if (error) throw error;
+    
+    // Sync to history
+    await FinanceService.syncStatementToHistory(statementId);
   }
 };

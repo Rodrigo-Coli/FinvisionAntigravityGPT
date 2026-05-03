@@ -631,7 +631,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                         ) : (
                                             <button
                                                 onClick={() => { setEditingRow({ id: t.id, field: 'amount' }); setEditValue(Math.abs(t.amount).toString().replace('.', ',')); }}
-                                                className={`text-base font-bold bg-transparent border-none p-0 cursor-pointer active:text-brand-600 ${t.type?.toUpperCase() === 'INCOME' ? 'text-emerald-600' : (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE') ? 'text-emerald-600' : 'text-slate-900'}`}
+                                                className={`text-base font-bold bg-transparent border-none p-0 cursor-pointer active:text-brand-600 truncate max-w-[120px] ${t.type?.toUpperCase() === 'INCOME' ? 'text-emerald-600' : (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE') ? 'text-emerald-600' : 'text-slate-900'}`}
                                             >
                                                 {(t.type?.toUpperCase() === 'EXPENSE' || t.type?.toUpperCase() === 'BILL_PAYMENT' || (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '-' : ''}{formatCurrency(amount)}
                                             </button>
@@ -649,15 +649,15 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                             onBlur={() => handleUpdate(t.id, 'description', editValue)}
                                         />
                                     ) : (
-                                        <button
-                                            onClick={() => { setEditingRow({ id: t.id, field: 'description' }); setEditValue(t.description); }}
-                                            className="text-sm font-bold text-slate-900 text-left w-full active:text-brand-600"
-                                        >
-                                            <div className="flex items-center gap-1.5">
-                                                {t.description || 'Sem descrição'}
-                                                <Pencil size={11} className="text-slate-200" />
-                                            </div>
-                                        </button>
+                                            <button
+                                                onClick={() => { setEditingRow({ id: t.id, field: 'description' }); setEditValue(t.description); }}
+                                                className="text-sm font-bold text-slate-900 text-left w-full active:text-brand-600 truncate"
+                                            >
+                                                <div className="flex items-center gap-1.5 truncate">
+                                                    <span className="truncate">{t.description || 'Sem descrição'}</span>
+                                                    <Pencil size={11} className="text-slate-200 shrink-0" />
+                                                </div>
+                                            </button>
                                     )}
 
                                     {/* Row 3: Account · Category · Owner · Status */}

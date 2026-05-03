@@ -26,6 +26,15 @@ interface AddCardModalProps {
     setParentCardId: (v: string) => void;
     additionalLabel: string;
     setAdditionalLabel: (v: string) => void;
+    defaultCategory: string;
+    setDefaultCategory: (v: string) => void;
+    defaultSubcategory: string;
+    setDefaultSubcategory: (v: string) => void;
+    defaultOwner: string;
+    setDefaultOwner: (v: string) => void;
+    entities: string[];
+    categories: { id: string; name: string }[];
+    subcategories: { id: string; name: string; category_name?: string }[];
     title?: string;
     buttonLabel?: string;
 }
@@ -55,6 +64,15 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
     setParentCardId,
     additionalLabel,
     setAdditionalLabel,
+    defaultCategory,
+    setDefaultCategory,
+    defaultSubcategory,
+    setDefaultSubcategory,
+    defaultOwner,
+    setDefaultOwner,
+    entities,
+    categories,
+    subcategories,
     title = "Novo Cartão",
     buttonLabel = "Salvar Cartão"
 }) => {
@@ -156,6 +174,60 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
                                         className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-center"
                                     />
                                 </div>
+                            </div>
+                        </div>
+                        
+                        <div className="p-6 bg-brand-50/50 rounded-3xl border border-brand-100 space-y-4">
+                            <h3 className="text-[10px] font-black text-brand-600 uppercase tracking-[0.2em] ml-1">Configuração de Pagamento</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Categoria Padrão</label>
+                                    <input
+                                        list="card-categories-list"
+                                        value={defaultCategory}
+                                        onChange={(e) => setDefaultCategory(e.target.value)}
+                                        placeholder="Ex: Pessoal"
+                                        className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-xs"
+                                    />
+                                    <datalist id="card-categories-list">
+                                        {categories.map(c => <option key={c.id} value={c.name} />)}
+                                    </datalist>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Subcategoria</label>
+                                    <input
+                                        list="card-subcategories-list"
+                                        value={defaultSubcategory}
+                                        onChange={(e) => setDefaultSubcategory(e.target.value)}
+                                        placeholder="Opcional"
+                                        className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-xs"
+                                    />
+                                    <datalist id="card-subcategories-list">
+                                        {subcategories.filter(s => !defaultCategory || s.category_name === defaultCategory).map(s => (
+                                            <option key={s.id} value={s.name} />
+                                        ))}
+                                    </datalist>
+                                </div>
+                            </div>
+                            <p className="text-[9px] text-slate-400 font-medium italic ml-1">
+                                * Esta categoria será usada automaticamente no histórico ao confirmar o pagamento da fatura.
+                            </p>
+
+                            <div className="pt-2 border-t border-brand-100/50">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Entidade Responsável (Proprietário)</label>
+                                <input
+                                    list="card-entities-list"
+                                    value={defaultOwner}
+                                    onChange={(e) => setDefaultOwner(e.target.value)}
+                                    placeholder="Ex: Pessoal, Empresa..."
+                                    className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-xs"
+                                />
+                                <datalist id="card-entities-list">
+                                    {entities.map(o => <option key={o} value={o} />)}
+                                </datalist>
+                                <p className="text-[9px] text-slate-400 font-medium italic mt-2 ml-1">
+                                    * Define quem é o dono desta despesa por padrão.
+                                </p>
                             </div>
                         </div>
 

@@ -166,6 +166,9 @@ export interface CreditCardDetailed {
   closingDay: number;
   dueDay: number;
   color: string;
+  default_owner?: string;
+  default_category?: string;
+  default_subcategory?: string;
   invoices: {
     id: string;
     month: string;

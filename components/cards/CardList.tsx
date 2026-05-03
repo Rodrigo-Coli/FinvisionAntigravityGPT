@@ -41,13 +41,13 @@ export const CardList: React.FC<CardListProps> = ({
     return (
         <div className="flex flex-col gap-4">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2 px-2">Sua Carteira</h3>
-            <div className="flex flex-row lg:flex-col gap-3 overflow-x-auto lg:overflow-visible pb-4 lg:pb-0 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+            <div className="flex flex-row lg:flex-col gap-4 overflow-x-auto lg:overflow-visible pb-6 lg:pb-0 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory">
                 {groupedCards.map((card) => (
                     <button
                         key={card.id}
                         onClick={() => onSelectCard(card)}
-                        className={`min-w-[260px] lg:min-w-0 text-left p-6 rounded-[24px] border transition-all shrink-0 relative flex flex-col justify-between h-[180px] lg:h-auto ${selectedCardId === card.id
-                            ? 'border-brand-500 bg-white shadow-xl shadow-brand-500/5 ring-1 ring-brand-500/10'
+                        className={`min-w-[280px] sm:min-w-[320px] lg:min-w-0 text-left p-6 sm:p-8 rounded-[32px] border transition-all shrink-0 relative flex flex-col justify-between h-[190px] lg:h-auto snap-center ${selectedCardId === card.id
+                            ? 'border-brand-500 bg-white shadow-2xl shadow-brand-500/10 ring-1 ring-brand-500/20'
                             : 'border-slate-100 bg-white hover:border-slate-200'
                             } ${card.level > 0 ? 'ml-0 lg:ml-8 scale-[0.98]' : ''}`}
                     >

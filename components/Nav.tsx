@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown } from 'lucide-react';
-import { Profile } from '../types';
+import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown, ShieldCheck } from 'lucide-react';
+import { Profile, UserRole } from '../types';
 import { supabase } from '../lib/supabase/client';
 import { useTour } from '../contexts/TourContext';
 
@@ -24,6 +24,15 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { label: 'Ajustes', path: '/settings', icon: <Settings size={20} /> },
   ];
 
+  const isAdmin = user.role === UserRole.ADMIN || user.email === 'rodrigocolicg@gmail.com';
+
+  const adminItems = isAdmin ? [
+    { label: 'Gerir Usuários', path: '/admin/usuarios', icon: <ShieldCheck size={20} /> },
+    { label: 'Gerir Planos', path: '/admin/planos', icon: <Gem size={20} /> },
+  ] : [];
+
+  const allItems = [...items, ...adminItems];
+
   return (
     <>
       {/* Sidebar Desktop */}
@@ -34,7 +43,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
         </div>
 
         <nav className="flex-grow space-y-2">
-          {items.map(item => (
+          {allItems.map(item => (
             <Link
               key={item.path}
               to={item.path}
@@ -112,7 +121,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
           </div>
 
           <div className="flex-1 overflow-y-auto px-6 space-y-2">
-            {items.map(item => (
+            {allItems.map(item => (
               <Link
                 key={item.path}
                 to={item.path}

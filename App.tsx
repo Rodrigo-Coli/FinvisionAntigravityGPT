@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, HashRouter } from 'react-router-dom';
 import { supabase } from './lib/supabase/client';
 import { Profile, UserRole } from './types';
 import Nav from './components/Nav';
+import BottomNav from './components/BottomNav';
 import FloatingActions from './components/FloatingActions';
 import ScrollToTop from './components/common/ScrollToTop';
 import Home from './pages/Home';
@@ -12,6 +13,7 @@ import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import AdminUsers from './pages/AdminUsers';
+import AdminPlans from './pages/AdminPlans';
 import Accounts from './pages/Accounts';
 import HistoryPage from './pages/History';
 import CreditCardsPage from './pages/CreditCards';
@@ -125,6 +127,7 @@ const App: React.FC = () => {
                 {session && profile && (
                   <>
                     <Nav user={profile} />
+                    <BottomNav user={profile} />
                     <FloatingActions />
                   </>
                 )}
@@ -163,7 +166,12 @@ const App: React.FC = () => {
                         <Route path="/ai" element={<AIModule user={profile} />} />
                         <Route path="/settings" element={<SettingsPage />} />
                         <Route path="/reports" element={<Reports />} />
-                        {profile.role === UserRole.ADMIN && <Route path="/admin/usuarios" element={<AdminUsers currentUser={profile} />} />}
+                        {(profile.role === UserRole.ADMIN || profile.email === 'rodrigocolicg@gmail.com') && (
+                          <>
+                            <Route path="/admin/usuarios" element={<AdminUsers currentUser={profile} />} />
+                            <Route path="/admin/planos" element={<AdminPlans />} />
+                          </>
+                        )}
                         <Route path="*" element={<Navigate to="/" replace />} />
                       </>
                     )}
