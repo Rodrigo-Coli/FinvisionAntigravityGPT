@@ -9,6 +9,12 @@
     "orientation": "portrait-primary",
     "icons": [
         {
+            "src": "/logo.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
+        {
             "src": "/logo.png",
             "sizes": "192x192",
             "type": "image/png",
@@ -27,6 +33,34 @@
             "purpose": "maskable"
         }
     ],
+    "screenshots": [
+        {
+            "src": "https://finvision.automanow.com.br/screenshot-mobile.png",
+            "sizes": "750x1334",
+            "type": "image/png",
+            "form_factor": "narrow"
+        },
+        {
+            "src": "https://finvision.automanow.com.br/screenshot-desktop.png",
+            "sizes": "1280x800",
+            "type": "image/png",
+            "form_factor": "wide"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Nova Transação",
+            "url": "/#/history?add=true",
+            "icons": [{ "src": "/logo.png", "sizes": "192x192" }]
+        },
+        {
+            "name": "Meus Cartões",
+            "url": "/#/cards",
+            "icons": [{ "src": "/logo.png", "sizes": "192x192" }]
+        }
+    ],
+    "id": "com.finvision.pro",
+    "dir": "ltr",
     "categories": [
         "finance",
         "productivity"

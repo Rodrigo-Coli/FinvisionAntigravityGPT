@@ -5,6 +5,7 @@ import { Profile, UserRole } from './types';
 import Nav from './components/Nav';
 import BottomNav from './components/BottomNav';
 import { PushManager } from './components/PushManager';
+import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import FloatingActions from './components/FloatingActions';
 import ScrollToTop from './components/common/ScrollToTop';
 import Home from './pages/Home';
@@ -121,6 +122,7 @@ const App: React.FC = () => {
             <TrialBanner />
             <UpgradeModal />
             <PushManager />
+            <PWAInstallPrompt />
             <TourProvider>
               <ToastProvider>
                 <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 dark:bg-slate-900 font-sans">
