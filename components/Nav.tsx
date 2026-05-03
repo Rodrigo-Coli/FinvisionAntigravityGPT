@@ -38,7 +38,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
       {/* Sidebar Desktop */}
       <aside className="hidden lg:flex flex-col w-64 h-screen bg-white border-r border-slate-100 sticky top-0 z-50 p-6 overflow-y-auto">
         <div className="flex items-center gap-3 mb-12 px-2">
-          <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-black italic shadow-lg shadow-brand-500/20">F</div>
+          <div className="w-10 h-10 bg-brand-900 rounded-xl flex items-center justify-center text-white font-bold italic text-xl shadow-lg shadow-brand-500/10">FV</div>
           <span className="text-xl font-bold tracking-tight text-slate-900">FinVision Pro</span>
         </div>
 
@@ -97,7 +97,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
         </button>
 
         <Link to="/" className="text-brand-600 font-bold text-lg flex items-center gap-2">
-          <div className="w-7 h-7 bg-brand-600 text-white rounded-lg flex items-center justify-center font-black italic shadow-md">F</div>
+          <div className="w-8 h-8 bg-brand-900 text-white rounded-lg flex items-center justify-center font-bold italic shadow-md">FV</div>
           FinVision
         </Link>
 
@@ -114,7 +114,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
         <div className={`absolute top-0 left-0 w-4/5 h-full bg-white shadow-2xl flex flex-col transition-all duration-300 transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="flex items-center justify-between p-6 pb-4">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-brand-600 rounded-lg" />
+              <div className="w-9 h-9 bg-brand-900 rounded-xl flex items-center justify-center text-white font-bold italic">FV</div>
               <span className="font-bold text-slate-900">FinVision Pro</span>
             </div>
             <button onClick={() => setIsMenuOpen(false)} className="text-slate-400"><X size={24} /></button>
