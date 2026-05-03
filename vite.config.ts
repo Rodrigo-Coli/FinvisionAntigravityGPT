@@ -27,25 +27,25 @@ export default defineConfig({
         lang: 'pt-BR',
         icons: [
           {
-            "src": "logo.png?v=4",
+            "src": "logo.png?v=6",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "any"
           },
           {
-            "src": "logo.png?v=4",
+            "src": "logo.png?v=6",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "any"
           },
           {
-            "src": "logo.png?v=4",
+            "src": "logo.png?v=6",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "maskable"
           },
           {
-            "src": "logo.svg?v=4",
+            "src": "logo.svg?v=6",
             "sizes": "any",
             "type": "image/svg+xml",
             "purpose": "any"
