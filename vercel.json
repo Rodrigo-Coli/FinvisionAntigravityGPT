@@ -20,7 +20,7 @@
   ],
   "headers": [
     {
-      "source": "/sw.js",
+      "source": "/(sw.js|manifest.json)",
       "headers": [
         {
           "key": "Cache-Control",
