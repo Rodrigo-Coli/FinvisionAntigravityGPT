@@ -18,6 +18,7 @@ import {
   Zap,
   Box,
   Landmark,
+  X,
   ArrowDownRight
 } from 'lucide-react';
 import { PhysicalAsset, InvestmentBroker, Liability } from '../types';

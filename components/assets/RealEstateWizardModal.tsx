@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase/client';
-import { X, Plus, Trash2, FileText, Upload, HelpCircle, CheckCircle2 } from 'lucide-react';
+import { X, Plus, Trash2, FileText, Upload, HelpCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 
 interface RealEstateWizardModalProps {
