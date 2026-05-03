@@ -430,12 +430,16 @@ const SettingsPage: React.FC = () => {
                   <button onClick={async () => {
                     const willEnable = !settings.push_enabled;
                     if (willEnable) {
+                      if (Notification.permission === 'denied') {
+                        alert('As notificações foram bloqueadas pelo sistema. Por favor, vá nas configurações do seu navegador ou do aplicativo e permita as notificações manualmente.');
+                        return;
+                      }
                       const sub = await subscribeUserToPush();
                       if (sub) {
                         updateSetting('push_subscription', sub);
                         updateSetting('push_enabled', true);
                       } else {
-                        alert('Por favor, permita o acesso às notificações para ativar este recurso.');
+                        alert('Não foi possível ativar as notificações. Verifique se o seu navegador suporta este recurso ou se as permissões foram concedidas.');
                       }
                     } else {
                       updateSetting('push_enabled', false);
