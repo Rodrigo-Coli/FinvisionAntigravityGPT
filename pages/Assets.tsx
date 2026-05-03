@@ -45,6 +45,8 @@ const Assets: React.FC = () => {
     description: ''
   });
 
+  const [selectedAssetForManagement, setSelectedAssetForManagement] = useState<PhysicalAsset | null>(null);
+
   const openEditAsset = (asset: PhysicalAsset) => {
     setEditingAsset(asset);
     setFormData({
@@ -462,42 +464,137 @@ const Assets: React.FC = () => {
         )}
 
         {activeView === 'physical' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {physicalAssets.map(asset => (
-              <div key={asset.id} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden group hover:border-brand-200 transition-all duration-300">
-                <div className="p-8 space-y-6">
-                  <div className="flex justify-between items-start">
-                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${asset.category === 'REAL_ESTATE' ? 'bg-blue-50 text-blue-600' : 'bg-brand-900 text-white'} shadow-lg shadow-current/5`}>
-                      {asset.category === 'REAL_ESTATE' ? <Home size={28} /> : <Car size={28} />}
+          <div className="space-y-10">
+            {/* MANAGEMENT OVERLAY / DRAWER (Simple inline for now) */}
+            {selectedAssetForManagement && (
+              <div className="animate-in fade-in slide-in-from-top-4 duration-500 bg-slate-900 rounded-[40px] p-10 text-white space-y-8 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-8">
+                  <button onClick={() => setSelectedAssetForManagement(null)} className="w-12 h-12 bg-white/10 hover:bg-white/20 rounded-2xl flex items-center justify-center transition-all"><X size={24} /></button>
+                </div>
+                
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-brand-600 rounded-[18px] flex items-center justify-center"><Building2 size={24} /></div>
+                      <div>
+                        <h3 className="text-2xl font-black italic tracking-tight">{selectedAssetForManagement.name}</h3>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Performance Financeira Consolidada</p>
+                      </div>
                     </div>
-                    <button onClick={() => openEditAsset(asset)} className="p-2 text-slate-400 hover:bg-slate-50 hover:text-brand-600 rounded-xl transition-colors">
-                      <MoreHorizontal size={20} />
-                    </button>
                   </div>
-
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-xl tracking-tight leading-tight uppercase tracking-tight">{asset.name}</h4>
-                    <p className="text-xs text-slate-400 mt-2 font-medium line-clamp-2">{asset.description || 'Sem descrição'}</p>
-                  </div>
-
-                  <div className="pt-6 border-t border-slate-50">
-                    <p className="text-[10px] font-bold uppercase text-slate-300 tracking-widest mb-1.5 leading-none">Avaliação Estimada</p>
-                    <p className="text-2xl font-bold text-slate-900 leading-none">{formatCurrency(asset.estimatedValue)}</p>
+                  
+                  <div className="flex gap-4">
+                     <div className="bg-white/5 border border-white/10 rounded-3xl px-8 py-4 text-center">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Valor de Mercado</p>
+                        <p className="text-xl font-black">{formatCurrency(selectedAssetForManagement.estimatedValue)}</p>
+                     </div>
+                     <div className="bg-white/5 border border-white/10 rounded-3xl px-8 py-4 text-center">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">LTV (Dívida/Ativo)</p>
+                        <p className="text-xl font-black text-brand-400">
+                          {(() => {
+                            const liab = liabilities.find(l => l.linkedAssetId === selectedAssetForManagement.id);
+                            if (!liab) return '0%';
+                            return `${Math.round((liab.remainingBalance / selectedAssetForManagement.estimatedValue) * 100)}%`;
+                          })()}
+                        </p>
+                     </div>
                   </div>
                 </div>
-                <div className="px-8 py-4 bg-slate-50/50 flex justify-between items-center border-t border-slate-50">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Aquisição: {asset.acquisitionDate ? new Date(asset.acquisitionDate).getFullYear() : '---'}</span>
-                  <button onClick={() => openEditAsset(asset)} className="text-brand-600 text-[10px] font-bold uppercase tracking-widest hover:underline">Editar / Reavaliar</button>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                   {/* INCOME CARD */}
+                   <div className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-6">
+                      <div className="flex justify-between items-center">
+                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest italic">Receita Mensal (Aluguel)</h4>
+                        <div className="w-8 h-8 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center"><ArrowUpRight size={16} /></div>
+                      </div>
+                      <p className="text-3xl font-black text-emerald-400">{formatCurrency(2450)}</p> {/* Mock value, to be connected with transactions */}
+                      <p className="text-[9px] font-bold text-slate-500 leading-relaxed uppercase tracking-tight">Média dos últimos 12 meses. Representa um Yield de 0.45% am.</p>
+                   </div>
+
+                   {/* EXPENSES CARD */}
+                   <div className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-6">
+                      <div className="flex justify-between items-center">
+                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest italic">Despesas Operacionais</h4>
+                        <div className="w-8 h-8 bg-rose-500/20 text-rose-400 rounded-xl flex items-center justify-center"><ArrowDownRight size={16} /></div>
+                      </div>
+                      <p className="text-3xl font-black text-rose-400">{formatCurrency(890)}</p> {/* Condo + IPTU + Maintenace */}
+                      <div className="flex gap-2">
+                        <span className="text-[8px] font-black px-2 py-1 bg-white/5 rounded-lg border border-white/10">IPTU</span>
+                        <span className="text-[8px] font-black px-2 py-1 bg-white/5 rounded-lg border border-white/10">CONDOMÍNIO</span>
+                        <span className="text-[8px] font-black px-2 py-1 bg-white/5 rounded-lg border border-white/10">TAXAS</span>
+                      </div>
+                   </div>
+
+                   {/* NET PROFIT CARD */}
+                   <div className="bg-brand-600 rounded-[32px] p-8 space-y-6 shadow-xl shadow-brand-600/20">
+                      <div className="flex justify-between items-center">
+                        <h4 className="text-xs font-black text-white uppercase tracking-widest italic">Fluxo de Caixa Líquido</h4>
+                        <div className="w-8 h-8 bg-white/20 text-white rounded-xl flex items-center justify-center"><Zap size={16} /></div>
+                      </div>
+                      <p className="text-3xl font-black text-white">{formatCurrency(1560)}</p>
+                      <button 
+                        onClick={() => navigate('/history', { state: { filterByAsset: selectedAssetForManagement.id } })}
+                        className="w-full py-3 bg-white text-brand-900 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all"
+                      >
+                        Ver Extrato do Imóvel
+                      </button>
+                   </div>
                 </div>
               </div>
-            ))}
-            <button
-              onClick={() => setShowModal(true)}
-              className="rounded-[32px] border-2 border-dashed border-slate-100 p-8 flex flex-col items-center justify-center gap-4 text-slate-300 hover:border-brand-200 hover:text-brand-600 hover:bg-brand-50/30 transition-all min-h-[280px]"
-            >
-              <Plus size={32} />
-              <span className="font-bold text-slate-400">Adicionar Bem</span>
-            </button>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {physicalAssets.map(asset => (
+                <div key={asset.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden group hover:border-brand-300 hover:shadow-xl hover:shadow-slate-200 transition-all duration-500">
+                  <div className="p-10 space-y-8">
+                    <div className="flex justify-between items-start">
+                      <div className={`w-16 h-16 rounded-[24px] flex items-center justify-center ${asset.category === 'REAL_ESTATE' ? 'bg-brand-900 text-white' : 'bg-slate-900 text-white'} shadow-xl shadow-current/10`}>
+                        {asset.category === 'REAL_ESTATE' ? <Home size={32} /> : <Car size={32} />}
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => setSelectedAssetForManagement(asset)} className="p-3 text-slate-400 hover:bg-brand-50 hover:text-brand-600 rounded-2xl transition-all"><TrendingUp size={20} /></button>
+                        <button onClick={() => openEditAsset(asset)} className="p-3 text-slate-400 hover:bg-slate-100 hover:text-slate-900 rounded-2xl transition-all"><MoreHorizontal size={20} /></button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-black text-slate-900 text-2xl tracking-tight leading-tight italic">{asset.name}</h4>
+                      <p className="text-[10px] text-slate-400 mt-2 font-black uppercase tracking-widest">{asset.description || 'Sem descrição cadastrada'}</p>
+                    </div>
+
+                    <div className="pt-8 border-t border-slate-50 flex justify-between items-end">
+                      <div>
+                        <p className="text-[9px] font-black uppercase text-slate-300 tracking-[0.2em] mb-1.5 leading-none">Avaliação Patrimonial</p>
+                        <p className="text-3xl font-black text-slate-900 leading-none tracking-tighter italic">{formatCurrency(asset.estimatedValue)}</p>
+                      </div>
+                      {liabilities.some(l => l.linkedAssetId === asset.id) && (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100">
+                          <Landmark size={12} />
+                          <span className="text-[8px] font-black uppercase tracking-tighter">Alienado</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="px-10 py-6 bg-slate-50/50 flex justify-between items-center border-t border-slate-50 group-hover:bg-brand-50 transition-colors">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Ano Aquisição: {asset.acquisitionDate ? new Date(asset.acquisitionDate).getFullYear() : '---'}</span>
+                    <button onClick={() => setSelectedAssetForManagement(asset)} className="text-brand-600 text-[10px] font-black uppercase tracking-[0.2em] group-hover:underline flex items-center gap-2">
+                      Análise de Balanço <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <button
+                onClick={() => setShowModal(true)}
+                className="rounded-[40px] border-4 border-dashed border-slate-100 p-10 flex flex-col items-center justify-center gap-6 text-slate-300 hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50 transition-all min-h-[360px] group"
+              >
+                <div className="w-20 h-20 bg-slate-50 rounded-[30px] flex items-center justify-center group-hover:bg-white group-hover:shadow-lg transition-all"><Plus size={40} /></div>
+                <div className="text-center">
+                  <p className="font-black uppercase tracking-[0.2em] text-slate-400 text-sm italic group-hover:text-brand-600">Registrar Novo Bem</p>
+                  <p className="text-[10px] text-slate-300 font-bold mt-2">Imóveis, Veículos, Terrenos</p>
+                </div>
+              </button>
+            </div>
           </div>
         )}
 
