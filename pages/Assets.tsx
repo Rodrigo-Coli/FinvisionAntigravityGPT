@@ -229,8 +229,15 @@ const Assets: React.FC = () => {
     if (!sb) return;
     setIsLoading(true);
     try {
-      const { data: { user } } = await sb.auth.getUser();
-      if (!user) return;
+      const { data: { user }, error: authError } = await sb.auth.getUser();
+      if (authError) throw authError;
+      if (!user) {
+        console.error('Assets: No user found');
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('Assets: Fetching data for user', user.id);
 
       // Fetch Physical Assets
       const { data: phys } = await sb.from('physical_assets').select('*').eq('user_id', user.id);
@@ -272,8 +279,9 @@ const Assets: React.FC = () => {
           metadata: l.metadata
         })));
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error('Assets: Error fetching data', e);
+      alert(`Erro ao carregar patrimônio: ${e.message}`);
     } finally {
       setIsLoading(false);
     }
