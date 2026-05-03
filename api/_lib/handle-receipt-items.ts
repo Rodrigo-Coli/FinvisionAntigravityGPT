@@ -26,10 +26,8 @@ export async function handleReceiptItems(req: any, res: any) {
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
         if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
 
-        const ai = new GoogleGenAI({ apiKey: geminiKey });
-        const model = 'gemini-2.5-flash';
-
-        const prompt = `
+        const { data: dbPrompt } = await supabase.from('ai_prompts').select('content').eq('slug', 'receipt_scanner').single();
+        const prompt = dbPrompt?.content || `
       Você é um especialista em análise de documentos fiscais. Extraia os dados detalhados deste cupom.
       
       RETORNE APENAS UM OBJETO JSON NO FORMATO:
@@ -52,6 +50,9 @@ export async function handleReceiptItems(req: any, res: any) {
         ]
       }
     `;
+
+    const ai = new GoogleGenAI({ apiKey: geminiKey });
+    const model = 'gemini-2.5-flash';
 
         const contents = [{
             parts: [

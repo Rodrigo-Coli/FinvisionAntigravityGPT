@@ -10,10 +10,11 @@ export const projectionService = {
     const futureEnd = new Date(today.getFullYear(), today.getMonth() + monthsAhead + 1, 0); 
     
     const { data: pendingTx } = await supabase.from('transactions')
-        .select('amount, type, date, recurrence_group_id, recurrence_period')
+        .select('amount, type, date, recurrence_group_id, recurrence_period, is_amortization')
         .eq('user_id', userId)
         .eq('is_deleted', false)
         .eq('is_paid', false)
+        .or('is_amortization.is.null,is_amortization.eq.false')
         .lte('date', futureEnd.toISOString().split('T')[0]);
 
     const { data: recurringTx } = await supabase.from('transactions')

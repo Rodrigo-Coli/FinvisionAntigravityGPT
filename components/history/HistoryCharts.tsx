@@ -10,6 +10,7 @@ interface HistoryChartsProps {
     startDate?: string;
     endDate?: string;
     onCategoryClick?: (category: string) => void;
+    onMonthClick?: (month: string, year: number) => void;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -33,7 +34,8 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
     setSelectedTimelineCategories = () => { },
     startDate: propStartDate = '',
     endDate: propEndDate = '',
-    onCategoryClick
+    onCategoryClick,
+    onMonthClick
 }) => {
     const [activeTab, setActiveTab] = useState<'categories' | 'mom' | 'timeline'>('categories');
     
@@ -156,8 +158,12 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
 
                 const type = (t.type || '').toUpperCase();
                 const amt = Math.abs(Number(t.amount || 0));
-                const d = new Date(t.date);
-                const m = d.getMonth(); const y = d.getFullYear();
+                
+                // Robust parsing
+                const datePart = t.date.split('T')[0];
+                const [yStr, mStr] = datePart.split('-');
+                const y = parseInt(yStr);
+                const m = parseInt(mStr) - 1;
 
                 const target = momMonthsByDate.find(mm => mm.month === m && mm.year === y);
                 if (target) {
@@ -169,7 +175,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                 }
             });
             
-            momBars = momMonthsByDate.reverse().map((m: any) => ({ label: m.label, income: m.income, expense: m.expense }));
+            momBars = momMonthsByDate.reverse().map((m: any) => ({ label: m.label, income: m.income, expense: m.expense, year: m.year, month: m.month }));
         } else {
             momBars = customSlots.map(slot => {
                 let inc = 0; let exp = 0;
@@ -189,7 +195,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                         }
                     }
                 });
-                return { label: slot.label, income: inc, expense: exp };
+                return { label: slot.label, income: inc, expense: exp, year: 0, month: 0 }; // custom slots don't have month/year
             });
         }
 
@@ -206,7 +212,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             if (ymd > maxDateStr) maxDateStr = ymd;
         });
 
-        let timelineArray: { label: string, income: number, expense: number, balance: number }[] = [];
+        let timelineArray: { label: string, income: number, expense: number, balance: number, date?: string }[] = [];
         if (minDateStr <= maxDateStr && minDateStr !== '9999-12-31') {
             const dMin = new Date(minDateStr + 'T00:00:00');
             const dMax = new Date(maxDateStr + 'T00:00:00');
@@ -240,7 +246,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                     const ym = `${cy}-${String(cm).padStart(2, '0')}`;
                     const b = tMap.get(ym) || { income: 0, expense: 0, balance: 0 };
                     const label = new Date(cy, cm - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/').replace(' de ', '/');
-                    timelineArray.push({ label, income: b.income, expense: b.expense, balance: b.balance });
+                    timelineArray.push({ label, income: b.income, expense: b.expense, balance: b.balance, date: `${ym}-01` });
                     cm++; if (cm > 12) { cm = 1; cy++; }
                 }
             } else {
@@ -267,7 +273,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                 while (curr <= dMax) {
                     const ymd = curr.getFullYear() + '-' + String(curr.getMonth() + 1).padStart(2, '0') + '-' + String(curr.getDate()).padStart(2, '0');
                     const b = tMap.get(ymd) || { income: 0, expense: 0, balance: 0 };
-                    timelineArray.push({ label: curr.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), income: b.income, expense: b.expense, balance: b.balance });
+                    timelineArray.push({ label: curr.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), income: b.income, expense: b.expense, balance: b.balance, date: ymd });
                     curr.setDate(curr.getDate() + 1);
                 }
             }
@@ -573,7 +579,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                 const expHeight = (m.expense / maxVal) * 250;
 
                                 return (
-                                    <div key={idx} className="flex-1 flex flex-col items-center gap-2 group relative">
+                                    <div key={idx} className="flex-1 flex flex-col items-center gap-2 group relative cursor-pointer" onClick={() => onMonthClick?.(String(m.month + 1).padStart(2, '0'), m.year)}>
                                         <div className="flex gap-1 items-end h-[250px] w-full justify-center">
                                             <div
                                                 className="w-4 sm:w-8 bg-emerald-400 rounded-t-lg transition-all duration-500 group-hover:bg-emerald-500 shadow-sm"

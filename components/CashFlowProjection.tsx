@@ -6,9 +6,10 @@ import { formatCurrency } from '../lib/historyUtils';
 interface CashFlowProjectionProps {
   data: CashFlowProjectionItem[];
   isLoading?: boolean;
+  onMonthClick?: (month: string, year: number) => void;
 }
 
-export default function CashFlowProjection({ data, isLoading }: CashFlowProjectionProps) {
+export default function CashFlowProjection({ data, isLoading, onMonthClick }: CashFlowProjectionProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const { maxBar, negMonths, firstNegIdx } = useMemo(() => {
@@ -99,7 +100,17 @@ export default function CashFlowProjection({ data, isLoading }: CashFlowProjecti
                 const isNegative = item.endingBalance < 0;
 
                 return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-3 relative group">
+                  <div 
+                    key={i} 
+                    className="flex-1 flex flex-col items-center gap-3 relative group cursor-pointer"
+                    onClick={() => {
+                       const [mName, yShort] = item.label.split('/');
+                       const monthMap: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
+                       const m = monthMap[mName] || '01';
+                       const y = 2000 + parseInt(yShort);
+                       onMonthClick?.(m, y);
+                    }}
+                  >
                     {/* Tooltip Hover */}
                     <div className={`absolute bottom-full mb-3 opacity-0 group-hover:opacity-100 bg-brand-900 text-white p-3 rounded-xl text-[10px] whitespace-nowrap z-50 transition-opacity pointer-events-none shadow-xl border border-white/10 w-44 ${i === 0 ? 'left-0' : i === data.length - 1 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}>
                       <div className="font-bold border-b border-white/10 pb-1.5 mb-1.5 text-center">{item.label}</div>

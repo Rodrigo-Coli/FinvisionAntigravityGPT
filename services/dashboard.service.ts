@@ -96,8 +96,10 @@ export const DashboardService = {
     if (!txsErr && txs) {
       const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
       const grouped = txs.reduce((acc: any, tx: any) => {
-        const txDate = new Date(tx.date);
-        const m = txDate.getUTCMonth();
+        // tx.date is usually YYYY-MM-DD
+        const datePart = tx.date.split('T')[0];
+        const [y, mStr, d] = datePart.split('-');
+        const m = parseInt(mStr) - 1; // 0-indexed
         const key = months[m];
         if (!acc[key]) acc[key] = { month: key, income: 0, expense: 0 };
 

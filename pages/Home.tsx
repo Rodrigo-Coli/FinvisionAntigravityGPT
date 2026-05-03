@@ -171,6 +171,13 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
     }
   };
 
+  const handleMonthClick = (month: string, year: number) => {
+    const start = `${year}-${month}-01`;
+    const lastDay = new Date(year, parseInt(month), 0).getDate();
+    const end = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+    navigate(`/history?startDate=${start}&endDate=${end}`);
+  };
+
   const chartTransactions = viewMode === 'SETTLED' ? transactions.filter(t => !!t.is_paid) : transactions;
 
   return (
@@ -258,7 +265,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
       {/* CASH FLOW PROJECTION (CONSOLIDATED GRAPHS) */}
       <div id="tour-cash-flow">
-        <CashFlowProjection data={projectedData} isLoading={isProjecting} />
+        <CashFlowProjection data={projectedData} isLoading={isProjecting} onMonthClick={handleMonthClick} />
       </div>
 
       {/* MID SECTION: CREDIT CARDS & INSIGHTS */}
@@ -323,7 +330,13 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
               </div>
             </div>
-            <HistoryCharts transactions={chartTransactions} startDate={startDate} endDate={endDate} onCategoryClick={(cat) => navigate(`/history?category=${encodeURIComponent(cat)}`)} />
+            <HistoryCharts 
+              transactions={chartTransactions} 
+              startDate={startDate} 
+              endDate={endDate} 
+              onCategoryClick={(cat) => navigate(`/history?category=${encodeURIComponent(cat)}`)} 
+              onMonthClick={handleMonthClick}
+            />
           </div>
         </div>
 

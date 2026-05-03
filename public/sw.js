@@ -53,3 +53,41 @@ self.addEventListener('fetch', (event) => {
         })
     );
 });
+
+// Push Notifications
+self.addEventListener('push', (event) => {
+    const data = event.data ? event.data.json() : { title: 'FinVision Pro', body: 'Nova atualização disponível!' };
+    
+    const options = {
+        body: data.body,
+        icon: '/logo.png',
+        badge: '/logo.svg',
+        data: data.url || '/',
+        vibrate: [100, 50, 100],
+        actions: [
+            { action: 'open', title: 'Ver Detalhes' },
+            { action: 'close', title: 'Fechar' }
+        ]
+    };
+
+    event.waitUntil(
+        self.registration.showNotification(data.title, options)
+    );
+});
+
+// Notification Click
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+
+    if (event.action === 'close') return;
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+            const url = event.notification.data || '/';
+            for (const client of clientList) {
+                if (client.url === url && 'focus' in client) return client.focus();
+            }
+            if (clients.openWindow) return clients.openWindow(url);
+        })
+    );
+});

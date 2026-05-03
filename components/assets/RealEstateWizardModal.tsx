@@ -10,26 +10,40 @@ interface RealEstateWizardModalProps {
 export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ onClose, onSuccess }) => {
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [propertyType, setPropertyType] = useState<'PLANTA' | 'PRONTO'>('PLANTA');
 
   // Bem Físico
   const [name, setName] = useState('');
   const [estimatedValue, setEstimatedValue] = useState('');
-  const [acquisitionDate, setAcquisitionDate] = useState('');
+  const [acquisitionDate, setAcquisitionDate] = useState(new Date().toISOString().split('T')[0]);
   const [description, setDescription] = useState('');
 
-  // Financeiro
-  const [downPayment, setDownPayment] = useState(''); // Ato
-  const [downPaymentDate, setDownPaymentDate] = useState(''); // Data do Ato
+  // Estrutura de Pagamento - ATO (Múltiplos)
+  const [downPayments, setDownPayments] = useState<{ amount: number; date: string }[]>([]);
+  const [currDownAmount, setCurrDownAmount] = useState('');
+  const [currDownDate, setCurrDownDate] = useState('');
 
-  // Financiamento
+  const addDownPayment = () => {
+    if (!currDownAmount || !currDownDate) return;
+    setDownPayments([...downPayments, { amount: parseFloat(currDownAmount), date: currDownDate }]);
+    setCurrDownAmount('');
+    setCurrDownDate('');
+  };
+
+  const removeDownPayment = (idx: number) => {
+    setDownPayments(downPayments.filter((_, i) => i !== idx));
+  };
+
+  // Financiamento / Saldo Devedor
   const [hasFinancing, setHasFinancing] = useState(false);
   const [financedAmount, setFinancedAmount] = useState('');
   const [installments, setInstallments] = useState('');
   const [installmentAmount, setInstallmentAmount] = useState('');
   const [firstDueDate, setFirstDueDate] = useState('');
-  const [indexationRate, setIndexationRate] = useState(''); // INCC
+  const [indexationRate, setIndexationRate] = useState(''); // INCC ou IPCA + %
+  const [indexType, setIndexType] = useState<'INCC' | 'IPCA' | 'FIXED'>('INCC');
 
-  // Balões
+  // Balões (Intermediárias)
   const [balloons, setBalloons] = useState<{ month: number; year: number; amount: number }[]>([]);
   const [bMonth, setBMonth] = useState('');
   const [bYear, setBYear] = useState('');
@@ -61,47 +75,32 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         category: 'REAL_ESTATE',
         estimated_value: parseFloat(estimatedValue) || 0,
         acquisition_date: acquisitionDate || null,
-        description: description
+        description: `${description} (${propertyType === 'PLANTA' ? 'Na Planta' : 'Pronto'})`
       }]).select().single();
 
       if (assetErr) throw assetErr;
       const assetId = assetData.id;
 
-      // Pegar/Criar Categoria de Imóveis para Histórico
-      const categoryName = 'Aquisição Imobiliária';
-      let catId = null;
-      const { data: existingCat } = await supabase.from('categories')
-        .select('id').eq('user_id', user.id).eq('name', categoryName).single();
-      
-      if (!existingCat) {
-        await supabase.from('categories').insert({
-          user_id: user.id,
-          name: categoryName,
-          type: 'EXPENSE',
-          color: 'bg-indigo-50 text-indigo-600'
-        });
-      }
-
-      // Transações a inserir no histórico
+      const categoryName = 'Patrimônio Imobiliário';
       const futureTransactions: any[] = [];
 
-      // 2. Inserir o ATO (Entrada) no Histórico
-      if (parseFloat(downPayment) > 0 && downPaymentDate) {
+      // 2. Inserir os ATOS no Histórico
+      downPayments.forEach((dp, idx) => {
         futureTransactions.push({
           user_id: user.id,
-          description: `Ato / Entrada - ${name}`,
-          amount: parseFloat(downPayment),
-          date: downPaymentDate,
+          description: `Ato ${idx + 1}/${downPayments.length} - ${name}`,
+          amount: dp.amount,
+          date: dp.date,
           type: 'EXPENSE',
           category: categoryName,
-          is_paid: new Date(downPaymentDate) <= new Date(),
+          is_paid: new Date(dp.date) <= new Date(),
           is_recurring: false,
-          is_amortization: true, // para não projetar 2x
+          is_amortization: true,
           metadata: { auto_generated: true, type: 'DOWN_PAYMENT', linked_asset_id: assetId }
         });
-      }
+      });
 
-      // 3. Criar Financiamento (Liability)
+      // 3. Criar Financiamento / Passivo (Liability)
       if (hasFinancing && parseFloat(financedAmount) > 0) {
         const instLeft = parseInt(installments, 10) || 0;
         const instAmt = parseFloat(installmentAmount) || 0;
@@ -109,8 +108,8 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
 
         const { data: liabData, error: liabErr } = await supabase.from('liabilities').insert([{
           user_id: user.id,
-          name: `Financiamento: ${name}`,
-          type: 'MORTGAGE',
+          name: `Passivo Imob: ${name}`,
+          type: propertyType === 'PLANTA' ? 'LOAN' : 'MORTGAGE',
           total_amount: parseFloat(financedAmount) || 0,
           remaining_balance: parseFloat(financedAmount) || 0,
           installment_amount: instAmt,
@@ -119,25 +118,26 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
           linked_asset_id: assetId,
           metadata: {
             isRealEstate: true,
+            propertyType,
+            indexType,
             indexationRate: parseFloat(indexationRate) || 0,
-            balloons: balloons
+            balloons: balloons,
+            acquisitionDate
           }
         }]).select().single();
 
         if (liabErr) throw liabErr;
         const liabilityId = liabData.id;
 
-        // Atualizar Transação de Ato com o Liability ID
+        // Vínculo do Ato com o Passivo
         futureTransactions.forEach(t => { if (t.metadata.type === 'DOWN_PAYMENT') t.liability_id = liabilityId; });
 
-        // Gerar Parcelas Físicas
+        // Gerar Parcelas Mensais
         if (instAmt > 0 && instLeft > 0 && firstDueDate) {
           const firstDate = new Date(firstDueDate);
-          const maxInst = Math.min(instLeft, 240); // Limite segurança
-          
-          for (let i = 0; i < maxInst; i++) {
+          for (let i = 0; i < instLeft; i++) {
             const txDate = new Date(firstDate.getFullYear(), firstDate.getMonth() + i, dueDay);
-            if (txDate.getDate() !== dueDay) txDate.setDate(0); // Tratamento fim de mês
+            if (txDate.getDate() !== dueDay) txDate.setDate(0); 
             
             futureTransactions.push({
               user_id: user.id,
@@ -150,18 +150,20 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
               is_recurring: true,
               is_amortization: true,
               liability_id: liabilityId,
-              metadata: { auto_generated: true, installment_number: i + 1 }
+              metadata: { auto_generated: true, installment_number: i + 1, indexType, indexationRate }
             });
           }
         }
 
-        // Gerar Balões (Intermediárias) Físicas
+        // Gerar Balões (Intermediárias)
         balloons.forEach((b, idx) => {
-          // Último dia do mês respectivo
-          const bDate = new Date(b.year, b.month, 0);
+          const bDate = new Date(b.year, b.month - 1, 1);
+          const lastDay = new Date(b.year, b.month, 0).getDate();
+          bDate.setDate(lastDay);
+
           futureTransactions.push({
             user_id: user.id,
-            description: `Intermediária/Balão ${idx + 1} - ${name}`,
+            description: `Balão/Intermediária - ${name}`,
             amount: b.amount,
             date: bDate.toISOString().split('T')[0],
             type: 'EXPENSE',
@@ -175,14 +177,10 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         });
       }
 
-      // 4. Inserir todas as transações em Batch
       if (futureTransactions.length > 0) {
-        // O Supabase tem limite de tamanho por insert, fatiamos em pedaços de 100
-        const chunkSize = 100;
+        const chunkSize = 50;
         for (let i = 0; i < futureTransactions.length; i += chunkSize) {
-          const chunk = futureTransactions.slice(i, i + chunkSize);
-          const { error: txErr } = await supabase.from('transactions').insert(chunk);
-          if (txErr) console.error("Erro inserindo lote txs:", txErr);
+          await supabase.from('transactions').insert(futureTransactions.slice(i, i + chunkSize));
         }
       }
 
@@ -196,47 +194,60 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-white rounded-[32px] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+      <div className="bg-white rounded-[32px] w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
           <div>
             <h3 className="font-bold text-xl text-slate-900 tracking-tight">Nova Aquisição Imobiliária</h3>
-            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mt-1">Lançamento Unificado: Ativo e Passivo</p>
+            <div className="flex gap-4 mt-2">
+               <button 
+                onClick={() => setPropertyType('PLANTA')}
+                className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${propertyType === 'PLANTA' ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/20' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
+               >
+                Na Planta
+               </button>
+               <button 
+                onClick={() => setPropertyType('PRONTO')}
+                className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${propertyType === 'PRONTO' ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/20' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
+               >
+                Pronto
+               </button>
+            </div>
           </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600 rounded-xl transition-colors">
+          <button onClick={onClose} className="p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-xl transition-colors">
             <X size={24} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+        <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
           {/* STEP 1: DETALHES DO BEM */}
-          <section className="space-y-4">
-            <h4 className="flex items-center gap-2 font-bold text-brand-600 text-sm uppercase tracking-widest">
-              <div className="w-6 h-6 rounded-md bg-brand-50 flex items-center justify-center">1</div>
+          <section className="space-y-6">
+            <h4 className="flex items-center gap-3 font-bold text-brand-600 text-sm uppercase tracking-widest">
+              <div className="w-8 h-8 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600">1</div>
               O Imóvel
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nome / Identificação</label>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Nome / Identificação</label>
                 <input
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none"
-                  placeholder="Ex: Apartamento Reserva, Terreno X"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                  placeholder="Ex: Edifício Horizonte, Unidade 402"
                   value={name} onChange={e => setName(e.target.value)}
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Total de Avaliação (R$)</label>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Valor de Venda / Avaliação (R$)</label>
                 <input
                   type="number" step="0.01"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none"
-                  placeholder="Ex: 500000"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                  placeholder="0,00"
                   value={estimatedValue} onChange={e => setEstimatedValue(e.target.value)}
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data da Compra</label>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Data da Assinatura / Compra</label>
                 <input
                   type="date"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
                   value={acquisitionDate} onChange={e => setAcquisitionDate(e.target.value)}
                 />
               </div>
@@ -245,122 +256,179 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
 
           <hr className="border-slate-100" />
 
-          {/* STEP 2: ESTRUTURA FINANCEIRA */}
-          <section className="space-y-4">
-            <h4 className="flex items-center gap-2 font-bold text-brand-600 text-sm uppercase tracking-widest">
-              <div className="w-6 h-6 rounded-md bg-brand-50 flex items-center justify-center">2</div>
-              Estrutura de Pagamento
+          {/* STEP 2: ESTRUTURA DE PAGAMENTO */}
+          <section className="space-y-6">
+            <h4 className="flex items-center gap-3 font-bold text-brand-600 text-sm uppercase tracking-widest">
+              <div className="w-8 h-8 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600">2</div>
+              Ato e Entrada
             </h4>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-5 bg-slate-50 rounded-[24px]">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Valor do Ato / Entrada (R$)</label>
-                <input
-                  type="number" step="0.01"
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none"
-                  placeholder="Ex: 50000"
-                  value={downPayment} onChange={e => setDownPayment(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Data de Pagto do Ato</label>
-                <input
-                  type="date"
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none"
-                  value={downPaymentDate} onChange={e => setDownPaymentDate(e.target.value)}
-                />
-              </div>
-            </div>
+            <div className="bg-slate-50 rounded-[32px] p-6 space-y-4 border border-slate-100">
+               <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Valor (R$)</label>
+                    <input
+                      type="number" step="0.01"
+                      className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none transition-all"
+                      placeholder="Valor do Ato"
+                      value={currDownAmount} onChange={e => setCurrDownAmount(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Data de Vencimento</label>
+                    <input
+                      type="date"
+                      className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none transition-all"
+                      value={currDownDate} onChange={e => setCurrDownDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button 
+                      onClick={addDownPayment}
+                      className="h-[56px] w-full md:w-[56px] bg-brand-600 text-white rounded-2xl flex items-center justify-center hover:bg-brand-700 transition-colors shadow-lg shadow-brand-500/10"
+                    >
+                      <Plus size={24} />
+                    </button>
+                  </div>
+               </div>
 
-            <div className="mt-4">
-              <label className="flex items-center gap-3 cursor-pointer p-4 border border-slate-200 rounded-[24px] hover:bg-slate-50 transition-colors">
-                <input 
-                  type="checkbox" 
-                  className="w-5 h-5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                  checked={hasFinancing}
-                  onChange={e => setHasFinancing(e.target.checked)}
-                />
-                <span className="font-bold text-slate-900 text-sm">Possui saldo financiado ou direto com a construtora?</span>
+               {downPayments.length > 0 && (
+                 <div className="space-y-2 mt-4">
+                    {downPayments.map((dp, i) => (
+                      <div key={i} className="flex justify-between items-center bg-white border border-slate-100 rounded-2xl px-6 py-3">
+                        <div className="flex items-center gap-4">
+                          <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs font-black">
+                            {i+1}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-900">R$ {dp.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase">{new Date(dp.date).toLocaleDateString('pt-BR')}</p>
+                          </div>
+                        </div>
+                        <button onClick={() => removeDownPayment(i)} className="p-2 text-rose-400 hover:bg-rose-50 rounded-xl transition-colors">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    ))}
+                 </div>
+               )}
+            </div>
+          </section>
+
+          <hr className="border-slate-100" />
+
+          {/* STEP 3: FINANCIAMENTO / SALDO DEVEDOR */}
+          <section className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h4 className="flex items-center gap-3 font-bold text-brand-600 text-sm uppercase tracking-widest">
+                <div className="w-8 h-8 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600">3</div>
+                Saldo Devedor
+              </h4>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" className="sr-only peer" checked={hasFinancing} onChange={e => setHasFinancing(e.target.checked)} />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
               </label>
             </div>
 
             {hasFinancing && (
-              <div className="space-y-6 animate-in slide-in-from-top-2 p-6 border border-brand-100 rounded-[24px] bg-brand-50/30">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-8 animate-in slide-in-from-top-4 duration-500">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 border border-brand-100 rounded-[32px] bg-brand-50/20 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4">
+                    <div className="text-[10px] font-black text-brand-200 uppercase tracking-[0.2em] rotate-12">Debt Logic</div>
+                  </div>
+                  
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Valor a Financiar (R$)</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Valor do Saldo Devedor (R$)</label>
                     <input
                       type="number" step="0.01"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none"
+                      className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none transition-all"
                       value={financedAmount} onChange={e => setFinancedAmount(e.target.value)}
+                      placeholder="Restante a pagar"
                     />
                   </div>
+
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Índice Correção A.A (Ex: INCC 6%)</label>
-                    <input
-                      type="number" step="0.01"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none"
-                      placeholder="Ex: 5.5"
-                      value={indexationRate} onChange={e => setIndexationRate(e.target.value)}
-                    />
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Índice de Correção</label>
+                    <div className="flex gap-2">
+                       <select 
+                        value={indexType} 
+                        onChange={e => setIndexType(e.target.value as any)}
+                        className="bg-white border border-slate-200 rounded-2xl px-4 py-4 text-sm font-bold text-slate-900 outline-none"
+                       >
+                         <option value="INCC">INCC</option>
+                         <option value="IPCA">IPCA</option>
+                         <option value="FIXED">FIXO</option>
+                       </select>
+                       <input
+                        type="number" step="0.01"
+                        className="flex-1 bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none transition-all"
+                        placeholder="% ao ano"
+                        value={indexationRate} onChange={e => setIndexationRate(e.target.value)}
+                      />
+                    </div>
                   </div>
+
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Quantidade de Parcelas</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Qtde Parcelas Mensais</label>
                     <input
                       type="number"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none"
+                      className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none transition-all"
                       value={installments} onChange={e => setInstallments(e.target.value)}
                     />
                   </div>
+
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Valor Base da Parcela (R$)</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Valor Base da Parcela (R$)</label>
                     <input
                       type="number" step="0.01"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none"
+                      className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none transition-all"
                       value={installmentAmount} onChange={e => setInstallmentAmount(e.target.value)}
                     />
                   </div>
+
                   <div className="md:col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Data de Venc. da 1ª Parcela</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Data da Primeira Parcela</label>
                     <input
                       type="date"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none"
+                      className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-900 focus:border-brand-500 outline-none transition-all"
                       value={firstDueDate} onChange={e => setFirstDueDate(e.target.value)}
                     />
                   </div>
                 </div>
 
-                {/* Balões */}
-                <div className="pt-4 border-t border-brand-100">
-                  <h5 className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-4">Intermediárias / Balões</h5>
-                  <div className="flex gap-2 mb-4">
-                    <input
-                      type="number" placeholder="Mês (1-12)" min="1" max="12"
-                      className="w-24 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
-                      value={bMonth} onChange={e => setBMonth(e.target.value)}
-                    />
-                    <input
-                      type="number" placeholder="Ano (Ex: 2026)" min="2020" max="2100"
-                      className="w-28 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
-                      value={bYear} onChange={e => setBYear(e.target.value)}
-                    />
-                    <input
-                      type="number" placeholder="Valor R$" step="0.01"
-                      className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
-                      value={bAmount} onChange={e => setBAmount(e.target.value)}
-                    />
-                    <button type="button" onClick={addBalloon} className="bg-slate-900 text-white rounded-xl px-4 flex items-center justify-center hover:bg-slate-800">
-                      <Plus size={16} />
+                {/* Balões / Intermediárias */}
+                <div className="p-8 border border-slate-200 rounded-[32px] bg-slate-50/50">
+                  <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Intermediárias / Balões</h5>
+                  <div className="flex flex-col md:flex-row gap-4 mb-6">
+                    <div className="flex gap-2 flex-1">
+                      <input
+                        type="number" placeholder="Mês" min="1" max="12"
+                        className="w-24 bg-white border border-slate-200 rounded-2xl px-4 py-4 text-sm font-bold outline-none"
+                        value={bMonth} onChange={e => setBMonth(e.target.value)}
+                      />
+                      <input
+                        type="number" placeholder="Ano" min="2020" max="2100"
+                        className="w-32 bg-white border border-slate-200 rounded-2xl px-4 py-4 text-sm font-bold outline-none"
+                        value={bYear} onChange={e => setBYear(e.target.value)}
+                      />
+                      <input
+                        type="number" placeholder="Valor R$" step="0.01"
+                        className="flex-1 bg-white border border-slate-200 rounded-2xl px-4 py-4 text-sm font-bold outline-none"
+                        value={bAmount} onChange={e => setBAmount(e.target.value)}
+                      />
+                    </div>
+                    <button type="button" onClick={addBalloon} className="h-[56px] px-6 bg-slate-900 text-white rounded-2xl flex items-center justify-center hover:bg-slate-800 transition-colors">
+                      <Plus size={20} className="mr-2" /> Adicionar
                     </button>
                   </div>
 
                   {balloons.length > 0 && (
-                    <div className="space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {balloons.map((b, i) => (
-                        <div key={i} className="flex justify-between items-center bg-white border border-slate-100 rounded-lg px-4 py-2 text-xs font-bold">
-                          <span>{String(b.month).padStart(2, '0')}/{b.year}</span>
-                          <span className="text-brand-600">R$ {b.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                          <button onClick={() => removeBalloon(i)} className="text-red-400 hover:text-red-600"><Trash2 size={14}/></button>
+                        <div key={i} className="flex justify-between items-center bg-white border border-slate-100 rounded-2xl px-5 py-3 shadow-sm">
+                          <span className="text-[11px] font-bold text-slate-500">{String(b.month).padStart(2, '0')}/{b.year}</span>
+                          <span className="text-sm font-black text-brand-600">R$ {b.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          <button onClick={() => removeBalloon(i)} className="text-rose-300 hover:text-rose-500"><Trash2 size={16}/></button>
                         </div>
                       ))}
                     </div>
@@ -371,19 +439,20 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
           </section>
         </div>
 
-        <div className="px-8 py-6 border-t border-slate-100 bg-slate-50 flex gap-4 shrink-0">
-          <button disabled={isSubmitting} onClick={onClose} className="flex-1 px-6 py-4 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-100 transition-colors">
+        <div className="px-8 py-8 border-t border-slate-100 bg-slate-50 flex gap-6 shrink-0">
+          <button disabled={isSubmitting} onClick={onClose} className="px-8 py-4 bg-white border border-slate-200 text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">
             Cancelar
           </button>
           <button 
-            disabled={isSubmitting} 
+            disabled={isSubmitting || !name || !estimatedValue} 
             onClick={handleSave} 
-            className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:bg-brand-700 transition-colors disabled:opacity-50"
+            className="flex-1 px-8 py-4 bg-brand-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-brand-500/30 hover:bg-brand-700 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:hover:scale-100"
           >
-            {isSubmitting ? 'Gerando Histórico...' : 'Concluir Aquisição'}
+            {isSubmitting ? 'Processando Contrato...' : 'Consolidar Aquisição'}
           </button>
         </div>
       </div>
     </div>
   );
 };
+

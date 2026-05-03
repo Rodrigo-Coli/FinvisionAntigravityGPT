@@ -8,6 +8,10 @@ export interface Profile {
   email: string;
   role: UserRole;
   is_approved: boolean;
+  preferences?: {
+    bottom_nav_items?: string[];
+    show_bottom_nav?: boolean;
+  };
   created_at: string;
 }
 

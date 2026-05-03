@@ -30,7 +30,13 @@ import {
   Archive,
   Building2,
   Gem,
-  BellRing
+  BellRing,
+  Navigation,
+  Home,
+  Landmark,
+  CreditCard,
+  History as HistoryIcon,
+  FileCheck
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { useSubscription } from '../contexts/SubscriptionContext';
@@ -38,7 +44,7 @@ import { DateUtils } from '../lib/dateUtils';
 import { subscribeUserToPush } from '../lib/pushUtils';
 
 const SettingsPage: React.FC = () => {
-  const [activeSection, setActiveSection] = useState<'general' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription'>('general');
+  const [activeSection, setActiveSection] = useState<'general' | 'navigation' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription'>('general');
   const { subscription, loadingSub } = useSubscription();
   const [settings, setSettings] = useState({
     email_notifications: true,
@@ -49,6 +55,7 @@ const SettingsPage: React.FC = () => {
     whatsapp_number: '',
     push_enabled: false
   });
+  const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [establishments, setEstablishments] = useState<any[]>([]);
@@ -84,7 +91,7 @@ const SettingsPage: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      if (activeSection === 'general' || activeSection === 'rates') {
+      if (activeSection === 'general' || activeSection === 'rates' || activeSection === 'navigation') {
         const { data } = await supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle();
         if (data) {
           setSettings({
@@ -97,6 +104,9 @@ const SettingsPage: React.FC = () => {
             push_enabled: data.push_enabled || false
           });
         }
+        
+        const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        if (prof) setProfile(prof);
       }
 
       if (activeSection === 'categories') {
@@ -244,6 +254,7 @@ const SettingsPage: React.FC = () => {
 
   const menuItems = [
     { id: 'general', label: 'Preferências', icon: <SettingsIcon size={18} /> },
+    { id: 'navigation', label: 'Navegação', icon: <Navigation size={18} /> },
     { id: 'subscription', label: 'Meu Plano', icon: <Gem size={18} /> },
     { id: 'categories', label: 'Categorias', icon: <Tags size={18} /> },
     { id: 'entities', label: 'Entidades / Donos', icon: <Building2 size={18} /> },
@@ -440,6 +451,73 @@ const SettingsPage: React.FC = () => {
                   <button onClick={() => updateSetting('auto_dark_mode', !settings.auto_dark_mode)} className={`w-14 h-8 rounded-full p-1 transition-all ${settings.auto_dark_mode ? 'bg-brand-600' : 'bg-slate-200'}`}>
                     <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${settings.auto_dark_mode ? 'translate-x-6' : 'translate-x-0'}`} />
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'navigation' && (
+            <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm p-10 space-y-10 animate-in slide-in-from-bottom-4 duration-500">
+              <div className="space-y-2">
+                <h2 className="text-xl font-bold text-slate-900 italic">Barra de Navegação</h2>
+                <p className="text-sm text-slate-400 font-medium">Escolha o que aparece na sua barra inferior (Mobile).</p>
+              </div>
+
+              <div className="space-y-6">
+                <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">
+                  <div>
+                    <p className="font-bold text-slate-900">Exibir Barra Inferior</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Ativa ou oculta totalmente a barra flutuante.</p>
+                  </div>
+                  <button 
+                    onClick={async () => {
+                      const newValue = !(profile?.preferences?.show_bottom_nav ?? true);
+                      const newPrefs = { ...profile?.preferences, show_bottom_nav: newValue };
+                      setProfile({ ...profile, preferences: newPrefs });
+                      await supabase!.from('profiles').update({ preferences: newPrefs }).eq('id', profile.id);
+                    }} 
+                    className={`w-14 h-8 rounded-full p-1 transition-all ${profile?.preferences?.show_bottom_nav !== false ? 'bg-brand-600' : 'bg-slate-200'}`}
+                  >
+                    <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${profile?.preferences?.show_bottom_nav !== false ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Atalhos Visíveis</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[
+                      { id: 'home', label: 'Início', icon: <Home size={18} /> },
+                      { id: 'accounts', label: 'Contas', icon: <Landmark size={18} /> },
+                      { id: 'cards', label: 'Cartões', icon: <CreditCard size={18} /> },
+                      { id: 'history', label: 'Histórico', icon: <HistoryIcon size={18} /> },
+                      { id: 'reconcile', label: 'Conciliar', icon: <FileCheck size={18} /> },
+                    ].map(item => {
+                      const isSelected = profile?.preferences?.bottom_nav_items?.includes(item.id) ?? true;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={async () => {
+                            let currentItems = profile?.preferences?.bottom_nav_items || ['home', 'accounts', 'cards', 'history', 'reconcile'];
+                            if (isSelected) currentItems = currentItems.filter((i: string) => i !== item.id);
+                            else currentItems = [...currentItems, item.id];
+                            
+                            const newPrefs = { ...profile?.preferences, bottom_nav_items: currentItems };
+                            setProfile({ ...profile, preferences: newPrefs });
+                            await supabase!.from('profiles').update({ preferences: newPrefs }).eq('id', profile.id);
+                          }}
+                          className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${isSelected ? 'bg-brand-50 border-brand-100 text-brand-900' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            {item.icon}
+                            <span className="text-xs font-bold uppercase tracking-wider">{item.label}</span>
+                          </div>
+                          <div className={`w-5 h-5 rounded-lg flex items-center justify-center ${isSelected ? 'bg-brand-600 text-white' : 'bg-slate-100'}`}>
+                            {isSelected && <Check size={12} />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>

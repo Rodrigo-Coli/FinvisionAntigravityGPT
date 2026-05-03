@@ -19,6 +19,7 @@ import { handleNotifyBillsDue } from './_lib/notify-bills-due';
 import { handleVapidPublicKey } from './_lib/vapid-public-key';
 import { handleHealth } from './_lib/health';
 import { handleReceiptItems } from './_lib/handle-receipt-items';
+import { handleAsaasBillingHistory } from './_lib/asaas-billing-history';
 
 function setCorsHeaders(res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -49,6 +50,7 @@ export default async function handler(req: any, res: any) {
 
     // --- Webhooks ---
     if (url.includes('/asaas-webhook'))            return handleAsaasWebhook(req, res);
+    if (url.includes('/asaas-billing-history'))    return handleAsaasBillingHistory(req, res);
     if (url.includes('/whatsapp-webhook'))         return handleWhatsAppWebhook(req, res);
 
     // --- Cron ---

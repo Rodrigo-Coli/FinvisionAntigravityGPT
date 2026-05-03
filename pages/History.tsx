@@ -153,6 +153,8 @@ const HistoryPage: React.FC = () => {
     const cat = params.get('category');
     const acc = params.get('account');
     const addParam = params.get('add');
+    const startParam = params.get('startDate');
+    const endParam = params.get('endDate');
 
     let hasChanged = false;
     if (cat) {
@@ -166,6 +168,16 @@ const HistoryPage: React.FC = () => {
       tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
       setStartDate(DateUtils.formatToISODate(tenYearsAgo));
       setEndDate(DateUtils.formatToISODate(new Date()));
+      hasChanged = true;
+    }
+
+    if (startParam) {
+      setStartDate(startParam);
+      hasChanged = true;
+    }
+
+    if (endParam) {
+      setEndDate(endParam);
       hasChanged = true;
     }
 

@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, HashRouter } from 'react-router-dom';
 import { supabase } from './lib/supabase/client';
 import { Profile, UserRole } from './types';
 import Nav from './components/Nav';
 import BottomNav from './components/BottomNav';
+import { PushManager } from './components/PushManager';
 import FloatingActions from './components/FloatingActions';
 import ScrollToTop from './components/common/ScrollToTop';
 import Home from './pages/Home';
@@ -12,8 +12,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
-import AdminUsers from './pages/AdminUsers';
-import AdminPlans from './pages/AdminPlans';
+import AdminDashboard from './pages/AdminDashboard';
 import Accounts from './pages/Accounts';
 import HistoryPage from './pages/History';
 import CreditCardsPage from './pages/CreditCards';
@@ -121,13 +120,14 @@ const App: React.FC = () => {
             <OfflineBanner />
             <TrialBanner />
             <UpgradeModal />
+            <PushManager />
             <TourProvider>
               <ToastProvider>
                 <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50/50 dark:bg-slate-900 font-sans">
                 {session && profile && (
                   <>
                     <Nav user={profile} />
-                    <BottomNav user={profile} />
+                    {profile.preferences?.show_bottom_nav !== false && <BottomNav user={profile} />}
                     <FloatingActions />
                   </>
                 )}
@@ -168,8 +168,9 @@ const App: React.FC = () => {
                         <Route path="/reports" element={<Reports />} />
                         {(profile.role === UserRole.ADMIN || profile.email === 'rodrigocolicg@gmail.com') && (
                           <>
-                            <Route path="/admin/usuarios" element={<AdminUsers currentUser={profile} />} />
-                            <Route path="/admin/planos" element={<AdminPlans />} />
+                            <Route path="/admin" element={<AdminDashboard />} />
+                            <Route path="/admin/usuarios" element={<AdminDashboard />} />
+                            <Route path="/admin/planos" element={<AdminDashboard />} />
                           </>
                         )}
                         <Route path="*" element={<Navigate to="/" replace />} />
