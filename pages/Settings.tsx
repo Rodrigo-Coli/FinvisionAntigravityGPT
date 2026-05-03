@@ -36,7 +36,9 @@ import {
   Landmark,
   CreditCard,
   History as HistoryIcon,
-  FileCheck
+  FileCheck,
+  Target,
+  PieChart
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { useSubscription } from '../contexts/SubscriptionContext';
@@ -490,7 +492,11 @@ const SettingsPage: React.FC = () => {
                       { id: 'accounts', label: 'Contas', icon: <Landmark size={18} /> },
                       { id: 'cards', label: 'Cartões', icon: <CreditCard size={18} /> },
                       { id: 'history', label: 'Histórico', icon: <HistoryIcon size={18} /> },
+                      { id: 'assets', label: 'Patrimônio', icon: <Building2 size={18} /> },
+                      { id: 'goals', label: 'Metas', icon: <Target size={18} /> },
+                      { id: 'budgets', label: 'Orçamentos', icon: <PieChart size={18} /> },
                       { id: 'reconcile', label: 'Conciliar', icon: <FileCheck size={18} /> },
+                      { id: 'saas', label: 'Vip Plan', icon: <Gem size={18} /> },
                     ].map(item => {
                       const isSelected = profile?.preferences?.bottom_nav_items?.includes(item.id) ?? true;
                       return (

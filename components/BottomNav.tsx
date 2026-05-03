@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Landmark, CreditCard, History, FileCheck, Plus, ShieldCheck, X, DollarSign } from 'lucide-react';
+import { Home, Landmark, CreditCard, History, FileCheck, Plus, ShieldCheck, X, DollarSign, Building2, Target, PieChart, Gem } from 'lucide-react';
 import { Profile, UserRole } from '../types';
 
 interface BottomNavProps {
@@ -24,7 +24,11 @@ const BottomNav: React.FC<BottomNavProps> = ({ user }) => {
     { id: 'accounts', label: 'Contas', path: '/accounts', icon: <Landmark size={20} /> },
     { id: 'cards', label: 'Cartões', path: '/cards', icon: <CreditCard size={20} /> },
     { id: 'history', label: 'Histórico', path: '/history', icon: <History size={20} /> },
+    { id: 'assets', label: 'Patrimônio', path: '/assets', icon: <Building2 size={20} /> },
+    { id: 'goals', label: 'Metas', path: '/goals', icon: <Target size={20} /> },
+    { id: 'budgets', label: 'Orçamentos', path: '/budgets', icon: <PieChart size={20} /> },
     { id: 'reconcile', label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },
+    { id: 'saas', label: 'Vip Plan', path: '/admin/planos', icon: <Gem size={20} /> },
   ];
 
   const filteredItems = allItems.filter(i => visibleItems.includes(i.id));
@@ -124,21 +128,6 @@ const BottomNav: React.FC<BottomNavProps> = ({ user }) => {
             );
           })}
 
-          {isAdmin && (
-            <Link
-              to="/admin/planos"
-              className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all ${
-                location.pathname.startsWith('/admin') ? 'text-brand-600' : 'text-slate-400'
-              }`}
-            >
-              <div className={`p-1 ${location.pathname.startsWith('/admin') ? 'bg-brand-50 rounded-lg' : ''}`}>
-                <ShieldCheck size={20} />
-              </div>
-              <span className={`text-[9px] font-black uppercase tracking-tighter ${location.pathname.startsWith('/admin') ? 'opacity-100' : 'opacity-60'}`}>
-                SaaS
-              </span>
-            </Link>
-          )}
         </div>
       </nav>
     </>
