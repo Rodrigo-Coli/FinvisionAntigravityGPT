@@ -44,6 +44,8 @@ if (window.location.pathname === '/demo' || window.location.pathname === '/demo/
   window.location.replace('/#/demo');
 }
 
+const APP_VERSION = '6.2.2';
+
 const App: React.FC = () => {
   const [profile, setProfile] = useState<Profile | null>(() => {
     const cached = localStorage.getItem('finvision_cached_profile');
