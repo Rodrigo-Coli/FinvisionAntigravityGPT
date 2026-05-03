@@ -38,7 +38,7 @@ export const DashboardService = {
     // 2. Credit Cards Summary
     const { data: cards, error: cardErr } = await sb
       .from('cards')
-      .select('id, brand, name, limit_total')
+      .select('id, brand, name, limit_total, last4')
       .eq('user_id', user.id)
       .eq('is_archived', false);
 
@@ -60,6 +60,7 @@ export const DashboardService = {
         current: total - paid,
         forecasted: total,
         limit: Number(card.limit_total || 0),
+        last4: card.last4 || '0000',
         color: card.brand.toLowerCase().includes('visa') ? 'bg-brand-600' : 'bg-slate-900'
       };
     })) : [];
