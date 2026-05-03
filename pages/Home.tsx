@@ -286,7 +286,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
                     </div>
                     <div>
                       <p className="text-xs font-bold text-slate-900 leading-tight">{card.brand}</p>
-                      <p className="text-[10px] text-slate-400">****1234</p>
+                      <p className="text-[10px] text-slate-400">****{card.last4 || '0000'}</p>
                     </div>
                   </div>
                   <div className="text-right">
