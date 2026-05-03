@@ -51,7 +51,6 @@ const Reconcile: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [counterAccountId, setCounterAccountId] = useState<string>('');
   const [processingItemId, setProcessingItemId] = useState<string | null>(null);
-  const [selectedTargetName, setSelectedTargetName] = useState('');
   const [globalCounterpartName, setGlobalCounterpartName] = useState('');
 
   // Filtros
@@ -507,6 +506,7 @@ const Reconcile: React.FC = () => {
   const handleConfirm = async (item: any, isBulk: boolean = false) => {
     if (!supabase) return;
     const hasOriginalDest = !!item.metadata?.original_account_id;
+    const isEditing = editingId === item.id;
     const targetId = hasOriginalDest
       ? item.metadata.original_account_id
       : (isEditing ? editForm.targetId : selectedTargetId);
