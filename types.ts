@@ -28,6 +28,7 @@ export interface DashboardData {
     current: number;
     forecasted: number;
     limit?: number;
+    last4?: string;
     color: string;
   }[];
   alerts: {
