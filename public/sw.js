@@ -1,5 +1,5 @@
 // FinVision Pro — Service Worker (offline-first cache)
-const CACHE_NAME = 'finvision-v1';
+const CACHE_NAME = 'finvision-v3';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
