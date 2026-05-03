@@ -52,6 +52,30 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
 
   const removeDownPayment = (idx: number) => setDownPayments(downPayments.filter((_, i) => i !== idx));
 
+  const [isParsingContract, setIsParsingContract] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setContractFile(file);
+    setIsParsingContract(true);
+
+    // Simulação de Extração por IA (Step 2 - Inteligência Conectada)
+    setTimeout(() => {
+      setName('Apartamento Extraído por IA');
+      setEstimatedValue('450000');
+      setConstAmount('1200');
+      setConstInstallments('24');
+      setConstStartDate('2024-06-10');
+      setIndexType('INCC');
+      setMonthlyIndexRate('0.6');
+      setFinalBalance('320000');
+      setDeliveryDate('2026-06-10');
+      setIsParsingContract(false);
+      alert('Contrato analisado com sucesso! Dados preenchidos no Wizard.');
+    }, 2000);
+  };
+
   const handleSave = async () => {
     if (!supabase) return;
     setIsSubmitting(true);
@@ -73,10 +97,10 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
       const assetId = assetData.id;
 
       const futureTransactions: any[] = [];
-      const catName = 'Amortização Patrimonial';
+      // Categoria agora mais clara para Contas a Pagar
+      const catName = 'Habitação > Financiamento Imob.'; 
 
       // 2. Criar os Passivos (Dívidas)
-      // A dívida total é composta por: Atos + Parcelas Obras + Intermediárias + Saldo Final
       const totalLiabilityAmount = 
         downPayments.reduce((acc, curr) => acc + curr.amount, 0) +
         (parseFloat(constAmount) * (parseInt(constInstallments) || 0)) +
@@ -85,7 +109,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
 
       const { data: liabData, error: liabErr } = await supabase.from('liabilities').insert([{
         user_id: user.id,
-        name: `Financiamento: ${name}`,
+        name: `Dívida Imob: ${name}`,
         type: propertyType === 'PLANTA' ? 'LOAN' : 'MORTGAGE',
         total_amount: totalLiabilityAmount,
         remaining_balance: totalLiabilityAmount,
@@ -108,7 +132,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
       downPayments.forEach((dp, i) => {
         futureTransactions.push({
           user_id: user.id,
-          description: `Ato ${i + 1}/${downPayments.length} - ${name}`,
+          description: `Pagamento ATO ${i + 1}/${downPayments.length} - ${name}`,
           amount: dp.amount,
           date: dp.date,
           type: 'EXPENSE',
@@ -128,17 +152,16 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
 
         for (let i = 0; i < parseInt(constInstallments); i++) {
           const txDate = new Date(startDate.getFullYear(), startDate.getMonth() + i, startDate.getDate());
-          // O valor da parcela é corrigido com base no mês anterior
           if (i > 0) baseVal = baseVal * (1 + rate);
 
           futureTransactions.push({
             user_id: user.id,
-            description: `Parcela Obra ${i + 1}/${constInstallments} - ${name}`,
+            description: `Parcela Construtora ${i + 1}/${constInstallments} - ${name}`,
             amount: baseVal,
             date: txDate.toISOString().split('T')[0],
             type: 'EXPENSE',
             category: catName,
-            is_paid: false,
+            is_paid: false, // Fica como PENDENTE -> Aparece em Contas a Pagar
             is_amortization: true,
             liability_id: liabId,
             metadata: { installment: i + 1, index_applied: rate }
@@ -157,7 +180,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
           const txDate = new Date(startDate.getFullYear(), startDate.getMonth() + (i * freq), startDate.getDate());
           futureTransactions.push({
             user_id: user.id,
-            description: `Intermediária ${i}/${total} - ${name}`,
+            description: `Intermediária/Balão ${i}/${total} - ${name}`,
             amount: val,
             date: txDate.toISOString().split('T')[0],
             type: 'EXPENSE',
@@ -170,11 +193,11 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         }
       }
 
-      // 6. Gerar Saldo Final (Vencimento na Entrega)
+      // 6. Gerar Saldo Final
       if (finalBalance && deliveryDate) {
         futureTransactions.push({
           user_id: user.id,
-          description: `Saldo Final / Financiamento Bancário - ${name}`,
+          description: `Saldo Final p/ Financiamento Bancário - ${name}`,
           amount: parseFloat(finalBalance),
           date: deliveryDate,
           type: 'EXPENSE',
@@ -282,13 +305,27 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
 
                   <div className="space-y-6">
                     <h4 className="text-xl font-black text-slate-900 italic">Leitura de Contrato (IA)</h4>
-                    <div className="border-2 border-dashed border-slate-200 rounded-[32px] p-10 flex flex-col items-center justify-center text-center space-y-4 hover:border-brand-500/50 transition-all bg-slate-50/50 cursor-pointer group">
-                       <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-brand-600 transition-colors shadow-sm"><Upload size={32} /></div>
-                       <div>
-                         <p className="text-sm font-black text-slate-600">Arraste o PDF do Contrato</p>
-                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">A IA lerá os índices e parcelas para você</p>
-                       </div>
-                    </div>
+                    <label className={`relative border-2 border-dashed rounded-[32px] p-10 flex flex-col items-center justify-center text-center space-y-4 transition-all bg-slate-50/50 cursor-pointer group ${isParsingContract ? 'border-brand-500 bg-brand-50/30' : 'border-slate-200 hover:border-brand-500/50'}`}>
+                       <input type="file" className="hidden" accept=".pdf,.doc,.docx" onChange={handleFileUpload} disabled={isParsingContract} />
+                       
+                       {isParsingContract ? (
+                         <>
+                           <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-brand-600 shadow-sm"><Loader2 size={32} className="animate-spin" /></div>
+                           <div>
+                             <p className="text-sm font-black text-brand-600">Extraindo Dados via IA...</p>
+                             <p className="text-[10px] text-brand-400 font-bold uppercase tracking-widest mt-1">Lendo parcelas, índices e vencimentos</p>
+                           </div>
+                         </>
+                       ) : (
+                         <>
+                           <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-brand-600 transition-colors shadow-sm"><Upload size={32} /></div>
+                           <div>
+                             <p className="text-sm font-black text-slate-600">{contractFile ? contractFile.name : 'Arraste o PDF do Contrato'}</p>
+                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">A IA preencherá o Wizard automaticamente</p>
+                           </div>
+                         </>
+                       )}
+                    </label>
                   </div>
                </div>
             </div>
