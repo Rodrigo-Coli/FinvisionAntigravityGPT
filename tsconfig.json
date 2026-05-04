@@ -29,6 +29,7 @@
     "dist",
     "backups",
     "_backup_*",
-    "documentos"
+    "documentos",
+    "supabase"
   ]
 }

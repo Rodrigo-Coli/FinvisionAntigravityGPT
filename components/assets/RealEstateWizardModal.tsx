@@ -64,7 +64,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         .eq('type', 'CONSORTIUM');
       
       if (data) {
-        setAvailableConsortia(data.map(l => ({
+        setAvailableConsortia(data.map((l: any) => ({
           id: l.id,
           name: l.name,
           type: l.type,
