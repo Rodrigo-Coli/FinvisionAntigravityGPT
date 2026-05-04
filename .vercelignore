@@ -15,12 +15,15 @@ tests/
 # Ignorar scripts e arquivos de configuração desnecessários para o Vercel
 *.ps1
 *.bat
-*.sql
-*.js
-*.cjs
 *.bak
 *.txt
 *.log
+*.sql
+*.js
+!src/sw.js
+!public/sw.js
+!vite.config.ts.js
+!*.config.js
 *.png
 *.jpg
 *.jpeg
