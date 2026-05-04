@@ -1,7 +1,7 @@
 # Ignorar pastas de sistema e backups
 backups/
 documentos/
-supabase/
+/supabase/
 server/
 tools/
 _backup/

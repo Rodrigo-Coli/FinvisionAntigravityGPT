@@ -188,7 +188,7 @@ export const DashboardService = {
     if (consolidatedBalance < 1000) {
       smartAlerts.push({ id: 'low-bal', type: 'warning', message: 'Atenção: Saldo consolidado abaixo de R$ 1.000', createdAt: new Date().toISOString() });
     }
-    creditCardsSummary.forEach(c => {
+    creditCardsSummary.forEach((c: any) => {
       if (c.limit > 0 && c.current / c.limit > 0.8) {
         smartAlerts.push({ id: `cc-high-${c.brand}`, type: 'critical', message: `Cartão ${c.brand} com mais de 80% do limite utilizado`, createdAt: new Date().toISOString() });
       }
