@@ -250,7 +250,11 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
             is_paid: false,
             is_amortization: true,
             liability_id: liabId,
-            metadata: { type: 'INTERMEDIARY' }
+            metadata: { 
+              type: 'INTERMEDIARY',
+              index_type: indexType,
+              needs_adjustment: indexType !== 'FIXED' 
+            }
           });
         }
       }
@@ -337,252 +341,268 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
             </div>
           </div>
 
-          <div className="p-10 space-y-16">
+          <div className="p-6 space-y-10">
             
             {/* SECTION: IDENTIFICATION */}
-            <div className="space-y-8">
+            <div className="space-y-6">
                <div className="flex items-center justify-between">
                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-slate-100 text-slate-900 rounded-xl flex items-center justify-center font-black">1</div>
-                    <h4 className="text-xl font-black text-slate-900 italic">Identificação e Status</h4>
+                    <div className="w-6 h-6 bg-slate-100 text-slate-900 rounded-lg flex items-center justify-center font-black text-[10px]">1</div>
+                    <h4 className="text-lg font-black text-slate-900 italic">Identificação e Status</h4>
                  </div>
-                 <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/50">
-                   <button onClick={() => setPropertyType('PLANTA')} className={`px-8 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${propertyType === 'PLANTA' ? 'bg-white text-brand-600 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>Na Planta</button>
-                   <button onClick={() => setPropertyType('PRONTO')} className={`px-8 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${propertyType === 'PRONTO' ? 'bg-white text-brand-600 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>Pronto</button>
+                 <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
+                   <button onClick={() => setPropertyType('PLANTA')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${propertyType === 'PLANTA' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Na Planta</button>
+                   <button onClick={() => setPropertyType('PRONTO')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${propertyType === 'PRONTO' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Pronto</button>
                  </div>
                </div>
 
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  <div className="md:col-span-2 space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nome do Empreendimento / Unidade</label>
-                    <input className="w-full h-16 px-8 bg-slate-50 border border-slate-100 rounded-3xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-brand-500/10 transition-all" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Apartamento 402 - Ed. Horizonte" />
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Nome do Empreendimento / Unidade</label>
+                    <input className="w-full h-12 px-6 bg-slate-50 border border-slate-100 rounded-2xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-brand-500/10 transition-all text-sm" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Apartamento 402 - Ed. Horizonte" />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Avaliação Total (R$)</label>
-                    <input type="number" className="w-full h-16 px-8 bg-slate-50 border border-slate-100 rounded-3xl font-black text-slate-900 outline-none" value={estimatedValue} onChange={e => setEstimatedValue(e.target.value)} placeholder="0,00" />
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Avaliação Total (R$)</label>
+                    <input type="number" className="w-full h-12 px-6 bg-slate-50 border border-slate-100 rounded-2xl font-black text-slate-900 outline-none text-sm" value={estimatedValue} onChange={e => setEstimatedValue(e.target.value)} placeholder="0,00" />
                   </div>
                </div>
             </div>
 
             {/* SECTION: ATO E ENTRADAS */}
-            <div className="space-y-8">
+            <div className="space-y-6">
                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-slate-100 text-slate-900 rounded-xl flex items-center justify-center font-black">2</div>
-                  <h4 className="text-xl font-black text-slate-900 italic">Entradas e Fluxo de Ato</h4>
+                  <div className="w-6 h-6 bg-slate-100 text-slate-900 rounded-lg flex items-center justify-center font-black text-[10px]">2</div>
+                  <h4 className="text-lg font-black text-slate-900 italic">Entradas e Fluxo de Ato</h4>
                </div>
                
-               <div className="bg-slate-50/50 p-8 rounded-[40px] border border-slate-100 space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor</label>
-                      <input type="number" className="w-full h-14 px-6 bg-white border border-slate-200 rounded-2xl font-bold outline-none" placeholder="R$" value={currDownAmount} onChange={e => setCurrDownAmount(e.target.value)} />
+               <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor</label>
+                      <input type="number" className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" placeholder="R$" value={currDownAmount} onChange={e => setCurrDownAmount(e.target.value)} />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Data</label>
-                      <input type="date" className="w-full h-14 px-6 bg-white border border-slate-200 rounded-2xl font-bold outline-none" value={currDownDate} onChange={e => setCurrDownDate(e.target.value)} />
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Data</label>
+                      <input type="date" className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" value={currDownDate} onChange={e => setCurrDownDate(e.target.value)} />
                     </div>
                     <div className="flex items-end">
-                      <button onClick={addDownPayment} className="w-full h-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center gap-3 hover:bg-brand-700 transition-all shadow-lg font-black text-[10px] uppercase tracking-widest"><Plus size={18} /> Adicionar Lançamento</button>
+                      <button onClick={addDownPayment} className="w-full h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center gap-2 hover:bg-brand-600 transition-all shadow-md font-black text-[9px] uppercase tracking-widest"><Plus size={16} /> Adicionar</button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                      {downPayments.map((dp, i) => (
-                       <div key={i} className="flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-100 shadow-sm group">
+                       <div key={i} className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-100 shadow-sm group">
                          <div>
-                           <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Ato #{i+1}</p>
-                           <p className="text-sm font-black text-slate-900">R$ {dp.amount.toLocaleString()}</p>
-                           <p className="text-[10px] text-slate-400 font-medium">{new Date(dp.date).toLocaleDateString('pt-BR')}</p>
+                           <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Ato #{i+1}</p>
+                           <p className="text-xs font-black text-slate-900">R$ {dp.amount.toLocaleString()}</p>
+                           <p className="text-[9px] text-slate-400 font-medium">{new Date(dp.date).toLocaleDateString('pt-BR')}</p>
                          </div>
-                         <button onClick={() => removeDownPayment(i)} className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"><Trash2 size={18} /></button>
+                         <button onClick={() => removeDownPayment(i)} className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
                        </div>
                      ))}
                   </div>
                </div>
             </div>
 
-            {/* SECTION: OBRAS (CONDITIONAL) */}
-            {propertyType === 'PLANTA' && (
-              <div className="space-y-8">
-                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                       <div className="w-8 h-8 bg-slate-100 text-slate-900 rounded-xl flex items-center justify-center font-black">3</div>
-                       <h4 className="text-xl font-black text-slate-900 italic">Fase de Obras e Correções</h4>
-                    </div>
-                    <div className="flex items-center gap-4 bg-brand-900 p-2 px-4 rounded-2xl text-white">
-                       <Sparkles size={16} className="text-brand-400" />
-                       <span className="text-[10px] font-black uppercase tracking-widest">IA monitorando INCC/IPCA</span>
-                    </div>
+                    {propertyType === 'PLANTA' && (
+              <div className="space-y-6">
+                 <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 bg-slate-100 text-slate-900 rounded-lg flex items-center justify-center font-black text-[10px]">3</div>
+                    <h4 className="text-lg font-black text-slate-900 italic">Fase de Obras e Correções</h4>
                  </div>
 
-                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                    <div className="space-y-6">
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-4">Parcelamento Construtora</p>
-                       <div className="bg-slate-50/50 p-8 rounded-[40px] border border-slate-100 space-y-6">
-                          <div className="grid grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Qtd Parcelas</label>
-                              <input type="number" className="w-full h-14 px-6 bg-white border border-slate-100 rounded-2xl font-black outline-none" value={constInstallments} onChange={e => setConstInstallments(e.target.value)} placeholder="00" />
+                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] ml-4">Parcelamento Construtora</p>
+                       <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-2">Qtd Parcelas</label>
+                              <input type="number" className="w-full h-12 px-5 bg-white border border-slate-100 rounded-xl font-black outline-none text-sm" value={constInstallments} onChange={e => setConstInstallments(e.target.value)} placeholder="00" />
                             </div>
-                            <div className="space-y-2">
-                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor Base</label>
-                              <input type="number" className="w-full h-14 px-6 bg-white border border-slate-100 rounded-2xl font-black outline-none" value={constAmount} onChange={e => setConstAmount(e.target.value)} placeholder="R$" />
+                            <div className="space-y-1.5">
+                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor Base</label>
+                              <input type="number" className="w-full h-12 px-5 bg-white border border-slate-100 rounded-xl font-black outline-none text-sm" value={constAmount} onChange={e => setConstAmount(e.target.value)} placeholder="R$" />
                             </div>
                           </div>
-                          <div className="space-y-2">
-                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Início dos Pagamentos</label>
-                             <input type="date" className="w-full h-14 px-6 bg-white border border-slate-100 rounded-2xl font-black outline-none" value={constStartDate} onChange={e => setConstStartDate(e.target.value)} />
+                          <div className="space-y-1.5">
+                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-2">Início dos Pagamentos</label>
+                             <input type="date" className="w-full h-12 px-5 bg-white border border-slate-100 rounded-xl font-black outline-none text-sm" value={constStartDate} onChange={e => setConstStartDate(e.target.value)} />
                           </div>
                        </div>
                     </div>
 
-                    <div className="space-y-6">
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-4">Intermediárias / Balões</p>
-                       <div className="bg-slate-50/50 p-8 rounded-[40px] border border-slate-100 space-y-6">
-                          <div className="grid grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Freq. (Meses)</label>
-                              <select className="w-full h-14 px-6 bg-white border border-slate-100 rounded-2xl font-black outline-none appearance-none" value={intermFrequency} onChange={e => setIntermFrequency(e.target.value)}>
+                    <div className="space-y-4">
+                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] ml-4">Intermediárias / Balões</p>
+                       <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-2">Freq. (Meses)</label>
+                              <select className="w-full h-12 px-5 bg-white border border-slate-100 rounded-xl font-black outline-none appearance-none text-xs" value={intermFrequency} onChange={e => setIntermFrequency(e.target.value)}>
                                 <option value="3">Trimestral</option>
                                 <option value="6">Semestral</option>
                                 <option value="12">Anual</option>
                               </select>
                             </div>
-                            <div className="space-y-2">
-                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Total Balões</label>
-                              <input type="number" className="w-full h-14 px-6 bg-white border border-slate-100 rounded-2xl font-black outline-none" value={intermTotal} onChange={e => setIntermTotal(e.target.value)} placeholder="Ex: 4" />
+                            <div className="space-y-1.5">
+                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-2">Total Balões</label>
+                              <input type="number" className="w-full h-12 px-5 bg-white border border-slate-100 rounded-xl font-black outline-none text-sm" value={intermTotal} onChange={e => setIntermTotal(e.target.value)} placeholder="Ex: 4" />
                             </div>
                           </div>
-                          <div className="space-y-2">
-                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor de Cada Balão</label>
-                              <input type="number" className="w-full h-14 px-6 bg-white border border-slate-100 rounded-2xl font-black outline-none" value={intermAmount} onChange={e => setIntermAmount(e.target.value)} placeholder="R$" />
+                          <div className="space-y-1.5">
+                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor de Cada Balão</label>
+                              <input type="number" className="w-full h-12 px-5 bg-white border border-slate-100 rounded-xl font-black outline-none text-sm" value={intermAmount} onChange={e => setIntermAmount(e.target.value)} placeholder="R$" />
                           </div>
                        </div>
                     </div>
                  </div>
 
-                 {/* INDEXATION SETTINGS */}
-                 <div className="bg-brand-900 p-10 rounded-[40px] text-white flex flex-col md:flex-row justify-between items-center gap-10">
-                    <div className="space-y-2">
-                      <h5 className="text-lg font-black italic flex items-center gap-3"><Sparkles className="text-brand-400" /> Correção Monetária Inteligente</h5>
-                      <p className="text-xs text-brand-300 font-medium max-w-md">O sistema buscará mensalmente o índice atualizado para ajustar suas parcelas futuras. Defina a estimativa base abaixo.</p>
-                    </div>
-                    <div className="flex gap-4 p-2 bg-white/5 rounded-3xl border border-white/10">
-                       <div className="space-y-1 px-4">
-                         <p className="text-[8px] font-black text-brand-400 uppercase tracking-widest">Índice</p>
-                         <select className="bg-transparent font-black text-white outline-none cursor-pointer" value={indexType} onChange={e => setIndexType(e.target.value as any)}>
-                           <option value="INCC" className="text-slate-900">INCC (Obra)</option>
-                           <option value="IPCA" className="text-slate-900">IPCA</option>
-                           <option value="FIXED" className="text-slate-900">FIXO</option>
-                         </select>
+                 {/* INDEXATION SETTINGS - COMPACTED */}
+                 <div className="bg-slate-50 p-6 rounded-[32px] border border-slate-100">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                       <div className="flex items-center gap-3">
+                         <div className="w-8 h-8 bg-brand-600 text-white rounded-lg flex items-center justify-center shadow-md"><TrendingUp size={16} /></div>
+                         <p className="text-[10px] font-black text-slate-900 uppercase tracking-tight italic">Correção Monetária</p>
                        </div>
-                       <div className="w-px h-10 bg-white/10 self-center" />
-                       <div className="space-y-1 px-4">
-                         <p className="text-[8px] font-black text-brand-400 uppercase tracking-widest">Média Estimada</p>
-                         <div className="flex items-center gap-2">
-                            <input type="number" className="w-16 bg-transparent font-black text-white outline-none" value={monthlyIndexRate} onChange={e => setMonthlyIndexRate(e.target.value)} />
-                            <span className="text-xs font-black">% am</span>
-                         </div>
+                       
+                       <div className="space-y-1">
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Índice</p>
+                          <select className="w-full h-10 px-3 bg-white border border-slate-100 rounded-lg font-black text-xs outline-none" value={indexType} onChange={e => setIndexType(e.target.value as any)}>
+                            <option value="INCC">INCC (Obra)</option>
+                            <option value="IPCA">IPCA</option>
+                            <option value="IGP-M">IGP-M</option>
+                            <option value="FIXED">FIXO / Outros</option>
+                          </select>
+                       </div>
+
+                       <div className="space-y-1">
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Percentual Base (% am)</p>
+                          <input type="number" className="w-full h-10 px-3 bg-white border border-slate-100 rounded-lg font-black text-xs outline-none" value={monthlyIndexRate} onChange={e => setMonthlyIndexRate(e.target.value)} />
+                       </div>
+
+                       <div className="space-y-1">
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">% Mês Anterior</p>
+                          <div className="w-full h-10 px-3 bg-white/50 border border-slate-100 rounded-lg font-black text-xs flex items-center text-slate-400 italic">IA monitorando...</div>
                        </div>
                     </div>
                  </div>
               </div>
             )}
+            </div>
+              </div>
+            )}
 
             {/* SECTION: SALDO FINAL E ENTREGA */}
-            <div className="space-y-8">
+            <div className="space-y-6">
                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-slate-100 text-slate-900 rounded-xl flex items-center justify-center font-black">4</div>
-                  <h4 className="text-xl font-black text-slate-900 italic">Saldo Final e Entrega das Chaves</h4>
+                  <div className="w-6 h-6 bg-slate-100 text-slate-900 rounded-lg flex items-center justify-center font-black text-[10px]">4</div>
+                  <h4 className="text-lg font-black text-slate-900 italic">Saldo Final e Entrega das Chaves</h4>
                </div>
 
-               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                  <div className="bg-slate-50/50 p-8 rounded-[40px] border border-slate-100 space-y-8">
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Saldo a Financiar (Entrega)</label>
-                          <input type="number" className="w-full h-16 px-8 bg-white border border-slate-100 rounded-3xl font-black text-slate-900 outline-none" value={finalBalance} onChange={e => setFinalBalance(e.target.value)} placeholder="R$ 0,00" />
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-6">
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Saldo a Financiar (Entrega)</label>
+                          <input type="number" className="w-full h-12 px-6 bg-white border border-slate-100 rounded-2xl font-black text-slate-900 outline-none text-sm" value={finalBalance} onChange={e => setFinalBalance(e.target.value)} placeholder="R$ 0,00" />
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Data de Entrega (Prevista)</label>
-                          <input type="date" className="w-full h-16 px-8 bg-white border border-slate-100 rounded-3xl font-black text-slate-900 outline-none" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Data de Entrega (Prevista)</label>
+                          <input type="date" className="w-full h-12 px-6 bg-white border border-slate-100 rounded-2xl font-black text-slate-900 outline-none text-sm" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
                         </div>
                      </div>
 
-                     <div className="p-6 bg-white border border-slate-100 rounded-3xl flex items-center justify-between group">
-                        <div className="flex items-center gap-4">
-                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${adjustBalanceDuringConstruction ? 'bg-brand-50 text-brand-600' : 'bg-slate-50 text-slate-300'}`}><TrendingUp size={20} /></div>
+                     <div className="p-4 bg-white border border-slate-100 rounded-2xl flex items-center justify-between group shadow-sm">
+                        <div className="flex items-center gap-3">
+                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${adjustBalanceDuringConstruction ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/20' : 'bg-slate-50 text-slate-300'}`}><TrendingUp size={20} /></div>
                            <div>
-                              <p className="text-xs font-black text-slate-900 uppercase tracking-tight italic">Reajustar Saldo Durante a Obra?</p>
-                              <p className="text-[9px] text-slate-400 font-medium">O saldo subirá mensalmente pelo índice {indexType}.</p>
+                              <p className="text-[10px] font-black text-slate-900 uppercase tracking-tight italic">Reajuste de Saldo (Obra)</p>
+                              <p className="text-[8px] text-slate-400 font-medium">Reajustar saldo mensal pelo índice {indexType}.</p>
                            </div>
                         </div>
-                        <button onClick={() => setAdjustBalanceDuringConstruction(!adjustBalanceDuringConstruction)} className={`w-14 h-8 rounded-full p-1.5 transition-all flex items-center ${adjustBalanceDuringConstruction ? 'bg-brand-600' : 'bg-slate-200'}`}>
-                           <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-all transform ${adjustBalanceDuringConstruction ? 'translate-x-6' : ''}`} />
+                        <button onClick={() => setAdjustBalanceDuringConstruction(!adjustBalanceDuringConstruction)} className={`w-12 h-7 rounded-full p-1 transition-all flex items-center shadow-inner ${adjustBalanceDuringConstruction ? 'bg-brand-600' : 'bg-slate-200'}`}>
+                           <div className={`w-5 h-5 bg-white rounded-full shadow-md transition-all transform ${adjustBalanceDuringConstruction ? 'translate-x-5' : ''}`} />
                         </button>
                      </div>
                   </div>
 
-                  <div className="bg-slate-50/50 p-8 rounded-[40px] border border-slate-100 space-y-6">
+                  <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
                      <div className="flex items-center justify-between">
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 italic">Substituição por Consórcio</p>
-                       <span className="text-[9px] font-black text-brand-600 bg-brand-50 px-3 py-1 rounded-full uppercase tracking-tighter">Opcional</span>
+                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4 italic">Substituição por Consórcio</p>
+                       <span className="text-[8px] font-black text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full uppercase tracking-tighter">Opcional</span>
                      </div>
                      
-                     <div className="space-y-3">
+                     <div className="space-y-2">
+                        {/* OPÇÃO 'A DEFINIR' */}
+                        <button 
+                          onClick={() => setSelectedConsortiaIds([])}
+                          className={`w-full p-3 rounded-xl border transition-all flex items-center justify-between text-left group ${selectedConsortiaIds.length === 0 ? 'bg-slate-900 border-slate-900 text-white shadow-md' : 'bg-white border-slate-100 text-slate-600 hover:border-brand-200'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <HelpCircle size={16} className={selectedConsortiaIds.length === 0 ? 'text-white' : 'text-slate-300'} />
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-tight">A Definir / Financiamento</p>
+                              <p className={`text-[8px] font-bold ${selectedConsortiaIds.length === 0 ? 'text-slate-400' : 'text-slate-400'}`}>Poderá ser alterado posteriormente</p>
+                            </div>
+                          </div>
+                          {selectedConsortiaIds.length === 0 && <CheckCircle2 size={12} />}
+                        </button>
+
                         {isLoadingConsortia ? (
-                          <div className="flex items-center gap-2 text-slate-400 p-4"><Loader2 size={16} className="animate-spin" /> <span className="text-[10px] font-bold uppercase tracking-widest">Buscando Consórcios...</span></div>
-                        ) : availableConsortia.length > 0 ? (
+                          <div className="flex items-center gap-2 text-slate-400 p-2"><Loader2 size={12} className="animate-spin" /> <span className="text-[8px] font-bold uppercase tracking-widest">Buscando Consórcios...</span></div>
+                        ) : availableConsortia.length > 0 && (
                           availableConsortia.map(c => (
                             <button 
                               key={c.id} 
                               onClick={() => toggleConsortium(c.id)}
-                              className={`w-full p-4 rounded-2xl border transition-all flex items-center justify-between text-left group ${selectedConsortiaIds.includes(c.id) ? 'bg-brand-600 border-brand-600 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-600 hover:border-brand-200'}`}
+                              className={`w-full p-3 rounded-xl border transition-all flex items-center justify-between text-left group ${selectedConsortiaIds.includes(c.id) ? 'bg-brand-600 border-brand-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-600 hover:border-brand-200'}`}
                             >
-                              <div className="flex items-center gap-4">
-                                <Wallet size={18} className={selectedConsortiaIds.includes(c.id) ? 'text-white' : 'text-slate-300 group-hover:text-brand-400'} />
+                              <div className="flex items-center gap-3">
+                                <Wallet size={16} className={selectedConsortiaIds.includes(c.id) ? 'text-white' : 'text-slate-300 group-hover:text-brand-400'} />
                                 <div>
-                                  <p className="text-xs font-black uppercase tracking-tight">{c.name}</p>
-                                  <p className={`text-[10px] font-bold ${selectedConsortiaIds.includes(c.id) ? 'text-brand-200' : 'text-slate-400'}`}>Saldo: R$ {c.remainingBalance.toLocaleString()}</p>
+                                  <p className="text-[10px] font-black uppercase tracking-tight">{c.name}</p>
+                                  <p className={`text-[8px] font-bold ${selectedConsortiaIds.includes(c.id) ? 'text-brand-200' : 'text-slate-400'}`}>Crédito: R$ {c.remainingBalance.toLocaleString()}</p>
                                 </div>
                               </div>
-                              <div className={`w-6 h-6 rounded-lg flex items-center justify-center border ${selectedConsortiaIds.includes(c.id) ? 'border-white/30 bg-white/10' : 'border-slate-100'}`}>
-                                {selectedConsortiaIds.includes(c.id) && <CheckCircle2 size={14} />}
-                              </div>
+                              {selectedConsortiaIds.includes(c.id) && <CheckCircle2 size={12} />}
                             </button>
                           ))
-                        ) : (
-                          <div className="p-6 text-center border-2 border-dashed border-slate-100 rounded-3xl">
-                            <p className="text-[10px] text-slate-300 font-black uppercase tracking-widest">Nenhum consórcio encontrado</p>
-                            <p className="text-[8px] text-slate-400 mt-1 uppercase">Cadastre consórcios na aba de passivos para vinculá-los aqui.</p>
-                          </div>
                         )}
                      </div>
                   </div>
+               </div>
+            </div>
+
+            {/* IMPACTO PATRIMONIAL NO FIM DO FORMULÁRIO (CONTEÚDO) */}
+            <div className="bg-slate-900 p-8 rounded-[40px] text-white space-y-6">
+               <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                  <div className="space-y-1 text-center md:text-left">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Impacto Patrimonial Estimado</p>
+                    <div className="flex items-baseline gap-3 justify-center md:justify-start">
+                       <h5 className="text-3xl font-black italic">R$ {(parseFloat(estimatedValue) || 0).toLocaleString()}</h5>
+                       <span className="text-[10px] font-black text-emerald-400 uppercase tracking-tighter flex items-center gap-1"><Plus size={10} /> Ativo Físico</span>
+                    </div>
+                  </div>
+                  <div className="w-px h-12 bg-white/10 hidden md:block" />
+                  <div className="space-y-1 text-center md:text-left">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Dívida / Fluxo a Pagar</p>
+                    <div className="flex items-baseline gap-3 justify-center md:justify-start">
+                       <h5 className="text-3xl font-black text-rose-400 italic">R$ {((downPayments.reduce((acc, curr) => acc + curr.amount, 0) + (parseFloat(constAmount) * (parseInt(constInstallments) || 0)) + (parseFloat(intermAmount) * (parseInt(intermTotal) || 0)) + (parseFloat(finalBalance) || 0))).toLocaleString()}</h5>
+                       <span className="text-[10px] font-black text-rose-300 uppercase tracking-tighter flex items-center gap-1"><ArrowRight size={10} /> Passivo</span>
+                    </div>
+                  </div>
+               </div>
+               <div className="p-4 bg-white/5 rounded-2xl border border-white/10 text-[9px] text-slate-400 font-bold uppercase tracking-widest text-center leading-relaxed">
+                 O impacto patrimonial representa o valor líquido adicionado ao seu balanço. <br/>
+                 O Ativo (Imóvel) será registrado integralmente, enquanto a dívida aparecerá como Passivo redutor.
                </div>
             </div>
           </div>
         </div>
 
         {/* FOOTER ACTIONS */}
-        <div className="px-10 py-10 border-t border-slate-100 bg-slate-50 flex flex-col md:flex-row items-center justify-between gap-8 shrink-0">
-           <div className="flex items-center gap-6">
-              <div className="text-center md:text-left">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Impacto Patrimonial Estimado</p>
-                <div className="flex items-baseline gap-2">
-                   <h5 className="text-2xl font-black text-slate-900 italic">R$ {(parseFloat(estimatedValue) || 0).toLocaleString()}</h5>
-                   <span className="text-[10px] font-black text-emerald-500 uppercase tracking-tighter">+ Ativo Físico</span>
-                </div>
-              </div>
-              <div className="w-px h-10 bg-slate-200 hidden md:block" />
-              <div className="text-center md:text-left hidden md:block">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Dívida Estruturada</p>
-                <div className="flex items-baseline gap-2">
-                   <h5 className="text-2xl font-black text-rose-500 italic">R$ {((downPayments.reduce((acc, curr) => acc + curr.amount, 0) + (parseFloat(constAmount) * (parseInt(constInstallments) || 0)) + (parseFloat(intermAmount) * (parseInt(intermTotal) || 0)) + (parseFloat(finalBalance) || 0))).toLocaleString()}</h5>
-                   <span className="text-[10px] font-black text-rose-400 uppercase tracking-tighter">+ Passivo Imob.</span>
-                </div>
-              </div>
-           </div>
+        <div className="px-10 py-6 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-4 shrink-0">
 
            <div className="flex gap-4 w-full md:w-auto">
              <button 
