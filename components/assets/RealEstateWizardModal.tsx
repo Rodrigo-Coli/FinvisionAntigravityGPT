@@ -489,9 +489,6 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                  </div>
               </div>
             )}
-            </div>
-              </div>
-            )}
 
             {/* SECTION: SALDO FINAL E ENTREGA */}
             <div className="space-y-6">
