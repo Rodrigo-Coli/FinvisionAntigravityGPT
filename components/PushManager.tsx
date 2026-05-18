@@ -1,69 +1,87 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase/client';
+import {
+  getSwRegistration,
+  requestNotificationPermission,
+  checkAndNotifyBillsDue
+} from '../lib/pushUtils';
 
+/**
+ * PushManager — componente invisível montado no root da aplicação.
+ * Responsabilidades:
+ * 1. Registrar o Service Worker.
+ * 2. Se o usuário já concedeu permissão, verificar vencimentos diariamente.
+ * 3. Escutar mensagens do SW (CHECK_BILLS_DUE).
+ */
 export function PushManager() {
+  const lastCheckRef = useRef<string>('');
+
   useEffect(() => {
-    registerServiceWorker();
+    init();
+    // Verifica vencimentos a cada hora enquanto o app está aberto
+    const interval = setInterval(runBillsCheck, 60 * 60 * 1000);
+    // Escuta mensagens do SW
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'CHECK_BILLS_DUE') runBillsCheck();
+    };
+    navigator.serviceWorker?.addEventListener('message', handleSwMessage);
+    return () => {
+      clearInterval(interval);
+      navigator.serviceWorker?.removeEventListener('message', handleSwMessage);
+    };
   }, []);
 
-  const registerServiceWorker = async () => {
-    if ('serviceWorker' in navigator && 'PushManager' in window) {
-      try {
-        const registration = await navigator.serviceWorker.register('/sw.js');
-        console.log('Service Worker registrado com sucesso:', registration.scope);
-      } catch (err) {
-        console.error('Falha ao registrar Service Worker:', err);
+  const init = async () => {
+    if (!('serviceWorker' in navigator)) return;
+    await getSwRegistration();
+
+    // Se permissão já foi dada, rodar check imediatamente
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      await runBillsCheck();
+    }
+  };
+
+  const runBillsCheck = async () => {
+    const today = new Date().toDateString();
+    if (lastCheckRef.current === today) return; // Já verificou hoje
+    lastCheckRef.current = today;
+
+    try {
+      if (!supabase) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Busca transações pendentes dos próximos 3 dias
+      const todayStr = new Date().toISOString().split('T')[0];
+      const threeDaysStr = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
+
+      const { data } = await supabase
+        .from('transactions')
+        .select('id, description, amount, date, is_paid, type')
+        .eq('user_id', user.id)
+        .eq('is_deleted', false)
+        .eq('is_paid', false)
+        .eq('type', 'EXPENSE')
+        .gte('date', todayStr)
+        .lte('date', threeDaysStr)
+        .limit(10);
+
+      if (data && data.length > 0) {
+        await checkAndNotifyBillsDue(
+          data.map((t: any) => ({
+            id: t.id,
+            description: t.description,
+            amount: Number(t.amount),
+            date: t.date,
+            isPaid: t.is_paid,
+            type: t.type
+          }))
+        );
       }
+    } catch (err) {
+      console.warn('[FinVision PushManager] Erro ao verificar vencimentos:', err);
     }
   };
 
   return null;
-}
-
-export async function subscribeToPush() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    throw new Error('Notificações Push não suportadas neste navegador.');
-  }
-
-  const registration = await navigator.serviceWorker.ready;
-  
-  // 1. Get VAPID public key from API
-  const res = await fetch('/api/vapid-public-key');
-  const { publicKey } = await res.json();
-  
-  if (!publicKey) throw new Error('Chave VAPID não configurada no servidor.');
-
-  // 2. Request permission
-  const permission = await Notification.requestPermission();
-  if (permission !== 'granted') throw new Error('Permissão de notificação negada.');
-
-  // 3. Subscribe
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(publicKey)
-  });
-
-  // 4. Save to Supabase
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    await supabase.from('user_settings').upsert({
-      user_id: user.id,
-      push_subscription: subscription,
-      push_enabled: true,
-      updated_at: new Date().toISOString()
-    });
-  }
-
-  return subscription;
-}
-
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
 }

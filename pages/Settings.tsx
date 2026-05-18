@@ -43,7 +43,7 @@ import {
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { DateUtils } from '../lib/dateUtils';
-import { subscribeUserToPush } from '../lib/pushUtils';
+import { requestNotificationPermission, showLocalNotification, subscribeUserToPush } from '../lib/pushUtils';
 
 const SettingsPage: React.FC = () => {
   const [activeSection, setActiveSection] = useState<'general' | 'navigation' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription'>('general');
@@ -422,31 +422,66 @@ const SettingsPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">
-                  <div>
-                    <p className="font-bold text-slate-900 flex items-center gap-2"><BellRing size={16} /> Notificações do Dispositivo</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Receba sinais push no celular e desktop (<br/><span className="text-amber-500 italic">No iOS: Instale este App na Tela de Início</span>).</p>
-                  </div>
-                  <button onClick={async () => {
-                    const willEnable = !settings.push_enabled;
-                    if (willEnable) {
+                <div className="p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all space-y-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-bold text-slate-900 flex items-center gap-2"><BellRing size={16} /> Notificações do Dispositivo</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Alertas de vencimentos, faturas e recebimentos.</p>
+                    </div>
+                    <button onClick={async () => {
                       if (Notification.permission === 'denied') {
-                        alert('As notificações foram bloqueadas pelo sistema. Por favor, vá nas configurações do seu navegador ou do aplicativo e permita as notificações manualmente.');
+                        alert('As notificações estão BLOQUEADAS no seu navegador.\n\nPara ativar:\n1. Toque no ícone de cadeado/informações na barra de endereços\n2. Vá em "Permissões do site" ou "Configurações"\n3. Mude "Notificações" para "Permitir"\n4. Recarregue a página.');
                         return;
                       }
-                      const sub = await subscribeUserToPush();
-                      if (sub) {
-                        updateSetting('push_subscription', sub);
+                      const permission = await requestNotificationPermission();
+                      if (permission === 'granted') {
                         updateSetting('push_enabled', true);
                       } else {
-                        alert('Não foi possível ativar as notificações. Verifique se o seu navegador suporta este recurso ou se as permissões foram concedidas.');
+                        alert('Permissão negada. Você pode ativar nas configurações do navegador.');
                       }
-                    } else {
-                      updateSetting('push_enabled', false);
-                    }
-                  }} className={`w-14 h-8 rounded-full p-1 transition-all ${settings.push_enabled ? 'bg-brand-600' : 'bg-slate-200'}`}>
-                    <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${settings.push_enabled ? 'translate-x-6' : 'translate-x-0'}`} />
-                  </button>
+                    }} className={`w-14 h-8 shrink-0 rounded-full p-1 transition-all ${settings.push_enabled && typeof Notification !== 'undefined' && Notification.permission === 'granted' ? 'bg-brand-600' : 'bg-slate-200'}`}>
+                      <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${settings.push_enabled && typeof Notification !== 'undefined' && Notification.permission === 'granted' ? 'translate-x-6' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+
+                  {/* Status da permissão */}
+                  {typeof Notification !== 'undefined' && (
+                    <div className={`flex items-center gap-3 p-3 rounded-2xl text-xs font-bold ${
+                      Notification.permission === 'granted' ? 'bg-emerald-50 text-emerald-700' :
+                      Notification.permission === 'denied' ? 'bg-rose-50 text-rose-700' :
+                      'bg-amber-50 text-amber-700'
+                    }`}>
+                      <div className={`w-2 h-2 rounded-full ${
+                        Notification.permission === 'granted' ? 'bg-emerald-500' :
+                        Notification.permission === 'denied' ? 'bg-rose-500' : 'bg-amber-400'
+                      }`} />
+                      {Notification.permission === 'granted' ? '✓ Permitido — notificações ativas' :
+                       Notification.permission === 'denied' ? '✗ Bloqueado — altere nas configurações do navegador' :
+                       '⚠ Aguardando permissão — toque no toggle para ativar'}
+                    </div>
+                  )}
+
+                  {/* Botão de teste */}
+                  {typeof Notification !== 'undefined' && Notification.permission === 'granted' && (
+                    <button
+                      onClick={async () => {
+                        await showLocalNotification('FinVision Pro ✓', 'Notificações funcionando! Você será alertado sobre vencimentos.', { url: '/', tag: 'test' });
+                      }}
+                      className="w-full py-2.5 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-600 transition-all"
+                    >
+                      Enviar notificação de teste
+                    </button>
+                  )}
+
+                  {/* Instrução iOS */}
+                  <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 space-y-1">
+                    <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest">📱 Para receber notificações no celular:</p>
+                    <ol className="text-[10px] font-bold text-amber-600 space-y-1 list-decimal list-inside">
+                      <li>Abra o FinVision no <span className="font-black">Safari (iOS)</span> ou <span className="font-black">Chrome (Android)</span></li>
+                      <li>Toque em <span className="font-black">&quot;Compartilhar&quot; → &quot;Adicionar à Tela de Início&quot;</span> (iOS) ou <span className="font-black">&quot;Instalar app&quot;</span> (Android)</li>
+                      <li>Abra o app instalado e ative as notificações aqui</li>
+                    </ol>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">
