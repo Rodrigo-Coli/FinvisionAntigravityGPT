@@ -682,11 +682,8 @@ const HistoryPage: React.FC = () => {
             ...(tx.metadata || {}),
             transfer_side: isNegative ? 'SOURCE' : 'DESTINATION'
           };
-        // Se já é EXPENSE e o valor é positivo (usuário digitou sem sinal), mantemos EXPENSE
-        // Se já é INCOME e o valor é negativo, muda para EXPENSE (mudança intencional)
-        // Se já é EXPENSE e o valor é negativo, mantemos EXPENSE (nada muda)
-        // Apenas muda o tipo se o usuário explicitamente digitou sinal contrário ao tipo atual
-        if (tx && tx.type !== 'TRANSFER') {
+        } else if (tx && tx.type !== 'TRANSFER') {
+          // Apenas muda o tipo se o usuário explicitamente digitou sinal contrário ao tipo atual
           const currentIsExpense = tx.type === 'EXPENSE';
           if (isNegative && !currentIsExpense) {
             patch.type = 'EXPENSE'; // Usuário quer mudar de receita para despesa
