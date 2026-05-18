@@ -38,6 +38,7 @@ type PayModalState =
     tx: Transaction;
     remaining: number;
     payAmount: string;
+    payAccountId: string;
     splitRemainder: boolean;
     isSubmitting: boolean;
     error?: string | null;
@@ -681,7 +682,19 @@ const HistoryPage: React.FC = () => {
             ...(tx.metadata || {}),
             transfer_side: isNegative ? 'SOURCE' : 'DESTINATION'
           };
-        } else {
+        // Se já é EXPENSE e o valor é positivo (usuário digitou sem sinal), mantemos EXPENSE
+        // Se já é INCOME e o valor é negativo, muda para EXPENSE (mudança intencional)
+        // Se já é EXPENSE e o valor é negativo, mantemos EXPENSE (nada muda)
+        // Apenas muda o tipo se o usuário explicitamente digitou sinal contrário ao tipo atual
+        if (tx && tx.type !== 'TRANSFER') {
+          const currentIsExpense = tx.type === 'EXPENSE';
+          if (isNegative && !currentIsExpense) {
+            patch.type = 'EXPENSE'; // Usuário quer mudar de receita para despesa
+          } else if (!isNegative && currentIsExpense && parsedAmt !== 0) {
+            patch.type = 'INCOME'; // Usuário quer mudar de despesa para receita
+          }
+          // Se isNegative === currentIsExpense: mantém tipo atual, sem mudança
+        } else if (!tx) {
           patch.type = isNegative ? 'EXPENSE' : 'INCOME';
         }
       }
@@ -1104,7 +1117,7 @@ const HistoryPage: React.FC = () => {
 
   const openPayModal = (tx: Transaction) => {
     const remaining = HistoryUtils.getRemaining(tx);
-    setPayModal({ open: true, tx, remaining, payAmount: String(remaining.toFixed(2)), splitRemainder: false, isSubmitting: false });
+    setPayModal({ open: true, tx, remaining, payAmount: String(remaining.toFixed(2)), payAccountId: tx.accountId, splitRemainder: false, isSubmitting: false });
   };
 
   const submitPayment = async () => {
@@ -1121,7 +1134,14 @@ const HistoryPage: React.FC = () => {
           paid_at: DateUtils.getNow().toISOString()
         }).eq('id', payModal.tx.id);
       }
-      await supabase.rpc('recalculate_account_balance', { p_account_id: payModal.tx.accountId });
+      // Se conta de débito diferente, atualiza account_id e recalcula ambas
+      const payAccId = payModal.payAccountId || payModal.tx.accountId;
+      if (payAccId !== payModal.tx.accountId) {
+        const payAcc = accounts.find(a => a.id === payAccId);
+        await supabase.from('transactions').update({ account_id: payAccId, account_name: payAcc?.institution || '' }).eq('id', payModal.tx.id);
+        await supabase.rpc('recalculate_account_balance', { p_account_id: payModal.tx.accountId });
+      }
+      await supabase.rpc('recalculate_account_balance', { p_account_id: payAccId });
       
       // Sincronização Bidirecional: Se for pagamento de fatura, atualiza o status na tabela de cartões
       if (payModal.tx.type === 'BILL_PAYMENT') {
@@ -1215,7 +1235,10 @@ const HistoryPage: React.FC = () => {
         } else {
           const { data, error: insertErr } = await supabase.from('transactions').insert({
             user_id: user?.id, date: f.date, description: f.description, amount, type: f.type,
-            account_id: f.accountId, category: f.category, subcategory: f.subcategory || null, is_paid: false, paid_amount: 0,
+            account_id: f.accountId, category: f.category, subcategory: f.subcategory || null,
+            is_paid: f.isPaidNow === true,
+            paid_amount: f.isPaidNow === true ? amount : 0,
+            paid_at: f.isPaidNow === true ? f.date : null,
             owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName
           }).select('id');
           if (insertErr) throw insertErr;
@@ -1734,6 +1757,8 @@ const HistoryPage: React.FC = () => {
       <PaymentModal show={payModal.open} onClose={() => setPayModal({ open: false })} onSubmit={submitPayment}
         tx={payModal.open ? payModal.tx : null} remaining={payModal.open ? payModal.remaining : 0}
         payAmount={payModal.open ? payModal.payAmount : ''} setPayAmount={(v) => setPayModal(prev => prev.open ? { ...prev, payAmount: v } : prev)}
+        payAccountId={payModal.open ? payModal.payAccountId : ''} setPayAccountId={(v) => setPayModal(prev => prev.open ? { ...prev, payAccountId: v } : prev)}
+        accounts={accounts}
         splitRemainder={payModal.open ? payModal.splitRemainder : false} setSplitRemainder={(v) => setPayModal(prev => prev.open ? { ...prev, splitRemainder: v } : prev)}
         isSubmitting={payModal.open ? payModal.isSubmitting : false} error={payModal.open ? payModal.error : null} formatCurrency={HistoryUtils.formatCurrency}
       />

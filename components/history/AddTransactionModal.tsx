@@ -25,6 +25,7 @@ interface AddTransactionModalProps {
         destinationAccountId?: string;
         documentId?: string;
         files?: File[];
+        isPaidNow?: boolean;
     };
     accounts: BankAccount[];
     owners: string[];
@@ -283,6 +284,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             <div className="flex items-center justify-between">
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Opções de Série</span>
                             </div>
+
+                            {/* JÁ ESTÁ PAGO */}
+                            <button
+                                type="button"
+                                onClick={() => setAddField('isPaidNow', !form.isPaidNow)}
+                                className={`w-full h-12 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center justify-between px-4 ${form.isPaidNow ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-500/20' : 'bg-white text-slate-400 border-slate-200'}`}
+                            >
+                                <span>Já está pago / Quitado</span>
+                                <div className={`w-10 h-6 rounded-full p-1 transition-all flex items-center ${form.isPaidNow ? 'bg-white/30' : 'bg-slate-200'}`}>
+                                    <div className={`w-4 h-4 bg-white rounded-full shadow transition-all transform ${form.isPaidNow ? 'translate-x-4' : ''}`} />
+                                </div>
+                            </button>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <button

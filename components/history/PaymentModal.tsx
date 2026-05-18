@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Transaction } from '../../types';
+import { BankAccount } from '../../types';
 
 interface PaymentModalProps {
     show: boolean;
@@ -10,6 +11,9 @@ interface PaymentModalProps {
     remaining: number;
     payAmount: string;
     setPayAmount: (v: string) => void;
+    payAccountId: string;
+    setPayAccountId: (v: string) => void;
+    accounts: BankAccount[];
     splitRemainder: boolean;
     setSplitRemainder: (v: boolean) => void;
     isSubmitting: boolean;
@@ -25,6 +29,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     remaining,
     payAmount,
     setPayAmount,
+    payAccountId,
+    setPayAccountId,
+    accounts,
     splitRemainder,
     setSplitRemainder,
     isSubmitting,
@@ -78,6 +85,19 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                                 className="w-full h-14 px-6 bg-slate-50 border border-slate-200 rounded-2xl font-black text-xl text-slate-900 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
                                 autoFocus
                             />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Debitar / Creditar em</label>
+                            <select
+                                value={payAccountId}
+                                onChange={(e) => setPayAccountId(e.target.value)}
+                                className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
+                            >
+                                {accounts.map((acc: any) => (
+                                    <option key={acc.id} value={acc.id}>{acc.institution}</option>
+                                ))}
+                            </select>
                         </div>
 
                         <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
