@@ -1,69 +1,114 @@
 import React, { useState, useEffect } from 'react';
 import { Download, X, Smartphone } from 'lucide-react';
 
+declare global {
+  interface Window {
+    __pwaInstallPrompt: any;
+  }
+}
+
 export const PWAInstallPrompt: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showPrompt, setShowPrompt] = useState(false);
+  const [dismissed, setDismissed] = useState(() =>
+    localStorage.getItem('pwa-prompt-dismissed') === 'true'
+  );
 
   useEffect(() => {
-    const handler = (e: any) => {
-      // Prevent the mini-infobar from appearing on mobile
-      e.preventDefault();
-      // Stash the event so it can be triggered later.
-      setDeferredPrompt(e);
-      // Update UI notify the user they can install the PWA
+    // Já está instalado como standalone — não mostrar
+    if (window.matchMedia('(display-mode: standalone)').matches) return;
+    if (dismissed) return;
+
+    // 1. Verificar se o evento já foi capturado antes do React montar
+    if (window.__pwaInstallPrompt) {
+      setDeferredPrompt(window.__pwaInstallPrompt);
       setShowPrompt(true);
-    };
-
-    window.addEventListener('beforeinstallprompt', handler);
-
-    // Check if already installed
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setShowPrompt(false);
     }
 
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
+    // 2. Escutar evento futuro
+    const handler = (e: any) => {
+      e.preventDefault();
+      window.__pwaInstallPrompt = e;
+      setDeferredPrompt(e);
+      setShowPrompt(true);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
 
-  const handleInstallClick = async () => {
+    // 3. Escutar o evento customizado disparado pelo index.html
+    const customHandler = () => {
+      if (window.__pwaInstallPrompt && !dismissed) {
+        setDeferredPrompt(window.__pwaInstallPrompt);
+        setShowPrompt(true);
+      }
+    };
+    window.addEventListener('pwa-installable', customHandler);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('pwa-installable', customHandler);
+    };
+  }, [dismissed]);
+
+  const handleInstall = async () => {
     if (!deferredPrompt) return;
-    
-    // Show the install prompt
     deferredPrompt.prompt();
-    
-    // Wait for the user to respond to the prompt
     const { outcome } = await deferredPrompt.userChoice;
-    console.log(`User response to the install prompt: ${outcome}`);
-    
-    // We've used the prompt, and can't use it again, throw it away
+    console.log('[PWA] Install outcome:', outcome);
+    window.__pwaInstallPrompt = null;
     setDeferredPrompt(null);
     setShowPrompt(false);
+    if (outcome === 'accepted') {
+      localStorage.setItem('pwa-prompt-dismissed', 'true');
+    }
   };
 
-  if (!showPrompt) return null;
+  const handleDismiss = () => {
+    setShowPrompt(false);
+    setDismissed(true);
+    localStorage.setItem('pwa-prompt-dismissed', 'true');
+  };
+
+  if (!showPrompt || !deferredPrompt) return null;
 
   return (
-    <div className="fixed bottom-24 left-4 right-4 z-[100] lg:hidden animate-in slide-in-from-bottom-10 duration-500">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-brand-100 dark:border-slate-700 p-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-brand-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-brand-500/20">
-            <Smartphone size={24} />
+    <div className="fixed bottom-24 left-4 right-4 z-[200] lg:left-auto lg:right-6 lg:w-96 animate-in slide-in-from-bottom-10 duration-500">
+      <div className="bg-white rounded-3xl shadow-2xl border border-brand-100 overflow-hidden">
+        {/* Header colorido */}
+        <div className="bg-gradient-to-r from-brand-600 to-brand-900 p-5 flex items-center gap-4">
+          <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center border border-white/30 shrink-0">
+            <img src="/logo.png" alt="FinVision" className="w-10 h-10 object-contain rounded-xl" />
           </div>
-          <div>
-            <h4 className="text-sm font-bold text-slate-900 dark:text-white">Instalar FinVision Pro</h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Tenha uma experiência de App nativo.</p>
+          <div className="text-white">
+            <h4 className="font-black text-base tracking-tight">Instalar FinVision Pro</h4>
+            <p className="text-brand-200 text-xs font-medium mt-0.5">Adicione à sua tela inicial como app</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Benefícios */}
+        <div className="p-4 space-y-2">
+          {[
+            '⚡ Acesso instantâneo sem abrir o navegador',
+            '🔔 Receba notificações de vencimentos',
+            '📶 Funciona mesmo sem internet',
+          ].map((benefit, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs font-medium text-slate-600">
+              <span>{benefit}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Botões */}
+        <div className="px-4 pb-4 flex gap-3">
           <button
-            onClick={handleInstallClick}
-            className="px-4 py-2 bg-brand-600 text-white text-xs font-bold rounded-lg hover:bg-brand-700 transition-colors shadow-md shadow-brand-500/10"
+            onClick={handleInstall}
+            className="flex-1 py-3 bg-brand-600 text-white text-xs font-black uppercase tracking-widest rounded-2xl hover:bg-brand-700 transition-all shadow-lg shadow-brand-500/20 flex items-center justify-center gap-2"
           >
-            Instalar
+            <Download size={14} />
+            Instalar Agora
           </button>
           <button
-            onClick={() => setShowPrompt(false)}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            onClick={handleDismiss}
+            className="w-12 h-12 flex items-center justify-center bg-slate-100 text-slate-400 rounded-2xl hover:bg-slate-200 transition-colors"
           >
             <X size={18} />
           </button>
