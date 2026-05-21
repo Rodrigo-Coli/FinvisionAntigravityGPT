@@ -104,7 +104,24 @@ const CreditCardsPage: React.FC = () => {
       fetchAccounts();
       fetchOwners();
     }
-  }, []);
+
+    const handleSyncCompleted = () => {
+      if (isSupabaseConfigured) {
+        fetchCards();
+        fetchCategories();
+        fetchSubcategories();
+        fetchAccounts();
+        fetchOwners();
+        if (selectedCard?.id) {
+          loadCardContext(selectedCard.id);
+        }
+      }
+    };
+    window.addEventListener('offline-sync-completed', handleSyncCompleted);
+    return () => {
+      window.removeEventListener('offline-sync-completed', handleSyncCompleted);
+    };
+  }, [selectedCard?.id]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -159,25 +176,43 @@ const CreditCardsPage: React.FC = () => {
     if (!supabase) return;
     setLoading(true);
     try {
+      if (navigator.onLine) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data, error } = await supabase
+          .from('cards')
+          .select('*')
+          .eq('user_id', user.id);
 
+        if (error) throw error;
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data, error } = await supabase
-        .from('cards')
-        .select('*')
-        .eq('user_id', user.id);
+        const activeCards = (data || []).filter((c: any) => c.is_archived !== true && c.status !== 'archived');
+        setCards(activeCards);
+        localStorage.setItem('finvision_cached_cards', JSON.stringify(activeCards));
 
-      if (error) throw error;
-
-      const activeCards = (data || []).filter((c: any) => c.is_archived !== true && c.status !== 'archived');
-      setCards(activeCards);
-
-      if (activeCards.length > 0 && !selectedCard) {
-        setSelectedCard(activeCards[0]);
+        if (activeCards.length > 0 && !selectedCard) {
+          setSelectedCard(activeCards[0]);
+        }
+      } else {
+        const cached = localStorage.getItem('finvision_cached_cards');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setCards(parsed);
+          if (parsed.length > 0 && !selectedCard) {
+            setSelectedCard(parsed[0]);
+          }
+        }
       }
     } catch (err) {
-      console.error('Erro ao buscar cartões:', err);
+      console.error('Erro ao buscar cartões, fallback cache:', err);
+      const cached = localStorage.getItem('finvision_cached_cards');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        setCards(parsed);
+        if (parsed.length > 0 && !selectedCard) {
+          setSelectedCard(parsed[0]);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -186,72 +221,120 @@ const CreditCardsPage: React.FC = () => {
   const fetchCategories = async () => {
     if (!supabase) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data, error } = await supabase
-        .from('categories')
-        .select('id, name')
-        .eq('user_id', user.id)
-        .order('name', { ascending: true });
-      if (error) throw error;
-      setCategories(data || []);
+      if (navigator.onLine) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data, error } = await supabase
+          .from('categories')
+          .select('id, name')
+          .eq('user_id', user.id)
+          .order('name', { ascending: true });
+        if (error) throw error;
+        setCategories(data || []);
+        localStorage.setItem('finvision_cached_categories_cc', JSON.stringify(data || []));
+      } else {
+        const cached = localStorage.getItem('finvision_cached_categories_cc');
+        if (cached) setCategories(JSON.parse(cached));
+      }
     } catch (err) {
-      console.error('Erro ao buscar categorias:', err);
+      console.error('Erro ao buscar categorias, fallback cache:', err);
+      const cached = localStorage.getItem('finvision_cached_categories_cc');
+      if (cached) setCategories(JSON.parse(cached));
     }
   };
 
   const fetchSubcategories = async () => {
     if (!supabase) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data, error } = await supabase
-        .from('subcategories')
-        .select('id, name, categories(name)')
-        .eq('user_id', user.id)
-        .order('name', { ascending: true });
-      if (error) throw error;
-      setSubcategories((data || []).map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        category_name: s.categories?.name
-      })));
+      if (navigator.onLine) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data, error } = await supabase
+          .from('subcategories')
+          .select('id, name, categories(name)')
+          .eq('user_id', user.id)
+          .order('name', { ascending: true });
+        if (error) throw error;
+        const mapped = (data || []).map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          category_name: s.categories?.name
+        }));
+        setSubcategories(mapped);
+        localStorage.setItem('finvision_cached_subcategories_cc', JSON.stringify(mapped));
+      } else {
+        const cached = localStorage.getItem('finvision_cached_subcategories_cc');
+        if (cached) setSubcategories(JSON.parse(cached));
+      }
     } catch (err) {
-      console.error('Erro ao buscar subcategorias:', err);
+      console.error('Erro ao buscar subcategorias, fallback cache:', err);
+      const cached = localStorage.getItem('finvision_cached_subcategories_cc');
+      if (cached) setSubcategories(JSON.parse(cached));
     }
   };
 
   const fetchAccounts = async () => {
     if (!supabase) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data, error } = await supabase
-        .from('accounts')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_archived', false)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      const list = (data || []) as Account[];
-      setAccounts(list);
-      if (!payAccountId && list.length > 0) {
-        setPayAccountId(list[0].id);
+      if (navigator.onLine) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data, error } = await supabase
+          .from('accounts')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('is_archived', false)
+          .order('created_at', { ascending: true });
+        if (error) throw error;
+        const list = (data || []) as Account[];
+        setAccounts(list);
+        localStorage.setItem('finvision_cached_accounts_cc', JSON.stringify(list));
+        if (!payAccountId && list.length > 0) {
+          setPayAccountId(list[0].id);
+        }
+      } else {
+        const cached = localStorage.getItem('finvision_cached_accounts_cc');
+        if (cached) {
+          const list = JSON.parse(cached) as Account[];
+          setAccounts(list);
+          if (!payAccountId && list.length > 0) {
+            setPayAccountId(list[0].id);
+          }
+        }
       }
     } catch (err) {
-      console.error('Erro ao buscar contas:', err);
+      console.error('Erro ao buscar contas, fallback cache:', err);
+      const cached = localStorage.getItem('finvision_cached_accounts_cc');
+      if (cached) {
+        const list = JSON.parse(cached) as Account[];
+        setAccounts(list);
+        if (!payAccountId && list.length > 0) {
+          setPayAccountId(list[0].id);
+        }
+      }
     }
   };
 
   const fetchOwners = async () => {
     if (!supabase) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data, error } = await supabase.from('entities').select('name').eq('user_id', user.id).eq('is_archived', false);
-      if (error) throw error;
-      setOwners(['Pessoal', ...(data || []).map((o: any) => o.name)]);
-    } catch (err) { console.error(err); }
+      if (navigator.onLine) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data, error } = await supabase.from('entities').select('name').eq('user_id', user.id).eq('is_archived', false);
+        if (error) throw error;
+        const ownersList = ['Pessoal', ...(data || []).map((o: any) => o.name)];
+        setOwners(ownersList);
+        localStorage.setItem('finvision_cached_owners_cc', JSON.stringify(ownersList));
+      } else {
+        const cached = localStorage.getItem('finvision_cached_owners_cc');
+        if (cached) setOwners(JSON.parse(cached));
+      }
+    } catch (err) {
+      console.error('Erro ao buscar proprietários, fallback cache:', err);
+      const cached = localStorage.getItem('finvision_cached_owners_cc');
+      if (cached) setOwners(JSON.parse(cached));
+    }
   };
 
   const getAccountLabel = (a: Account) => {
@@ -316,45 +399,63 @@ const CreditCardsPage: React.FC = () => {
 
   const fetchStatements = async (cardId: string) => {
     if (!supabase) return [];
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return [];
+    try {
+      if (navigator.onLine) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
 
-    const { data, error } = await supabase
-      .from('card_statements')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('card_id', cardId)
-      .order('due_date', { ascending: false });
+        const { data, error } = await supabase
+          .from('card_statements')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('card_id', cardId)
+          .order('due_date', { ascending: false });
 
-    if (error) return [];
-    return data || [];
+        if (error) throw error;
+        localStorage.setItem(`finvision_cached_statements_${cardId}`, JSON.stringify(data || []));
+        return data || [];
+      } else {
+        const cached = localStorage.getItem(`finvision_cached_statements_${cardId}`);
+        return cached ? JSON.parse(cached) : [];
+      }
+    } catch (err) {
+      console.error('Erro ao buscar faturas, fallback cache:', err);
+      const cached = localStorage.getItem(`finvision_cached_statements_${cardId}`);
+      return cached ? JSON.parse(cached) : [];
+    }
   };
-
-
 
   const fetchTransactions = async (cardId: string, statementId?: string | null) => {
     if (!supabase) return;
     setLoadingTxs(true);
+    const dynamicKey = `finvision_cached_card_transactions_${cardId}_${statementId || 'all'}`;
     try {
-
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
       // Update currentStatement to the one being viewed if it's a specific one
       if (statementId) {
         const selected = statements.find(s => s.id === statementId);
         if (selected) setCurrentStatement(selected);
       }
 
-      let query = supabase.from('card_transactions').select('*').eq('user_id', user.id).order('date', { ascending: false });
-      if (statementId) query = query.eq('statement_id', statementId);
-      else query = query.eq('card_id', cardId);
-      const { data, error } = await query;
-      if (error) throw error;
-      setTransactions(data || []);
+      if (navigator.onLine) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        let query = supabase.from('card_transactions').select('*').eq('user_id', user.id).order('date', { ascending: false });
+        if (statementId) query = query.eq('statement_id', statementId);
+        else query = query.eq('card_id', cardId);
+        const { data, error } = await query;
+        if (error) throw error;
+        
+        setTransactions(data || []);
+        localStorage.setItem(dynamicKey, JSON.stringify(data || []));
+      } else {
+        const cached = localStorage.getItem(dynamicKey);
+        setTransactions(cached ? JSON.parse(cached) : []);
+      }
     } catch (err) {
-      console.error('Erro ao buscar transações:', err);
+      console.error('Erro ao buscar transações de cartão, fallback cache:', err);
+      const cached = localStorage.getItem(dynamicKey);
+      setTransactions(cached ? JSON.parse(cached) : []);
     } finally {
       setLoadingTxs(false);
     }

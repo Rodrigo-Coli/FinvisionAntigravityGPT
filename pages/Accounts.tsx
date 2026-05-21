@@ -84,47 +84,66 @@ const Accounts: React.FC = () => {
       // Clear state to avoid reopening on refresh
       window.history.replaceState({}, document.title);
     }
+
+    const handleSyncCompleted = () => {
+      fetchAccounts();
+    };
+    window.addEventListener('offline-sync-completed', handleSyncCompleted);
+    return () => {
+      window.removeEventListener('offline-sync-completed', handleSyncCompleted);
+    };
   }, []);
 
   const fetchAccounts = async () => {
     setLoading(true);
     try {
+      if (navigator.onLine) {
+        if (!isSupabaseConfigured || !supabase) {
+          setLoading(false);
+          return;
+        }
 
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-      if (!isSupabaseConfigured || !supabase) {
-        setLoading(false);
-        return;
+        const { data, error } = await supabase
+          .from('accounts')
+          .select('*')
+          .eq('user_id', user.id);
+
+        if (error) throw error;
+
+        const mapped = (data || [])
+          .map((acc: any) => ({
+            id: acc.id,
+            institution: acc.institution || acc.name || 'Conta',
+            name: acc.name || acc.institution || 'Conta',
+            type: acc.type as AccountType,
+            currency: acc.currency,
+            initialBalance: Number(acc.initial_balance || 0),
+            currentBalance: Number(acc.current_balance || 0),
+            limit: Number(acc.limit || acc.overdraft_limit || 0),
+            color: acc.color,
+            isArchived: acc.is_archived || acc.status === 'archived',
+            includeInDashboard: acc.include_in_dashboard !== false
+          }))
+          .sort((a: any, b: any) => a.institution.localeCompare(b.institution));
+
+        setAccounts(mapped);
+        localStorage.setItem('finvision_cached_accounts_full', JSON.stringify(mapped));
+      } else {
+        // Offline load fallback
+        const cached = localStorage.getItem('finvision_cached_accounts_full');
+        if (cached) {
+          setAccounts(JSON.parse(cached));
+        }
       }
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('accounts')
-        .select('*')
-        .eq('user_id', user.id);
-
-      if (error) throw error;
-
-      const mapped = (data || [])
-        .map((acc: any) => ({
-          id: acc.id,
-          institution: acc.institution || acc.name || 'Conta',
-          name: acc.name || acc.institution || 'Conta',
-          type: acc.type as AccountType,
-          currency: acc.currency,
-          initialBalance: Number(acc.initial_balance || 0),
-          currentBalance: Number(acc.current_balance || 0),
-          limit: Number(acc.limit || acc.overdraft_limit || 0),
-          color: acc.color,
-          isArchived: acc.is_archived || acc.status === 'archived',
-          includeInDashboard: acc.include_in_dashboard !== false
-        }))
-        .sort((a: any, b: any) => a.institution.localeCompare(b.institution));
-
-      setAccounts(mapped);
     } catch (err) {
-      console.error('Error fetching accounts:', err);
+      console.error('Error fetching accounts, falling back to cache:', err);
+      const cached = localStorage.getItem('finvision_cached_accounts_full');
+      if (cached) {
+        setAccounts(JSON.parse(cached));
+      }
     } finally {
       setLoading(false);
     }

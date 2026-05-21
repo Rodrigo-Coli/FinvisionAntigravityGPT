@@ -2,7 +2,7 @@
 // Compilado pelo vite-plugin-pwa (injectManifest)
 
 import { clientsClaim } from 'workbox-core';
-import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import { precacheAndRoute, cleanupOutdatedCaches, matchPrecache } from 'workbox-precaching';
 
 // ── Controle ──────────────────────────────────────────────────────────
 self.addEventListener('message', (event) => {
@@ -54,7 +54,9 @@ self.addEventListener('fetch', (event) => {
   // SPA fallback: retorna index.html para navegação
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match('/index.html'))
+      fetch(event.request).catch(async () => {
+        return (await matchPrecache('/index.html')) || caches.match('/index.html');
+      })
     );
     return;
   }
@@ -69,8 +71,10 @@ self.addEventListener('fetch', (event) => {
           caches.open('finvision-dynamic-v8').then((cache) => cache.put(event.request, clone));
         }
         return response;
-      }).catch(() => {
-        if (event.request.destination === 'document') return caches.match('/index.html');
+      }).catch(async () => {
+        if (event.request.destination === 'document') {
+          return (await matchPrecache('/index.html')) || caches.match('/index.html');
+        }
       });
     })
   );

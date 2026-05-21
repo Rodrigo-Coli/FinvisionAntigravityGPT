@@ -296,8 +296,81 @@ const HistoryPage: React.FC = () => {
         return;
       }
 
-      const { data: accData, error: accErr } = await supabase.from('accounts').select('*').eq('is_archived', false);
-      if (accErr) throw accErr;
+      let accData: any[] = [];
+      let catData: any[] = [];
+      let subData: any[] = [];
+      let dbEntities: any[] = [];
+      let transactionsData: any[] = [];
+      let cardTxsData: any[] = [];
+
+      const todayRaw = new Date();
+      const sixtyDaysAhead = new Date(todayRaw.getFullYear(), todayRaw.getMonth(), todayRaw.getDate() + 60);
+      const futureLimit = sixtyDaysAhead.toISOString().split('T')[0];
+
+      if (navigator.onLine) {
+        // Build base queries
+        let txQuery = supabase.from('transactions')
+          .select('*, attachments:documents!documents_transaction_id_fkey(*)')
+          .eq('user_id', user.id)
+          .eq('is_deleted', false);
+
+        if (startDate && endDate) {
+          txQuery = txQuery.or(`and(date.gte.${startDate},date.lte.${endDate}),and(metadata->>is_provision.eq.true,date.gte.${startDate},date.lte.${futureLimit})`);
+        } else {
+          if (startDate) txQuery = txQuery.gte('date', startDate);
+          if (endDate) txQuery = txQuery.lte('date', endDate);
+        }
+
+        let cardQuery = supabase.from('card_transactions')
+          .select('id, date, amount, description, categories(name)')
+          .eq('user_id', user.id);
+
+        if (startDate) cardQuery = cardQuery.gte('date', startDate);
+        if (endDate) cardQuery = cardQuery.lte('date', endDate);
+
+        const [accRes, catRes, subRes, entitiesRes, txsRes, cardsRes] = await Promise.all([
+          supabase.from('accounts').select('*').eq('is_archived', false),
+          supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name'),
+          supabase.from('subcategories').select('*').eq('user_id', user.id).order('name'),
+          FinanceService.getEntities(),
+          txQuery,
+          cardQuery
+        ]);
+
+        if (accRes.error) throw accRes.error;
+        if (catRes.error) throw catRes.error;
+
+        accData = accRes.data || [];
+        catData = catRes.data || [];
+        subData = subRes.data || [];
+        dbEntities = entitiesRes || [];
+        transactionsData = txsRes.data || [];
+        cardTxsData = cardsRes.data || [];
+
+        // Save to cache
+        localStorage.setItem('finvision_cached_accounts', JSON.stringify(accData));
+        localStorage.setItem('finvision_cached_categories', JSON.stringify(catData));
+        localStorage.setItem('finvision_cached_subcategories', JSON.stringify(subData));
+        localStorage.setItem('finvision_cached_owners', JSON.stringify(dbEntities));
+        localStorage.setItem(`finvision_cached_raw_txs_${user.id}`, JSON.stringify(transactionsData));
+        localStorage.setItem(`finvision_cached_raw_card_txs_${user.id}`, JSON.stringify(cardTxsData));
+      } else {
+        // Retrieve from cache
+        try {
+          accData = JSON.parse(localStorage.getItem('finvision_cached_accounts') || '[]');
+          catData = JSON.parse(localStorage.getItem('finvision_cached_categories') || '[]');
+          subData = JSON.parse(localStorage.getItem('finvision_cached_subcategories') || '[]');
+          dbEntities = JSON.parse(localStorage.getItem('finvision_cached_owners') || '[]');
+          transactionsData = JSON.parse(localStorage.getItem(`finvision_cached_raw_txs_${user.id}`) || '[]');
+          cardTxsData = JSON.parse(localStorage.getItem(`finvision_cached_raw_card_txs_${user.id}`) || '[]');
+        } catch (e) {
+          console.error("Error reading history cache:", e);
+        }
+      }
+
+      if (requestId !== lastRequestId.current) return;
+
+      // Map state
       setAccounts((accData || []).map((a: any) => ({
         id: a.id,
         institution: a.institution,
@@ -312,129 +385,32 @@ const HistoryPage: React.FC = () => {
         lastSync: a.last_sync
       })).sort((a: any, b: any) => a.institution.localeCompare(b.institution)));
 
-      const { data: catData, error: catErr } = await supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name');
-
-      let subData: any[] = [];
-      try {
-        const { data: sData } = await supabase.from('subcategories').select('*').eq('user_id', user.id).order('name');
-        subData = sData || [];
-      } catch (e) {
-        console.warn("Subcategories table not found", e);
-      }
-
-      if (!catErr && catData) {
-        const mappedSubcats = subData.map(sub => {
-          const parentCat = catData.find((c: any) => c.id === sub.category_id);
-          return { ...sub, category_name: parentCat?.name };
-        });
-        setSubcategories(mappedSubcats);
-
-        const dbCategories = catData.map((c: any) => c.name);
-        // Garantir nomes essenciais
-        const essential = ['Outros', 'Conciliação'];
-        const mergedCategories = Array.from(new Set([...DEFAULT_CATEGORIES, ...dbCategories, ...essential])).sort((a, b) => a.localeCompare(b));
-        setAvailableCategories(mergedCategories);
-
-        // Build the objects combining defaults + DB
-        const catMap = new Map<string, { name: string, type?: 'INCOME' | 'EXPENSE' }>();
-        DEFAULT_CATEGORIES.forEach((c: string) => catMap.set(c, { name: c })); // Default has no type
-        catData.forEach((c: any) => catMap.set(c.name, c)); // DB might have type
-        setCategoryObjects(Array.from(catMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
-      }
-
-      // ── Paginated query for the visible table ──
-      // Default sorting: if sorting by amount, use our database view or raw columns
-      let query: any = supabase.from('transactions').select('*, attachments:documents!documents_transaction_id_fkey(*)', { count: 'exact' }).eq('user_id', user.id).eq('is_deleted', false);
-
-      // We handle 'amount' sorting specially in JS if it can't be done perfectly in Supabase 
-      // but Postgrest doesn't let us sort by calculated case when statement without a RPC or View.
-      // So if 'amount' is sorted, we'll sort the DB normally and then refine it in memory if needed, 
-      // or we can sort by 'amount' directly (Note: amount in DB is usually stored absolute).
-      query = query.order(sortField, { ascending: sortDirection === 'asc' });
-
-      if (sortField !== 'date') {
-        query = query.order('date', { ascending: false }); // secondary sort fallback
-      }
-      if (filterType !== 'ALL') query = query.eq('type', filterType);
-      if (filterAccount.length > 0) query = query.in('account_id', filterAccount);
-      if (filterCategory.length > 0) query = query.in('category', filterCategory);
-      if (filterSubcategory.length > 0) query = query.in('subcategory', filterSubcategory);
-      const todayRaw = new Date();
-      const sixtyDaysAhead = new Date(todayRaw.getFullYear(), todayRaw.getMonth(), todayRaw.getDate() + 60);
-      const futureLimit = sixtyDaysAhead.toISOString().split('T')[0];
-
-      if (startDate && endDate) {
-        // Broaden query to include future provisions, then filter in JS if needed or use complex OR
-        // For simplicity and pagination, we expand the range slightly for provisions
-        query = query.or(`and(date.gte.${startDate},date.lte.${endDate}),and(metadata->>is_provision.eq.true,date.gte.${startDate},date.lte.${futureLimit})`);
-      } else {
-        if (startDate) query = query.gte('date', startDate);
-        if (endDate) query = query.lte('date', endDate);
-      }
-      if (filterOwner.length > 0) query = query.in('owner_name', filterOwner);
-
-      // Global Search: use ilike for reliable Supabase/PostgREST compatibility
-      if (debouncedSearch) {
-        const filterClause = buildSearchFilter(debouncedSearch);
-        if (filterClause) query = query.or(filterClause);
-      }
-
-      query = query.range(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
-
-      // ── Aggregation query for charts — same filters, no pagination, minimal columns ──
-      let chartQuery: any = supabase.from('transactions')
-        .select('id, date, type, amount, category, subcategory, is_amortization, account_id, owner_name, description, is_paid, paid_amount, attachments:documents!documents_transaction_id_fkey(*)')
-        .eq('user_id', user.id).eq('is_deleted', false)
-        .order('date', { ascending: false });
-      if (filterType !== 'ALL') chartQuery = chartQuery.eq('type', filterType);
-      if (filterAccount.length > 0) chartQuery = chartQuery.in('account_id', filterAccount);
-      if (filterCategory.length > 0) chartQuery = chartQuery.in('category', filterCategory);
-      if (filterSubcategory.length > 0) chartQuery = chartQuery.in('subcategory', filterSubcategory);
-      if (startDate && endDate) {
-        chartQuery = chartQuery.or(`and(date.gte.${startDate},date.lte.${endDate}),and(metadata->>is_provision.eq.true,date.gte.${startDate},date.lte.${futureLimit})`);
-      } else {
-        if (startDate) chartQuery = chartQuery.gte('date', startDate);
-        if (endDate) chartQuery = chartQuery.lte('date', endDate);
-      }
-      if (filterOwner.length > 0) chartQuery = chartQuery.in('owner_name', filterOwner);
-
-      if (debouncedSearch) {
-        const filterClause = buildSearchFilter(debouncedSearch);
-        if (filterClause) chartQuery = chartQuery.or(filterClause);
-      }
-
-      // NEW: Additional query for card transactions for the charts
-      let cardChartQuery: any = supabase.from('card_transactions')
-        .select('id, date, amount, description, categories(name)')
-        .eq('user_id', user.id)
-        .order('date', { ascending: false });
-
-      if (startDate) cardChartQuery = cardChartQuery.gte('date', startDate);
-      if (endDate) cardChartQuery = cardChartQuery.lte('date', endDate);
-      // For card transactions, we only apply category filter if the user selected one
-      // Since card_transactions uses ID, we'd need more logic to filter by name here, 
-      // but for now we'll fetch all in the date range and filter in JS to keep it simple and consistent.
-
-      const [{ data, count, error: fetchError }, { data: chartData }, { data: cardChartData }, dbEntities] = await Promise.all([
-        query,
-        chartQuery,
-        cardChartQuery,
-        FinanceService.getEntities()
-      ]);
-      if (requestId !== lastRequestId.current) return;
-      if (fetchError) throw fetchError;
       setOwners((dbEntities || []).sort((a, b) => a.localeCompare(b)));
 
-      // ── Post-process Data for Amount Sorting and Filtering ──
-      // Because Supabase 'amount' is stored as positive, mathematical filtering (-R$ 50 to R$ 100) 
-      // and sorting (highest to lowest true value) needs to be handled.
+      const mappedSubcats = (subData || []).map(sub => {
+        const parentCat = (catData || []).find((c: any) => c.id === sub.category_id);
+        return { ...sub, category_name: parentCat?.name };
+      });
+      setSubcategories(mappedSubcats);
+
+      const dbCategories = (catData || []).map((c: any) => c.name);
+      const essential = ['Outros', 'Conciliação'];
+      const mergedCategories = Array.from(new Set([...DEFAULT_CATEGORIES, ...dbCategories, ...essential])).sort((a, b) => a.localeCompare(b));
+      setAvailableCategories(mergedCategories);
+
+      const catMap = new Map<string, { name: string, type?: 'INCOME' | 'EXPENSE' }>();
+      DEFAULT_CATEGORIES.forEach((c: string) => catMap.set(c, { name: c }));
+      (catData || []).forEach((c: any) => catMap.set(c.name, c));
+      setCategoryObjects(Array.from(catMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
+
+      // In-memory processor
       const applyTrueAmount = (t: any) => ({
         ...t,
         _trueAmount: (t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT' || (t.type === 'TRANSFER' && t.amount > 0)) ? -Math.abs(Number(t.amount || 0)) : Math.abs(Number(t.amount || 0))
       });
 
       // Normalize card transactions
-      const normalizedCardChartData = (cardChartData || []).map((ct: any) => ({
+      const normalizedCardTxs = (cardTxsData || []).map((ct: any) => ({
         id: ct.id,
         date: ct.date,
         type: 'EXPENSE',
@@ -447,35 +423,67 @@ const HistoryPage: React.FC = () => {
         metadata: {}
       }));
 
-      let processedChartData = [...(chartData || []), ...normalizedCardChartData].map(applyTrueAmount);
-      let processedTableData = (data || []).map(applyTrueAmount);
+      // Combined transactions for charts and table
+      let combined = [...(transactionsData || []), ...normalizedCardTxs].map(applyTrueAmount);
 
-      // Apply Filter Category to card transactions too (if selected)
-      if (filterCategory.length > 0) {
-        processedChartData = processedChartData.filter((t: any) => filterCategory.includes(t.category));
+      // Apply JS Filters
+      if (filterType !== 'ALL') {
+        combined = combined.filter((t: any) => t.type === filterType);
       }
-
-      // 1. Appy Min/Max Filters
+      if (filterAccount.length > 0) {
+        combined = combined.filter((t: any) => filterAccount.includes(t.account_id));
+      }
+      if (filterCategory.length > 0) {
+        combined = combined.filter((t: any) => filterCategory.includes(t.category));
+      }
+      if (filterSubcategory.length > 0) {
+        combined = combined.filter((t: any) => filterSubcategory.includes(t.subcategory));
+      }
+      if (filterOwner.length > 0) {
+        combined = combined.filter((t: any) => filterOwner.includes(t.owner_name));
+      }
       if (minPrice !== '') {
-        const minVal = Number(minPrice);
-        processedChartData = processedChartData.filter((t: any) => t._trueAmount >= minVal);
-        processedTableData = processedTableData.filter((t: any) => t._trueAmount >= minVal);
+        combined = combined.filter((t: any) => t._trueAmount >= Number(minPrice));
       }
       if (maxPrice !== '') {
-        const maxVal = Number(maxPrice);
-        processedChartData = processedChartData.filter((t: any) => t._trueAmount <= maxVal);
-        processedTableData = processedTableData.filter((t: any) => t._trueAmount <= maxVal);
+        combined = combined.filter((t: any) => t._trueAmount <= Number(maxPrice));
+      }
+      if (debouncedSearch) {
+        const searchNormalized = normalize(debouncedSearch);
+        combined = combined.filter((t: any) => 
+          normalize(t.description || '').includes(searchNormalized) ||
+          normalize(t.category || '').includes(searchNormalized) ||
+          normalize(t.subcategory || '').includes(searchNormalized) ||
+          normalize(t.account_name || '').includes(searchNormalized) ||
+          normalize(t.owner_name || '').includes(searchNormalized)
+        );
       }
 
-      // 2. Apply complex Amount sorting in-memory if needed
-      if (sortField === 'amount') {
-        processedTableData.sort((a: any, b: any) => {
-          if (sortDirection === 'asc') return a._trueAmount - b._trueAmount;
-          return b._trueAmount - a._trueAmount;
-        });
-      }
+      // Sort combined
+      combined.sort((a: any, b: any) => {
+        let valA = a[sortField];
+        let valB = b[sortField];
+        
+        if (sortField === 'amount') {
+          valA = a._trueAmount;
+          valB = b._trueAmount;
+        }
+        
+        if (typeof valA === 'string') {
+          const cmp = valA.localeCompare(valB || '');
+          return sortDirection === 'asc' ? cmp : -cmp;
+        } else {
+          const numA = Number(valA || 0);
+          const numB = Number(valB || 0);
+          if (numA === numB) {
+            return new Date(b.date).getTime() - new Date(a.date).getTime();
+          }
+          return sortDirection === 'asc' ? numA - numB : numB - numA;
+        }
+      });
 
-      setChartTransactions(processedChartData.map((t: any) => ({
+      // Update state for chartTransactions (filtered but not paginated)
+      setChartTransactions(combined.map((t: any) => ({
         id: t.id,
         description: t.description || '',
         amount: Number(t.amount || 0),
@@ -494,13 +502,14 @@ const HistoryPage: React.FC = () => {
         metadata: t.metadata || {}
       })));
 
-      if (count !== null) setTotalCount(processedTableData.length > 0 ? processedTableData.length : count); // Adjust count roughly
+      // Paginate table transactions
+      const paginated = combined.slice(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
+      
+      setTotalCount(combined.length);
+      setHasMore(combined.length > (page + 1) * PAGE_SIZE);
 
-      setHasMore(false); // Disable infinite scroll if we sort/filter in JS
-
-      setTransactions(processedTableData.slice(0, PAGE_SIZE).map((t: any) => {
+      setTransactions(paginated.map((t: any) => {
         const isIncomplete = !t.description || !t.account_name || !t.category || !t.owner_name;
-
         return {
           id: t.id,
           description: t.description ?? 'Sem descrição',
@@ -524,6 +533,7 @@ const HistoryPage: React.FC = () => {
         };
       }));
     } catch (err) {
+      console.error(err);
       setError('Erro ao carregar dados.');
     } finally {
       setIsLoading(false);
@@ -531,100 +541,8 @@ const HistoryPage: React.FC = () => {
   }, [filterType, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, page, sortField, sortDirection, debouncedSearch]);
 
   const refreshCharts = useCallback(async () => {
-    if (!supabase) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const todayRaw = new Date();
-    const sixtyDaysAhead = new Date(todayRaw.getFullYear(), todayRaw.getMonth(), todayRaw.getDate() + 60);
-    const futureLimit = sixtyDaysAhead.toISOString().split('T')[0];
-
-    let chartQuery: any = supabase.from('transactions')
-      .select('id, date, type, amount, category, subcategory, is_amortization, account_id, owner_name, description, is_paid, paid_amount, attachments:documents!documents_transaction_id_fkey(*)')
-      .eq('user_id', user.id).eq('is_deleted', false)
-      .order('date', { ascending: false });
-    if (filterType !== 'ALL') chartQuery = chartQuery.eq('type', filterType);
-    if (filterAccount.length > 0) chartQuery = chartQuery.in('account_id', filterAccount);
-    if (filterCategory.length > 0) chartQuery = chartQuery.in('category', filterCategory);
-    if (filterSubcategory.length > 0) chartQuery = chartQuery.in('subcategory', filterSubcategory);
-    if (startDate && endDate) {
-      chartQuery = chartQuery.or(`and(date.gte.${startDate},date.lte.${endDate}),and(metadata->>is_provision.eq.true,date.gte.${startDate},date.lte.${futureLimit})`);
-    } else {
-      if (startDate) chartQuery = chartQuery.gte('date', startDate);
-      if (endDate) chartQuery = chartQuery.lte('date', endDate);
-    }
-    if (filterOwner.length > 0) chartQuery = chartQuery.in('owner_name', filterOwner);
-
-    if (debouncedSearch) {
-      const filterClause = buildSearchFilter(debouncedSearch);
-      if (filterClause) chartQuery = chartQuery.or(filterClause);
-    }
-
-    let cardChartQuery: any = supabase.from('card_transactions')
-      .select('id, date, amount, description, categories(name)')
-      .eq('user_id', user.id)
-      .order('date', { ascending: false });
-
-    if (startDate) cardChartQuery = cardChartQuery.gte('date', startDate);
-    if (endDate) cardChartQuery = cardChartQuery.lte('date', endDate);
-
-    const [{ data: chartData }, { data: cardChartData }] = await Promise.all([
-      chartQuery,
-      cardChartQuery
-    ]);
-
-    const applyTrueAmount = (t: any) => ({
-      ...t,
-      _trueAmount: (t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT' || (t.type === 'TRANSFER' && t.amount > 0)) ? -Math.abs(Number(t.amount || 0)) : Math.abs(Number(t.amount || 0))
-    });
-
-    const normalizedCardChartData = (cardChartData || []).map((ct: any) => ({
-      id: ct.id,
-      date: ct.date,
-      type: 'EXPENSE',
-      amount: Number(ct.amount),
-      category: ct.categories?.name || 'Cartão de Crédito',
-      description: ct.description,
-      is_paid: true,
-      paid_amount: Number(ct.amount),
-      is_amortization: false,
-      metadata: {}
-    }));
-
-    let processedChartData = [...(chartData || []), ...normalizedCardChartData].map(applyTrueAmount);
-
-    if (filterCategory.length > 0) {
-      processedChartData = processedChartData.filter((t: any) => filterCategory.includes(t.category));
-    }
-
-    if (minPrice !== '') {
-      const minVal = Number(minPrice);
-      processedChartData = processedChartData.filter((t: any) => t._trueAmount >= minVal);
-    }
-    if (maxPrice !== '') {
-      const maxVal = Number(maxPrice);
-      processedChartData = processedChartData.filter((t: any) => t._trueAmount <= maxVal);
-    }
-
-    setChartTransactions(processedChartData.map((t: any) => ({
-      id: t.id,
-      description: t.description || '',
-      amount: Number(t.amount || 0),
-      date: t.date,
-      type: t.type as TransactionType,
-      accountId: t.account_id,
-      accountName: t.account_name ?? '',
-      category: t.category ?? 'Outros',
-      subcategory: t.subcategory ?? undefined,
-      owner_name: t.owner_name ?? 'Pessoal',
-      isDeleted: !!t.is_deleted,
-      isReconciled: !!t.is_reconciled,
-      isPaid: !!t.is_paid,
-      paidAmount: Number(t.paid_amount || 0),
-      is_amortization: !!t.is_amortization,
-      metadata: t.metadata || {}
-    })));
-  }, [filterType, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, debouncedSearch]);
+    await fetchData(true);
+  }, [fetchData]);
 
   // Reset page to 0 when filters change
   useEffect(() => {

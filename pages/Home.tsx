@@ -65,19 +65,20 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
     window.scrollTo(0, 0);
   }, []);
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
+  const loadData = async () => {
+    try {
+      if (navigator.onLine) {
         const dashboardData = await DashboardService.getSummary();
         setData(dashboardData);
         DashboardService.setCachedSummary(dashboardData);
 
         // Load 12-month projections
         if (user?.id) {
-            setIsProjecting(true);
-            const proj = await projectionService.getProjectedCashFlow(user.id, dashboardData.consolidatedBalance, 12);
-            setProjectedData(proj);
-            setIsProjecting(false);
+          setIsProjecting(true);
+          const proj = await projectionService.getProjectedCashFlow(user.id, dashboardData.consolidatedBalance, 12);
+          setProjectedData(proj);
+          localStorage.setItem(`finvision_cached_projections_${user.id}`, JSON.stringify(proj));
+          setIsProjecting(false);
         }
 
         // Fetch bank transactions
@@ -117,13 +118,62 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           setTransactions(allTxs);
           localStorage.setItem('finvision_cached_home_txs', JSON.stringify(allTxs));
         }
-      } catch (err: any) {
-        if (!data) setError('Erro ao carregar o resumo financeiro.');
-      } finally {
-        setIsLoading(false);
+      } else {
+        // Offline flow
+        const cachedSummary = DashboardService.getCachedSummary();
+        if (cachedSummary) {
+          setData(cachedSummary);
+        }
+
+        if (user?.id) {
+          const cachedProj = localStorage.getItem(`finvision_cached_projections_${user.id}`);
+          if (cachedProj) {
+            setProjectedData(JSON.parse(cachedProj));
+          }
+          setIsProjecting(false);
+        }
+
+        const cachedTxs = localStorage.getItem('finvision_cached_home_txs');
+        if (cachedTxs) {
+          setTransactions(JSON.parse(cachedTxs));
+        }
       }
-    };
+    } catch (err: any) {
+      console.error('Error loading home data:', err);
+      // Fallback in case of any throw (e.g. network timeout or query error)
+      const cachedSummary = DashboardService.getCachedSummary();
+      if (cachedSummary) {
+        setData(cachedSummary);
+      }
+      if (user?.id) {
+        const cachedProj = localStorage.getItem(`finvision_cached_projections_${user.id}`);
+        if (cachedProj) {
+          setProjectedData(JSON.parse(cachedProj));
+        }
+        setIsProjecting(false);
+      }
+      const cachedTxs = localStorage.getItem('finvision_cached_home_txs');
+      if (cachedTxs) {
+        setTransactions(JSON.parse(cachedTxs));
+      }
+      if (!data && !cachedSummary) setError('Erro ao carregar o resumo financeiro.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     if (user?.id) loadData();
+  }, [user, startDate, endDate]);
+
+  useEffect(() => {
+    const handleSyncCompleted = () => {
+      if (user?.id) loadData();
+    };
+    window.addEventListener('offline-sync-completed', handleSyncCompleted);
+    return () => {
+      window.removeEventListener('offline-sync-completed', handleSyncCompleted);
+    };
   }, [user, startDate, endDate]);
 
   const format = (v: number) => new Intl.NumberFormat('pt-BR', {
