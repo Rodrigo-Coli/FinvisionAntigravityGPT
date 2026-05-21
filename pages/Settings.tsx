@@ -224,8 +224,13 @@ const SettingsPage: React.FC = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      await supabase.from('user_settings').upsert({ user_id: user.id, [key]: value, updated_at: DateUtils.getNow().toISOString() });
-    } catch (err) { setSettings(previousSettings); }
+      const { error } = await supabase.from('user_settings').upsert({ user_id: user.id, [key]: value, updated_at: DateUtils.getNow().toISOString() });
+      if (error) throw error;
+    } catch (err) { 
+      setSettings(previousSettings); 
+      console.error(`Erro ao atualizar configuração [${key}]:`, err);
+      alert('Não foi possível salvar a alteração no banco de dados. Por favor, verifique sua conexão.');
+    }
   };
 
   const addEntity = async () => {
@@ -429,15 +434,21 @@ const SettingsPage: React.FC = () => {
                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Alertas de vencimentos, faturas e recebimentos.</p>
                     </div>
                     <button onClick={async () => {
-                      if (Notification.permission === 'denied') {
-                        alert('As notificações estão BLOQUEADAS no seu navegador.\n\nPara ativar:\n1. Toque no ícone de cadeado/informações na barra de endereços\n2. Vá em "Permissões do site" ou "Configurações"\n3. Mude "Notificações" para "Permitir"\n4. Recarregue a página.');
-                        return;
-                      }
-                      const permission = await requestNotificationPermission();
-                      if (permission === 'granted') {
-                        updateSetting('push_enabled', true);
+                      const newStatus = !settings.push_enabled;
+                      if (newStatus) {
+                        if (Notification.permission === 'denied') {
+                          alert('As notificações estão BLOQUEADAS no seu navegador.\n\nPara ativar:\n1. Toque no ícone de cadeado/informações na barra de endereços\n2. Vá em "Permissões do site" ou "Configurações"\n3. Mude "Notificações" para "Permitir"\n4. Recarregue a página.');
+                          return;
+                        }
+                        const permission = await requestNotificationPermission();
+                        if (permission === 'granted') {
+                          await updateSetting('push_enabled', true);
+                          await showLocalNotification('FinVision Pro ✓', 'Notificações ativadas com sucesso! Você será alertado sobre vencimentos.', { url: '/', tag: 'welcome' });
+                        } else {
+                          alert('Permissão negada. Você pode ativar nas configurações do navegador.');
+                        }
                       } else {
-                        alert('Permissão negada. Você pode ativar nas configurações do navegador.');
+                        await updateSetting('push_enabled', false);
                       }
                     }} className={`w-14 h-8 shrink-0 rounded-full p-1 transition-all ${settings.push_enabled && typeof Notification !== 'undefined' && Notification.permission === 'granted' ? 'bg-brand-600' : 'bg-slate-200'}`}>
                       <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${settings.push_enabled && typeof Notification !== 'undefined' && Notification.permission === 'granted' ? 'translate-x-6' : 'translate-x-0'}`} />
