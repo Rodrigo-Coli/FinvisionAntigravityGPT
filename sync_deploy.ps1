@@ -13,7 +13,7 @@ try {
 
     # 2. Coletar arquivos locais (excluindo pastas de build e sistema)
     Write-Host "Coletando arquivos locais..."
-    $excludeDir = 'node_modules|dist|backups|\.git|\.gemini'
+    $excludeDir = 'node_modules|dist|backups|\.git|\.gemini|_backup'
     $files = Get-ChildItem -Recurse -File | Where-Object { $_.FullName -notmatch $excludeDir }
 
     $tree = @()

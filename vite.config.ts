@@ -6,12 +6,11 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // ─── Estratégia: usar o sw.js que está em public/ diretamente ───
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.js',
-      // autoUpdate — registra e atualiza o SW automaticamente sem pedir
       registerType: 'autoUpdate',
+      injectRegister: 'script',
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
@@ -24,15 +23,13 @@ export default defineConfig({
         theme_color: '#4f46e5',
         background_color: '#f8fafc',
         display: 'standalone',
-        display_override: ['standalone', 'minimal-ui'],
         orientation: 'portrait-primary',
-        start_url: '/?source=pwa',
+        start_url: '/',
         scope: '/',
         lang: 'pt-BR',
-        id: 'com.finvision.pro',
+        id: '/',
         categories: ['finance', 'productivity'],
         prefer_related_applications: false,
-        // ── ÍCONES SEM QUERY STRING (obrigatório para Chrome instalar como app) ──
         icons: [
           {
             src: 'logo.png',
@@ -48,29 +45,9 @@ export default defineConfig({
           },
           {
             src: 'logo.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'maskable'
-          },
-          {
-            src: 'logo.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable'
-          }
-        ],
-        shortcuts: [
-          {
-            name: 'Nova Transação',
-            short_name: 'Lançar',
-            url: '/?source=pwa#/history?add=true',
-            icons: [{ src: 'logo.png', sizes: '192x192', type: 'image/png' }]
-          },
-          {
-            name: 'Histórico',
-            short_name: 'Histórico',
-            url: '/?source=pwa#/history',
-            icons: [{ src: 'logo.png', sizes: '192x192', type: 'image/png' }]
           }
         ]
       },
