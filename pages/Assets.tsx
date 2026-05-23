@@ -33,6 +33,7 @@ const Assets: React.FC = () => {
   const [physicalAssets, setPhysicalAssets] = useState<PhysicalAsset[]>([]);
   const [brokers, setBrokers] = useState<InvestmentBroker[]>([]);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
+  const [realEstateTransactions, setRealEstateTransactions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [estimatedYieldRate, setEstimatedYieldRate] = useState<number>(0.8);
@@ -395,11 +396,75 @@ const Assets: React.FC = () => {
           metadata: l.metadata
         })));
       }
+
+      // Fetch transactions linked to liabilities
+      const { data: txs } = await sb.from('transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .not('liability_id', 'is', null);
+      if (txs) {
+        setRealEstateTransactions(txs);
+      }
     } catch (e: any) {
       console.error('Assets: Error fetching data', e);
       alert(`Erro ao carregar patrimônio: ${e.message}`);
     } finally {
       setIsLoading(false);
+    }
+  };
+  
+  const isRealEstateLiab = (l: any) => {
+    if (l.type === 'MORTGAGE' || l.metadata?.isRealEstate) return true;
+    if (l.linkedAssetId) {
+      const linkedAsset = physicalAssets.find(p => p.id === l.linkedAssetId);
+      if (linkedAsset && linkedAsset.category === 'REAL_ESTATE') return true;
+    }
+    return false;
+  };
+
+  const togglePropertyTypeDirectly = async (asset: PhysicalAsset, liability?: any) => {
+    if (!supabase) return;
+    const currentType = liability?.metadata?.propertyType || 'PLANTA';
+    const newType = currentType === 'PLANTA' ? 'PRONTO' : 'PLANTA';
+    
+    try {
+      if (liability) {
+        const updatedMetadata = {
+          ...(liability.metadata || {}),
+          propertyType: newType
+        };
+        
+        const { error } = await supabase.from('liabilities').update({
+          metadata: updatedMetadata
+        }).eq('id', liability.id);
+        
+        if (error) throw error;
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        
+        const { error } = await supabase.from('liabilities').insert([{
+          user_id: user.id,
+          name: `Custos/Rendimentos: ${asset.name}`,
+          type: 'MORTGAGE',
+          total_amount: 0,
+          remaining_balance: 0,
+          installment_amount: 0,
+          linked_asset_id: asset.id,
+          metadata: {
+            propertyType: newType,
+            rentalIncome: 0,
+            operationalExpenses: 0,
+            isRealEstate: true
+          }
+        }]);
+        
+        if (error) throw error;
+      }
+      
+      fetchData();
+    } catch (err: any) {
+      alert(`Erro ao alterar o status do imóvel: ${err.message}`);
     }
   };
 
@@ -454,7 +519,7 @@ const Assets: React.FC = () => {
   }
 
   return (
-    <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
+    <div className="max-w-[1600px] mx-auto px-4 sm:px-10 pt-8 pb-36 space-y-8 animate-in fade-in duration-500">
       {/* HEADER SECTION */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
         <div>
@@ -626,10 +691,10 @@ const Assets: React.FC = () => {
               <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm">
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Dívidas Imobiliárias (Passivo)</p>
                 <h3 className="text-2xl font-bold text-red-600 tracking-tight">
-                  {formatCurrency(liabilities.filter(l => l.type === 'MORTGAGE' || l.metadata?.isRealEstate).reduce((acc, curr) => acc + curr.remainingBalance, 0))}
+                  {formatCurrency(liabilities.filter(isRealEstateLiab).reduce((acc, curr) => acc + curr.remainingBalance, 0))}
                 </h3>
                 <p className="text-[9px] font-bold text-rose-500 mt-4 uppercase tracking-widest flex items-center gap-1">
-                  <ArrowDownRight size={12} className="text-rose-500" /> {liabilities.filter(l => l.type === 'MORTGAGE' || l.metadata?.isRealEstate).length} Financiamentos
+                  <ArrowDownRight size={12} className="text-rose-500" /> {liabilities.filter(isRealEstateLiab).length} Financiamentos
                 </p>
               </div>
 
@@ -639,7 +704,7 @@ const Assets: React.FC = () => {
                 <h3 className="text-2xl font-bold text-slate-900 tracking-tight">
                   {formatCurrency(
                     physicalAssets.filter(p => p.category === 'REAL_ESTATE').reduce((acc, curr) => acc + curr.estimatedValue, 0) -
-                    liabilities.filter(l => l.type === 'MORTGAGE' || l.metadata?.isRealEstate).reduce((acc, curr) => acc + curr.remainingBalance, 0)
+                    liabilities.filter(isRealEstateLiab).reduce((acc, curr) => acc + curr.remainingBalance, 0)
                   )}
                 </h3>
                 <p className="text-[9px] font-bold text-brand-600 mt-4 uppercase tracking-widest leading-none">Seu patrimônio líquido em imóveis</p>
@@ -651,7 +716,7 @@ const Assets: React.FC = () => {
                 <h3 className="text-2xl font-bold text-slate-900 tracking-tight">
                   {(() => {
                     const totalImobAsset = physicalAssets.filter(p => p.category === 'REAL_ESTATE').reduce((acc, curr) => acc + curr.estimatedValue, 0);
-                    const totalImobDebt = liabilities.filter(l => l.type === 'MORTGAGE' || l.metadata?.isRealEstate).reduce((acc, curr) => acc + curr.remainingBalance, 0);
+                    const totalImobDebt = liabilities.filter(isRealEstateLiab).reduce((acc, curr) => acc + curr.remainingBalance, 0);
                     if (totalImobAsset === 0) return '0%';
                     return `${Math.round((totalImobDebt / totalImobAsset) * 100)}%`;
                   })()}
@@ -789,12 +854,8 @@ const Assets: React.FC = () => {
               {(() => {
                 // Outflows (Filtered dynamically by exclusions and asset type)
                 const mortgageLiabs = liabilities.filter(l => {
-                  if (l.type !== 'MORTGAGE' && !l.metadata?.isRealEstate) return false;
+                  if (!isRealEstateLiab(l)) return false;
                   if (excludedAssetIds.includes(l.linkedAssetId || '')) return false;
-                  if (l.linkedAssetId) {
-                    const linkedAsset = physicalAssets.find(p => p.id === l.linkedAssetId);
-                    if (linkedAsset && linkedAsset.category !== 'REAL_ESTATE') return false;
-                  }
                   return true;
                 });
                 const consortiumLiabs = liabilities.filter(l => l.type === 'CONSORTIUM' && !excludedConsortiumIds.includes(l.id));
@@ -968,9 +1029,21 @@ const Assets: React.FC = () => {
                           </div>
                           <div className="flex gap-1">
                             {propertyType === 'PLANTA' ? (
-                              <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-amber-100">Na Planta</span>
+                              <button
+                                onClick={() => togglePropertyTypeDirectly(asset, linkedLiab)}
+                                title="Clique para alternar o status do imóvel para Pronto"
+                                className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-amber-100 flex items-center gap-1 transition-colors"
+                              >
+                                Na Planta 🔄
+                              </button>
                             ) : (
-                              <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-emerald-100">Pronto</span>
+                              <button
+                                onClick={() => togglePropertyTypeDirectly(asset, linkedLiab)}
+                                title="Clique para alternar o status do imóvel para Na Planta"
+                                className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-emerald-100 flex items-center gap-1 transition-colors"
+                              >
+                                Pronto 🔄
+                              </button>
                             )}
                           </div>
                         </div>
@@ -981,7 +1054,7 @@ const Assets: React.FC = () => {
                         </div>
 
                         {/* Rents vs Mortgage details */}
-                        <div className="pt-6 border-t border-slate-50 space-y-3">
+                        <div className="pt-6 border-t border-slate-50 space-y-4">
                           {propertyType === 'PRONTO' ? (
                             <>
                               <div className="flex justify-between text-[10px] text-slate-500">
@@ -1021,6 +1094,66 @@ const Assets: React.FC = () => {
                                 <span>Consome Mensal:</span>
                                 <span className="text-rose-500">{formatCurrency(netPropertyFlow)}/mês</span>
                               </div>
+
+                              {/* LIST OF DOWN PAYMENTS AND BALLOONS */}
+                              {linkedLiab && (
+                                <div className="space-y-3 pt-3 border-t border-dashed border-slate-100 animate-in fade-in duration-300">
+                                  {(() => {
+                                    const assetTxs = realEstateTransactions.filter(t => t.liability_id === linkedLiab.id);
+                                    
+                                    const downPaymentsList = assetTxs.filter(t => 
+                                      t.metadata?.type === 'DOWN_PAYMENT' || 
+                                      t.description.toUpperCase().includes('ATO')
+                                    ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                    
+                                    const intermList = assetTxs.filter(t => 
+                                      t.metadata?.type === 'INTERMEDIARY' || 
+                                      t.description.toUpperCase().includes('INTERMEDIÁRIA') || 
+                                      t.description.toUpperCase().includes('BALÃO')
+                                    ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                                    return (
+                                      <>
+                                        {downPaymentsList.length > 0 && (
+                                          <div className="space-y-1">
+                                            <p className="text-[8px] font-black text-brand-600 uppercase tracking-widest">🎯 Parcelas Ato / Entrada:</p>
+                                            <div className="max-h-[90px] overflow-y-auto pr-1 space-y-1 custom-scrollbar">
+                                              {downPaymentsList.map(dp => (
+                                                <div key={dp.id} className="flex justify-between text-[8px] font-bold text-slate-500">
+                                                  <span className={dp.is_paid ? 'line-through text-slate-400' : ''}>
+                                                    {dp.description.split(' - ')[0]} ({new Date(dp.date).toLocaleDateString('pt-BR', { month: '2-digit', year: '2-digit' })}):
+                                                  </span>
+                                                  <span className={dp.is_paid ? 'text-emerald-500' : 'text-slate-700'}>
+                                                    {formatCurrency(dp.amount)} {dp.is_paid ? '✓' : ''}
+                                                  </span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {intermList.length > 0 && (
+                                          <div className="space-y-1 pt-1.5 border-t border-dotted border-slate-100">
+                                            <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest">🎈 Parcelas Intermediárias / Balões:</p>
+                                            <div className="max-h-[90px] overflow-y-auto pr-1 space-y-1 custom-scrollbar">
+                                              {intermList.map(im => (
+                                                <div key={im.id} className="flex justify-between text-[8px] font-bold text-slate-500">
+                                                  <span className={im.is_paid ? 'line-through text-slate-400' : ''}>
+                                                    {im.description.split(' - ')[0]} ({new Date(im.date).toLocaleDateString('pt-BR', { month: '2-digit', year: '2-digit' })}):
+                                                  </span>
+                                                  <span className={im.is_paid ? 'text-emerald-500' : 'text-amber-600'}>
+                                                    {formatCurrency(im.amount)} {im.is_paid ? '✓' : ''}
+                                                  </span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
+                                </div>
+                              )}
                             </>
                           )}
                         </div>
@@ -1374,15 +1507,41 @@ const Assets: React.FC = () => {
 
                 const totalInflow = totalRents + totalYields;
 
-                // 2. Calculate Outflow (Mortgages, Condo, Consortia, Balloons)
+                // 2. Calculate Outflow (Mortgages, Condo, Consortia, Balloons, Down Payments)
                 const mortgageItems: { name: string; value: number }[] = [];
                 const condoItems: { name: string; value: number }[] = [];
                 const consortiumItems: { name: string; value: number }[] = [];
                 const balloonItems: { name: string; value: number }[] = [];
+                const downPaymentItems: { name: string; value: number }[] = [];
 
                 filteredLiabilities.forEach(l => {
                   const remaining = l.remainingBalance;
                   const isSettled = remaining <= 0 || (l.installmentsRemaining !== undefined && l.installmentsRemaining <= 0);
+
+                  // Extract from realEstateTransactions (for ATO and balloons)
+                  const monthTxs = realEstateTransactions.filter(t => {
+                    if (t.liability_id !== l.id) return false;
+                    const tDate = new Date(t.date);
+                    const tMonth = tDate.getUTCMonth() + 1;
+                    const tYear = tDate.getUTCFullYear();
+                    const tMonthLocal = tDate.getMonth() + 1;
+                    const tYearLocal = tDate.getFullYear();
+                    return (tMonth === monthNum && tYear === yearNum) || (tMonthLocal === monthNum && tYearLocal === yearNum);
+                  });
+
+                  const downs = monthTxs.filter(t => t.metadata?.type === 'DOWN_PAYMENT' || t.description.toUpperCase().includes('ATO'));
+                  downs.forEach(d => {
+                    downPaymentItems.push({ name: `${l.name.replace('Dívida Imob: ', '')} (Ato / Entrada)`, value: Number(d.amount) });
+                  });
+
+                  const balls = monthTxs.filter(t => 
+                    t.metadata?.type === 'INTERMEDIARY' || 
+                    t.description.toUpperCase().includes('INTERMEDIÁRIA') || 
+                    t.description.toUpperCase().includes('BALÃO')
+                  );
+                  balls.forEach(b => {
+                    balloonItems.push({ name: `${l.name.replace('Dívida Imob: ', '')} (Intermediária / Balão)`, value: Number(b.amount) });
+                  });
 
                   if (l.type === 'CONSORTIUM') {
                     if (!isSettled && (l.installmentsRemaining === undefined || l.installmentsRemaining > m)) {
@@ -1401,7 +1560,10 @@ const Assets: React.FC = () => {
                     const balloons = l.metadata?.balloons || [];
                     balloons.forEach((b: any) => {
                       if (Number(b.month) === monthNum && Number(b.year) === yearNum) {
-                        balloonItems.push({ name: `${l.name.replace('Dívida Imob: ', '')} (Intermediária / Balão)`, value: Number(b.amount) });
+                        const hasMatch = balloonItems.some(item => Math.abs(item.value - Number(b.amount)) < 0.1);
+                        if (!hasMatch) {
+                          balloonItems.push({ name: `${l.name.replace('Dívida Imob: ', '')} (Intermediária / Balão)`, value: Number(b.amount) });
+                        }
                       }
                     });
                   }
@@ -1411,8 +1573,9 @@ const Assets: React.FC = () => {
                 const totalCondo = condoItems.reduce((acc, curr) => acc + curr.value, 0);
                 const totalConsortium = consortiumItems.reduce((acc, curr) => acc + curr.value, 0);
                 const totalBalloons = balloonItems.reduce((acc, curr) => acc + curr.value, 0);
+                const totalDownPayments = downPaymentItems.reduce((acc, curr) => acc + curr.value, 0);
 
-                const totalOutflow = totalMortgages + totalCondo + totalConsortium + totalBalloons;
+                const totalOutflow = totalMortgages + totalCondo + totalConsortium + totalBalloons + totalDownPayments;
                 const netCashFlow = totalInflow - totalOutflow;
 
                 const prevCapital = runningCapital;
@@ -1435,6 +1598,8 @@ const Assets: React.FC = () => {
                   consortiumItems,
                   totalBalloons,
                   balloonItems,
+                  totalDownPayments,
+                  downPaymentItems,
                   totalOutflow,
                   netCashFlow,
                   prevCapital,
@@ -1545,7 +1710,8 @@ const Assets: React.FC = () => {
                                       ...row.mortgageItems,
                                       ...row.condoItems,
                                       ...row.consortiumItems,
-                                      ...row.balloonItems
+                                      ...row.balloonItems,
+                                      ...row.downPaymentItems
                                     ];
                                     if (allOut.length > 0) {
                                       setAuditModalData({
@@ -1744,7 +1910,9 @@ const Assets: React.FC = () => {
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8">
                   <div className="space-y-2">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-brand-600 rounded-[18px] flex items-center justify-center"><Building2 size={24} /></div>
+                      <div className="w-12 h-12 bg-brand-600 rounded-[18px] flex items-center justify-center">
+                        {selectedAssetForManagement.category === 'REAL_ESTATE' ? <Building2 size={24} /> : <Car size={24} />}
+                      </div>
                       <div>
                         <h3 className="text-2xl font-black italic tracking-tight">{selectedAssetForManagement.name}</h3>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Performance Financeira Consolidada</p>
@@ -1771,44 +1939,115 @@ const Assets: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                   {/* INCOME CARD */}
-                   <div className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-6">
-                      <div className="flex justify-between items-center">
-                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest italic">Receita Mensal (Aluguel)</h4>
-                        <div className="w-8 h-8 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center"><ArrowUpRight size={16} /></div>
-                      </div>
-                      <p className="text-3xl font-black text-emerald-400">{formatCurrency(2450)}</p> {/* Mock value, to be connected with transactions */}
-                      <p className="text-[9px] font-bold text-slate-500 leading-relaxed uppercase tracking-tight">Média dos últimos 12 meses. Representa um Yield de 0.45% am.</p>
-                   </div>
+                  {(() => {
+                    const linkedLiab = liabilities.find(l => l.linkedAssetId === selectedAssetForManagement.id);
+                    const isRealEstate = selectedAssetForManagement.category === 'REAL_ESTATE';
+                    
+                    if (isRealEstate) {
+                      const rental = Number(linkedLiab?.metadata?.rentalIncome) || 0;
+                      const costs = Number(linkedLiab?.metadata?.operationalExpenses) || 0;
+                      const installment = Number(linkedLiab?.installmentAmount) || 0;
+                      const netFlow = rental - costs - installment;
+                      const yieldRate = selectedAssetForManagement.estimatedValue > 0 ? (rental / selectedAssetForManagement.estimatedValue) * 100 : 0;
+                      
+                      return (
+                        <>
+                          {/* INCOME CARD */}
+                          <div className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-6">
+                            <div className="flex justify-between items-center">
+                              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest italic">Receita Mensal (Aluguel)</h4>
+                              <div className="w-8 h-8 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center"><ArrowUpRight size={16} /></div>
+                            </div>
+                            <p className="text-3xl font-black text-emerald-400">{formatCurrency(rental)}</p>
+                            <p className="text-[9px] font-bold text-slate-500 leading-relaxed uppercase tracking-tight">
+                              {rental > 0 
+                                ? `Representa um Yield de ${yieldRate.toFixed(2)}% am sobre o valor do imóvel.`
+                                : 'Nenhum aluguel ativo configurado para este imóvel.'}
+                            </p>
+                          </div>
 
-                   {/* EXPENSES CARD */}
-                   <div className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-6">
-                      <div className="flex justify-between items-center">
-                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest italic">Despesas Operacionais</h4>
-                        <div className="w-8 h-8 bg-rose-500/20 text-rose-400 rounded-xl flex items-center justify-center"><ArrowDownRight size={16} /></div>
-                      </div>
-                      <p className="text-3xl font-black text-rose-400">{formatCurrency(890)}</p> {/* Condo + IPTU + Maintenace */}
-                      <div className="flex gap-2">
-                        <span className="text-[8px] font-black px-2 py-1 bg-white/5 rounded-lg border border-white/10">IPTU</span>
-                        <span className="text-[8px] font-black px-2 py-1 bg-white/5 rounded-lg border border-white/10">CONDOMÍNIO</span>
-                        <span className="text-[8px] font-black px-2 py-1 bg-white/5 rounded-lg border border-white/10">TAXAS</span>
-                      </div>
-                   </div>
+                          {/* EXPENSES CARD */}
+                          <div className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-6">
+                            <div className="flex justify-between items-center">
+                              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest italic">Despesas Operacionais</h4>
+                              <div className="w-8 h-8 bg-rose-500/20 text-rose-400 rounded-xl flex items-center justify-center"><ArrowDownRight size={16} /></div>
+                            </div>
+                            <p className="text-3xl font-black text-rose-400">{formatCurrency(costs)}</p>
+                            <div className="flex gap-2">
+                              <span className="text-[8px] font-black px-2 py-1 bg-white/5 rounded-lg border border-white/10">IPTU</span>
+                              <span className="text-[8px] font-black px-2 py-1 bg-white/5 rounded-lg border border-white/10">CONDOMÍNIO</span>
+                              <span className="text-[8px] font-black px-2 py-1 bg-white/5 rounded-lg border border-white/10">MANUTENÇÃO</span>
+                            </div>
+                          </div>
 
-                   {/* NET PROFIT CARD */}
-                   <div className="bg-brand-600 rounded-[32px] p-8 space-y-6 shadow-xl shadow-brand-600/20">
-                      <div className="flex justify-between items-center">
-                        <h4 className="text-xs font-black text-white uppercase tracking-widest italic">Fluxo de Caixa Líquido</h4>
-                        <div className="w-8 h-8 bg-white/20 text-white rounded-xl flex items-center justify-center"><Zap size={16} /></div>
-                      </div>
-                      <p className="text-3xl font-black text-white">{formatCurrency(1560)}</p>
-                      <button 
-                        onClick={() => navigate('/history', { state: { filterByAsset: selectedAssetForManagement.id } })}
-                        className="w-full py-3 bg-white text-brand-900 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all"
-                      >
-                        Ver Extrato do Imóvel
-                      </button>
-                   </div>
+                          {/* NET PROFIT CARD */}
+                          <div className="bg-brand-600 rounded-[32px] p-8 space-y-6 shadow-xl shadow-brand-600/20">
+                            <div className="flex justify-between items-center">
+                              <h4 className="text-xs font-black text-white uppercase tracking-widest italic">Fluxo de Caixa Líquido</h4>
+                              <div className="w-8 h-8 bg-white/20 text-white rounded-xl flex items-center justify-center"><Zap size={16} /></div>
+                            </div>
+                            <p className="text-3xl font-black text-white">{formatCurrency(netFlow)}</p>
+                            <button 
+                              onClick={() => navigate('/history', { state: { filterByAsset: selectedAssetForManagement.id } })}
+                              className="w-full py-3 bg-white text-brand-900 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all"
+                            >
+                              Ver Extrato do Imóvel
+                            </button>
+                          </div>
+                        </>
+                      );
+                    } else {
+                      // For VEHICLES or OTHER physical assets
+                      const remainingDebt = Number(linkedLiab?.remainingBalance) || 0;
+                      const netEquity = selectedAssetForManagement.estimatedValue - remainingDebt;
+                      
+                      return (
+                        <>
+                          {/* ASSET SPECIFICATIONS CARD */}
+                          <div className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-6">
+                            <div className="flex justify-between items-center">
+                              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest italic">Especificações do Bem</h4>
+                              <div className="w-8 h-8 bg-brand-500/20 text-brand-400 rounded-xl flex items-center justify-center"><Car size={16} /></div>
+                            </div>
+                            <div className="space-y-2 text-xs font-medium">
+                              <p className="text-[10px] text-slate-400">Categoria: <span className="text-slate-200 font-black">VEÍCULO / OUTROS</span></p>
+                              <p className="text-[10px] text-slate-400">Aquisição: <span className="text-slate-200 font-black">{selectedAssetForManagement.acquisitionDate ? new Date(selectedAssetForManagement.acquisitionDate).toLocaleDateString('pt-BR') : '---'}</span></p>
+                              <p className="text-[10px] text-slate-400 leading-normal">Descrição: <span className="text-slate-200 font-black block mt-1">{selectedAssetForManagement.description || 'Sem descrição cadastrada.'}</span></p>
+                            </div>
+                          </div>
+
+                          {/* LIABILITY STATUS CARD */}
+                          <div className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-6">
+                            <div className="flex justify-between items-center">
+                              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest italic">Financiamento / Dívida</h4>
+                              <div className="w-8 h-8 bg-rose-500/20 text-rose-400 rounded-xl flex items-center justify-center"><Landmark size={16} /></div>
+                            </div>
+                            <p className="text-3xl font-black text-rose-400">{formatCurrency(remainingDebt)}</p>
+                            <p className="text-[9px] font-bold text-slate-500 leading-relaxed uppercase tracking-tight">
+                              {remainingDebt > 0 
+                                ? `Prestação de ${formatCurrency(linkedLiab?.installmentAmount || 0)}/mês (${linkedLiab?.installmentsRemaining || 0} parcelas restantes).`
+                                : 'Este bem está 100% quitado e livre de ônus.'}
+                            </p>
+                          </div>
+
+                          {/* NET EQUITY CARD */}
+                          <div className="bg-brand-600 rounded-[32px] p-8 space-y-6 shadow-xl shadow-brand-600/20">
+                            <div className="flex justify-between items-center">
+                              <h4 className="text-xs font-black text-white uppercase tracking-widest italic">Patrimônio Líquido (Equity)</h4>
+                              <div className="w-8 h-8 bg-white/20 text-white rounded-xl flex items-center justify-center"><Zap size={16} /></div>
+                            </div>
+                            <p className="text-3xl font-black text-white">{formatCurrency(netEquity)}</p>
+                            <button 
+                              onClick={() => navigate('/history', { state: { filterByAsset: selectedAssetForManagement.id } })}
+                              className="w-full py-3 bg-white text-brand-900 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all"
+                            >
+                              Ver Extrato do Veículo
+                            </button>
+                          </div>
+                        </>
+                      );
+                    }
+                  })()}
                 </div>
               </div>
             )}
@@ -1822,7 +2061,15 @@ const Assets: React.FC = () => {
                         {asset.category === 'REAL_ESTATE' ? <Home size={32} /> : <Car size={32} />}
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => setSelectedAssetForManagement(asset)} className="p-3 text-slate-400 hover:bg-brand-50 hover:text-brand-600 rounded-2xl transition-all"><TrendingUp size={20} /></button>
+                        <button 
+                          onClick={() => {
+                            setSelectedAssetForManagement(asset);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }} 
+                          className="p-3 text-slate-400 hover:bg-brand-50 hover:text-brand-600 rounded-2xl transition-all"
+                        >
+                          <TrendingUp size={20} />
+                        </button>
                         <button onClick={() => openEditAsset(asset)} className="p-3 text-slate-400 hover:bg-slate-100 hover:text-slate-900 rounded-2xl transition-all"><MoreHorizontal size={20} /></button>
                       </div>
                     </div>
@@ -1847,7 +2094,13 @@ const Assets: React.FC = () => {
                   </div>
                   <div className="px-10 py-6 bg-slate-50/50 flex justify-between items-center border-t border-slate-50 group-hover:bg-brand-50 transition-colors">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Ano Aquisição: {asset.acquisitionDate ? new Date(asset.acquisitionDate).getFullYear() : '---'}</span>
-                    <button onClick={() => setSelectedAssetForManagement(asset)} className="text-brand-600 text-[10px] font-black uppercase tracking-[0.2em] group-hover:underline flex items-center gap-2">
+                    <button 
+                      onClick={() => {
+                        setSelectedAssetForManagement(asset);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }} 
+                      className="text-brand-600 text-[10px] font-black uppercase tracking-[0.2em] group-hover:underline flex items-center gap-2"
+                    >
                       Análise de Balanço <ChevronRight size={14} />
                     </button>
                   </div>
