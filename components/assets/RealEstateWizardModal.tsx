@@ -161,12 +161,17 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         (parseFloat(intermAmount) * (parseInt(intermTotal) || 0)) +
         (parseFloat(finalBalance) || 0);
 
+      const startDay = constStartDate ? new Date(constStartDate).getDate() : 10;
+
       const { data: liabData, error: liabErr } = await supabase.from('liabilities').insert([{
         user_id: user.id,
         name: `Dívida Imob: ${name}`,
         type: 'MORTGAGE',
         total_amount: totalLiabilityAmount,
         remaining_balance: totalLiabilityAmount,
+        installment_amount: parseFloat(constAmount) || 0,
+        installments_remaining: parseInt(constInstallments) || 0,
+        due_day: startDay,
         linked_asset_id: assetId,
         metadata: {
           propertyType,
