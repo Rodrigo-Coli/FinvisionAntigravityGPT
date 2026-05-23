@@ -78,6 +78,15 @@
       scrollbar-width: none;
     }
 
+    /* Safe Area Padding Utilities */
+    .pb-safe {
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px) !important;
+    }
+    
+    .pt-safe {
+      padding-top: env(safe-area-inset-top, 0px) !important;
+    }
+
     /* Prevent horizontal overflow on all elements (mobile fix) */
     *, *::before, *::after {
       box-sizing: border-box;
