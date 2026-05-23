@@ -19,7 +19,8 @@ import {
   Box,
   Landmark,
   X,
-  ArrowDownRight
+  ArrowDownRight,
+  HelpCircle
 } from 'lucide-react';
 import { PhysicalAsset, InvestmentBroker, Liability } from '../types';
 
@@ -40,6 +41,15 @@ const Assets: React.FC = () => {
   const [excludedBrokerIds, setExcludedBrokerIds] = useState<string[]>([]);
   const [showAnalysisSettings, setShowAnalysisSettings] = useState(false);
   const [showRealEstateManageModal, setShowRealEstateManageModal] = useState(false);
+  const [activeSubTab, setActiveSubTab] = useState<'portfolio' | 'simulator'>('portfolio');
+  const [projectionPeriod, setProjectionPeriod] = useState<6 | 12 | 24 | 36>(12);
+  const [projectionScope, setProjectionScope] = useState<string>('consolidated');
+  const [propertyVacancySim, setPropertyVacancySim] = useState<Record<string, boolean>>({});
+  const [auditModalData, setAuditModalData] = useState<{
+    monthLabel: string;
+    type: 'inflow' | 'outflow' | 'investments';
+    items: { name: string; value: number }[];
+  } | null>(null);
   const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
   const [realEstateManageForm, setRealEstateManageForm] = useState({
     propertyType: 'PLANTA' as 'PLANTA' | 'PRONTO',
@@ -581,8 +591,26 @@ const Assets: React.FC = () => {
 
         {activeView === 'realestate' && (
           <div className="space-y-8 animate-in fade-in duration-500">
-            {/* CONSOLIDATED SUMMARY CARDS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* SUB-TABS NAVIGATION */}
+            <div className="flex gap-4 border-b border-slate-100 pb-3">
+              <button
+                onClick={() => setActiveSubTab('portfolio')}
+                className={`pb-2 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeSubTab === 'portfolio' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+              >
+                🏢 Carteira Ativa (Bens e Consórcios)
+              </button>
+              <button
+                onClick={() => setActiveSubTab('simulator')}
+                className={`pb-2 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeSubTab === 'simulator' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+              >
+                📈 Simulador de Projeção Mensal
+              </button>
+            </div>
+
+            {activeSubTab === 'portfolio' && (
+              <>
+                {/* CONSOLIDATED SUMMARY CARDS */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {/* Gross Real Estate Portfolio */}
               <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm">
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Bens Imobiliários (Ativo)</p>
@@ -759,13 +787,27 @@ const Assets: React.FC = () => {
 
               {/* CALCULATING VALUES FOR THE PANEL */}
               {(() => {
-                // Outflows (Filtered dynamically by exclusions)
-                const mortgageLiabs = liabilities.filter(l => (l.type === 'MORTGAGE' || l.metadata?.isRealEstate) && !excludedAssetIds.includes(l.linkedAssetId || ''));
+                // Outflows (Filtered dynamically by exclusions and asset type)
+                const mortgageLiabs = liabilities.filter(l => {
+                  if (l.type !== 'MORTGAGE' && !l.metadata?.isRealEstate) return false;
+                  if (excludedAssetIds.includes(l.linkedAssetId || '')) return false;
+                  if (l.linkedAssetId) {
+                    const linkedAsset = physicalAssets.find(p => p.id === l.linkedAssetId);
+                    if (linkedAsset && linkedAsset.category !== 'REAL_ESTATE') return false;
+                  }
+                  return true;
+                });
                 const consortiumLiabs = liabilities.filter(l => l.type === 'CONSORTIUM' && !excludedConsortiumIds.includes(l.id));
                 
-                const totalMortgageInstallments = mortgageLiabs.reduce((acc, curr) => acc + (curr.installmentAmount || 0), 0);
+                const totalMortgageInstallments = mortgageLiabs.reduce((acc, curr) => {
+                  if (curr.remainingBalance <= 0 || (curr.installmentsRemaining !== undefined && curr.installmentsRemaining <= 0)) return acc;
+                  return acc + (curr.installmentAmount || 0);
+                }, 0);
                 const totalOperatingCosts = mortgageLiabs.reduce((acc, curr) => acc + (Number(curr.metadata?.operationalExpenses) || 0), 0);
-                const totalConsortiumInstallments = consortiumLiabs.reduce((acc, curr) => acc + (curr.installmentAmount || 0), 0);
+                const totalConsortiumInstallments = consortiumLiabs.reduce((acc, curr) => {
+                  if (curr.remainingBalance <= 0 || (curr.installmentsRemaining !== undefined && curr.installmentsRemaining <= 0)) return acc;
+                  return acc + (curr.installmentAmount || 0);
+                }, 0);
                 
                 const totalOutflow = totalMortgageInstallments + totalOperatingCosts + totalConsortiumInstallments;
 
@@ -1074,8 +1116,553 @@ const Assets: React.FC = () => {
                 )}
               </div>
             </div>
+          </>
+        )}
 
-            {/* REAL ESTATE QUICK EDIT MODAL */}
+        {/* ACTIVE SUB-TAB SIMULATOR VIEW */}
+        {activeSubTab === 'simulator' && (
+          <div className="space-y-8 animate-in fade-in duration-500">
+            {/* CONTROLS BAR */}
+            <div className="bg-slate-900 text-white rounded-[32px] p-6 lg:p-8 shadow-xl space-y-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-48 h-48 bg-brand-500/5 rounded-bl-[150px] pointer-events-none" />
+              
+              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                <div>
+                  <h3 className="text-xl font-black italic tracking-tight flex items-center gap-2">
+                    <Zap className="text-brand-400 shrink-0" size={20} />
+                    Simulador de Sustentabilidade de Fluxo Patrimonial
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Configure o escopo, período e cenários para analisar a saúde do seu capital</p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Projection Scope dropdown */}
+                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl p-2.5">
+                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Escopo:</span>
+                    <select
+                      className="bg-transparent border-none text-white rounded-lg text-xs font-bold outline-none cursor-pointer pr-4"
+                      value={projectionScope}
+                      onChange={e => setProjectionScope(e.target.value)}
+                    >
+                      <option value="consolidated" className="bg-slate-900 text-white">Consolidado (Todos)</option>
+                      {physicalAssets.filter(p => p.category === 'REAL_ESTATE').map(asset => (
+                        <option key={asset.id} value={asset.id} className="bg-slate-900 text-white">{asset.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Projection Period dropdown */}
+                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl p-2.5">
+                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Período:</span>
+                    <select
+                      className="bg-transparent border-none text-white rounded-lg text-xs font-bold outline-none cursor-pointer pr-4"
+                      value={projectionPeriod}
+                      onChange={e => setProjectionPeriod(parseInt(e.target.value, 10) as any)}
+                    >
+                      <option value={6} className="bg-slate-900 text-white">6 Meses</option>
+                      <option value={12} className="bg-slate-900 text-white">12 Meses</option>
+                      <option value={24} className="bg-slate-900 text-white">24 Meses</option>
+                      <option value={36} className="bg-slate-900 text-white">36 Meses</option>
+                    </select>
+                  </div>
+
+                  {/* Yield rate input */}
+                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl p-2.5">
+                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Taxa Yield:</span>
+                    <input
+                      type="number"
+                      step="0.05"
+                      className="w-12 h-6 bg-white/10 border border-white/10 text-white rounded-md text-xs font-bold text-center outline-none"
+                      value={estimatedYieldRate}
+                      onChange={e => setEstimatedYieldRate(parseFloat(e.target.value) || 0)}
+                    />
+                    <span className="text-[10px] text-slate-300 font-bold">% am</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ACTIVE ITEMS FILTERS (Only relevant in Consolidated view) */}
+              {projectionScope === 'consolidated' && (
+                <div className="border-t border-white/10 pt-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Itens incluídos no cálculo unificado:</p>
+                    <button
+                      onClick={() => setShowAnalysisSettings(!showAnalysisSettings)}
+                      className="text-[8px] font-black uppercase text-brand-400 tracking-widest hover:underline"
+                    >
+                      {showAnalysisSettings ? 'Ocultar Seletores' : 'Exibir Seletores Avançados'}
+                    </button>
+                  </div>
+                  
+                  {showAnalysisSettings && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-950/40 p-5 rounded-2xl border border-white/5 animate-in slide-in-from-top duration-200">
+                      {/* Imóveis */}
+                      <div className="space-y-2">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-white/5 pb-1">🏢 Imóveis</p>
+                        {physicalAssets.filter(p => p.category === 'REAL_ESTATE').map(asset => {
+                          const isIncluded = !excludedAssetIds.includes(asset.id);
+                          return (
+                            <label key={asset.id} className="flex items-center gap-2.5 cursor-pointer text-[11px] font-medium hover:text-white transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={isIncluded}
+                                onChange={() => {
+                                  setExcludedAssetIds(prev =>
+                                    isIncluded ? [...prev, asset.id] : prev.filter(id => id !== asset.id)
+                                  );
+                                }}
+                                className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-brand-600 focus:ring-brand-500"
+                              />
+                              <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{asset.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      {/* Consórcios */}
+                      <div className="space-y-2">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-white/5 pb-1">💳 Consórcios</p>
+                        {liabilities.filter(l => l.type === 'CONSORTIUM').map(cons => {
+                          const isIncluded = !excludedConsortiumIds.includes(cons.id);
+                          return (
+                            <label key={cons.id} className="flex items-center gap-2.5 cursor-pointer text-[11px] font-medium hover:text-white transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={isIncluded}
+                                onChange={() => {
+                                  setExcludedConsortiumIds(prev =>
+                                    isIncluded ? [...prev, cons.id] : prev.filter(id => id !== cons.id)
+                                  );
+                                }}
+                                className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-brand-600 focus:ring-brand-500"
+                              />
+                              <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{cons.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      {/* Brokers */}
+                      <div className="space-y-2">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-white/5 pb-1">📈 Investimentos</p>
+                        {brokers.map(broker => {
+                          const isIncluded = !excludedBrokerIds.includes(broker.id);
+                          return (
+                            <label key={broker.id} className="flex items-center gap-2.5 cursor-pointer text-[11px] font-medium hover:text-white transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={isIncluded}
+                                onChange={() => {
+                                  setExcludedBrokerIds(prev =>
+                                    isIncluded ? [...prev, broker.id] : prev.filter(id => id !== broker.id)
+                                  );
+                                }}
+                                className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-brand-600 focus:ring-brand-500"
+                              />
+                              <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{broker.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* VACANCY SIMULATOR PANEL */}
+            {projectionScope === 'consolidated' && physicalAssets.filter(p => p.category === 'REAL_ESTATE').length > 0 && (
+              <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm space-y-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">🚨 Simulador de Vacância / Ocupação de Aluguel</p>
+                <p className="text-xs text-slate-400 font-medium">Desmarque para simular o imóvel como <strong>vago/desocupado</strong> na projeção futura e ver o impacto imediato no seu caixa:</p>
+                <div className="flex flex-wrap gap-4">
+                  {physicalAssets.filter(p => p.category === 'REAL_ESTATE').map(asset => {
+                    const isRented = propertyVacancySim[asset.id] !== false; // defaults to true
+                    return (
+                      <button
+                        key={asset.id}
+                        onClick={() => {
+                          setPropertyVacancySim({
+                            ...propertyVacancySim,
+                            [asset.id]: !isRented
+                          });
+                        }}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${isRented ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-rose-50 border-rose-100 text-rose-700'}`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
+                        {asset.name}: {isRented ? 'Alugado 🏠' : 'Vago ❌'}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* MONTH BY MONTH PROJECTION SHEET */}
+            {(() => {
+              const today = new Date();
+              const monthsToProject = projectionPeriod;
+
+              // Filter items according to scope
+              const filteredAssets = physicalAssets.filter(p => {
+                if (p.category !== 'REAL_ESTATE') return false;
+                if (projectionScope !== 'consolidated' && p.id !== projectionScope) return false;
+                if (projectionScope === 'consolidated' && excludedAssetIds.includes(p.id)) return false;
+                return true;
+              });
+
+              const filteredLiabilities = liabilities.filter(l => {
+                if (projectionScope === 'consolidated') {
+                  if (l.type === 'CONSORTIUM') return !excludedConsortiumIds.includes(l.id);
+                  if (l.type !== 'MORTGAGE' && !l.metadata?.isRealEstate) return false;
+                  if (excludedAssetIds.includes(l.linkedAssetId || '')) return false;
+                } else {
+                  if (l.linkedAssetId !== projectionScope) return false;
+                }
+                if (l.linkedAssetId) {
+                  const linkedAsset = physicalAssets.find(p => p.id === l.linkedAssetId);
+                  if (linkedAsset && linkedAsset.category !== 'REAL_ESTATE') return false;
+                }
+                return true;
+              });
+
+              const activeBrokers = brokers.filter(b => {
+                if (projectionScope !== 'consolidated') return false;
+                return !excludedBrokerIds.includes(b.id);
+              });
+
+              const startInvestmentCapital = activeBrokers.reduce((acc, curr) => acc + curr.balance, 0);
+              const projectionData: any[] = [];
+              let runningCapital = startInvestmentCapital;
+
+              for (let m = 0; m < monthsToProject; m++) {
+                const projMonthDate = new Date(today.getFullYear(), today.getMonth() + m, 1);
+                const monthLabel = projMonthDate.toLocaleString('pt-BR', { month: 'short', year: '2-digit' }).replace('.', '');
+                const monthNum = projMonthDate.getMonth() + 1;
+                const yearNum = projMonthDate.getFullYear();
+
+                // 1. Calculate Inflow (Rents + Financial Returns)
+                const rentItems: { name: string; value: number }[] = [];
+                filteredAssets.forEach(asset => {
+                  const linkedLiab = liabilities.find(l => l.linkedAssetId === asset.id);
+                  const isRentedSim = propertyVacancySim[asset.id] !== false;
+                  const propertyType = linkedLiab?.metadata?.propertyType || 'PLANTA';
+                  const rentalVal = Number(linkedLiab?.metadata?.rentalIncome) || 0;
+                  const deliveryDateStr = linkedLiab?.metadata?.deliveryDate;
+
+                  let isDelivered = propertyType === 'PRONTO';
+                  if (propertyType === 'PLANTA' && deliveryDateStr) {
+                    const delDate = new Date(deliveryDateStr);
+                    if (projMonthDate >= new Date(delDate.getFullYear(), delDate.getMonth(), 1)) {
+                      isDelivered = true;
+                    }
+                  }
+
+                  if (isDelivered && isRentedSim && rentalVal > 0) {
+                    rentItems.push({ name: `${asset.name} (Aluguel)`, value: rentalVal });
+                  }
+                });
+
+                const totalRents = rentItems.reduce((acc, curr) => acc + curr.value, 0);
+
+                // Investment simulated yields (only in consolidated view)
+                const yieldValue = runningCapital * (estimatedYieldRate / 100);
+                const investmentItems = projectionScope === 'consolidated' && startInvestmentCapital > 0 ? [
+                  { name: `Yield Simulado (${estimatedYieldRate}% s/ ${formatCurrency(runningCapital)})`, value: yieldValue }
+                ] : [];
+                const totalYields = yieldValue > 0 && projectionScope === 'consolidated' ? yieldValue : 0;
+
+                const totalInflow = totalRents + totalYields;
+
+                // 2. Calculate Outflow (Mortgages, Condo, Consortia, Balloons)
+                const mortgageItems: { name: string; value: number }[] = [];
+                const condoItems: { name: string; value: number }[] = [];
+                const consortiumItems: { name: string; value: number }[] = [];
+                const balloonItems: { name: string; value: number }[] = [];
+
+                filteredLiabilities.forEach(l => {
+                  const remaining = l.remainingBalance;
+                  const isSettled = remaining <= 0 || (l.installmentsRemaining !== undefined && l.installmentsRemaining <= 0);
+
+                  if (l.type === 'CONSORTIUM') {
+                    if (!isSettled && (l.installmentsRemaining === undefined || l.installmentsRemaining > m)) {
+                      consortiumItems.push({ name: `${l.name} (Parcela)`, value: l.installmentAmount || 0 });
+                    }
+                  } else {
+                    if (!isSettled && (l.installmentsRemaining === undefined || l.installmentsRemaining > m)) {
+                      mortgageItems.push({ name: `${l.name} (Prestador)`, value: l.installmentAmount || 0 });
+                    }
+
+                    const condoVal = Number(l.metadata?.operationalExpenses) || 0;
+                    if (condoVal > 0) {
+                      condoItems.push({ name: `${l.name.replace('Dívida Imob: ', '')} (Taxa/Cond)`, value: condoVal });
+                    }
+
+                    const balloons = l.metadata?.balloons || [];
+                    balloons.forEach((b: any) => {
+                      if (Number(b.month) === monthNum && Number(b.year) === yearNum) {
+                        balloonItems.push({ name: `${l.name.replace('Dívida Imob: ', '')} (Intermediária / Balão)`, value: Number(b.amount) });
+                      }
+                    });
+                  }
+                });
+
+                const totalMortgages = mortgageItems.reduce((acc, curr) => acc + curr.value, 0);
+                const totalCondo = condoItems.reduce((acc, curr) => acc + curr.value, 0);
+                const totalConsortium = consortiumItems.reduce((acc, curr) => acc + curr.value, 0);
+                const totalBalloons = balloonItems.reduce((acc, curr) => acc + curr.value, 0);
+
+                const totalOutflow = totalMortgages + totalCondo + totalConsortium + totalBalloons;
+                const netCashFlow = totalInflow - totalOutflow;
+
+                const prevCapital = runningCapital;
+                if (projectionScope === 'consolidated') {
+                  runningCapital = Math.max(0, runningCapital + netCashFlow);
+                }
+
+                projectionData.push({
+                  monthLabel,
+                  totalRents,
+                  rentItems,
+                  totalYields,
+                  investmentItems,
+                  totalInflow,
+                  totalMortgages,
+                  mortgageItems,
+                  totalCondo,
+                  condoItems,
+                  totalConsortium,
+                  consortiumItems,
+                  totalBalloons,
+                  balloonItems,
+                  totalOutflow,
+                  netCashFlow,
+                  prevCapital,
+                  runningCapital
+                });
+              }
+
+              const totalCumulativeCashflow = projectionData.reduce((acc, curr) => acc + curr.netCashFlow, 0);
+
+              return (
+                <div className="space-y-6">
+                  {/* STATS HEADER */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Capital Inicial Simulador</p>
+                      <h4 className="text-xl font-bold">{formatCurrency(startInvestmentCapital)}</h4>
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Resultado Projetado Acumulado ({projectionPeriod}M)</p>
+                      <h4 className={`text-xl font-bold ${totalCumulativeCashflow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {totalCumulativeCashflow >= 0 ? '+' : ''}{formatCurrency(totalCumulativeCashflow)}
+                      </h4>
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Capital Final Projetado</p>
+                      <h4 className="text-xl font-bold text-brand-400">{formatCurrency(runningCapital)}</h4>
+                    </div>
+                  </div>
+
+                  {/* SHEET TABLE CONTAINER */}
+                  <div className="bg-white border border-slate-100 rounded-[32px] overflow-hidden shadow-sm">
+                    <div className="p-6 border-b border-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                          <LayoutGrid size={16} className="text-slate-400" />
+                          Planilha de Fluxo de Caixa Mensal
+                        </h4>
+                        <p className="text-[10px] text-slate-400 font-medium">Toque nos valores nas colunas de Entradas, Saídas e Saldo para inspecionar os cálculos individuais e auditar erros.</p>
+                      </div>
+                      <span className="px-3 py-1 bg-brand-50 text-brand-600 rounded-lg text-[9px] font-black uppercase tracking-widest border border-brand-100">Auditável 🔍</span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-100">
+                            <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mês</th>
+                            <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aluguéis (A)</th>
+                            {projectionScope === 'consolidated' && (
+                              <th className="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Rent. Invest (B)</th>
+                            )}
+                            <th className="py-4 px-6 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-50/20">Total Entradas (A+B)</th>
+                            <th className="py-4 px-6 text-[10px] font-black text-rose-600 uppercase tracking-widest text-right bg-rose-50/20">Saídas (Custo/Divida)</th>
+                            <th className="py-4 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Saldo Mensal</th>
+                            {projectionScope === 'consolidated' && (
+                              <th className="py-4 px-6 text-[10px] font-black text-brand-600 uppercase tracking-widest text-right">Saldo XP/Bancos</th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {projectionData.map((row, idx) => {
+                            const isPositive = row.netCashFlow >= 0;
+                            const hasBalloons = row.totalBalloons > 0;
+                            
+                            return (
+                              <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/40 transition-colors">
+                                <td className="py-4.5 px-6 font-black text-slate-900 uppercase text-xs italic">{row.monthLabel}</td>
+                                
+                                <td 
+                                  onClick={() => {
+                                    if (row.rentItems.length > 0) {
+                                      setAuditModalData({
+                                        monthLabel: row.monthLabel,
+                                        type: 'inflow',
+                                        items: row.rentItems
+                                      });
+                                    }
+                                  }}
+                                  className="py-4.5 px-6 font-bold text-slate-600 text-xs text-right cursor-pointer hover:bg-slate-100/50 rounded-lg transition-colors"
+                                >
+                                  {formatCurrency(row.totalRents)}
+                                </td>
+
+                                {projectionScope === 'consolidated' && (
+                                  <td 
+                                    onClick={() => {
+                                      if (row.investmentItems.length > 0) {
+                                        setAuditModalData({
+                                          monthLabel: row.monthLabel,
+                                          type: 'investments',
+                                          items: row.investmentItems
+                                        });
+                                      }
+                                    }}
+                                    className="py-4.5 px-6 font-bold text-slate-600 text-xs text-right cursor-pointer hover:bg-slate-100/50 rounded-lg transition-colors"
+                                  >
+                                    {formatCurrency(row.totalYields)}
+                                  </td>
+                                )}
+
+                                <td className="py-4.5 px-6 font-extrabold text-emerald-600 text-xs text-right bg-emerald-50/10">
+                                  {formatCurrency(row.totalInflow)}
+                                </td>
+
+                                <td 
+                                  onClick={() => {
+                                    const allOut = [
+                                      ...row.mortgageItems,
+                                      ...row.condoItems,
+                                      ...row.consortiumItems,
+                                      ...row.balloonItems
+                                    ];
+                                    if (allOut.length > 0) {
+                                      setAuditModalData({
+                                        monthLabel: row.monthLabel,
+                                        type: 'outflow',
+                                        items: allOut
+                                      });
+                                    }
+                                  }}
+                                  className={`py-4.5 px-6 font-extrabold text-xs text-right cursor-pointer hover:bg-rose-100/40 rounded-lg transition-all bg-rose-50/10 ${hasBalloons ? 'text-rose-700 bg-amber-50/20 border-l-4 border-amber-500' : 'text-rose-600'}`}
+                                >
+                                  <div className="flex flex-col items-end">
+                                    <span>{formatCurrency(row.totalOutflow)}</span>
+                                    {hasBalloons && <span className="text-[7px] text-amber-600 font-black uppercase tracking-tighter mt-0.5">Balão 🎈</span>}
+                                  </div>
+                                </td>
+
+                                <td className={`py-4.5 px-6 font-black text-xs text-right ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                  {isPositive ? '+' : ''}{formatCurrency(row.netCashFlow)}
+                                </td>
+
+                                {projectionScope === 'consolidated' && (
+                                  <td className="py-4.5 px-6 font-bold text-brand-700 text-xs text-right">
+                                    {formatCurrency(row.runningCapital)}
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* SIMULATION SUMMARY WARNINGS */}
+                  <div className="p-6 bg-slate-900 text-white rounded-3xl space-y-4 border border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <HelpCircle className="text-brand-400" size={18} />
+                      <h4 className="font-bold text-sm tracking-tight">Análise do Simulador</h4>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {projectionScope !== 'consolidated' ? (
+                        <>
+                          Você está analisando a performance <strong>estritamente individual</strong> do imóvel selecionado. Esta simulação desconta impostos de condomínio/IPTU e compara a receita de aluguel dele contra a prestação da sua própria dívida imobiliária.
+                        </>
+                      ) : totalCumulativeCashflow >= 0 ? (
+                        <>
+                          Seu patrimônio financeiro e imobiliário está configurado de forma a gerar um **Superávit Acumulado de {formatCurrency(totalCumulativeCashflow)}** no horizonte de {projectionPeriod} meses. <strong>Excelente notícia: você tem luz verde total para realizar novos investimentos sem depleção de capital!</strong>
+                        </>
+                      ) : (
+                        <>
+                          Atenção: A simulação acusa um **Déficit Acumulado de {formatCurrency(Math.abs(totalCumulativeCashflow))}** no horizonte de {projectionPeriod} meses. Nos meses em que houver balões de obras ou ausência de aluguel, você precisará retirar recursos das suas reservas para honrar as parcelas. É aconselhável ter um caixa preventivo ou agilizar o aluguel dos imóveis para garantir a integridade do seu capital.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* AUDIT INSPECTOR MODAL */}
+        {auditModalData && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white rounded-[32px] w-full max-w-lg shadow-2xl overflow-hidden border border-slate-100 animate-in slide-in-from-bottom-4 duration-300">
+              <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight italic flex items-center gap-2">
+                    <Search size={18} className="text-brand-500" />
+                    Auditoria de Cálculos - {auditModalData.monthLabel}
+                  </h3>
+                  <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                    {auditModalData.type === 'inflow' ? 'Detalhamento das Receitas (Aluguéis)' : auditModalData.type === 'outflow' ? 'Detalhamento das Despesas / Compromissos' : 'Detalhamento dos Rendimentos Financeiros'}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setAuditModalData(null)} 
+                  className="w-10 h-10 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-xl flex items-center justify-center shadow-sm"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-6 max-h-[400px] overflow-y-auto">
+                <div className="space-y-3">
+                  {auditModalData.items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
+                      <span className="text-xs font-bold text-slate-700">{item.name}</span>
+                      <span className={`text-xs font-black ${auditModalData.type === 'inflow' || auditModalData.type === 'investments' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {formatCurrency(item.value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Soma dos Itens</span>
+                  <span className={`text-sm font-black ${auditModalData.type === 'inflow' || auditModalData.type === 'investments' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {formatCurrency(auditModalData.items.reduce((acc, curr) => acc + curr.value, 0))}
+                  </span>
+                </div>
+              </div>
+
+              <div className="px-8 py-5 bg-slate-50/80 border-t border-slate-100 flex justify-end">
+                <button 
+                  onClick={() => setAuditModalData(null)} 
+                  className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* REAL ESTATE QUICK EDIT MODAL */}
             {showRealEstateManageModal && (
               <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
                 <div className="bg-white rounded-[32px] w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 border border-slate-100">
