@@ -69,23 +69,21 @@ async function handleInteractiveFinancialQuery(userId: string, queryText: string
   const [accountsRes, txRes, cardsRes, assetsRes, liabilitiesRes, historyRes] = await Promise.all([
     supabase.from('accounts').select('institution, type, current_balance').eq('user_id', userId).eq('is_archived', false),
     supabase.from('transactions')
-      .select('amount, type, category, date, description')
+      .select('amount, type, category, date, description, is_amortization, liability_id, is_paid, metadata')
       .eq('user_id', userId)
       .is('is_deleted', false)
-      .is('is_amortization', false)
       .neq('type', 'ADJUSTMENT')
       .gte('date', filterStart)
       .lte('date', filterEnd)
       .order('date', { ascending: false })
       .limit(100),
     supabase.from('credit_cards').select('brand, limit').eq('user_id', userId),
-    supabase.from('physical_assets').select('estimated_value').eq('user_id', userId),
-    supabase.from('liabilities').select('remaining_balance, total_amount, type').eq('user_id', userId),
+    supabase.from('physical_assets').select('id, name, category, estimated_value').eq('user_id', userId),
+    supabase.from('liabilities').select('id, name, type, total_amount, remaining_balance, installment_amount, installments_remaining, interest_rate, metadata').eq('user_id', userId),
     supabase.from('transactions')
-      .select('amount, type, category, date')
+      .select('amount, type, category, date, is_amortization')
       .eq('user_id', userId)
       .is('is_deleted', false)
-      .is('is_amortization', false)
       .neq('type', 'ADJUSTMENT')
       .gte('date', historyStart)
       .lt('date', filterStart)
@@ -111,6 +109,7 @@ async function handleInteractiveFinancialQuery(userId: string, queryText: string
   transactions.forEach((t: any) => {
     if (t.date && t.date.startsWith(currentMonthPrefix)) {
       const amt = Math.abs(Number(t.amount) || 0);
+      if (t.is_amortization) return; // skip amortizations from regular monthly flow totals
       if (t.type === 'INCOME') {
         currentMonthIncome += amt;
       } else if (t.type === 'EXPENSE') {
@@ -128,7 +127,7 @@ async function handleInteractiveFinancialQuery(userId: string, queryText: string
 
   const periodLabel = `De ${filterStart.split('-').reverse().join('/')} até ${filterEnd.split('-').reverse().join('/')}`;
 
-  const histTxs = historicalData.filter((t: any) => t.type === 'EXPENSE') || [];
+  const histTxs = historicalData.filter((t: any) => t.type === 'EXPENSE' && !t.is_amortization) || [];
   const histCategoryTotals: Record<string, number> = {};
   const monthsCaptured = new Set();
   histTxs.forEach((t: any) => {
@@ -147,6 +146,29 @@ async function handleInteractiveFinancialQuery(userId: string, queryText: string
     month: 'long', 
     day: 'numeric'
   });
+
+  // Construct detailed liabilities summary just like handle-wealth-analysis
+  const liabilitiesSummary = liabilitiesData.map((l: any) => {
+    const ir = l.interest_rate ? `juros ${l.interest_rate}% a.a.` : 'sem juros definidos';
+    const propertyStatus = l.metadata?.propertyType ? `[Status Imóvel: ${l.metadata.propertyType}]` : '';
+    const parcelas = l.installments_remaining 
+      ? `${l.installments_remaining} parcelas de R$ ${Number(l.installment_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
+      : 'sem parcelas mensais configuradas';
+    
+    // Extract balloons and down payments linked to this liability inside current fetched txs
+    const linkedTxs = transactions.filter(t => t.liability_id === l.id);
+    const atos = linkedTxs.filter(t => t.metadata?.type === 'DOWN_PAYMENT' || (t.description || '').toUpperCase().includes('ATO'));
+    const baloes = linkedTxs.filter(t => t.metadata?.type === 'INTERMEDIARY' || (t.description || '').toUpperCase().includes('INTERMEDIÁRIA') || (t.description || '').toUpperCase().includes('BALÃO'));
+    
+    const atosSummary = atos.length > 0 
+      ? `\n    └─ Entrada/Atos: ${atos.map(a => `${a.description.split(' - ')[0]}: R$ ${Number(a.amount).toLocaleString('pt-BR')} (${a.is_paid ? 'PAGO' : 'PENDENTE'})`).join(', ')}`
+      : '';
+    const baloesSummary = baloes.length > 0 
+      ? `\n    └─ Balões/Intermediárias: ${baloes.map(b => `${b.description.split(' - ')[0]}: R$ ${Number(b.amount).toLocaleString('pt-BR')} (${b.is_paid ? 'PAGO' : 'PENDENTE'})`).join(', ')}`
+      : '';
+    
+    return `${l.name} (${l.type}) ${propertyStatus}: Saldo Devedor R$ ${Number(l.remaining_balance).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}, ${ir}, ${parcelas}${atosSummary}${baloesSummary}`;
+  }).join('\n- ');
 
   const systemPrompt = `
 # IDENTIDADE
@@ -169,9 +191,12 @@ Hoje é ${dataHoje}.
 • Dívidas (Passivos): R$ ${totalDebt.toFixed(2)}
 • Patrimônio Líquido: R$ ${netWorth.toFixed(2)}
 • Contas: ${accounts.map((a: any) => `${a.institution}(R$${Number(a.current_balance).toFixed(2)})`).join(', ')}
+• Bens Detalhados: ${assetsData.map((a: any) => `${a.name}(R$${Number(a.estimated_value).toFixed(2)})`).join(', ')}
+• Dívidas Detalhadas:
+- ${liabilitiesSummary || 'Nenhuma registrada'}
 • Cartões Cadastrados: ${creditCards.map((c: any) => `${c.brand}(Lim:R$${c.limit})`).join(', ') || 'Nenhum'}
 • Últimas 15 transações:
-${transactions.slice(0, 15).map((t: any) => `- ${t.date.split('T')[0]}|${t.category}|R$ ${t.amount}|${t.type}|${t.description}`).join('\n')}
+${transactions.slice(0, 15).map((t: any) => `- ${t.date.split('T')[0]}|${t.category}|R$ ${t.amount}|${t.type}|${t.description}${t.is_amortization ? ' (Amortização)' : ''}`).join('\n')}
 `;
 
   const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;

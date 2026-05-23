@@ -39,6 +39,8 @@ const Assets: React.FC = () => {
   const [estimatedYieldRate, setEstimatedYieldRate] = useState<number>(0.8);
   const [excludedAssetIds, setExcludedAssetIds] = useState<string[]>([]);
   const [excludedConsortiumIds, setExcludedConsortiumIds] = useState<string[]>([]);
+  const [excludedOtherAssetIds, setExcludedOtherAssetIds] = useState<string[]>([]);
+  const [excludedOtherLiabilityIds, setExcludedOtherLiabilityIds] = useState<string[]>([]);
   const [excludedBrokerIds, setExcludedBrokerIds] = useState<string[]>([]);
   const [showAnalysisSettings, setShowAnalysisSettings] = useState(false);
   const [showRealEstateManageModal, setShowRealEstateManageModal] = useState(false);
@@ -228,7 +230,8 @@ const Assets: React.FC = () => {
     balloonMonth: '',
     balloonYear: '',
     balloonAmount: '',
-    balloons: [] as { month: number; year: number; amount: number }[]
+    balloons: [] as { month: number; year: number; amount: number }[],
+    propertyType: 'PLANTA' as 'PLANTA' | 'PRONTO'
   });
 
   const handleSaveLiability = async (e: React.FormEvent) => {
@@ -253,7 +256,9 @@ const Assets: React.FC = () => {
           metadata: {
             ...editingLiability.metadata,
             indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
-            balloons: liabilityFormData.balloons
+            balloons: liabilityFormData.balloons,
+            propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
+            isRealEstate: liabilityFormData.type === 'MORTGAGE' ? true : undefined
           }
         }).eq('id', editingLiability.id);
         if (error) throw error;
@@ -272,7 +277,9 @@ const Assets: React.FC = () => {
           linked_asset_id: liabilityFormData.linkedAssetId || null,
           metadata: {
             indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
-            balloons: liabilityFormData.balloons
+            balloons: liabilityFormData.balloons,
+            propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
+            isRealEstate: liabilityFormData.type === 'MORTGAGE' ? true : undefined
           }
         }]).select();
 
@@ -327,7 +334,7 @@ const Assets: React.FC = () => {
 
       setShowLiabilityModal(false);
       setEditingLiability(null);
-      setLiabilityFormData({ name: '', type: 'PERSONAL_LOAN', totalAmount: '', remainingBalance: '', interestRate: '', installmentAmount: '', installmentsRemaining: '', dueDay: '', linkedAssetId: '', indexationRate: '', balloonMonth: '', balloonYear: '', balloonAmount: '', balloons: [] });
+      setLiabilityFormData({ name: '', type: 'PERSONAL_LOAN', totalAmount: '', remainingBalance: '', interestRate: '', installmentAmount: '', installmentsRemaining: '', dueDay: '', linkedAssetId: '', indexationRate: '', balloonMonth: '', balloonYear: '', balloonAmount: '', balloons: [], propertyType: 'PLANTA' });
       fetchData();
     } catch (err: any) {
       alert(`Erro ao salvar: ${err.message}`);
@@ -484,7 +491,8 @@ const Assets: React.FC = () => {
       balloonMonth: '',
       balloonYear: '',
       balloonAmount: '',
-      balloons: liability.metadata?.balloons || []
+      balloons: liability.metadata?.balloons || [],
+      propertyType: liability.metadata?.propertyType || 'PLANTA'
     });
     setShowLiabilityModal(true);
   };
@@ -762,7 +770,7 @@ const Assets: React.FC = () => {
                 <div className="p-6 bg-white/5 border border-white/10 rounded-3xl space-y-6 animate-in slide-in-from-top duration-300">
                   <h4 className="text-xs font-black uppercase tracking-wider text-brand-400">Marque quais itens deseja incluir nos cálculos de fluxo passivo e compromissos:</h4>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
                     {/* Imóveis Column */}
                     <div className="space-y-3 bg-slate-950/40 p-5 rounded-2xl border border-white/5">
                       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-white/5 pb-2">🏢 Imóveis (Aluguel / Despesa)</p>
@@ -791,6 +799,34 @@ const Assets: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Veículos e Outros Bens Column */}
+                    <div className="space-y-3 bg-slate-950/40 p-5 rounded-2xl border border-white/5">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-white/5 pb-2">🚗 Veículos e Bens (Físicos)</p>
+                      <div className="space-y-2.5 max-h-[200px] overflow-y-auto pr-1">
+                        {physicalAssets.filter(p => p.category !== 'REAL_ESTATE').map(asset => {
+                          const isIncluded = !excludedOtherAssetIds.includes(asset.id);
+                          return (
+                            <label key={asset.id} className="flex items-center gap-3 cursor-pointer text-xs font-medium hover:text-white transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={isIncluded}
+                                onChange={() => {
+                                  setExcludedOtherAssetIds(prev =>
+                                    isIncluded ? [...prev, asset.id] : prev.filter(id => id !== asset.id)
+                                  );
+                                }}
+                                className="w-4 h-4 rounded border-white/20 bg-white/5 text-brand-600 focus:ring-brand-500"
+                              />
+                              <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{asset.name}</span>
+                            </label>
+                          );
+                        })}
+                        {physicalAssets.filter(p => p.category !== 'REAL_ESTATE').length === 0 && (
+                          <p className="text-[10px] text-slate-500 italic">Nenhum veículo/bem cadastrado</p>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Consórcios Column */}
                     <div className="space-y-3 bg-slate-950/40 p-5 rounded-2xl border border-white/5">
                       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-white/5 pb-2">💳 Consórcios (Parcelas)</p>
@@ -815,6 +851,34 @@ const Assets: React.FC = () => {
                         })}
                         {liabilities.filter(l => l.type === 'CONSORTIUM').length === 0 && (
                           <p className="text-[10px] text-slate-500 italic">Nenhum consórcio cadastrado</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Financiamentos e Passivos Column */}
+                    <div className="space-y-3 bg-slate-950/40 p-5 rounded-2xl border border-white/5">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-white/5 pb-2">📉 Financiamentos e Passivos</p>
+                      <div className="space-y-2.5 max-h-[200px] overflow-y-auto pr-1">
+                        {liabilities.filter(l => l.type !== 'CONSORTIUM' && !isRealEstateLiab(l)).map(liab => {
+                          const isIncluded = !excludedOtherLiabilityIds.includes(liab.id);
+                          return (
+                            <label key={liab.id} className="flex items-center gap-3 cursor-pointer text-xs font-medium hover:text-white transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={isIncluded}
+                                onChange={() => {
+                                  setExcludedOtherLiabilityIds(prev =>
+                                    isIncluded ? [...prev, liab.id] : prev.filter(id => id !== liab.id)
+                                  );
+                                }}
+                                className="w-4 h-4 rounded border-white/20 bg-white/5 text-brand-600 focus:ring-brand-500"
+                              />
+                              <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{liab.name}</span>
+                            </label>
+                          );
+                        })}
+                        {liabilities.filter(l => l.type !== 'CONSORTIUM' && !isRealEstateLiab(l)).length === 0 && (
+                          <p className="text-[10px] text-slate-500 italic">Nenhum passivo geral cadastrado</p>
                         )}
                       </div>
                     </div>
@@ -859,6 +923,7 @@ const Assets: React.FC = () => {
                   return true;
                 });
                 const consortiumLiabs = liabilities.filter(l => l.type === 'CONSORTIUM' && !excludedConsortiumIds.includes(l.id));
+                const otherGeneralLiabs = liabilities.filter(l => l.type !== 'CONSORTIUM' && !isRealEstateLiab(l) && !excludedOtherLiabilityIds.includes(l.id));
                 
                 const totalMortgageInstallments = mortgageLiabs.reduce((acc, curr) => {
                   if (curr.remainingBalance <= 0 || (curr.installmentsRemaining !== undefined && curr.installmentsRemaining <= 0)) return acc;
@@ -869,8 +934,12 @@ const Assets: React.FC = () => {
                   if (curr.remainingBalance <= 0 || (curr.installmentsRemaining !== undefined && curr.installmentsRemaining <= 0)) return acc;
                   return acc + (curr.installmentAmount || 0);
                 }, 0);
+                const totalOtherLiabilitiesInstallments = otherGeneralLiabs.reduce((acc, curr) => {
+                  if (curr.remainingBalance <= 0 || (curr.installmentsRemaining !== undefined && curr.installmentsRemaining <= 0)) return acc;
+                  return acc + (curr.installmentAmount || 0);
+                }, 0);
                 
-                const totalOutflow = totalMortgageInstallments + totalOperatingCosts + totalConsortiumInstallments;
+                const totalOutflow = totalMortgageInstallments + totalOperatingCosts + totalConsortiumInstallments + totalOtherLiabilitiesInstallments;
 
                 // Inflows (Filtered dynamically by exclusions)
                 const totalRents = mortgageLiabs.reduce((acc, curr) => acc + (Number(curr.metadata?.rentalIncome) || 0), 0);
@@ -1031,7 +1100,7 @@ const Assets: React.FC = () => {
                             {propertyType === 'PLANTA' ? (
                               <button
                                 onClick={() => togglePropertyTypeDirectly(asset, linkedLiab)}
-                                title="Clique para alternar o status do imóvel para Pronto"
+                                title="Clique para alternar o status do imóvel para Pronto / Entregue"
                                 className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-amber-100 flex items-center gap-1 transition-colors"
                               >
                                 Na Planta 🔄
@@ -1042,7 +1111,7 @@ const Assets: React.FC = () => {
                                 title="Clique para alternar o status do imóvel para Na Planta"
                                 className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-emerald-100 flex items-center gap-1 transition-colors"
                               >
-                                Pronto 🔄
+                                Pronto / Entregue 🔄
                               </button>
                             )}
                           </div>
@@ -1199,7 +1268,8 @@ const Assets: React.FC = () => {
                       balloonMonth: '',
                       balloonYear: '',
                       balloonAmount: '',
-                      balloons: []
+                      balloons: [],
+                      propertyType: 'PLANTA'
                     });
                     setEditingLiability(null);
                     setShowLiabilityModal(true);
@@ -1328,7 +1398,7 @@ const Assets: React.FC = () => {
                   </div>
                   
                   {showAnalysisSettings && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-950/40 p-5 rounded-2xl border border-white/5 animate-in slide-in-from-top duration-200">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 bg-slate-950/40 p-5 rounded-2xl border border-white/5 animate-in slide-in-from-top duration-200">
                       {/* Imóveis */}
                       <div className="space-y-2">
                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-white/5 pb-1">🏢 Imóveis</p>
@@ -1341,6 +1411,29 @@ const Assets: React.FC = () => {
                                 checked={isIncluded}
                                 onChange={() => {
                                   setExcludedAssetIds(prev =>
+                                    isIncluded ? [...prev, asset.id] : prev.filter(id => id !== asset.id)
+                                  );
+                                }}
+                                className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-brand-600 focus:ring-brand-500"
+                              />
+                              <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{asset.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      {/* Veículos e Outros Bens */}
+                      <div className="space-y-2">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-white/5 pb-1">🚗 Veículos e Bens</p>
+                        {physicalAssets.filter(p => p.category !== 'REAL_ESTATE').map(asset => {
+                          const isIncluded = !excludedOtherAssetIds.includes(asset.id);
+                          return (
+                            <label key={asset.id} className="flex items-center gap-2.5 cursor-pointer text-[11px] font-medium hover:text-white transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={isIncluded}
+                                onChange={() => {
+                                  setExcludedOtherAssetIds(prev =>
                                     isIncluded ? [...prev, asset.id] : prev.filter(id => id !== asset.id)
                                   );
                                 }}
@@ -1370,6 +1463,29 @@ const Assets: React.FC = () => {
                                 className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-brand-600 focus:ring-brand-500"
                               />
                               <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{cons.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      {/* Passivos Gerais */}
+                      <div className="space-y-2">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-white/5 pb-1">📉 Passivos Gerais</p>
+                        {liabilities.filter(l => l.type !== 'CONSORTIUM' && !isRealEstateLiab(l)).map(liab => {
+                          const isIncluded = !excludedOtherLiabilityIds.includes(liab.id);
+                          return (
+                            <label key={liab.id} className="flex items-center gap-2.5 cursor-pointer text-[11px] font-medium hover:text-white transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={isIncluded}
+                                onChange={() => {
+                                  setExcludedOtherLiabilityIds(prev =>
+                                    isIncluded ? [...prev, liab.id] : prev.filter(id => id !== liab.id)
+                                  );
+                                }}
+                                className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-brand-600 focus:ring-brand-500"
+                              />
+                              <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{liab.name}</span>
                             </label>
                           );
                         })}
@@ -1447,14 +1563,14 @@ const Assets: React.FC = () => {
               const filteredLiabilities = liabilities.filter(l => {
                 if (projectionScope === 'consolidated') {
                   if (l.type === 'CONSORTIUM') return !excludedConsortiumIds.includes(l.id);
-                  if (l.type !== 'MORTGAGE' && !l.metadata?.isRealEstate) return false;
-                  if (excludedAssetIds.includes(l.linkedAssetId || '')) return false;
+                  if (isRealEstateLiab(l)) {
+                    if (excludedAssetIds.includes(l.linkedAssetId || '')) return false;
+                    return true;
+                  }
+                  // General liabilities
+                  return !excludedOtherLiabilityIds.includes(l.id);
                 } else {
                   if (l.linkedAssetId !== projectionScope) return false;
-                }
-                if (l.linkedAssetId) {
-                  const linkedAsset = physicalAssets.find(p => p.id === l.linkedAssetId);
-                  if (linkedAsset && linkedAsset.category !== 'REAL_ESTATE') return false;
                 }
                 return true;
               });
@@ -1846,7 +1962,7 @@ const Assets: React.FC = () => {
                         onChange={e => setRealEstateManageForm({ ...realEstateManageForm, propertyType: e.target.value as any })}
                       >
                         <option value="PLANTA">Na Planta (Em Construção)</option>
-                        <option value="PRONTO">Pronto (Rendimento / Aluguel)</option>
+                        <option value="PRONTO">Pronto / Entregue (Rendimento / Aluguel)</option>
                       </select>
                     </div>
 
@@ -1902,10 +2018,11 @@ const Assets: React.FC = () => {
           <div className="space-y-10">
             {/* MANAGEMENT OVERLAY / DRAWER (Simple inline for now) */}
             {selectedAssetForManagement && (
-              <div className="animate-in fade-in slide-in-from-top-4 duration-500 bg-slate-900 rounded-[40px] p-10 text-white space-y-8 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-8">
-                  <button onClick={() => setSelectedAssetForManagement(null)} className="w-12 h-12 bg-white/10 hover:bg-white/20 rounded-2xl flex items-center justify-center transition-all"><X size={24} /></button>
-                </div>
+              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+                <div className="animate-in zoom-in-95 duration-300 bg-slate-900 rounded-[40px] p-8 md:p-10 text-white space-y-8 shadow-2xl relative overflow-hidden max-w-5xl w-full max-h-[90vh] overflow-y-auto border border-white/10">
+                  <div className="absolute top-0 right-0 p-6 md:p-8 z-10">
+                    <button onClick={() => setSelectedAssetForManagement(null)} className="w-12 h-12 bg-white/10 hover:bg-white/20 rounded-2xl flex items-center justify-center transition-all"><X size={24} /></button>
+                  </div>
                 
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8">
                   <div className="space-y-2">
@@ -2050,7 +2167,8 @@ const Assets: React.FC = () => {
                   })()}
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {physicalAssets.map(asset => (
@@ -2062,10 +2180,7 @@ const Assets: React.FC = () => {
                       </div>
                       <div className="flex gap-2">
                         <button 
-                          onClick={() => {
-                            setSelectedAssetForManagement(asset);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }} 
+                          onClick={() => setSelectedAssetForManagement(asset)} 
                           className="p-3 text-slate-400 hover:bg-brand-50 hover:text-brand-600 rounded-2xl transition-all"
                         >
                           <TrendingUp size={20} />
@@ -2095,10 +2210,7 @@ const Assets: React.FC = () => {
                   <div className="px-10 py-6 bg-slate-50/50 flex justify-between items-center border-t border-slate-50 group-hover:bg-brand-50 transition-colors">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Ano Aquisição: {asset.acquisitionDate ? new Date(asset.acquisitionDate).getFullYear() : '---'}</span>
                     <button 
-                      onClick={() => {
-                        setSelectedAssetForManagement(asset);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }} 
+                      onClick={() => setSelectedAssetForManagement(asset)} 
                       className="text-brand-600 text-[10px] font-black uppercase tracking-[0.2em] group-hover:underline flex items-center gap-2"
                     >
                       Análise de Balanço <ChevronRight size={14} />
@@ -2349,6 +2461,20 @@ const Assets: React.FC = () => {
                   <option value="OTHER">Outras Dívidas</option>
                 </select>
               </div>
+
+              {liabilityFormData.type === 'MORTGAGE' && (
+                <div className="animate-in slide-in-from-top-2 duration-200">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Status do Imóvel</label>
+                  <select
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500"
+                    value={liabilityFormData.propertyType}
+                    onChange={(e) => setLiabilityFormData({ ...liabilityFormData, propertyType: e.target.value as 'PLANTA' | 'PRONTO' })}
+                  >
+                    <option value="PLANTA">Na Planta (Em Construção)</option>
+                    <option value="PRONTO">Pronto / Entregue (Rendimento / Aluguel)</option>
+                  </select>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
