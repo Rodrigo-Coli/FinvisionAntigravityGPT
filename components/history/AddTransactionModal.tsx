@@ -114,7 +114,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipo</label>
                                 <select
                                     value={form.type}
-                                    onChange={(e) => setAddField('type', e.target.value)}
+                                    onChange={(e) => {
+                                        const newType = e.target.value as 'INCOME' | 'EXPENSE';
+                                        setAddField('type', newType);
+                                        if (newType === 'EXPENSE' && !form.amount.startsWith('-') && form.amount.trim() !== '') {
+                                            setAddField('amount', '-' + form.amount);
+                                        } else if (newType === 'INCOME' && form.amount.startsWith('-')) {
+                                            setAddField('amount', form.amount.replace('-', ''));
+                                        }
+                                    }}
                                     className="w-full h-14 px-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
                                 >
                                     <option value="EXPENSE">Saída (Despesa)</option>
@@ -137,13 +145,54 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Valor (R$)</label>
-                                <input
-                                    type="text"
-                                    value={form.amount}
-                                    onChange={(e) => setAddField('amount', e.target.value)}
-                                    placeholder="0,00"
-                                    className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
-                                />
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const newType = form.type === 'EXPENSE' ? 'INCOME' : 'EXPENSE';
+                                            setAddField('type', newType);
+                                            if (newType === 'EXPENSE' && !form.amount.startsWith('-') && form.amount.trim() !== '') {
+                                                setAddField('amount', '-' + form.amount);
+                                            } else if (newType === 'INCOME' && form.amount.startsWith('-')) {
+                                                setAddField('amount', form.amount.replace('-', ''));
+                                            }
+                                        }}
+                                        className={`w-14 h-14 flex items-center justify-center rounded-2xl text-lg font-black transition-all ${
+                                            form.type === 'EXPENSE'
+                                                ? 'bg-rose-50 text-rose-600 border border-rose-200 shadow-sm'
+                                                : 'bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-sm'
+                                        }`}
+                                        title="Alternar Entrada/Saída"
+                                    >
+                                        {form.type === 'EXPENSE' ? '-' : '+'}
+                                    </button>
+                                    <input
+                                        type="text"
+                                        inputMode="text"
+                                        value={form.amount}
+                                        onChange={(e) => {
+                                            let val = e.target.value;
+                                            // Allow only digits, comma, period, and hyphen/minus
+                                            val = val.replace(/[^0-9,\.\-]/g, '');
+                                            // If there's a minus sign, make sure it is at the start and only one exists
+                                            if (val.includes('-')) {
+                                                val = '-' + val.replace(/\-/g, '');
+                                            }
+                                            setAddField('amount', val);
+
+                                            // Auto-toggle type
+                                            if (val.startsWith('-')) {
+                                                setAddField('type', 'EXPENSE');
+                                            } else if (val.trim() !== '' && !val.startsWith('-')) {
+                                                if (form.amount.startsWith('-')) {
+                                                    setAddField('type', 'INCOME');
+                                                }
+                                            }
+                                        }}
+                                        placeholder="0,00"
+                                        className="flex-1 h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
+                                    />
+                                </div>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Conta Bancária</label>

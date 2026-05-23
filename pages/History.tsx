@@ -357,10 +357,27 @@ const HistoryPage: React.FC = () => {
       } else {
         // Retrieve from cache
         try {
-          accData = JSON.parse(localStorage.getItem('finvision_cached_accounts') || '[]');
-          catData = JSON.parse(localStorage.getItem('finvision_cached_categories') || '[]');
-          subData = JSON.parse(localStorage.getItem('finvision_cached_subcategories') || '[]');
-          dbEntities = JSON.parse(localStorage.getItem('finvision_cached_owners') || '[]');
+          accData = JSON.parse(
+            localStorage.getItem('finvision_cached_accounts') ||
+            localStorage.getItem('finvision_cached_accounts_full') ||
+            localStorage.getItem('finvision_cached_accounts_cc') ||
+            '[]'
+          );
+          catData = JSON.parse(
+            localStorage.getItem('finvision_cached_categories') ||
+            localStorage.getItem('finvision_cached_categories_cc') ||
+            '[]'
+          );
+          subData = JSON.parse(
+            localStorage.getItem('finvision_cached_subcategories') ||
+            localStorage.getItem('finvision_cached_subcategories_cc') ||
+            '[]'
+          );
+          dbEntities = JSON.parse(
+            localStorage.getItem('finvision_cached_owners') ||
+            localStorage.getItem('finvision_cached_owners_cc') ||
+            '[]'
+          );
           transactionsData = JSON.parse(localStorage.getItem(`finvision_cached_raw_txs_${user.id}`) || '[]');
           cardTxsData = JSON.parse(localStorage.getItem(`finvision_cached_raw_card_txs_${user.id}`) || '[]');
         } catch (e) {
@@ -371,25 +388,34 @@ const HistoryPage: React.FC = () => {
       if (requestId !== lastRequestId.current) return;
 
       // Map state
-      setAccounts((accData || []).map((a: any) => ({
-        id: a.id,
-        institution: a.institution,
-        type: a.type,
-        currency: a.currency,
-        initialBalance: Number(a.initial_balance),
-        currentBalance: Number(a.current_balance),
-        limit: Number(a.limit),
-        color: a.color,
-        isArchived: a.is_archived,
-        includeInDashboard: a.include_in_dashboard,
-        lastSync: a.last_sync
-      })).sort((a: any, b: any) => a.institution.localeCompare(b.institution)));
+      setAccounts((accData || []).map((a: any) => {
+        const institution = a.institution || a.name || a.bank_name || 'Conta';
+        const initialBalance = a.initial_balance !== undefined ? Number(a.initial_balance) : (a.initialBalance !== undefined ? Number(a.initialBalance) : 0);
+        const currentBalance = a.current_balance !== undefined ? Number(a.current_balance) : (a.currentBalance !== undefined ? Number(a.currentBalance) : 0);
+        const limit = a.limit !== undefined ? Number(a.limit) : (a.overdraft_limit !== undefined ? Number(a.overdraft_limit) : (a.limitBalance !== undefined ? Number(a.limitBalance) : 0));
+        const isArchived = a.is_archived !== undefined ? !!a.is_archived : (a.isArchived !== undefined ? !!a.isArchived : false);
+        const includeInDashboard = a.include_in_dashboard !== undefined ? !!a.include_in_dashboard : (a.includeDashboard !== undefined ? !!a.includeDashboard : (a.includeInDashboard !== undefined ? !!a.includeInDashboard : true));
+        
+        return {
+          id: a.id,
+          institution,
+          type: a.type,
+          currency: a.currency || 'BRL',
+          initialBalance,
+          currentBalance,
+          limit,
+          color: a.color || '#3b82f6',
+          isArchived,
+          includeInDashboard,
+          lastSync: a.last_sync || a.lastSync
+        };
+      }).sort((a: any, b: any) => a.institution.localeCompare(b.institution)));
 
       setOwners((dbEntities || []).sort((a, b) => a.localeCompare(b)));
 
       const mappedSubcats = (subData || []).map(sub => {
         const parentCat = (catData || []).find((c: any) => c.id === sub.category_id);
-        return { ...sub, category_name: parentCat?.name };
+        return { ...sub, category_name: parentCat?.name || sub.category_name };
       });
       setSubcategories(mappedSubcats);
 

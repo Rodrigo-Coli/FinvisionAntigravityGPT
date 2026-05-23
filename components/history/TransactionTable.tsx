@@ -614,23 +614,54 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
 
                                         {/* AMOUNT */}
                                         {editingRow?.id === t.id && editingRow.field === 'amount' ? (
-                                            <div className="flex items-center gap-1">
-                                                <span className="text-sm font-bold text-slate-400">{(t.type === 'EXPENSE' || (t.type === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '-' : ''}</span>
+                                            <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-100">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const isNegative = editValue.startsWith('-');
+                                                        if (isNegative) {
+                                                            setEditValue(editValue.replace('-', ''));
+                                                        } else {
+                                                            setEditValue('-' + editValue);
+                                                        }
+                                                    }}
+                                                    className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-black transition-all ${
+                                                        editValue.startsWith('-')
+                                                            ? 'bg-rose-50 text-rose-600 border border-rose-200 shadow-sm font-black'
+                                                            : 'bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-sm font-black'
+                                                    }`}
+                                                    title="Alternar Entrada/Saída"
+                                                >
+                                                    {editValue.startsWith('-') ? '-' : '+'}
+                                                </button>
                                                 <input
                                                     type="text"
-                                                    inputMode="decimal"
+                                                    inputMode="text"
                                                     placeholder="0,00"
                                                     autoFocus
-                                                    className="w-24 h-8 px-2 text-sm font-bold text-right bg-white border border-brand-500 rounded outline-none"
+                                                    className="w-20 h-7 px-1.5 text-xs font-bold text-right bg-white border border-slate-200 rounded-lg outline-none focus:border-brand-500 transition-colors"
                                                     value={editValue}
-                                                    onChange={e => setEditValue(e.target.value)}
+                                                    onChange={e => {
+                                                        let val = e.target.value;
+                                                        // Allow only digits, comma, period, and hyphen/minus
+                                                        val = val.replace(/[^0-9,\.\-]/g, '');
+                                                        // If there's a minus sign, make sure it is at the start and only one exists
+                                                        if (val.includes('-')) {
+                                                            val = '-' + val.replace(/\-/g, '');
+                                                        }
+                                                        setEditValue(val);
+                                                    }}
                                                     onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'amount', editValue)}
                                                     onBlur={() => handleUpdate(t.id, 'amount', editValue)}
                                                 />
                                             </div>
                                         ) : (
                                             <button
-                                                onClick={() => { setEditingRow({ id: t.id, field: 'amount' }); setEditValue(Math.abs(t.amount).toString().replace('.', ',')); }}
+                                                onClick={() => {
+                                                    setEditingRow({ id: t.id, field: 'amount' });
+                                                    const isExpense = t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT' || (t.type === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE');
+                                                    setEditValue((isExpense ? '-' : '') + Math.abs(t.amount).toString().replace('.', ','));
+                                                }}
                                                 className={`text-base font-bold bg-transparent border-none p-0 cursor-pointer active:text-brand-600 truncate max-w-[120px] ${t.type?.toUpperCase() === 'INCOME' ? 'text-emerald-600' : (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE') ? 'text-emerald-600' : 'text-slate-900'}`}
                                             >
                                                 {(t.type?.toUpperCase() === 'EXPENSE' || t.type?.toUpperCase() === 'BILL_PAYMENT' || (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '-' : ''}{formatCurrency(amount)}
@@ -927,23 +958,54 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
 
                                     <td className="px-6 py-4 text-right">
                                         {editingRow?.id === t.id && editingRow.field === 'amount' ? (
-                                            <div className="flex items-center justify-end gap-1">
-                                                <span className="text-sm font-bold text-slate-400">{(t.type === 'EXPENSE' || (t.type === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '-' : ''}</span>
+                                            <div className="flex items-center justify-end gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-100 inline-flex">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const isNegative = editValue.startsWith('-');
+                                                        if (isNegative) {
+                                                            setEditValue(editValue.replace('-', ''));
+                                                        } else {
+                                                            setEditValue('-' + editValue);
+                                                        }
+                                                    }}
+                                                    className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-black transition-all ${
+                                                        editValue.startsWith('-')
+                                                            ? 'bg-rose-50 text-rose-600 border border-rose-200 shadow-sm font-black'
+                                                            : 'bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-sm font-black'
+                                                    }`}
+                                                    title="Alternar Entrada/Saída"
+                                                >
+                                                    {editValue.startsWith('-') ? '-' : '+'}
+                                                </button>
                                                 <input
                                                     type="text"
-                                                    inputMode="decimal"
+                                                    inputMode="text"
                                                     placeholder="0,00"
                                                     autoFocus
-                                                    className="w-28 h-8 px-2 text-sm font-bold text-right bg-white border border-brand-500 rounded outline-none"
+                                                    className="w-24 h-7 px-1.5 text-xs font-bold text-right bg-white border border-slate-200 rounded-lg outline-none focus:border-brand-500 transition-colors"
                                                     value={editValue}
-                                                    onChange={e => setEditValue(e.target.value)}
+                                                    onChange={e => {
+                                                        let val = e.target.value;
+                                                        // Allow only digits, comma, period, and hyphen/minus
+                                                        val = val.replace(/[^0-9,\.\-]/g, '');
+                                                        // If there's a minus sign, make sure it is at the start and only one exists
+                                                        if (val.includes('-')) {
+                                                            val = '-' + val.replace(/\-/g, '');
+                                                        }
+                                                        setEditValue(val);
+                                                    }}
                                                     onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'amount', editValue)}
                                                     onBlur={() => handleUpdate(t.id, 'amount', editValue)}
                                                 />
                                             </div>
                                         ) : (
                                             <button
-                                                onClick={() => { setEditingRow({ id: t.id, field: 'amount' }); setEditValue(Math.abs(t.amount).toString().replace('.', ',')); }}
+                                                onClick={() => {
+                                                    setEditingRow({ id: t.id, field: 'amount' });
+                                                    const isExpense = t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT' || (t.type === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE');
+                                                    setEditValue((isExpense ? '-' : '') + Math.abs(t.amount).toString().replace('.', ','));
+                                                }}
                                                 className={`text-sm font-bold hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer 
                                                     ${(t.type?.toUpperCase() === 'INCOME' || (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE')) ? 'text-emerald-600' : 'text-rose-600'}`}
                                             >

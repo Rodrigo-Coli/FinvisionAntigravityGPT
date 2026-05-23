@@ -28,6 +28,7 @@ import AIChat from '../components/AIChat';
 import ContextualHelp from '../components/ContextualHelp';
 import { supabase } from '../lib/supabase/client';
 import { projectionService } from '../services/projection.service';
+import { FinanceService } from '../services/finance.service';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
   const [data, setData] = useState<DashboardData | null>(() => DashboardService.getCachedSummary());
@@ -65,9 +66,41 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
     window.scrollTo(0, 0);
   }, []);
 
+  const primeOfflineCaches = async () => {
+    if (!supabase || !navigator.onLine || !user?.id) return;
+    try {
+      const [accRes, catRes, subRes, entitiesRes] = await Promise.all([
+        supabase.from('accounts').select('*').eq('is_archived', false),
+        supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name'),
+        supabase.from('subcategories').select('*').eq('user_id', user.id).order('name'),
+        FinanceService.getEntities()
+      ]);
+
+      if (!accRes.error) {
+        localStorage.setItem('finvision_cached_accounts', JSON.stringify(accRes.data || []));
+        localStorage.setItem('finvision_cached_accounts_cc', JSON.stringify(accRes.data || []));
+      }
+      if (!catRes.error) {
+        localStorage.setItem('finvision_cached_categories', JSON.stringify(catRes.data || []));
+        localStorage.setItem('finvision_cached_categories_cc', JSON.stringify(catRes.data || []));
+      }
+      if (!subRes.error) {
+        localStorage.setItem('finvision_cached_subcategories', JSON.stringify(subRes.data || []));
+        localStorage.setItem('finvision_cached_subcategories_cc', JSON.stringify(subRes.data || []));
+      }
+      if (entitiesRes) {
+        localStorage.setItem('finvision_cached_owners', JSON.stringify(entitiesRes));
+        localStorage.setItem('finvision_cached_owners_cc', JSON.stringify(entitiesRes));
+      }
+    } catch (e) {
+      console.warn('Erro ao primar caches offline:', e);
+    }
+  };
+
   const loadData = async () => {
     try {
       if (navigator.onLine) {
+        primeOfflineCaches(); // Silently trigger background cache priming
         const dashboardData = await DashboardService.getSummary();
         setData(dashboardData);
         DashboardService.setCachedSummary(dashboardData);

@@ -233,12 +233,14 @@ const CreditCardsPage: React.FC = () => {
         setCategories(data || []);
         localStorage.setItem('finvision_cached_categories_cc', JSON.stringify(data || []));
       } else {
-        const cached = localStorage.getItem('finvision_cached_categories_cc');
+        const cached = localStorage.getItem('finvision_cached_categories_cc') ||
+                       localStorage.getItem('finvision_cached_categories');
         if (cached) setCategories(JSON.parse(cached));
       }
     } catch (err) {
       console.error('Erro ao buscar categorias, fallback cache:', err);
-      const cached = localStorage.getItem('finvision_cached_categories_cc');
+      const cached = localStorage.getItem('finvision_cached_categories_cc') ||
+                     localStorage.getItem('finvision_cached_categories');
       if (cached) setCategories(JSON.parse(cached));
     }
   };
@@ -263,13 +265,49 @@ const CreditCardsPage: React.FC = () => {
         setSubcategories(mapped);
         localStorage.setItem('finvision_cached_subcategories_cc', JSON.stringify(mapped));
       } else {
-        const cached = localStorage.getItem('finvision_cached_subcategories_cc');
-        if (cached) setSubcategories(JSON.parse(cached));
+        const cached = localStorage.getItem('finvision_cached_subcategories_cc') ||
+                       localStorage.getItem('finvision_cached_subcategories');
+        if (cached) {
+          const raw = JSON.parse(cached);
+          const catsCached = localStorage.getItem('finvision_cached_categories_cc') || localStorage.getItem('finvision_cached_categories');
+          const cats = catsCached ? JSON.parse(catsCached) : [];
+          const mapped = raw.map((s: any) => {
+            let catName = s.category_name;
+            if (!catName && s.category_id && cats.length > 0) {
+              const matched = cats.find((c: any) => c.id === s.category_id);
+              if (matched) catName = matched.name;
+            }
+            return {
+              id: s.id,
+              name: s.name,
+              category_name: catName
+            };
+          });
+          setSubcategories(mapped);
+        }
       }
     } catch (err) {
       console.error('Erro ao buscar subcategorias, fallback cache:', err);
-      const cached = localStorage.getItem('finvision_cached_subcategories_cc');
-      if (cached) setSubcategories(JSON.parse(cached));
+      const cached = localStorage.getItem('finvision_cached_subcategories_cc') ||
+                     localStorage.getItem('finvision_cached_subcategories');
+      if (cached) {
+        const raw = JSON.parse(cached);
+        const catsCached = localStorage.getItem('finvision_cached_categories_cc') || localStorage.getItem('finvision_cached_categories');
+        const cats = catsCached ? JSON.parse(catsCached) : [];
+        const mapped = raw.map((s: any) => {
+          let catName = s.category_name;
+          if (!catName && s.category_id && cats.length > 0) {
+            const matched = cats.find((c: any) => c.id === s.category_id);
+            if (matched) catName = matched.name;
+          }
+          return {
+            id: s.id,
+            name: s.name,
+            category_name: catName
+          };
+        });
+        setSubcategories(mapped);
+      }
     }
   };
 
@@ -293,9 +331,17 @@ const CreditCardsPage: React.FC = () => {
           setPayAccountId(list[0].id);
         }
       } else {
-        const cached = localStorage.getItem('finvision_cached_accounts_cc');
+        const cached = localStorage.getItem('finvision_cached_accounts_cc') ||
+                       localStorage.getItem('finvision_cached_accounts') ||
+                       localStorage.getItem('finvision_cached_accounts_full');
         if (cached) {
-          const list = JSON.parse(cached) as Account[];
+          const rawList = JSON.parse(cached);
+          const list = rawList.map((a: any) => ({
+            id: a.id,
+            institution: a.institution || a.name || a.bank_name || `Conta ${a.id.slice(0, 6)}`,
+            name: a.name || a.institution || a.bank_name,
+            bank_name: a.bank_name || a.institution || a.name
+          }));
           setAccounts(list);
           if (!payAccountId && list.length > 0) {
             setPayAccountId(list[0].id);
@@ -304,9 +350,17 @@ const CreditCardsPage: React.FC = () => {
       }
     } catch (err) {
       console.error('Erro ao buscar contas, fallback cache:', err);
-      const cached = localStorage.getItem('finvision_cached_accounts_cc');
+      const cached = localStorage.getItem('finvision_cached_accounts_cc') ||
+                     localStorage.getItem('finvision_cached_accounts') ||
+                     localStorage.getItem('finvision_cached_accounts_full');
       if (cached) {
-        const list = JSON.parse(cached) as Account[];
+        const rawList = JSON.parse(cached);
+        const list = rawList.map((a: any) => ({
+          id: a.id,
+          institution: a.institution || a.name || a.bank_name || `Conta ${a.id.slice(0, 6)}`,
+          name: a.name || a.institution || a.bank_name,
+          bank_name: a.bank_name || a.institution || a.name
+        }));
         setAccounts(list);
         if (!payAccountId && list.length > 0) {
           setPayAccountId(list[0].id);
@@ -327,12 +381,14 @@ const CreditCardsPage: React.FC = () => {
         setOwners(ownersList);
         localStorage.setItem('finvision_cached_owners_cc', JSON.stringify(ownersList));
       } else {
-        const cached = localStorage.getItem('finvision_cached_owners_cc');
+        const cached = localStorage.getItem('finvision_cached_owners_cc') ||
+                       localStorage.getItem('finvision_cached_owners');
         if (cached) setOwners(JSON.parse(cached));
       }
     } catch (err) {
       console.error('Erro ao buscar proprietários, fallback cache:', err);
-      const cached = localStorage.getItem('finvision_cached_owners_cc');
+      const cached = localStorage.getItem('finvision_cached_owners_cc') ||
+                     localStorage.getItem('finvision_cached_owners');
       if (cached) setOwners(JSON.parse(cached));
     }
   };
