@@ -35,6 +35,10 @@ const Assets: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   const [estimatedYieldRate, setEstimatedYieldRate] = useState<number>(0.8);
+  const [excludedAssetIds, setExcludedAssetIds] = useState<string[]>([]);
+  const [excludedConsortiumIds, setExcludedConsortiumIds] = useState<string[]>([]);
+  const [excludedBrokerIds, setExcludedBrokerIds] = useState<string[]>([]);
+  const [showAnalysisSettings, setShowAnalysisSettings] = useState(false);
   const [showRealEstateManageModal, setShowRealEstateManageModal] = useState(false);
   const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
   const [realEstateManageForm, setRealEstateManageForm] = useState({
@@ -639,24 +643,125 @@ const Assets: React.FC = () => {
                   </h3>
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Análise integrada de Imóveis, Consórcios e Rentabilidade Financeira</p>
                 </div>
-                <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl p-3 shrink-0">
-                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Simular Rentabilidade Financeira:</span>
-                  <input
-                    type="number"
-                    step="0.05"
-                    className="w-16 h-8 bg-white/10 border border-white/10 text-white rounded-lg text-xs font-bold text-center outline-none focus:border-brand-500"
-                    value={estimatedYieldRate}
-                    onChange={e => setEstimatedYieldRate(parseFloat(e.target.value) || 0)}
-                  />
-                  <span className="text-xs font-bold text-slate-300">% am</span>
+                <div className="flex flex-wrap items-center gap-3 shrink-0">
+                  <button
+                    onClick={() => setShowAnalysisSettings(!showAnalysisSettings)}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                    {showAnalysisSettings ? 'Fechar Ajustes ✕' : '⚙️ Personalizar Análise'}
+                  </button>
+                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl p-2 shrink-0">
+                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Simular Taxa:</span>
+                    <input
+                      type="number"
+                      step="0.05"
+                      className="w-14 h-8 bg-white/10 border border-white/10 text-white rounded-lg text-xs font-bold text-center outline-none focus:border-brand-500"
+                      value={estimatedYieldRate}
+                      onChange={e => setEstimatedYieldRate(parseFloat(e.target.value) || 0)}
+                    />
+                    <span className="text-xs font-bold text-slate-300">% am</span>
+                  </div>
                 </div>
               </div>
 
+              {/* DYNAMIC SELECTION FILTER PANEL */}
+              {showAnalysisSettings && (
+                <div className="p-6 bg-white/5 border border-white/10 rounded-3xl space-y-6 animate-in slide-in-from-top duration-300">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-brand-400">Marque quais itens deseja incluir nos cálculos de fluxo passivo e compromissos:</h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Imóveis Column */}
+                    <div className="space-y-3 bg-slate-950/40 p-5 rounded-2xl border border-white/5">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-white/5 pb-2">🏢 Imóveis (Aluguel / Despesa)</p>
+                      <div className="space-y-2.5 max-h-[200px] overflow-y-auto pr-1">
+                        {physicalAssets.filter(p => p.category === 'REAL_ESTATE').map(asset => {
+                          const isIncluded = !excludedAssetIds.includes(asset.id);
+                          return (
+                            <label key={asset.id} className="flex items-center gap-3 cursor-pointer text-xs font-medium hover:text-white transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={isIncluded}
+                                onChange={() => {
+                                  setExcludedAssetIds(prev =>
+                                    isIncluded ? [...prev, asset.id] : prev.filter(id => id !== asset.id)
+                                  );
+                                }}
+                                className="w-4 h-4 rounded border-white/20 bg-white/5 text-brand-600 focus:ring-brand-500"
+                              />
+                              <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{asset.name}</span>
+                            </label>
+                          );
+                        })}
+                        {physicalAssets.filter(p => p.category === 'REAL_ESTATE').length === 0 && (
+                          <p className="text-[10px] text-slate-500 italic">Nenhum imóvel cadastrado</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Consórcios Column */}
+                    <div className="space-y-3 bg-slate-950/40 p-5 rounded-2xl border border-white/5">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-white/5 pb-2">💳 Consórcios (Parcelas)</p>
+                      <div className="space-y-2.5 max-h-[200px] overflow-y-auto pr-1">
+                        {liabilities.filter(l => l.type === 'CONSORTIUM').map(cons => {
+                          const isIncluded = !excludedConsortiumIds.includes(cons.id);
+                          return (
+                            <label key={cons.id} className="flex items-center gap-3 cursor-pointer text-xs font-medium hover:text-white transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={isIncluded}
+                                onChange={() => {
+                                  setExcludedConsortiumIds(prev =>
+                                    isIncluded ? [...prev, cons.id] : prev.filter(id => id !== cons.id)
+                                  );
+                                }}
+                                className="w-4 h-4 rounded border-white/20 bg-white/5 text-brand-600 focus:ring-brand-500"
+                              />
+                              <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{cons.name}</span>
+                            </label>
+                          );
+                        })}
+                        {liabilities.filter(l => l.type === 'CONSORTIUM').length === 0 && (
+                          <p className="text-[10px] text-slate-500 italic">Nenhum consórcio cadastrado</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Contas de Investimento Column */}
+                    <div className="space-y-3 bg-slate-950/40 p-5 rounded-2xl border border-white/5">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-white/5 pb-2">📈 Contas Financeiras (XP/BTG...)</p>
+                      <div className="space-y-2.5 max-h-[200px] overflow-y-auto pr-1">
+                        {brokers.map(broker => {
+                          const isIncluded = !excludedBrokerIds.includes(broker.id);
+                          return (
+                            <label key={broker.id} className="flex items-center gap-3 cursor-pointer text-xs font-medium hover:text-white transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={isIncluded}
+                                onChange={() => {
+                                  setExcludedBrokerIds(prev =>
+                                    isIncluded ? [...prev, broker.id] : prev.filter(id => id !== broker.id)
+                                  );
+                                }}
+                                className="w-4 h-4 rounded border-white/20 bg-white/5 text-brand-600 focus:ring-brand-500"
+                              />
+                              <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{broker.name}</span>
+                            </label>
+                          );
+                        })}
+                        {brokers.length === 0 && (
+                          <p className="text-[10px] text-slate-500 italic">Nenhuma conta vinculada</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* CALCULATING VALUES FOR THE PANEL */}
               {(() => {
-                // Outflows
-                const mortgageLiabs = liabilities.filter(l => l.type === 'MORTGAGE' || l.metadata?.isRealEstate);
-                const consortiumLiabs = liabilities.filter(l => l.type === 'CONSORTIUM');
+                // Outflows (Filtered dynamically by exclusions)
+                const mortgageLiabs = liabilities.filter(l => (l.type === 'MORTGAGE' || l.metadata?.isRealEstate) && !excludedAssetIds.includes(l.linkedAssetId || ''));
+                const consortiumLiabs = liabilities.filter(l => l.type === 'CONSORTIUM' && !excludedConsortiumIds.includes(l.id));
                 
                 const totalMortgageInstallments = mortgageLiabs.reduce((acc, curr) => acc + (curr.installmentAmount || 0), 0);
                 const totalOperatingCosts = mortgageLiabs.reduce((acc, curr) => acc + (Number(curr.metadata?.operationalExpenses) || 0), 0);
@@ -664,9 +769,10 @@ const Assets: React.FC = () => {
                 
                 const totalOutflow = totalMortgageInstallments + totalOperatingCosts + totalConsortiumInstallments;
 
-                // Inflows
+                // Inflows (Filtered dynamically by exclusions)
                 const totalRents = mortgageLiabs.reduce((acc, curr) => acc + (Number(curr.metadata?.rentalIncome) || 0), 0);
-                const totalInvestments = brokers.reduce((acc, curr) => acc + curr.balance, 0);
+                const activeBrokers = brokers.filter(b => !excludedBrokerIds.includes(b.id));
+                const totalInvestments = activeBrokers.reduce((acc, curr) => acc + curr.balance, 0);
                 const estimatedMonthlyYieldValue = totalInvestments * (estimatedYieldRate / 100);
                 
                 const totalPassiveInflow = totalRents + estimatedMonthlyYieldValue;
