@@ -28,11 +28,64 @@ import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModa
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<'overview' | 'physical' | 'investments' | 'liabilities'>('overview');
+  const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'physical' | 'investments' | 'liabilities'>('overview');
   const [physicalAssets, setPhysicalAssets] = useState<PhysicalAsset[]>([]);
   const [brokers, setBrokers] = useState<InvestmentBroker[]>([]);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const [estimatedYieldRate, setEstimatedYieldRate] = useState<number>(0.8);
+  const [showRealEstateManageModal, setShowRealEstateManageModal] = useState(false);
+  const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
+  const [realEstateManageForm, setRealEstateManageForm] = useState({
+    propertyType: 'PLANTA' as 'PLANTA' | 'PRONTO',
+    rentalIncome: '',
+    operationalExpenses: '',
+    deliveryDate: '',
+    installmentAmount: ''
+  });
+
+  const openManageRealEstate = (liability: any) => {
+    setSelectedLiabilityForManage(liability);
+    setRealEstateManageForm({
+      propertyType: liability.metadata?.propertyType || 'PLANTA',
+      rentalIncome: liability.metadata?.rentalIncome ? String(liability.metadata.rentalIncome) : '',
+      operationalExpenses: liability.metadata?.operationalExpenses ? String(liability.metadata.operationalExpenses) : '',
+      deliveryDate: liability.metadata?.deliveryDate || '',
+      installmentAmount: liability.installmentAmount ? String(liability.installmentAmount) : ''
+    });
+    setShowRealEstateManageModal(true);
+  };
+
+  const saveRealEstateManage = async () => {
+    if (!supabase || !selectedLiabilityForManage) return;
+    try {
+      const rentVal = parseFloat(realEstateManageForm.rentalIncome) || 0;
+      const expVal = parseFloat(realEstateManageForm.operationalExpenses) || 0;
+      const instVal = parseFloat(realEstateManageForm.installmentAmount) || 0;
+
+      const updatedMetadata = {
+        ...(selectedLiabilityForManage.metadata || {}),
+        propertyType: realEstateManageForm.propertyType,
+        rentalIncome: rentVal,
+        operationalExpenses: expVal,
+        deliveryDate: realEstateManageForm.deliveryDate
+      };
+
+      const { error } = await supabase.from('liabilities').update({
+        installment_amount: instVal,
+        metadata: updatedMetadata
+      }).eq('id', selectedLiabilityForManage.id);
+
+      if (error) throw error;
+
+      setShowRealEstateManageModal(false);
+      setSelectedLiabilityForManage(null);
+      fetchData();
+    } catch (err: any) {
+      alert(`Erro ao salvar os ajustes: ${err.message}`);
+    }
+  };
 
   const [showModal, setShowModal] = useState(false);
   const [showWizardModal, setShowWizardModal] = useState(false);
@@ -276,6 +329,9 @@ const Assets: React.FC = () => {
           remainingBalance: Number(l.remaining_balance),
           interestRate: l.interest_rate ? Number(l.interest_rate) : undefined,
           linkedAssetId: l.linked_asset_id,
+          installmentAmount: l.installment_amount ? Number(l.installment_amount) : undefined,
+          installmentsRemaining: l.installments_remaining ? Number(l.installments_remaining) : undefined,
+          dueDay: l.due_day ? Number(l.due_day) : undefined,
           metadata: l.metadata
         })));
       }
@@ -396,6 +452,7 @@ const Assets: React.FC = () => {
       <div className="flex gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full max-w-full overflow-x-auto scrollbar-hide">
         {[
           { id: 'overview', label: 'Visão Geral', icon: <LayoutGrid size={16} /> },
+          { id: 'realestate', label: 'Investimento Imobiliário', icon: <Building2 size={16} /> },
           { id: 'physical', label: 'Bens Físicos', icon: <Box size={16} /> },
           { id: 'investments', label: 'Investimentos', icon: <TrendingUp size={16} /> },
           { id: 'liabilities', label: 'Passivos (Dívidas)', icon: <Landmark size={16} /> }
@@ -469,6 +526,476 @@ const Assets: React.FC = () => {
                 <p className="text-xs text-slate-400 font-medium italic">Configure seus objetivos na página de Planejamento para acompanhar seu progresso aqui.</p>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeView === 'realestate' && (
+          <div className="space-y-8 animate-in fade-in duration-500">
+            {/* CONSOLIDATED SUMMARY CARDS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Gross Real Estate Portfolio */}
+              <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Bens Imobiliários (Ativo)</p>
+                <h3 className="text-2xl font-bold text-slate-900 tracking-tight">
+                  {formatCurrency(physicalAssets.filter(p => p.category === 'REAL_ESTATE').reduce((acc, curr) => acc + curr.estimatedValue, 0))}
+                </h3>
+                <p className="text-[9px] font-bold text-brand-600 mt-4 uppercase tracking-widest flex items-center gap-1">
+                  <ArrowUpRight size={12} className="text-brand-600" /> {physicalAssets.filter(p => p.category === 'REAL_ESTATE').length} Imóveis Cadastrados
+                </p>
+              </div>
+
+              {/* Real Estate Debt */}
+              <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Dívidas Imobiliárias (Passivo)</p>
+                <h3 className="text-2xl font-bold text-red-600 tracking-tight">
+                  {formatCurrency(liabilities.filter(l => l.type === 'MORTGAGE' || l.metadata?.isRealEstate).reduce((acc, curr) => acc + curr.remainingBalance, 0))}
+                </h3>
+                <p className="text-[9px] font-bold text-rose-500 mt-4 uppercase tracking-widest flex items-center gap-1">
+                  <ArrowDownRight size={12} className="text-rose-500" /> {liabilities.filter(l => l.type === 'MORTGAGE' || l.metadata?.isRealEstate).length} Financiamentos
+                </p>
+              </div>
+
+              {/* Net Real Estate Equity */}
+              <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Equity Imobiliário Líquido</p>
+                <h3 className="text-2xl font-bold text-slate-900 tracking-tight">
+                  {formatCurrency(
+                    physicalAssets.filter(p => p.category === 'REAL_ESTATE').reduce((acc, curr) => acc + curr.estimatedValue, 0) -
+                    liabilities.filter(l => l.type === 'MORTGAGE' || l.metadata?.isRealEstate).reduce((acc, curr) => acc + curr.remainingBalance, 0)
+                  )}
+                </h3>
+                <p className="text-[9px] font-bold text-brand-600 mt-4 uppercase tracking-widest leading-none">Seu patrimônio líquido em imóveis</p>
+              </div>
+
+              {/* LTV Médio */}
+              <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">LTV Médio (Alavancagem)</p>
+                <h3 className="text-2xl font-bold text-slate-900 tracking-tight">
+                  {(() => {
+                    const totalImobAsset = physicalAssets.filter(p => p.category === 'REAL_ESTATE').reduce((acc, curr) => acc + curr.estimatedValue, 0);
+                    const totalImobDebt = liabilities.filter(l => l.type === 'MORTGAGE' || l.metadata?.isRealEstate).reduce((acc, curr) => acc + curr.remainingBalance, 0);
+                    if (totalImobAsset === 0) return '0%';
+                    return `${Math.round((totalImobDebt / totalImobAsset) * 100)}%`;
+                  })()}
+                </h3>
+                <p className="text-[9px] font-bold text-slate-400 mt-4 uppercase tracking-widest leading-none">Menos de 50% é considerado seguro</p>
+              </div>
+            </div>
+
+            {/* INTEGRATED CAIXA / YIELD vs PASSIVOS PANEL */}
+            <div className="bg-slate-900 text-white rounded-[40px] p-8 lg:p-10 shadow-xl space-y-8 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500/5 rounded-bl-[200px] pointer-events-none" />
+              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-6 border-b border-white/10">
+                <div>
+                  <h3 className="text-2xl font-black italic tracking-tight flex items-center gap-2">
+                    <Zap className="text-brand-400 shrink-0" size={24} />
+                    Painel de Autossuficiência e Preservação de Capital
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Análise integrada de Imóveis, Consórcios e Rentabilidade Financeira</p>
+                </div>
+                <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl p-3 shrink-0">
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Simular Rentabilidade Financeira:</span>
+                  <input
+                    type="number"
+                    step="0.05"
+                    className="w-16 h-8 bg-white/10 border border-white/10 text-white rounded-lg text-xs font-bold text-center outline-none focus:border-brand-500"
+                    value={estimatedYieldRate}
+                    onChange={e => setEstimatedYieldRate(parseFloat(e.target.value) || 0)}
+                  />
+                  <span className="text-xs font-bold text-slate-300">% am</span>
+                </div>
+              </div>
+
+              {/* CALCULATING VALUES FOR THE PANEL */}
+              {(() => {
+                // Outflows
+                const mortgageLiabs = liabilities.filter(l => l.type === 'MORTGAGE' || l.metadata?.isRealEstate);
+                const consortiumLiabs = liabilities.filter(l => l.type === 'CONSORTIUM');
+                
+                const totalMortgageInstallments = mortgageLiabs.reduce((acc, curr) => acc + (curr.installmentAmount || 0), 0);
+                const totalOperatingCosts = mortgageLiabs.reduce((acc, curr) => acc + (Number(curr.metadata?.operationalExpenses) || 0), 0);
+                const totalConsortiumInstallments = consortiumLiabs.reduce((acc, curr) => acc + (curr.installmentAmount || 0), 0);
+                
+                const totalOutflow = totalMortgageInstallments + totalOperatingCosts + totalConsortiumInstallments;
+
+                // Inflows
+                const totalRents = mortgageLiabs.reduce((acc, curr) => acc + (Number(curr.metadata?.rentalIncome) || 0), 0);
+                const totalInvestments = brokers.reduce((acc, curr) => acc + curr.balance, 0);
+                const estimatedMonthlyYieldValue = totalInvestments * (estimatedYieldRate / 100);
+                
+                const totalPassiveInflow = totalRents + estimatedMonthlyYieldValue;
+                const netCashFlow = totalPassiveInflow - totalOutflow;
+                const selfSustainabilityPercent = totalOutflow > 0 ? Math.round((totalPassiveInflow / totalOutflow) * 100) : 100;
+
+                return (
+                  <>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                      {/* Renda Passiva Card */}
+                      <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Renda Passiva Mensal (Entradas)</p>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex justify-between items-baseline">
+                            <span className="text-2xl font-black text-emerald-400">{formatCurrency(totalPassiveInflow)}</span>
+                            <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter">Entradas Totais</span>
+                          </div>
+                          <div className="border-t border-white/5 pt-2 text-[9px] text-slate-400 space-y-1">
+                            <div className="flex justify-between">
+                              <span>Aluguéis de Imóveis:</span>
+                              <span className="font-bold text-slate-200">{formatCurrency(totalRents)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Rentabilidade XP/Corretoras ({estimatedYieldRate}% am):</span>
+                              <span className="font-bold text-slate-200">{formatCurrency(estimatedMonthlyYieldValue)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Compromissos e Despesas Card */}
+                      <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Compromissos e Parcelas (Saídas)</p>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex justify-between items-baseline">
+                            <span className="text-2xl font-black text-rose-400">{formatCurrency(totalOutflow)}</span>
+                            <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter">Saídas Totais</span>
+                          </div>
+                          <div className="border-t border-white/5 pt-2 text-[9px] text-slate-400 space-y-1">
+                            <div className="flex justify-between">
+                              <span>Parcelas Imobiliárias:</span>
+                              <span className="font-bold text-slate-200">{formatCurrency(totalMortgageInstallments)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Condomínio + IPTU Imóveis:</span>
+                              <span className="font-bold text-slate-200">{formatCurrency(totalOperatingCosts)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Parcelas de Consórcios:</span>
+                              <span className="font-bold text-slate-200">{formatCurrency(totalConsortiumInstallments)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Resultado e Margem Card */}
+                      <div className={`rounded-3xl p-6 space-y-4 shadow-lg ${netCashFlow >= 0 ? 'bg-emerald-950/60 border border-emerald-500/20' : 'bg-rose-950/60 border border-rose-500/20'}`}>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-300">Resultado do Fluxo Recorrente</p>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex justify-between items-baseline">
+                            <span className={`text-2xl font-black ${netCashFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {netCashFlow >= 0 ? '+' : ''}{formatCurrency(netCashFlow)}
+                            </span>
+                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Saldo Líquido</span>
+                          </div>
+                          <div className="border-t border-white/5 pt-2 text-[9px] text-slate-300 space-y-1">
+                            <div className="flex justify-between">
+                              <span>Status Financeiro:</span>
+                              <span className={`font-black ${netCashFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {netCashFlow >= 0 ? 'SUPERAVITÁRIO' : 'DÉFICIT DE CAIXA'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Grau de Sustentabilidade:</span>
+                              <span className="font-bold">{selfSustainabilityPercent}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CAPITAL PRESERVATION INDICATOR AND GAUGE */}
+                    <div className="p-6 bg-white/5 border border-white/10 rounded-2xl space-y-4">
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-3.5 h-3.5 rounded-full ${netCashFlow >= 0 ? 'bg-emerald-500' : 'bg-rose-500'} animate-pulse`} />
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-wider italic">Indicador de Preservação de Capital Principal</p>
+                            <p className="text-[9px] text-slate-400 mt-0.5">Métrica que mede se as dívidas e custos estão corroendo seus investimentos financeiros.</p>
+                          </div>
+                        </div>
+                        {netCashFlow >= 0 ? (
+                          <span className="px-4 py-1.5 bg-emerald-500/20 text-emerald-400 text-[10px] font-black rounded-lg border border-emerald-500/30 uppercase tracking-widest">
+                            Preservação: 100% Protegido 🟢
+                          </span>
+                        ) : (
+                          <span className="px-4 py-1.5 bg-rose-500/20 text-rose-400 text-[10px] font-black rounded-lg border border-rose-500/30 uppercase tracking-widest">
+                            Retirada de Capital Ativa 🔴
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="w-full bg-white/10 h-3 rounded-full overflow-hidden flex border border-white/5">
+                        <div
+                          className={`h-full transition-all duration-700 ${netCashFlow >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                          style={{ width: `${Math.min(selfSustainabilityPercent, 100)}%` }}
+                        />
+                      </div>
+
+                      <p className="text-[10px] text-slate-300 leading-relaxed">
+                        {netCashFlow >= 0 ? (
+                          <>
+                            <strong>Parabéns!</strong> Seus rendimentos passivos agregados (Aluguéis + Rentabilidade estimada de {formatCurrency(totalInvestments)} investidos) superam todas as suas despesas recorrentes com financiamentos, condomínios, IPTUs e parcelas de consórcios. <strong>O seu patrimônio principal está 100% protegido e se valorizando por conta própria, livre de queima de capital!</strong>
+                          </>
+                        ) : (
+                          <>
+                            <strong>Atenção:</strong> Suas receitas passivas recorrentes cobrem apenas {selfSustainabilityPercent}% das suas despesas totais de imóveis e consórcios. Existe um déficit de <strong>{formatCurrency(Math.abs(netCashFlow))} por mês</strong> que está sendo <strong>retirado do seu capital principal</strong> (diminuindo seus investimentos líquidos) ou financiado pela sua renda ativa de trabalho. Sugerimos cautela antes de assumir novos financiamentos imobiliários.
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* REAL ESTATE AND CONSORTIA SECTION DETAILED */}
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
+                  <Building2 size={20} className="text-slate-500" />
+                  Seus Bens e Financiamentos Imobiliários
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {physicalAssets.filter(asset => asset.category === 'REAL_ESTATE').map(asset => {
+                  const linkedLiab = liabilities.find(l => l.linkedAssetId === asset.id);
+                  const propertyType = linkedLiab?.metadata?.propertyType || 'PLANTA';
+                  const rental = Number(linkedLiab?.metadata?.rentalIncome) || 0;
+                  const costs = Number(linkedLiab?.metadata?.operationalExpenses) || 0;
+                  const installment = Number(linkedLiab?.installmentAmount) || 0;
+                  const netPropertyFlow = propertyType === 'PRONTO' ? rental - costs - installment : -(costs + installment);
+                  
+                  return (
+                    <div key={asset.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+                      <div className="p-8 space-y-6">
+                        <div className="flex justify-between items-start">
+                          <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
+                            <Home size={22} />
+                          </div>
+                          <div className="flex gap-1">
+                            {propertyType === 'PLANTA' ? (
+                              <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-amber-100">Na Planta</span>
+                            ) : (
+                              <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-emerald-100">Pronto</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="font-black text-slate-900 text-xl tracking-tight leading-tight italic">{asset.name}</h4>
+                          <p className="text-[9px] text-slate-400 mt-2 font-black uppercase tracking-widest leading-none">Avaliação: {formatCurrency(asset.estimatedValue)}</p>
+                        </div>
+
+                        {/* Rents vs Mortgage details */}
+                        <div className="pt-6 border-t border-slate-50 space-y-3">
+                          {propertyType === 'PRONTO' ? (
+                            <>
+                              <div className="flex justify-between text-[10px] text-slate-500">
+                                <span>Aluguel Recebido:</span>
+                                <span className="font-bold text-emerald-600">{formatCurrency(rental)}</span>
+                              </div>
+                              <div className="flex justify-between text-[10px] text-slate-500">
+                                <span>IPTU / Condomínio:</span>
+                                <span className="font-bold text-rose-500">{formatCurrency(costs)}</span>
+                              </div>
+                              <div className="flex justify-between text-[10px] text-slate-500">
+                                <span>Prestação Dívida:</span>
+                                <span className="font-bold text-slate-700">{formatCurrency(installment)}</span>
+                              </div>
+                              <div className="flex justify-between text-[10px] border-t border-dashed border-slate-100 pt-2 font-bold">
+                                <span>Sobras Caixa Líquido:</span>
+                                <span className={netPropertyFlow >= 0 ? 'text-emerald-600' : 'text-rose-500'}>
+                                  {netPropertyFlow >= 0 ? '+' : ''}{formatCurrency(netPropertyFlow)}/mês
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex justify-between text-[10px] text-slate-500">
+                                <span>Despesas Obra / Seguro:</span>
+                                <span className="font-bold text-rose-500">{formatCurrency(costs)}</span>
+                              </div>
+                              <div className="flex justify-between text-[10px] text-slate-500">
+                                <span>Prestação Financiamento:</span>
+                                <span className="font-bold text-slate-700">{formatCurrency(installment)}</span>
+                              </div>
+                              <div className="flex justify-between text-[10px] text-slate-500">
+                                <span>Índice Correção:</span>
+                                <span className="font-bold text-brand-600">{linkedLiab?.metadata?.index_type || 'INCC'}</span>
+                              </div>
+                              <div className="flex justify-between text-[10px] border-t border-dashed border-slate-100 pt-2 font-bold text-slate-400">
+                                <span>Consome Mensal:</span>
+                                <span className="text-rose-500">{formatCurrency(netPropertyFlow)}/mês</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="px-8 py-5 bg-slate-50/80 flex justify-between items-center border-t border-slate-100">
+                        {linkedLiab ? (
+                          <>
+                            <button
+                              onClick={() => openManageRealEstate(linkedLiab)}
+                              className="text-brand-600 text-[9px] font-black uppercase tracking-widest hover:underline"
+                            >
+                              Ajustar Aluguel e Custos
+                            </button>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                              LTV: {Math.round((linkedLiab.remainingBalance / asset.estimatedValue) * 100)}%
+                            </span>
+                          </>
+                        ) : (
+                          <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">Sem passivos associados</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* CONSORTIA DETAILED GRID */}
+            <div className="space-y-6 pt-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
+                  <Wallet size={20} className="text-slate-500" />
+                  Sua Carteira de Consórcios
+                </h3>
+                <button
+                  onClick={() => {
+                    setLiabilityFormData({
+                      name: 'Novo Consórcio',
+                      type: 'CONSORTIUM',
+                      totalAmount: '',
+                      remainingBalance: '',
+                      interestRate: '',
+                      installmentAmount: '',
+                      installmentsRemaining: '',
+                      dueDay: '10',
+                      linkedAssetId: '',
+                      indexationRate: '',
+                      balloonMonth: '',
+                      balloonYear: '',
+                      balloonAmount: '',
+                      balloons: []
+                    });
+                    setEditingLiability(null);
+                    setShowLiabilityModal(true);
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm hover:bg-slate-800 transition-colors"
+                >
+                  <Plus size={12} /> Adicionar Consórcio
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {liabilities.filter(l => l.type === 'CONSORTIUM').map(consortium => (
+                  <div key={consortium.id} className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-8 space-y-6 flex flex-col justify-between">
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-start">
+                        <div className="w-10 h-10 bg-slate-100 text-slate-900 rounded-xl flex items-center justify-center">
+                          <Wallet size={20} />
+                        </div>
+                        <span className="px-3 py-1 bg-brand-50 text-brand-600 rounded-lg text-[8px] font-black uppercase tracking-widest border border-brand-100">Consórcio Ativo</span>
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-lg uppercase tracking-tight">{consortium.name}</h4>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Crédito Restante: {formatCurrency(consortium.remainingBalance)}</p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-50 pt-4 flex justify-between items-end">
+                      <div>
+                        <p className="text-[8px] font-black uppercase text-slate-300 tracking-widest mb-1 leading-none">Prestação Mensal</p>
+                        <p className="text-xl font-bold text-slate-900 leading-none">{formatCurrency(consortium.installmentAmount || 0)}</p>
+                      </div>
+                      <button
+                        onClick={() => openEditLiability(consortium)}
+                        className="text-[9px] font-bold text-slate-400 hover:text-brand-600 uppercase tracking-widest"
+                      >
+                        Ajustar Parcelas
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {liabilities.filter(l => l.type === 'CONSORTIUM').length === 0 && (
+                  <div className="col-span-full py-12 border-2 border-dashed border-slate-100 rounded-[32px] flex flex-col items-center justify-center text-slate-300">
+                    <Wallet size={36} />
+                    <p className="mt-4 font-black uppercase tracking-widest text-[10px]">Nenhum consórcio cadastrado</p>
+                    <p className="text-[9px] text-slate-400 mt-2 font-medium italic">Adicione seus consórcios para integrá-los à análise de caixa!</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* REAL ESTATE QUICK EDIT MODAL */}
+            {showRealEstateManageModal && (
+              <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
+                <div className="bg-white rounded-[32px] w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 border border-slate-100">
+                  <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight italic">Ajustar Custos e Aluguel</h3>
+                    <button onClick={() => setShowRealEstateManageModal(false)} className="w-10 h-10 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-xl flex items-center justify-center shadow-sm"><X size={18} /></button>
+                  </div>
+
+                  <div className="p-8 space-y-6">
+                    <div className="space-y-1.5">
+                      <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Status do Imóvel</label>
+                      <select
+                        className="w-full h-12 px-4 bg-slate-50 border border-slate-100 rounded-xl font-bold text-xs outline-none"
+                        value={realEstateManageForm.propertyType}
+                        onChange={e => setRealEstateManageForm({ ...realEstateManageForm, propertyType: e.target.value as any })}
+                      >
+                        <option value="PLANTA">Na Planta (Em Construção)</option>
+                        <option value="PRONTO">Pronto (Rendimento / Aluguel)</option>
+                      </select>
+                    </div>
+
+                    {realEstateManageForm.propertyType === 'PRONTO' && (
+                      <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-200">
+                        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Aluguel Mensal Recebido (R$)</label>
+                        <input
+                          type="number"
+                          className="w-full h-12 px-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-sm outline-none"
+                          placeholder="0,00"
+                          value={realEstateManageForm.rentalIncome}
+                          onChange={e => setRealEstateManageForm({ ...realEstateManageForm, rentalIncome: e.target.value })}
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">
+                        {realEstateManageForm.propertyType === 'PRONTO' ? 'Custos Operacionais Mensais (Condomínio, IPTU...) (R$)' : 'Taxas de Obra / Seguros Mensais (R$)'}
+                      </label>
+                      <input
+                        type="number"
+                        className="w-full h-12 px-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-sm outline-none"
+                        placeholder="0,00"
+                        value={realEstateManageForm.operationalExpenses}
+                        onChange={e => setRealEstateManageForm({ ...realEstateManageForm, operationalExpenses: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor da Prestação / Financiamento Mensal (R$)</label>
+                      <input
+                        type="number"
+                        className="w-full h-12 px-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-sm outline-none"
+                        placeholder="0,00"
+                        value={realEstateManageForm.installmentAmount}
+                        onChange={e => setRealEstateManageForm({ ...realEstateManageForm, installmentAmount: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="pt-4 flex gap-4">
+                      <button onClick={() => setShowRealEstateManageModal(false)} className="flex-1 h-12 bg-slate-50 text-slate-400 rounded-xl text-[9px] font-black uppercase tracking-widest">Cancelar</button>
+                      <button onClick={saveRealEstateManage} className="flex-1 h-12 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md">Salvar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
