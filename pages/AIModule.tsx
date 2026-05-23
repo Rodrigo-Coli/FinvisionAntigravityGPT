@@ -111,6 +111,10 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     }
   };
 
+  const handlePrintPDF = () => {
+    window.print();
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -576,11 +580,105 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
             {/* Analysis report */}
             {wealthAnalysis && (
-              <div className="bg-white border border-slate-100 rounded-[40px] shadow-sm overflow-hidden">
-                <div className="px-10 py-6 border-b border-slate-50 flex items-center gap-3">
-                  <Sparkles size={18} className="text-brand-500" />
-                  <h3 className="font-bold text-slate-900 uppercase tracking-widest text-[10px]">Relatório FinVision Advisor</h3>
+              <div id="print-wealth-diagnostic" className="bg-white border border-slate-100 rounded-[40px] shadow-sm overflow-hidden">
+                <style dangerouslySetInnerHTML={{ __html: `
+                  @media print {
+                    body {
+                      background: white !important;
+                      color: black !important;
+                    }
+                    nav, footer, aside, header, button, .no-print, [role="navigation"], .shrink-0, .bg-brand-900, .flex-wrap {
+                      display: none !important;
+                    }
+                    .max-w-\\[1600px\\] {
+                      padding: 0 !important;
+                      margin: 0 !important;
+                      max-width: 100% !important;
+                    }
+                    .prose {
+                      max-width: 100% !important;
+                      color: #0f172a !important;
+                      font-size: 13px !important;
+                    }
+                    #print-wealth-diagnostic {
+                      border: none !important;
+                      box-shadow: none !important;
+                      padding: 0 !important;
+                      margin: 0 !important;
+                      background: white !important;
+                    }
+                    h1, h2, h3, h4 {
+                      color: #0f172a !important;
+                      page-break-after: avoid !important;
+                      page-break-inside: avoid !important;
+                    }
+                    p, li, tr {
+                      page-break-inside: avoid !important;
+                    }
+                  }
+                ` }} />
+                
+                <div className="px-10 py-6 border-b border-slate-50 flex items-center justify-between gap-3 no-print-container">
+                  <div className="flex items-center gap-3">
+                    <Sparkles size={18} className="text-brand-500" />
+                    <h3 className="font-bold text-slate-900 uppercase tracking-widest text-[10px]">Relatório FinVision Advisor</h3>
+                  </div>
+                  <button
+                    onClick={handlePrintPDF}
+                    className="no-print flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-md"
+                  >
+                    Exportar Diagnóstico (PDF)
+                  </button>
                 </div>
+                
+                {/* Print Only Premium Dossier Header */}
+                <div className="hidden print:block p-10 pb-0 space-y-6">
+                  <div className="flex justify-between items-center pb-4 border-b-2 border-amber-600">
+                    <div>
+                      <h1 className="text-3xl font-black text-slate-900 tracking-tight italic">FinVision <span className="text-amber-600 font-medium">Private</span></h1>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em]">Wealth Management & Private Banking</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-black text-slate-900 uppercase tracking-wider">Dossiê Patrimonial Executivo</p>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+                        Gerado em: {new Date().toLocaleDateString('pt-BR')}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Consultoria Preparada Para</p>
+                      <p className="text-sm font-black text-slate-900 italic mt-0.5">{user.email}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Canal AI</p>
+                      <p className="text-sm font-black text-amber-700 italic mt-0.5">Wealth Advisor Core v2.5</p>
+                    </div>
+                  </div>
+
+                  {wealthMeta && (
+                    <div className="grid grid-cols-4 gap-4 bg-slate-50 p-6 rounded-2xl border border-slate-100 text-center">
+                      <div>
+                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Patrimônio Líquido</p>
+                        <p className="text-sm font-black text-emerald-600 mt-0.5">R$ {Math.round(wealthMeta.netWorth).toLocaleString('pt-BR')}</p>
+                      </div>
+                      <div>
+                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Total Dívidas</p>
+                        <p className="text-sm font-black text-rose-600 mt-0.5">R$ {Math.round(wealthMeta.totalLiabilities).toLocaleString('pt-BR')}</p>
+                      </div>
+                      <div>
+                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Poupança Mensal</p>
+                        <p className="text-sm font-black text-brand-600 mt-0.5">R$ {Math.round(wealthMeta.avgMonthlySavings).toLocaleString('pt-BR')}</p>
+                      </div>
+                      <div>
+                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Compromissamento</p>
+                        <p className="text-sm font-black text-amber-700 mt-0.5">{wealthMeta.debtToIncome}%</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="p-10 prose prose-slate max-w-none">
                   {wealthAnalysis.split('\n').map((line, i) => {
                     if (line.startsWith('# ')) return <h1 key={i} className="text-2xl font-bold text-slate-900 mt-6 mb-3">{line.replace('# ', '')}</h1>;

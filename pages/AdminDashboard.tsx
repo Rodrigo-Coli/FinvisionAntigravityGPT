@@ -136,6 +136,32 @@ export default function AdminDashboard() {
     setSavingPrompt(null);
   };
 
+  const savePlan = async (plan: any) => {
+    if (!supabase) return;
+    setSaving(plan.id);
+    try {
+      const { error } = await supabase.from('plans').update({
+        price_cents: plan.price_cents,
+        price_cents_annual: plan.price_cents_annual,
+        ai_scans_limit: plan.ai_scans_limit,
+        trial_days: plan.trial_days,
+        updated_at: new Date().toISOString()
+      }).eq('id', plan.id);
+      
+      if (!error) {
+        setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, _dirty: false } : p));
+        logAdminAction('update_plan', { plan_slug: plan.slug, price_cents: plan.price_cents });
+        alert(`Plano "${plan.name}" atualizado com sucesso no Supabase!`);
+      } else {
+        throw error;
+      }
+    } catch (err: any) {
+      alert(`Erro ao salvar plano: ${err.message}`);
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const fetchAuditLogs = async () => {
     if (!supabase) return;
     const { data } = await supabase
@@ -534,17 +560,12 @@ export default function AdminDashboard() {
                     <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 py-5 rounded-3xl font-black text-[10px] uppercase tracking-widest text-slate-400 bg-slate-50">Cancelar</button>
                     <button type="submit" className="flex-[2] py-5 bg-slate-900 text-white rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-200">Criar Usuário</button>
                   </div>
-               </form>
-             </div>
-          </div>
-        </div>
-      )}
+                </form>
+              </div>
+           </div>
+         </div>
+       )}
     </div>
   );
 }
-
-const savePlan = async (plan: any) => {
-  if (!supabase) return;
-  // This is a placeholder since the component has a local savePlan.
-  // Actually, I moved everything inside AdminDashboard.
-};
+// savePlan is now fully implemented inside AdminDashboard component.

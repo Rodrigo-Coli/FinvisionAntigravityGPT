@@ -20,7 +20,8 @@ import {
   Landmark,
   X,
   ArrowDownRight,
-  HelpCircle
+  HelpCircle,
+  Loader2
 } from 'lucide-react';
 import { PhysicalAsset, InvestmentBroker, Liability } from '../types';
 
@@ -30,6 +31,31 @@ import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModa
 const Assets: React.FC = () => {
   const navigate = useNavigate();
   const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'physical' | 'investments' | 'liabilities'>('overview');
+  const [inccRate, setInccRate] = useState<number | null>(null);
+  const [loadingIncc, setLoadingIncc] = useState<boolean>(false);
+
+  useEffect(() => {
+    const fetchINCC = async () => {
+      setLoadingIncc(true);
+      try {
+        const res = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.10815/dados/ultimos/1?formato=json');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0 && data[0].valor) {
+            const val = parseFloat(data[0].valor);
+            if (!isNaN(val)) {
+              setInccRate(val);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao buscar INCC da API do BCB:', err);
+      } finally {
+        setLoadingIncc(false);
+      }
+    };
+    fetchINCC();
+  }, []);
   const [physicalAssets, setPhysicalAssets] = useState<PhysicalAsset[]>([]);
   const [brokers, setBrokers] = useState<InvestmentBroker[]>([]);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
@@ -2452,7 +2478,14 @@ const Assets: React.FC = () => {
                 <select
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500"
                   value={liabilityFormData.type}
-                  onChange={(e) => setLiabilityFormData({ ...liabilityFormData, type: e.target.value })}
+                  onChange={(e) => {
+                    const newType = e.target.value;
+                    setLiabilityFormData({
+                      ...liabilityFormData,
+                      type: newType,
+                      indexationRate: newType === 'MORTGAGE' ? '5.5' : liabilityFormData.indexationRate
+                    });
+                  }}
                 >
                   <option value="MORTGAGE">Financiamento Imobiliário</option>
                   <option value="VEHICLE_FINANCING">Financiamento de Veículo</option>
@@ -2577,6 +2610,30 @@ const Assets: React.FC = () => {
                       onChange={(e) => setLiabilityFormData({ ...liabilityFormData, indexationRate: e.target.value })}
                     />
                     <p className="text-[9px] text-slate-400 mt-1 font-medium">Usado para projetar o valor corrigido no fluxo de caixa.</p>
+                    {loadingIncc ? (
+                      <p className="text-[9px] text-slate-400 mt-1.5 font-bold flex items-center gap-1.5 text-brand-600 animate-pulse">
+                        <Loader2 size={10} className="animate-spin" />
+                        Buscando taxa INCC oficial em tempo real (BCB)...
+                      </p>
+                    ) : inccRate !== null ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-[9px] font-black uppercase bg-emerald-50 text-emerald-600 border border-emerald-100 px-2 py-0.5 rounded flex items-center gap-1 shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          INCC Atual (BCB): {inccRate.toFixed(2)}% a.a.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setLiabilityFormData({ ...liabilityFormData, indexationRate: String(inccRate) })}
+                          className="text-[9px] font-black text-brand-600 hover:text-brand-700 underline uppercase tracking-tighter"
+                        >
+                          Aplicar este Índice
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[9px] text-slate-400 mt-1.5 font-medium italic">
+                        Média histórica de 5.5% a.a. sugerida como padrão.
+                      </p>
+                    )}
                   </div>
 
                   <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">

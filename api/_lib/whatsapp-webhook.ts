@@ -232,7 +232,10 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       .ilike('whatsapp_number', `%${phone}%`)
       .maybeSingle();
 
-    if (!userSet) return res.status(200).json({ status: 'user_not_found' });
+    if (!userSet) {
+      await sendWhatsApp(phone, `Olá! Bem-vindo ao *FinVision AI* 💎\n\nEu sou o seu consultor financeiro pessoal inteligente.\n\nIdentifiquei que seu número ainda não está vinculado a uma conta ativa no FinVision Pro.\n\nPara começar a gerenciar suas contas, escanear comprovantes via foto e receber análises de Private Banking em tempo real, faça seu cadastro rápido em segundos:\n\n👉 https://finvision.com.br/signup?wp=${phone}\n\n*Aproveite 7 dias grátis de acesso Wealth Premium no nosso lançamento!*`);
+      return res.status(200).json({ status: 'user_invited' });
+    }
     if (!userSet.whatsapp_enabled) return res.status(200).json({ status: 'whatsapp_disabled_by_user' });
 
     const userId = userSet.user_id;
