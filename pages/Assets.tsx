@@ -45,15 +45,40 @@ const Assets: React.FC = () => {
     installmentAmount: ''
   });
 
-  const openManageRealEstate = (liability: any) => {
-    setSelectedLiabilityForManage(liability);
-    setRealEstateManageForm({
-      propertyType: liability.metadata?.propertyType || 'PLANTA',
-      rentalIncome: liability.metadata?.rentalIncome ? String(liability.metadata.rentalIncome) : '',
-      operationalExpenses: liability.metadata?.operationalExpenses ? String(liability.metadata.operationalExpenses) : '',
-      deliveryDate: liability.metadata?.deliveryDate || '',
-      installmentAmount: liability.installmentAmount ? String(liability.installmentAmount) : ''
-    });
+  const openManageRealEstateForAsset = (asset: PhysicalAsset, liability?: any) => {
+    if (liability) {
+      setSelectedLiabilityForManage(liability);
+      setRealEstateManageForm({
+        propertyType: liability.metadata?.propertyType || 'PLANTA',
+        rentalIncome: liability.metadata?.rentalIncome ? String(liability.metadata.rentalIncome) : '',
+        operationalExpenses: liability.metadata?.operationalExpenses ? String(liability.metadata.operationalExpenses) : '',
+        deliveryDate: liability.metadata?.deliveryDate || '',
+        installmentAmount: liability.installmentAmount ? String(liability.installmentAmount) : ''
+      });
+    } else {
+      setSelectedLiabilityForManage({
+        id: 'new-temp',
+        linkedAssetId: asset.id,
+        name: `Custos/Rendimentos: ${asset.name}`,
+        type: 'MORTGAGE',
+        totalAmount: 0,
+        remainingBalance: 0,
+        installmentAmount: 0,
+        metadata: {
+          propertyType: 'PRONTO',
+          rentalIncome: 0,
+          operationalExpenses: 0,
+          isRealEstate: true
+        }
+      });
+      setRealEstateManageForm({
+        propertyType: 'PRONTO',
+        rentalIncome: '',
+        operationalExpenses: '',
+        deliveryDate: '',
+        installmentAmount: ''
+      });
+    }
     setShowRealEstateManageModal(true);
   };
 
@@ -72,12 +97,33 @@ const Assets: React.FC = () => {
         deliveryDate: realEstateManageForm.deliveryDate
       };
 
-      const { error } = await supabase.from('liabilities').update({
-        installment_amount: instVal,
-        metadata: updatedMetadata
-      }).eq('id', selectedLiabilityForManage.id);
+      if (selectedLiabilityForManage.id === 'new-temp') {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Usuário não autenticado");
 
-      if (error) throw error;
+        const { error } = await supabase.from('liabilities').insert([{
+          user_id: user.id,
+          name: selectedLiabilityForManage.name,
+          type: 'MORTGAGE',
+          total_amount: 0,
+          remaining_balance: 0,
+          installment_amount: instVal,
+          linked_asset_id: selectedLiabilityForManage.linkedAssetId,
+          metadata: {
+            ...updatedMetadata,
+            isRealEstate: true
+          }
+        }]);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('liabilities').update({
+          installment_amount: instVal,
+          metadata: updatedMetadata
+        }).eq('id', selectedLiabilityForManage.id);
+
+        if (error) throw error;
+      }
 
       setShowRealEstateManageModal(false);
       setSelectedLiabilityForManage(null);
@@ -833,21 +879,15 @@ const Assets: React.FC = () => {
                       </div>
 
                       <div className="px-8 py-5 bg-slate-50/80 flex justify-between items-center border-t border-slate-100">
-                        {linkedLiab ? (
-                          <>
-                            <button
-                              onClick={() => openManageRealEstate(linkedLiab)}
-                              className="text-brand-600 text-[9px] font-black uppercase tracking-widest hover:underline"
-                            >
-                              Ajustar Aluguel e Custos
-                            </button>
-                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
-                              LTV: {Math.round((linkedLiab.remainingBalance / asset.estimatedValue) * 100)}%
-                            </span>
-                          </>
-                        ) : (
-                          <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">Sem passivos associados</p>
-                        )}
+                        <button
+                          onClick={() => openManageRealEstateForAsset(asset, linkedLiab)}
+                          className="text-brand-600 text-[9px] font-black uppercase tracking-widest hover:underline"
+                        >
+                          Ajustar Aluguel e Custos
+                        </button>
+                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                          LTV: {linkedLiab ? `${Math.round((linkedLiab.remainingBalance / asset.estimatedValue) * 100)}%` : '0% (Quitado)'}
+                        </span>
                       </div>
                     </div>
                   );
