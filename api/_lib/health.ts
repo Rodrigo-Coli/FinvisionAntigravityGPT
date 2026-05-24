@@ -7,6 +7,7 @@ export async function handleHealth(req: any, res: any) {
     supabaseConnected: true,
     evolutionConfigured: !!(evolutionUrl && evolutionKey && evolutionInstance),
     evolutionDetails: null,
+    whatsappSendTest: null,
     timestamp: new Date().toISOString()
   };
 
@@ -37,6 +38,40 @@ export async function handleHealth(req: any, res: any) {
         reached: false,
         error: err.message
       };
+    }
+
+    // Opcional: Testar o envio real se o parametro testWhatsApp estiver presente
+    if (req.query.testWhatsApp) {
+      try {
+        const number = String(req.query.testWhatsApp).replace(/\D/g, '');
+        const url = `${evolutionUrl}/message/sendText/${evolutionInstance}`;
+        
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'apikey': evolutionKey as string 
+          },
+          body: JSON.stringify({ 
+            number: number, 
+            options: { delay: 500 }, 
+            textMessage: { text: "FinVision Teste de Conexão WhatsApp 🤖" } 
+          })
+        });
+
+        const data = await response.json().catch(() => null);
+        diagnostics.whatsappSendTest = {
+          success: response.ok,
+          status: response.status,
+          url: url.replace(evolutionKey || '', '***'), // oculta segredo por segurança
+          response: data
+        };
+      } catch (err: any) {
+        diagnostics.whatsappSendTest = {
+          success: false,
+          error: err.message
+        };
+      }
     }
   }
 
