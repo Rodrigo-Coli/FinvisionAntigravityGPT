@@ -16,7 +16,11 @@ if (vapidPriv.startsWith("'") && vapidPriv.endsWith("'")) vapidPriv = vapidPriv.
 if (vapidPriv.startsWith('"') && vapidPriv.endsWith('"')) vapidPriv = vapidPriv.slice(1, -1);
 
 if (vapidPub && vapidPriv) {
-  webpush.setVapidDetails('mailto:suporte@finvision.com.br', vapidPub, vapidPriv);
+  try {
+    webpush.setVapidDetails('mailto:suporte@finvision.com.br', vapidPub, vapidPriv);
+  } catch (err: any) {
+    console.error('⚠️ [VAPID] Erro ao carregar chaves de notificacao push:', err.message);
+  }
 }
 
 async function sendWhatsApp(number: string, text: string) {
