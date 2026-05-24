@@ -5,21 +5,21 @@
 // Os handlers reais ficam em api/_lib/ (ignorados pela Vercel).
 // ============================================================
 
-import { handleCategorizeTransactions } from './_lib/categorize-transactions';
-import { handleFinvisionChat } from './_lib/finvision-chat';
-import { handleBankReconcile } from './_lib/handle-bank-reconcile';
-import { handleCardReconcile } from './_lib/handle-card-reconcile';
-import { handleWealthAnalysis } from './_lib/handle-wealth-analysis';
-import { handleParseCardStatement } from './_lib/parse-card-statement';
-import { handleParseStatement } from './_lib/parse-statement';
-import { handleProcessImport } from './_lib/process-import';
-import { handleAsaasWebhook } from './_lib/asaas-webhook';
-import { handleWhatsAppWebhook } from './_lib/whatsapp-webhook';
-import { handleNotifyBillsDue } from './_lib/notify-bills-due';
-import { handleVapidPublicKey } from './_lib/vapid-public-key';
-import { handleHealth } from './_lib/health';
-import { handleReceiptItems } from './_lib/handle-receipt-items';
-import { handleAsaasBillingHistory } from './_lib/asaas-billing-history';
+import { handleCategorizeTransactions } from './_lib/categorize-transactions.js';
+import { handleFinvisionChat } from './_lib/finvision-chat.js';
+import { handleBankReconcile } from './_lib/handle-bank-reconcile.js';
+import { handleCardReconcile } from './_lib/handle-card-reconcile.js';
+import { handleWealthAnalysis } from './_lib/handle-wealth-analysis.js';
+import { handleParseCardStatement } from './_lib/parse-card-statement.js';
+import { handleParseStatement } from './_lib/parse-statement.js';
+import { handleProcessImport } from './_lib/process-import.js';
+import { handleAsaasWebhook } from './_lib/asaas-webhook.js';
+import { handleWhatsAppWebhook } from './_lib/whatsapp-webhook.js';
+import { handleNotifyBillsDue } from './_lib/notify-bills-due.js';
+import { handleVapidPublicKey } from './_lib/vapid-public-key.js';
+import { handleHealth } from './_lib/health.js';
+import { handleReceiptItems } from './_lib/handle-receipt-items.js';
+import { handleAsaasBillingHistory } from './_lib/asaas-billing-history.js';
 
 function setCorsHeaders(res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
