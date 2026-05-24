@@ -59,7 +59,7 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
   }
 }
 
-async function handleInteractiveFinancialQuery(userId: string, queryText: string, phone: string) {
+async function handleInteractiveFinancialQuery(userId: string, queryText: string, phone: string, history: any[] = []) {
   const now = new Date();
   const filterStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
   const filterEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -206,9 +206,15 @@ ${transactions.slice(0, 15).map((t: any) => `- ${t.date.split('T')[0]}|${t.categ
   if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
   const ai = new GoogleGenAI({ apiKey: geminiKey });
 
+  // Mapear o histórico para o formato do Gemini
+  const contents = history.map(h => ({
+    role: h.role === 'user' ? 'user' : 'model',
+    parts: [{ text: h.content }]
+  }));
+
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
-    contents: [{ role: 'user', parts: [{ text: queryText }] }],
+    contents: contents,
     config: {
       systemInstruction: systemPrompt,
       temperature: 0.7,
@@ -217,6 +223,14 @@ ${transactions.slice(0, 15).map((t: any) => `- ${t.date.split('T')[0]}|${t.categ
 
   const rawReply = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || 'Desculpe, não consegui obter resposta da análise agora.';
   await sendWhatsApp(phone, rawReply);
+
+  // Salvar a resposta no histórico de chat
+  history.push({ role: 'model', content: rawReply });
+  await supabase.from('whatsapp_chat_sessions').upsert({
+    phone: phone,
+    messages: history,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'phone' });
 }
 
 export async function handleWhatsAppWebhook(req: any, res: any) {
@@ -286,7 +300,65 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
     if (!userSet.whatsapp_enabled) return res.status(200).json({ status: 'whatsapp_disabled_by_user' });
 
     const userId = userSet.user_id;
-    const text = (message.message?.conversation || message.message?.extendedTextMessage?.text || '').trim();
+
+    // 1. Carregar histórico de mensagens das últimas 24 horas para este número
+    const oneDayAgo = new Date();
+    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+    const { data: session } = await supabase
+      .from('whatsapp_chat_sessions')
+      .select('*')
+      .eq('phone', phone)
+      .gte('updated_at', oneDayAgo.toISOString())
+      .maybeSingle();
+
+    let history = session?.messages || [];
+
+    // Detecção de tipos de mídia
+    const isImage = !!message.message?.imageMessage;
+    const isPDF = !!message.message?.documentMessage && String(message.message.documentMessage.mimetype).includes('pdf');
+    const isAudio = !!message.message?.audioMessage;
+
+    // Processamento especial de mensagens de voz (Áudio)
+    let text = (message.message?.conversation || message.message?.extendedTextMessage?.text || '').trim();
+
+    if (isAudio) {
+      await sendWhatsApp(phone, `🤖 *Ouvindo sua mensagem de voz...*`);
+      const media = await downloadEvolutionMedia(message);
+      if (!media) {
+        await sendWhatsApp(phone, `❌ *Não consegui processar seu áudio.*`);
+        return res.status(200).json({ status: 'audio_error' });
+      }
+
+      const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+
+      const voicePrompt = `
+      Você é a inteligência transcritora da assistente financeira FinVision AI.
+      Sua tarefa é ouvir o áudio do usuário e transcrever EXATAMENTE o que ele disse em formato de texto.
+      Retorne apenas a transcrição do áudio em formato de texto simples, sem aspas, comentários ou decorações em português.
+      `;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{
+          parts: [
+            { text: voicePrompt },
+            { inlineData: { data: media.base64, mimeType: media.mimeType } }
+          ]
+        }]
+      });
+
+      const transcribedText = ((response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+      
+      if (!transcribedText) {
+        await sendWhatsApp(phone, `❌ *Não consegui compreender o áudio. Pode tentar falar novamente ou enviar por texto?*`);
+        return res.status(200).json({ status: 'audio_unclear' });
+      }
+
+      await sendWhatsApp(phone, `🎙️ *Transcrição:* "${transcribedText}"`);
+      text = transcribedText;
+    }
 
     // Confirm draft logic
     if (text.toLowerCase() === 'sim' || text.toLowerCase() === 'confirmar') {
@@ -335,12 +407,13 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       return res.status(200).json({ status: 'canceled' });
     }
 
-    // Receipt OCR processing
-    if (message.message?.imageMessage) {
-      await sendWhatsApp(phone, `🤖 *Processando foto do comprovante...*`);
+    // Receipt OCR processing (Images & PDFs)
+    if (isImage || isPDF) {
+      const typeLabel = isPDF ? 'PDF' : 'foto';
+      await sendWhatsApp(phone, `🤖 *Processando seu comprovante (${typeLabel})...*`);
       const media = await downloadEvolutionMedia(message);
       if (!media) {
-        await sendWhatsApp(phone, `❌ *Não consegui baixar a imagem.* Verifique a configuração da Evolution API.`);
+        await sendWhatsApp(phone, `❌ *Não consegui carregar o arquivo.*`);
         return res.status(200).json({ status: 'media_error' });
       }
 
@@ -348,8 +421,20 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
       const ai = new GoogleGenAI({ apiKey: geminiKey });
 
-      const ocrPrompt = `
-      Você é um especialista em análise de comprovantes e notas fiscais de compras.
+      const ocrPrompt = isPDF ? `
+      Você é um especialista em análise de comprovantes, faturas e extratos bancários em formato PDF.
+      Analise o conteúdo deste documento e extraia as informações financeiras relevantes.
+
+      RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
+      {
+        "description": "Nome do estabelecimento / identificação da transação",
+        "amount": 0.00,
+        "date": "YYYY-MM-DD",
+        "category": "Alimentação | Transporte | Lazer | Lojas | Saúde | Outros",
+        "type": "EXPENSE"
+      }
+      ` : `
+      Você é um especialista em análise de comprovantes e notas fiscais de compras em imagem.
       Extraia as informações cruciais desta imagem.
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
@@ -376,7 +461,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       });
 
       const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
-      if (!rawText) throw new Error('OCR response empty');
+      if (!rawText) throw new Error('AI response empty');
 
       const cleanJson = rawText.replace(/```json|```/g, "").trim();
       const ocrData = JSON.parse(cleanJson);
@@ -389,19 +474,32 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       });
 
       const dateFmt = ocrData.date ? ocrData.date.split('-').reverse().join('/') : '';
-      await sendWhatsApp(phone, `📝 *Rascunho Extraído via Foto!* 📸\n\n*Estabelecimento:* ${ocrData.description}\n*Valor:* R$ ${Number(ocrData.amount).toFixed(2)}\n*Categoria:* ${ocrData.category}\n*Data:* ${dateFmt}\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`);
-      return res.status(200).json({ status: 'photo_processed' });
+      await sendWhatsApp(phone, `📝 *Rascunho Extraído via ${isPDF ? 'PDF' : 'IA'}!* 📸\n\n*Estabelecimento:* ${ocrData.description}\n*Valor:* R$ ${Number(ocrData.amount).toFixed(2)}\n*Categoria:* ${ocrData.category}\n*Data:* ${dateFmt}\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`);
+      return res.status(200).json({ status: 'file_processed' });
     }
 
     // Text parsing or query classification
     if (text) {
+      // Salvar a mensagem do usuário no histórico
+      history.push({ role: 'user', content: text });
+      await supabase.from('whatsapp_chat_sessions').upsert({
+        phone: phone,
+        messages: history,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'phone' });
+
       const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
       if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
       const ai = new GoogleGenAI({ apiKey: geminiKey });
 
       const classificationPrompt = `
       Você é o cérebro classificador da assistente FinVision AI.
-      Classifique a mensagem do usuário a seguir.
+      Classifique a mensagem atual do usuário levando em consideração o histórico recente da conversa para entender pronomes ou continuações de perguntas anteriores (ex: "e o de abril?" após perguntar sobre o saldo de maio).
+
+      # HISTÓRICO RECENTE DA CONVERSA
+      ${history.slice(-5, -1).map(h => `${h.role === 'user' ? 'Usuário' : 'FinVision'}: ${h.content}`).join('\n')}
+
+      # MENSAGEM ATUAL DO USUÁRIO
       Mensagem: "${text}"
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
@@ -418,8 +516,8 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       }
 
       Regras de classificação:
-      - Se a mensagem indica um lançamento de gasto ou ganho ("gastei 50 no mercado", "recebi 200 de pix", "salário de 5000 caiu"), a intenção é "TRANSACTION". Preencha os campos de "transaction". Se não houver data explícita, use a data de hoje: ${new Date().toISOString().split('T')[0]}.
-      - Se a mensagem é uma pergunta financeira sobre dados, contas, saldos, ou resumos ("quanto gastei no mês", "qual o saldo atual", "resumo"), a intenção é "QUERY".
+      - Se a mensagem indica um lançamento de gasto ou ganho ("gastei 50 no mercado", "recebi 200 de pix"), a intenção é "TRANSACTION". Preencha "transaction". Se não houver data explícita, use hoje: ${new Date().toISOString().split('T')[0]}.
+      - Se a mensagem é uma pergunta financeira sobre dados, contas, saldos ou resumos ("quanto gastei no mês", "qual o saldo atual", "resumo"), ou continuação de dúvidas sobre saldos e dados, a intenção é "QUERY".
       - Se for uma saudação casual ou conversa genérica, a intenção é "CHAT". Crie uma resposta em "chatReply" curta e carismática em português com emojis.
       `;
 
@@ -451,12 +549,43 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
       if (analysis.intent === 'QUERY') {
         await sendWhatsApp(phone, `📊 *Analisando seus dados financeiros em tempo real...*`);
-        await handleInteractiveFinancialQuery(userId, text, phone);
+        await handleInteractiveFinancialQuery(userId, text, phone, history);
         return res.status(200).json({ status: 'query_answered' });
       }
 
       if (analysis.intent === 'CHAT') {
-        await sendWhatsApp(phone, analysis.chatReply || 'Olá! Sou a FinVision AI. Como posso te ajudar com suas finanças hoje?');
+        const systemPromptChat = `
+        Você é a FinVision AI, a Assistente Financeira Premium do software FinVision Pro.
+        Seu tom de voz deve ser de especialista, extremamente educado, curto e sucinto. Use emojis úteis.
+        Use formatações em negrito do WhatsApp (*texto*).
+        Seja amigável e utilize o histórico da conversa para responder de forma contínua e natural.
+        `;
+
+        const chatContents = history.map(h => ({
+          role: h.role === 'user' ? 'user' : 'model',
+          parts: [{ text: h.content }]
+        }));
+
+        const chatResponse = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: chatContents,
+          config: {
+            systemInstruction: systemPromptChat,
+            temperature: 0.7,
+          }
+        });
+
+        const chatReply = (chatResponse as any).text || (chatResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || analysis.chatReply || 'Olá! Sou a FinVision AI. Como posso te ajudar com suas finanças hoje?';
+        await sendWhatsApp(phone, chatReply);
+
+        // Salvar a resposta no histórico de chat
+        history.push({ role: 'model', content: chatReply });
+        await supabase.from('whatsapp_chat_sessions').upsert({
+          phone: phone,
+          messages: history,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'phone' });
+
         return res.status(200).json({ status: 'chat_replied' });
       }
     }
