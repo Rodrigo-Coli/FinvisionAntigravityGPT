@@ -44,14 +44,19 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
     }
     
     const contentType = res.headers.get('content-type') || '';
+    const mimeType = message.message?.imageMessage?.mimetype 
+      || message.message?.audioMessage?.mimetype 
+      || message.message?.documentMessage?.mimetype 
+      || 'application/octet-stream';
+
     if (contentType.includes('application/json')) {
       const json = await res.json();
       const base64 = json.base64 || json.data || '';
-      return { base64, mimeType: message.message?.imageMessage?.mimetype || 'image/jpeg' };
+      return { base64, mimeType };
     } else {
       const buffer = await res.arrayBuffer();
       const base64 = Buffer.from(buffer).toString('base64');
-      return { base64, mimeType: message.message?.imageMessage?.mimetype || 'image/jpeg' };
+      return { base64, mimeType };
     }
   } catch (err) {
     console.error('Error downloading media from Evolution API:', err);
