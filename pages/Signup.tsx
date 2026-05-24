@@ -38,6 +38,22 @@ const Signup: React.FC = () => {
       if (authError) throw authError;
       if (authData.user) {
         await supabase.from('profiles').upsert({ id: authData.user.id, email: authData.user.email, role: UserRole.USER, is_approved: false });
+        
+        // Capturar o parâmetro 'wp' da URL e associar o número do WhatsApp ao usuário
+        const urlParams = new URLSearchParams(window.location.search);
+        const wpPhone = urlParams.get('wp');
+        if (wpPhone) {
+          const cleanPhone = wpPhone.replace(/\D/g, '');
+          if (cleanPhone) {
+            await supabase.from('user_settings').upsert({
+              user_id: authData.user.id,
+              whatsapp_number: cleanPhone,
+              whatsapp_enabled: true,
+              updated_at: new Date().toISOString()
+            });
+          }
+        }
+
         if (!authData.session) setNeedsConfirmation(true);
         setSuccess(true);
       }
