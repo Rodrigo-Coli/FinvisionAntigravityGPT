@@ -497,7 +497,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       Classifique a mensagem atual do usuário levando em consideração o histórico recente da conversa para entender pronomes ou continuações de perguntas anteriores (ex: "e o de abril?" após perguntar sobre o saldo de maio).
 
       # HISTÓRICO RECENTE DA CONVERSA
-      ${history.slice(-5, -1).map(h => `${h.role === 'user' ? 'Usuário' : 'FinVision'}: ${h.content}`).join('\n')}
+      ${history.slice(-5, -1).map((h: any) => `${h.role === 'user' ? 'Usuário' : 'FinVision'}: ${h.content}`).join('\n')}
 
       # MENSAGEM ATUAL DO USUÁRIO
       Mensagem: "${text}"
@@ -561,7 +561,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         Seja amigável e utilize o histórico da conversa para responder de forma contínua e natural.
         `;
 
-        const chatContents = history.map(h => ({
+        const chatContents = history.map((h: any) => ({
           role: h.role === 'user' ? 'user' : 'model',
           parts: [{ text: h.content }]
         }));
