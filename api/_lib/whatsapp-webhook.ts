@@ -11,10 +11,8 @@ async function sendWhatsApp(number: string, text: string) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY as string },
       body: JSON.stringify({ 
-        number, 
-        text, // Compatibilidade com a nova versão da Evolution API
-        textMessage: { text }, // Compatibilidade com a versão clássica da Evolution API
-        options: { delay: 500 } 
+        number: number, 
+        text: text
       })
     }).catch(err => console.error('Evolution API Error:', err));
   }
