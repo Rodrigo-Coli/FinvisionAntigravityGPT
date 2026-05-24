@@ -6,8 +6,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy'
 );
 
-if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails('mailto:suporte@finvision.com.br', process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
+let vapidPub = process.env.VAPID_PUBLIC_KEY || '';
+let vapidPriv = process.env.VAPID_PRIVATE_KEY || '';
+
+// Robustly strip surrounding quotes if present from manual copy-paste
+if (vapidPub.startsWith("'") && vapidPub.endsWith("'")) vapidPub = vapidPub.slice(1, -1);
+if (vapidPub.startsWith('"') && vapidPub.endsWith('"')) vapidPub = vapidPub.slice(1, -1);
+if (vapidPriv.startsWith("'") && vapidPriv.endsWith("'")) vapidPriv = vapidPriv.slice(1, -1);
+if (vapidPriv.startsWith('"') && vapidPriv.endsWith('"')) vapidPriv = vapidPriv.slice(1, -1);
+
+if (vapidPub && vapidPriv) {
+  webpush.setVapidDetails('mailto:suporte@finvision.com.br', vapidPub, vapidPriv);
 }
 
 async function sendWhatsApp(number: string, text: string) {
