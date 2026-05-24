@@ -329,6 +329,11 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         return res.status(200).json({ status: 'audio_error' });
       }
 
+      let cleanMimeType = media.mimeType.split(';')[0].trim();
+      if (cleanMimeType.includes('audio/ogg') || cleanMimeType.includes('opus')) {
+        cleanMimeType = 'audio/ogg';
+      }
+
       const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
       if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
       const ai = new GoogleGenAI({ apiKey: geminiKey });
@@ -344,7 +349,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         contents: [{
           parts: [
             { text: voicePrompt },
-            { inlineData: { data: media.base64, mimeType: media.mimeType } }
+            { inlineData: { data: media.base64, mimeType: cleanMimeType } }
           ]
         }]
       });
