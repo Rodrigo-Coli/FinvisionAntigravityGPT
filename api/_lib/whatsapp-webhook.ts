@@ -226,13 +226,22 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
   }
 
   try {
-    const message = body.data;
+    console.log('[WhatsApp Webhook] Received body:', JSON.stringify(body));
+
+    let message = body.data;
+    if (Array.isArray(message)) {
+      console.log('[WhatsApp Webhook] body.data is an array. Extracting first message.');
+      message = message[0];
+    }
+
     if (!message || !message.key) {
+      console.log('[WhatsApp Webhook] Ignored - No message or key found.');
       return res.status(200).json({ status: 'ignored', reason: 'no_message_data' });
     }
 
     // Ignorar se a mensagem foi enviada pelo próprio bot para evitar loops
     if (message.key.fromMe) {
+      console.log('[WhatsApp Webhook] Ignored - Sent by self.');
       return res.status(200).json({ status: 'ignored_from_me' });
     }
 
