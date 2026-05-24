@@ -54,8 +54,9 @@ export async function handleHealth(req: any, res: any) {
           },
           body: JSON.stringify({ 
             number: number, 
-            options: { delay: 500 }, 
-            textMessage: { text: "FinVision Teste de Conexão WhatsApp 🤖" } 
+            text: "FinVision Teste de Conexão WhatsApp 🤖", 
+            textMessage: { text: "FinVision Teste de Conexão WhatsApp 🤖" }, 
+            options: { delay: 500 } 
           })
         });
 
