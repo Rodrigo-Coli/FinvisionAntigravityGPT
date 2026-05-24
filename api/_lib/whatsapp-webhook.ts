@@ -219,22 +219,57 @@ ${transactions.slice(0, 15).map((t: any) => `- ${t.date.split('T')[0]}|${t.categ
 export async function handleWhatsAppWebhook(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
   const body = req.body || {};
-  if (body.event !== 'messages.upsert') return res.status(200).json({ status: 'ignored' });
+  
+  const eventName = String(body.event || '').toLowerCase();
+  if (eventName !== 'messages.upsert' && eventName !== 'messages_upsert') {
+    return res.status(200).json({ status: 'ignored', receivedEvent: body.event });
+  }
 
   try {
     const message = body.data;
+    if (!message || !message.key) {
+      return res.status(200).json({ status: 'ignored', reason: 'no_message_data' });
+    }
+
+    // Ignorar se a mensagem foi enviada pelo próprio bot para evitar loops
+    if (message.key.fromMe) {
+      return res.status(200).json({ status: 'ignored_from_me' });
+    }
+
     const remoteJid = message.key.remoteJid;
+    if (!remoteJid) {
+      return res.status(200).json({ status: 'ignored', reason: 'no_remote_jid' });
+    }
     const phone = remoteJid.split('@')[0];
 
-    const { data: userSet } = await supabase
-      .from('user_settings')
-      .select('user_id, whatsapp_number, whatsapp_enabled')
-      .ilike('whatsapp_number', `%${phone}%`)
-      .maybeSingle();
+    // Geração de variantes robusta para números brasileiros (com e sem o nono dígito)
+    let cleanPhone = phone.replace(/\D/g, '');
+    let phoneVariants = [cleanPhone];
+    
+    if (cleanPhone.startsWith('55') && cleanPhone.length === 13 && cleanPhone[4] === '9') {
+      const withoutNine = '55' + cleanPhone.substring(2, 4) + cleanPhone.substring(5);
+      phoneVariants.push(withoutNine);
+    } else if (cleanPhone.startsWith('55') && cleanPhone.length === 12) {
+      const withNine = '55' + cleanPhone.substring(2, 4) + '9' + cleanPhone.substring(4);
+      phoneVariants.push(withNine);
+    }
+
+    let userSet = null;
+    for (const variant of phoneVariants) {
+      const { data } = await supabase
+        .from('user_settings')
+        .select('user_id, whatsapp_number, whatsapp_enabled')
+        .ilike('whatsapp_number', `%${variant}%`)
+        .maybeSingle();
+      if (data) {
+        userSet = data;
+        break;
+      }
+    }
 
     if (!userSet) {
       await sendWhatsApp(phone, `Olá! Bem-vindo ao *FinVision AI* 💎\n\nEu sou o seu consultor financeiro pessoal inteligente.\n\nIdentifiquei que seu número ainda não está vinculado a uma conta ativa no FinVision Pro.\n\nPara começar a gerenciar suas contas, escanear comprovantes via foto e receber análises de Private Banking em tempo real, faça seu cadastro rápido em segundos:\n\n👉 https://finvision.com.br/signup?wp=${phone}\n\n*Aproveite 7 dias grátis de acesso Wealth Premium no nosso lançamento!*`);
-      return res.status(200).json({ status: 'user_invited' });
+      return res.status(200).json({ status: 'user_invited', phoneUsed: phone });
     }
     if (!userSet.whatsapp_enabled) return res.status(200).json({ status: 'whatsapp_disabled_by_user' });
 
