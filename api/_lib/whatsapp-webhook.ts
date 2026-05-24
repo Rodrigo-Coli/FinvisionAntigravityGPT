@@ -233,6 +233,81 @@ ${transactions.slice(0, 15).map((t: any) => `- ${t.date.split('T')[0]}|${t.categ
   }, { onConflict: 'phone' });
 }
 
+async function findMatchingTransactions(userId: string, filters: { description?: string; amount?: number; date?: string }, isPay: boolean = false) {
+  let query = supabase
+    .from('transactions')
+    .select('id, description, amount, date, is_paid')
+    .eq('user_id', userId)
+    .is('is_deleted', false);
+
+  if (isPay) {
+    query = query.eq('is_paid', false).eq('type', 'EXPENSE');
+  }
+
+  if (filters.date) {
+    const targetDate = filters.date.split('T')[0];
+    query = query.eq('date', targetDate);
+  }
+
+  const { data: txs, error } = await query.order('date', { ascending: false }).limit(50);
+  if (error) {
+    console.error('Error fetching matching transactions:', error);
+    return [];
+  }
+  if (!txs || txs.length === 0) {
+    if (filters.date) {
+      const fallbackQuery = supabase
+        .from('transactions')
+        .select('id, description, amount, date, is_paid')
+        .eq('user_id', userId)
+        .is('is_deleted', false);
+      const { data: fallbackTxs } = await (isPay ? fallbackQuery.eq('is_paid', false).eq('type', 'EXPENSE') : fallbackQuery)
+        .order('date', { ascending: false })
+        .limit(50);
+      if (fallbackTxs && fallbackTxs.length > 0) {
+        return filterTransactionsInMemory(fallbackTxs, filters);
+      }
+    }
+    return [];
+  }
+
+  return filterTransactionsInMemory(txs, filters);
+}
+
+function filterTransactionsInMemory(txs: any[], filters: { description?: string; amount?: number; date?: string }) {
+  return txs.filter(tx => {
+    let matchesAmount = true;
+    let matchesDesc = true;
+
+    if (filters.amount !== undefined && filters.amount !== null) {
+      const txAmt = Math.abs(Number(tx.amount));
+      const targetAmt = Math.abs(Number(filters.amount));
+      if (Math.abs(txAmt - targetAmt) > 0.01) {
+        matchesAmount = false;
+      }
+    }
+
+    if (filters.description) {
+      const txDesc = String(tx.description || '').toLowerCase().trim();
+      const targetDesc = String(filters.description).toLowerCase().trim();
+      if (!txDesc.includes(targetDesc) && !targetDesc.includes(txDesc)) {
+        matchesDesc = false;
+      }
+    }
+
+    if (filters.amount !== undefined && filters.amount !== null && filters.description) {
+      return matchesAmount && matchesDesc;
+    }
+    if (filters.amount !== undefined && filters.amount !== null) {
+      return matchesAmount;
+    }
+    if (filters.description) {
+      return matchesDesc;
+    }
+    return true;
+  });
+}
+
 export async function handleWhatsAppWebhook(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
   const body = req.body || {};
@@ -331,7 +406,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
       let cleanMimeType = media.mimeType.split(';')[0].trim();
       if (cleanMimeType.includes('audio/ogg') || cleanMimeType.includes('opus')) {
-        cleanMimeType = 'audio/ogg';
+        cleanMimeType = 'audio/opus';
       }
 
       const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
@@ -365,6 +440,45 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       text = transcribedText;
     }
 
+    // Number Selection / Disambiguation logic
+    const parsedNum = parseInt(text, 10);
+    if (!isNaN(parsedNum) && parsedNum > 0) {
+      const { data: draft } = await supabase
+        .from('whatsapp_drafts')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (draft && draft.data && (draft.data.type === 'delete_disambiguation' || draft.data.type === 'pay_disambiguation')) {
+        const candidates = draft.data.candidates || [];
+        const selectedTx = candidates[parsedNum - 1];
+
+        if (selectedTx) {
+          const actionType = draft.data.type === 'delete_disambiguation' ? 'delete' : 'pay';
+          await supabase.from('whatsapp_drafts').update({
+            data: {
+              type: actionType,
+              transactionId: selectedTx.id,
+              description: selectedTx.description,
+              amount: selectedTx.amount,
+              date: selectedTx.date
+            }
+          }).eq('id', draft.id);
+
+          const dateFmt = selectedTx.date ? selectedTx.date.split('T')[0].split('-').reverse().join('/') : '';
+          const actionLabel = actionType === 'delete' ? 'exclusão' : 'pagamento';
+          await sendWhatsApp(phone, `📝 *Confirmação de Ação!* 🤖\n\nVocê selecionou: *${selectedTx.description}* - R$ ${Number(selectedTx.amount).toFixed(2)} (${dateFmt}).\n\nConfirma a ${actionLabel}? Digite *SIM* ou *NÃO*.`);
+          return res.status(200).json({ status: 'disambiguation_resolved' });
+        } else {
+          await sendWhatsApp(phone, `❌ *Opção inválida.* Por favor, escolha um número entre 1 e ${candidates.length}, ou digite CANCELAR.`);
+          return res.status(200).json({ status: 'disambiguation_invalid_option' });
+        }
+      }
+    }
+
     // Confirm draft logic
     if (text.toLowerCase() === 'sim' || text.toLowerCase() === 'confirmar') {
       const { data: draft } = await supabase
@@ -379,36 +493,78 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       if (draft) {
         const tx = draft.data;
         
-        // Find checking account for transaction binding, fallback if none
-        const { data: defaultAcc } = await supabase
-          .from('accounts')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('is_archived', false)
-          .limit(1)
-          .maybeSingle();
+        if (tx.type === 'delete') {
+          await supabase.from('transactions').update({ is_deleted: true }).eq('id', tx.transactionId);
+          await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
+          await sendWhatsApp(phone, `✅ *Lançamento Excluído com Sucesso!*\n\n"${tx.description}" de R$ ${Number(tx.amount).toFixed(2)} foi removido.`);
+          return res.status(200).json({ status: 'confirmed_delete' });
+        } else if (tx.type === 'pay') {
+          await supabase.from('transactions').update({ is_paid: true, paid_at: new Date().toISOString() }).eq('id', tx.transactionId);
+          await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
+          await sendWhatsApp(phone, `✅ *Conta Marcada como Paga!*\n\n"${tx.description}" de R$ ${Number(tx.amount).toFixed(2)} foi quitada.`);
+          return res.status(200).json({ status: 'confirmed_pay' });
+        } else if (tx.type === 'multi') {
+          const { data: defaultAcc } = await supabase
+            .from('accounts')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('is_archived', false)
+            .limit(1)
+            .maybeSingle();
 
-        await supabase.from('transactions').insert({
-          user_id: userId,
-          account_id: defaultAcc?.id || null,
-          description: tx.description,
-          amount: tx.amount,
-          date: tx.date || new Date().toISOString().split('T')[0],
-          type: tx.type || 'EXPENSE',
-          category: tx.category || 'Outros',
-          is_paid: true
-        });
+          for (const op of tx.operations) {
+            if (op.intent === 'TRANSACTION') {
+              await supabase.from('transactions').insert({
+                user_id: userId,
+                account_id: defaultAcc?.id || null,
+                description: op.transaction.description,
+                amount: op.transaction.amount,
+                date: op.transaction.date || new Date().toISOString().split('T')[0],
+                type: op.transaction.type || 'EXPENSE',
+                category: op.transaction.category || 'Outros',
+                is_paid: true
+              });
+            } else if (op.intent === 'DELETE') {
+              await supabase.from('transactions').update({ is_deleted: true }).eq('id', op.transactionId);
+            } else if (op.intent === 'PAY') {
+              await supabase.from('transactions').update({ is_paid: true, paid_at: new Date().toISOString() }).eq('id', op.transactionId);
+            }
+          }
+          await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
+          await sendWhatsApp(phone, `✅ *Múltiplas operações confirmadas e executadas com sucesso!*`);
+          return res.status(200).json({ status: 'confirmed_multi' });
+        } else {
+          // Find checking account for transaction binding, fallback if none
+          const { data: defaultAcc } = await supabase
+            .from('accounts')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('is_archived', false)
+            .limit(1)
+            .maybeSingle();
 
-        await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
-        await sendWhatsApp(phone, `✅ *Lançamento Confirmado!*\n\n"${tx.description}" de R$ ${Number(tx.amount).toFixed(2)} foi inserido com sucesso!`);
-        return res.status(200).json({ status: 'confirmed' });
+          await supabase.from('transactions').insert({
+            user_id: userId,
+            account_id: defaultAcc?.id || null,
+            description: tx.description,
+            amount: tx.amount,
+            date: tx.date || new Date().toISOString().split('T')[0],
+            type: tx.type || 'EXPENSE',
+            category: tx.category || 'Outros',
+            is_paid: true
+          });
+
+          await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
+          await sendWhatsApp(phone, `✅ *Lançamento Confirmado!*\n\n"${tx.description}" de R$ ${Number(tx.amount).toFixed(2)} foi inserido com sucesso!`);
+          return res.status(200).json({ status: 'confirmed' });
+        }
       }
     }
 
     // Cancel draft logic
     if (text.toLowerCase() === 'não' || text.toLowerCase() === 'cancelar') {
       await supabase.from('whatsapp_drafts').update({ status: 'canceled' }).eq('user_id', userId).eq('status', 'pending');
-      await sendWhatsApp(phone, `🚫 *Lançamento Cancelado.*`);
+      await sendWhatsApp(phone, `🚫 *Ação Cancelada.*`);
       return res.status(200).json({ status: 'canceled' });
     }
 
@@ -499,8 +655,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
       const classificationPrompt = `
       Você é o cérebro classificador da assistente FinVision AI.
-      Classifique a mensagem atual do usuário levando em consideração o histórico recente da conversa para entender pronomes ou continuações de perguntas anteriores (ex: "e o de abril?" após perguntar sobre o saldo de maio).
-
+      Classifique a mensagem atual do usuário levando em consideração o histórico recente da conversa para entender pronomes ou continuações.
+      O usuário pode solicitar a execução de uma ou múltiplas operações financeiras na mesma mensagem (ex: "gastei 15 de lanche e paguei a luz", "exclua o pix de 10 e me diga o saldo").
+      
       # HISTÓRICO RECENTE DA CONVERSA
       ${history.slice(-5, -1).map((h: any) => `${h.role === 'user' ? 'Usuário' : 'FinVision'}: ${h.content}`).join('\n')}
 
@@ -509,21 +666,39 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
-        "intent": "TRANSACTION" | "QUERY" | "CHAT",
-        "transaction": {
-          "description": "Ex: Mercado Extra, Posto Ipiranga",
-          "amount": 0.00,
-          "category": "Alimentação | Transporte | Moradia | Saúde | Lazer | Salário | Outros",
-          "type": "EXPENSE" | "INCOME",
-          "date": "YYYY-MM-DD"
-        },
-        "chatReply": "Resposta caso seja intenção CHAT"
+        "operations": [
+          {
+            "intent": "TRANSACTION" | "DELETE" | "PAY" | "QUERY" | "CHAT",
+            "transaction": {
+              "description": "Ex: Mercado Extra, Posto Ipiranga",
+              "amount": 0.00,
+              "category": "Alimentação | Transporte | Moradia | Saúde | Lazer | Salário | Outros",
+              "type": "EXPENSE" | "INCOME",
+              "date": "YYYY-MM-DD"
+            },
+            "deleteFilters": {
+              "description": "Ex: mercado (termo de busca ou null)",
+              "amount": 50.00 (ou null),
+              "date": "YYYY-MM-DD (ou null)"
+            },
+            "payFilters": {
+              "description": "Ex: energia (termo de busca ou null)",
+              "amount": 120.00 (ou null),
+              "date": "YYYY-MM-DD (ou null)"
+            },
+            "chatReply": "Resposta caso seja intenção CHAT"
+          }
+        ]
       }
 
       Regras de classificação:
-      - Se a mensagem indica um lançamento de gasto ou ganho ("gastei 50 no mercado", "recebi 200 de pix"), a intenção é "TRANSACTION". Preencha "transaction". Se não houver data explícita, use hoje: ${new Date().toISOString().split('T')[0]}.
-      - Se a mensagem é uma pergunta financeira sobre dados, contas, saldos ou resumos ("quanto gastei no mês", "qual o saldo atual", "resumo"), ou continuação de dúvidas sobre saldos e dados, a intenção é "QUERY".
-      - Se for uma saudação casual ou conversa genérica, a intenção é "CHAT". Crie uma resposta em "chatReply" curta e carismática em português com emojis.
+      - Divida a mensagem em uma ou mais operações caso o usuário peça mais de uma ação.
+      - Para cada operação, defina a intenção ("TRANSACTION", "DELETE", "PAY", "QUERY" ou "CHAT") e preencha os campos relevantes.
+      - Se a intenção for cadastrar um gasto ou ganho ("gastei X", "recebi Y"), use "TRANSACTION". Se não houver data explícita, use hoje: ${new Date().toISOString().split('T')[0]}.
+      - Se a intenção for excluir/apagar um lançamento ("exclui X", "deleta Y"), use "DELETE". Preencha "deleteFilters".
+      - Se a intenção for marcar uma conta/despesa como paga ("paguei X", "liquida Y"), use "PAY". Preencha "payFilters".
+      - Se for consulta de dados ("saldo", "gastos do mês"), use "QUERY".
+      - Se for conversa casual, use "CHAT".
       `;
 
       const response = await ai.models.generateContent({
@@ -537,61 +712,281 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
       const cleanJson = rawText.replace(/```json|```/g, "").trim();
       const analysis = JSON.parse(cleanJson);
+      const operations = analysis.operations || [];
 
-      if (analysis.intent === 'TRANSACTION') {
-        const tx = analysis.transaction;
-        await supabase.from('whatsapp_drafts').insert({
-          user_id: userId,
-          phone: phone,
-          data: tx,
-          status: 'pending'
-        });
-
-        const dateFmt = tx.date ? tx.date.split('-').reverse().join('/') : '';
-        await sendWhatsApp(phone, `📝 *Rascunho Criado via IA!* 🤖\n\n*Descrição:* ${tx.description}\n*Valor:* R$ ${Number(tx.amount).toFixed(2)}\n*Categoria:* ${tx.category}\n*Data:* ${dateFmt}\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`);
-        return res.status(200).json({ status: 'draft_created' });
+      if (operations.length === 0) {
+        return res.status(200).json({ status: 'no_operations_detected' });
       }
 
-      if (analysis.intent === 'QUERY') {
-        await sendWhatsApp(phone, `📊 *Analisando seus dados financeiros em tempo real...*`);
-        await handleInteractiveFinancialQuery(userId, text, phone, history);
-        return res.status(200).json({ status: 'query_answered' });
+      const immediateOps = operations.filter((op: any) => op.intent === 'QUERY' || op.intent === 'CHAT');
+      const writeOps = operations.filter((op: any) => op.intent === 'TRANSACTION' || op.intent === 'DELETE' || op.intent === 'PAY');
+
+      // Process immediate operations
+      for (const op of immediateOps) {
+        if (op.intent === 'QUERY') {
+          await sendWhatsApp(phone, `📊 *Analisando seus dados financeiros em tempo real...*`);
+          await handleInteractiveFinancialQuery(userId, text, phone, history);
+        } else if (op.intent === 'CHAT') {
+          const systemPromptChat = `
+          Você é a FinVision AI, a Assistente Financeira Premium do software FinVision Pro.
+          Seu tom de voz deve ser de especialista, extremamente educado, curto e sucinto. Use emojis úteis.
+          Use formatações em negrito do WhatsApp (*texto*).
+          Seja amigável e utilize o histórico da conversa para responder de forma contínua e natural.
+          `;
+
+          const chatContents = history.map((h: any) => ({
+            role: h.role === 'user' ? 'user' : 'model',
+            parts: [{ text: h.content }]
+          }));
+
+          const chatResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: chatContents,
+            config: {
+              systemInstruction: systemPromptChat,
+              temperature: 0.7,
+            }
+          });
+
+          const chatReply = (chatResponse as any).text || (chatResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || op.chatReply || 'Olá! Sou a FinVision AI. Como posso te ajudar com suas finanças hoje?';
+          await sendWhatsApp(phone, chatReply);
+
+          // Salvar a resposta no histórico de chat
+          history.push({ role: 'model', content: chatReply });
+          await supabase.from('whatsapp_chat_sessions').upsert({
+            phone: phone,
+            messages: history,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'phone' });
+        }
       }
 
-      if (analysis.intent === 'CHAT') {
-        const systemPromptChat = `
-        Você é a FinVision AI, a Assistente Financeira Premium do software FinVision Pro.
-        Seu tom de voz deve ser de especialista, extremamente educado, curto e sucinto. Use emojis úteis.
-        Use formatações em negrito do WhatsApp (*texto*).
-        Seja amigável e utilize o histórico da conversa para responder de forma contínua e natural.
-        `;
+      // If there are no write operations, we are done
+      if (writeOps.length === 0) {
+        return res.status(200).json({ status: 'immediate_operations_processed' });
+      }
 
-        const chatContents = history.map((h: any) => ({
-          role: h.role === 'user' ? 'user' : 'model',
-          parts: [{ text: h.content }]
-        }));
+      // Exact 1 write operation
+      if (writeOps.length === 1) {
+        const op = writeOps[0];
 
-        const chatResponse = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: chatContents,
-          config: {
-            systemInstruction: systemPromptChat,
-            temperature: 0.7,
+        if (op.intent === 'TRANSACTION') {
+          const tx = op.transaction;
+          await supabase.from('whatsapp_drafts').insert({
+            user_id: userId,
+            phone: phone,
+            data: tx,
+            status: 'pending'
+          });
+
+          const dateFmt = tx.date ? tx.date.split('-').reverse().join('/') : '';
+          await sendWhatsApp(phone, `📝 *Rascunho Criado via IA!* 🤖\n\n*Descrição:* ${tx.description}\n*Valor:* R$ ${Number(tx.amount).toFixed(2)}\n*Categoria:* ${tx.category}\n*Data:* ${dateFmt}\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`);
+          return res.status(200).json({ status: 'draft_created' });
+        }
+
+        if (op.intent === 'DELETE') {
+          const filters = op.deleteFilters || {};
+          const matches = await findMatchingTransactions(userId, filters, false);
+
+          if (matches.length === 0) {
+            await sendWhatsApp(phone, `❌ *Não encontrei nenhum lançamento recente correspondente* para exclusão.`);
+            return res.status(200).json({ status: 'delete_no_match' });
           }
-        });
 
-        const chatReply = (chatResponse as any).text || (chatResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || analysis.chatReply || 'Olá! Sou a FinVision AI. Como posso te ajudar com suas finanças hoje?';
-        await sendWhatsApp(phone, chatReply);
+          if (matches.length === 1) {
+            const matchedTx = matches[0];
+            await supabase.from('whatsapp_drafts').insert({
+              user_id: userId,
+              phone: phone,
+              data: {
+                type: 'delete',
+                transactionId: matchedTx.id,
+                description: matchedTx.description,
+                amount: matchedTx.amount,
+                date: matchedTx.date
+              },
+              status: 'pending'
+            });
 
-        // Salvar a resposta no histórico de chat
-        history.push({ role: 'model', content: chatReply });
-        await supabase.from('whatsapp_chat_sessions').upsert({
-          phone: phone,
-          messages: history,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'phone' });
+            const dateFmt = matchedTx.date ? matchedTx.date.split('T')[0].split('-').reverse().join('/') : '';
+            await sendWhatsApp(phone, `📝 *Confirmação de Exclusão!* 🗑️\n\nEncontrei o lançamento:\n*Descrição:* ${matchedTx.description}\n*Valor:* R$ ${Number(matchedTx.amount).toFixed(2)}\n*Data:* ${dateFmt}\n\nConfirma a exclusão deste lançamento? Digite *SIM* ou *NÃO*.`);
+            return res.status(200).json({ status: 'delete_draft_created' });
+          }
 
-        return res.status(200).json({ status: 'chat_replied' });
+          // Multiple matches -> Disambiguation
+          await supabase.from('whatsapp_drafts').insert({
+            user_id: userId,
+            phone: phone,
+            data: {
+              type: 'delete_disambiguation',
+              candidates: matches.map(m => ({ id: m.id, description: m.description, amount: m.amount, date: m.date }))
+            },
+            status: 'pending'
+          });
+
+          let listMsg = `🔍 *Encontrei múltiplos lançamentos parecidos.* Qual deseja excluir? Digite o número:\n\n`;
+          matches.forEach((m, idx) => {
+            const dateFmt = m.date ? m.date.split('T')[0].split('-').reverse().join('/') : '';
+            listMsg += `*${idx + 1}.* ${m.description} - R$ ${Number(m.amount).toFixed(2)} (${dateFmt})\n`;
+          });
+          listMsg += `\nDigite *CANCELAR* para desistir.`;
+
+          await sendWhatsApp(phone, listMsg);
+          return res.status(200).json({ status: 'delete_disambiguation' });
+        }
+
+        if (op.intent === 'PAY') {
+          const filters = op.payFilters || {};
+          const matches = await findMatchingTransactions(userId, filters, true);
+
+          if (matches.length === 0) {
+            await sendWhatsApp(phone, `❌ *Não encontrei nenhuma conta pendente correspondente* para marcar como paga.`);
+            return res.status(200).json({ status: 'pay_no_match' });
+          }
+
+          if (matches.length === 1) {
+            const matchedTx = matches[0];
+            await supabase.from('whatsapp_drafts').insert({
+              user_id: userId,
+              phone: phone,
+              data: {
+                type: 'pay',
+                transactionId: matchedTx.id,
+                description: matchedTx.description,
+                amount: matchedTx.amount,
+                date: matchedTx.date
+              },
+              status: 'pending'
+            });
+
+            const dateFmt = matchedTx.date ? matchedTx.date.split('T')[0].split('-').reverse().join('/') : '';
+            await sendWhatsApp(phone, `📝 *Confirmação de Pagamento!* 💵\n\nEncontrei a conta pendente:\n*Descrição:* ${matchedTx.description}\n*Valor:* R$ ${Number(matchedTx.amount).toFixed(2)}\n*Vencimento:* ${dateFmt}\n\nConfirma o pagamento desta conta? Digite *SIM* ou *NÃO*.`);
+            return res.status(200).json({ status: 'pay_draft_created' });
+          }
+
+          // Multiple matches -> Disambiguation
+          await supabase.from('whatsapp_drafts').insert({
+            user_id: userId,
+            phone: phone,
+            data: {
+              type: 'pay_disambiguation',
+              candidates: matches.map(m => ({ id: m.id, description: m.description, amount: m.amount, date: m.date }))
+            },
+            status: 'pending'
+          });
+
+          let listMsg = `🔍 *Encontrei múltiplas contas pendentes parecidas.* Qual deseja marcar como paga? Digite o número:\n\n`;
+          matches.forEach((m, idx) => {
+            const dateFmt = m.date ? m.date.split('T')[0].split('-').reverse().join('/') : '';
+            listMsg += `*${idx + 1}.* ${m.description} - R$ ${Number(m.amount).toFixed(2)} (${dateFmt})\n`;
+          });
+          listMsg += `\nDigite *CANCELAR* para desistir.`;
+
+          await sendWhatsApp(phone, listMsg);
+          return res.status(200).json({ status: 'pay_disambiguation' });
+        }
+      }
+
+      // If there are multiple write operations
+      if (writeOps.length > 1) {
+        const resolvedOps = [];
+        const disambigOps = [];
+
+        for (const op of writeOps) {
+          if (op.intent === 'TRANSACTION') {
+            resolvedOps.push({
+              intent: 'TRANSACTION',
+              transaction: op.transaction
+            });
+          } else if (op.intent === 'DELETE') {
+            const filters = op.deleteFilters || {};
+            const matches = await findMatchingTransactions(userId, filters, false);
+            if (matches.length === 0) {
+              await sendWhatsApp(phone, `⚠️ *Não encontrei correspondência para excluir:* "${filters.description || ''}"`);
+            } else if (matches.length === 1) {
+              resolvedOps.push({
+                intent: 'DELETE',
+                transactionId: matches[0].id,
+                description: matches[0].description,
+                amount: matches[0].amount,
+                date: matches[0].date
+              });
+            } else {
+              disambigOps.push({ op, matches });
+            }
+          } else if (op.intent === 'PAY') {
+            const filters = op.payFilters || {};
+            const matches = await findMatchingTransactions(userId, filters, true);
+            if (matches.length === 0) {
+              await sendWhatsApp(phone, `⚠️ *Não encontrei conta pendente correspondente para pagar:* "${filters.description || ''}"`);
+            } else if (matches.length === 1) {
+              resolvedOps.push({
+                intent: 'PAY',
+                transactionId: matches[0].id,
+                description: matches[0].description,
+                amount: matches[0].amount,
+                date: matches[0].date
+              });
+            } else {
+              disambigOps.push({ op, matches });
+            }
+          }
+        }
+
+        // Halt if disambiguation is required
+        if (disambigOps.length > 0) {
+          const firstDisambig = disambigOps[0];
+          const matches = firstDisambig.matches;
+          const isPay = firstDisambig.op.intent === 'PAY';
+
+          await supabase.from('whatsapp_drafts').insert({
+            user_id: userId,
+            phone: phone,
+            data: {
+              type: isPay ? 'pay_disambiguation' : 'delete_disambiguation',
+              candidates: matches.map(m => ({ id: m.id, description: m.description, amount: m.amount, date: m.date }))
+            },
+            status: 'pending'
+          });
+
+          let listMsg = `🔍 *Há múltiplas correspondências para uma das ações.* Qual você deseja escolher? Digite o número:\n\n`;
+          matches.forEach((m, idx) => {
+            const dateFmt = m.date ? m.date.split('T')[0].split('-').reverse().join('/') : '';
+            listMsg += `*${idx + 1}.* ${m.description} - R$ ${Number(m.amount).toFixed(2)} (${dateFmt})\n`;
+          });
+          listMsg += `\nDigite *CANCELAR* para desistir.`;
+
+          await sendWhatsApp(phone, listMsg);
+          return res.status(200).json({ status: 'multi_disambiguation_halted' });
+        }
+
+        // If all write operations are successfully resolved
+        if (resolvedOps.length > 0) {
+          await supabase.from('whatsapp_drafts').insert({
+            user_id: userId,
+            phone: phone,
+            data: {
+              type: 'multi',
+              operations: resolvedOps
+            },
+            status: 'pending'
+          });
+
+          let summaryMsg = `📝 *Lote de Operações Criado via IA!* 🤖\n\nEntendi que deseja executar as seguintes ações:\n\n`;
+          resolvedOps.forEach((op, idx) => {
+            if (op.intent === 'TRANSACTION') {
+              summaryMsg += `*${idx + 1}. Cadastrar:* "${op.transaction.description}" - R$ ${Number(op.transaction.amount).toFixed(2)}\n`;
+            } else if (op.intent === 'DELETE') {
+              summaryMsg += `*${idx + 1}. Excluir:* "${op.description}" - R$ ${Number(op.amount).toFixed(2)}\n`;
+            } else if (op.intent === 'PAY') {
+              summaryMsg += `*${idx + 1}. Marcar Paga:* "${op.description}" - R$ ${Number(op.amount).toFixed(2)}\n`;
+            }
+          });
+          summaryMsg += `\nConfirma a execução de todas as operações acima? Digite *SIM* ou *NÃO*.`;
+
+          await sendWhatsApp(phone, summaryMsg);
+          return res.status(200).json({ status: 'multi_draft_created' });
+        }
       }
     }
 
