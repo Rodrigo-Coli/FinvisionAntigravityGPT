@@ -73,7 +73,7 @@ RETORNE APENAS JSON NO FORMATO:
         contents = [{ parts: [{ text: prompt }, { text: `CONTEÚDO:\n${buffer.toString('utf-8').substring(0, 30000)}` }] }];
       }
 
-      const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
+      const fallbackModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
       let rawText = '';
       for (const currentModel of fallbackModels) {
         try {

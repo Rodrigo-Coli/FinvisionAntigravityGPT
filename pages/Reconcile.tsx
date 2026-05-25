@@ -203,7 +203,7 @@ const Reconcile: React.FC = () => {
   const fetchRecentImports = async () => {
     if (!supabase) return;
     try {
-      const { data: imports } = await supabase.from('imports').select('id, status, created_at, document_id').order('created_at', { ascending: false }).limit(5);
+      const { data: imports } = await supabase.from('imports').select('id, status, created_at, document_id, account_id, type, notes').order('created_at', { ascending: false }).limit(5);
       if (!imports) return;
       const docIds = imports.filter((i: any) => i.document_id).map((i: any) => i.document_id);
       let docs: any[] = [];
@@ -211,7 +211,28 @@ const Reconcile: React.FC = () => {
         const { data } = await supabase.from('documents').select('id, original_name').in('id', docIds);
         docs = data || [];
       }
-      setRecentImports(imports.map((imp: any) => ({ ...imp, original_name: docs.find((d: any) => d.id === imp.document_id)?.original_name || 'Arquivo' })));
+      const mapped = imports.map((imp: any) => ({ ...imp, original_name: docs.find((d: any) => d.id === imp.document_id)?.original_name || 'Arquivo' }));
+      setRecentImports(mapped);
+
+      // Auto-retomar polling em segundo plano se houver import ativo
+      const activeProcessing = mapped.find((imp: any) => imp.status === 'processing');
+      if (activeProcessing && !isProcessing) {
+        console.log("[Reconcile] Retomando polling em background do import ativo:", activeProcessing.id);
+        setIsProcessing(true);
+        setProgressStep("IA analisando...");
+        ReconciliationService.pollImportStatus(activeProcessing.id, (imp: any) => {
+          if (imp.status === 'processing') setProgressStep("IA analisando...");
+        }).then(() => {
+          setIsProcessing(false);
+          setProgressStep(null);
+          fetchData();
+        }).catch((err) => {
+          console.error("Erro no polling retomado:", err);
+          setIsProcessing(false);
+          setProgressStep(null);
+          fetchData();
+        });
+      }
     } catch (e) { }
   };
 
