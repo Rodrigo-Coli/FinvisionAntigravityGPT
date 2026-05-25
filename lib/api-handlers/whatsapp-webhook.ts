@@ -59,6 +59,7 @@ export default async function handler(req: any, res: any) {
         date: tx.date || new Date().toISOString().split('T')[0],
         type: tx.type || 'EXPENSE',
         category: tx.category || 'Outros',
+        subcategory: tx.subcategory || null,
         is_paid: true
       });
 
@@ -97,11 +98,11 @@ export default async function handler(req: any, res: any) {
      await supabase.from('whatsapp_drafts').insert({
         user_id: userId,
         phone: phone,
-        data: mockData,
+        data: { ...mockData, subcategory: null, account_name: null },
         status: 'pending'
      });
 
-     await sendWhatsApp(phone, `📝 *Rascunho Gerado!*\n\n*Descrição:* ${mockData.description}\n*A Valor:* R$ ${mockData.amount.toFixed(2)}\n*Categoria:* ${mockData.category}\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`);
+     await sendWhatsApp(phone, `📝 *Rascunho Gerado!*\n\n*Descrição:* ${mockData.description}\n*Valor:* R$ ${mockData.amount.toFixed(2)}\n*Categoria:* ${mockData.category}\n⚠️ *Subcategoria:* _[Não informada]_\n⚠️ *Banco/Conta:* _[Não informado]_\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`);
   }
 
   return res.status(200).json({ status: 'processed' });

@@ -271,6 +271,50 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
   return null;
 }
 
+function formatDraftConfirmation(tx: any, isUpdate: boolean = false): string {
+  const dateFmt = tx.date ? tx.date.split('-').reverse().join('/') : '';
+  const isExpense = tx.type === 'EXPENSE';
+  const titleEmoji = isExpense ? '💳' : '💰';
+  const titleText = isExpense 
+    ? (isUpdate ? 'Confirmar Gasto Atualizado!' : 'Confirmar Novo Gasto!') 
+    : (isUpdate ? 'Confirmar Receita Atualizada!' : 'Confirmar Nova Receita!');
+
+  let text = `${titleEmoji} *${titleText}* 🤖\n\n`;
+  text += `*Descrição:* ${tx.description || '⚠️ _[Não informada - Diga o que é]_'}\n`;
+  text += `*Valor:* R$ ${tx.amount !== undefined && tx.amount !== null ? Number(tx.amount).toFixed(2) : '⚠️ _[Não informado - Diga o valor]_'}\n`;
+  text += `*Categoria:* ${tx.category || 'Outros'}\n`;
+  
+  if (tx.subcategory) {
+    text += `*Subcategoria:* ${tx.subcategory}\n`;
+  } else {
+    text += `⚠️ *Subcategoria:* _[Não informada - Diga a subcategoria para adicionar (ex: Combustível)]_\n`;
+  }
+  
+  text += `*Data:* ${dateFmt || '⚠️ _[Não informada]_'}\n`;
+
+  if (tx.is_card) {
+    text += `*Cartão:* ${tx.card_name || 'Sim'}\n`;
+  } else {
+    if (tx.account_name) {
+      text += `*Banco/Conta:* ${tx.account_name}\n`;
+    } else {
+      text += `⚠️ *Banco/Conta:* _[Não informado - Diga de qual banco debitar (ex: Nubank, Itaú)]_\n`;
+    }
+  }
+
+  if (tx.owner_name) {
+    text += `*Perfil:* ${tx.owner_name}\n`;
+  }
+  if (tx.is_recurring) {
+    text += `*Recorrência:* ${tx.recurrence_period || 'mensal'}\n`;
+  }
+
+  text += `\nConfirma o lançamento? Digite *SIM* ou *NÃO*.\n\n`;
+  text += `💡 *Dica:* Se faltar alguma informação ou quiser mudar algo, basta me dizer (ex: *"é no Itaú"*, *"subcategoria alimentação"*, *"mudar valor para 40"*) antes de confirmar!`;
+
+  return text;
+}
+
 async function handleInteractiveFinancialQuery(userId: string, queryText: string, phone: string, history: any[] = []) {
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
@@ -943,22 +987,43 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           }
 
           // Fallback to checking account regular transaction
+          const { data: userAccounts } = await supabase
+            .from('accounts')
+            .select('id, institution')
+            .eq('user_id', userId)
+            .eq('is_archived', false);
+
           const { data: defaultAcc } = await supabase
             .from('accounts')
-            .select('id')
+            .select('id, institution')
             .eq('user_id', userId)
             .eq('is_archived', false)
             .limit(1)
             .maybeSingle();
 
+          let finalAccountId = defaultAcc?.id || null;
+          let finalAccountName = defaultAcc?.institution || 'Conta';
+
+          if (tx.account_name && userAccounts) {
+            const matched = userAccounts.find(a => 
+              a.institution.toLowerCase().includes(tx.account_name.toLowerCase()) ||
+              tx.account_name.toLowerCase().includes(a.institution.toLowerCase())
+            );
+            if (matched) {
+              finalAccountId = matched.id;
+              finalAccountName = matched.institution;
+            }
+          }
+
           await supabase.from('transactions').insert({
             user_id: userId,
-            account_id: defaultAcc?.id || null,
+            account_id: finalAccountId,
             description: tx.description,
             amount: tx.amount,
             date: tx.date || new Date().toISOString().split('T')[0],
             type: tx.type || 'EXPENSE',
             category: tx.category || 'Outros',
+            subcategory: tx.subcategory || null,
             is_paid: tx.is_paid !== undefined ? tx.is_paid : true,
             owner_name: tx.owner_name || 'Pessoal',
             is_recurring: tx.is_recurring || false,
@@ -969,7 +1034,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           });
 
           await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
-          await sendWhatsApp(phone, `✅ *Lançamento Confirmado!*\n\n"${tx.description}" de R$ ${Number(tx.amount).toFixed(2)} foi inserido com sucesso!`);
+          await sendWhatsApp(phone, `✅ *Lançamento Confirmado na conta ${finalAccountName}!*\n\n"${tx.description}" de R$ ${Number(tx.amount).toFixed(2)} foi inserido com sucesso!`);
           await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
           return res.status(200).json({ status: 'confirmed' });
         }
@@ -1020,9 +1085,11 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             "amount": 0.00,
             "date": "YYYY-MM-DD",
             "category": "Alimentação | Transporte | Lazer | Lojas | Saúde | Outros",
+            "subcategory": "Subcategoria específica baseada na categoria se houver (ex: Combustível para Transporte, Supermercado para Alimentação, ou null se não souber)",
             "type": "EXPENSE" | "INCOME",
             "is_card": boolean,
             "card_name": string (ou null),
+            "account_name": "Nome da conta/banco caso o comprovante especifique de onde saiu o dinheiro, ex: Nubank, Itaú, Santander (ou null)",
             "owner_name": string (ou null)
           }
         ]
@@ -1040,9 +1107,11 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             "amount": 0.00,
             "date": "YYYY-MM-DD",
             "category": "Alimentação | Transporte | Lazer | Lojas | Saúde | Outros",
+            "subcategory": "Subcategoria específica baseada na categoria se houver (ex: Combustível para Transporte, Supermercado para Alimentação, ou null se não souber)",
             "type": "EXPENSE" | "INCOME",
             "is_card": boolean,
             "card_name": string (ou null),
+            "account_name": "Nome da conta/banco caso o comprovante especifique de onde saiu o dinheiro, ex: Nubank, Itaú, Santander (ou null)",
             "owner_name": string (ou null)
           }
         ]
@@ -1085,19 +1154,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           .eq('user_id', userId)
           .eq('data->>messageId', message.key.id);
 
-        const dateFmt = singleTx.date ? singleTx.date.split('-').reverse().join('/') : '';
-        const isExpense = singleTx.type === 'EXPENSE';
-        const titleEmoji = isExpense ? '💳' : '💰';
-        const titleText = isExpense ? 'Confirmar Novo Gasto!' : 'Confirmar Nova Receita!';
-        
-        let confirmText = `${titleEmoji} *${titleText}* 🤖\n\n*Descrição:* ${singleTx.description}\n*Valor:* R$ ${Number(singleTx.amount).toFixed(2)}\n*Categoria:* ${singleTx.category}\n*Data:* ${dateFmt}`;
-        if (singleTx.is_card) {
-          confirmText += `\n*Cartão:* ${singleTx.card_name || 'Sim'}`;
-        }
-        if (singleTx.owner_name) {
-          confirmText += `\n*Perfil:* ${singleTx.owner_name}`;
-        }
-        confirmText += `\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`;
+        const confirmText = formatDraftConfirmation(singleTx, false);
 
         await sendWhatsApp(phone, confirmText);
         return res.status(200).json({ status: 'file_processed' });
@@ -1108,10 +1165,12 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             description: op.description,
             amount: Number(op.amount || 0),
             category: op.category || 'Outros',
+            subcategory: op.subcategory || null,
             type: op.type || 'EXPENSE',
             date: op.date || new Date().toISOString().split('T')[0],
             is_card: op.is_card || false,
             card_name: op.card_name || null,
+            account_name: op.account_name || null,
             owner_name: op.owner_name || 'Pessoal'
           }
         }));
@@ -1220,6 +1279,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           "amount": number,
           "date": "YYYY-MM-DD",
           "category": string,
+          "subcategory": string (ou null),
           "type": "EXPENSE" | "INCOME",
           "is_card": boolean,
           "card_name": string (ou null),
@@ -1238,10 +1298,12 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               "description": "Ex: Mercado Extra, Posto Ipiranga",
               "amount": 0.00,
               "category": "Alimentação | Transporte | Moradia | Saúde | Lazer | Salário | Outros",
+              "subcategory": "Subcategoria específica baseada na categoria se houver (ex: Combustível para Transporte, Supermercado para Alimentação, ou null se não souber)",
               "type": "EXPENSE" | "INCOME",
               "date": "YYYY-MM-DD",
               "is_card": boolean,
               "card_name": string (ou null),
+              "account_name": "Nome da conta/banco caso o usuário especifique (ex: Nubank, Itaú, ou null)",
               "owner_name": string (ou null),
               "is_recurring": boolean,
               "recurrence_period": "weekly" | "monthly" | "yearly" | "biweekly" (ou null)
@@ -1298,22 +1360,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           })
           .eq('id', activeDraft.id);
 
-        const dateFmt = draftToUpdate.date ? draftToUpdate.date.split('-').reverse().join('/') : '';
-        const isExpense = draftToUpdate.type === 'EXPENSE';
-        const titleEmoji = isExpense ? '💳' : '💰';
-        const titleText = isExpense ? 'Confirmar Gasto Atualizado!' : 'Confirmar Receita Atualizada!';
-        
-        let confirmText = `${titleEmoji} *${titleText}* 🤖\n\n*Descrição:* ${draftToUpdate.description}\n*Valor:* R$ ${Number(draftToUpdate.amount).toFixed(2)}\n*Categoria:* ${draftToUpdate.category}\n*Data:* ${dateFmt}`;
-        if (draftToUpdate.is_card) {
-          confirmText += `\n*Cartão:* ${draftToUpdate.card_name || 'Sim'}`;
-        }
-        if (draftToUpdate.owner_name) {
-          confirmText += `\n*Perfil:* ${draftToUpdate.owner_name}`;
-        }
-        if (draftToUpdate.is_recurring) {
-          confirmText += `\n*Recorrência:* ${draftToUpdate.recurrence_period || 'mensal'}`;
-        }
-        confirmText += `\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`;
+        const confirmText = formatDraftConfirmation(draftToUpdate, true);
 
         await sendWhatsApp(phone, confirmText);
 
@@ -1420,22 +1467,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             .eq('user_id', userId)
             .eq('data->>messageId', message.key.id);
 
-          const dateFmt = tx.date ? tx.date.split('-').reverse().join('/') : '';
-          const isExpense = tx.type === 'EXPENSE';
-          const titleEmoji = isExpense ? '💳' : '💰';
-          const titleText = isExpense ? 'Confirmar Novo Gasto!' : 'Confirmar Nova Receita!';
-          
-          let confirmText = `${titleEmoji} *${titleText}* 🤖\n\n*Descrição:* ${tx.description}\n*Valor:* R$ ${Number(tx.amount).toFixed(2)}\n*Categoria:* ${tx.category}\n*Data:* ${dateFmt}`;
-          if (tx.is_card) {
-            confirmText += `\n*Cartão:* ${tx.card_name || 'Sim'}`;
-          }
-          if (tx.owner_name) {
-            confirmText += `\n*Perfil:* ${tx.owner_name}`;
-          }
-          if (tx.is_recurring) {
-            confirmText += `\n*Recorrência:* ${tx.recurrence_period || 'mensal'}`;
-          }
-          confirmText += `\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`;
+          const confirmText = formatDraftConfirmation(tx, false);
 
           await sendWhatsApp(phone, confirmText);
           return res.status(200).json({ status: 'draft_created' });

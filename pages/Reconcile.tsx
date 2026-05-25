@@ -896,9 +896,9 @@ const Reconcile: React.FC = () => {
                         </div>
 
                         {/* Data Sections */}
-                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
                           {/* Col 1: Desc & Date */}
-                          <div className="lg:col-span-1 space-y-1">
+                          <div className="lg:col-span-2 space-y-1">
                             {isEditing ? (
                               <input
                                 type="date"
@@ -919,9 +919,9 @@ const Reconcile: React.FC = () => {
                                   onClick={() => startEditing(item)}
                                   className="text-xs font-bold text-slate-900 text-left hover:text-brand-600 transition-colors w-full bg-transparent border-none p-0 cursor-pointer outline-none"
                                 >
-                                  <div className="flex items-center gap-1.5 group/edit truncate max-w-[150px] sm:max-w-none">
-                                    <span className="truncate uppercase">{item.description}</span>
-                                    <Pencil size={11} className="text-slate-200 group-hover/edit:text-brand-500 transition-colors shrink-0" />
+                                  <div className="flex items-start gap-1.5 group/edit whitespace-normal break-words w-full">
+                                    <span className="uppercase text-left whitespace-normal break-words block flex-1">{item.description}</span>
+                                    <Pencil size={11} className="text-slate-200 group-hover/edit:text-brand-500 transition-colors shrink-0 mt-0.5" />
                                   </div>
                                 </button>
                                 {item.potential_duplicate && (
