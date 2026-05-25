@@ -93,9 +93,47 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
     ? process.env.EVOLUTION_API_URL.slice(0, -1) 
     : process.env.EVOLUTION_API_URL;
 
-  // 1. Se houver uma URL direta pública de S3/Local (que não seja do whatsapp.net)
-  if (mediaObj?.url && mediaObj.url.startsWith('http') && !mediaObj.url.includes('whatsapp.net')) {
-    console.log('[downloadEvolutionMedia] Encontrada URL direta pública:', mediaObj.url);
+  // 1. Tentar o endpoint oficial /chat/getBase64FromMediaMessage/{instance} (Mais estável e descriptografa no servidor)
+  const base64Url = `${cleanBaseUrl}/chat/getBase64FromMediaMessage/${process.env.EVOLUTION_INSTANCE}`;
+  console.log('[downloadEvolutionMedia] Tentando endpoint /chat/getBase64FromMediaMessage...');
+  try {
+    const res = await fetch(base64Url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': process.env.EVOLUTION_API_KEY as string
+      },
+      body: JSON.stringify({
+        message: {
+          key: {
+            id: message.key.id
+          }
+        }
+      })
+    });
+    
+    if (res.ok) {
+      const json = await res.json();
+      let base64 = json.base64 || json.data || '';
+      if (base64) {
+        if (base64.includes(';base64,')) {
+          base64 = base64.split(';base64,')[1];
+        }
+        console.log('[downloadEvolutionMedia] Sucesso com getBase64FromMediaMessage!');
+        return { base64, mimeType };
+      }
+    } else {
+      const errText = await res.text().catch(() => '');
+      console.warn(`[downloadEvolutionMedia] getBase64FromMediaMessage retornou status ${res.status}: ${errText}`);
+    }
+  } catch (err) {
+    console.error('[downloadEvolutionMedia] Erro no /chat/getBase64FromMediaMessage:', err);
+  }
+
+  // 2. Se houver uma URL direta pública de S3/Local (que NÃO seja do whatsapp.net e NÃO seja criptografada .enc)
+  const isDirectDecryptedUrl = mediaObj?.url && mediaObj.url.startsWith('http') && !mediaObj.url.includes('whatsapp.net') && !mediaObj.url.includes('.enc');
+  if (isDirectDecryptedUrl) {
+    console.log('[downloadEvolutionMedia] Encontrada URL direta pública e descriptografada:', mediaObj.url);
     try {
       const res = await fetch(mediaObj.url);
       if (res.ok) {
@@ -108,7 +146,7 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
     }
   }
 
-  // 2. Tentar endpoint /message/downloadMedia com FORMATO A (Root level key/message)
+  // 3. Tentar endpoint /message/downloadMedia com FORMATO A (Root level key/message)
   const downloadUrl = `${cleanBaseUrl}/message/downloadMedia/${process.env.EVOLUTION_INSTANCE}`;
   console.log('[downloadEvolutionMedia] Tentando /message/downloadMedia com Formato A...');
   try {
@@ -148,7 +186,7 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
     console.error('[downloadEvolutionMedia] Erro no /message/downloadMedia Formato A:', err);
   }
 
-  // 3. Tentar endpoint /message/downloadMedia com FORMATO B (Nested message object)
+  // 4. Tentar endpoint /message/downloadMedia com FORMATO B (Nested message object)
   console.log('[downloadEvolutionMedia] Tentando /message/downloadMedia com Formato B...');
   try {
     const res = await fetch(downloadUrl, {
@@ -189,7 +227,7 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
     console.error('[downloadEvolutionMedia] Erro no /message/downloadMedia Formato B:', err);
   }
 
-  // 4. Tentar endpoint /s3/getMedia
+  // 5. Tentar endpoint /s3/getMedia
   const getMediaUrl = `${cleanBaseUrl}/s3/getMedia/${process.env.EVOLUTION_INSTANCE}`;
   console.log('[downloadEvolutionMedia] Tentando fallback para /s3/getMedia...');
   try {
@@ -228,21 +266,6 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
     }
   } catch (err) {
     console.error('[downloadEvolutionMedia] Erro no fallback /s3/getMedia:', err);
-  }
-
-  // 5. Último recurso: tentar baixar a URL diretamente mesmo se contiver whatsapp.net
-  if (mediaObj?.url && mediaObj.url.startsWith('http')) {
-    console.log('[downloadEvolutionMedia] Tentando baixar URL direta como último recurso...');
-    try {
-      const res = await fetch(mediaObj.url);
-      if (res.ok) {
-        const buffer = await res.arrayBuffer();
-        const base64 = Buffer.from(buffer).toString('base64');
-        return { base64, mimeType };
-      }
-    } catch (err) {
-      console.error('[downloadEvolutionMedia] Erro no último recurso de download:', err);
-    }
   }
 
   return null;
@@ -565,6 +588,20 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
     const userId = userSet.user_id;
 
+    // Prevenção contra loops de retransmissão de webhook do Vercel
+    const { data: existingDraft } = await supabase
+      .from('whatsapp_drafts')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'pending')
+      .eq('data->>messageId', message.key.id)
+      .maybeSingle();
+
+    if (existingDraft) {
+      console.log('[WhatsApp Webhook] Mensagem já está sendo processada ou rascunho pendente criado:', message.key.id);
+      return res.status(200).json({ status: 'already_processed', messageId: message.key.id });
+    }
+
     // 1. Carregar histórico de mensagens das últimas 24 horas para este número
     const oneDayAgo = new Date();
     oneDayAgo.setDate(oneDayAgo.getDate() - 1);
@@ -821,7 +858,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       await supabase.from('whatsapp_drafts').insert({
         user_id: userId,
         phone: phone,
-        data: ocrData,
+        data: { ...ocrData, messageId: message.key.id },
         status: 'pending'
       });
 
@@ -966,7 +1003,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           await supabase.from('whatsapp_drafts').insert({
             user_id: userId,
             phone: phone,
-            data: tx,
+            data: { ...tx, messageId: message.key.id },
             status: 'pending'
           });
 
