@@ -1089,8 +1089,8 @@ const Reconcile: React.FC = () => {
       </datalist>
 
       <datalist id="targets-list">
-        {realAccounts.map(a => <option key={a.id} value={a.institution} />)}
-        {realCards.map(c => <option key={c.id} value={`${c.name}${c.last4 ? ` - ${c.last4}` : ''}`} />)}
+        {(importSource === 'bank' || importSource === 'smart') && realAccounts.map(a => <option key={a.id} value={a.institution} />)}
+        {(importSource === 'card' || importSource === 'smart') && realCards.map(c => <option key={c.id} value={`${c.name}${c.last4 ? ` - ${c.last4}` : ''}`} />)}
       </datalist>
 
       <datalist id="entities-list">

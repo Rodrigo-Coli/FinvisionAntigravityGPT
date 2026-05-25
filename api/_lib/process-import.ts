@@ -3,6 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import Papa from 'papaparse';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
+import { StatementTemplateHelper } from './statement-template-helper.js';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || 'https://dummy.supabase.co',
@@ -46,13 +47,28 @@ export async function handleProcessImport(req: any, res: any) {
     }
 
     if (transactions.length > 0) {
-      const txsToInsert = transactions.map((t: any) => {
+      // Executar verificação inteligente de duplicidades
+      const checkedTxs = await StatementTemplateHelper.checkDuplicates(supabase, imp.user_id, transactions, false);
+
+      const txsToInsert = checkedTxs.map((t: any) => {
         const amount = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount).replace(',', '.'));
         const desc = (t.description || '').trim();
         const date = t.date;
         const fpData = `${date}|${amount.toFixed(2)}|${desc.toLowerCase()}|${imp.account_id || ''}`;
         const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
-        return { user_id: imp.user_id, import_id: imp.id, date, description: desc, amount, account_id: imp.account_id, source_document_id: imp.document_id, status: 'READY_TO_RECONCILE', fingerprint };
+        return {
+          user_id: imp.user_id,
+          import_id: imp.id,
+          date,
+          description: desc,
+          amount,
+          account_id: imp.account_id,
+          source_document_id: imp.document_id,
+          status: 'READY_TO_RECONCILE',
+          fingerprint,
+          potential_duplicate: t.potential_duplicate || false,
+          duplicate_reason: t.duplicate_reason || null
+        };
       });
 
       const fingerprintsSeen = new Set();

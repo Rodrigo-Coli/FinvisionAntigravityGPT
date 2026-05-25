@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
+import { StatementTemplateHelper } from './statement-template-helper.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -26,33 +27,110 @@ export async function handleBankReconcile(req: any, res: any) {
     if (dlErr || !fileBlob) throw new Error(`Falha no download: ${dlErr?.message || 'Empty blob'}`);
     const buffer = Buffer.from(await fileBlob.arrayBuffer());
 
-    const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (!geminiKey) throw new Error('Chave do Gemini (GEMINI_API_KEY) não encontrada.');
-    const ai = new GoogleGenAI({ apiKey: geminiKey });
+    let transactions: any[] = [];
+    let templateLearned: any = null;
+    const isTextFile = ['csv', 'xlsx'].includes(imp.type);
 
-    const prompt = `Você é um especialista em conciliação financeira. Analise o documento. Extrair transações. REGRAS: 1. DATA (YYYY-MM-DD). 2. DESCRIÇÃO. 3. VALOR (entrada + / saída -). Ignore totais e saldos. Retorne JSON: {"transactions": [{"date":"YYYY-MM-DD","description":"texto","amount":-123.45,"account_name":"Conta","category_name":"Categoria"}]}`;
-
-    let contents = [{ parts: [{ text: prompt }, { inlineData: { data: buffer.toString('base64'), mimeType: doc.mime_type || 'application/pdf' } }] }];
-    if (['csv', 'ofx', 'xlsx'].includes(imp.type)) {
-      contents = [{ parts: [{ text: prompt }, { text: `CONTEÚDO:\n${buffer.toString('utf-8').substring(0, 30000)}` }] }];
+    // 1. Tentar parse local com template cache
+    if (isTextFile && imp.account_id) {
+      const template = await StatementTemplateHelper.getTemplate(supabase, imp.user_id, imp.account_id, false, imp.type);
+      if (template) {
+        console.log(`[Bank Reconcile] Template encontrado para conta ${imp.account_id}. Iniciando parse local...`);
+        transactions = StatementTemplateHelper.tryLocalParse(buffer, imp.type, template);
+      }
     }
 
-    const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
-    let rawText = '';
-    for (const currentModel of fallbackModels) {
-      try {
-        const response = await ai.models.generateContent({
-          model: currentModel, contents,
-          config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { transactions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { date: { type: Type.STRING }, description: { type: Type.STRING }, amount: { type: Type.NUMBER }, category: { type: Type.STRING }, account_name: { type: Type.STRING }, category_name: { type: Type.STRING } }, required: ["date", "description", "amount"] } } }, required: ["transactions"] } }
-        });
-        rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
-        if (rawText) break;
-      } catch (e) { console.error(`Falha no modelo ${currentModel}:`, e); }
+    // 2. Fallback para Gemini se não houver template ou se falhar/estiver vazio
+    if (transactions.length === 0) {
+      console.log('[Bank Reconcile] Bypassing/Fallback to Gemini para extração e aprendizado de modelo...');
+      const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (!geminiKey) throw new Error('Chave do Gemini (GEMINI_API_KEY) não encontrada.');
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+
+      const prompt = `Você é um especialista em conciliação financeira. Analise o documento extrato bancário.
+Extraia todas as transações individuais para uma lista JSON.
+SE for um arquivo de texto estruturado (como CSV ou Excel/XLSX), identifique a estrutura de colunas e retorne-a no campo 'template' no formato:
+{
+  "file_type": "csv" ou "xlsx",
+  "header_row_index": número da linha onde fica o cabeçalho (0-indexed),
+  "date_column_index": índice da coluna de data,
+  "description_column_index": índice da coluna de descrição,
+  "amount_column_index": índice da coluna de valor,
+  "date_format": "DD/MM/YYYY" ou "YYYY-MM-DD",
+  "decimal_separator": "," ou "."
+}
+
+REGRAS DE VALOR: despesas/saídas devem ser valores NEGATIVOS. Entradas/receitas devem ser valores POSITIVOS. Ignore saldos e totais.
+
+RETORNE APENAS JSON NO FORMATO:
+{
+  "transactions": [{"date":"YYYY-MM-DD","description":"texto","amount":-123.45,"category":"categoria opcional"}],
+  "template": { ... }
+}`;
+
+      let contents = [{ parts: [{ text: prompt }, { inlineData: { data: buffer.toString('base64'), mimeType: doc.mime_type || 'application/pdf' } }] }];
+      if (['csv', 'ofx', 'xlsx'].includes(imp.type)) {
+        contents = [{ parts: [{ text: prompt }, { text: `CONTEÚDO:\n${buffer.toString('utf-8').substring(0, 30000)}` }] }];
+      }
+
+      const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
+      let rawText = '';
+      for (const currentModel of fallbackModels) {
+        try {
+          const response = await ai.models.generateContent({
+            model: currentModel, contents,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  transactions: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        date: { type: Type.STRING },
+                        description: { type: Type.STRING },
+                        amount: { type: Type.NUMBER },
+                        category: { type: Type.STRING }
+                      },
+                      required: ["date", "description", "amount"]
+                    }
+                  },
+                  template: {
+                    type: Type.OBJECT,
+                    properties: {
+                      file_type: { type: Type.STRING },
+                      header_row_index: { type: Type.INTEGER },
+                      date_column_index: { type: Type.INTEGER },
+                      description_column_index: { type: Type.INTEGER },
+                      amount_column_index: { type: Type.INTEGER },
+                      date_format: { type: Type.STRING },
+                      decimal_separator: { type: Type.STRING }
+                    }
+                  }
+                },
+                required: ["transactions"]
+              }
+            }
+          });
+          rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (rawText) break;
+        } catch (e) { console.error(`Falha no modelo ${currentModel}:`, e); }
+      }
+
+      if (!rawText) throw new Error('A IA não retornou dados após tentativas.');
+      const parsed = JSON.parse(rawText.replace(/```json|```/g, "").trim());
+      transactions = parsed.transactions || [];
+      templateLearned = parsed.template;
+
+      // Se aprendeu um novo template, salvar no banco!
+      if (templateLearned && imp.account_id && isTextFile) {
+        console.log('[Bank Reconcile] Aprendendo e salvando o novo modelo/template...');
+        await StatementTemplateHelper.saveTemplate(supabase, imp.user_id, imp.account_id, false, imp.type, templateLearned);
+      }
     }
 
-    if (!rawText) throw new Error('A IA não retornou dados após tentativas.');
-    const parsed = JSON.parse(rawText.replace(/```json|```/g, "").trim());
-    const transactions = parsed.transactions || [];
     const isMobills = import_source === 'smart' || (imp.parse_meta as any)?.is_mobills || imp.notes?.toLowerCase().includes('mobills') || imp.notes?.toLowerCase().includes('smart');
 
     if (transactions.length > 0) {
@@ -83,9 +161,27 @@ export async function handleBankReconcile(req: any, res: any) {
         }
         if (entries.length > 0) await supabase.from('transactions').insert(entries);
       } else {
-        const txsToInsert = transactions.map((t: any) => {
-          const fingerprint = crypto.createHash('sha256').update(`${t.date}|${t.amount.toFixed(2)}|${t.description.toLowerCase()}|${imp.account_id || ''}`).digest('hex');
-          return { user_id: imp.user_id, import_id: imp.id, date: t.date, description: t.description.trim(), amount: t.amount, account_id: imp.account_id, account_name: account_name || 'Importado', source_document_id: imp.document_id, status: 'READY_TO_RECONCILE', fingerprint, metadata: { category_suggested: t.category } };
+        // Verificar duplicidades no banco antes do upsert
+        console.log('[Bank Reconcile] Executando verificação inteligente de duplicidades...');
+        const checkedTxs = await StatementTemplateHelper.checkDuplicates(supabase, imp.user_id, transactions, false);
+
+        const txsToInsert = checkedTxs.map((t: any) => {
+          const fingerprint = crypto.createHash('sha256').update(`${t.date}|${Number(t.amount).toFixed(2)}|${t.description.toLowerCase()}|${imp.account_id || ''}`).digest('hex');
+          return {
+            user_id: imp.user_id,
+            import_id: imp.id,
+            date: t.date,
+            description: t.description.trim(),
+            amount: t.amount,
+            account_id: imp.account_id,
+            account_name: account_name || 'Importado',
+            source_document_id: imp.document_id,
+            status: 'READY_TO_RECONCILE',
+            fingerprint,
+            potential_duplicate: t.potential_duplicate || false,
+            duplicate_reason: t.duplicate_reason || null,
+            metadata: { category_suggested: t.category }
+          };
         });
         await supabase.from('imported_transactions').upsert(txsToInsert, { onConflict: 'user_id,fingerprint' });
       }
@@ -94,6 +190,7 @@ export async function handleBankReconcile(req: any, res: any) {
     await supabase.from('imports').update({ status: 'ready', notes: `${imp.notes || ''} | Extraídas ${transactions.length} transações.` }).eq('id', import_id);
     return res.status(200).json({ ok: true, count: transactions.length });
   } catch (err: any) {
+    console.error('[Bank Reconcile] Erro:', err);
     await supabase.from('imports').update({ status: 'error', notes: `ERROR: ${err.message.substring(0, 500)}` }).eq('id', import_id);
     return res.status(200).json({ ok: false, message: err.message });
   }

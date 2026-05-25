@@ -51,11 +51,17 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
 
     if (contentType.includes('application/json')) {
       const json = await res.json();
-      const base64 = json.base64 || json.data || '';
+      let base64 = json.base64 || json.data || '';
+      if (base64.includes(';base64,')) {
+        base64 = base64.split(';base64,')[1];
+      }
       return { base64, mimeType };
     } else {
       const buffer = await res.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString('base64');
+      let base64 = Buffer.from(buffer).toString('base64');
+      if (base64.includes(';base64,')) {
+        base64 = base64.split(';base64,')[1];
+      }
       return { base64, mimeType };
     }
   } catch (err) {

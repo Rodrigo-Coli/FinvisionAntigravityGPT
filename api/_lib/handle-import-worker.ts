@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 import Papa from 'papaparse';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
+import { StatementTemplateHelper } from './statement-template-helper.js';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || 'https://dummy.supabase.co',
@@ -61,7 +62,10 @@ export default async function handler(req: any, res: any) {
 
     // 4. Upsert com Fingerprint (Deduplicação)
     if (transactions.length > 0) {
-      const txsToInsert = transactions.map((t: any) => {
+      // Executar verificação inteligente de duplicidades
+      const checkedTxs = await StatementTemplateHelper.checkDuplicates(supabase, imp.user_id, transactions, false);
+
+      const txsToInsert = checkedTxs.map((t: any) => {
         const amount = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount).replace(',', '.'));
         const desc = (t.description || '').trim();
         const date = t.date;
@@ -79,7 +83,9 @@ export default async function handler(req: any, res: any) {
           account_id: imp.account_id,
           source_document_id: imp.document_id,
           status: 'READY_TO_RECONCILE',
-          fingerprint: fingerprint
+          fingerprint: fingerprint,
+          potential_duplicate: t.potential_duplicate || false,
+          duplicate_reason: t.duplicate_reason || null
         };
       });
 

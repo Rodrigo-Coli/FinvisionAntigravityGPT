@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
+import { StatementTemplateHelper } from './statement-template-helper.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -24,35 +25,115 @@ export async function handleCardReconcile(req: any, res: any) {
     if (dlErr || !fileBlob) throw new Error('Falha ao baixar arquivo');
     const buffer = Buffer.from(await fileBlob.arrayBuffer());
 
-    const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
-    const ai = new GoogleGenAI({ apiKey: geminiKey });
-
-    const prompt = `Você é um especialista em conciliação de cartões de crédito. Analise o documento. Extrair transações. REGRAS: 1. DATA (YYYY-MM-DD). 2. DESCRIÇÃO. 3. VALOR. PARCELAMENTO: Se '2/5', installment_number=2, installment_total=5. Retorne JSON: {"transactions": [{"date":"YYYY-MM-DD","description":"texto","amount":123.45,"installment_number":2,"installment_total":5,"card_name":"Cartão","category_name":"Categoria"}]}`;
-
-    let contents = [{ parts: [{ text: prompt }, { inlineData: { data: buffer.toString('base64'), mimeType: doc.mime_type || 'application/pdf' } }] }];
-    if (['csv', 'ofx', 'xlsx'].includes(imp.type)) {
-      contents = [{ parts: [{ text: prompt }, { text: `CONTEÚDO:\n${buffer.toString('utf-8').substring(0, 30000)}` }] }];
-    }
-
-    const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
-    let rawText = '';
-    for (const modelName of fallbackModels) {
-      try {
-        const response = await ai.models.generateContent({
-          model: modelName, contents,
-          config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { transactions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { date: { type: Type.STRING }, description: { type: Type.STRING }, amount: { type: Type.NUMBER }, merchant_normalized: { type: Type.STRING }, installment_number: { type: Type.NUMBER }, installment_total: { type: Type.NUMBER }, category_name: { type: Type.STRING }, card_name: { type: Type.STRING } }, required: ["date", "description", "amount"] } } }, required: ["transactions"] } }
-        });
-        rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
-        if (rawText) break;
-      } catch (e) { console.error(`Falha no modelo ${modelName}:`, e); }
-    }
-
-    if (!rawText) throw new Error('A IA não retornou dados.');
-    const parsedData = JSON.parse(rawText.replace(/```json|```/g, "").trim());
-    const processedTxs = parsedData.transactions || [];
-    const isMobills = import_source === 'smart' || (imp.parse_meta as any)?.is_mobills || imp.notes?.toLowerCase().includes('mobills') || imp.notes?.toLowerCase().includes('smart');
     const targetAccountId = account_id || imp.account_id;
+    let processedTxs: any[] = [];
+    let templateLearned: any = null;
+    const isTextFile = ['csv', 'xlsx'].includes(imp.type);
+
+    // 1. Tentar parse local com template cache
+    if (isTextFile && targetAccountId) {
+      const template = await StatementTemplateHelper.getTemplate(supabase, imp.user_id, targetAccountId, true, imp.type);
+      if (template) {
+        console.log(`[Card Reconcile] Template encontrado para cartão ${targetAccountId}. Iniciando parse local...`);
+        processedTxs = StatementTemplateHelper.tryLocalParse(buffer, imp.type, template);
+      }
+    }
+
+    // 2. Fallback para Gemini se não houver template ou se falhar/estiver vazio
+    if (processedTxs.length === 0) {
+      console.log('[Card Reconcile] Bypassing/Fallback to Gemini para extração e aprendizado de modelo...');
+      const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+
+      const prompt = `Você é um especialista em conciliação de cartões de crédito. Analise o documento extrato de cartão.
+Extraia todas as transações individuais para uma lista JSON.
+SE for um arquivo de texto estruturado (como CSV ou Excel/XLSX), identifique a estrutura de colunas e retorne-a no campo 'template' no formato:
+{
+  "file_type": "csv" ou "xlsx",
+  "header_row_index": número da linha onde fica o cabeçalho (0-indexed),
+  "date_column_index": índice da coluna de data,
+  "description_column_index": índice da coluna de descrição,
+  "amount_column_index": índice da coluna de valor,
+  "date_format": "DD/MM/YYYY" ou "YYYY-MM-DD",
+  "decimal_separator": "," ou "."
+}
+
+REGRAS: 1. DATA (YYYY-MM-DD). 2. DESCRIÇÃO. 3. VALOR. PARCELAMENTO: Se '2/5', installment_number=2, installment_total=5.
+
+RETORNE APENAS JSON NO FORMATO:
+{
+  "transactions": [{"date":"YYYY-MM-DD","description":"texto","amount":123.45,"merchant_normalized":"texto","installment_number":2,"installment_total":5,"category_name":"categoria opcional"}],
+  "template": { ... }
+}`;
+
+      let contents = [{ parts: [{ text: prompt }, { inlineData: { data: buffer.toString('base64'), mimeType: doc.mime_type || 'application/pdf' } }] }];
+      if (['csv', 'ofx', 'xlsx'].includes(imp.type)) {
+        contents = [{ parts: [{ text: prompt }, { text: `CONTEÚDO:\n${buffer.toString('utf-8').substring(0, 30000)}` }] }];
+      }
+
+      const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
+      let rawText = '';
+      for (const modelName of fallbackModels) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName, contents,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  transactions: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        date: { type: Type.STRING },
+                        description: { type: Type.STRING },
+                        amount: { type: Type.NUMBER },
+                        merchant_normalized: { type: Type.STRING },
+                        installment_number: { type: Type.INTEGER },
+                        installment_total: { type: Type.INTEGER },
+                        category_name: { type: Type.STRING }
+                      },
+                      required: ["date", "description", "amount"]
+                    }
+                  },
+                  template: {
+                    type: Type.OBJECT,
+                    properties: {
+                      file_type: { type: Type.STRING },
+                      header_row_index: { type: Type.INTEGER },
+                      date_column_index: { type: Type.INTEGER },
+                      description_column_index: { type: Type.INTEGER },
+                      amount_column_index: { type: Type.INTEGER },
+                      date_format: { type: Type.STRING },
+                      decimal_separator: { type: Type.STRING }
+                    }
+                  }
+                },
+                required: ["transactions"]
+              }
+            }
+          });
+          rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (rawText) break;
+        } catch (e) { console.error(`Falha no modelo ${modelName}:`, e); }
+      }
+
+      if (!rawText) throw new Error('A IA não retornou dados.');
+      const parsedData = JSON.parse(rawText.replace(/```json|```/g, "").trim());
+      processedTxs = parsedData.transactions || [];
+      templateLearned = parsedData.template;
+
+      // Se aprendeu um novo template, salvar no banco!
+      if (templateLearned && targetAccountId && isTextFile) {
+        console.log('[Card Reconcile] Aprendendo e salvando o novo modelo/template...');
+        await StatementTemplateHelper.saveTemplate(supabase, imp.user_id, targetAccountId, true, imp.type, templateLearned);
+      }
+    }
+
+    const isMobills = import_source === 'smart' || (imp.parse_meta as any)?.is_mobills || imp.notes?.toLowerCase().includes('mobills') || imp.notes?.toLowerCase().includes('smart');
 
     if (processedTxs.length > 0) {
       if (isMobills) {
@@ -81,9 +162,29 @@ export async function handleCardReconcile(req: any, res: any) {
         }
         if (entries.length > 0) await supabase.from('card_transactions').insert(entries);
       } else {
-        const txsToInsert = processedTxs.map((t: any) => {
+        // Verificar duplicidades no extrato do cartão antes do upsert
+        console.log('[Card Reconcile] Executando verificação inteligente de duplicidades...');
+        const checkedTxs = await StatementTemplateHelper.checkDuplicates(supabase, imp.user_id, processedTxs, true);
+
+        const txsToInsert = checkedTxs.map((t: any) => {
           const fingerprint = crypto.createHash('sha256').update(`${t.date}|${Number(t.amount).toFixed(2)}|${t.description.toLowerCase()}|${targetAccountId || ''}`).digest('hex');
-          return { user_id: imp.user_id, import_id, date: t.date, description: t.description, amount: -Math.abs(t.amount), account_id: targetAccountId, status: 'READY_TO_RECONCILE', fingerprint, metadata: { is_card: true, merchant_normalized: t.merchant_normalized || t.description, installment_info: { number: t.installment_number || null, total: t.installment_total || null } } };
+          return {
+            user_id: imp.user_id,
+            import_id,
+            date: t.date,
+            description: t.description,
+            amount: -Math.abs(t.amount),
+            account_id: targetAccountId,
+            status: 'READY_TO_RECONCILE',
+            fingerprint: fingerprint,
+            potential_duplicate: t.potential_duplicate || false,
+            duplicate_reason: t.duplicate_reason || null,
+            metadata: {
+              is_card: true,
+              merchant_normalized: t.merchant_normalized || t.description,
+              installment_info: { number: t.installment_number || null, total: t.installment_total || null }
+            }
+          };
         });
         await supabase.from('imported_transactions').upsert(txsToInsert, { onConflict: 'user_id,fingerprint' });
       }
