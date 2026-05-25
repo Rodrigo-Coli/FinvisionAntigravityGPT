@@ -273,35 +273,87 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
 
 async function handleInteractiveFinancialQuery(userId: string, queryText: string, phone: string, history: any[] = []) {
   const now = new Date();
-  const filterStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-  const filterEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  const todayStr = now.toISOString().split('T')[0];
+
+  // Períodos padrão de fallback
+  let filterStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  let filterEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
   const threeMonthsAgo = new Date();
   threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
   threeMonthsAgo.setDate(1);
-  const historyStart = threeMonthsAgo.toISOString().split('T')[0];
+  let historyStart = threeMonthsAgo.toISOString().split('T')[0];
 
-  const [accountsRes, txRes, cardsRes, assetsRes, liabilitiesRes, historyRes] = await Promise.all([
-    supabase.from('accounts').select('institution, type, current_balance').eq('user_id', userId).eq('is_archived', false),
+  let targetStartDate = historyStart; // Por padrão, traz 90 dias
+  let targetEndDate = todayStr;
+  let customPeriodLabel = 'Últimos 90 dias';
+
+  // Chamada de extração de data inteligente usando Gemini
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+  if (geminiKey) {
+    try {
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      
+      const dateExtractionPrompt = `
+      Você é a inteligência de processamento temporal do FinVision Pro.
+      Hoje é ${now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} (data do sistema: ${todayStr}).
+
+      Analise a pergunta do usuário para identificar se ele está solicitando transações ou dados financeiros de um período temporal específico (ex: "lançamentos dos dois últimos meses", "gastos de janeiro", "ano passado", "mês passado", "últimos 6 meses", "desde março").
+      Com base na análise, determine a data de início (startDate) e fim (endDate) adequada no formato YYYY-MM-DD.
+
+      Regras importantes:
+      1. Se o usuário pedir "últimos dois meses" ou "dois últimos meses", partindo de hoje (${todayStr}), o início deve retroceder 2 meses (ex: de 01/03/2026 até hoje).
+      2. Se o usuário falar em "mês passado", calcule o início e fim exatos do mês anterior completo.
+      3. Se o usuário NÃO especificar período nenhum ou se for uma pergunta geral de saldo, use como padrão de busca os últimos 90 dias (início: ${historyStart}, fim: ${todayStr}).
+      4. Se o usuário pedir um período muito longo (ex: "histórico completo", "tudo", "desde o começo"), use os últimos 365 dias (1 ano).
+
+      Mensagem do Usuário: "${queryText}"
+
+      RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
+      {
+        "startDate": "YYYY-MM-DD",
+        "endDate": "YYYY-MM-DD",
+        "periodLabel": "Descrição do período em texto curto para o prompt (ex: 'Março a Maio de 2026' ou 'Janeiro de 2026')"
+      }
+      `;
+
+      const dateResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: dateExtractionPrompt }] }],
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      const dateRaw = (dateResponse as any).text || (dateResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const dateClean = dateRaw.replace(/```json|```/g, "").trim();
+      const dateJson = JSON.parse(dateClean);
+      
+      if (dateJson.startDate && dateJson.endDate) {
+        targetStartDate = dateJson.startDate;
+        targetEndDate = dateJson.endDate;
+        customPeriodLabel = dateJson.periodLabel || 'Período personalizado';
+        console.log(`[WhatsApp Query Period] Período extraído dinamicamente: ${targetStartDate} a ${targetEndDate} (${customPeriodLabel})`);
+      }
+    } catch (err) {
+      console.error('[WhatsApp Query Period] Erro ao extrair data inteligente, usando fallback:', err);
+    }
+  }
+
+  const [accountsRes, txRes, cardsRes, assetsRes, liabilitiesRes] = await Promise.all([
+    supabase.from('accounts').select('id, institution, type, current_balance').eq('user_id', userId).eq('is_archived', false),
     supabase.from('transactions')
-      .select('amount, type, category, date, description, is_amortization, liability_id, is_paid, metadata')
+      .select('id, account_id, amount, type, category, subcategory, date, description, is_amortization, liability_id, is_paid, metadata')
       .eq('user_id', userId)
       .is('is_deleted', false)
       .neq('type', 'ADJUSTMENT')
-      .gte('date', filterStart)
-      .lte('date', filterEnd)
+      .gte('date', targetStartDate)
+      .lte('date', targetEndDate)
       .order('date', { ascending: false })
-      .limit(100),
+      .limit(150),
     supabase.from('credit_cards').select('brand, limit').eq('user_id', userId),
     supabase.from('physical_assets').select('id, name, category, estimated_value').eq('user_id', userId),
-    supabase.from('liabilities').select('id, name, type, total_amount, remaining_balance, installment_amount, installments_remaining, interest_rate, metadata').eq('user_id', userId),
-    supabase.from('transactions')
-      .select('amount, type, category, date, is_amortization')
-      .eq('user_id', userId)
-      .is('is_deleted', false)
-      .neq('type', 'ADJUSTMENT')
-      .gte('date', historyStart)
-      .lt('date', filterStart)
+    supabase.from('liabilities').select('id, name, type, total_amount, remaining_balance, installment_amount, installments_remaining, interest_rate, metadata').eq('user_id', userId)
   ]);
 
   const accounts = accountsRes.data || [];
@@ -309,28 +361,24 @@ async function handleInteractiveFinancialQuery(userId: string, queryText: string
   const creditCards = cardsRes.data || [];
   const assetsData = assetsRes.data || [];
   const liabilitiesData = liabilitiesRes.data || [];
-  const historicalData = historyRes?.data || [];
 
   const totalBalance = accounts.reduce((s: number, a: any) => s + Number(a.current_balance || 0), 0);
   const totalPhysicalAssets = assetsData.reduce((s: number, l: any) => s + Number(l.estimated_value || 0), 0);
   const totalDebt = liabilitiesData.reduce((s: number, l: any) => s + Number(l.remaining_balance || 0), 0);
   const netWorth = totalBalance + totalPhysicalAssets - totalDebt;
 
-  const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  let currentMonthIncome = 0;
-  let currentMonthExpense = 0;
+  let periodIncome = 0;
+  let periodExpense = 0;
   const categorySummary: Record<string, number> = {};
 
   transactions.forEach((t: any) => {
-    if (t.date && t.date.startsWith(currentMonthPrefix)) {
-      const amt = Math.abs(Number(t.amount) || 0);
-      if (t.is_amortization) return; // skip amortizations from regular monthly flow totals
-      if (t.type === 'INCOME') {
-        currentMonthIncome += amt;
-      } else if (t.type === 'EXPENSE') {
-        currentMonthExpense += amt;
-        categorySummary[t.category] = (categorySummary[t.category] || 0) + amt;
-      }
+    const amt = Math.abs(Number(t.amount) || 0);
+    if (t.is_amortization) return; // skip amortizations from regular monthly totals
+    if (t.type === 'INCOME') {
+      periodIncome += amt;
+    } else if (t.type === 'EXPENSE') {
+      periodExpense += amt;
+      categorySummary[t.category] = (categorySummary[t.category] || 0) + amt;
     }
   });
 
@@ -340,21 +388,6 @@ async function handleInteractiveFinancialQuery(userId: string, queryText: string
     .map(([cat, val]) => `${cat}: R$ ${val.toFixed(2)}`)
     .join(' | ');
 
-  const periodLabel = `De ${filterStart.split('-').reverse().join('/')} até ${filterEnd.split('-').reverse().join('/')}`;
-
-  const histTxs = historicalData.filter((t: any) => t.type === 'EXPENSE' && !t.is_amortization) || [];
-  const histCategoryTotals: Record<string, number> = {};
-  const monthsCaptured = new Set();
-  histTxs.forEach((t: any) => {
-    const m = t.date.substring(0, 7);
-    monthsCaptured.add(m);
-    histCategoryTotals[t.category] = (histCategoryTotals[t.category] || 0) + Math.abs(t.amount);
-  });
-  const numMonths = monthsCaptured.size || 1;
-  const historicalAverages = Object.entries(histCategoryTotals)
-    .map(([cat, total]) => `${cat}: R$ ${(total / numMonths).toFixed(2)}/mês`)
-    .slice(0, 10).join(' | ');
-
   const dataHoje = now.toLocaleDateString('pt-BR', { 
     weekday: 'long', 
     year: 'numeric', 
@@ -362,7 +395,7 @@ async function handleInteractiveFinancialQuery(userId: string, queryText: string
     day: 'numeric'
   });
 
-  // Construct detailed liabilities summary just like handle-wealth-analysis
+  // Construct detailed liabilities summary
   const liabilitiesSummary = liabilitiesData.map((l: any) => {
     const ir = l.interest_rate ? `juros ${l.interest_rate}% a.a.` : 'sem juros definidos';
     const propertyStatus = l.metadata?.propertyType ? `[Status Imóvel: ${l.metadata.propertyType}]` : '';
@@ -370,7 +403,7 @@ async function handleInteractiveFinancialQuery(userId: string, queryText: string
       ? `${l.installments_remaining} parcelas de R$ ${Number(l.installment_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
       : 'sem parcelas mensais configuradas';
     
-    // Extract balloons and down payments linked to this liability inside current fetched txs
+    // Extract balloons and down payments linked to this liability
     const linkedTxs = transactions.filter(t => t.liability_id === l.id);
     const atos = linkedTxs.filter(t => t.metadata?.type === 'DOWN_PAYMENT' || (t.description || '').toUpperCase().includes('ATO'));
     const baloes = linkedTxs.filter(t => t.metadata?.type === 'INTERMEDIARY' || (t.description || '').toUpperCase().includes('INTERMEDIÁRIA') || (t.description || '').toUpperCase().includes('BALÃO'));
@@ -385,6 +418,16 @@ async function handleInteractiveFinancialQuery(userId: string, queryText: string
     return `${l.name} (${l.type}) ${propertyStatus}: Saldo Devedor R$ ${Number(l.remaining_balance).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}, ${ir}, ${parcelas}${atosSummary}${baloesSummary}`;
   }).join('\n- ');
 
+  const accountMap = new Map(accounts.map((a: any) => [a.id, a.institution]));
+
+  const formattedTransactions = transactions.map((t: any) => {
+    const dateFmt = t.date ? t.date.split('T')[0].split('-').reverse().join('/') : '';
+    const categoryFmt = t.category + (t.subcategory ? ` > ${t.subcategory}` : '');
+    const accountName = t.account_id ? (accountMap.get(t.account_id) || 'Conta') : 'Conta';
+    const statusFmt = t.is_paid ? 'Pago' : 'Pendente';
+    return `- ${dateFmt} | Descrição: "${t.description}" | R$ ${Number(t.amount).toFixed(2)} | Tipo: ${t.type} | Categoria: ${categoryFmt} | Conta: ${accountName} | Status: ${statusFmt}`;
+  }).join('\n');
+
   const systemPrompt = `
 # IDENTIDADE
 Você é a FinVision AI, a Assistente Financeira Premium do software FinVision Pro.
@@ -394,14 +437,15 @@ Seu tom de voz deve ser de especialista, educado, curto e sucinto. Use emojis ú
 1. Limite sua resposta a no máximo 3 ou 4 parágrafos curtos.
 2. Use formatações em negrito do WhatsApp (*texto*).
 3. Nunca invente dados. Use as métricas reais fornecidas abaixo para responder à dúvida.
+4. IMPORTANTÍSSIMO: Sempre que o usuário perguntar sobre transações, gastos ou lançamentos de contas ou cartões, verifique detalhadamente a lista de "TRANSAÇÕES DETALHADAS NO PERÍODO SOLICITADO" abaixo. Os termos pesquisados podem estar na *descrição*, *categoria* ou *subcategoria*. Responda de forma completa, detalhando os lançamentos correspondentes (com data, descrição, valor e status de pagamento).
 
 # DADOS DO USUÁRIO
 Hoje é ${dataHoje}.
-*Período Ativo do Usuário: ${periodLabel}*
+*Período Ativo da Consulta: ${customPeriodLabel} (de ${targetStartDate.split('-').reverse().join('/')} até ${targetEndDate.split('-').reverse().join('/')})*
 • Saldo Consolidado: R$ ${totalBalance.toFixed(2)}
-• Entradas no Mês: R$ ${currentMonthIncome.toFixed(2)}
-• Saídas no Mês: R$ ${currentMonthExpense.toFixed(2)}
-• Top Despesas: ${topCategories || 'Nenhuma registrada'}
+• Total de Entradas no Período: R$ ${periodIncome.toFixed(2)}
+• Total de Saídas no Período: R$ ${periodExpense.toFixed(2)}
+• Top Despesas do Período: ${topCategories || 'Nenhuma registrada'}
 • Bens/Ativos: R$ ${totalPhysicalAssets.toFixed(2)}
 • Dívidas (Passivos): R$ ${totalDebt.toFixed(2)}
 • Patrimônio Líquido: R$ ${netWorth.toFixed(2)}
@@ -410,11 +454,11 @@ Hoje é ${dataHoje}.
 • Dívidas Detalhadas:
 - ${liabilitiesSummary || 'Nenhuma registrada'}
 • Cartões Cadastrados: ${creditCards.map((c: any) => `${c.brand}(Lim:R$${c.limit})`).join(', ') || 'Nenhum'}
-• Últimas 15 transações:
-${transactions.slice(0, 15).map((t: any) => `- ${t.date.split('T')[0]}|${t.category}|R$ ${t.amount}|${t.type}|${t.description}${t.is_amortization ? ' (Amortização)' : ''}`).join('\n')}
+
+# TRANSAÇÕES DETALHADAS NO PERÍODO SOLICITADO (Máximo 150 lançamentos, mais recentes primeiro):
+${formattedTransactions || 'Nenhuma transação registrada neste período.'}
 `;
 
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
   if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
   const ai = new GoogleGenAI({ apiKey: geminiKey });
 
@@ -1073,7 +1117,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           - Se o usuário citar uma conta (ex: "na conta Itaú", "pagamento Bradesco"), adicione "account_name" no JSON.
           - Se o usuário citar recorrência (ex: "mensal", "recorrente", "todo mês"), adicione "is_recurring": true e "recurrence_period": "monthly".
 
-          Caso o usuário NÃO esteja editando o rascunho (seja um novo gasto independente, consulta ou conversa casual):
+          Caso o usuário NÃO esteja editando o rascunho (seja um novo gasto independente, consulta, conversa casual, ou se ele der uma instrução clara para pagar/liquidar/quitar uma conta ou excluir uma transação, como "pague a conta X", "deleta a despesa Y"):
           - Retorne "isEdit": false
 
           RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
@@ -1123,7 +1167,11 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           .eq('id', activeDraft.id);
 
         const dateFmt = draftToUpdate.date ? draftToUpdate.date.split('-').reverse().join('/') : '';
-        let confirmText = `📝 *Rascunho Atualizado!* 🤖\n\n*Descrição:* ${draftToUpdate.description}\n*Valor:* R$ ${Number(draftToUpdate.amount).toFixed(2)}\n*Categoria:* ${draftToUpdate.category}\n*Data:* ${dateFmt}`;
+        const isExpense = draftToUpdate.type === 'EXPENSE';
+        const titleEmoji = isExpense ? '💳' : '💰';
+        const titleText = isExpense ? 'Confirmar Gasto Atualizado!' : 'Confirmar Receita Atualizada!';
+        
+        let confirmText = `${titleEmoji} *${titleText}* 🤖\n\n*Descrição:* ${draftToUpdate.description}\n*Valor:* R$ ${Number(draftToUpdate.amount).toFixed(2)}\n*Categoria:* ${draftToUpdate.category}\n*Data:* ${dateFmt}`;
         if (draftToUpdate.is_card) {
           confirmText += `\n*Cartão:* ${draftToUpdate.card_name || 'Sim'}`;
         }
@@ -1155,6 +1203,24 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         updated_at: new Date().toISOString()
       }, { onConflict: 'phone' });
 
+      // Buscar contas pendentes do usuário dos últimos 60 dias para dar contexto ao classificador
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+      const { data: pendingBills } = await supabase
+        .from('transactions')
+        .select('id, description, amount, date, category')
+        .eq('user_id', userId)
+        .is('is_deleted', false)
+        .eq('is_paid', false)
+        .eq('type', 'EXPENSE')
+        .gte('date', sixtyDaysAgo.toISOString().split('T')[0])
+        .order('date', { ascending: true })
+        .limit(20);
+
+      const formattedPendingBills = pendingBills && pendingBills.length > 0
+        ? pendingBills.map(b => `- "${b.description}" | R$ ${Math.abs(Number(b.amount)).toFixed(2)} | Vencimento: ${b.date.split('T')[0].split('-').reverse().join('/')}`).join('\n')
+        : 'Nenhuma conta pendente em aberto nos últimos 60 dias.';
+
       const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
       if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
       const ai = new GoogleGenAI({ apiKey: geminiKey });
@@ -1164,6 +1230,10 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       Classifique a mensagem atual do usuário levando em consideração o histórico recente da conversa para entender pronomes ou continuações.
       O usuário pode solicitar a execução de uma ou múltiplas operações financeiras na mesma mensagem (ex: "gastei 15 de lanche e paguei a luz", "exclua o pix de 10 e me diga o saldo").
       
+      # CONTAS PENDENTES EM ABERTO NO SISTEMA (Aguardando Pagamento/Baixa)
+      Use esta lista para cruzar o pedido do usuário. Se ele pedir para pagar/quitar uma conta que combine com alguma destas descrições (por exemplo "pague a conta mensal mãe" ou "mensal mãe" combina com a conta "Mensal Mãe"), classifique a intenção como "PAY" e preencha o "payFilters" correspondente com a descrição exata da conta pendente:
+      ${formattedPendingBills}
+
       # HISTÓRICO RECENTE DA CONVERSA
       ${history.slice(-5, -1).map((h: any) => `${h.role === 'user' ? 'Usuário' : 'FinVision'}: ${h.content}`).join('\n')}
 
@@ -1210,8 +1280,8 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       - Se o usuário citar um perfil/entidade/proprietário (ex: "perfil Pessoal", "no perfil da empresa", "perfil trabalho"), coloque o nome do perfil correspondente em "owner_name".
       - Se o usuário citar recorrência (ex: "mensal", "recorrente", "todo mês"), defina "is_recurring": true e o período correspondente em "recurrence_period".
       - Se for excluir/apagar um lançamento ("exclui X", "deleta Y"), use "DELETE". Preencha "deleteFilters".
-      - Se for marcar uma conta/despesa como paga ("paguei X", "liquida Y"), use "PAY". Preencha "payFilters".
-      - Se for consulta de dados ("saldo", "gastos do mês"), use "QUERY".
+      - Se for marcar uma conta/despesa como paga ("paguei X", "liquida Y", "pague a conta Z"), use "PAY". Preencha "payFilters".
+      - Se for consulta de dados ("saldo", "gastos do mês", "quais os lançamentos"), use "QUERY".
       - Se for conversa casual, use "CHAT".
       `;
 
@@ -1286,6 +1356,27 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       if (writeOps.length === 1) {
         const op = writeOps[0];
 
+        // VERIFICAÇÃO PROATIVA DE PAGAMENTO (Auto-correção se a IA classificar "pague X" como TRANSACTION com valor zerado)
+        if (op.intent === 'TRANSACTION') {
+          const tx = op.transaction;
+          const textLower = text.toLowerCase();
+          const isPayIntent = textLower.includes('pague') || textLower.includes('pagar') || textLower.includes('quitar') || textLower.includes('baixar') || textLower.includes('liquida') || textLower.includes('venci');
+          
+          if ((tx.amount === 0 || isPayIntent) && tx.description) {
+            const filters = { description: tx.description };
+            const pendingMatches = await findMatchingTransactions(userId, filters, true);
+            if (pendingMatches.length === 1) {
+              console.log('[WhatsApp Webhook] Conversão Proativa: Convertendo TRANSACTION para PAY da conta:', pendingMatches[0].description);
+              op.intent = 'PAY';
+              op.payFilters = {
+                description: pendingMatches[0].description,
+                amount: pendingMatches[0].amount,
+                date: pendingMatches[0].date
+              };
+            }
+          }
+        }
+
         if (op.intent === 'TRANSACTION') {
           const tx = op.transaction;
           await supabase
@@ -1298,7 +1389,11 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             .eq('data->>messageId', message.key.id);
 
           const dateFmt = tx.date ? tx.date.split('-').reverse().join('/') : '';
-          let confirmText = `📝 *Rascunho Criado via IA!* 🤖\n\n*Descrição:* ${tx.description}\n*Valor:* R$ ${Number(tx.amount).toFixed(2)}\n*Categoria:* ${tx.category}\n*Data:* ${dateFmt}`;
+          const isExpense = tx.type === 'EXPENSE';
+          const titleEmoji = isExpense ? '💳' : '💰';
+          const titleText = isExpense ? 'Confirmar Novo Gasto!' : 'Confirmar Nova Receita!';
+          
+          let confirmText = `${titleEmoji} *${titleText}* 🤖\n\n*Descrição:* ${tx.description}\n*Valor:* R$ ${Number(tx.amount).toFixed(2)}\n*Categoria:* ${tx.category}\n*Data:* ${dateFmt}`;
           if (tx.is_card) {
             confirmText += `\n*Cartão:* ${tx.card_name || 'Sim'}`;
           }
