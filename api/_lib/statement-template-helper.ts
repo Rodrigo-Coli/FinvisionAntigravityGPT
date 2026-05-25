@@ -18,8 +18,8 @@ function parseDate(rawDate: any, format?: string): string {
   // Formato YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
   
-  // Formato DD/MM/YYYY ou DD/MM/YY
-  const brMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  // Formato DD/MM/YYYY ou DD/MM/YY ou DD-MM-YYYY ou DD-MM-YY
+  const brMatch = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (brMatch) {
     let year = brMatch[3];
     if (year.length === 2) year = '20' + year;
@@ -49,6 +49,8 @@ function parseAmount(rawAmount: any, decimalSeparator?: string): number {
 }
 
 export const StatementTemplateHelper = {
+  parseDate,
+  parseAmount,
   async getTemplate(supabase: any, userId: string, targetId: string, isCard: boolean, fileType: string): Promise<any | null> {
     if (!targetId) return null;
     let query = supabase

@@ -53,7 +53,7 @@ export async function handleProcessImport(req: any, res: any) {
       const txsToInsert = checkedTxs.map((t: any) => {
         const amount = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount).replace(',', '.'));
         const desc = (t.description || '').trim();
-        const date = t.date;
+        const date = StatementTemplateHelper.parseDate(t.date) || new Date().toISOString().split('T')[0];
         const fpData = `${date}|${amount.toFixed(2)}|${desc.toLowerCase()}|${imp.account_id || ''}`;
         const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
         return {

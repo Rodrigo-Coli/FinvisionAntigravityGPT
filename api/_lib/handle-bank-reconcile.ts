@@ -139,8 +139,10 @@ RETORNE APENAS JSON NO FORMATO:
         const categoryCache = new Map<string, string>();
         const entries = [];
         for (const t of transactions) {
-          if (!t.date || typeof t.amount !== 'number') continue;
-          const type = t.amount < 0 ? 'EXPENSE' : 'INCOME';
+          const parsedDate = StatementTemplateHelper.parseDate(t.date) || new Date().toISOString().split('T')[0];
+          const parsedAmount = StatementTemplateHelper.parseAmount(t.amount);
+          
+          const type = parsedAmount < 0 ? 'EXPENSE' : 'INCOME';
           const accKey = (t.account_name || 'Mobills').toUpperCase();
           let accId = accountCache.get(accKey);
           if (!accId) {
@@ -157,22 +159,31 @@ RETORNE APENAS JSON NO FORMATO:
             else { const { data: newCat } = await supabase.from('categories').insert({ user_id: imp.user_id, name: t.category_name || t.category || 'Outros', color: type === 'INCOME' ? '#22c55e' : '#ef4444', icon: 'Tag' }).select('id').single(); catId = newCat?.id; }
             if (catId) categoryCache.set(catKey, catId);
           }
-          entries.push({ user_id: imp.user_id, date: t.date, description: t.description.trim(), amount: Math.abs(t.amount), type, account_id: accId || imp.account_id, category: t.category_name || t.category || 'Outros', category_id: catId, is_paid: true, paid_at: t.date, metadata: { import_id: imp.id, source: 'mobills_direct_motor' } });
+          entries.push({ user_id: imp.user_id, date: parsedDate, description: t.description.trim(), amount: Math.abs(parsedAmount), type, account_id: accId || imp.account_id, category: t.category_name || t.category || 'Outros', category_id: catId, is_paid: true, paid_at: parsedDate, metadata: { import_id: imp.id, source: 'mobills_direct_motor' } });
         }
-        if (entries.length > 0) await supabase.from('transactions').insert(entries);
+        if (entries.length > 0) {
+          const { error: insErr } = await supabase.from('transactions').insert(entries);
+          if (insErr) {
+            console.error('[Bank Reconcile] Erro ao inserir transações mobills:', insErr);
+            throw new Error(`Erro ao salvar transações diretas no banco de dados: ${insErr.message}`);
+          }
+        }
       } else {
         // Verificar duplicidades no banco antes do upsert
         console.log('[Bank Reconcile] Executando verificação inteligente de duplicidades...');
         const checkedTxs = await StatementTemplateHelper.checkDuplicates(supabase, imp.user_id, transactions, false);
 
         const txsToInsert = checkedTxs.map((t: any) => {
-          const fingerprint = crypto.createHash('sha256').update(`${t.date}|${Number(t.amount).toFixed(2)}|${t.description.toLowerCase()}|${imp.account_id || ''}`).digest('hex');
+          const parsedDate = StatementTemplateHelper.parseDate(t.date) || new Date().toISOString().split('T')[0];
+          const parsedAmount = StatementTemplateHelper.parseAmount(t.amount);
+          const fingerprint = crypto.createHash('sha256').update(`${parsedDate}|${Number(parsedAmount).toFixed(2)}|${t.description.toLowerCase()}|${imp.account_id || ''}`).digest('hex');
+          
           return {
             user_id: imp.user_id,
             import_id: imp.id,
-            date: t.date,
+            date: parsedDate,
             description: t.description.trim(),
-            amount: t.amount,
+            amount: parsedAmount,
             account_id: imp.account_id,
             account_name: account_name || 'Importado',
             source_document_id: imp.document_id,
@@ -183,7 +194,12 @@ RETORNE APENAS JSON NO FORMATO:
             metadata: { category_suggested: t.category }
           };
         });
-        await supabase.from('imported_transactions').upsert(txsToInsert, { onConflict: 'user_id,fingerprint' });
+        
+        const { error: upsertErr } = await supabase.from('imported_transactions').upsert(txsToInsert, { onConflict: 'user_id,fingerprint' });
+        if (upsertErr) {
+          console.error('[Bank Reconcile] Erro no upsert das transações importadas:', upsertErr);
+          throw new Error(`Erro ao salvar transações pendentes no banco de dados: ${upsertErr.message}`);
+        }
       }
     }
 
