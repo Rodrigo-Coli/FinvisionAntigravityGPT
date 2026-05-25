@@ -42,6 +42,10 @@ export async function handleNotifyBillsDue(req: any, res: any) {
   }
 
   try {
+    const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = tomorrow.toISOString().split('T')[0];
@@ -56,26 +60,46 @@ export async function handleNotifyBillsDue(req: any, res: any) {
       .in('type', ['EXPENSE', 'BILL_PAYMENT', 'expense', 'bill_payment'])
       .eq('is_paid', false)
       .in('user_id', userIds)
-      .gte('date', todayStr)
-      .lte('date', tomorrowStr);
+      .gte('date', sevenDaysAgoStr)
+      .lte('date', tomorrowStr)
+      .order('date', { ascending: true });
     
     for (const u of filteredUsers) {
       const bills = expenses?.filter(e => e.user_id === u.user_id) || [];
       if (bills.length === 0) continue;
       
-      let msg = `*FinVision Pro* 🔔\nVocê tem *${bills.length}* contas vencendo hoje ou amanhã:\n\n`;
+      let msg = `*FinVision Pro* 🔔\nVocê tem *${bills.length}* contas pendentes:\n\n`;
       bills.forEach((b: any) => {
         const dateFmt = b.date ? b.date.split('-').reverse().join('/') : 'Sem data';
+        
+        let statusLabel = '';
+        if (b.date === yesterdayStr) {
+          statusLabel = '⚠️ Ontem (Vencido)';
+        } else if (b.date === todayStr) {
+          statusLabel = '🔴 Hoje';
+        } else if (b.date === tomorrowStr) {
+          statusLabel = '🟡 Amanhã';
+        } else if (b.date < todayStr) {
+          statusLabel = '🚨 Vencida';
+        } else {
+          statusLabel = `📅 Venc: ${dateFmt}`;
+        }
+        
         const rawAcc = b.accounts;
         const accName = Array.isArray(rawAcc) ? rawAcc[0]?.institution : rawAcc?.institution;
-        const accountLabel = accName ? ` (${accName})` : '';
-        msg += `• *${b.description}* - R$ ${Number(b.amount).toFixed(2)} [Venc: ${dateFmt}]${accountLabel}\n`;
+        const accountLabel = accName ? ` (Conta: *${accName}*)` : '';
+        
+        msg += `• *${b.description}*\n  └─ Valor: *R$ ${Number(b.amount).toFixed(2)}*\n  └─ Status: *${statusLabel}*${accountLabel}\n\n`;
       });
-      msg += `\nOrganize suas finanças com tranquilidade! 🚀`;
+      msg += `Organize suas finanças com tranquilidade! 🚀`;
 
       if (u.whatsapp_enabled && u.whatsapp_number) await sendWhatsApp(u.whatsapp_number, msg);
       if (u.push_enabled && u.push_subscription) {
-        try { await webpush.sendNotification(u.push_subscription, JSON.stringify({ title: 'FinVision', body: msg })); } catch {}
+        try { 
+          await webpush.sendNotification(u.push_subscription, JSON.stringify({ title: 'FinVision Pro 🔔', body: `Você tem ${bills.length} contas pendentes.` })); 
+        } catch (pushErr: any) {
+          console.error(`[WebPush Error] Falha ao enviar para o usuário ${u.user_id}:`, pushErr.message || pushErr);
+        }
       }
     }
     return res.status(200).json({ success: true });

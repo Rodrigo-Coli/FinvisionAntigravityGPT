@@ -17,24 +17,139 @@ async function sendWhatsApp(number: string, text: string) {
     }).catch(err => console.error('Evolution API Error:', err));
   }
 }
+function extractMessageContent(msg: any): { text: string; media: any; mediaType: 'image' | 'audio' | 'document' | null; mimeType: string | null } {
+  const content = msg?.message;
+  if (!content) return { text: '', media: null, mediaType: null, mimeType: null };
+
+  // Recursive search for specific media keys
+  function findKeyRecursively(obj: any, keyName: string): any {
+    if (!obj || typeof obj !== 'object') return null;
+    if (obj[keyName]) return obj[keyName];
+    for (const key of Object.keys(obj)) {
+      const res = findKeyRecursively(obj[key], keyName);
+      if (res) return res;
+    }
+    return null;
+  }
+
+  const imageMessage = findKeyRecursively(content, 'imageMessage');
+  const audioMessage = findKeyRecursively(content, 'audioMessage');
+  const documentMessage = findKeyRecursively(content, 'documentMessage');
+
+  let text = '';
+  if (content.conversation) {
+    text = content.conversation;
+  } else if (content.extendedTextMessage?.text) {
+    text = content.extendedTextMessage.text;
+  } else if (imageMessage?.caption) {
+    text = imageMessage.caption;
+  } else if (documentMessage?.caption) {
+    text = documentMessage.caption;
+  }
+
+  if (imageMessage) {
+    return { text, media: imageMessage, mediaType: 'image', mimeType: imageMessage.mimetype };
+  }
+  if (audioMessage) {
+    return { text, media: audioMessage, mediaType: 'audio', mimeType: audioMessage.mimetype };
+  }
+  if (documentMessage) {
+    return { text, media: documentMessage, mediaType: 'document', mimeType: documentMessage.mimetype };
+  }
+
+  // Fallback for wrapped messages (e.g. ephemeralMessage, viewOnceMessage, etc.) that might contain text/media
+  let innerText = '';
+  if (content.ephemeralMessage?.message) {
+    const inner = extractMessageContent({ message: content.ephemeralMessage.message });
+    if (inner.media) return inner;
+    innerText = inner.text;
+  } else if (content.viewOnceMessage?.message) {
+    const inner = extractMessageContent({ message: content.viewOnceMessage.message });
+    if (inner.media) return inner;
+    innerText = inner.text;
+  } else if (content.viewOnceMessageV2?.message) {
+    const inner = extractMessageContent({ message: content.viewOnceMessageV2.message });
+    if (inner.media) return inner;
+    innerText = inner.text;
+  } else if (content.documentWithCaptionMessage?.message) {
+    const inner = extractMessageContent({ message: content.documentWithCaptionMessage.message });
+    if (inner.media) return inner;
+    innerText = inner.text;
+  }
+
+  return { text: text || innerText, media: null, mediaType: null, mimeType: null };
+}
+
 async function downloadEvolutionMedia(message: any): Promise<{ base64: string; mimeType: string } | null> {
   if (!process.env.EVOLUTION_API_URL || !process.env.EVOLUTION_API_KEY || !process.env.EVOLUTION_INSTANCE) {
     return null;
   }
 
-  const mimeType = message.message?.imageMessage?.mimetype 
-    || message.message?.audioMessage?.mimetype 
-    || message.message?.documentMessage?.mimetype 
-    || 'application/octet-stream';
+  const extracted = extractMessageContent(message);
+  const mimeType = extracted.mimeType || 'application/octet-stream';
+  const mediaObj = extracted.media;
 
   const cleanBaseUrl = process.env.EVOLUTION_API_URL.endsWith('/') 
     ? process.env.EVOLUTION_API_URL.slice(0, -1) 
     : process.env.EVOLUTION_API_URL;
 
-  // 1. Tentar primeiro o endpoint padrao /message/downloadMedia
+  // 1. Se houver uma URL direta pública de S3/Local (que não seja do whatsapp.net)
+  if (mediaObj?.url && mediaObj.url.startsWith('http') && !mediaObj.url.includes('whatsapp.net')) {
+    console.log('[downloadEvolutionMedia] Encontrada URL direta pública:', mediaObj.url);
+    try {
+      const res = await fetch(mediaObj.url);
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        return { base64, mimeType };
+      }
+    } catch (err) {
+      console.error('[downloadEvolutionMedia] Erro ao baixar da URL direta pública:', err);
+    }
+  }
+
+  // 2. Tentar endpoint /message/downloadMedia com FORMATO A (Root level key/message)
   const downloadUrl = `${cleanBaseUrl}/message/downloadMedia/${process.env.EVOLUTION_INSTANCE}`;
-  console.log('[downloadEvolutionMedia] Tentando endpoint /message/downloadMedia...');
-  
+  console.log('[downloadEvolutionMedia] Tentando /message/downloadMedia com Formato A...');
+  try {
+    const res = await fetch(downloadUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': process.env.EVOLUTION_API_KEY as string
+      },
+      body: JSON.stringify({
+        key: message.key,
+        message: message.message
+      })
+    });
+    
+    if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      let base64 = '';
+      if (contentType.includes('application/json')) {
+        const json = await res.json();
+        base64 = json.base64 || json.data || '';
+      } else {
+        const buffer = await res.arrayBuffer();
+        base64 = Buffer.from(buffer).toString('base64');
+      }
+      if (base64) {
+        if (base64.includes(';base64,')) {
+          base64 = base64.split(';base64,')[1];
+        }
+        return { base64, mimeType };
+      }
+    } else {
+      const errText = await res.text().catch(() => '');
+      console.warn(`[downloadEvolutionMedia] Formato A retornou status ${res.status}: ${errText}`);
+    }
+  } catch (err) {
+    console.error('[downloadEvolutionMedia] Erro no /message/downloadMedia Formato A:', err);
+  }
+
+  // 3. Tentar endpoint /message/downloadMedia com FORMATO B (Nested message object)
+  console.log('[downloadEvolutionMedia] Tentando /message/downloadMedia com Formato B...');
   try {
     const res = await fetch(downloadUrl, {
       method: 'POST',
@@ -68,16 +183,15 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
       }
     } else {
       const errText = await res.text().catch(() => '');
-      console.warn(`[downloadEvolutionMedia] Endpoint /message/downloadMedia retornou status ${res.status}: ${errText}`);
+      console.warn(`[downloadEvolutionMedia] Formato B retornou status ${res.status}: ${errText}`);
     }
   } catch (err) {
-    console.error('[downloadEvolutionMedia] Erro no endpoint /message/downloadMedia:', err);
+    console.error('[downloadEvolutionMedia] Erro no /message/downloadMedia Formato B:', err);
   }
 
-  // 2. Fallback para /s3/getMedia
+  // 4. Tentar endpoint /s3/getMedia
   const getMediaUrl = `${cleanBaseUrl}/s3/getMedia/${process.env.EVOLUTION_INSTANCE}`;
   console.log('[downloadEvolutionMedia] Tentando fallback para /s3/getMedia...');
-  
   try {
     const res = await fetch(getMediaUrl, {
       method: 'POST',
@@ -114,6 +228,21 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
     }
   } catch (err) {
     console.error('[downloadEvolutionMedia] Erro no fallback /s3/getMedia:', err);
+  }
+
+  // 5. Último recurso: tentar baixar a URL diretamente mesmo se contiver whatsapp.net
+  if (mediaObj?.url && mediaObj.url.startsWith('http')) {
+    console.log('[downloadEvolutionMedia] Tentando baixar URL direta como último recurso...');
+    try {
+      const res = await fetch(mediaObj.url);
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        return { base64, mimeType };
+      }
+    } catch (err) {
+      console.error('[downloadEvolutionMedia] Erro no último recurso de download:', err);
+    }
   }
 
   return null;
@@ -448,13 +577,14 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
     let history = session?.messages || [];
 
-    // Detecção de tipos de mídia
-    const isImage = !!message.message?.imageMessage;
-    const isPDF = !!message.message?.documentMessage && String(message.message.documentMessage.mimetype).includes('pdf');
-    const isAudio = !!message.message?.audioMessage;
+    // Detecção de tipos de mídia robusta e unwrap de mensagens WhatsApp
+    const extracted = extractMessageContent(message);
+    const isImage = extracted.mediaType === 'image' || (extracted.mediaType === 'document' && String(extracted.mimeType).startsWith('image/'));
+    const isPDF = extracted.mediaType === 'document' && String(extracted.mimeType).includes('pdf');
+    const isAudio = extracted.mediaType === 'audio';
 
-    // Processamento especial de mensagens de voz (Áudio)
-    let text = (message.message?.conversation || message.message?.extendedTextMessage?.text || '').trim();
+    // Processamento especial de mensagens de voz (Áudio) ou texto
+    let text = (extracted.text || '').trim();
 
     if (isAudio) {
       await sendWhatsApp(phone, `🤖 *Ouvindo sua mensagem de voz...*`);
@@ -668,12 +798,13 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       }
       `;
 
+      const cleanMimeType = media.mimeType.split(';')[0].trim();
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: [{
           parts: [
             { text: ocrPrompt },
-            { inlineData: { data: media.base64, mimeType: media.mimeType } }
+            { inlineData: { data: media.base64, mimeType: cleanMimeType } }
           ]
         }],
         config: {
