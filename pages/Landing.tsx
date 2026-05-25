@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase/client';
 import { 
@@ -124,11 +124,11 @@ export default function Landing() {
             </div>
             
             <h1 className="text-xl sm:text-3xl md:text-5xl lg:text-7xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white/90 to-slate-500 mb-8 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-1000 leading-[1.05]">
-              O primeiro Private Banker <br className="hidden md:block" /> que cabe no seu bolso.
+              Recupere o controle absoluto <br className="hidden md:block" /> da sua liberdade financeira.
             </h1>
             
             <p className="text-sm sm:text-base md:text-xl text-slate-400 font-medium mb-14 max-w-2xl mx-auto leading-relaxed animate-in fade-in slide-in-from-bottom-10 duration-1000 delay-150">
-              Esqueça o trabalho braçal de planilhas. <span className="text-white italic">Orquestre sua riqueza</span>. O FinVision importa, cataloga e diagnostica seu patrimônio automaticamente com extrema precisão utilizando IA.
+              O primeiro Private Banker autônomo que cabe no seu bolso. Esqueça a digitação manual de gastos e planilhas confusas. O FinVision Pro consolida contas, investimentos, cartões e patrimônio imobiliário de forma impenetrável via IA.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-6 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-300">
@@ -248,7 +248,7 @@ export default function Landing() {
                       <Brain size={28} />
                     </div>
                     <h3 className="text-3xl font-black tracking-tight mb-4">FinVision Advisor</h3>
-                    <p className="text-slate-400 text-lg max-w-md leading-relaxed">Analisa seus ativos (Casas, Carros, Investimentos), compara com as suas Dívidas (Passivos) e gera um dossiê escrito em Markdown diagnosticando exatamente se a sua Riqueza está subindo ou derretendo.</p>
+                    <p className="text-slate-400 text-lg max-w-md leading-relaxed">Seu conselheiro patrimonial inteligente. Ele analisa seus ativos (Investimentos, Casas, Carros), cruza com suas dívidas e emite relatórios analíticos profundos em Markdown diagnosticando exatamente se a sua Riqueza está blindada ou derretendo frente à inflação.</p>
                   </div>
                   
                   {/* Mockup Fictício do Relatório */}
@@ -284,17 +284,17 @@ export default function Landing() {
                 </div>
               </div>
 
-              {/* BENTO ITEM 3: Escâner de Cupom (Span 1) */}
+              {/* BENTO ITEM 3: WhatsApp AI (Span 1) */}
               <div className="bg-brand-900 border border-white/10 rounded-[40px] p-8 relative overflow-hidden group">
-                <div className="absolute top-10 right-10 opacity-30 group-hover:opacity-100 transition-opacity duration-500 delay-100">
-                   <div className="w-16 h-16 border-2 border-dashed border-brand-500 rounded-xl animate-spin-slow"></div>
+                <div className="absolute top-10 right-10 opacity-30 group-hover:opacity-100 transition-opacity duration-500 delay-100 text-brand-400">
+                   <MessageCircle size={64} className="animate-pulse" />
                 </div>
                 <div className="relative z-10">
                   <div className="w-12 h-12 bg-white/5 border border-white/10 text-white rounded-xl flex items-center justify-center mb-6">
-                    <Receipt size={24} />
+                    <MessageCircle size={24} />
                   </div>
-                  <h3 className="text-2xl font-black tracking-tight mb-2">Escâner Extração</h3>
-                  <p className="text-slate-400 text-sm">Tire uma foto amorfa de um cupom amassado do mercado. O Laboratório processa os itens por nome, preço e imposto 1 a 1 em segundos.</p>
+                  <h3 className="text-2xl font-black tracking-tight mb-2">WhatsApp AI</h3>
+                  <p className="text-slate-400 text-sm">Sua central de inteligência no WhatsApp. Mande uma foto de um cupom amassado ou um áudio rápido no caminho do carro. A IA processa, categoriza e lança tudo em 3 segundos.</p>
                 </div>
               </div>
 
