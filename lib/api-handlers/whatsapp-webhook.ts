@@ -44,6 +44,7 @@ export default async function handler(req: any, res: any) {
       .select('*')
       .eq('user_id', userId)
       .eq('status', 'pending')
+      .neq('data->>type', 'lock')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
