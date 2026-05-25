@@ -111,9 +111,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         (c: any) => !c.type || c.type === form.type
     );
 
-    const query = form.description.toLowerCase().trim();
+    const query = (form.description || '').toLowerCase().trim();
     const suggestions = query.length >= 2
-        ? recentTxs.filter(tx => tx.description.toLowerCase().includes(query)).slice(0, 5)
+        ? recentTxs.filter(tx => (tx.description || '').toLowerCase().includes(query)).slice(0, 5)
         : [];
 
     const handleCreateCategorySubmit = async () => {
