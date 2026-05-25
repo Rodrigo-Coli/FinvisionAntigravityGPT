@@ -27,7 +27,7 @@ Vou te passar uma lista de "descrições cruas" (nomes que vêm no extrato do ba
 E também a lista das "categorias disponíveis" que o usuário tem criadas no sistema.
 
 Sua missão é deduzir qual é a melhor Categoria e Subcategoria para cada transação e retornar EXATAMENTE um JSON.
-Se você não souber, retorne valores vazios ou faça o seu melhor chute.
+Se você não reconhecer o nome do estabelecimento na descrição crua, utilize a sua ferramenta de busca (Google Search) na internet para descobrir qual é a empresa ou tipo de negócio associado àquele nome e, em seguida, encaixe na melhor categoria do usuário.
 
 CATEGORIAS DISPONÍVEIS:
 ${JSON.stringify(categories.map((c: any) => c.category_name + " > " + c.name), null, 2)}
@@ -60,7 +60,8 @@ Importante:
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
-        temperature: 0.2
+        temperature: 0.2,
+        tools: [{ googleSearch: {} }]
       }
     });
 
