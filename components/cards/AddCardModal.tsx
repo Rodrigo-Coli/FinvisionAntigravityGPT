@@ -214,7 +214,7 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
                             </p>
 
                             <div className="pt-2 border-t border-brand-100/50">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Entidade Responsável (Proprietário)</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Perfil Responsável (Proprietário)</label>
                                 <input
                                     list="card-entities-list"
                                     value={defaultOwner}

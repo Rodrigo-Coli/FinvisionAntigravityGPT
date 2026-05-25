@@ -588,19 +588,28 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
     const userId = userSet.user_id;
 
-    // Prevenção contra loops de retransmissão de webhook do Vercel
+    // Prevenção contra loops de retransmissão de webhook do Vercel (Early Lock)
     const { data: existingDraft } = await supabase
       .from('whatsapp_drafts')
-      .select('id')
+      .select('id, status, data')
       .eq('user_id', userId)
-      .eq('status', 'pending')
       .eq('data->>messageId', message.key.id)
       .maybeSingle();
 
     if (existingDraft) {
-      console.log('[WhatsApp Webhook] Mensagem já está sendo processada ou rascunho pendente criado:', message.key.id);
+      console.log('[WhatsApp Webhook] Mensagem já está sendo processada ou rascunho criado:', message.key.id);
       return res.status(200).json({ status: 'already_processed', messageId: message.key.id });
     }
+
+    // Criar lock row imediatamente
+    await supabase
+      .from('whatsapp_drafts')
+      .insert({
+        user_id: userId,
+        phone: phone,
+        data: { messageId: message.key.id, type: 'lock' },
+        status: 'pending'
+      });
 
     // 1. Carregar histórico de mensagens das últimas 24 horas para este número
     const oneDayAgo = new Date();
@@ -628,6 +637,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       const media = await downloadEvolutionMedia(message);
       if (!media) {
         await sendWhatsApp(phone, `❌ *Não consegui processar seu áudio.*`);
+        await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
         return res.status(200).json({ status: 'audio_error' });
       }
 
@@ -660,11 +670,32 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       
       if (!transcribedText) {
         await sendWhatsApp(phone, `❌ *Não consegui compreender o áudio. Pode tentar falar novamente ou enviar por texto?*`);
+        await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
         return res.status(200).json({ status: 'audio_unclear' });
       }
 
       await sendWhatsApp(phone, `🎙️ *Transcrição:* "${transcribedText}"`);
       text = transcribedText;
+    }
+
+    // Interceptação de comandos de cancelamento/parada de forma prioritária
+    const cancelWords = ['parar', 'pode parar', 'cancela', 'cancelar', 'esquece', 'sair', 'para'];
+    if (text && cancelWords.includes(text.toLowerCase().trim())) {
+      await supabase
+        .from('whatsapp_drafts')
+        .update({ status: 'canceled' })
+        .eq('user_id', userId)
+        .eq('status', 'pending');
+
+      await sendWhatsApp(phone, `🚫 *Entendido! Cancelei qualquer rascunho pendente.*`);
+      
+      await supabase
+        .from('whatsapp_drafts')
+        .delete()
+        .eq('user_id', userId)
+        .eq('data->>messageId', message.key.id);
+
+      return res.status(200).json({ status: 'canceled_by_user' });
     }
 
     // Number Selection / Disambiguation logic
@@ -691,16 +722,20 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               transactionId: selectedTx.id,
               description: selectedTx.description,
               amount: selectedTx.amount,
-              date: selectedTx.date
+              date: selectedTx.date,
+              messageId: message.key.id
             }
           }).eq('id', draft.id);
 
           const dateFmt = selectedTx.date ? selectedTx.date.split('T')[0].split('-').reverse().join('/') : '';
           const actionLabel = actionType === 'delete' ? 'exclusão' : 'pagamento';
           await sendWhatsApp(phone, `📝 *Confirmação de Ação!* 🤖\n\nVocê selecionou: *${selectedTx.description}* - R$ ${Number(selectedTx.amount).toFixed(2)} (${dateFmt}).\n\nConfirma a ${actionLabel}? Digite *SIM* ou *NÃO*.`);
+          
+          await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
           return res.status(200).json({ status: 'disambiguation_resolved' });
         } else {
           await sendWhatsApp(phone, `❌ *Opção inválida.* Por favor, escolha um número entre 1 e ${candidates.length}, ou digite CANCELAR.`);
+          await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
           return res.status(200).json({ status: 'disambiguation_invalid_option' });
         }
       }
@@ -724,11 +759,13 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           await supabase.from('transactions').update({ is_deleted: true }).eq('id', tx.transactionId);
           await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
           await sendWhatsApp(phone, `✅ *Lançamento Excluído com Sucesso!*\n\n"${tx.description}" de R$ ${Number(tx.amount).toFixed(2)} foi removido.`);
+          await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
           return res.status(200).json({ status: 'confirmed_delete' });
         } else if (tx.type === 'pay') {
           await supabase.from('transactions').update({ is_paid: true, paid_at: new Date().toISOString() }).eq('id', tx.transactionId);
           await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
           await sendWhatsApp(phone, `✅ *Conta Marcada como Paga!*\n\n"${tx.description}" de R$ ${Number(tx.amount).toFixed(2)} foi quitada.`);
+          await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
           return res.status(200).json({ status: 'confirmed_pay' });
         } else if (tx.type === 'multi') {
           const { data: defaultAcc } = await supabase
@@ -741,16 +778,54 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
           for (const op of tx.operations) {
             if (op.intent === 'TRANSACTION') {
-              await supabase.from('transactions').insert({
-                user_id: userId,
-                account_id: defaultAcc?.id || null,
-                description: op.transaction.description,
-                amount: op.transaction.amount,
-                date: op.transaction.date || new Date().toISOString().split('T')[0],
-                type: op.transaction.type || 'EXPENSE',
-                category: op.transaction.category || 'Outros',
-                is_paid: true
-              });
+              if (op.transaction.is_card || op.transaction.card_id) {
+                // Multi card insertion
+                const { data: cards } = await supabase.from('cards').select('*').eq('user_id', userId).eq('is_archived', false);
+                let selectedCard = cards?.find(c => c.id === op.transaction.card_id) || cards?.find(c => op.transaction.card_name && c.name.toLowerCase().includes(op.transaction.card_name.toLowerCase())) || cards?.[0];
+                if (selectedCard) {
+                  const targetStmtId = await getOrCreateStatementHelper(userId, selectedCard.id, op.transaction.date || new Date().toISOString().split('T')[0]);
+                  let categoryId = null;
+                  if (op.transaction.category) {
+                    const { data: catData } = await supabase.from('categories').select('id').eq('user_id', userId).ilike('name', op.transaction.category).maybeSingle();
+                    if (catData) categoryId = catData.id;
+                  }
+                  await supabase.from('card_transactions').insert({
+                    user_id: userId,
+                    card_id: selectedCard.id,
+                    statement_id: targetStmtId || null,
+                    date: op.transaction.date || new Date().toISOString().split('T')[0],
+                    description: op.transaction.description,
+                    amount: Math.abs(op.transaction.amount || 0),
+                    status: 'POSTED',
+                    source: 'MANUAL',
+                    is_manual: true,
+                    category_id: categoryId,
+                    owner_name: op.transaction.owner_name || 'Pessoal',
+                    is_recurring: op.transaction.is_recurring || false,
+                    recurrence_period: op.transaction.recurrence_period || null,
+                    is_installment: op.transaction.is_installment || false,
+                    installment_number: op.transaction.installment_number || null,
+                    installment_total: op.transaction.installment_total || null
+                  });
+                }
+              } else {
+                await supabase.from('transactions').insert({
+                  user_id: userId,
+                  account_id: defaultAcc?.id || null,
+                  description: op.transaction.description,
+                  amount: op.transaction.amount,
+                  date: op.transaction.date || new Date().toISOString().split('T')[0],
+                  type: op.transaction.type || 'EXPENSE',
+                  category: op.transaction.category || 'Outros',
+                  is_paid: true,
+                  owner_name: op.transaction.owner_name || 'Pessoal',
+                  is_recurring: op.transaction.is_recurring || false,
+                  recurrence_period: op.transaction.recurrence_period || null,
+                  is_installment: op.transaction.is_installment || false,
+                  installment_number: op.transaction.installment_number || null,
+                  installment_total: op.transaction.installment_total || null
+                });
+              }
             } else if (op.intent === 'DELETE') {
               await supabase.from('transactions').update({ is_deleted: true }).eq('id', op.transactionId);
             } else if (op.intent === 'PAY') {
@@ -759,9 +834,68 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           }
           await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
           await sendWhatsApp(phone, `✅ *Múltiplas operações confirmadas e executadas com sucesso!*`);
+          await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
           return res.status(200).json({ status: 'confirmed_multi' });
         } else {
-          // Find checking account for transaction binding, fallback if none
+          // If credit card transaction
+          if (tx.is_card || tx.card_id) {
+            const { data: cards } = await supabase
+              .from('cards')
+              .select('*')
+              .eq('user_id', userId)
+              .eq('is_archived', false);
+
+            let selectedCard = null;
+            if (tx.card_id) {
+              selectedCard = cards?.find(c => c.id === tx.card_id);
+            } else if (tx.card_name) {
+              selectedCard = cards?.find(c => c.name.toLowerCase().includes(tx.card_name.toLowerCase()) || tx.card_name.toLowerCase().includes(c.name.toLowerCase()));
+            }
+
+            if (!selectedCard && cards && cards.length > 0) {
+              selectedCard = cards[0];
+            }
+
+            if (selectedCard) {
+              const targetStmtId = await getOrCreateStatementHelper(userId, selectedCard.id, tx.date || new Date().toISOString().split('T')[0]);
+              let categoryId = null;
+              if (tx.category) {
+                const { data: catData } = await supabase
+                  .from('categories')
+                  .select('id')
+                  .eq('user_id', userId)
+                  .ilike('name', tx.category)
+                  .maybeSingle();
+                if (catData) categoryId = catData.id;
+              }
+
+              await supabase.from('card_transactions').insert({
+                user_id: userId,
+                card_id: selectedCard.id,
+                statement_id: targetStmtId || null,
+                date: tx.date || new Date().toISOString().split('T')[0],
+                description: tx.description,
+                amount: Math.abs(tx.amount || 0),
+                status: 'POSTED',
+                source: 'MANUAL',
+                is_manual: true,
+                category_id: categoryId,
+                owner_name: tx.owner_name || 'Pessoal',
+                is_recurring: tx.is_recurring || false,
+                recurrence_period: tx.recurrence_period || null,
+                is_installment: tx.is_installment || false,
+                installment_number: tx.installment_number || null,
+                installment_total: tx.installment_total || null
+              });
+
+              await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
+              await sendWhatsApp(phone, `✅ *Lançamento Confirmado no Cartão ${selectedCard.name}!*\n\n"${tx.description}" de R$ ${Number(tx.amount).toFixed(2)} foi lançado.`);
+              await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
+              return res.status(200).json({ status: 'confirmed_card' });
+            }
+          }
+
+          // Fallback to checking account regular transaction
           const { data: defaultAcc } = await supabase
             .from('accounts')
             .select('id')
@@ -778,11 +912,18 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             date: tx.date || new Date().toISOString().split('T')[0],
             type: tx.type || 'EXPENSE',
             category: tx.category || 'Outros',
-            is_paid: true
+            is_paid: tx.is_paid !== undefined ? tx.is_paid : true,
+            owner_name: tx.owner_name || 'Pessoal',
+            is_recurring: tx.is_recurring || false,
+            recurrence_period: tx.recurrence_period || null,
+            is_installment: tx.is_installment || false,
+            installment_number: tx.installment_number || null,
+            installment_total: tx.installment_total || null
           });
 
           await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
           await sendWhatsApp(phone, `✅ *Lançamento Confirmado!*\n\n"${tx.description}" de R$ ${Number(tx.amount).toFixed(2)} foi inserido com sucesso!`);
+          await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
           return res.status(200).json({ status: 'confirmed' });
         }
       }
@@ -792,6 +933,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
     if (text.toLowerCase() === 'não' || text.toLowerCase() === 'cancelar') {
       await supabase.from('whatsapp_drafts').update({ status: 'canceled' }).eq('user_id', userId).eq('status', 'pending');
       await sendWhatsApp(phone, `🚫 *Ação Cancelada.*`);
+      await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
       return res.status(200).json({ status: 'canceled' });
     }
 
@@ -802,6 +944,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       const media = await downloadEvolutionMedia(message);
       if (!media) {
         await sendWhatsApp(phone, `❌ *Não consegui carregar o arquivo.*`);
+        await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
         return res.status(200).json({ status: 'media_error' });
       }
 
@@ -809,9 +952,18 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
       const ai = new GoogleGenAI({ apiKey: geminiKey });
 
+      let userCaptionContext = "";
+      if (text) {
+        userCaptionContext = `
+        IMPORTANTE: O usuário enviou este comentário/texto junto com o arquivo: "${text}".
+        Use esta informação como contexto prioritário para definir a descrição, estabelecimento, categoria, proprietário (owner_name/perfil) ou qualquer detalhe relevante da transação, especialmente se a imagem não estiver totalmente legível ou se o usuário estiver especificando do que se trata o gasto!
+        `;
+      }
+
       const ocrPrompt = isPDF ? `
       Você é um especialista em análise de comprovantes, faturas e extratos bancários em formato PDF.
       Analise o conteúdo deste documento e extraia as informações financeiras relevantes.
+      ${userCaptionContext}
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
@@ -819,11 +971,15 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         "amount": 0.00,
         "date": "YYYY-MM-DD",
         "category": "Alimentação | Transporte | Lazer | Lojas | Saúde | Outros",
-        "type": "EXPENSE"
+        "type": "EXPENSE",
+        "is_card": boolean,
+        "card_name": string (ou null),
+        "owner_name": string (ou null)
       }
       ` : `
       Você é um especialista em análise de comprovantes e notas fiscais de compras em imagem.
       Extraia as informações cruciais desta imagem.
+      ${userCaptionContext}
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
@@ -831,7 +987,10 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         "amount": 0.00,
         "date": "YYYY-MM-DD",
         "category": "Alimentação | Transporte | Lazer | Lojas | Saúde | Outros",
-        "type": "EXPENSE"
+        "type": "EXPENSE",
+        "is_card": boolean,
+        "card_name": string (ou null),
+        "owner_name": string (ou null)
       }
       `;
 
@@ -855,20 +1014,139 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       const cleanJson = rawText.replace(/```json|```/g, "").trim();
       const ocrData = JSON.parse(cleanJson);
 
-      await supabase.from('whatsapp_drafts').insert({
-        user_id: userId,
-        phone: phone,
-        data: { ...ocrData, messageId: message.key.id },
-        status: 'pending'
-      });
+      await supabase
+        .from('whatsapp_drafts')
+        .update({
+          data: { ...ocrData, messageId: message.key.id },
+          status: 'pending'
+        })
+        .eq('user_id', userId)
+        .eq('data->>messageId', message.key.id);
 
       const dateFmt = ocrData.date ? ocrData.date.split('-').reverse().join('/') : '';
-      await sendWhatsApp(phone, `📝 *Rascunho Extraído via ${isPDF ? 'PDF' : 'IA'}!* 📸\n\n*Estabelecimento:* ${ocrData.description}\n*Valor:* R$ ${Number(ocrData.amount).toFixed(2)}\n*Categoria:* ${ocrData.category}\n*Data:* ${dateFmt}\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`);
+      let confirmText = `📝 *Rascunho Extraído via ${isPDF ? 'PDF' : 'IA'}!* 📸\n\n*Estabelecimento:* ${ocrData.description}\n*Valor:* R$ ${Number(ocrData.amount).toFixed(2)}\n*Categoria:* ${ocrData.category}\n*Data:* ${dateFmt}`;
+      if (ocrData.is_card) {
+        confirmText += `\n*Cartão:* ${ocrData.card_name || 'Sim'}`;
+      }
+      if (ocrData.owner_name) {
+        confirmText += `\n*Perfil:* ${ocrData.owner_name}`;
+      }
+      confirmText += `\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`;
+
+      await sendWhatsApp(phone, confirmText);
       return res.status(200).json({ status: 'file_processed' });
     }
 
     // Text parsing or query classification
     if (text) {
+      // Check if there is an active pending draft
+      const { data: activeDraft } = await supabase
+        .from('whatsapp_drafts')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      // DRAFT EDIT CHECK: Check if the user is editing the active draft
+      let draftToUpdate = null;
+      if (activeDraft && activeDraft.data && activeDraft.data.type !== 'delete_disambiguation' && activeDraft.data.type !== 'pay_disambiguation' && activeDraft.data.type !== 'multi' && activeDraft.data.type !== 'delete' && activeDraft.data.type !== 'pay') {
+        const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+        if (geminiKey) {
+          const ai = new GoogleGenAI({ apiKey: geminiKey });
+          const editPrompt = `
+          O usuário tem um rascunho de transação pendente atualmente:
+          ${JSON.stringify(activeDraft.data)}
+
+          O usuário acabou de enviar a seguinte mensagem:
+          "${text}"
+
+          Sua tarefa é analisar se o usuário está tentando editar, corrigir ou mudar algo no rascunho atual (como valor, descrição, data, categoria, conta, perfil, ou forma de pagamento) OU se ele está fazendo um pedido totalmente novo e sem relação com o rascunho anterior.
+
+          Caso o usuário esteja tentando EDITAR/CORRIGIR o rascunho atual:
+          - Retorne "isEdit": true
+          - Retorne o rascunho atualizado no campo "updatedDraft", aplicando as alterações solicitadas.
+          - Se o usuário mencionar uma data relativa (ex: "ontem", "anteontem", "mês passado") ou um dia específico, calcule com base na data de hoje: ${new Date().toISOString().split('T')[0]}.
+          - Se o usuário falar de cartão de crédito (ex: "lança no cartão", "foi no cartão Bradesco", "credit card"), adicione ou mude "is_card": true e defina "card_name" no JSON.
+          - Se o usuário citar um perfil/entidade/proprietário (ex: "perfil Pessoal", "no perfil da empresa", "perfil trabalho"), adicione ou mude "owner_name" no JSON.
+          - Se o usuário citar uma conta (ex: "na conta Itaú", "pagamento Bradesco"), adicione "account_name" no JSON.
+          - Se o usuário citar recorrência (ex: "mensal", "recorrente", "todo mês"), adicione "is_recurring": true e "recurrence_period": "monthly".
+
+          Caso o usuário NÃO esteja editando o rascunho (seja um novo gasto independente, consulta ou conversa casual):
+          - Retorne "isEdit": false
+
+          RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
+          {
+            "isEdit": boolean,
+            "updatedDraft": {
+              "description": string,
+              "amount": number,
+              "date": "YYYY-MM-DD",
+              "category": string,
+              "type": "EXPENSE" | "INCOME",
+              "is_card": boolean,
+              "card_name": string (ou null),
+              "owner_name": string (ou null),
+              "account_name": string (ou null),
+              "is_recurring": boolean (opcional),
+              "recurrence_period": string (opcional)
+            }
+          }
+          `;
+
+          try {
+            const editResponse = await ai.models.generateContent({
+              model: 'gemini-2.5-flash',
+              contents: [{ role: 'user', parts: [{ text: editPrompt }] }],
+              config: { responseMimeType: "application/json" }
+            });
+            const editRaw = (editResponse as any).text || (editResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const editClean = editRaw.replace(/```json|```/g, "").trim();
+            const editAnalysis = JSON.parse(editClean);
+            if (editAnalysis.isEdit && editAnalysis.updatedDraft) {
+              draftToUpdate = editAnalysis.updatedDraft;
+            }
+          } catch (e) {
+            console.error('Error analyzing draft edit:', e);
+          }
+        }
+      }
+
+      if (draftToUpdate) {
+        // Atualizar o rascunho ativo no banco
+        await supabase
+          .from('whatsapp_drafts')
+          .update({
+            data: { ...draftToUpdate, messageId: activeDraft.data.messageId }
+          })
+          .eq('id', activeDraft.id);
+
+        const dateFmt = draftToUpdate.date ? draftToUpdate.date.split('-').reverse().join('/') : '';
+        let confirmText = `📝 *Rascunho Atualizado!* 🤖\n\n*Descrição:* ${draftToUpdate.description}\n*Valor:* R$ ${Number(draftToUpdate.amount).toFixed(2)}\n*Categoria:* ${draftToUpdate.category}\n*Data:* ${dateFmt}`;
+        if (draftToUpdate.is_card) {
+          confirmText += `\n*Cartão:* ${draftToUpdate.card_name || 'Sim'}`;
+        }
+        if (draftToUpdate.owner_name) {
+          confirmText += `\n*Perfil:* ${draftToUpdate.owner_name}`;
+        }
+        if (draftToUpdate.is_recurring) {
+          confirmText += `\n*Recorrência:* ${draftToUpdate.recurrence_period || 'mensal'}`;
+        }
+        confirmText += `\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`;
+
+        await sendWhatsApp(phone, confirmText);
+
+        // Deletar o lock para a mensagem atual
+        await supabase
+          .from('whatsapp_drafts')
+          .delete()
+          .eq('user_id', userId)
+          .eq('data->>messageId', message.key.id);
+
+        return res.status(200).json({ status: 'draft_updated' });
+      }
+
       // Salvar a mensagem do usuário no histórico
       history.push({ role: 'user', content: text });
       await supabase.from('whatsapp_chat_sessions').upsert({
@@ -902,7 +1180,12 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               "amount": 0.00,
               "category": "Alimentação | Transporte | Moradia | Saúde | Lazer | Salário | Outros",
               "type": "EXPENSE" | "INCOME",
-              "date": "YYYY-MM-DD"
+              "date": "YYYY-MM-DD",
+              "is_card": boolean,
+              "card_name": string (ou null),
+              "owner_name": string (ou null),
+              "is_recurring": boolean,
+              "recurrence_period": "weekly" | "monthly" | "yearly" | "biweekly" (ou null)
             },
             "deleteFilters": {
               "description": "Ex: mercado (termo de busca ou null)",
@@ -923,8 +1206,11 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       - Divida a mensagem em uma ou mais operações caso o usuário peça mais de uma ação.
       - Para cada operação, defina a intenção ("TRANSACTION", "DELETE", "PAY", "QUERY" ou "CHAT") e preencha os campos relevantes.
       - Se a intenção for cadastrar um gasto ou ganho ("gastei X", "recebi Y"), use "TRANSACTION". Se não houver data explícita, use hoje: ${new Date().toISOString().split('T')[0]}.
-      - Se a intenção for excluir/apagar um lançamento ("exclui X", "deleta Y"), use "DELETE". Preencha "deleteFilters".
-      - Se a intenção for marcar uma conta/despesa como paga ("paguei X", "liquida Y"), use "PAY". Preencha "payFilters".
+      - Se o usuário falar de cartão de crédito (ex: "lança no cartão", "foi no cartão Bradesco", "credit card"), você deve definir "is_card": true e colocar o nome do cartão em "card_name".
+      - Se o usuário citar um perfil/entidade/proprietário (ex: "perfil Pessoal", "no perfil da empresa", "perfil trabalho"), coloque o nome do perfil correspondente em "owner_name".
+      - Se o usuário citar recorrência (ex: "mensal", "recorrente", "todo mês"), defina "is_recurring": true e o período correspondente em "recurrence_period".
+      - Se for excluir/apagar um lançamento ("exclui X", "deleta Y"), use "DELETE". Preencha "deleteFilters".
+      - Se for marcar uma conta/despesa como paga ("paguei X", "liquida Y"), use "PAY". Preencha "payFilters".
       - Se for consulta de dados ("saldo", "gastos do mês"), use "QUERY".
       - Se for conversa casual, use "CHAT".
       `;
@@ -943,6 +1229,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       const operations = analysis.operations || [];
 
       if (operations.length === 0) {
+        await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
         return res.status(200).json({ status: 'no_operations_detected' });
       }
 
@@ -989,8 +1276,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         }
       }
 
-      // If there are no write operations, we are done
+      // If there are no write operations, we are done (clean lock and exit)
       if (writeOps.length === 0) {
+        await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
         return res.status(200).json({ status: 'immediate_operations_processed' });
       }
 
@@ -1000,15 +1288,29 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
         if (op.intent === 'TRANSACTION') {
           const tx = op.transaction;
-          await supabase.from('whatsapp_drafts').insert({
-            user_id: userId,
-            phone: phone,
-            data: { ...tx, messageId: message.key.id },
-            status: 'pending'
-          });
+          await supabase
+            .from('whatsapp_drafts')
+            .update({
+              data: { ...tx, messageId: message.key.id },
+              status: 'pending'
+            })
+            .eq('user_id', userId)
+            .eq('data->>messageId', message.key.id);
 
           const dateFmt = tx.date ? tx.date.split('-').reverse().join('/') : '';
-          await sendWhatsApp(phone, `📝 *Rascunho Criado via IA!* 🤖\n\n*Descrição:* ${tx.description}\n*Valor:* R$ ${Number(tx.amount).toFixed(2)}\n*Categoria:* ${tx.category}\n*Data:* ${dateFmt}\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`);
+          let confirmText = `📝 *Rascunho Criado via IA!* 🤖\n\n*Descrição:* ${tx.description}\n*Valor:* R$ ${Number(tx.amount).toFixed(2)}\n*Categoria:* ${tx.category}\n*Data:* ${dateFmt}`;
+          if (tx.is_card) {
+            confirmText += `\n*Cartão:* ${tx.card_name || 'Sim'}`;
+          }
+          if (tx.owner_name) {
+            confirmText += `\n*Perfil:* ${tx.owner_name}`;
+          }
+          if (tx.is_recurring) {
+            confirmText += `\n*Recorrência:* ${tx.recurrence_period || 'mensal'}`;
+          }
+          confirmText += `\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`;
+
+          await sendWhatsApp(phone, confirmText);
           return res.status(200).json({ status: 'draft_created' });
         }
 
@@ -1018,23 +1320,27 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
           if (matches.length === 0) {
             await sendWhatsApp(phone, `❌ *Não encontrei nenhum lançamento recente correspondente* para exclusão.`);
+            await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
             return res.status(200).json({ status: 'delete_no_match' });
           }
 
           if (matches.length === 1) {
             const matchedTx = matches[0];
-            await supabase.from('whatsapp_drafts').insert({
-              user_id: userId,
-              phone: phone,
-              data: {
-                type: 'delete',
-                transactionId: matchedTx.id,
-                description: matchedTx.description,
-                amount: matchedTx.amount,
-                date: matchedTx.date
-              },
-              status: 'pending'
-            });
+            await supabase
+              .from('whatsapp_drafts')
+              .update({
+                data: {
+                  type: 'delete',
+                  transactionId: matchedTx.id,
+                  description: matchedTx.description,
+                  amount: matchedTx.amount,
+                  date: matchedTx.date,
+                  messageId: message.key.id
+                },
+                status: 'pending'
+              })
+              .eq('user_id', userId)
+              .eq('data->>messageId', message.key.id);
 
             const dateFmt = matchedTx.date ? matchedTx.date.split('T')[0].split('-').reverse().join('/') : '';
             await sendWhatsApp(phone, `📝 *Confirmação de Exclusão!* 🗑️\n\nEncontrei o lançamento:\n*Descrição:* ${matchedTx.description}\n*Valor:* R$ ${Number(matchedTx.amount).toFixed(2)}\n*Data:* ${dateFmt}\n\nConfirma a exclusão deste lançamento? Digite *SIM* ou *NÃO*.`);
@@ -1042,15 +1348,18 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           }
 
           // Multiple matches -> Disambiguation
-          await supabase.from('whatsapp_drafts').insert({
-            user_id: userId,
-            phone: phone,
-            data: {
-              type: 'delete_disambiguation',
-              candidates: matches.map(m => ({ id: m.id, description: m.description, amount: m.amount, date: m.date }))
-            },
-            status: 'pending'
-          });
+          await supabase
+            .from('whatsapp_drafts')
+            .update({
+              data: {
+                type: 'delete_disambiguation',
+                candidates: matches.map(m => ({ id: m.id, description: m.description, amount: m.amount, date: m.date })),
+                messageId: message.key.id
+              },
+              status: 'pending'
+            })
+            .eq('user_id', userId)
+            .eq('data->>messageId', message.key.id);
 
           let listMsg = `🔍 *Encontrei múltiplos lançamentos parecidos.* Qual deseja excluir? Digite o número:\n\n`;
           matches.forEach((m, idx) => {
@@ -1069,23 +1378,27 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
           if (matches.length === 0) {
             await sendWhatsApp(phone, `❌ *Não encontrei nenhuma conta pendente correspondente* para marcar como paga.`);
+            await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
             return res.status(200).json({ status: 'pay_no_match' });
           }
 
           if (matches.length === 1) {
             const matchedTx = matches[0];
-            await supabase.from('whatsapp_drafts').insert({
-              user_id: userId,
-              phone: phone,
-              data: {
-                type: 'pay',
-                transactionId: matchedTx.id,
-                description: matchedTx.description,
-                amount: matchedTx.amount,
-                date: matchedTx.date
-              },
-              status: 'pending'
-            });
+            await supabase
+              .from('whatsapp_drafts')
+              .update({
+                data: {
+                  type: 'pay',
+                  transactionId: matchedTx.id,
+                  description: matchedTx.description,
+                  amount: matchedTx.amount,
+                  date: matchedTx.date,
+                  messageId: message.key.id
+                },
+                status: 'pending'
+              })
+              .eq('user_id', userId)
+              .eq('data->>messageId', message.key.id);
 
             const dateFmt = matchedTx.date ? matchedTx.date.split('T')[0].split('-').reverse().join('/') : '';
             await sendWhatsApp(phone, `📝 *Confirmação de Pagamento!* 💵\n\nEncontrei a conta pendente:\n*Descrição:* ${matchedTx.description}\n*Valor:* R$ ${Number(matchedTx.amount).toFixed(2)}\n*Vencimento:* ${dateFmt}\n\nConfirma o pagamento desta conta? Digite *SIM* ou *NÃO*.`);
@@ -1093,15 +1406,18 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           }
 
           // Multiple matches -> Disambiguation
-          await supabase.from('whatsapp_drafts').insert({
-            user_id: userId,
-            phone: phone,
-            data: {
-              type: 'pay_disambiguation',
-              candidates: matches.map(m => ({ id: m.id, description: m.description, amount: m.amount, date: m.date }))
-            },
-            status: 'pending'
-          });
+          await supabase
+            .from('whatsapp_drafts')
+            .update({
+              data: {
+                type: 'pay_disambiguation',
+                candidates: matches.map(m => ({ id: m.id, description: m.description, amount: m.amount, date: m.date })),
+                messageId: message.key.id
+              },
+              status: 'pending'
+            })
+            .eq('user_id', userId)
+            .eq('data->>messageId', message.key.id);
 
           let listMsg = `🔍 *Encontrei múltiplas contas pendentes parecidas.* Qual deseja marcar como paga? Digite o número:\n\n`;
           matches.forEach((m, idx) => {
@@ -1167,15 +1483,18 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           const matches = firstDisambig.matches;
           const isPay = firstDisambig.op.intent === 'PAY';
 
-          await supabase.from('whatsapp_drafts').insert({
-            user_id: userId,
-            phone: phone,
-            data: {
-              type: isPay ? 'pay_disambiguation' : 'delete_disambiguation',
-              candidates: matches.map(m => ({ id: m.id, description: m.description, amount: m.amount, date: m.date }))
-            },
-            status: 'pending'
-          });
+          await supabase
+            .from('whatsapp_drafts')
+            .update({
+              data: {
+                type: isPay ? 'pay_disambiguation' : 'delete_disambiguation',
+                candidates: matches.map(m => ({ id: m.id, description: m.description, amount: m.amount, date: m.date })),
+                messageId: message.key.id
+              },
+              status: 'pending'
+            })
+            .eq('user_id', userId)
+            .eq('data->>messageId', message.key.id);
 
           let listMsg = `🔍 *Há múltiplas correspondências para uma das ações.* Qual você deseja escolher? Digite o número:\n\n`;
           matches.forEach((m, idx) => {
@@ -1190,15 +1509,18 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
         // If all write operations are successfully resolved
         if (resolvedOps.length > 0) {
-          await supabase.from('whatsapp_drafts').insert({
-            user_id: userId,
-            phone: phone,
-            data: {
-              type: 'multi',
-              operations: resolvedOps
-            },
-            status: 'pending'
-          });
+          await supabase
+            .from('whatsapp_drafts')
+            .update({
+              data: {
+                type: 'multi',
+                operations: resolvedOps,
+                messageId: message.key.id
+              },
+              status: 'pending'
+            })
+            .eq('user_id', userId)
+            .eq('data->>messageId', message.key.id);
 
           let summaryMsg = `📝 *Lote de Operações Criado via IA!* 🤖\n\nEntendi que deseja executar as seguintes ações:\n\n`;
           resolvedOps.forEach((op, idx) => {
@@ -1218,9 +1540,86 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       }
     }
 
+    // Clean up current lock row if it was just a lock at the end
+    await supabase
+      .from('whatsapp_drafts')
+      .delete()
+      .eq('user_id', userId)
+      .eq('data->>messageId', message.key.id)
+      .eq('data->>type', 'lock');
+
     return res.status(200).json({ status: 'no_action' });
   } catch (err: any) {
     console.error('Error handling whatsapp webhook:', err);
     return res.status(500).json({ error: err.message });
   }
+}
+
+async function getOrCreateStatementHelper(userId: string, cardId: string, dateStr: string): Promise<string | null> {
+  const { data: card, error: cardErr } = await supabase
+    .from('cards')
+    .select('*')
+    .eq('id', cardId)
+    .single();
+  if (cardErr || !card) return null;
+
+  const txDate = new Date(dateStr);
+  const day = txDate.getUTCDate();
+  const month = txDate.getUTCMonth(); // 0-indexed
+  const year = txDate.getUTCFullYear();
+
+  let targetMonth = month;
+  let targetYear = year;
+
+  if (day > card.closing_day) {
+    targetMonth++;
+    if (targetMonth > 11) {
+      targetMonth = 0;
+      targetYear++;
+    }
+  }
+
+  const stmtMonth = targetMonth + 1; // 1-indexed
+  const stmtYear = targetYear;
+
+  const { data: existing } = await supabase
+    .from('card_statements')
+    .select('id')
+    .eq('card_id', cardId)
+    .eq('month', stmtMonth)
+    .eq('year', stmtYear)
+    .maybeSingle();
+
+  if (existing) return existing.id;
+
+  const closingDate = new Date(Date.UTC(targetYear, targetMonth, card.closing_day));
+  let dueMonth = targetMonth;
+  let dueYear = targetYear;
+  if (card.due_day < card.closing_day) {
+    dueMonth++;
+    if (dueMonth > 11) {
+      dueMonth = 0;
+      dueYear++;
+    }
+  }
+  const dueDate = new Date(Date.UTC(dueYear, dueMonth, card.due_day));
+
+  const { data: newStmt, error: createErr } = await supabase
+    .from('card_statements')
+    .insert({
+      user_id: userId,
+      card_id: cardId,
+      month: stmtMonth,
+      year: stmtYear,
+      status: 'OPEN',
+      total_amount: 0,
+      paid_amount: 0,
+      closing_date: closingDate.toISOString(),
+      due_date: dueDate.toISOString()
+    })
+    .select('id')
+    .single();
+
+  if (createErr || !newStmt) return null;
+  return newStmt.id;
 }

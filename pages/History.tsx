@@ -1029,14 +1029,14 @@ const HistoryPage: React.FC = () => {
       Descrição: t.description,
       Conta: t.accountName,
       Categoria: t.category,
-      Entidade: t.owner_name || 'Pessoal',
+      Perfil: t.owner_name || 'Pessoal',
       Tipo: t.type,
       Valor: (t.type === 'EXPENSE' ? -1 : 1) * t.amount,
       Status: HistoryUtils.getStatus(t)
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Histórico');
+    XLSX.utils.book_append_sheet(wb, ws, 'Transações');
     if (format === 'xlsx') XLSX.writeFile(wb, `historico_finvision_${new Date().getTime()}.xlsx`);
     else {
       const csv = XLSX.utils.sheet_to_csv(ws);
@@ -1312,7 +1312,7 @@ const HistoryPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-slate-900">Histórico Financeiro</h1>
+            <h1 className="text-2xl font-bold text-slate-900">Transações Financeiras</h1>
             <ContextualHelp 
               title="Gestão de Lançamentos" 
               description="Nesta tela você pode filtrar transações por categoria, conta ou período. Clique em 'Novo Lançamento' para adicionar manualmente ou use o 'Conciliador' no menu lateral para importar extratos bancários de forma massiva."

@@ -23,7 +23,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ user }) => {
     { id: 'home', label: 'Início', path: '/', icon: <Home size={20} /> },
     { id: 'accounts', label: 'Contas', path: '/accounts', icon: <Landmark size={20} /> },
     { id: 'cards', label: 'Cartões', path: '/cards', icon: <CreditCard size={20} /> },
-    { id: 'history', label: 'Histórico', path: '/history', icon: <History size={20} /> },
+    { id: 'history', label: 'Transações', path: '/history', icon: <History size={20} /> },
     { id: 'assets', label: 'Patrimônio', path: '/assets', icon: <Building2 size={20} /> },
     { id: 'goals', label: 'Metas', path: '/goals', icon: <Target size={20} /> },
     { id: 'budgets', label: 'Orçamentos', path: '/budgets', icon: <PieChart size={20} /> },

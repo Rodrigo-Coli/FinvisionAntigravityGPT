@@ -344,7 +344,7 @@ const Reconcile: React.FC = () => {
   const handleEntityChange = async (val: string, item?: any) => {
     let finalValue = val;
     if (val === 'NEW') {
-      const name = window.prompt("Nome da nova Entidade (ex: Empresa, Família, Pessoal):");
+      const name = window.prompt("Nome do novo Perfil (ex: Empresa, Família, Pessoal):");
       if (!name) return;
       await FinanceService.ensureEntityExists(name);
       await fetchOwners();
@@ -532,7 +532,7 @@ const Reconcile: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Auto-provisionamento de categoria e entidade
+      // Auto-provisionamento de categoria e perfil
       let finalCategoryId = null;
       if (categoryName) {
         finalCategoryId = await ReconciliationService.ensureCategoryExists(categoryName);
@@ -815,7 +815,7 @@ const Reconcile: React.FC = () => {
                       if (val === '+ Criar Nova...') handleEntityChange('NEW');
                       else handleEntityChange(val);
                     }}
-                    placeholder="Definir Entidade..."
+                    placeholder="Definir Perfil..."
                   />
                 </div>
 
@@ -982,7 +982,7 @@ const Reconcile: React.FC = () => {
 
                           {/* Col 4: Entity (Owner) */}
                           <div className="space-y-1">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Entidade</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Perfil</p>
                             <div className="relative">
                               <Building2 size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
                               <input
@@ -994,7 +994,7 @@ const Reconcile: React.FC = () => {
                                   if (val === '+ Criar Nova...') handleEntityChange('NEW', item);
                                   else handleEntityChange(val, item);
                                 }}
-                                placeholder="Entidade..."
+                                placeholder="Perfil..."
                                 className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-1 focus:ring-brand-500"
                               />
                             </div>

@@ -443,7 +443,7 @@ const OwnerPicker: React.FC<OwnerPickerProps> = ({ value, allOwners, onSelect, c
                             <input
                                 autoFocus
                                 className="w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300"
-                                placeholder="Buscar entidade..."
+                                placeholder="Buscar perfil..."
                                 value={search}
                                 onChange={e => { setSearch(e.target.value); setCreating(false); }}
                             />
@@ -452,7 +452,7 @@ const OwnerPicker: React.FC<OwnerPickerProps> = ({ value, allOwners, onSelect, c
                             <div className="flex items-center gap-1.5">
                                 <input autoFocus
                                     className="flex-1 h-8 px-2.5 bg-brand-50 border border-brand-200 rounded-lg text-xs font-bold outline-none"
-                                    placeholder="Nova entidade..." value={newName}
+                                    placeholder="Novo perfil..." value={newName}
                                     onChange={e => setNewName(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleCreate()}
                                 />
@@ -461,7 +461,7 @@ const OwnerPicker: React.FC<OwnerPickerProps> = ({ value, allOwners, onSelect, c
                             </div>
                         ) : (
                             <button type="button" onClick={() => setCreating(true)} className="w-full flex items-center gap-1.5 px-2.5 h-8 text-[10px] font-bold text-brand-600 hover:bg-brand-50 rounded-lg transition-colors uppercase tracking-wider">
-                                <Plus size={11} /> Nova Entidade
+                                <Plus size={11} /> Novo Perfil
                             </button>
                         )}
                     </div>
@@ -476,7 +476,7 @@ const OwnerPicker: React.FC<OwnerPickerProps> = ({ value, allOwners, onSelect, c
                             </button>
                         ))}
                         {options.length === 0 && !creating && (
-                            <p className="px-3 py-4 text-xs text-slate-300 text-center">Nenhuma entidade encontrada</p>
+                            <p className="px-3 py-4 text-xs text-slate-300 text-center">Nenhum perfil encontrado</p>
                         )}
                     </div>
                 </div>,
@@ -837,7 +837,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                 <div className="flex items-center gap-1">Conta / Categoria {sortField === 'category' && (sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</div>
                             </th>
                             <th className="px-6 py-5 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => onSort('owner_name')}>
-                                <div className="flex items-center gap-1">Entidade {sortField === 'owner_name' && (sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</div>
+                                <div className="flex items-center gap-1">Perfil {sortField === 'owner_name' && (sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</div>
                             </th>
                             <th className="px-6 py-5 text-center cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => onSort('is_paid')}>
                                 <div className="flex items-center justify-center gap-1">Status {sortField === 'is_paid' && (sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</div>

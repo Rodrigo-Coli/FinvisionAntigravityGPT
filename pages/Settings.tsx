@@ -244,7 +244,7 @@ const SettingsPage: React.FC = () => {
   };
 
   const deleteEntity = async (id: string, name: string) => {
-    if (!supabase || !confirm(`Deseja excluir a entidade "${name}"? Registros existentes não serão alterados.`)) return;
+    if (!supabase || !confirm(`Deseja excluir o perfil "${name}"? Registros existentes não serão alterados.`)) return;
     try {
       await supabase.from('entities').delete().eq('id', id);
       fetchData();
@@ -264,7 +264,7 @@ const SettingsPage: React.FC = () => {
     { id: 'navigation', label: 'Navegação', icon: <Navigation size={18} /> },
     { id: 'subscription', label: 'Meu Plano', icon: <Gem size={18} /> },
     { id: 'categories', label: 'Categorias', icon: <Tags size={18} /> },
-    { id: 'entities', label: 'Entidades / Donos', icon: <Building2 size={18} /> },
+    { id: 'entities', label: 'Perfis / Donos', icon: <Building2 size={18} /> },
     { id: 'establishments', label: 'Estabelecimentos', icon: <Store size={18} /> },
     { id: 'rates', label: 'Taxas e Conversão', icon: <Percent size={18} /> },
     { id: 'backup', label: 'Backup e Dados', icon: <Cloud size={18} />, divider: true },
@@ -378,7 +378,7 @@ const SettingsPage: React.FC = () => {
                 <div className="bg-white rounded-[40px] border border-slate-100 p-10 shadow-sm flex flex-col justify-between">
                   <div>
                     <h3 className="text-lg font-black text-slate-900 mb-4 italic">Precisa de mais?</h3>
-                    <p className="text-sm text-slate-500 font-medium">Sua conta atual permite gerenciar até 10 entidades simultâneas. Para limites corporativos ou white-label, entre em contato.</p>
+                    <p className="text-sm text-slate-500 font-medium">Sua conta atual permite gerenciar até 10 perfis simultâneos. Para limites corporativos ou white-label, entre em contato.</p>
                   </div>
                   <button className="mt-8 w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-black transition-all">
                     Upgrade para Business
@@ -799,7 +799,7 @@ const SettingsPage: React.FC = () => {
             <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden border-b-4 border-b-slate-100 animate-in slide-in-from-bottom-4 duration-500">
               <div className="p-6 md:p-10 border-b border-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-slate-50/20">
                 <div className="space-y-1">
-                  <h2 className="text-xl font-bold text-slate-900 italic">Entidades e Donos</h2>
+                  <h2 className="text-xl font-bold text-slate-900 italic">Perfis e Donos</h2>
                   <p className="text-sm text-slate-400 font-medium">Gestão global de perfis de gastos.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
@@ -810,14 +810,14 @@ const SettingsPage: React.FC = () => {
                     {showArchived ? 'Ocultar Arquivadas' : 'Ver Arquivadas'}
                   </button>
                   <button onClick={() => setIsAddingEntity(true)} className="px-6 py-3 bg-brand-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all flex items-center gap-2">
-                    <Plus size={16} /> Nova Entidade
+                    <Plus size={16} /> Novo Perfil
                   </button>
                 </div>
               </div>
               <div className="divide-y divide-slate-50">
                 {isAddingEntity && (
                   <div className="p-10 flex gap-4 bg-brand-50/30">
-                    <input autoFocus className="flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm" placeholder="Nome da entidade (Ex: Família, Empresa, Pessoal)..." value={newEntityName} onChange={e => setNewEntityName(e.target.value)} />
+                    <input autoFocus className="flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm" placeholder="Nome do perfil (Ex: Família, Empresa, Pessoal)..." value={newEntityName} onChange={e => setNewEntityName(e.target.value)} />
                     <button onClick={addEntity} className="w-16 h-16 bg-brand-600 text-white rounded-2xl flex items-center justify-center shadow-lg transition-transform hover:scale-105"><Check size={24} /></button>
                     <button onClick={() => setIsAddingEntity(false)} className="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-slate-200"><XCircle size={24} /></button>
                   </div>
@@ -847,7 +847,7 @@ const SettingsPage: React.FC = () => {
                   </div>
                 ))}
                 {entities.length === 0 && !isAddingEntity && (
-                  <div className="p-10 text-center text-slate-400 text-sm font-medium">Nenhuma entidade cadastrada.</div>
+                  <div className="p-10 text-center text-slate-400 text-sm font-medium">Nenhum perfil cadastrado.</div>
                 )}
               </div>
             </div>
