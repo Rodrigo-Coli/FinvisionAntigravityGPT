@@ -39,6 +39,7 @@ type PayModalState =
     remaining: number;
     payAmount: string;
     payAccountId: string;
+    payDate: string;
     splitRemainder: boolean;
     isSubmitting: boolean;
     error?: string | null;
@@ -1058,7 +1059,16 @@ const HistoryPage: React.FC = () => {
 
   const openPayModal = (tx: Transaction) => {
     const remaining = HistoryUtils.getRemaining(tx);
-    setPayModal({ open: true, tx, remaining, payAmount: String(remaining.toFixed(2)), payAccountId: tx.accountId, splitRemainder: false, isSubmitting: false });
+    setPayModal({
+      open: true,
+      tx,
+      remaining,
+      payAmount: String(remaining.toFixed(2)),
+      payAccountId: tx.accountId,
+      payDate: tx.date || DateUtils.formatToISODate(),
+      splitRemainder: false,
+      isSubmitting: false
+    });
   };
 
   const submitPayment = async () => {
@@ -1068,11 +1078,18 @@ const HistoryPage: React.FC = () => {
     setPayModal(prev => prev.open ? { ...prev, isSubmitting: true } : prev);
     try {
       const { error } = await supabase.rpc('pay_transaction', { p_transaction_id: payModal.tx.id, p_amount: amount, p_split_remainder: payModal.splitRemainder });
+      const chosenDate = payModal.payDate || payModal.tx.date || DateUtils.formatToISODate();
       if (error) {
         await supabase.from('transactions').update({
           is_paid: amount >= payModal.remaining - EPS,
           paid_amount: (payModal.tx.paidAmount || 0) + amount,
-          paid_at: DateUtils.getNow().toISOString()
+          paid_at: chosenDate,
+          date: chosenDate
+        }).eq('id', payModal.tx.id);
+      } else {
+        await supabase.from('transactions').update({
+          date: chosenDate,
+          paid_at: chosenDate
         }).eq('id', payModal.tx.id);
       }
       // Se conta de débito diferente, atualiza account_id e recalcula ambas
@@ -1699,6 +1716,7 @@ const HistoryPage: React.FC = () => {
         tx={payModal.open ? payModal.tx : null} remaining={payModal.open ? payModal.remaining : 0}
         payAmount={payModal.open ? payModal.payAmount : ''} setPayAmount={(v) => setPayModal(prev => prev.open ? { ...prev, payAmount: v } : prev)}
         payAccountId={payModal.open ? payModal.payAccountId : ''} setPayAccountId={(v) => setPayModal(prev => prev.open ? { ...prev, payAccountId: v } : prev)}
+        payDate={payModal.open ? payModal.payDate : ''} setPayDate={(v) => setPayModal(prev => prev.open ? { ...prev, payDate: v } : prev)}
         accounts={accounts}
         splitRemainder={payModal.open ? payModal.splitRemainder : false} setSplitRemainder={(v) => setPayModal(prev => prev.open ? { ...prev, splitRemainder: v } : prev)}
         isSubmitting={payModal.open ? payModal.isSubmitting : false} error={payModal.open ? payModal.error : null} formatCurrency={HistoryUtils.formatCurrency}

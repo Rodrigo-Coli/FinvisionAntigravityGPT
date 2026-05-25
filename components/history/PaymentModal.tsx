@@ -13,6 +13,8 @@ interface PaymentModalProps {
     setPayAmount: (v: string) => void;
     payAccountId: string;
     setPayAccountId: (v: string) => void;
+    payDate: string;
+    setPayDate: (v: string) => void;
     accounts: BankAccount[];
     splitRemainder: boolean;
     setSplitRemainder: (v: boolean) => void;
@@ -31,6 +33,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setPayAmount,
     payAccountId,
     setPayAccountId,
+    payDate,
+    setPayDate,
     accounts,
     splitRemainder,
     setSplitRemainder,
@@ -84,6 +88,16 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                                 placeholder="0,00"
                                 className="w-full h-14 px-6 bg-slate-50 border border-slate-200 rounded-2xl font-black text-xl text-slate-900 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
                                 autoFocus
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data do Pagamento</label>
+                            <input
+                                type="date"
+                                value={payDate}
+                                onChange={(e) => setPayDate(e.target.value)}
+                                className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
                             />
                         </div>
 
