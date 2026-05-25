@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Loader2, CheckCircle2, AlertCircle, Plus, Camera, Check } from 'lucide-react';
 import { BankAccount } from '../../types';
+import { supabase } from '../../lib/supabase/client';
 
 interface AddTransactionModalProps {
     show: boolean;
@@ -51,6 +52,47 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const [isCreatingCategory, setIsCreatingCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [isSavingCategory, setIsSavingCategory] = useState(false);
+    const [recentTxs, setRecentTxs] = useState<any[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+
+    // Buscar as transações recentes quando o modal for aberto
+    useEffect(() => {
+        if (show && supabase) {
+            const loadRecentTransactions = async () => {
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) return;
+
+                    const { data, error } = await supabase
+                        .from('transactions')
+                        .select('description, category, subcategory, account_id, owner_name, type')
+                        .eq('user_id', user.id)
+                        .eq('is_deleted', false)
+                        .order('date', { ascending: false })
+                        .limit(200);
+
+                    if (error) throw error;
+
+                    // Agrupar por descrição de forma case-insensitive, pegando a mais recente
+                    const uniqueTxsMap = new Map<string, any>();
+                    if (data) {
+                        for (const tx of data) {
+                            if (tx.description) {
+                                const key = tx.description.toLowerCase().trim();
+                                if (!uniqueTxsMap.has(key)) {
+                                    uniqueTxsMap.set(key, tx);
+                                }
+                            }
+                        }
+                    }
+                    setRecentTxs(Array.from(uniqueTxsMap.values()));
+                } catch (e) {
+                    console.error('Erro ao carregar transações recentes para sugestões:', e);
+                }
+            };
+            loadRecentTransactions();
+        }
+    }, [show]);
 
     // Sync local state when initialForm changes (e.g. when modal opens)
     useEffect(() => {
@@ -68,6 +110,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const filteredCategories = categoryObjects.filter(
         (c: any) => !c.type || c.type === form.type
     );
+
+    const query = form.description.toLowerCase().trim();
+    const suggestions = query.length >= 2
+        ? recentTxs.filter(tx => tx.description.toLowerCase().includes(query)).slice(0, 5)
+        : [];
 
     const handleCreateCategorySubmit = async () => {
         if (!newCategoryName.trim()) return;
@@ -131,15 +178,57 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             </div>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-2 relative">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Descrição</label>
                             <input
                                 type="text"
                                 value={form.description}
+                                onFocus={() => setShowSuggestions(true)}
+                                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                                 onChange={(e) => setAddField('description', e.target.value)}
                                 placeholder="Ex: Fornecedor, Cliente, Parceiro..."
                                 className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                             />
+                            {showSuggestions && suggestions.length > 0 && (
+                                <div className="absolute z-[110] left-0 right-0 top-[88px] bg-white border border-slate-200/80 shadow-2xl rounded-2xl p-2 max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-200 custom-scrollbar">
+                                    {suggestions.map((tx, idx) => (
+                                        <button
+                                            key={idx}
+                                            type="button"
+                                            onClick={() => {
+                                                setForm(prev => ({
+                                                    ...prev,
+                                                    description: tx.description,
+                                                    category: tx.category || prev.category,
+                                                    subcategory: tx.subcategory || prev.subcategory,
+                                                    accountId: tx.account_id || prev.accountId,
+                                                    ownerName: tx.owner_name || prev.ownerName,
+                                                    type: tx.type || prev.type
+                                                }));
+                                                setShowSuggestions(false);
+                                            }}
+                                            className="w-full flex items-center justify-between p-3 hover:bg-slate-50 rounded-xl transition-all text-left border-none outline-none"
+                                        >
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-slate-800 text-xs sm:text-sm">{tx.description}</span>
+                                                <span className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">Histórico Recente</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                                {tx.category && (
+                                                    <span className="text-[9px] bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
+                                                        {tx.category}
+                                                    </span>
+                                                )}
+                                                {tx.owner_name && (
+                                                    <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
+                                                        {tx.owner_name}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">

@@ -1007,35 +1007,43 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
       const ocrPrompt = isPDF ? `
       Você é um especialista em análise de comprovantes, faturas e extratos bancários em formato PDF.
-      Analise o conteúdo deste documento e extraia as informações financeiras relevantes.
+      Analise o conteúdo deste documento e extraia todas as transações financeiras relevantes.
       ${userCaptionContext}
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
-        "description": "Nome do estabelecimento / identificação da transação",
-        "amount": 0.00,
-        "date": "YYYY-MM-DD",
-        "category": "Alimentação | Transporte | Lazer | Lojas | Saúde | Outros",
-        "type": "EXPENSE",
-        "is_card": boolean,
-        "card_name": string (ou null),
-        "owner_name": string (ou null)
+        "operations": [
+          {
+            "description": "Nome do estabelecimento / identificação da transação",
+            "amount": 0.00,
+            "date": "YYYY-MM-DD",
+            "category": "Alimentação | Transporte | Lazer | Lojas | Saúde | Outros",
+            "type": "EXPENSE" | "INCOME",
+            "is_card": boolean,
+            "card_name": string (ou null),
+            "owner_name": string (ou null)
+          }
+        ]
       }
       ` : `
       Você é um especialista em análise de comprovantes e notas fiscais de compras em imagem.
-      Extraia as informações cruciais desta imagem.
+      Extraia todas as transações cruciais desta imagem.
       ${userCaptionContext}
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
-        "description": "Nome do estabelecimento / loja",
-        "amount": 0.00,
-        "date": "YYYY-MM-DD",
-        "category": "Alimentação | Transporte | Lazer | Lojas | Saúde | Outros",
-        "type": "EXPENSE",
-        "is_card": boolean,
-        "card_name": string (ou null),
-        "owner_name": string (ou null)
+        "operations": [
+          {
+            "description": "Nome do estabelecimento / loja",
+            "amount": 0.00,
+            "date": "YYYY-MM-DD",
+            "category": "Alimentação | Transporte | Lazer | Lojas | Saúde | Outros",
+            "type": "EXPENSE" | "INCOME",
+            "is_card": boolean,
+            "card_name": string (ou null),
+            "owner_name": string (ou null)
+          }
+        ]
       }
       `;
 
@@ -1058,28 +1066,77 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
       const cleanJson = rawText.replace(/```json|```/g, "").trim();
       const ocrData = JSON.parse(cleanJson);
+      const ocrOps = ocrData.operations || [];
 
-      await supabase
-        .from('whatsapp_drafts')
-        .update({
-          data: { ...ocrData, messageId: message.key.id },
-          status: 'pending'
-        })
-        .eq('user_id', userId)
-        .eq('data->>messageId', message.key.id);
-
-      const dateFmt = ocrData.date ? ocrData.date.split('-').reverse().join('/') : '';
-      let confirmText = `📝 *Rascunho Extraído via ${isPDF ? 'PDF' : 'IA'}!* 📸\n\n*Estabelecimento:* ${ocrData.description}\n*Valor:* R$ ${Number(ocrData.amount).toFixed(2)}\n*Categoria:* ${ocrData.category}\n*Data:* ${dateFmt}`;
-      if (ocrData.is_card) {
-        confirmText += `\n*Cartão:* ${ocrData.card_name || 'Sim'}`;
+      if (ocrOps.length === 0) {
+        throw new Error('Nenhuma transação detectada no comprovante.');
       }
-      if (ocrData.owner_name) {
-        confirmText += `\n*Perfil:* ${ocrData.owner_name}`;
-      }
-      confirmText += `\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`;
 
-      await sendWhatsApp(phone, confirmText);
-      return res.status(200).json({ status: 'file_processed' });
+      if (ocrOps.length === 1) {
+        const singleTx = ocrOps[0];
+        await supabase
+          .from('whatsapp_drafts')
+          .update({
+            data: { ...singleTx, messageId: message.key.id },
+            status: 'pending'
+          })
+          .eq('user_id', userId)
+          .eq('data->>messageId', message.key.id);
+
+        const dateFmt = singleTx.date ? singleTx.date.split('-').reverse().join('/') : '';
+        const isExpense = singleTx.type === 'EXPENSE';
+        const titleEmoji = isExpense ? '💳' : '💰';
+        const titleText = isExpense ? 'Confirmar Novo Gasto!' : 'Confirmar Nova Receita!';
+        
+        let confirmText = `${titleEmoji} *${titleText}* 🤖\n\n*Descrição:* ${singleTx.description}\n*Valor:* R$ ${Number(singleTx.amount).toFixed(2)}\n*Categoria:* ${singleTx.category}\n*Data:* ${dateFmt}`;
+        if (singleTx.is_card) {
+          confirmText += `\n*Cartão:* ${singleTx.card_name || 'Sim'}`;
+        }
+        if (singleTx.owner_name) {
+          confirmText += `\n*Perfil:* ${singleTx.owner_name}`;
+        }
+        confirmText += `\n\nConfirma o lançamento? Digite *SIM* ou *NÃO*.`;
+
+        await sendWhatsApp(phone, confirmText);
+        return res.status(200).json({ status: 'file_processed' });
+      } else {
+        const resolvedOps = ocrOps.map((op: any) => ({
+          intent: 'TRANSACTION',
+          transaction: {
+            description: op.description,
+            amount: Number(op.amount || 0),
+            category: op.category || 'Outros',
+            type: op.type || 'EXPENSE',
+            date: op.date || new Date().toISOString().split('T')[0],
+            is_card: op.is_card || false,
+            card_name: op.card_name || null,
+            owner_name: op.owner_name || 'Pessoal'
+          }
+        }));
+
+        await supabase
+          .from('whatsapp_drafts')
+          .update({
+            data: {
+              type: 'multi',
+              operations: resolvedOps,
+              messageId: message.key.id
+            },
+            status: 'pending'
+          })
+          .eq('user_id', userId)
+          .eq('data->>messageId', message.key.id);
+
+        let summaryMsg = `📝 *Lote de Operações Extraído via ${isPDF ? 'PDF' : 'IA'}!* 🤖\n\nIdentifiquei as seguintes ações no seu comprovante:\n\n`;
+        resolvedOps.forEach((op: any, idx: number) => {
+          const dateFmt = op.transaction.date ? op.transaction.date.split('-').reverse().join('/') : '';
+          summaryMsg += `*${idx + 1}. Cadastrar:* "${op.transaction.description}" - R$ ${Number(op.transaction.amount).toFixed(2)} (${dateFmt})\n`;
+        });
+        summaryMsg += `\nConfirma a execução de todas as operações acima? Digite *SIM* ou *NÃO*.`;
+
+        await sendWhatsApp(phone, summaryMsg);
+        return res.status(200).json({ status: 'file_processed_multi' });
+      }
     }
 
     // Text parsing or query classification
