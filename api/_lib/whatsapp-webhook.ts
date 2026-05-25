@@ -567,6 +567,7 @@ function filterTransactionsInMemory(txs: any[], filters: { description?: string;
 export async function handleWhatsAppWebhook(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
   const body = req.body || {};
+  let phone = '';
   
   const eventName = String(body.event || '').toLowerCase();
   if (eventName !== 'messages.upsert' && eventName !== 'messages_upsert') {
@@ -597,7 +598,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
     if (!remoteJid) {
       return res.status(200).json({ status: 'ignored', reason: 'no_remote_jid' });
     }
-    const phone = remoteJid.split('@')[0];
+    phone = remoteJid.split('@')[0];
 
     // Geração de variantes robusta para números brasileiros (com e sem o nono dígito)
     let cleanPhone = phone.replace(/\D/g, '');
@@ -1093,72 +1094,143 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         .limit(1)
         .maybeSingle();
 
-      // DRAFT EDIT CHECK: Check if the user is editing the active draft
-      let draftToUpdate = null;
-      if (activeDraft && activeDraft.data && activeDraft.data.type !== 'delete_disambiguation' && activeDraft.data.type !== 'pay_disambiguation' && activeDraft.data.type !== 'multi' && activeDraft.data.type !== 'delete' && activeDraft.data.type !== 'pay') {
-        const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-        if (geminiKey) {
-          const ai = new GoogleGenAI({ apiKey: geminiKey });
-          const editPrompt = `
-          O usuário tem um rascunho de transação pendente atualmente:
-          ${JSON.stringify(activeDraft.data)}
+      const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
 
-          O usuário acabou de enviar a seguinte mensagem:
-          "${text}"
+      // Buscar contas pendentes do usuário dos últimos 60 dias para dar contexto ao classificador
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+      const { data: pendingBills } = await supabase
+        .from('transactions')
+        .select('id, description, amount, date, category')
+        .eq('user_id', userId)
+        .is('is_deleted', false)
+        .eq('is_paid', false)
+        .eq('type', 'EXPENSE')
+        .gte('date', sixtyDaysAgo.toISOString().split('T')[0])
+        .order('date', { ascending: true })
+        .limit(20);
 
-          Sua tarefa é analisar se o usuário está tentando editar, corrigir ou mudar algo no rascunho atual (como valor, descrição, data, categoria, conta, perfil, ou forma de pagamento) OU se ele está fazendo um pedido totalmente novo e sem relação com o rascunho anterior.
+      const formattedPendingBills = pendingBills && pendingBills.length > 0
+        ? pendingBills.map(b => `- "${b.description}" | R$ ${Math.abs(Number(b.amount)).toFixed(2)} | Vencimento: ${b.date.split('T')[0].split('-').reverse().join('/')}`).join('\n')
+        : 'Nenhuma conta pendente em aberto nos últimos 60 dias.';
 
-          Caso o usuário esteja tentando EDITAR/CORRIGIR o rascunho atual:
-          - Retorne "isEdit": true
-          - Retorne o rascunho atualizado no campo "updatedDraft", aplicando as alterações solicitadas.
-          - Se o usuário mencionar uma data relativa (ex: "ontem", "anteontem", "mês passado") ou um dia específico, calcule com base na data de hoje: ${new Date().toISOString().split('T')[0]}.
-          - Se o usuário falar de cartão de crédito (ex: "lança no cartão", "foi no cartão Bradesco", "credit card"), adicione ou mude "is_card": true e defina "card_name" no JSON.
-          - Se o usuário citar um perfil/entidade/proprietário (ex: "perfil Pessoal", "no perfil da empresa", "perfil trabalho"), adicione ou mude "owner_name" no JSON.
-          - Se o usuário citar uma conta (ex: "na conta Itaú", "pagamento Bradesco"), adicione "account_name" no JSON.
-          - Se o usuário citar recorrência (ex: "mensal", "recorrente", "todo mês"), adicione "is_recurring": true e "recurrence_period": "monthly".
+      // Verificar se o rascunho ativo é editável
+      const isDraftEditable = activeDraft && activeDraft.data && 
+        activeDraft.data.type !== 'delete_disambiguation' && 
+        activeDraft.data.type !== 'pay_disambiguation' && 
+        activeDraft.data.type !== 'multi' && 
+        activeDraft.data.type !== 'delete' && 
+        activeDraft.data.type !== 'pay';
 
-          Caso o usuário NÃO esteja editando o rascunho (seja um novo gasto independente, consulta, conversa casual, ou se ele der uma instrução clara para pagar/liquidar/quitar uma conta ou excluir uma transação, como "pague a conta X", "deleta a despesa Y"):
-          - Retorne "isEdit": false
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
 
-          RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
+      const classificationPrompt = `
+      Você é o cérebro central classificador da assistente FinVision AI.
+      Sua tarefa é analisar a mensagem atual do usuário, considerando o histórico de conversa recente e as informações do sistema, para classificar as intenções dele com precisão cirúrgica de forma a realizar um processamento extremamente rápido.
+
+      # INFORMAÇÕES DO SISTEMA
+      - Hoje é ${now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} (data do sistema: ${todayStr}).
+      
+      # RASCUNHO PENDENTE ATIVO NO MOMENTO (Se houver)
+      Se houver um rascunho de criação de transação ativo, ele está listado abaixo. Analise se a mensagem atual do usuário é uma tentativa de editar, corrigir ou complementar este rascunho (ex: mudar o valor, a descrição, a categoria, o perfil ou a conta).
+      Rascunho ativo: ${isDraftEditable ? JSON.stringify(activeDraft.data) : 'Nenhum rascunho ativo.'}
+
+      IMPORTANTE sobre o Rascunho Ativo:
+      - Se o usuário estiver editando o rascunho ativo (tentando complementar informações ou corrigir algo nele), defina "isEdit": true e retorne o rascunho atualizado no campo "updatedDraft", aplicando as alterações.
+      - Se o usuário NÃO estiver editando (seja um novo gasto independente, uma consulta ou uma conversa casual, ou se ele der uma instrução clara para pagar/liquidar/quitar uma conta ou excluir uma transação, como "pague a conta X", "deleta a despesa Y"), defina "isEdit": false.
+
+      # CONTAS PENDENTES EM ABERTO NO SISTEMA (Aguardando Pagamento/Baixa)
+      Use esta lista para cruzar o pedido do usuário. Se ele pedir para pagar/quitar uma conta que combine com alguma destas descrições (por exemplo "pague a conta mensal mãe" ou "mensal mãe" combina com a conta "Mensal Mãe"), classifique a intenção como "PAY" (e não TRANSACTION) e preencha o "payFilters" correspondente:
+      ${formattedPendingBills}
+
+      # HISTÓRICO RECENTE DA CONVERSA
+      ${history.slice(-5, -1).map((h: any) => `${h.role === 'user' ? 'Usuário' : 'FinVision'}: ${h.content}`).join('\n')}
+
+      # MENSAGEM ATUAL DO USUÁRIO
+      Mensagem: "${text}"
+
+      RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
+      {
+        "isEdit": boolean,
+        "updatedDraft": {
+          "description": string,
+          "amount": number,
+          "date": "YYYY-MM-DD",
+          "category": string,
+          "type": "EXPENSE" | "INCOME",
+          "is_card": boolean,
+          "card_name": string (ou null),
+          "owner_name": string (ou null),
+          "account_name": string (ou null),
+          "is_recurring": boolean,
+          "recurrence_period": string (ou null)
+        } (ou null se isEdit for false),
+        "operations": [
           {
-            "isEdit": boolean,
-            "updatedDraft": {
-              "description": string,
-              "amount": number,
-              "date": "YYYY-MM-DD",
-              "category": string,
+            "intent": "TRANSACTION" | "DELETE" | "PAY" | "QUERY" | "CHAT",
+            "startDate": "YYYY-MM-DD",
+            "endDate": "YYYY-MM-DD",
+            "periodLabel": "Texto curto do período",
+            "transaction": {
+              "description": "Ex: Mercado Extra, Posto Ipiranga",
+              "amount": 0.00,
+              "category": "Alimentação | Transporte | Moradia | Saúde | Lazer | Salário | Outros",
               "type": "EXPENSE" | "INCOME",
+              "date": "YYYY-MM-DD",
               "is_card": boolean,
               "card_name": string (ou null),
               "owner_name": string (ou null),
-              "account_name": string (ou null),
-              "is_recurring": boolean (opcional),
-              "recurrence_period": string (opcional)
-            }
+              "is_recurring": boolean,
+              "recurrence_period": "weekly" | "monthly" | "yearly" | "biweekly" (ou null)
+            },
+            "deleteFilters": {
+              "description": "Ex: mercado (termo de busca ou null)",
+              "amount": 50.00 (ou null),
+              "date": "YYYY-MM-DD (ou null)"
+            },
+            "payFilters": {
+              "description": "Ex: energia (termo de busca ou null)",
+              "amount": 120.00 (ou null),
+              "date": "YYYY-MM-DD (ou null)"
+            },
+            "chatReply": "Resposta caso seja intenção CHAT"
           }
-          `;
-
-          try {
-            const editResponse = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: [{ role: 'user', parts: [{ text: editPrompt }] }],
-              config: { responseMimeType: "application/json" }
-            });
-            const editRaw = (editResponse as any).text || (editResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
-            const editClean = editRaw.replace(/```json|```/g, "").trim();
-            const editAnalysis = JSON.parse(editClean);
-            if (editAnalysis.isEdit && editAnalysis.updatedDraft) {
-              draftToUpdate = editAnalysis.updatedDraft;
-            }
-          } catch (e) {
-            console.error('Error analyzing draft edit:', e);
-          }
-        }
+        ] (ou vazio se isEdit for true)
       }
 
-      if (draftToUpdate) {
-        // Atualizar o rascunho ativo no banco
+      Regras de classificação e cálculo de datas para operações (QUERY/PAY/DELETE):
+      - Se a operação envolver busca de histórico de lançamentos, saldo ou consolidações (intent = QUERY), calcule e preencha "startDate" e "endDate" baseados no período solicitado pelo usuário:
+        1. Se ele pedir "dois últimos meses" ou "últimos 2 meses", partindo de hoje (${todayStr}), defina o início retrocedendo 2 meses completos (ex: 2026-03-01) e fim hoje (2026-05-25).
+        2. Se ele pedir "mês passado", calcule o início e fim exatos do mês anterior completo.
+        3. Se ele NÃO especificar nenhum período de data, use por padrão os últimos 90 dias (início: ${sixtyDaysAgo.toISOString().split('T')[0]}, fim: ${todayStr}).
+        4. Se ele pedir um período muito amplo (ex: "meu histórico inteiro", "desde o começo"), use os últimos 365 dias.
+      - Para intenções TRANSACTION ("gastei X", "recebi Y"): se não houver data explícita, use hoje: ${todayStr}.
+      - Se o usuário falar de cartão de crédito (ex: "no cartão Bradesco"), defina "is_card": true e o nome do cartão.
+      - Se o usuário citar recorrência (ex: "mensal", "todo mês"), defina "is_recurring": true e o período correspondente.
+      - Se for excluir um lançamento, use "DELETE" e preencha "deleteFilters".
+      - Se for marcar como pago, use "PAY" e preencha "payFilters".
+      - Se for consulta de dados ("saldo", "gastos do mês", "quais os lançamentos"), use "QUERY".
+      - Se for conversa casual, use "CHAT".
+      `;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: classificationPrompt }] }],
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const cleanJson = rawText.replace(/```json|```/g, "").trim();
+      const analysis = JSON.parse(cleanJson);
+
+      // 1. Processar Edição de Rascunho
+      if (analysis.isEdit && analysis.updatedDraft && isDraftEditable) {
+        const draftToUpdate = analysis.updatedDraft;
         await supabase
           .from('whatsapp_drafts')
           .update({
@@ -1195,107 +1267,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         return res.status(200).json({ status: 'draft_updated' });
       }
 
-      // Salvar a mensagem do usuário no histórico
-      history.push({ role: 'user', content: text });
-      await supabase.from('whatsapp_chat_sessions').upsert({
-        phone: phone,
-        messages: history,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'phone' });
-
-      // Buscar contas pendentes do usuário dos últimos 60 dias para dar contexto ao classificador
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-      const { data: pendingBills } = await supabase
-        .from('transactions')
-        .select('id, description, amount, date, category')
-        .eq('user_id', userId)
-        .is('is_deleted', false)
-        .eq('is_paid', false)
-        .eq('type', 'EXPENSE')
-        .gte('date', sixtyDaysAgo.toISOString().split('T')[0])
-        .order('date', { ascending: true })
-        .limit(20);
-
-      const formattedPendingBills = pendingBills && pendingBills.length > 0
-        ? pendingBills.map(b => `- "${b.description}" | R$ ${Math.abs(Number(b.amount)).toFixed(2)} | Vencimento: ${b.date.split('T')[0].split('-').reverse().join('/')}`).join('\n')
-        : 'Nenhuma conta pendente em aberto nos últimos 60 dias.';
-
-      const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-      if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
-      const ai = new GoogleGenAI({ apiKey: geminiKey });
-
-      const classificationPrompt = `
-      Você é o cérebro classificador da assistente FinVision AI.
-      Classifique a mensagem atual do usuário levando em consideração o histórico recente da conversa para entender pronomes ou continuações.
-      O usuário pode solicitar a execução de uma ou múltiplas operações financeiras na mesma mensagem (ex: "gastei 15 de lanche e paguei a luz", "exclua o pix de 10 e me diga o saldo").
-      
-      # CONTAS PENDENTES EM ABERTO NO SISTEMA (Aguardando Pagamento/Baixa)
-      Use esta lista para cruzar o pedido do usuário. Se ele pedir para pagar/quitar uma conta que combine com alguma destas descrições (por exemplo "pague a conta mensal mãe" ou "mensal mãe" combina com a conta "Mensal Mãe"), classifique a intenção como "PAY" e preencha o "payFilters" correspondente com a descrição exata da conta pendente:
-      ${formattedPendingBills}
-
-      # HISTÓRICO RECENTE DA CONVERSA
-      ${history.slice(-5, -1).map((h: any) => `${h.role === 'user' ? 'Usuário' : 'FinVision'}: ${h.content}`).join('\n')}
-
-      # MENSAGEM ATUAL DO USUÁRIO
-      Mensagem: "${text}"
-
-      RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
-      {
-        "operations": [
-          {
-            "intent": "TRANSACTION" | "DELETE" | "PAY" | "QUERY" | "CHAT",
-            "transaction": {
-              "description": "Ex: Mercado Extra, Posto Ipiranga",
-              "amount": 0.00,
-              "category": "Alimentação | Transporte | Moradia | Saúde | Lazer | Salário | Outros",
-              "type": "EXPENSE" | "INCOME",
-              "date": "YYYY-MM-DD",
-              "is_card": boolean,
-              "card_name": string (ou null),
-              "owner_name": string (ou null),
-              "is_recurring": boolean,
-              "recurrence_period": "weekly" | "monthly" | "yearly" | "biweekly" (ou null)
-            },
-            "deleteFilters": {
-              "description": "Ex: mercado (termo de busca ou null)",
-              "amount": 50.00 (ou null),
-              "date": "YYYY-MM-DD (ou null)"
-            },
-            "payFilters": {
-              "description": "Ex: energia (termo de busca ou null)",
-              "amount": 120.00 (ou null),
-              "date": "YYYY-MM-DD (ou null)"
-            },
-            "chatReply": "Resposta caso seja intenção CHAT"
-          }
-        ]
-      }
-
-      Regras de classificação:
-      - Divida a mensagem em uma ou mais operações caso o usuário peça mais de uma ação.
-      - Para cada operação, defina a intenção ("TRANSACTION", "DELETE", "PAY", "QUERY" ou "CHAT") e preencha os campos relevantes.
-      - Se a intenção for cadastrar um gasto ou ganho ("gastei X", "recebi Y"), use "TRANSACTION". Se não houver data explícita, use hoje: ${new Date().toISOString().split('T')[0]}.
-      - Se o usuário falar de cartão de crédito (ex: "lança no cartão", "foi no cartão Bradesco", "credit card"), você deve definir "is_card": true e colocar o nome do cartão em "card_name".
-      - Se o usuário citar um perfil/entidade/proprietário (ex: "perfil Pessoal", "no perfil da empresa", "perfil trabalho"), coloque o nome do perfil correspondente em "owner_name".
-      - Se o usuário citar recorrência (ex: "mensal", "recorrente", "todo mês"), defina "is_recurring": true e o período correspondente em "recurrence_period".
-      - Se for excluir/apagar um lançamento ("exclui X", "deleta Y"), use "DELETE". Preencha "deleteFilters".
-      - Se for marcar uma conta/despesa como paga ("paguei X", "liquida Y", "pague a conta Z"), use "PAY". Preencha "payFilters".
-      - Se for consulta de dados ("saldo", "gastos do mês", "quais os lançamentos"), use "QUERY".
-      - Se for conversa casual, use "CHAT".
-      `;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [{ role: 'user', parts: [{ text: classificationPrompt }] }],
-        config: {
-          responseMimeType: "application/json"
-        }
-      });
-
-      const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const cleanJson = rawText.replace(/```json|```/g, "").trim();
-      const analysis = JSON.parse(cleanJson);
+      // 2. Processar Operações Normais
       const operations = analysis.operations || [];
 
       if (operations.length === 0) {
@@ -1646,7 +1618,22 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
     return res.status(200).json({ status: 'no_action' });
   } catch (err: any) {
     console.error('Error handling whatsapp webhook:', err);
-    return res.status(500).json({ error: err.message });
+    
+    // Tratamento amigável de erro de cota ou indisponibilidade da IA
+    try {
+      const errStr = String(err.message || err.status || '').toLowerCase();
+      const isQuota = errStr.includes('quota') || errStr.includes('limit') || errStr.includes('429') || errStr.includes('exhausted');
+      
+      if (isQuota) {
+        await sendWhatsApp(phone, `⚠️ *FinVision AI - Limite Temporário Atingido* 🤖\n\nNotamos que sua assistente inteligente excedeu o limite temporário de consultas da inteligência artificial (Cota da API do Google).\n\n⚡ *Como resolver:* de forma a garantir a velocidade e disponibilidade total, pedimos que aguarde cerca de *1 minuto* e tente novamente. Caso persistir, isso indica que a cota diária gratuita da API foi atingida. Nosso time já está monitorando para ampliar os recursos!`);
+      } else {
+        await sendWhatsApp(phone, `❌ *Ops! Tivemos um probleminha técnico.* 🤖\n\nNão consegui processar o seu comando neste momento devido a uma instabilidade temporária na comunicação com nossos servidores de inteligência artificial.\n\nPor favor, tente falar novamente em alguns instantes.`);
+      }
+    } catch (sendErr) {
+      console.error('Erro ao enviar mensagem de fallback de erro:', sendErr);
+    }
+
+    return res.status(200).json({ error: err.message });
   }
 }
 
