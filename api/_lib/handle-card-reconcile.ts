@@ -174,10 +174,20 @@ RETORNE APENAS JSON NO FORMATO:
         console.log('[Card Reconcile] Executando verificação inteligente de duplicidades...');
         const checkedTxs = await StatementTemplateHelper.checkDuplicates(supabase, imp.user_id, processedTxs, true);
 
+        const fingerprintsSeen = new Set<string>();
         const txsToInsert = checkedTxs.map((t: any) => {
           const parsedDate = StatementTemplateHelper.parseDate(t.date) || new Date().toISOString().split('T')[0];
           const parsedAmount = StatementTemplateHelper.parseAmount(t.amount);
-          const fingerprint = crypto.createHash('sha256').update(`${parsedDate}|${Number(parsedAmount).toFixed(2)}|${t.description.toLowerCase()}|${targetAccountId || ''}`).digest('hex');
+          
+          const fingerprintBase = `${parsedDate}|${Number(parsedAmount).toFixed(2)}|${t.description.toLowerCase()}|${targetAccountId || ''}`;
+          let fingerprint = crypto.createHash('sha256').update(fingerprintBase).digest('hex');
+          
+          let count = 1;
+          while (fingerprintsSeen.has(fingerprint)) {
+            fingerprint = crypto.createHash('sha256').update(`${fingerprintBase}|dup-${count}`).digest('hex');
+            count++;
+          }
+          fingerprintsSeen.add(fingerprint);
           
           return {
             user_id: imp.user_id,

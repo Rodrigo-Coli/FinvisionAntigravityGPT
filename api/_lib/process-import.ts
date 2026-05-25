@@ -50,12 +50,22 @@ export async function handleProcessImport(req: any, res: any) {
       // Executar verificação inteligente de duplicidades
       const checkedTxs = await StatementTemplateHelper.checkDuplicates(supabase, imp.user_id, transactions, false);
 
+      const fingerprintsSeen = new Set<string>();
       const txsToInsert = checkedTxs.map((t: any) => {
         const amount = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount).replace(',', '.'));
         const desc = (t.description || '').trim();
         const date = StatementTemplateHelper.parseDate(t.date) || new Date().toISOString().split('T')[0];
+        
         const fpData = `${date}|${amount.toFixed(2)}|${desc.toLowerCase()}|${imp.account_id || ''}`;
-        const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
+        let fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
+        
+        let count = 1;
+        while (fingerprintsSeen.has(fingerprint)) {
+          fingerprint = crypto.createHash('sha256').update(`${fpData}|dup-${count}`).digest('hex');
+          count++;
+        }
+        fingerprintsSeen.add(fingerprint);
+        
         return {
           user_id: imp.user_id,
           import_id: imp.id,
@@ -71,14 +81,7 @@ export async function handleProcessImport(req: any, res: any) {
         };
       });
 
-      const fingerprintsSeen = new Set();
-      const uniqueTxsToInsert = txsToInsert.filter(tx => {
-        if (fingerprintsSeen.has(tx.fingerprint)) return false;
-        fingerprintsSeen.add(tx.fingerprint);
-        return true;
-      });
-
-      const { error: insErr } = await supabase.from('imported_transactions').upsert(uniqueTxsToInsert, { onConflict: 'user_id,fingerprint' });
+      const { error: insErr } = await supabase.from('imported_transactions').upsert(txsToInsert, { onConflict: 'user_id,fingerprint' });
       if (insErr) throw insErr;
     }
 
