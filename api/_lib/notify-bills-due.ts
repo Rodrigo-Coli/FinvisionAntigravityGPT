@@ -49,15 +49,30 @@ export async function handleNotifyBillsDue(req: any, res: any) {
     const { data: users } = await supabase.from('user_settings').select('user_id, whatsapp_number, whatsapp_enabled, push_subscription, push_enabled');
     const filteredUsers = users?.filter(u => (u.whatsapp_enabled && u.whatsapp_number) || (u.push_enabled && u.push_subscription)) || [];
     if (filteredUsers.length === 0) return res.status(200).json({ message: 'No users.' });
-
     const userIds = filteredUsers.map(u => u.user_id);
-    const { data: expenses } = await supabase.from('transactions').select('description, amount, date, user_id').in('type', ['EXPENSE', 'BILL_PAYMENT', 'expense', 'bill_payment']).eq('is_paid', false).in('user_id', userIds).gte('date', todayStr).lte('date', tomorrowStr);
+    const { data: expenses } = await supabase
+      .from('transactions')
+      .select('description, amount, date, user_id, accounts(institution)')
+      .in('type', ['EXPENSE', 'BILL_PAYMENT', 'expense', 'bill_payment'])
+      .eq('is_paid', false)
+      .in('user_id', userIds)
+      .gte('date', todayStr)
+      .lte('date', tomorrowStr);
     
     for (const u of filteredUsers) {
       const bills = expenses?.filter(e => e.user_id === u.user_id) || [];
       if (bills.length === 0) continue;
       
-      let msg = `*FinVision Pro* 🔔\nVocê tem ${bills.length} contas vencendo em breve.`;
+      let msg = `*FinVision Pro* 🔔\nVocê tem *${bills.length}* contas vencendo hoje ou amanhã:\n\n`;
+      bills.forEach((b: any) => {
+        const dateFmt = b.date ? b.date.split('-').reverse().join('/') : 'Sem data';
+        const rawAcc = b.accounts;
+        const accName = Array.isArray(rawAcc) ? rawAcc[0]?.institution : rawAcc?.institution;
+        const accountLabel = accName ? ` (${accName})` : '';
+        msg += `• *${b.description}* - R$ ${Number(b.amount).toFixed(2)} [Venc: ${dateFmt}]${accountLabel}\n`;
+      });
+      msg += `\nOrganize suas finanças com tranquilidade! 🚀`;
+
       if (u.whatsapp_enabled && u.whatsapp_number) await sendWhatsApp(u.whatsapp_number, msg);
       if (u.push_enabled && u.push_subscription) {
         try { await webpush.sendNotification(u.push_subscription, JSON.stringify({ title: 'FinVision', body: msg })); } catch {}

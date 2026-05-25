@@ -17,14 +17,26 @@ async function sendWhatsApp(number: string, text: string) {
     }).catch(err => console.error('Evolution API Error:', err));
   }
 }
-
 async function downloadEvolutionMedia(message: any): Promise<{ base64: string; mimeType: string } | null> {
   if (!process.env.EVOLUTION_API_URL || !process.env.EVOLUTION_API_KEY || !process.env.EVOLUTION_INSTANCE) {
     return null;
   }
-  const url = `${process.env.EVOLUTION_API_URL}/message/downloadMedia/${process.env.EVOLUTION_INSTANCE}`;
+
+  const mimeType = message.message?.imageMessage?.mimetype 
+    || message.message?.audioMessage?.mimetype 
+    || message.message?.documentMessage?.mimetype 
+    || 'application/octet-stream';
+
+  const cleanBaseUrl = process.env.EVOLUTION_API_URL.endsWith('/') 
+    ? process.env.EVOLUTION_API_URL.slice(0, -1) 
+    : process.env.EVOLUTION_API_URL;
+
+  // 1. Tentar primeiro o endpoint padrao /message/downloadMedia
+  const downloadUrl = `${cleanBaseUrl}/message/downloadMedia/${process.env.EVOLUTION_INSTANCE}`;
+  console.log('[downloadEvolutionMedia] Tentando endpoint /message/downloadMedia...');
+  
   try {
-    const res = await fetch(url, {
+    const res = await fetch(downloadUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -38,36 +50,73 @@ async function downloadEvolutionMedia(message: any): Promise<{ base64: string; m
       })
     });
     
-    if (!res.ok) {
-      console.error('Failed to download media from Evolution API. Status:', res.status);
-      return null;
-    }
-    
-    const contentType = res.headers.get('content-type') || '';
-    const mimeType = message.message?.imageMessage?.mimetype 
-      || message.message?.audioMessage?.mimetype 
-      || message.message?.documentMessage?.mimetype 
-      || 'application/octet-stream';
-
-    if (contentType.includes('application/json')) {
-      const json = await res.json();
-      let base64 = json.base64 || json.data || '';
-      if (base64.includes(';base64,')) {
-        base64 = base64.split(';base64,')[1];
+    if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      let base64 = '';
+      if (contentType.includes('application/json')) {
+        const json = await res.json();
+        base64 = json.base64 || json.data || '';
+      } else {
+        const buffer = await res.arrayBuffer();
+        base64 = Buffer.from(buffer).toString('base64');
       }
-      return { base64, mimeType };
+      if (base64) {
+        if (base64.includes(';base64,')) {
+          base64 = base64.split(';base64,')[1];
+        }
+        return { base64, mimeType };
+      }
     } else {
-      const buffer = await res.arrayBuffer();
-      let base64 = Buffer.from(buffer).toString('base64');
-      if (base64.includes(';base64,')) {
-        base64 = base64.split(';base64,')[1];
-      }
-      return { base64, mimeType };
+      const errText = await res.text().catch(() => '');
+      console.warn(`[downloadEvolutionMedia] Endpoint /message/downloadMedia retornou status ${res.status}: ${errText}`);
     }
   } catch (err) {
-    console.error('Error downloading media from Evolution API:', err);
-    return null;
+    console.error('[downloadEvolutionMedia] Erro no endpoint /message/downloadMedia:', err);
   }
+
+  // 2. Fallback para /s3/getMedia
+  const getMediaUrl = `${cleanBaseUrl}/s3/getMedia/${process.env.EVOLUTION_INSTANCE}`;
+  console.log('[downloadEvolutionMedia] Tentando fallback para /s3/getMedia...');
+  
+  try {
+    const res = await fetch(getMediaUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': process.env.EVOLUTION_API_KEY as string
+      },
+      body: JSON.stringify({
+        messageId: message.key.id,
+        remoteJid: message.key.remoteJid,
+        fromMe: message.key.fromMe || false
+      })
+    });
+
+    if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      let base64 = '';
+      if (contentType.includes('application/json')) {
+        const json = await res.json();
+        base64 = json.base64 || json.data || '';
+      } else {
+        const buffer = await res.arrayBuffer();
+        base64 = Buffer.from(buffer).toString('base64');
+      }
+      if (base64) {
+        if (base64.includes(';base64,')) {
+          base64 = base64.split(';base64,')[1];
+        }
+        return { base64, mimeType };
+      }
+    } else {
+      const errText = await res.text().catch(() => '');
+      console.error(`[downloadEvolutionMedia] Fallback /s3/getMedia falhou com status ${res.status}: ${errText}`);
+    }
+  } catch (err) {
+    console.error('[downloadEvolutionMedia] Erro no fallback /s3/getMedia:', err);
+  }
+
+  return null;
 }
 
 async function handleInteractiveFinancialQuery(userId: string, queryText: string, phone: string, history: any[] = []) {
@@ -417,7 +466,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
       let cleanMimeType = media.mimeType.split(';')[0].trim();
       if (cleanMimeType.includes('audio/ogg') || cleanMimeType.includes('opus')) {
-        cleanMimeType = 'audio/opus';
+        cleanMimeType = 'audio/ogg';
       }
 
       const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
