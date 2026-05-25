@@ -1065,7 +1065,7 @@ const HistoryPage: React.FC = () => {
       remaining,
       payAmount: String(remaining.toFixed(2)),
       payAccountId: tx.accountId,
-      payDate: tx.date || DateUtils.formatToISODate(),
+      payDate: (tx.date || '').split('T')[0] || DateUtils.formatToISODate(),
       splitRemainder: false,
       isSubmitting: false
     });
