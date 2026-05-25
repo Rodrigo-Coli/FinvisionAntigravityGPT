@@ -20,7 +20,8 @@ import {
   Building2,
   User,
   Plus,
-  Tag
+  Tag,
+  Pencil
 } from 'lucide-react';
 import { ImportedTransaction, MatchStatus, BankAccount } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
@@ -913,7 +914,16 @@ const Reconcile: React.FC = () => {
                               <input type="text" value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} className="w-full bg-slate-50 border-none rounded-xl text-xs font-bold p-2 outline-none focus:ring-2 focus:ring-brand-500" />
                             ) : (
                               <div className="space-y-1">
-                                <h4 className="text-xs font-bold text-slate-900 truncate uppercase max-w-[150px] sm:max-w-none" title={item.description}>{item.description}</h4>
+                                <button
+                                  type="button"
+                                  onClick={() => startEditing(item)}
+                                  className="text-xs font-bold text-slate-900 text-left hover:text-brand-600 transition-colors w-full bg-transparent border-none p-0 cursor-pointer outline-none"
+                                >
+                                  <div className="flex items-center gap-1.5 group/edit truncate max-w-[150px] sm:max-w-none">
+                                    <span className="truncate uppercase">{item.description}</span>
+                                    <Pencil size={11} className="text-slate-200 group-hover/edit:text-brand-500 transition-colors shrink-0" />
+                                  </div>
+                                </button>
                                 {item.potential_duplicate && (
                                   <div className="flex items-start gap-1 p-1.5 bg-amber-50 rounded-lg border border-amber-100">
                                     <AlertCircle size={10} className="text-amber-500 mt-0.5 shrink-0" />

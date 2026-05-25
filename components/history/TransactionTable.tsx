@@ -189,7 +189,7 @@ const SubcategoryPicker: React.FC<SubcategoryPickerProps> = ({ value, parentCate
         .filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
         .sort((a, b) => a.name.localeCompare(b.name));
 
-    if (subcategories.filter(s => s.category_name === parentCategory).length === 0 && !value) return null;
+    if (!parentCategory) return null;
 
     return (
         <div ref={triggerRef} className="relative inline-block ml-1">
