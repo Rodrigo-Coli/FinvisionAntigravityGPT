@@ -70,17 +70,18 @@ export async function handleNotifyBillsDue(req: any, res: any) {
       
       let msg = `*FinVision Pro* 🔔\nVocê tem *${bills.length}* contas pendentes:\n\n`;
       bills.forEach((b: any) => {
-        const dateFmt = b.date ? b.date.split('-').reverse().join('/') : 'Sem data';
+        const cleanBillDate = b.date ? b.date.split('T')[0] : '';
+        const dateFmt = cleanBillDate ? cleanBillDate.split('-').reverse().join('/') : 'Sem data';
         
         let statusLabel = '';
-        if (b.date === yesterdayStr) {
-          statusLabel = '⚠️ Ontem (Vencido)';
-        } else if (b.date === todayStr) {
-          statusLabel = '🔴 Hoje';
-        } else if (b.date === tomorrowStr) {
-          statusLabel = '🟡 Amanhã';
-        } else if (b.date < todayStr) {
-          statusLabel = '🚨 Vencida';
+        if (cleanBillDate === yesterdayStr) {
+          statusLabel = `🚨 Vencida em ${dateFmt} (Ontem)`;
+        } else if (cleanBillDate === todayStr) {
+          statusLabel = `📅 Vence Hoje - ${dateFmt}`;
+        } else if (cleanBillDate === tomorrowStr) {
+          statusLabel = `📅 Vence Amanhã - ${dateFmt}`;
+        } else if (cleanBillDate < todayStr) {
+          statusLabel = `🚨 Vencida em ${dateFmt}`;
         } else {
           statusLabel = `📅 Venc: ${dateFmt}`;
         }
