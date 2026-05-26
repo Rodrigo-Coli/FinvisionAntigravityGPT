@@ -691,6 +691,90 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                             </button>
                                     )}
 
+                                    {/* Observações (Notes) - Mobile */}
+                                    {editingRow?.id === t.id && editingRow.field === 'notes' ? (
+                                        <div className="mt-1">
+                                            <textarea
+                                                autoFocus
+                                                rows={1}
+                                                value={editValue}
+                                                onChange={e => setEditValue(e.target.value)}
+                                                onBlur={() => handleUpdate(t.id, 'notes', editValue)}
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                                        e.preventDefault();
+                                                        handleUpdate(t.id, 'notes', editValue);
+                                                    }
+                                                }}
+                                                placeholder="Adicionar observações..."
+                                                className="w-full text-xs font-medium text-slate-600 bg-white border border-brand-500 rounded-lg p-2 outline-none resize-none"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                            <button
+                                                onClick={() => {
+                                                    setEditingRow({ id: t.id, field: 'notes' });
+                                                    setEditValue(t.notes || '');
+                                                }}
+                                                className="text-left group/notes flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer"
+                                            >
+                                                {t.notes ? (
+                                                    <span className="bg-slate-50 text-slate-600 border border-slate-100 rounded-lg px-2 py-0.5 max-w-[200px] truncate block" title={t.notes}>
+                                                        Obs: {t.notes}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] text-slate-300 font-bold uppercase tracking-wider opacity-0 group-hover/notes:opacity-100 transition-opacity">
+                                                        + Obs
+                                                    </span>
+                                                )}
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* Tags - Mobile */}
+                                    {editingRow?.id === t.id && editingRow.field === 'tags' ? (
+                                        <div className="mt-1">
+                                            <input
+                                                type="text"
+                                                autoFocus
+                                                value={editValue}
+                                                onChange={e => setEditValue(e.target.value)}
+                                                onBlur={() => handleUpdate(t.id, 'tags', editValue)}
+                                                onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'tags', editValue)}
+                                                placeholder="Tags separadas por vírgula..."
+                                                className="w-full text-[11px] font-bold text-slate-600 bg-white border border-brand-500 rounded-lg px-2 py-1 outline-none"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="mt-1 flex flex-wrap gap-1 items-center">
+                                            {t.tags && t.tags.length > 0 ? (
+                                                t.tags.map((tag, idx) => (
+                                                    <span
+                                                        key={idx}
+                                                        onClick={() => {
+                                                            setEditingRow({ id: t.id, field: 'tags' });
+                                                            setEditValue(t.tags?.join(', ') || '');
+                                                        }}
+                                                        className="cursor-pointer bg-brand-50 text-brand-600 hover:bg-brand-100 transition-colors border border-brand-100/50 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider block"
+                                                    >
+                                                        {tag}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingRow({ id: t.id, field: 'tags' });
+                                                        setEditValue('');
+                                                    }}
+                                                    className="text-[9px] text-slate-300 hover:text-brand-600 font-black uppercase tracking-widest opacity-0 hover:opacity-100 transition-opacity"
+                                                >
+                                                    + Tag
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {/* Row 3: Account · Category · Owner · Status */}
                                     <div className="flex flex-col gap-3">
                                         <div className="flex items-start justify-between gap-4">
@@ -896,12 +980,96 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                             />
                                         ) : (
                                             <button onClick={() => { setEditingRow({ id: t.id, field: 'description' }); setEditValue(t.description); }}
-                                                className="text-sm font-bold text-slate-900 text-left hover:text-brand-600 transition-colors">
+                                                className="text-sm font-bold text-slate-900 text-left hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer">
                                                 <div className="flex items-center gap-2 group/edit">
                                                     {t.description || 'Sem descrição'}
                                                     <Pencil size={12} className="text-slate-200 group-hover/edit:text-brand-500 transition-colors" />
                                                 </div>
                                             </button>
+                                        )}
+
+                                        {/* Observações (Notes) - Desktop */}
+                                        {editingRow?.id === t.id && editingRow.field === 'notes' ? (
+                                            <div className="mt-1">
+                                                <textarea
+                                                    autoFocus
+                                                    rows={1}
+                                                    value={editValue}
+                                                    onChange={e => setEditValue(e.target.value)}
+                                                    onBlur={() => handleUpdate(t.id, 'notes', editValue)}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                                            e.preventDefault();
+                                                            handleUpdate(t.id, 'notes', editValue);
+                                                        }
+                                                    }}
+                                                    placeholder="Adicionar observações..."
+                                                    className="w-full max-w-xs text-xs font-medium text-slate-600 bg-white border border-brand-500 rounded-lg p-2 outline-none resize-none animate-in slide-in-from-top-1 duration-200"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingRow({ id: t.id, field: 'notes' });
+                                                        setEditValue(t.notes || '');
+                                                    }}
+                                                    className="text-left group/notes flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer"
+                                                >
+                                                    {t.notes ? (
+                                                        <span className="bg-slate-50 text-slate-600 border border-slate-100 rounded-lg px-2 py-0.5 max-w-[240px] truncate block" title={t.notes}>
+                                                            Obs: {t.notes}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] text-slate-300 font-bold uppercase tracking-wider opacity-0 group-hover/notes:opacity-100 transition-opacity">
+                                                            + Obs
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* Tags - Desktop */}
+                                        {editingRow?.id === t.id && editingRow.field === 'tags' ? (
+                                            <div className="mt-1">
+                                                <input
+                                                    type="text"
+                                                    autoFocus
+                                                    value={editValue}
+                                                    onChange={e => setEditValue(e.target.value)}
+                                                    onBlur={() => handleUpdate(t.id, 'tags', editValue)}
+                                                    onKeyDown={e => e.key === 'Enter' && handleUpdate(t.id, 'tags', editValue)}
+                                                    placeholder="Tags separadas por vírgula..."
+                                                    className="w-full max-w-xs text-[11px] font-bold text-slate-600 bg-white border border-brand-500 rounded-lg px-2 py-1 outline-none animate-in slide-in-from-top-1 duration-200"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="mt-1 flex flex-wrap gap-1 items-center">
+                                                {t.tags && t.tags.length > 0 ? (
+                                                    t.tags.map((tag, idx) => (
+                                                        <span
+                                                            key={idx}
+                                                            onClick={() => {
+                                                                setEditingRow({ id: t.id, field: 'tags' });
+                                                                setEditValue(t.tags?.join(', ') || '');
+                                                            }}
+                                                            className="cursor-pointer bg-brand-50 text-brand-600 hover:bg-brand-100 transition-colors border border-brand-100/50 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider block"
+                                                        >
+                                                            {tag}
+                                                        </span>
+                                                    ))
+                                                ) : (
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingRow({ id: t.id, field: 'tags' });
+                                                            setEditValue('');
+                                                        }}
+                                                        className="text-[9px] text-slate-300 hover:text-brand-600 font-black uppercase tracking-widest opacity-0 hover:opacity-100 transition-opacity bg-transparent border-none p-0 cursor-pointer"
+                                                    >
+                                                        + Tag
+                                                    </button>
+                                                )}
+                                            </div>
                                         )}
                                     </td>
 

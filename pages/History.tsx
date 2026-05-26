@@ -207,7 +207,7 @@ const HistoryPage: React.FC = () => {
     }
 
     if (hasChanged) {
-      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash.split('?')[0]);
+      navigate('/history', { replace: true });
     }
   }, [location.search]);
 
@@ -323,7 +323,7 @@ const HistoryPage: React.FC = () => {
         }
 
         let cardQuery = supabase.from('card_transactions')
-          .select('id, date, amount, description, categories(name)')
+          .select('id, date, amount, description, card_id, category_id, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id)')
           .eq('user_id', user.id);
 
         if (startDate) cardQuery = cardQuery.gte('date', startDate);
@@ -340,6 +340,15 @@ const HistoryPage: React.FC = () => {
 
         if (accRes.error) throw accRes.error;
         if (catRes.error) throw catRes.error;
+        if (subRes.error) throw subRes.error;
+        if (txsRes.error) {
+          console.error("Erro na query de transactions:", txsRes.error);
+          throw txsRes.error;
+        }
+        if (cardsRes.error) {
+          console.error("Erro na query de card_transactions:", cardsRes.error);
+          throw cardsRes.error;
+        }
 
         accData = accRes.data || [];
         catData = catRes.data || [];
@@ -443,11 +452,31 @@ const HistoryPage: React.FC = () => {
         type: 'EXPENSE',
         amount: Number(ct.amount),
         category: ct.categories?.name || 'Cartão de Crédito',
+        subcategory: ct.subcategory || undefined,
         description: ct.description,
+        account_id: ct.cards?.account_id || undefined,
+        account_name: accounts.find(a => a.id === ct.cards?.account_id)?.institution || 'Cartão de Crédito',
+        owner_name: ct.owner_name || 'Pessoal',
+        notes: ct.notes || '',
+        tags: ct.tags || [],
         is_paid: true,
         paid_amount: Number(ct.amount),
         is_amortization: false,
-        metadata: {}
+        is_installment: ct.is_installment,
+        installment_number: ct.installment_number,
+        installment_total: ct.installment_total,
+        installment_group_id: ct.installment_group_id,
+        is_recurring: ct.is_recurring,
+        recurrence_period: ct.recurrence_period,
+        recurrence_group_id: ct.recurrence_group_id,
+        metadata: {
+          is_card: true,
+          card_id: ct.card_id,
+          installment_number: ct.installment_number,
+          installment_total: ct.installment_total,
+          installment_group_id: ct.installment_group_id,
+          recurrence_group_id: ct.recurrence_group_id
+        }
       }));
 
       // Combined transactions for charts and table
@@ -521,6 +550,8 @@ const HistoryPage: React.FC = () => {
         category: t.category ?? 'Outros',
         subcategory: t.subcategory ?? undefined,
         owner_name: t.owner_name ?? 'Pessoal',
+        notes: t.notes ?? '',
+        tags: t.tags ?? [],
         isDeleted: !!t.is_deleted,
         isReconciled: !!t.is_reconciled,
         isPaid: !!t.is_paid,
@@ -548,6 +579,8 @@ const HistoryPage: React.FC = () => {
           category: t.category ?? 'Outros',
           subcategory: t.subcategory ?? undefined,
           owner_name: t.owner_name ?? 'Pessoal',
+          notes: t.notes ?? '',
+          tags: t.tags ?? [],
           isDeleted: t.is_deleted,
           isReconciled: t.is_reconciled,
           isPaid: t.is_paid ?? false,
@@ -595,6 +628,10 @@ const HistoryPage: React.FC = () => {
 
   const handleUpdate = async (id: string, field: string, value: any, confirmedScope?: SeriesScope) => {
     if (!supabase) return;
+
+    if (field === 'tags' && typeof value === 'string') {
+      value = value.split(',').map(s => s.trim()).filter(s => s !== '');
+    }
 
     const tx = transactions.find(t => t.id === id);
     const isSeries = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
@@ -1163,7 +1200,9 @@ const HistoryPage: React.FC = () => {
           const newTx = {
             date: f.date, description: f.description, amount, type: f.type,
             account_id: f.accountId, category: f.category, subcategory: f.subcategory || null, is_paid: false, paid_amount: 0,
-            owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName
+            owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
+            notes: f.notes || '',
+            tags: f.tags || []
           };
           const saved = await FinanceService.saveTransaction(newTx);
           setTransactions(prev => [saved as any, ...prev]);
@@ -1179,12 +1218,16 @@ const HistoryPage: React.FC = () => {
               user_id: user?.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
               account_id: f.accountId, account_name: accSrc?.institution || 'Conta', category: f.category, subcategory: f.subcategory || null, is_paid: true, paid_amount: amount, paid_at: f.date,
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
+              notes: f.notes || '',
+              tags: f.tags || [],
               metadata: { is_transfer: true, transfer_side: 'SOURCE', counter_account_id: f.destinationAccountId }
             },
             {
               user_id: user?.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
               account_id: f.destinationAccountId, account_name: accDest?.institution || 'Conta Destino', category: f.category, subcategory: f.subcategory || null, is_paid: true, paid_amount: amount, paid_at: f.date,
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
+              notes: f.notes || '',
+              tags: f.tags || [],
               metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: f.accountId }
             }
           ]).select('id');
@@ -1197,7 +1240,9 @@ const HistoryPage: React.FC = () => {
             is_paid: f.isPaidNow === true,
             paid_amount: f.isPaidNow === true ? amount : 0,
             paid_at: f.isPaidNow === true ? f.date : null,
-            owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName
+            owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
+            notes: f.notes || '',
+            tags: f.tags || []
           }).select('id');
           if (insertErr) throw insertErr;
           createdTxId = data?.[0]?.id;
@@ -1212,6 +1257,8 @@ const HistoryPage: React.FC = () => {
         const inserts = series.map(item => ({
           user_id: userId, date: item.date, description: item.description, amount: item.amount, type: item.type, account_id: item.accountId, category: item.category, subcategory: item.subcategory, is_paid: false, paid_amount: 0,
           owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
+          notes: f.notes || '',
+          tags: f.tags || [],
           metadata: { ...(f.isInstallment ? { installment_group_id: groupId, installment_number: (item as any).installmentNumber, installment_total: f.installmentsCount } : { recurrence_group_id: groupId }) }
         }));
 
@@ -1256,6 +1303,8 @@ const HistoryPage: React.FC = () => {
           category: f.category,
           subcategory: f.subcategory,
           owner_name: f.ownerName,
+          notes: f.notes || '',
+          tags: f.tags || [],
           isPaid: false,
           paidAmount: 0,
           metadata: { is_transfer: isTransfer },

@@ -52,6 +52,8 @@ const CreditCardsPage: React.FC = () => {
   const [txSubcategory, setTxSubcategory] = useState<string>('');
   const [subcategories, setSubcategories] = useState<{ id: string, name: string, category_name?: string }[]>([]);
   const [txCardId, setTxCardId] = useState<string>('');
+  const [txNotes, setTxNotes] = useState('');
+  const [txTags, setTxTags] = useState<string[]>([]);
 
   // New Series States
   const [isInstallment, setIsInstallment] = useState(false);
@@ -127,7 +129,7 @@ const CreditCardsPage: React.FC = () => {
     const params = new URLSearchParams(location.search);
     if (params.get('add') === 'true') {
       setShowAddTxModal(true);
-      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash.split('?')[0]);
+      navigate('/credit-cards', { replace: true });
     }
   }, [location.search]);
 
@@ -524,6 +526,10 @@ const CreditCardsPage: React.FC = () => {
   const saveTxPatch = async (id: string, patch: any, confirmedScope?: SeriesScope) => {
     if (!supabase) return;
 
+    if (patch.tags && typeof patch.tags === 'string') {
+      patch.tags = patch.tags.split(',').map((s: string) => s.trim()).filter((s: string) => s !== '');
+    }
+
     const tx = transactions.find(t => t.id === id);
     const isSeries = tx?.installment_group_id || tx?.recurrence_group_id;
 
@@ -693,7 +699,9 @@ const CreditCardsPage: React.FC = () => {
           source: 'MANUAL',
           is_manual: true,
           category_id: txCategoryId || null,
-          subcategory: txSubcategory || null
+          subcategory: txSubcategory || null,
+          notes: txNotes || '',
+          tags: txTags || []
         };
 
         const { data: txData, error } = await supabase.from('card_transactions').insert([payload]).select('id').single();
@@ -767,7 +775,9 @@ const CreditCardsPage: React.FC = () => {
             is_recurring: item.is_recurring,
             recurrence_period: item.recurrence_period,
             recurrence_group_id: isRecurring ? groupId : null,
-            subcategory: txSubcategory || null
+            subcategory: txSubcategory || null,
+            notes: txNotes || '',
+            tags: txTags || []
           });
         }
         
@@ -816,6 +826,8 @@ const CreditCardsPage: React.FC = () => {
     setIsRecurring(false);
     setInstallmentsCount('');
     setTxFiles([]);
+    setTxNotes('');
+    setTxTags([]);
   };
 
   const handleEditClick = () => {
@@ -1393,6 +1405,10 @@ const CreditCardsPage: React.FC = () => {
         setRecurrenceDaysInterval={setRecurrenceDaysInterval}
         txFiles={txFiles}
         setTxFiles={setTxFiles}
+        txNotes={txNotes}
+        setTxNotes={setTxNotes}
+        txTags={txTags}
+        setTxTags={setTxTags}
       />
 
       <PayStatementModal

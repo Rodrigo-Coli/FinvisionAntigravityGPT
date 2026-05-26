@@ -233,6 +233,8 @@ const Reconcile: React.FC = () => {
         subcategory: t.subcategory || t.metadata?.subcategory || '',
         potential_duplicate: t.potential_duplicate,
         duplicate_reason: t.duplicate_reason,
+        account_id: t.account_id,
+        accountId: t.account_id,
         metadata: t.metadata
       })));
     } catch (err) { console.error(err); }
@@ -329,7 +331,7 @@ const Reconcile: React.FC = () => {
       item.category?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
 
     setEditingId(item.id);
-    const initialTargetType = item.metadata?.target_type || importSource === 'card' ? 'card' : 'bank';
+    const initialTargetType = item.metadata?.target_type || (importSource === 'card' ? 'card' : 'bank');
     setEditForm({
       ...item,
       targetId: selectedTargetId,
@@ -509,7 +511,23 @@ const Reconcile: React.FC = () => {
   const filteredImported = imported.filter(item => {
     const matchesSearch = item.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesDuplicate = showOnlyDuplicates ? item.potential_duplicate : true;
-    return matchesSearch && matchesDuplicate;
+    if (!matchesSearch || !matchesDuplicate) return false;
+
+    // Segregação de filas de conciliação
+    const isItemCard = realCards.some(c => c.id === item.account_id) || item.metadata?.is_card === true;
+    const isItemBank = realAccounts.some(a => a.id === item.account_id) && !isItemCard;
+
+    if (importSource === 'bank') {
+      return isItemBank;
+    }
+    if (importSource === 'card') {
+      return isItemCard;
+    }
+    if (importSource === 'smart') {
+      return !isItemBank && !isItemCard;
+    }
+
+    return true;
   });
 
   const handleIgnore = async (id: string) => {
@@ -579,11 +597,11 @@ const Reconcile: React.FC = () => {
 
   const handleConfirm = async (item: any, isBulk: boolean = false) => {
     if (!supabase) return;
-    const hasOriginalDest = !!item.metadata?.original_account_id;
+    const originalAccountId = item.account_id || item.accountId || item.metadata?.original_account_id;
     const isEditing = editingId === item.id;
-    const targetId = hasOriginalDest
-      ? item.metadata.original_account_id
-      : (isEditing ? editForm.targetId : selectedTargetId);
+    const targetId = isEditing
+      ? editForm.targetId
+      : (originalAccountId || selectedTargetId);
     
     // Determine if the target is a card
     const isTargetInCards = realCards.some(c => c.id === targetId);
@@ -591,7 +609,7 @@ const Reconcile: React.FC = () => {
 
     const effectiveIsCard = isEditing 
       ? editForm.targetType === 'card' 
-      : (isTargetInCards || (item.metadata?.target_type === 'card' && !isTargetInAccounts));
+      : (isTargetInCards || (item.metadata?.is_card === true) || (item.metadata?.target_type === 'card' && !isTargetInAccounts));
 
     const owner = isEditing ? editForm.owner_name : (item.owner_name || 'Pessoal');
     const categoryName = isEditing ? editForm.category : (item.category || 'Conciliação');

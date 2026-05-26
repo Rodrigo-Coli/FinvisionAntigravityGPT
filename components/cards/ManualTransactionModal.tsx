@@ -36,6 +36,10 @@ interface ManualTransactionModalProps {
     setRecurrenceDaysInterval?: (v: number) => void;
     txFiles?: File[];
     setTxFiles?: (v: File[]) => void;
+    txNotes: string;
+    setTxNotes: (v: string) => void;
+    txTags: string[];
+    setTxTags: (v: string[]) => void;
 }
 
 export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
@@ -70,7 +74,11 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     recurrenceDaysInterval = 1,
     setRecurrenceDaysInterval,
     txFiles = [],
-    setTxFiles
+    setTxFiles,
+    txNotes,
+    setTxNotes,
+    txTags,
+    setTxTags
 }) => {
     if (!show) return null;
 
@@ -264,6 +272,34 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                         }
                                     </datalist>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Observações e Tags */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Observações</label>
+                                <textarea
+                                    value={txNotes}
+                                    onChange={(e) => setTxNotes(e.target.value)}
+                                    placeholder="Detalhes sobre a transação..."
+                                    rows={2}
+                                    className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300 resize-none text-xs"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Tags (Separadas por vírgula)</label>
+                                <input
+                                    type="text"
+                                    value={txTags?.join(', ') || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const arr = val.split(',').map(s => s.trim()).filter(s => s !== '');
+                                        setTxTags(arr);
+                                    }}
+                                    placeholder="Ex: viagem, lazer, 2026"
+                                    className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300 text-xs"
+                                />
                             </div>
                         </div>
 

@@ -116,6 +116,8 @@ export interface Transaction {
   is_incomplete?: boolean;    // Flag para dados legados que precisam de revisão
   document_id?: string;       // Link para anexo principal (legado)
   attachments?: Document[];   // Lista de múltiplos anexos
+  notes?: string;
+  tags?: string[];
 }
 
 export interface Document {
@@ -244,6 +246,8 @@ export interface ImportedTransaction {
   subcategory?: string;
   potential_duplicate?: boolean;
   duplicate_reason?: string;
+  account_id?: string;
+  accountId?: string;
   metadata?: any;
 }
 

@@ -27,6 +27,8 @@ interface AddTransactionModalProps {
         documentId?: string;
         files?: File[];
         isPaidNow?: boolean;
+        notes?: string;
+        tags?: string[];
     };
     accounts: BankAccount[];
     owners: string[];
@@ -452,6 +454,34 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                     </div>
                                 </div>
                             )}
+                        </div>
+
+                        {/* Observações e Tags */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Observações</label>
+                                <textarea
+                                    value={form.notes || ''}
+                                    onChange={(e) => setAddField('notes', e.target.value)}
+                                    placeholder="Detalhes sobre a transação..."
+                                    rows={2}
+                                    className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300 resize-none text-xs"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tags (Separadas por vírgula)</label>
+                                <input
+                                    type="text"
+                                    value={form.tags?.join(', ') || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const arr = val.split(',').map(s => s.trim()).filter(s => s !== '');
+                                        setAddField('tags', arr);
+                                    }}
+                                    placeholder="Ex: viagem, lazer, 2026"
+                                    className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300 text-xs"
+                                />
+                            </div>
                         </div>
 
                         {/* SERIES OPTIONS */}

@@ -305,6 +305,12 @@ function formatDraftConfirmation(tx: any, isUpdate: boolean = false): string {
   if (tx.owner_name) {
     text += `*Perfil:* ${tx.owner_name}\n`;
   }
+  if (tx.notes) {
+    text += `*Observações:* ${tx.notes}\n`;
+  }
+  if (tx.tags && tx.tags.length > 0) {
+    text += `*Tags:* ${tx.tags.join(', ')}\n`;
+  }
   if (tx.is_recurring) {
     text += `*Recorrência:* ${tx.recurrence_period || 'mensal'}\n`;
   }
@@ -896,7 +902,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                     recurrence_period: op.transaction.recurrence_period || null,
                     is_installment: op.transaction.is_installment || false,
                     installment_number: op.transaction.installment_number || null,
-                    installment_total: op.transaction.installment_total || null
+                    installment_total: op.transaction.installment_total || null,
+                    notes: op.transaction.notes || '',
+                    tags: op.transaction.tags || []
                   });
                 }
               } else {
@@ -914,7 +922,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                   recurrence_period: op.transaction.recurrence_period || null,
                   is_installment: op.transaction.is_installment || false,
                   installment_number: op.transaction.installment_number || null,
-                  installment_total: op.transaction.installment_total || null
+                  installment_total: op.transaction.installment_total || null,
+                  notes: op.transaction.notes || '',
+                  tags: op.transaction.tags || []
                 });
               }
             } else if (op.intent === 'DELETE') {
@@ -976,7 +986,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                 recurrence_period: tx.recurrence_period || null,
                 is_installment: tx.is_installment || false,
                 installment_number: tx.installment_number || null,
-                installment_total: tx.installment_total || null
+                installment_total: tx.installment_total || null,
+                notes: tx.notes || '',
+                tags: tx.tags || []
               });
 
               await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
@@ -1030,7 +1042,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             recurrence_period: tx.recurrence_period || null,
             is_installment: tx.is_installment || false,
             installment_number: tx.installment_number || null,
-            installment_total: tx.installment_total || null
+            installment_total: tx.installment_total || null,
+            notes: tx.notes || '',
+            tags: tx.tags || []
           });
 
           await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
@@ -1090,7 +1104,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             "is_card": boolean,
             "card_name": string (ou null),
             "account_name": "Nome da conta/banco caso o comprovante especifique de onde saiu o dinheiro, ex: Nubank, Itaú, Santander (ou null)",
-            "owner_name": string (ou null)
+            "owner_name": string (ou null),
+            "notes": "Observações ou detalhes relevantes do comprovante (ou null)",
+            "tags": ["tag1", "tag2"] (um array de strings com palavras-chave relevantes como marcas, tipos de produtos, nomes de projetos ou array vazio)
           }
         ]
       }
@@ -1112,7 +1128,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             "is_card": boolean,
             "card_name": string (ou null),
             "account_name": "Nome da conta/banco caso o comprovante especifique de onde saiu o dinheiro, ex: Nubank, Itaú, Santander (ou null)",
-            "owner_name": string (ou null)
+            "owner_name": string (ou null),
+            "notes": "Observações ou detalhes adicionais sobre o produto/compra (ou null)",
+            "tags": ["tag1", "tag2"] (um array de strings com palavras-chave baseadas no estabelecimento, marcas compradas ou categoria, ou array vazio)
           }
         ]
       }
@@ -1174,7 +1192,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             is_card: op.is_card || false,
             card_name: op.card_name || null,
             account_name: op.account_name || null,
-            owner_name: op.owner_name || 'Pessoal'
+            owner_name: op.owner_name || 'Pessoal',
+            notes: op.notes || '',
+            tags: op.tags || []
           }
         }));
 
@@ -1289,7 +1309,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           "owner_name": string (ou null),
           "account_name": string (ou null),
           "is_recurring": boolean,
-          "recurrence_period": string (ou null)
+          "recurrence_period": string (ou null),
+          "notes": string (ou null),
+          "tags": ["tag1", "tag2"]
         } (ou null se isEdit for false),
         "operations": [
           {
@@ -1309,7 +1331,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               "account_name": "Nome da conta/banco caso o usuário especifique (ex: Nubank, Itaú, ou null)",
               "owner_name": string (ou null),
               "is_recurring": boolean,
-              "recurrence_period": "weekly" | "monthly" | "yearly" | "biweekly" (ou null)
+              "recurrence_period": "weekly" | "monthly" | "yearly" | "biweekly" (ou null),
+              "notes": "Observações ou observação baseada no texto (ex: se o usuário disse 'gastei 50 no almoço com a equipe', coloque 'Almoço com a equipe' em notes, ou null)",
+              "tags": ["tag1", "tag2"] (um array de strings com palavras-chave relevantes com base no texto, ex: ['almoço', 'equipe'] ou array vazio)
             },
             "deleteFilters": {
               "description": "Ex: mercado (termo de busca ou null)",

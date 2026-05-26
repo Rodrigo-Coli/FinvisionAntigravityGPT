@@ -187,11 +187,68 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
       if (liabErr) throw liabErr;
       const liabId = liabData.id;
 
-      // 3. Transações
+      // 3. Auto-provisionar Categoria "Ativos Imobiliários" e Subcategoria no Supabase
+      let categoryId = null;
+      try {
+        const { data: existingCat } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('user_id', user.id)
+          .ilike('name', 'Ativos Imobiliários')
+          .maybeSingle();
+
+        if (existingCat) {
+          categoryId = existingCat.id;
+        } else {
+          const { data: newCat, error: catErr } = await supabase
+            .from('categories')
+            .insert([{
+              user_id: user.id,
+              name: 'Ativos Imobiliários',
+              type: 'EXPENSE'
+            }])
+            .select()
+            .single();
+          if (catErr) throw catErr;
+          categoryId = newCat.id;
+        }
+
+        if (categoryId) {
+          const { data: existingSubcat } = await supabase
+            .from('subcategories')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('category_id', categoryId)
+            .ilike('name', name)
+            .maybeSingle();
+
+          if (!existingSubcat) {
+            await supabase
+              .from('subcategories')
+              .insert([{
+                user_id: user.id,
+                category_id: categoryId,
+                name: name
+              }]);
+          }
+        }
+      } catch (errCat) {
+        console.warn("Erro ao auto-provisionar categoria/subcategoria no Supabase:", errCat);
+      }
+
+      // 4. Transações
       const futureTransactions: any[] = [];
-      const catName = 'Habitação > Financiamento Imob.';
+      const catName = 'Ativos Imobiliários';
+      const subcatName = name;
+
+      const generateUUID = () => {
+        return typeof crypto !== 'undefined' && crypto.randomUUID 
+          ? crypto.randomUUID() 
+          : Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      };
 
       // Ato
+      const atoGroupId = downPayments.length > 1 ? generateUUID() : null;
       downPayments.forEach((dp, i) => {
         futureTransactions.push({
           user_id: user.id,
@@ -200,9 +257,14 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
           date: dp.date,
           type: 'EXPENSE',
           category: catName,
+          subcategory: subcatName,
           is_paid: new Date(dp.date) <= new Date(),
           is_amortization: true,
           liability_id: liabId,
+          is_installment: downPayments.length > 1,
+          installment_number: downPayments.length > 1 ? i + 1 : null,
+          installment_total: downPayments.length > 1 ? downPayments.length : null,
+          installment_group_id: atoGroupId,
           metadata: { type: 'DOWN_PAYMENT' }
         });
       });
@@ -212,8 +274,10 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         let baseVal = parseFloat(constAmount);
         const rate = (parseFloat(monthlyIndexRate) || 0) / 100;
         const startDate = new Date(constStartDate);
+        const totalInst = parseInt(constInstallments);
+        const obrasGroupId = generateUUID();
 
-        for (let i = 0; i < parseInt(constInstallments); i++) {
+        for (let i = 0; i < totalInst; i++) {
           const txDate = new Date(startDate.getFullYear(), startDate.getMonth() + i, startDate.getDate());
           if (i > 0) baseVal = baseVal * (1 + rate);
 
@@ -224,9 +288,14 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
             date: txDate.toISOString().split('T')[0],
             type: 'EXPENSE',
             category: catName,
+            subcategory: subcatName,
             is_paid: false,
             is_amortization: true,
             liability_id: liabId,
+            is_installment: true,
+            installment_number: i + 1,
+            installment_total: totalInst,
+            installment_group_id: obrasGroupId,
             metadata: { 
               installment: i + 1, 
               index_type: indexType, 
@@ -242,6 +311,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         const total = parseInt(intermTotal);
         const freq = parseInt(intermFrequency);
         const startDate = new Date(constStartDate);
+        const intermGroupId = generateUUID();
 
         for (let i = 1; i <= total; i++) {
           const txDate = new Date(startDate.getFullYear(), startDate.getMonth() + (i * freq), startDate.getDate());
@@ -252,9 +322,14 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
             date: txDate.toISOString().split('T')[0],
             type: 'EXPENSE',
             category: catName,
+            subcategory: subcatName,
             is_paid: false,
             is_amortization: true,
             liability_id: liabId,
+            is_installment: true,
+            installment_number: i,
+            installment_total: total,
+            installment_group_id: intermGroupId,
             metadata: { 
               type: 'INTERMEDIARY',
               index_type: indexType,
@@ -273,9 +348,14 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
           date: deliveryDate,
           type: 'EXPENSE',
           category: catName,
+          subcategory: subcatName,
           is_paid: false,
           is_amortization: true,
           liability_id: liabId,
+          is_installment: false,
+          installment_number: null,
+          installment_total: null,
+          installment_group_id: null,
           metadata: { 
             type: 'FINAL_BALANCE', 
             adjust_during_construction: adjustBalanceDuringConstruction,
