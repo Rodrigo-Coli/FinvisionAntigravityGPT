@@ -44,6 +44,8 @@ const Reconcile: React.FC = () => {
   const [recentImports, setRecentImports] = useState<any[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [subcategories, setSubcategories] = useState<{ id: string; name: string; category_name?: string }[]>([]);
+  const [recentTxs, setRecentTxs] = useState<any[]>([]);
+  const [showSuggestionsId, setShowSuggestionsId] = useState<string | null>(null);
 
   // Novos estados para o Editor Inline
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -164,6 +166,39 @@ const Reconcile: React.FC = () => {
     } catch (err) { console.error(err); }
   };
 
+  const fetchRecentTransactions = async () => {
+    if (!supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('description, category, subcategory, account_id, owner_name, type')
+        .eq('user_id', user.id)
+        .eq('is_deleted', false)
+        .order('date', { ascending: false })
+        .limit(200);
+
+      if (error) throw error;
+
+      const uniqueTxsMap = new Map<string, any>();
+      if (data) {
+        for (const tx of data) {
+          if (tx.description) {
+            const key = tx.description.toLowerCase().trim();
+            if (!uniqueTxsMap.has(key)) {
+              uniqueTxsMap.set(key, tx);
+            }
+          }
+        }
+      }
+      setRecentTxs(Array.from(uniqueTxsMap.values()));
+    } catch (e) {
+      console.error('Erro ao carregar transações recentes para sugestões:', e);
+    }
+  };
+
   const fetchData = async () => {
     setIsLoadingQueue(true);
     await Promise.all([
@@ -173,7 +208,8 @@ const Reconcile: React.FC = () => {
       fetchSubcategories(),
       fetchOwners(),
       fetchRealAccounts(),
-      fetchRealCards()
+      fetchRealCards(),
+      fetchRecentTransactions()
     ]);
     setIsLoadingQueue(false);
   };
@@ -193,7 +229,8 @@ const Reconcile: React.FC = () => {
         status: t.status as MatchStatus,
         type: t.amount >= 0 ? 'credit' : 'debit',
         owner_name: t.owner_name || 'Pessoal',
-        category: t.category,
+        category: t.category || t.metadata?.category || '',
+        subcategory: t.subcategory || t.metadata?.subcategory || '',
         potential_duplicate: t.potential_duplicate,
         duplicate_reason: t.duplicate_reason,
         metadata: t.metadata
@@ -308,8 +345,23 @@ const Reconcile: React.FC = () => {
 
   const saveEdit = async (id: string) => {
     try {
-      await ReconciliationService.updateTransactionStatus(id, editForm.status, editForm.owner_name);
-      setImported(prev => prev.map(t => t.id === id ? { ...t, owner_name: editForm.owner_name, category: editForm.category, subcategory: editForm.subcategory } as any : t));
+      await ReconciliationService.updateTransaction(id, {
+        description: editForm.description,
+        date: editForm.date,
+        owner_name: editForm.owner_name,
+        category: editForm.category,
+        subcategory: editForm.subcategory,
+        metadata: editForm.metadata
+      });
+      setImported(prev => prev.map(t => t.id === id ? { 
+        ...t, 
+        description: editForm.description,
+        date: editForm.date,
+        owner_name: editForm.owner_name, 
+        category: editForm.category, 
+        subcategory: editForm.subcategory,
+        metadata: { ...t.metadata, category: editForm.category, subcategory: editForm.subcategory }
+      } as any : t));
       setEditingId(null);
     } catch (e) { alert("Erro ao salvar"); }
   };
@@ -546,6 +598,9 @@ const Reconcile: React.FC = () => {
     const subcategoryName = isEditing ? editForm.subcategory : (item.subcategory || null);
     const counterId = isEditing ? editForm.counterAccountId : counterAccountId;
 
+    const finalDescription = isEditing ? editForm.description : item.description;
+    const finalDate = isEditing ? editForm.date : item.date;
+
     if (!targetId && !isBulk) return alert("Selecione um destino (Banco/Cartão)");
     if (!targetId) return; // Pula em bulk se não tiver destino
 
@@ -579,12 +634,12 @@ const Reconcile: React.FC = () => {
 
         // Transação principal (a perna do arquivo/banco atual)
         await supabase.from('transactions').insert({
-          user_id: user.id, date: item.date, description: item.description,
+          user_id: user.id, date: finalDate, description: finalDescription,
           amount: absoluteAmount,
           type: isTransfer ? 'TRANSFER' : (thisSideIsSource ? 'EXPENSE' : 'INCOME'),
           account_id: targetId, account_name: acc?.institution || 'Conta',
           category: categoryName, subcategory: subcategoryName || null,
-          owner_name: owner, is_paid: true, paid_at: item.date,
+          owner_name: owner, is_paid: true, paid_at: finalDate,
           metadata: {
             category_id: finalCategoryId,
             is_transfer: isTransfer,
@@ -598,14 +653,14 @@ const Reconcile: React.FC = () => {
         if (isTransfer && counterId && counterId !== 'NONE') {
           const counterAcc = realAccounts.find(a => a.id === counterId);
           await supabase.from('transactions').insert({
-            user_id: user.id, date: item.date,
-            description: `[TRANSF] ${item.description}`,
+            user_id: user.id, date: finalDate,
+            description: `[TRANSF] ${finalDescription}`,
             amount: absoluteAmount,
             type: 'TRANSFER',
             account_id: counterId,
             account_name: counterAcc?.institution || 'Conta Destino',
             category: categoryName, subcategory: subcategoryName || null,
-            owner_name: owner, is_paid: true, paid_at: item.date,
+            owner_name: owner, is_paid: true, paid_at: finalDate,
             metadata: {
               category_id: finalCategoryId,
               is_transfer: true,
@@ -622,10 +677,10 @@ const Reconcile: React.FC = () => {
           : Number(item.amount);
         if (isNaN(parsedCardAmt)) parsedCardAmt = 0;
 
-        const stmtId = await FinanceService.getOrCreateStatement(targetId, item.date);
+        const stmtId = await FinanceService.getOrCreateStatement(targetId, finalDate);
         await supabase.from('card_transactions').insert({
           user_id: user.id, card_id: targetId, used_card_id: targetId, statement_id: stmtId,
-          date: item.date, description: item.description, amount: Math.abs(parsedCardAmt),
+          date: finalDate, description: finalDescription, amount: Math.abs(parsedCardAmt),
           source: 'IMPORT', status: 'POSTED', owner_name: owner,
           category_id: finalCategoryId,
           metadata: { category_name: categoryName }
@@ -911,7 +966,64 @@ const Reconcile: React.FC = () => {
                             )}
 
                             {isEditing ? (
-                              <input type="text" value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} className="w-full bg-slate-50 border-none rounded-xl text-xs font-bold p-2 outline-none focus:ring-2 focus:ring-brand-500" />
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  value={editForm.description}
+                                  onFocus={() => setShowSuggestionsId(item.id)}
+                                  onBlur={() => setTimeout(() => setShowSuggestionsId(null), 200)}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setEditForm({ ...editForm, description: val });
+                                    
+                                    // Autofill inteligente: se houver uma correspondência exata de transação recente,
+                                    // preenchemos automaticamente a categoria, subcategoria, etc.
+                                    const match = recentTxs.find(tx => tx.description.toLowerCase().trim() === val.toLowerCase().trim());
+                                    if (match) {
+                                      setEditForm((prev: any) => ({
+                                        ...prev,
+                                        category: match.category || prev.category,
+                                        subcategory: match.subcategory || prev.subcategory,
+                                        targetId: match.account_id || prev.targetId,
+                                        owner_name: match.owner_name || prev.owner_name
+                                      }));
+                                    }
+                                  }}
+                                  className="w-full bg-slate-50 border-none rounded-xl text-xs font-bold p-2 outline-none focus:ring-2 focus:ring-brand-500"
+                                />
+                                {showSuggestionsId === item.id && (() => {
+                                  const query = (editForm.description || '').toLowerCase().trim();
+                                  const filteredSuggestions = query.length >= 2
+                                    ? recentTxs.filter(tx => (tx.description || '').toLowerCase().includes(query)).slice(0, 5)
+                                    : [];
+                                  if (filteredSuggestions.length === 0) return null;
+                                  return (
+                                    <div className="absolute z-[120] left-0 right-0 top-10 bg-white border border-slate-200 shadow-2xl rounded-xl p-1 max-h-48 overflow-y-auto">
+                                      {filteredSuggestions.map((tx, idx) => (
+                                        <button
+                                          key={idx}
+                                          type="button"
+                                          onMouseDown={() => {
+                                            setEditForm((prev: any) => ({
+                                              ...prev,
+                                              description: tx.description,
+                                              category: tx.category || prev.category,
+                                              subcategory: tx.subcategory || prev.subcategory,
+                                              targetId: tx.account_id || prev.targetId,
+                                              owner_name: tx.owner_name || prev.owner_name
+                                            }));
+                                            setShowSuggestionsId(null);
+                                          }}
+                                          className="w-full text-left px-3 py-2 hover:bg-slate-50 rounded-lg text-[10px] font-bold text-slate-700 flex justify-between items-center border-none outline-none"
+                                        >
+                                          <span>{tx.description}</span>
+                                          <span className="text-[8px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{tx.category}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
                             ) : (
                               <div className="space-y-1">
                                 <button

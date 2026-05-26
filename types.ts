@@ -241,6 +241,7 @@ export interface ImportedTransaction {
   installment_total?: number;
   owner_name?: string;
   category?: string;
+  subcategory?: string;
   potential_duplicate?: boolean;
   duplicate_reason?: string;
   metadata?: any;

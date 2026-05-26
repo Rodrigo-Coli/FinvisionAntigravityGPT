@@ -57,37 +57,74 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
     // Buscar as transações recentes quando o modal for aberto
     useEffect(() => {
-        if (show && supabase) {
+        if (show) {
             const loadRecentTransactions = async () => {
+                let cachedData: any[] = [];
                 try {
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (!user) return;
-
-                    const { data, error } = await supabase
-                        .from('transactions')
-                        .select('description, category, subcategory, account_id, owner_name, type')
-                        .eq('user_id', user.id)
-                        .eq('is_deleted', false)
-                        .order('date', { ascending: false })
-                        .limit(200);
-
-                    if (error) throw error;
-
-                    // Agrupar por descrição de forma case-insensitive, pegando a mais recente
-                    const uniqueTxsMap = new Map<string, any>();
-                    if (data) {
-                        for (const tx of data) {
-                            if (tx.description) {
-                                const key = tx.description.toLowerCase().trim();
-                                if (!uniqueTxsMap.has(key)) {
-                                    uniqueTxsMap.set(key, tx);
-                                }
+                    // Fallback imediato para cache do localStorage (funciona offline e dá velocidade instantânea)
+                    if (supabase) {
+                        const { data: { user } } = await supabase.auth.getUser();
+                        if (user) {
+                            const localRaw = localStorage.getItem(`finvision_cached_raw_txs_${user.id}`);
+                            if (localRaw) {
+                                cachedData = JSON.parse(localRaw);
                             }
                         }
                     }
+                } catch (err) {
+                    console.warn('Erro ao ler cache local de transações:', err);
+                }
+
+                // Processar e agrupar transações do cache local para exibir sugestões imediatamente
+                const uniqueTxsMap = new Map<string, any>();
+                for (const tx of cachedData) {
+                    if (tx.description) {
+                        const key = tx.description.toLowerCase().trim();
+                        if (!uniqueTxsMap.has(key)) {
+                            uniqueTxsMap.set(key, {
+                                description: tx.description,
+                                category: tx.category,
+                                subcategory: tx.subcategory,
+                                account_id: tx.account_id || tx.accountId,
+                                owner_name: tx.owner_name || tx.ownerName,
+                                type: tx.type
+                            });
+                        }
+                    }
+                }
+                if (uniqueTxsMap.size > 0) {
                     setRecentTxs(Array.from(uniqueTxsMap.values()));
-                } catch (e) {
-                    console.error('Erro ao carregar transações recentes para sugestões:', e);
+                }
+
+                if (supabase && navigator.onLine) {
+                    try {
+                        const { data: { user } } = await supabase.auth.getUser();
+                        if (!user) return;
+
+                        const { data, error } = await supabase
+                            .from('transactions')
+                            .select('description, category, subcategory, account_id, owner_name, type')
+                            .eq('user_id', user.id)
+                            .eq('is_deleted', false)
+                            .order('date', { ascending: false })
+                            .limit(200);
+
+                        if (error) throw error;
+
+                        if (data && data.length > 0) {
+                            for (const tx of data) {
+                                if (tx.description) {
+                                    const key = tx.description.toLowerCase().trim();
+                                    if (!uniqueTxsMap.has(key)) {
+                                        uniqueTxsMap.set(key, tx);
+                                    }
+                                }
+                            }
+                            setRecentTxs(Array.from(uniqueTxsMap.values()));
+                        }
+                    } catch (e) {
+                        console.error('Erro ao carregar transações recentes do Supabase:', e);
+                    }
                 }
             };
             loadRecentTransactions();

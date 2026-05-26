@@ -234,6 +234,36 @@ export const ReconciliationService = {
     if (error) throw error;
   },
 
+  async updateTransaction(id: string, data: {
+    description?: string;
+    date?: string;
+    owner_name?: string;
+    category?: string;
+    subcategory?: string;
+    metadata?: any;
+  }) {
+    if (!supabase) return;
+    const updateData: any = {};
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.date !== undefined) updateData.date = data.date;
+    if (data.owner_name !== undefined) updateData.owner_name = data.owner_name;
+
+    // Salvar categoria e subcategoria no metadata jsonb para persistência
+    const currentMeta = data.metadata || {};
+    const updatedMeta = {
+      ...currentMeta,
+      category: data.category,
+      subcategory: data.subcategory
+    };
+    updateData.metadata = updatedMeta;
+
+    const { error } = await supabase
+      .from('imported_transactions')
+      .update(updateData)
+      .eq('id', id);
+    if (error) throw error;
+  },
+
   async ensureCategoryExists(categoryName: string): Promise<string> {
     if (!supabase || !categoryName) return '';
     const { data: { user } } = await supabase.auth.getUser();

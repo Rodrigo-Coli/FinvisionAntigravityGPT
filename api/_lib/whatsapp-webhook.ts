@@ -1145,6 +1145,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
       if (ocrOps.length === 1) {
         const singleTx = ocrOps[0];
+        if (!singleTx.date) {
+          singleTx.date = new Date().toISOString().split('T')[0];
+        }
         await supabase
           .from('whatsapp_drafts')
           .update({
@@ -1353,6 +1356,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       // 1. Processar Edição de Rascunho
       if (analysis.isEdit && analysis.updatedDraft && isDraftEditable) {
         const draftToUpdate = analysis.updatedDraft;
+        if (!draftToUpdate.date) {
+          draftToUpdate.date = activeDraft.data.date || new Date().toISOString().split('T')[0];
+        }
         await supabase
           .from('whatsapp_drafts')
           .update({
@@ -1458,6 +1464,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
         if (op.intent === 'TRANSACTION') {
           const tx = op.transaction;
+          if (!tx.date) {
+            tx.date = new Date().toISOString().split('T')[0];
+          }
           await supabase
             .from('whatsapp_drafts')
             .update({
