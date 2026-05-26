@@ -445,10 +445,16 @@ const Reconcile: React.FC = () => {
       if (acc) return acc.institution;
     }
     const card = realCards.find(c => c.id === id);
-    if (card) return card.name;
+    if (card) return `${card.name}${card.lastDigits || card.last4 ? ` - ${card.lastDigits || card.last4}` : ''}`;
     
     // Tentativa final em ambos
-    return realAccounts.find(a => a.id === id)?.institution || realCards.find(c => c.id === id)?.name || '';
+    const fallbackAcc = realAccounts.find(a => a.id === id);
+    if (fallbackAcc) return fallbackAcc.institution;
+    
+    const fallbackCard = realCards.find(c => c.id === id);
+    if (fallbackCard) return `${fallbackCard.name}${fallbackCard.lastDigits || fallbackCard.last4 ? ` - ${fallbackCard.lastDigits || fallbackCard.last4}` : ''}`;
+    
+    return '';
   };
 
   const handleTargetChange = (name: string, isEdit: boolean, item?: any) => {
@@ -456,18 +462,34 @@ const Reconcile: React.FC = () => {
     let foundType: 'bank' | 'card' | 'smart' = isEdit ? editForm.targetType : importSource;
     
     // Tenta no tipo atual primeiro
-    const list = (foundType === 'bank' || foundType === 'smart') ? realAccounts : realCards;
-    const match = list.find(a => (a.institution || a.name) === name);
-    
-    if (match) {
-      foundId = match.id;
+    if (foundType === 'bank' || foundType === 'smart') {
+      const match = realAccounts.find(a => a.institution === name);
+      if (match) foundId = match.id;
     } else {
+      const match = realCards.find(c => {
+        const fullName = `${c.name}${c.lastDigits || c.last4 ? ` - ${c.lastDigits || c.last4}` : ''}`;
+        return fullName === name || c.name === name;
+      });
+      if (match) foundId = match.id;
+    }
+    
+    if (!foundId) {
       // Tenta no outro tipo
-      const otherList = (foundType === 'bank' || foundType === 'smart') ? realCards : realAccounts;
-      const otherMatch = otherList.find(a => (a.institution || a.name) === name);
-      if (otherMatch) {
-        foundId = otherMatch.id;
-        foundType = (foundType === 'bank' || foundType === 'smart') ? 'card' : 'bank';
+      if (foundType === 'bank' || foundType === 'smart') {
+        const otherMatch = realCards.find(c => {
+          const fullName = `${c.name}${c.lastDigits || c.last4 ? ` - ${c.lastDigits || c.last4}` : ''}`;
+          return fullName === name || c.name === name;
+        });
+        if (otherMatch) {
+          foundId = otherMatch.id;
+          foundType = 'card';
+        }
+      } else {
+        const otherMatch = realAccounts.find(a => a.institution === name);
+        if (otherMatch) {
+          foundId = otherMatch.id;
+          foundType = 'bank';
+        }
       }
     }
 
@@ -1085,7 +1107,7 @@ const Reconcile: React.FC = () => {
                               )}
                               <input
                                 list={isEditing ? (editForm.targetType === 'bank' ? 'accounts-list-full' : 'cards-list-full') : 'targets-list'}
-                                value={isEditing ? editForm.targetName : getTargetName(selectedTargetId)}
+                                value={isEditing ? editForm.targetName : getTargetName(item.account_id || selectedTargetId)}
                                 onFocus={e => e.target.select()}
                                 onChange={e => handleTargetChange(e.target.value, isEditing, item)}
                                 placeholder="Destino..."
