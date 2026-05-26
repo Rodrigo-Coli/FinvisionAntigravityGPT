@@ -357,13 +357,17 @@ const HistoryPage: React.FC = () => {
         transactionsData = txsRes.data || [];
         cardTxsData = cardsRes.data || [];
 
-        // Save to cache
-        localStorage.setItem('finvision_cached_accounts', JSON.stringify(accData));
-        localStorage.setItem('finvision_cached_categories', JSON.stringify(catData));
-        localStorage.setItem('finvision_cached_subcategories', JSON.stringify(subData));
-        localStorage.setItem('finvision_cached_owners', JSON.stringify(dbEntities));
-        localStorage.setItem(`finvision_cached_raw_txs_${user.id}`, JSON.stringify(transactionsData));
-        localStorage.setItem(`finvision_cached_raw_card_txs_${user.id}`, JSON.stringify(cardTxsData));
+        // Save to cache safely
+        try {
+          localStorage.setItem('finvision_cached_accounts', JSON.stringify(accData));
+          localStorage.setItem('finvision_cached_categories', JSON.stringify(catData));
+          localStorage.setItem('finvision_cached_subcategories', JSON.stringify(subData));
+          localStorage.setItem('finvision_cached_owners', JSON.stringify(dbEntities));
+          localStorage.setItem(`finvision_cached_raw_txs_${user.id}`, JSON.stringify(transactionsData));
+          localStorage.setItem(`finvision_cached_raw_card_txs_${user.id}`, JSON.stringify(cardTxsData));
+        } catch (cacheErr) {
+          console.warn("Falha ao salvar cache no localStorage:", cacheErr);
+        }
       } else {
         // Retrieve from cache
         try {
@@ -1348,7 +1352,7 @@ const HistoryPage: React.FC = () => {
 
   // Summary Calculations based on chartViewFiltered (respects 'Pagos & Recebidos' toggle)
   const summary = chartViewFiltered.reduce((acc, t) => {
-    if (t.is_amortization || t.type === 'TRANSFER') return acc;
+    if (t.type === 'TRANSFER') return acc;
     if (t.type === 'INCOME') acc.income += Number(t.amount);
     else if (t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT') acc.expense += Math.abs(Number(t.amount));
     return acc;

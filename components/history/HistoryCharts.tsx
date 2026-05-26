@@ -63,7 +63,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
     const availableTimelineCategories = useMemo(() => {
         const cats = new Set<string>();
         chartFilteredTransactions.forEach(t => {
-            if (!t.is_amortization && (t.type === 'INCOME' || t.type === 'EXPENSE')) {
+            if (t.type === 'INCOME' || t.type === 'EXPENSE') {
                 cats.add(t.category);
             }
         });
@@ -106,7 +106,6 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
         let totalAllIncome = 0;
 
         activeTx.forEach(t => {
-            if (t.is_amortization) return;
             if (t.category === 'Cartão de Crédito') return; // Excluir categoria de provisionamento para evitar duplicidade
 
             const type = (t.type || '').toUpperCase();
@@ -153,7 +152,6 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             }
 
             activeTx.forEach(t => {
-                if (t.is_amortization) return;
                 if (t.category === 'Cartão de Crédito') return;
 
                 const type = (t.type || '').toUpperCase();
@@ -180,7 +178,6 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             momBars = customSlots.map(slot => {
                 let inc = 0; let exp = 0;
                 activeTx.forEach(t => {
-                    if (t.is_amortization) return;
                     if (t.category === 'Cartão de Crédito') return;
                     
                     const type = (t.type || '').toUpperCase();
@@ -206,7 +203,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
         let minDateStr = '9999-12-31';
         let maxDateStr = '0000-01-01';
         activeTx.forEach(t => {
-            if (t.is_amortization || (t.type !== 'EXPENSE' && t.type !== 'INCOME')) return;
+            if (t.type !== 'EXPENSE' && t.type !== 'INCOME') return;
             const ymd = t.date.split('T')[0];
             if (ymd < minDateStr) minDateStr = ymd;
             if (ymd > maxDateStr) maxDateStr = ymd;
@@ -221,7 +218,6 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             if (diffDays > 90) {
                 const tMap = new Map();
                 activeTx.forEach(t => {
-                    if (t.is_amortization) return;
                     if (t.category === 'Cartão de Crédito') return;
                     if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
 
@@ -252,7 +248,6 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             } else {
                 const tMap = new Map();
                 activeTx.forEach(t => {
-                    if (t.is_amortization) return;
                     if (t.category === 'Cartão de Crédito') return;
                     if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
 
