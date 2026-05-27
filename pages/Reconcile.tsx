@@ -326,17 +326,26 @@ const Reconcile: React.FC = () => {
     await attemptUpload(false);
   };
 
-  const startEditing = (item: ImportedTransaction, initialCategory?: string) => {
+  const startEditing = (
+    item: ImportedTransaction,
+    initialCategory?: string,
+    initialTargetName?: string,
+    initialTargetId?: string,
+    initialTargetType?: 'bank' | 'card' | 'smart'
+  ) => {
     const isTrans = initialCategory?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') ||
       item.category?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
 
     setEditingId(item.id);
-    const initialTargetType = item.metadata?.target_type || (importSource === 'card' ? 'card' : 'bank');
+    const finalTargetId = initialTargetId !== undefined ? initialTargetId : (item.account_id || selectedTargetId);
+    const finalTargetType = initialTargetType !== undefined ? initialTargetType : (item.metadata?.target_type || (importSource === 'card' ? 'card' : 'bank'));
+    const finalTargetName = initialTargetName !== undefined ? initialTargetName : getTargetName(finalTargetId, finalTargetType);
+
     setEditForm({
       ...item,
-      targetId: selectedTargetId,
-      targetName: getTargetName(selectedTargetId),
-      targetType: initialTargetType,
+      targetId: finalTargetId,
+      targetName: finalTargetName,
+      targetType: finalTargetType,
       owner_name: item.owner_name || 'Pessoal',
       category: initialCategory || item.category || 'Conciliação',
       subcategory: (item as any).subcategory || '',
@@ -1109,7 +1118,48 @@ const Reconcile: React.FC = () => {
                                 list={isEditing ? (editForm.targetType === 'bank' ? 'accounts-list-full' : 'cards-list-full') : 'targets-list'}
                                 value={isEditing ? editForm.targetName : getTargetName(item.account_id || selectedTargetId)}
                                 onFocus={e => e.target.select()}
-                                onChange={e => handleTargetChange(e.target.value, isEditing, item)}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  if (isEditing) {
+                                    handleTargetChange(val, true, item);
+                                  } else {
+                                    // Localizar o ID do destino selecionado
+                                    let foundId = '';
+                                    let foundType: 'bank' | 'card' | 'smart' = item.metadata?.target_type || (importSource === 'card' ? 'card' : 'bank');
+                                    
+                                    if (foundType === 'bank' || foundType === 'smart') {
+                                      const match = realAccounts.find(a => a.institution === val);
+                                      if (match) foundId = match.id;
+                                    } else {
+                                      const match = realCards.find(c => {
+                                        const fullName = `${c.name}${c.lastDigits || c.last4 ? ` - ${c.last4 || c.lastDigits}` : ''}`;
+                                        return fullName === val || c.name === val;
+                                      });
+                                      if (match) foundId = match.id;
+                                    }
+                                    
+                                    if (!foundId) {
+                                      if (foundType === 'bank' || foundType === 'smart') {
+                                        const otherMatch = realCards.find(c => {
+                                          const fullName = `${c.name}${c.lastDigits || c.last4 ? ` - ${c.last4 || c.lastDigits}` : ''}`;
+                                          return fullName === val || c.name === val;
+                                        });
+                                        if (otherMatch) {
+                                          foundId = otherMatch.id;
+                                          foundType = 'card';
+                                        }
+                                      } else {
+                                        const otherMatch = realAccounts.find(a => a.institution === val);
+                                        if (otherMatch) {
+                                          foundId = otherMatch.id;
+                                          foundType = 'bank';
+                                        }
+                                      }
+                                    }
+                                    
+                                    startEditing(item, undefined, val, foundId || undefined, foundType);
+                                  }
+                                }}
                                 placeholder="Destino..."
                                 className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-1 focus:ring-brand-500"
                               />
