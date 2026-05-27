@@ -337,9 +337,9 @@ const Reconcile: React.FC = () => {
       item.category?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
 
     setEditingId(item.id);
-    const finalTargetId = initialTargetId !== undefined ? initialTargetId : (item.account_id || selectedTargetId);
+    const finalTargetId = initialTargetId !== undefined ? initialTargetId : (selectedTargetId || item.account_id);
     const finalTargetType = initialTargetType !== undefined ? initialTargetType : (item.metadata?.target_type || (importSource === 'card' ? 'card' : 'bank'));
-    const finalTargetName = initialTargetName !== undefined ? initialTargetName : getTargetName(finalTargetId, finalTargetType);
+    const finalTargetName = initialTargetName !== undefined ? initialTargetName : getTargetName(finalTargetId || '', finalTargetType);
 
     setEditForm({
       ...item,
@@ -632,7 +632,7 @@ const Reconcile: React.FC = () => {
     const isEditing = editingId === item.id;
     const targetId = isEditing
       ? editForm.targetId
-      : (originalAccountId || selectedTargetId);
+      : (selectedTargetId || originalAccountId);
     
     // Determine if the target is a card
     const isTargetInCards = realCards.some(c => c.id === targetId);
@@ -1112,11 +1112,11 @@ const Reconcile: React.FC = () => {
                               {isEditing ? (
                                 editForm.targetType === 'bank' ? <Building2 size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" /> : <CreditCard size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
                               ) : (
-                                (item.metadata?.target_type === 'card' || importSource === 'card') ? <CreditCard size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" /> : <Landmark size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                                (realCards.some(c => c.id === (selectedTargetId || item.account_id)) || item.metadata?.target_type === 'card' || (importSource === 'card' && !realAccounts.some(a => a.id === (selectedTargetId || item.account_id)))) ? <CreditCard size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" /> : <Landmark size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
                               )}
                               <input
                                 list={isEditing ? (editForm.targetType === 'bank' ? 'accounts-list-full' : 'cards-list-full') : 'targets-list'}
-                                value={isEditing ? editForm.targetName : getTargetName(item.account_id || selectedTargetId)}
+                                value={isEditing ? editForm.targetName : getTargetName(selectedTargetId || item.account_id || '')}
                                 onFocus={e => e.target.select()}
                                 onChange={e => {
                                   const val = e.target.value;
@@ -1124,10 +1124,13 @@ const Reconcile: React.FC = () => {
                                     handleTargetChange(val, true, item);
                                   } else {
                                     // Localizar o ID do destino selecionado
-                                    let foundId = '';
-                                    let foundType: 'bank' | 'card' | 'smart' = item.metadata?.target_type || (importSource === 'card' ? 'card' : 'bank');
+                                    const displayedTargetId = selectedTargetId || item.account_id;
+                                    const isDisplayedTargetCard = realCards.some(c => c.id === displayedTargetId) || item.metadata?.target_type === 'card' || (importSource === 'card' && !realAccounts.some(a => a.id === displayedTargetId));
                                     
-                                    if (foundType === 'bank' || foundType === 'smart') {
+                                    let foundId = '';
+                                    let foundType: 'bank' | 'card' = isDisplayedTargetCard ? 'card' : 'bank';
+                                    
+                                    if (foundType === 'bank') {
                                       const match = realAccounts.find(a => a.institution === val);
                                       if (match) foundId = match.id;
                                     } else {
@@ -1139,7 +1142,7 @@ const Reconcile: React.FC = () => {
                                     }
                                     
                                     if (!foundId) {
-                                      if (foundType === 'bank' || foundType === 'smart') {
+                                      if (foundType === 'bank') {
                                         const otherMatch = realCards.find(c => {
                                           const fullName = `${c.name}${c.lastDigits || c.last4 ? ` - ${c.last4 || c.lastDigits}` : ''}`;
                                           return fullName === val || c.name === val;
