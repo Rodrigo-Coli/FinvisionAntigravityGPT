@@ -636,11 +636,7 @@ const Reconcile: React.FC = () => {
     
     // Determine if the target is a card
     const isTargetInCards = realCards.some(c => c.id === targetId);
-    const isTargetInAccounts = realAccounts.some(a => a.id === targetId);
-
-    const effectiveIsCard = isEditing 
-      ? editForm.targetType === 'card' 
-      : (isTargetInCards || (item.metadata?.is_card === true) || (item.metadata?.target_type === 'card' && !isTargetInAccounts));
+    const effectiveIsCard = isTargetInCards;
 
     const owner = isEditing ? editForm.owner_name : (item.owner_name || 'Pessoal');
     const categoryName = isEditing ? editForm.category : (item.category || 'Conciliação');
@@ -682,7 +678,7 @@ const Reconcile: React.FC = () => {
         const thisSideIsSource = Number(item.amount) < 0;
 
         // Transação principal (a perna do arquivo/banco atual)
-        await supabase.from('transactions').insert({
+        const { error: insertErr1 } = await supabase.from('transactions').insert({
           user_id: user.id, date: finalDate, description: finalDescription,
           amount: absoluteAmount,
           type: isTransfer ? 'TRANSFER' : (thisSideIsSource ? 'EXPENSE' : 'INCOME'),
@@ -696,12 +692,13 @@ const Reconcile: React.FC = () => {
             counter_account_id: isTransfer ? counterId : null
           }
         });
+        if (insertErr1) throw insertErr1;
         await supabase.rpc('recalculate_account_balance', { p_account_id: targetId });
 
         // Se for transferência e tiver conta de contrapartida, cria a perna espelhada
         if (isTransfer && counterId && counterId !== 'NONE') {
           const counterAcc = realAccounts.find(a => a.id === counterId);
-          await supabase.from('transactions').insert({
+          const { error: insertErr2 } = await supabase.from('transactions').insert({
             user_id: user.id, date: finalDate,
             description: `[TRANSF] ${finalDescription}`,
             amount: absoluteAmount,
@@ -718,6 +715,7 @@ const Reconcile: React.FC = () => {
               source_transaction_id: item.id
             }
           });
+          if (insertErr2) throw insertErr2;
           await supabase.rpc('recalculate_account_balance', { p_account_id: counterId });
         }
       } else {
@@ -727,13 +725,14 @@ const Reconcile: React.FC = () => {
         if (isNaN(parsedCardAmt)) parsedCardAmt = 0;
 
         const stmtId = await FinanceService.getOrCreateStatement(targetId, finalDate);
-        await supabase.from('card_transactions').insert({
+        const { error: insertCardErr } = await supabase.from('card_transactions').insert({
           user_id: user.id, card_id: targetId, used_card_id: targetId, statement_id: stmtId,
           date: finalDate, description: finalDescription, amount: Math.abs(parsedCardAmt),
           source: 'IMPORT', status: 'POSTED', owner_name: owner,
-          category_id: finalCategoryId,
+          category_id: finalCategoryId || null,
           metadata: { category_name: categoryName }
         });
+        if (insertCardErr) throw insertCardErr;
       }
       await ReconciliationService.updateTransactionStatus(item.id, 'OK');
 
@@ -745,8 +744,11 @@ const Reconcile: React.FC = () => {
 
       setImported(prev => prev.filter(x => x.id !== item.id));
       if (editingId === item.id) setEditingId(null);
-    } catch (e) {
-      if (!isBulk) alert("Erro na confirmação");
+    } catch (e: any) {
+      if (!isBulk) {
+        const errorMsg = e?.message || e?.details || JSON.stringify(e);
+        alert(`Erro na confirmação: ${errorMsg}`);
+      }
       throw e;
     } finally {
       setProcessingItemId(null);

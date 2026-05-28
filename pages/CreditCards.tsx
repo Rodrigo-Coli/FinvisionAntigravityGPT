@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Loader2, Edit2, Archive, Trash2 } from 'lucide-react';
+import { Plus, Loader2, Edit2, Archive, Trash2, Info } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { FinanceService } from '../services/finance.service';
 import { DateUtils } from '../lib/dateUtils';
@@ -1108,6 +1108,12 @@ const CreditCardsPage: React.FC = () => {
     return <span className={`${base} bg-slate-50 text-slate-600 border-slate-100`}>{s}</span>;
   })();
 
+  const otherOpenStatements = statements.filter(s => 
+    s.id !== currentStatement?.id && 
+    ['OPEN', 'DUE', 'PENDING'].includes(s.status) && 
+    Number(s.total_amount || 0) > Number(s.paid_amount || 0)
+  );
+
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
       {/* HEADER SECTION */}
@@ -1223,6 +1229,19 @@ const CreditCardsPage: React.FC = () => {
                   onReopen={() => currentStatement?.id && handleReopenStatement(currentStatement.id)}
                   statementBadge={statementBadge}
                 />
+
+                {otherOpenStatements.length > 0 && (
+                  <div className="p-5 bg-amber-50/60 border border-amber-100/70 rounded-3xl flex items-start gap-4 text-amber-800 animate-in fade-in zoom-in-95 duration-300">
+                    <Info size={20} className="shrink-0 text-amber-500 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="text-xs font-black uppercase tracking-wider text-amber-600">Atenção: Faturas Anteriores Pendentes</p>
+                      <p className="text-[11px] font-bold text-amber-600/90 leading-relaxed">
+                        Existem faturas de períodos passados com saldos em aberto (por exemplo, {DateUtils.formatFullMonthYear(otherOpenStatements[0].year, otherOpenStatements[0].month)}). 
+                        Você pode alternar o seletor de <strong>Período</strong> abaixo para visualizar e pagar essas faturas.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-6 border-t border-slate-50 dark:border-slate-700">
                   <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-8">
