@@ -730,7 +730,8 @@ const Reconcile: React.FC = () => {
           date: finalDate, description: finalDescription, amount: Math.abs(parsedCardAmt),
           source: 'IMPORT', status: 'POSTED', owner_name: owner,
           category_id: finalCategoryId || null,
-          metadata: { category_name: categoryName }
+          category: categoryName,
+          subcategory: subcategoryName || null
         });
         if (insertCardErr) throw insertCardErr;
       }
