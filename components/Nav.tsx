@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown, ShieldCheck } from 'lucide-react';
+import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, BookOpen, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown, ShieldCheck } from 'lucide-react';
 import { Profile, UserRole } from '../types';
 import { supabase } from '../lib/supabase/client';
 import { useTour } from '../contexts/TourContext';
@@ -17,6 +17,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { label: 'Transações', path: '/history', icon: <History size={20} /> },
     { label: 'Insights AI', path: '/ai', icon: <Sparkles size={20} /> },
     { label: 'Patrimônio', path: '/assets', icon: <Gem size={20} /> },
+    { label: 'Estudos', path: '/studies', icon: <BookOpen size={20} /> },
     { label: 'Metas', path: '/goals', icon: <Target size={20} /> },
     { label: 'Orçamento', path: '/budget', icon: <PieChart size={20} /> },
     { label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },

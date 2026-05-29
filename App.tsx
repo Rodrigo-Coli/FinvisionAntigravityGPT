@@ -25,6 +25,7 @@ import SettingsPage from './pages/Settings';
 import Goals from './pages/Goals';
 import Budget from './pages/Budget';
 import Reports from './pages/Reports';
+import Studies from './pages/Studies';
 import { TourProvider } from './contexts/TourContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -168,6 +169,7 @@ const App: React.FC = () => {
                         <Route path="/goals" element={<Goals user={profile} />} />
                         <Route path="/budget" element={<Budget user={profile} />} />
                         <Route path="/reconcile" element={<Reconcile />} />
+                        <Route path="/studies" element={<Studies />} />
                         <Route path="/history" element={<HistoryPage />} />
                         <Route path="/ai" element={<AIModule user={profile} />} />
                         <Route path="/settings" element={<SettingsPage />} />
