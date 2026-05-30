@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, FileDown, Loader2, AlertCircle, Check, RefreshCw, Calendar, Tag, Landmark, User, ArrowRight, Trash, X, Sparkles } from 'lucide-react';
+import { Plus, FileDown, Loader2, AlertCircle, Check, RefreshCw, Calendar, Tag, Landmark, User, ArrowRight, Trash, X, Sparkles, Clock } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 import { Transaction, TransactionType, BankAccount } from '../types';
@@ -80,7 +80,7 @@ const HistoryPage: React.FC = () => {
   const [subcategories, setSubcategories] = useState<{ id: string; name: string; category_name?: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'ALL' | 'SETTLED'>('ALL');
+  const [viewMode, setViewMode] = useState<'ALL' | 'SETTLED' | 'PENDING'>('ALL');
 
   // Pagination & Sorting
   const [page, setPage] = useState(0);
@@ -309,53 +309,85 @@ const HistoryPage: React.FC = () => {
       const futureLimit = sixtyDaysAhead.toISOString().split('T')[0];
 
       if (navigator.onLine) {
-        // Build base queries
-        let txQuery = supabase.from('transactions')
-          .select('*, attachments:documents!documents_transaction_id_fkey(*)')
-          .eq('user_id', user.id)
-          .eq('is_deleted', false);
-
-        if (startDate && endDate) {
-          txQuery = txQuery.or(`and(date.gte.${startDate},date.lte.${endDate}),and(metadata->>is_provision.eq.true,date.gte.${startDate},date.lte.${futureLimit})`);
-        } else {
-          if (startDate) txQuery = txQuery.gte('date', startDate);
-          if (endDate) txQuery = txQuery.lte('date', endDate);
-        }
-
-        let cardQuery = supabase.from('card_transactions')
-          .select('id, date, amount, description, card_id, category_id, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id)')
-          .eq('user_id', user.id);
-
-        if (startDate) cardQuery = cardQuery.gte('date', startDate);
-        if (endDate) cardQuery = cardQuery.lte('date', endDate);
-
-        const [accRes, catRes, subRes, entitiesRes, txsRes, cardsRes] = await Promise.all([
+        const [accRes, catRes, subRes, entitiesRes] = await Promise.all([
           supabase.from('accounts').select('*').eq('is_archived', false),
           supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name'),
           supabase.from('subcategories').select('*').eq('user_id', user.id).order('name'),
-          FinanceService.getEntities(),
-          txQuery,
-          cardQuery
+          FinanceService.getEntities()
         ]);
 
         if (accRes.error) throw accRes.error;
         if (catRes.error) throw catRes.error;
         if (subRes.error) throw subRes.error;
-        if (txsRes.error) {
-          console.error("Erro na query de transactions:", txsRes.error);
-          throw txsRes.error;
-        }
-        if (cardsRes.error) {
-          console.error("Erro na query de card_transactions:", cardsRes.error);
-          throw cardsRes.error;
-        }
 
         accData = accRes.data || [];
         catData = catRes.data || [];
         subData = subRes.data || [];
         dbEntities = entitiesRes || [];
-        transactionsData = txsRes.data || [];
-        cardTxsData = cardsRes.data || [];
+
+        // Loop fetch for transactions
+        let allTxs: any[] = [];
+        let hasMoreTxs = true;
+        let txOffset = 0;
+
+        while (hasMoreTxs) {
+          let chunkQuery = supabase.from('transactions')
+            .select('*, attachments:documents!documents_transaction_id_fkey(*)')
+            .eq('user_id', user.id)
+            .eq('is_deleted', false)
+            .range(txOffset, txOffset + 999);
+
+          if (startDate && endDate) {
+            chunkQuery = chunkQuery.or(`and(date.gte.${startDate},date.lte.${endDate}),and(metadata->>is_provision.eq.true,date.gte.${startDate},date.lte.${futureLimit})`);
+          } else {
+            if (startDate) chunkQuery = chunkQuery.gte('date', startDate);
+            if (endDate) chunkQuery = chunkQuery.lte('date', endDate);
+          }
+
+          const { data, error } = await chunkQuery;
+          if (error) {
+            console.error("Erro na query de transactions:", error);
+            throw error;
+          }
+
+          allTxs = [...allTxs, ...(data || [])];
+          if (!data || data.length < 1000) {
+            hasMoreTxs = false;
+          } else {
+            txOffset += 1000;
+          }
+        }
+        transactionsData = allTxs;
+
+        // Loop fetch for card transactions
+        let allCardTxs: any[] = [];
+        let hasMoreCards = true;
+        let cardOffset = 0;
+
+        while (hasMoreCards) {
+          let chunkQuery = supabase.from('card_transactions')
+            .select('id, date, amount, description, card_id, category_id, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id)')
+            .eq('user_id', user.id)
+            .range(cardOffset, cardOffset + 999);
+
+          if (startDate) chunkQuery = chunkQuery.gte('date', startDate);
+          if (endDate) chunkQuery = chunkQuery.lte('date', endDate);
+
+          const { data, error } = await chunkQuery;
+          if (error) {
+            console.error("Erro na query de card_transactions:", error);
+            throw error;
+          }
+
+          allCardTxs = [...allCardTxs, ...(data || [])];
+          if (!data || data.length < 1000) {
+            hasMoreCards = false;
+          } else {
+            cardOffset += 1000;
+          }
+        }
+        cardTxsData = allCardTxs;
+
 
         // Save to cache safely
         try {
@@ -515,7 +547,9 @@ const HistoryPage: React.FC = () => {
           normalize(t.category || '').includes(searchNormalized) ||
           normalize(t.subcategory || '').includes(searchNormalized) ||
           normalize(t.account_name || '').includes(searchNormalized) ||
-          normalize(t.owner_name || '').includes(searchNormalized)
+          normalize(t.owner_name || '').includes(searchNormalized) ||
+          normalize(t.notes || '').includes(searchNormalized) ||
+          (t.tags || []).some((tag: string) => normalize(tag).includes(searchNormalized))
         );
       }
 
@@ -1352,11 +1386,15 @@ const HistoryPage: React.FC = () => {
 
   const viewFiltered = viewMode === 'SETTLED'
     ? transactions.filter(t => HistoryUtils.getStatus(t) === 'PAID')
-    : transactions;
+    : viewMode === 'PENDING'
+      ? transactions.filter(t => HistoryUtils.getStatus(t) !== 'PAID')
+      : transactions;
 
   const chartViewFiltered = viewMode === 'SETTLED'
     ? chartTransactions.filter(t => HistoryUtils.getStatus(t) === 'PAID')
-    : chartTransactions;
+    : viewMode === 'PENDING'
+      ? chartTransactions.filter(t => HistoryUtils.getStatus(t) !== 'PAID')
+      : chartTransactions;
 
   const handleCreateCategory = async (name: string, type: 'INCOME' | 'EXPENSE') => {
     if (!supabase) return;
@@ -1647,6 +1685,13 @@ const HistoryPage: React.FC = () => {
             >
               <Check size={12} />
               <span className="hidden xs:inline">Pagos &</span> Recebidos
+            </button>
+            <button
+              onClick={() => setViewMode('PENDING')}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'PENDING' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Clock size={12} />
+              Abertos
             </button>
           </div>
         </div>
