@@ -390,6 +390,14 @@ const SettingsPage: React.FC = () => {
     } catch (err) { alert(`Erro ao ${archive ? 'arquivar' : 'desarquivar'}`); }
   };
 
+  const toggleEntityTotals = async (id: string, currentStatus: boolean) => {
+    if (!supabase) return;
+    try {
+      await supabase.from('entities').update({ include_in_totals: !currentStatus }).eq('id', id);
+      fetchData();
+    } catch (err) { alert('Erro ao atualizar configuração do perfil'); }
+  };
+
   const menuItems = [
     { id: 'general', label: 'Preferências', icon: <SettingsIcon size={18} /> },
     { id: 'navigation', label: 'Navegação', icon: <Navigation size={18} /> },
@@ -961,9 +969,20 @@ const SettingsPage: React.FC = () => {
                       </div>
                       <span className="font-bold text-slate-900 uppercase tracking-widest text-sm">{ent.name}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {ent.name !== 'Pessoal' && (
-                        <>
+                    <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-2xl border border-slate-100/50 shadow-sm">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contar nos Totais</span>
+                        <button
+                          onClick={() => toggleEntityTotals(ent.id, ent.include_in_totals !== false)}
+                          className={`w-11 h-6 rounded-full p-0.5 transition-all flex items-center ${ent.include_in_totals !== false ? 'bg-brand-600' : 'bg-slate-200'}`}
+                        >
+                          <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-all transform ${ent.include_in_totals !== false ? 'translate-x-5' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {ent.name !== 'Pessoal' && (
+                          <>
                           {ent.is_archived ? (
                             <button onClick={() => archiveEntity(ent.id, false)} className="p-3 text-slate-200 hover:text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all opacity-0 group-hover:opacity-100" title="Desarquivar"><Check size={20} /></button>
                           ) : (
@@ -974,6 +993,7 @@ const SettingsPage: React.FC = () => {
                           </button>
                         </>
                       )}
+                    </div>
                     </div>
                   </div>
                 ))}

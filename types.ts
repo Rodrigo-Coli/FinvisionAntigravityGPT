@@ -189,6 +189,7 @@ export interface Entity {
   id: string;
   name: string;
   isArchived: boolean;
+  include_in_totals?: boolean;
 }
 
 export interface Category {

@@ -79,10 +79,19 @@ export const DashboardService = {
       });
     }
 
+    // Obter perfis desativados para totais
+    const { data: excludedEntities } = await sb
+      .from('entities')
+      .select('name')
+      .eq('user_id', user.id)
+      .eq('include_in_totals', false);
+
+    const excludedSet = new Set((excludedEntities || []).map((e: any) => e.name));
+
     // 4. Cash Flow & Metrics
     const { data: txs, error: txsErr } = await sb
       .from('transactions')
-      .select('date, amount, type')
+      .select('date, amount, type, owner_name')
       .eq('user_id', user.id)
       .eq('is_deleted', false)
       .gte('date', new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString());
@@ -97,6 +106,8 @@ export const DashboardService = {
     if (!txsErr && txs) {
       const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
       const grouped = txs.reduce((acc: any, tx: any) => {
+        if (tx.owner_name && excludedSet.has(tx.owner_name)) return acc;
+
         // tx.date is usually YYYY-MM-DD
         const datePart = tx.date.split('T')[0];
         const [y, mStr, d] = datePart.split('-');
@@ -175,9 +186,11 @@ export const DashboardService = {
       .eq('is_deleted', false)
       .or(`date.gte.${new Date().toISOString()},is_recurring.eq.true`);
 
+    const filteredFutureTxs = (futureTxs || []).filter((tx: any) => !tx.owner_name || !excludedSet.has(tx.owner_name));
+
     const projectedCashFlow = projectionService.calculateFutureCashFlow(
       consolidatedBalance,
-      futureTxs || [],
+      filteredFutureTxs,
       liabilitiesForProj,
       realEstateLiabilitiesForProj,
       12 // project next 12 months

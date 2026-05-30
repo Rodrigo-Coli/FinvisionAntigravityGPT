@@ -231,7 +231,8 @@ export const FinanceService = {
     return (data || []).map((e: any) => ({
       id: e.id,
       name: e.name,
-      isArchived: e.is_archived
+      isArchived: e.is_archived,
+      include_in_totals: e.include_in_totals !== false
     }));
   },
 

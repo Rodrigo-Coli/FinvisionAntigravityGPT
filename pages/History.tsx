@@ -154,6 +154,7 @@ const HistoryPage: React.FC = () => {
   const [owners, setOwners] = useState<string[]>(['Pessoal']);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const lastRequestId = useRef(0);
+  const isFirstLoad = useRef(true);
 
   // Selection & Bulk Edit
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -337,6 +338,7 @@ const HistoryPage: React.FC = () => {
       let catData: any[] = [];
       let subData: any[] = [];
       let dbEntities: any[] = [];
+      let entityObjsRes: any[] = [];
       let transactionsData: any[] = [];
       let cardTxsData: any[] = [];
 
@@ -345,11 +347,12 @@ const HistoryPage: React.FC = () => {
       const futureLimit = sixtyDaysAhead.toISOString().split('T')[0];
 
       if (navigator.onLine) {
-        const [accRes, catRes, subRes, entitiesRes] = await Promise.all([
+        const [accRes, catRes, subRes, entitiesRes, entityObjs] = await Promise.all([
           supabase.from('accounts').select('*').eq('is_archived', false),
           supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name'),
           supabase.from('subcategories').select('*').eq('user_id', user.id).order('name'),
-          FinanceService.getEntities()
+          FinanceService.getEntities(),
+          FinanceService.getEntityObjects()
         ]);
 
         if (accRes.error) throw accRes.error;
@@ -360,6 +363,7 @@ const HistoryPage: React.FC = () => {
         catData = catRes.data || [];
         subData = subRes.data || [];
         dbEntities = entitiesRes || [];
+        entityObjsRes = entityObjs || [];
 
         // Loop fetch for transactions
         let allTxs: any[] = [];
@@ -431,6 +435,7 @@ const HistoryPage: React.FC = () => {
           localStorage.setItem('finvision_cached_categories', JSON.stringify(catData));
           localStorage.setItem('finvision_cached_subcategories', JSON.stringify(subData));
           localStorage.setItem('finvision_cached_owners', JSON.stringify(dbEntities));
+          localStorage.setItem('finvision_cached_owners_objs', JSON.stringify(entityObjsRes));
           localStorage.setItem(`finvision_cached_raw_txs_${user.id}`, JSON.stringify(transactionsData));
           localStorage.setItem(`finvision_cached_raw_card_txs_${user.id}`, JSON.stringify(cardTxsData));
         } catch (cacheErr) {
@@ -458,6 +463,10 @@ const HistoryPage: React.FC = () => {
           dbEntities = JSON.parse(
             localStorage.getItem('finvision_cached_owners') ||
             localStorage.getItem('finvision_cached_owners_cc') ||
+            '[]'
+          );
+          entityObjsRes = JSON.parse(
+            localStorage.getItem('finvision_cached_owners_objs') ||
             '[]'
           );
           transactionsData = JSON.parse(localStorage.getItem(`finvision_cached_raw_txs_${user.id}`) || '[]');
@@ -494,6 +503,19 @@ const HistoryPage: React.FC = () => {
       }).sort((a: any, b: any) => a.institution.localeCompare(b.institution)));
 
       setOwners((dbEntities || []).sort((a, b) => a.localeCompare(b)));
+
+      // Initialize filterOwner on first load if there are excluded profiles
+      if (isFirstLoad.current && filterOwner.length === 0) {
+        const excludedSet = new Set((entityObjsRes || []).filter((e: any) => e.include_in_totals === false).map((e: any) => e.name));
+        if (excludedSet.size > 0) {
+          const defaultOwners = (dbEntities || []).filter((name: string) => !excludedSet.has(name));
+          setFilterOwner(defaultOwners);
+          isFirstLoad.current = false;
+          setIsLoading(false);
+          return;
+        }
+        isFirstLoad.current = false;
+      }
 
       const mappedSubcats = (subData || []).map(sub => {
         const parentCat = (catData || []).find((c: any) => c.id === sub.category_id);
@@ -994,8 +1016,22 @@ const HistoryPage: React.FC = () => {
     setFilterType('ALL'); setFilterAccount([]); setFilterCategory([]);
     setStartDate(DateUtils.formatToISODate(firstDay));
     setEndDate(DateUtils.formatToISODate(lastDay));
-    setMinPrice(''); setMaxPrice(''); setFilterOwner([]);
+    setMinPrice(''); setMaxPrice('');
     setSearch('');
+
+    const cachedObjs = localStorage.getItem('finvision_cached_owners_objs');
+    if (cachedObjs) {
+      try {
+        const objs = JSON.parse(cachedObjs);
+        const excludedSet = new Set(objs.filter((e: any) => e.include_in_totals === false).map((e: any) => e.name));
+        if (excludedSet.size > 0) {
+          const activeOwners = owners.filter(name => !excludedSet.has(name));
+          setFilterOwner(activeOwners);
+          return;
+        }
+      } catch (e) {}
+    }
+    setFilterOwner([]);
   };
 
   const handleToggleSelect = (id: string) => {

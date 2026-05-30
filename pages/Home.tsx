@@ -127,10 +127,19 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         // Fetch card transactions
         const { data: cardTxs, error: cardTxError } = await supabase
           .from('card_transactions')
-          .select('id, date, amount, description, categories(name)')
+          .select('id, date, amount, description, owner_name, categories(name)')
           .eq('user_id', user.id)
           .gte('date', startDate)
           .lte('date', endDate);
+
+        // Fetch excluded profiles for client side charting
+        const { data: excludedEntities } = await supabase
+          .from('entities')
+          .select('name')
+          .eq('user_id', user.id)
+          .eq('include_in_totals', false);
+
+        const excludedSet = new Set((excludedEntities || []).map((e: any) => e.name));
 
         if (txError || cardTxError) {
           console.error("Error fetching transactions:", txError || cardTxError);
@@ -144,10 +153,11 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
             category: ct.categories?.name || 'Cartão de Crédito',
             description: ct.description,
             is_paid: true,
-            paid_amount: Number(ct.amount)
+            paid_amount: Number(ct.amount),
+            owner_name: ct.owner_name || 'Pessoal'
           }));
 
-          const allTxs = [...(txs || []), ...normalizedCardTxs];
+          const allTxs = [...(txs || []), ...normalizedCardTxs].filter((t: any) => !t.owner_name || !excludedSet.has(t.owner_name));
           setTransactions(allTxs);
           localStorage.setItem('finvision_cached_home_txs', JSON.stringify(allTxs));
         }
