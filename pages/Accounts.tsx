@@ -27,6 +27,56 @@ import { BankAccount, AccountType } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { DateUtils } from '../lib/dateUtils';
 
+function getLevenshteinDistance(a: string, b: string): number {
+  const matrix = Array.from({ length: a.length + 1 }, () => 
+    Array.from({ length: b.length + 1 }, (_, j) => j)
+  );
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1, // deletion
+        matrix[i][j - 1] + 1, // insertion
+        matrix[i - 1][j - 1] + cost // substitution
+      );
+    }
+  }
+  return matrix[a.length][b.length];
+}
+
+function normalizeStr(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function findCloseMatch(input: string, list: string[]): string | null {
+  const normInput = normalizeStr(input);
+  if (!normInput) return null;
+
+  // 1. Tenta correspondência exata sem acentos/case
+  for (const item of list) {
+    if (normalizeStr(item) === normInput) return item;
+  }
+
+  // 2. Tenta correspondência por Levenshtein (limiar <= 2 ou 30% do tamanho)
+  let bestMatch: string | null = null;
+  let minDistance = 999;
+  
+  for (const item of list) {
+    const normItem = normalizeStr(item);
+    const dist = getLevenshteinDistance(normInput, normItem);
+    
+    const threshold = Math.max(1, Math.min(2, Math.floor(normItem.length * 0.3)));
+    if (dist <= threshold && dist < minDistance) {
+      minDistance = dist;
+      bestMatch = item;
+    }
+  }
+
+  return bestMatch;
+}
+
 const COLORS = [
   { name: 'Blue', hex: '#3b82f6' },
   { name: 'Purple', hex: '#9333ea' },
@@ -113,7 +163,7 @@ const Accounts: React.FC = () => {
 
         if (error) throw error;
 
-        const mapped = (data || [])
+        const rawMapped = (data || [])
           .map((acc: any) => ({
             id: acc.id,
             institution: acc.institution || acc.name || 'Conta',
@@ -126,8 +176,19 @@ const Accounts: React.FC = () => {
             color: acc.color,
             isArchived: acc.is_archived || acc.status === 'archived',
             includeInDashboard: acc.include_in_dashboard !== false
-          }))
-          .sort((a: any, b: any) => a.institution.localeCompare(b.institution));
+          }));
+
+        // Deduplicate accounts with identical institution names
+        const mapped: typeof rawMapped = [];
+        const seenAccs = new Set<string>();
+        for (const acc of rawMapped) {
+          const key = acc.institution.toLowerCase().trim();
+          if (!seenAccs.has(key)) {
+            seenAccs.add(key);
+            mapped.push(acc);
+          }
+        }
+        mapped.sort((a: any, b: any) => a.institution.localeCompare(b.institution));
 
         setAccounts(mapped);
         localStorage.setItem('finvision_cached_accounts_full', JSON.stringify(mapped));
@@ -157,6 +218,19 @@ const Accounts: React.FC = () => {
       if (!user) {
         alert('Usuário não autenticado');
         return;
+      }
+
+      // Check for close matches to prevent duplication on creation
+      if (!isEditing) {
+        const names = accounts.map(a => a.institution);
+        const matched = findCloseMatch(institution, names);
+        if (matched) {
+          if (window.confirm(`Já existe uma conta com o nome semelhante "${matched}". Deseja utilizar a conta existente ao invés de criar uma duplicada?`)) {
+            setShowModal(false);
+            resetForm();
+            return;
+          }
+        }
       }
 
       const payload: any = {

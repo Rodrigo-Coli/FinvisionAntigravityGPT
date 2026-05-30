@@ -1,6 +1,56 @@
 import { supabase } from '../lib/supabase/client';
 import { BankAccount, Transaction, CreditCardDetailed, Entity } from '../types';
 
+function getLevenshteinDistance(a: string, b: string): number {
+  const matrix = Array.from({ length: a.length + 1 }, () => 
+    Array.from({ length: b.length + 1 }, (_, j) => j)
+  );
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1, // deletion
+        matrix[i][j - 1] + 1, // insertion
+        matrix[i - 1][j - 1] + cost // substitution
+      );
+    }
+  }
+  return matrix[a.length][b.length];
+}
+
+function normalize(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function findCloseMatch(input: string, list: string[]): string | null {
+  const normInput = normalize(input);
+  if (!normInput) return null;
+
+  // 1. Tenta correspondência exata sem acentos/case
+  for (const item of list) {
+    if (normalize(item) === normInput) return item;
+  }
+
+  // 2. Tenta correspondência por Levenshtein (limiar <= 2 ou 30% do tamanho)
+  let bestMatch: string | null = null;
+  let minDistance = 999;
+  
+  for (const item of list) {
+    const normItem = normalize(item);
+    const dist = getLevenshteinDistance(normInput, normItem);
+    
+    const threshold = Math.max(1, Math.min(2, Math.floor(normItem.length * 0.3)));
+    if (dist <= threshold && dist < minDistance) {
+      minDistance = dist;
+      bestMatch = item;
+    }
+  }
+
+  return bestMatch;
+}
+
 export const FinanceService = {
   // Contas
   getAccounts: async (): Promise<BankAccount[]> => {
@@ -236,16 +286,29 @@ export const FinanceService = {
     }));
   },
 
-  ensureEntityExists: async (name: string): Promise<void> => {
-    if (!supabase || !name || name === 'Pessoal') return;
+  ensureEntityExists: async (name: string): Promise<string> => {
+    if (!supabase || !name) return 'Pessoal';
+    const trimmedName = name.trim();
+    if (trimmedName.toLowerCase() === 'pessoal') return 'Pessoal';
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) return 'Pessoal';
 
-      const { error } = await supabase.from('entities').upsert({ user_id: user.id, name }, { onConflict: 'user_id, name' });
-      // Se der erro aqui, provavelmente a tabela não existe, ignoramos silenciosamente
+      // 1. Obter todas as entidades existentes
+      const { data: existingList } = await supabase.from('entities').select('name').eq('user_id', user.id);
+      const names = (existingList || []).map((e: any) => e.name);
+      
+      const matched = findCloseMatch(trimmedName, names);
+      if (matched) {
+        return matched; // Usar existente
+      }
+
+      const { error } = await supabase.from('entities').insert({ user_id: user.id, name: trimmedName });
       if (error) console.warn("Erro ao garantir entidade:", error);
-    } catch (e) { }
+      return trimmedName;
+    } catch (e) {
+      return trimmedName;
+    }
   },
 
   // Transações com Suporte Offline

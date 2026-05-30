@@ -11,6 +11,56 @@ import { DateUtils } from '../lib/dateUtils';
 import { FinanceService } from '../services/finance.service';
 import { ReconciliationService } from '../services/reconciliation.service';
 
+function getLevenshteinDistance(a: string, b: string): number {
+  const matrix = Array.from({ length: a.length + 1 }, () => 
+    Array.from({ length: b.length + 1 }, (_, j) => j)
+  );
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1, // deletion
+        matrix[i][j - 1] + 1, // insertion
+        matrix[i - 1][j - 1] + cost // substitution
+      );
+    }
+  }
+  return matrix[a.length][b.length];
+}
+
+function normalizeStr(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function findCloseMatch(input: string, list: string[]): string | null {
+  const normInput = normalizeStr(input);
+  if (!normInput) return null;
+
+  // 1. Tenta correspondência exata sem acentos/case
+  for (const item of list) {
+    if (normalizeStr(item) === normInput) return item;
+  }
+
+  // 2. Tenta correspondência por Levenshtein (limiar <= 2 ou 30% do tamanho)
+  let bestMatch: string | null = null;
+  let minDistance = 999;
+  
+  for (const item of list) {
+    const normItem = normalizeStr(item);
+    const dist = getLevenshteinDistance(normInput, normItem);
+    
+    const threshold = Math.max(1, Math.min(2, Math.floor(normItem.length * 0.3)));
+    if (dist <= threshold && dist < minDistance) {
+      minDistance = dist;
+      bestMatch = item;
+    }
+  }
+
+  return bestMatch;
+}
+
 // Modular Components
 import { HistoryFilters } from '../components/history/HistoryFilters';
 import { TransactionTable } from '../components/history/TransactionTable';
@@ -478,8 +528,18 @@ const HistoryPage: React.FC = () => {
 
       if (requestId !== lastRequestId.current) return;
 
-      // Map state
-      setAccounts((accData || []).map((a: any) => {
+      // Map state and deduplicate accounts by institution name
+      const uniqueAccData: any[] = [];
+      const seenAccNames = new Set<string>();
+      for (const a of (accData || [])) {
+        const name = (a.institution || a.name || a.bank_name || 'Conta').trim().toLowerCase();
+        if (!seenAccNames.has(name)) {
+          seenAccNames.add(name);
+          uniqueAccData.push(a);
+        }
+      }
+
+      setAccounts(uniqueAccData.map((a: any) => {
         const institution = a.institution || a.name || a.bank_name || 'Conta';
         const initialBalance = a.initial_balance !== undefined ? Number(a.initial_balance) : (a.initialBalance !== undefined ? Number(a.initialBalance) : 0);
         const currentBalance = a.current_balance !== undefined ? Number(a.current_balance) : (a.currentBalance !== undefined ? Number(a.currentBalance) : 0);
@@ -502,13 +562,14 @@ const HistoryPage: React.FC = () => {
         };
       }).sort((a: any, b: any) => a.institution.localeCompare(b.institution)));
 
-      setOwners((dbEntities || []).sort((a, b) => a.localeCompare(b)));
+      const deduplicatedOwners = Array.from(new Set((dbEntities || []).map((o: string) => o.trim()))).filter(Boolean);
+      setOwners(deduplicatedOwners.sort((a, b) => a.localeCompare(b)));
 
       // Initialize filterOwner on first load if there are excluded profiles
       if (isFirstLoad.current && filterOwner.length === 0) {
         const excludedSet = new Set((entityObjsRes || []).filter((e: any) => e.include_in_totals === false).map((e: any) => e.name));
         if (excludedSet.size > 0) {
-          const defaultOwners = (dbEntities || []).filter((name: string) => !excludedSet.has(name));
+          const defaultOwners = deduplicatedOwners.filter((name: string) => !excludedSet.has(name));
           setFilterOwner(defaultOwners);
           isFirstLoad.current = false;
           setIsLoading(false);
@@ -521,16 +582,31 @@ const HistoryPage: React.FC = () => {
         const parentCat = (catData || []).find((c: any) => c.id === sub.category_id);
         return { ...sub, category_name: parentCat?.name || sub.category_name };
       });
-      setSubcategories(mappedSubcats);
 
-      const dbCategories = (catData || []).map((c: any) => c.name);
+      // Deduplicate subcategories by name and category name
+      const uniqueSubcats: typeof mappedSubcats = [];
+      const seenSubcats = new Set<string>();
+      for (const sub of mappedSubcats) {
+        const key = `${sub.name?.toLowerCase().trim()}::${sub.category_name?.toLowerCase().trim()}`;
+        if (!seenSubcats.has(key)) {
+          seenSubcats.add(key);
+          uniqueSubcats.push(sub);
+        }
+      }
+      setSubcategories(uniqueSubcats);
+
+      const dbCategories = Array.from(new Set((catData || []).map((c: any) => c.name.trim()))).filter(Boolean);
       const essential = ['Outros', 'Conciliação'];
       const mergedCategories = Array.from(new Set([...DEFAULT_CATEGORIES, ...dbCategories, ...essential])).sort((a, b) => a.localeCompare(b));
       setAvailableCategories(mergedCategories);
 
       const catMap = new Map<string, { name: string, type?: 'INCOME' | 'EXPENSE' }>();
-      DEFAULT_CATEGORIES.forEach((c: string) => catMap.set(c, { name: c }));
-      (catData || []).forEach((c: any) => catMap.set(c.name, c));
+      DEFAULT_CATEGORIES.forEach((c: string) => catMap.set(c.toLowerCase().trim(), { name: c }));
+      (catData || []).forEach((c: any) => {
+        if (c.name) {
+          catMap.set(c.name.toLowerCase().trim(), { name: c.name.trim(), type: c.type });
+        }
+      });
       setCategoryObjects(Array.from(catMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
 
       // In-memory processor
@@ -744,7 +820,33 @@ const HistoryPage: React.FC = () => {
 
     setSavingId(id);
     try {
-      let patch: any = { [field]: value };
+      let cleanValue = value;
+      const tx = transactions.find(t => t.id === id);
+
+      if (field === 'owner_name' && value) {
+        const matched = findCloseMatch(value, owners);
+        if (matched) cleanValue = matched;
+        if (navigator.onLine) {
+          cleanValue = await FinanceService.ensureEntityExists(cleanValue);
+        }
+      }
+      if (field === 'category' && value) {
+        const names = categoryObjects.map(c => c.name);
+        const matched = findCloseMatch(value, names);
+        if (matched) cleanValue = matched;
+        if (navigator.onLine) await ReconciliationService.ensureCategoryExists(cleanValue);
+      }
+      if (field === 'subcategory' && value && tx?.category) {
+        const subcatNames = subcategories.filter(s => s.category_name === tx.category).map(s => s.name);
+        const matched = findCloseMatch(value, subcatNames);
+        if (matched) cleanValue = matched;
+        if (navigator.onLine) {
+          const catId = await ReconciliationService.ensureCategoryExists(tx.category);
+          if (catId) await (ReconciliationService as any).ensureSubcategoryExists(catId, cleanValue);
+        }
+      }
+
+      let patch: any = { [field]: cleanValue };
 
       if (field === 'amount') {
         let parsedAmt = typeof value === 'string'
@@ -778,25 +880,13 @@ const HistoryPage: React.FC = () => {
       if (field === 'counter_account_id') {
         patch = {
           type: 'TRANSFER',
-          metadata: { ...(tx?.metadata || {}), is_transfer: true, counter_account_id: value }
+          metadata: { ...(tx?.metadata || {}), is_transfer: true, counter_account_id: cleanValue }
         };
       }
 
       if (field === 'account_id') {
-        const acc = accounts.find(a => a.id === value);
+        const acc = accounts.find(a => a.id === cleanValue);
         if (acc) patch.account_name = acc.institution;
-      }
-      if (field === 'owner_name' && value) {
-        if (navigator.onLine) await FinanceService.ensureEntityExists(value);
-      }
-      if (field === 'category' && value) {
-        if (navigator.onLine) await ReconciliationService.ensureCategoryExists(value);
-      }
-      if (field === 'subcategory' && value && tx?.category) {
-        if (navigator.onLine) {
-          const catId = await ReconciliationService.ensureCategoryExists(tx.category);
-          if (catId) await (ReconciliationService as any).ensureSubcategoryExists(catId, value);
-        }
       }
 
       if (!navigator.onLine && confirmedScope && confirmedScope !== 'ONLY_THIS') {
@@ -813,12 +903,12 @@ const HistoryPage: React.FC = () => {
               updated = {
                 ...t,
                 type: 'TRANSFER' as TransactionType,
-                metadata: { ...(t.metadata || {}), is_transfer: true, counter_account_id: value }
+                metadata: { ...(t.metadata || {}), is_transfer: true, counter_account_id: cleanValue }
               };
             }
             if (field === 'account_id') {
-              updated.accountId = value;
-              const acc = accounts.find(a => a.id === value);
+              updated.accountId = cleanValue;
+              const acc = accounts.find(a => a.id === cleanValue);
               if (acc) updated.accountName = acc.institution;
             }
             return updated;
@@ -1118,11 +1208,26 @@ const HistoryPage: React.FC = () => {
 
     setIsBulkUpdating(true);
     try {
-      if (navigator.onLine) {
-        if (bulkOwner && bulkOwner !== 'Pessoal') await FinanceService.ensureEntityExists(bulkOwner);
-        if (bulkCategory) {
-          const catId = await ReconciliationService.ensureCategoryExists(bulkCategory);
-          if (catId && bulkSubcategory) await (ReconciliationService as any).ensureSubcategoryExists(catId, bulkSubcategory);
+      let cleanOwner = bulkOwner;
+      let cleanCategory = bulkCategory;
+      let cleanSubcategory = bulkSubcategory;
+
+      if (bulkOwner && bulkOwner !== 'Pessoal') {
+        const matched = findCloseMatch(bulkOwner, owners);
+        if (matched) cleanOwner = matched;
+        if (navigator.onLine) cleanOwner = await FinanceService.ensureEntityExists(cleanOwner);
+      }
+      if (bulkCategory) {
+        const matched = findCloseMatch(bulkCategory, availableCategories);
+        if (matched) cleanCategory = matched;
+        if (navigator.onLine) {
+          const catId = await ReconciliationService.ensureCategoryExists(cleanCategory);
+          if (catId && cleanSubcategory) {
+            const subcatNames = subcategories.filter(s => s.category_name === cleanCategory).map(s => s.name);
+            const subMatched = findCloseMatch(cleanSubcategory, subcatNames);
+            if (subMatched) cleanSubcategory = subMatched;
+            await ReconciliationService.ensureSubcategoryExists(catId, cleanSubcategory);
+          }
         }
       }
 
@@ -1135,9 +1240,9 @@ const HistoryPage: React.FC = () => {
           patch.account_name = acc.institution;
         }
       }
-      if (bulkCategory) patch.category = bulkCategory;
-      if (bulkSubcategory) patch.subcategory = bulkSubcategory;
-      if (bulkOwner) patch.owner_name = bulkOwner;
+      if (cleanCategory) patch.category = cleanCategory;
+      if (cleanSubcategory) patch.subcategory = cleanSubcategory;
+      if (cleanOwner) patch.owner_name = cleanOwner;
 
       const ids = Array.from(selectedIds);
 
@@ -1320,6 +1425,21 @@ const HistoryPage: React.FC = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const userId = user?.id || 'offline-user';
+
+      // Typo correction for manual insertion
+      if (f.ownerName && f.ownerName !== 'Pessoal') {
+        const matched = findCloseMatch(f.ownerName, owners);
+        if (matched) f.ownerName = matched;
+      }
+      if (f.category) {
+        const matched = findCloseMatch(f.category, availableCategories);
+        if (matched) f.category = matched;
+      }
+      if (f.subcategory && f.category) {
+        const subcatNames = subcategories.filter(s => s.category_name === f.category).map(s => s.name);
+        const matched = findCloseMatch(f.subcategory, subcatNames);
+        if (matched) f.subcategory = matched;
+      }
 
       if (navigator.onLine) {
         if (f.ownerName && f.ownerName !== 'Pessoal') await FinanceService.ensureEntityExists(f.ownerName);
@@ -1736,7 +1856,7 @@ const HistoryPage: React.FC = () => {
         filterCategory={filterCategory} setFilterCategory={setFilterCategory} filterSubcategory={filterSubcategory} setFilterSubcategory={setFilterSubcategory} startDate={startDate} setStartDate={setStartDate}
         endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
         filterOwner={filterOwner} setFilterOwner={setFilterOwner} owners={owners}
-        categories={availableCategories} subcategories={subcategories.map(s => s.name)} accounts={accounts} resetFilters={resetFilters}
+        categories={availableCategories} subcategories={Array.from(new Set(subcategories.map(s => s.name?.trim()))).filter(Boolean).sort()} accounts={accounts} resetFilters={resetFilters}
       />
 
       {/* QUICK DATE FILTERS + CUSTOM RANGE + VIEW MODE TOGGLE */}

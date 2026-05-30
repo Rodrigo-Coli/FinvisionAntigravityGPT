@@ -1,5 +1,55 @@
 import { supabase } from '../lib/supabase/client';
 
+function getLevenshteinDistance(a: string, b: string): number {
+  const matrix = Array.from({ length: a.length + 1 }, () => 
+    Array.from({ length: b.length + 1 }, (_, j) => j)
+  );
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1, // deletion
+        matrix[i][j - 1] + 1, // insertion
+        matrix[i - 1][j - 1] + cost // substitution
+      );
+    }
+  }
+  return matrix[a.length][b.length];
+}
+
+function normalize(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function findCloseMatch(input: string, list: string[]): string | null {
+  const normInput = normalize(input);
+  if (!normInput) return null;
+
+  // 1. Tenta correspondência exata sem acentos/case
+  for (const item of list) {
+    if (normalize(item) === normInput) return item;
+  }
+
+  // 2. Tenta correspondência por Levenshtein (limiar <= 2 ou 30% do tamanho)
+  let bestMatch: string | null = null;
+  let minDistance = 999;
+  
+  for (const item of list) {
+    const normItem = normalize(item);
+    const dist = getLevenshteinDistance(normInput, normItem);
+    
+    const threshold = Math.max(1, Math.min(2, Math.floor(normItem.length * 0.3)));
+    if (dist <= threshold && dist < minDistance) {
+      minDistance = dist;
+      bestMatch = item;
+    }
+  }
+
+  return bestMatch;
+}
+
 export const ReconciliationService = {
   async computeFileHash(file: File): Promise<string> {
     const buffer = await file.arrayBuffer();
@@ -269,20 +319,25 @@ export const ReconciliationService = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return '';
 
-    // Verifica se já existe (case-insensitive)
-    const { data: existing } = await supabase
+    // 1. Obter todas as categorias existentes
+    const { data: categories } = await supabase
       .from('categories')
       .select('id, name')
       .eq('user_id', user.id)
-      .ilike('name', categoryName)
-      .maybeSingle();
+      .eq('is_archived', false);
 
-    if (existing) return existing.id;
+    const names = (categories || []).map((c: any) => c.name);
+    const matchedName = findCloseMatch(categoryName, names);
+
+    if (matchedName) {
+      const match = categories!.find((c: any) => c.name === matchedName);
+      if (match) return match.id;
+    }
 
     // Cria nova
     const { data: created, error } = await supabase
       .from('categories')
-      .insert({ user_id: user.id, name: categoryName, is_archived: false })
+      .insert({ user_id: user.id, name: categoryName.trim(), is_archived: false })
       .select('id')
       .single();
 
@@ -298,21 +353,25 @@ export const ReconciliationService = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return '';
 
-    // Verifica se já existe (case-insensitive)
-    const { data: existing } = await supabase
+    // 1. Obter todas as subcategorias existentes desta categoria
+    const { data: subcategories } = await supabase
       .from('subcategories')
       .select('id, name')
       .eq('user_id', user.id)
-      .eq('category_id', categoryId)
-      .ilike('name', subcategoryName)
-      .maybeSingle();
+      .eq('category_id', categoryId);
 
-    if (existing) return existing.id;
+    const names = (subcategories || []).map((s: any) => s.name);
+    const matchedName = findCloseMatch(subcategoryName, names);
+
+    if (matchedName) {
+      const match = subcategories!.find((s: any) => s.name === matchedName);
+      if (match) return match.id;
+    }
 
     // Cria nova
     const { data: created, error } = await supabase
       .from('subcategories')
-      .insert({ user_id: user.id, category_id: categoryId, name: subcategoryName })
+      .insert({ user_id: user.id, category_id: categoryId, name: subcategoryName.trim() })
       .select('id')
       .single();
 
@@ -328,22 +387,27 @@ export const ReconciliationService = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return '';
 
-    // Verifica se já existe (case-insensitive)
-    const { data: existing } = await supabase
+    // 1. Obter todas as contas existentes
+    const { data: accounts } = await supabase
       .from('accounts')
       .select('id, institution')
       .eq('user_id', user.id)
-      .ilike('institution', accountName)
-      .maybeSingle();
+      .eq('is_archived', false);
 
-    if (existing) return existing.id;
+    const names = (accounts || []).map((a: any) => a.institution);
+    const matchedName = findCloseMatch(accountName, names);
 
-    // Cria nova conta (checking por default para bancos)
+    if (matchedName) {
+      const match = accounts!.find((a: any) => a.institution === matchedName);
+      if (match) return match.id;
+    }
+
+    // Cria nova conta
     const { data: created, error } = await supabase
       .from('accounts')
       .insert({
         user_id: user.id,
-        institution: accountName,
+        institution: accountName.trim(),
         type: 'CHECKING',
         currency: 'BRL',
         initial_balance: 0,

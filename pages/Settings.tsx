@@ -222,11 +222,37 @@ const SettingsPage: React.FC = () => {
         let query = supabase.from('categories').select('*').eq('user_id', user.id).order('name');
         if (!showArchived) query = query.eq('is_archived', false);
         const { data } = await query;
-        setCategories(data || []);
+
+        // Deduplicate categories by name
+        const rawCats = data || [];
+        const uniqueCats: any[] = [];
+        const seenCats = new Set<string>();
+        for (const c of rawCats) {
+          if (!c.name) continue;
+          const nameTrimmed = c.name.trim().toLowerCase();
+          if (!seenCats.has(nameTrimmed)) {
+            seenCats.add(nameTrimmed);
+            uniqueCats.push(c);
+          }
+        }
+        setCategories(uniqueCats);
 
         try {
           const { data: subData } = await supabase.from('subcategories').select('*').eq('user_id', user.id).order('name');
-          setSubcategories(subData || []);
+
+          // Deduplicate subcategories by name and category_id
+          const rawSubs = subData || [];
+          const uniqueSubs: any[] = [];
+          const seenSubs = new Set<string>();
+          for (const s of rawSubs) {
+            if (!s.name) continue;
+            const key = `${s.name.trim().toLowerCase()}::${s.category_id}`;
+            if (!seenSubs.has(key)) {
+              seenSubs.add(key);
+              uniqueSubs.push(s);
+            }
+          }
+          setSubcategories(uniqueSubs);
         } catch (e) {
           console.warn("Subcategories table might not exist yet", e);
         }
@@ -252,7 +278,20 @@ const SettingsPage: React.FC = () => {
         let query = supabase.from('entities').select('*').eq('user_id', user.id).order('name');
         if (!showArchived) query = query.eq('is_archived', false);
         const { data } = await query;
-        setEntities(data || []);
+
+        // Deduplicate entities by name
+        const rawEntities = data || [];
+        const uniqueEntities: any[] = [];
+        const seenEntities = new Set<string>();
+        for (const e of rawEntities) {
+          if (!e.name) continue;
+          const nameTrimmed = e.name.trim().toLowerCase();
+          if (!seenEntities.has(nameTrimmed)) {
+            seenEntities.add(nameTrimmed);
+            uniqueEntities.push(e);
+          }
+        }
+        setEntities(uniqueEntities);
       }
     } catch (err) {
       console.error('Error:', err);

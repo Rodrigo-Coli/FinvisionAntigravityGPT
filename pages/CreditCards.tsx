@@ -5,6 +5,56 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { FinanceService } from '../services/finance.service';
 import { DateUtils } from '../lib/dateUtils';
 
+function getLevenshteinDistance(a: string, b: string): number {
+  const matrix = Array.from({ length: a.length + 1 }, () => 
+    Array.from({ length: b.length + 1 }, (_, j) => j)
+  );
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1, // deletion
+        matrix[i][j - 1] + 1, // insertion
+        matrix[i - 1][j - 1] + cost // substitution
+      );
+    }
+  }
+  return matrix[a.length][b.length];
+}
+
+function normalizeStr(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function findCloseMatch(input: string, list: string[]): string | null {
+  const normInput = normalizeStr(input);
+  if (!normInput) return null;
+
+  // 1. Tenta correspondência exata sem acentos/case
+  for (const item of list) {
+    if (normalizeStr(item) === normInput) return item;
+  }
+
+  // 2. Tenta correspondência por Levenshtein (limiar <= 2 ou 30% do tamanho)
+  let bestMatch: string | null = null;
+  let minDistance = 999;
+  
+  for (const item of list) {
+    const normItem = normalizeStr(item);
+    const dist = getLevenshteinDistance(normInput, normItem);
+    
+    const threshold = Math.max(1, Math.min(2, Math.floor(normItem.length * 0.3)));
+    if (dist <= threshold && dist < minDistance) {
+      minDistance = dist;
+      bestMatch = item;
+    }
+  }
+
+  return bestMatch;
+}
+
 // Modular Components
 import { CardList } from '../components/cards/CardList';
 import { StatementSummary } from '../components/cards/StatementSummary';
@@ -232,18 +282,62 @@ const CreditCardsPage: React.FC = () => {
           .eq('user_id', user.id)
           .order('name', { ascending: true });
         if (error) throw error;
-        setCategories(data || []);
-        localStorage.setItem('finvision_cached_categories_cc', JSON.stringify(data || []));
+
+        // Deduplicate categories by name
+        const rawList = data || [];
+        const uniqueCategories: any[] = [];
+        const seenCategories = new Set<string>();
+        for (const c of rawList) {
+          if (!c.name) continue;
+          const nameTrimmed = c.name.trim().toLowerCase();
+          if (!seenCategories.has(nameTrimmed)) {
+            seenCategories.add(nameTrimmed);
+            uniqueCategories.push(c);
+          }
+        }
+
+        setCategories(uniqueCategories);
+        localStorage.setItem('finvision_cached_categories_cc', JSON.stringify(uniqueCategories));
       } else {
         const cached = localStorage.getItem('finvision_cached_categories_cc') ||
                        localStorage.getItem('finvision_cached_categories');
-        if (cached) setCategories(JSON.parse(cached));
+        if (cached) {
+          const rawList = JSON.parse(cached);
+          const uniqueCategories: any[] = [];
+          const seenCategories = new Set<string>();
+          for (const c of rawList) {
+            if (!c.name) continue;
+            const nameTrimmed = c.name.trim().toLowerCase();
+            if (!seenCategories.has(nameTrimmed)) {
+              seenCategories.add(nameTrimmed);
+              uniqueCategories.push(c);
+            }
+          }
+          setCategories(uniqueCategories);
+        }
       }
     } catch (err) {
       console.error('Erro ao buscar categorias, fallback cache:', err);
       const cached = localStorage.getItem('finvision_cached_categories_cc') ||
                      localStorage.getItem('finvision_cached_categories');
-      if (cached) setCategories(JSON.parse(cached));
+      if (cached) {
+        try {
+          const rawList = JSON.parse(cached);
+          const uniqueCategories: any[] = [];
+          const seenCategories = new Set<string>();
+          for (const c of rawList) {
+            if (!c.name) continue;
+            const nameTrimmed = c.name.trim().toLowerCase();
+            if (!seenCategories.has(nameTrimmed)) {
+              seenCategories.add(nameTrimmed);
+              uniqueCategories.push(c);
+            }
+          }
+          setCategories(uniqueCategories);
+        } catch (e) {
+          setCategories([]);
+        }
+      }
     }
   };
 
@@ -264,8 +358,20 @@ const CreditCardsPage: React.FC = () => {
           name: s.name,
           category_name: s.categories?.name
         }));
-        setSubcategories(mapped);
-        localStorage.setItem('finvision_cached_subcategories_cc', JSON.stringify(mapped));
+
+        // Deduplicate subcategories by name and category name
+        const uniqueSubcats: any[] = [];
+        const seenSubcats = new Set<string>();
+        for (const sub of mapped) {
+          const key = `${sub.name?.toLowerCase().trim()}::${sub.category_name?.toLowerCase().trim()}`;
+          if (!seenSubcats.has(key)) {
+            seenSubcats.add(key);
+            uniqueSubcats.push(sub);
+          }
+        }
+
+        setSubcategories(uniqueSubcats);
+        localStorage.setItem('finvision_cached_subcategories_cc', JSON.stringify(uniqueSubcats));
       } else {
         const cached = localStorage.getItem('finvision_cached_subcategories_cc') ||
                        localStorage.getItem('finvision_cached_subcategories');
@@ -285,7 +391,17 @@ const CreditCardsPage: React.FC = () => {
               category_name: catName
             };
           });
-          setSubcategories(mapped);
+
+          const uniqueSubcats: any[] = [];
+          const seenSubcats = new Set<string>();
+          for (const sub of mapped) {
+            const key = `${sub.name?.toLowerCase().trim()}::${sub.category_name?.toLowerCase().trim()}`;
+            if (!seenSubcats.has(key)) {
+              seenSubcats.add(key);
+              uniqueSubcats.push(sub);
+            }
+          }
+          setSubcategories(uniqueSubcats);
         }
       }
     } catch (err) {
@@ -293,22 +409,36 @@ const CreditCardsPage: React.FC = () => {
       const cached = localStorage.getItem('finvision_cached_subcategories_cc') ||
                      localStorage.getItem('finvision_cached_subcategories');
       if (cached) {
-        const raw = JSON.parse(cached);
-        const catsCached = localStorage.getItem('finvision_cached_categories_cc') || localStorage.getItem('finvision_cached_categories');
-        const cats = catsCached ? JSON.parse(catsCached) : [];
-        const mapped = raw.map((s: any) => {
-          let catName = s.category_name;
-          if (!catName && s.category_id && cats.length > 0) {
-            const matched = cats.find((c: any) => c.id === s.category_id);
-            if (matched) catName = matched.name;
+        try {
+          const raw = JSON.parse(cached);
+          const catsCached = localStorage.getItem('finvision_cached_categories_cc') || localStorage.getItem('finvision_cached_categories');
+          const cats = catsCached ? JSON.parse(catsCached) : [];
+          const mapped = raw.map((s: any) => {
+            let catName = s.category_name;
+            if (!catName && s.category_id && cats.length > 0) {
+              const matched = cats.find((c: any) => c.id === s.category_id);
+              if (matched) catName = matched.name;
+            }
+            return {
+              id: s.id,
+              name: s.name,
+              category_name: catName
+            };
+          });
+
+          const uniqueSubcats: any[] = [];
+          const seenSubcats = new Set<string>();
+          for (const sub of mapped) {
+            const key = `${sub.name?.toLowerCase().trim()}::${sub.category_name?.toLowerCase().trim()}`;
+            if (!seenSubcats.has(key)) {
+              seenSubcats.add(key);
+              uniqueSubcats.push(sub);
+            }
           }
-          return {
-            id: s.id,
-            name: s.name,
-            category_name: catName
-          };
-        });
-        setSubcategories(mapped);
+          setSubcategories(uniqueSubcats);
+        } catch (e) {
+          setSubcategories([]);
+        }
       }
     }
   };
@@ -327,10 +457,22 @@ const CreditCardsPage: React.FC = () => {
           .order('created_at', { ascending: true });
         if (error) throw error;
         const list = (data || []) as Account[];
-        setAccounts(list);
-        localStorage.setItem('finvision_cached_accounts_cc', JSON.stringify(list));
-        if (!payAccountId && list.length > 0) {
-          setPayAccountId(list[0].id);
+
+        // Deduplicate accounts by institution name
+        const uniqueAccounts: Account[] = [];
+        const seenAccs = new Set<string>();
+        for (const acc of list) {
+          const name = (acc.institution || acc.name || acc.bank_name || 'Conta').trim().toLowerCase();
+          if (!seenAccs.has(name)) {
+            seenAccs.add(name);
+            uniqueAccounts.push(acc);
+          }
+        }
+
+        setAccounts(uniqueAccounts);
+        localStorage.setItem('finvision_cached_accounts_cc', JSON.stringify(uniqueAccounts));
+        if (!payAccountId && uniqueAccounts.length > 0) {
+          setPayAccountId(uniqueAccounts[0].id);
         }
       } else {
         const cached = localStorage.getItem('finvision_cached_accounts_cc') ||
@@ -344,9 +486,20 @@ const CreditCardsPage: React.FC = () => {
             name: a.name || a.institution || a.bank_name,
             bank_name: a.bank_name || a.institution || a.name
           }));
-          setAccounts(list);
-          if (!payAccountId && list.length > 0) {
-            setPayAccountId(list[0].id);
+
+          const uniqueAccounts: any[] = [];
+          const seenAccs = new Set<string>();
+          for (const acc of list) {
+            const name = (acc.institution || acc.name || acc.bank_name || 'Conta').trim().toLowerCase();
+            if (!seenAccs.has(name)) {
+              seenAccs.add(name);
+              uniqueAccounts.push(acc);
+            }
+          }
+
+          setAccounts(uniqueAccounts);
+          if (!payAccountId && uniqueAccounts.length > 0) {
+            setPayAccountId(uniqueAccounts[0].id);
           }
         }
       }
@@ -356,16 +509,31 @@ const CreditCardsPage: React.FC = () => {
                      localStorage.getItem('finvision_cached_accounts') ||
                      localStorage.getItem('finvision_cached_accounts_full');
       if (cached) {
-        const rawList = JSON.parse(cached);
-        const list = rawList.map((a: any) => ({
-          id: a.id,
-          institution: a.institution || a.name || a.bank_name || `Conta ${a.id.slice(0, 6)}`,
-          name: a.name || a.institution || a.bank_name,
-          bank_name: a.bank_name || a.institution || a.name
-        }));
-        setAccounts(list);
-        if (!payAccountId && list.length > 0) {
-          setPayAccountId(list[0].id);
+        try {
+          const rawList = JSON.parse(cached);
+          const list = rawList.map((a: any) => ({
+            id: a.id,
+            institution: a.institution || a.name || a.bank_name || `Conta ${a.id.slice(0, 6)}`,
+            name: a.name || a.institution || a.bank_name,
+            bank_name: a.bank_name || a.institution || a.name
+          }));
+
+          const uniqueAccounts: any[] = [];
+          const seenAccs = new Set<string>();
+          for (const acc of list) {
+            const name = (acc.institution || acc.name || acc.bank_name || 'Conta').trim().toLowerCase();
+            if (!seenAccs.has(name)) {
+              seenAccs.add(name);
+              uniqueAccounts.push(acc);
+            }
+          }
+
+          setAccounts(uniqueAccounts);
+          if (!payAccountId && uniqueAccounts.length > 0) {
+            setPayAccountId(uniqueAccounts[0].id);
+          }
+        } catch (e) {
+          setAccounts([]);
         }
       }
     }
@@ -380,18 +548,34 @@ const CreditCardsPage: React.FC = () => {
         const { data, error } = await supabase.from('entities').select('name').eq('user_id', user.id).eq('is_archived', false);
         if (error) throw error;
         const ownersList = ['Pessoal', ...(data || []).map((o: any) => o.name)];
-        setOwners(ownersList);
-        localStorage.setItem('finvision_cached_owners_cc', JSON.stringify(ownersList));
+
+        // Deduplicate owners
+        const uniqueOwners = Array.from(new Set(ownersList.map((o: string) => o.trim()))).filter(Boolean) as string[];
+
+        setOwners(uniqueOwners);
+        localStorage.setItem('finvision_cached_owners_cc', JSON.stringify(uniqueOwners));
       } else {
         const cached = localStorage.getItem('finvision_cached_owners_cc') ||
                        localStorage.getItem('finvision_cached_owners');
-        if (cached) setOwners(JSON.parse(cached));
+        if (cached) {
+          const parsed = JSON.parse(cached) as string[];
+          const uniqueOwners = Array.from(new Set(parsed.map((o: string) => o.trim()))).filter(Boolean) as string[];
+          setOwners(uniqueOwners);
+        }
       }
     } catch (err) {
       console.error('Erro ao buscar proprietários, fallback cache:', err);
       const cached = localStorage.getItem('finvision_cached_owners_cc') ||
                      localStorage.getItem('finvision_cached_owners');
-      if (cached) setOwners(JSON.parse(cached));
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached) as string[];
+          const uniqueOwners = Array.from(new Set(parsed.map((o: string) => o.trim()))).filter(Boolean) as string[];
+          setOwners(uniqueOwners);
+        } catch (e) {
+          setOwners(['Pessoal']);
+        }
+      }
     }
   };
 
@@ -685,6 +869,19 @@ const CreditCardsPage: React.FC = () => {
       const cleanAmount = parseNumeric(txAmount);
       const cleanInstallments = parseNumeric(installmentsCount, 1);
 
+      let cleanSubcategory = txSubcategory || null;
+      if (cleanSubcategory && txCategoryId) {
+        const catObj = categories.find(c => c.id === txCategoryId);
+        if (catObj) {
+          const subcatNames = subcategories.filter(s => s.category_name === catObj.name).map(s => s.name);
+          const matched = findCloseMatch(cleanSubcategory, subcatNames);
+          if (matched) cleanSubcategory = matched;
+        }
+      }
+
+      const cardObj = cards.find(c => c.id === txCardId);
+      const defaultOwnerName = cardObj?.default_owner || 'Pessoal';
+
       if (!isInstallment && !isRecurring) {
         // Fluxo Simples
         const targetStmtId = await FinanceService.getOrCreateStatement(txCardId, txDate);
@@ -699,7 +896,8 @@ const CreditCardsPage: React.FC = () => {
           source: 'MANUAL',
           is_manual: true,
           category_id: txCategoryId || null,
-          subcategory: txSubcategory || null,
+          subcategory: cleanSubcategory,
+          owner_name: defaultOwnerName,
           notes: txNotes || '',
           tags: txTags || []
         };
@@ -775,7 +973,8 @@ const CreditCardsPage: React.FC = () => {
             is_recurring: item.is_recurring,
             recurrence_period: item.recurrence_period,
             recurrence_group_id: isRecurring ? groupId : null,
-            subcategory: txSubcategory || null,
+            subcategory: cleanSubcategory,
+            owner_name: defaultOwnerName,
             notes: txNotes || '',
             tags: txTags || []
           });
@@ -893,10 +1092,42 @@ const CreditCardsPage: React.FC = () => {
   const handleAddCard = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) return;
+
+    // Check for close matches to prevent duplicate card names on creation
+    if (!isEditing) {
+      const matched = findCloseMatch(newName, cards.map(c => c.name));
+      if (matched) {
+        if (!window.confirm(`Já existe um cartão com o nome semelhante "${matched}". Deseja continuar e criar este cartão assim mesmo?`)) {
+          setShowAddModal(false);
+          resetCardForm();
+          return;
+        }
+      }
+    }
+
     setIsSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      let correctedCategory = defaultCategory || 'Pessoal';
+      let correctedSubcategory = defaultSubcategory || '';
+      let correctedOwner = defaultOwner || 'Pessoal';
+
+      if (defaultCategory) {
+        const matched = findCloseMatch(defaultCategory, categories.map(c => c.name));
+        if (matched) correctedCategory = matched;
+      }
+      if (defaultSubcategory && correctedCategory) {
+        const subcatNames = subcategories.filter(s => s.category_name === correctedCategory).map(s => s.name);
+        const matched = findCloseMatch(defaultSubcategory, subcatNames);
+        if (matched) correctedSubcategory = matched;
+      }
+      if (defaultOwner) {
+        const matched = findCloseMatch(defaultOwner, owners);
+        if (matched) correctedOwner = matched;
+      }
+
       const payload = {
         user_id: user.id,
         name: newName,
@@ -909,9 +1140,9 @@ const CreditCardsPage: React.FC = () => {
         is_additional: isAdditional,
         parent_card_id: isAdditional ? parentCardId : null,
         additional_label: isAdditional ? additionalLabel : null,
-        default_category: defaultCategory,
-        default_subcategory: defaultSubcategory,
-        default_owner: defaultOwner
+        default_category: correctedCategory,
+        default_subcategory: correctedSubcategory,
+        default_owner: correctedOwner
       };
 
       if (isEditing && selectedCard) {
