@@ -27,7 +27,7 @@ import {
 } from '../lib/financialEngine';
 
 const Studies: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'summary' | 'sust' | 'amortize' | 'runway' | 'opportunity' | 'efficiency' | 'new_projects'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'monthly_projection' | 'sust' | 'amortize' | 'runway' | 'opportunity' | 'efficiency' | 'new_projects'>('summary');
   
   // Data State loaded from Supabase
   const [isLoading, setIsLoading] = useState(true);
@@ -36,6 +36,10 @@ const Studies: React.FC = () => {
   const [liabilitiesList, setLiabilitiesList] = useState<DebtDetails[]>([]);
   const [activeIncome, setActiveIncome] = useState(12000); // Renda Líquida Mensal padrão
   const [rentalIncome, setRentalIncome] = useState(0);     // Aluguéis recebidos padrão
+  const [investmentPayout, setInvestmentPayout] = useState(0); // Rendimentos que caem na conta padrão
+  const [accumulatedInterest, setAccumulatedInterest] = useState(0); // Rendimentos acumulados na aplicação padrão
+  const [projectionDuration, setProjectionDuration] = useState(60); // Prazo de simulação padrão (meses)
+  const [safeCommitmentLimit, setSafeCommitmentLimit] = useState(30); // Limite estratégico de comprometimento orçamentário (%)
   
   // Interactive Controls state
   const [cdiRate, setCdiRate] = useState(10.75);           // CDI bruto anual (%)
@@ -103,44 +107,126 @@ const Studies: React.FC = () => {
         setSelectedDebtId(mappedLiabilities[0].id);
       }
 
-      // 4. Estimate incomes based on recent transactions (last 90 days)
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      // 4. Estimar receitas baseadas nas transações do mês calendário atual (evitando inflar com parcelas futuras agendadas)
+      const today = new Date();
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
       const { data: transactionsData } = await supabase
         .from('transactions')
-        .select('amount, category, description, date')
+        .select('amount, category, subcategory, description, date')
         .eq('user_id', user.id)
         .eq('type', 'INCOME')
         .eq('is_deleted', false)
-        .gte('date', ninetyDaysAgo.toISOString().split('T')[0]);
+        .gte('date', startOfMonth.toISOString().split('T')[0])
+        .lte('date', endOfMonth.toISOString().split('T')[0]);
 
-      if (transactionsData && transactionsData.length > 0) {
-        // Estimate salaries/consulting
-        const activeCategories = ['salario', 'prestacao', 'receita', 'pro-labore', 'servico', 'pró-labore'];
+      let currentMonthTransactions = transactionsData || [];
+      if (currentMonthTransactions.length === 0) {
+        // Fallback: carregar os últimos 30 dias de receitas
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const { data: fallbackData } = await supabase
+          .from('transactions')
+          .select('amount, category, subcategory, description, date')
+          .eq('user_id', user.id)
+          .eq('type', 'INCOME')
+          .eq('is_deleted', false)
+          .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
+          .lte('date', today.toISOString().split('T')[0]);
+        currentMonthTransactions = fallbackData || [];
+      }
+
+      if (currentMonthTransactions.length > 0) {
+        // Estimar salários/consultoria, aluguéis e juros recebidos
+        const activeCategories = ['salario', 'prestacao', 'receita', 'pro-labore', 'servico', 'pró-labore', 'mensal'];
         const rentCategories = ['aluguel', 'locacao', 'rendimento imobiliario', 'imobiliario'];
+        const interestCategories = ['juros', 'dividendo', 'provento', 'rendimento financeiro', 'rendimento de aplicação', 'rendimento', 'rentabilidade'];
         
         let sumActive = 0;
         let sumRent = 0;
+        let sumInterest = 0;
+        let sumAccumulatedInterest = 0;
 
-        for (const tx of transactionsData) {
+        for (const tx of currentMonthTransactions) {
           const categoryLower = (tx.category || '').toLowerCase();
+          const subcategoryLower = (tx.subcategory || '').toLowerCase();
           const descLower = (tx.description || '').toLowerCase();
           
-          const isRent = rentCategories.some(c => categoryLower.includes(c) || descLower.includes(c));
-          const isActive = activeCategories.some(c => categoryLower.includes(c) || descLower.includes(c));
+          // A. IGNORAR Ajustes de Saldo, Saldos Iniciais, Correções e Reconciliações (não contam como renda real)
+          const isAdjustment = [
+            'ajuste', 'saldo', 'correção', 'inicial', 'sincronização', 'fechamento', 'reconcile'
+          ].some(c => categoryLower.includes(c) || subcategoryLower.includes(c) || descLower.includes(c));
+          if (isAdjustment) continue;
 
-          if (isRent) sumRent += Number(tx.amount || 0);
-          else if (isActive) sumActive += Number(tx.amount || 0);
-          else sumActive += Number(tx.amount || 0); // fallback regular income
+          // B. IGNORAR Resgates e Transferências de Capital de Investimento Principal (não contam como renda real)
+          const isResgate = [
+            'resgate', 'aplicação', 'aplicacao', 'investir', 'compra de ativo', 'venda de ativo'
+          ].some(c => descLower.includes(c) || subcategoryLower.includes(c));
+          
+          // Descartar resgates/movimentações de capital específicos (como Q3 ou Lion)
+          const isCapitalMovement = ['q3', 'lion'].some(c => descLower === c || subcategoryLower === c);
+          if (isResgate || isCapitalMovement) continue;
+
+          // C. CLASSIFICAR como Aluguel
+          const isRent = rentCategories.some(c => categoryLower.includes(c) || subcategoryLower.includes(c) || descLower.includes(c));
+          if (isRent) {
+            sumRent += Number(tx.amount || 0);
+            continue;
+          }
+
+          // D. CLASSIFICAR Categoria Investimento
+          if (categoryLower === 'investimento') {
+            // Verificar se são juros que caem de fato na conta (Juros Recebidos / Dividendos)
+            const isInterestPayout = [
+              'juros recebidos', 'juros recebido', 'dividendo', 'provento', 'rendimento recebido', 
+              'caiu na conta', 'cai na conta', 'juros s/ativo', 'juros s/ ativo', 'rentabilidade'
+            ].some(c => subcategoryLower.includes(c) || descLower.includes(c)) || 
+            (interestCategories.some(c => subcategoryLower.includes(c) || descLower.includes(c)) && 
+             !['acumulado', 'reinvestido', 'acumulados', 'vencimento'].some(c => subcategoryLower.includes(c) || descLower.includes(c)));
+
+            // Verificar se são juros acumulados (não caem na conta, apenas acompanhamento)
+            const isInterestAccumulated = [
+              'juros acumulados', 'juros acumulado', 'acumulado', 'acumulados', 'reinvestido', 
+              'reinvestidos', 'no final', 'vencimento', 'rendimento acumulado'
+            ].some(c => subcategoryLower.includes(c) || descLower.includes(c));
+
+            if (isInterestPayout) {
+              sumInterest += Number(tx.amount || 0);
+            } else if (isInterestAccumulated) {
+              sumAccumulatedInterest += Number(tx.amount || 0);
+            } else {
+              // Por padrão, se for uma receita sob Investimento que não seja Explicitamente Payout ou Acumulado, tratar como acumulado
+              sumAccumulatedInterest += Number(tx.amount || 0);
+            }
+            continue;
+          }
+
+          // E. CLASSIFICAR Outras Receitas
+          const isInterest = interestCategories.some(c => categoryLower.includes(c) || subcategoryLower.includes(c) || descLower.includes(c));
+          const isActive = activeCategories.some(c => categoryLower.includes(c) || subcategoryLower.includes(c) || descLower.includes(c));
+
+          if (isInterest) {
+            const isAccumulated = ['acumulado', 'reinvestido', 'acumulados', 'vencimento'].some(c => subcategoryLower.includes(c) || descLower.includes(c));
+            if (isAccumulated) {
+              sumAccumulatedInterest += Number(tx.amount || 0);
+            } else {
+              sumInterest += Number(tx.amount || 0);
+            }
+          } else if (isActive) {
+            sumActive += Number(tx.amount || 0);
+          } else {
+            // Fallback regular active income
+            sumActive += Number(tx.amount || 0);
+          }
         }
 
-        // Monthly average (divided by 3 months)
-        const avgActive = Math.round((sumActive / 3) * 100) / 100;
-        const avgRent = Math.round((sumRent / 3) * 100) / 100;
+        if (sumActive > 0) setActiveIncome(sumActive);
+        else setActiveIncome(0);
 
-        if (avgActive > 0) setActiveIncome(avgActive);
-        if (avgRent > 0) setRentalIncome(avgRent);
+        setRentalIncome(sumRent);
+        setInvestmentPayout(sumInterest);
+        setAccumulatedInterest(sumAccumulatedInterest);
       }
 
     } catch (e) {
@@ -154,18 +240,32 @@ const Studies: React.FC = () => {
   const totalLiabilities = liabilitiesList.reduce((sum, d) => sum + d.outstandingBalance, 0);
   const totalMonthlyInstallments = liabilitiesList.reduce((sum, d) => sum + d.installmentAmount, 0);
   const totalAssets = investmentsTotal + physicalAssetsTotal;
-  const netMonthlyCashInflow = activeIncome + rentalIncome;
+  const netMonthlyCashInflow = activeIncome + rentalIncome + investmentPayout;
 
   // Assumed Net Monthly Yield Rate
   const assumedNetMonthlyYield = isTaxExempt 
     ? Math.pow(1 + (cdiRate / 100), 1 / 12) - 1 
     : Math.pow(1 + ((cdiRate * 0.85) / 100), 1 / 12) - 1; // 15% IR avg standard
 
-  // Puxar dados calculados pelo Engine
-  const incomeResult = FinancialEngine.calculateIncomeCommitment({
-    monthlyNetIncome: netMonthlyCashInflow,
-    monthlyDebtPayments: totalMonthlyInstallments
-  });
+  // Dynamic zone calculator based on strategic target limit
+  const getDynamicZone = (ratio: number, limit: number): 'GREEN' | 'YELLOW' | 'RED' => {
+    if (ratio > limit) return 'RED';
+    if (ratio > limit * 0.66) return 'YELLOW'; // yellow zone is from 2/3 of limit up to the limit
+    return 'GREEN';
+  };
+
+  // Puxar dados calculados pelo Engine e ajustar zonas dinamicamente
+  const incomeResult = React.useMemo(() => {
+    const ratio = netMonthlyCashInflow > 0 
+      ? (totalMonthlyInstallments / netMonthlyCashInflow) * 100 
+      : 0;
+    const zone = getDynamicZone(ratio, safeCommitmentLimit);
+    return {
+      ratio,
+      zone,
+      availableCashForSavings: Math.max(0, netMonthlyCashInflow * 0.20)
+    };
+  }, [netMonthlyCashInflow, totalMonthlyInstallments, safeCommitmentLimit]);
 
   const leverageResult = FinancialEngine.calculateLeverage({
     totalLiabilities,
@@ -182,9 +282,54 @@ const Studies: React.FC = () => {
 
   // Calculate Cash Runway
   const monthlyCostEstimate = Math.max(2000, netMonthlyCashInflow - totalMonthlyInstallments);
-  const cashRunwayMonths = monthlyCostEstimate + totalMonthlyInstallments > 0 
+  const cashRunwayMonths = (totalMonthlyInstallments + monthlyCostEstimate) > 0 
     ? investmentsTotal / (totalMonthlyInstallments + monthlyCostEstimate) 
     : 0;
+
+  const monthlyProjectionData = React.useMemo(() => {
+    const today = new Date();
+    const result = [];
+
+    for (let monthOffset = 1; monthOffset <= projectionDuration; monthOffset++) {
+      const projDate = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+      const label = projDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('.', '');
+
+      // Sum installments for active liabilities this month
+      const activeInstallments = liabilitiesList.reduce((sum, d) => {
+        if (d.remainingMonths >= monthOffset) {
+          return sum + d.installmentAmount;
+        }
+        return sum;
+      }, 0);
+
+      // Projected remaining outstanding balance
+      const projectedOutstandingBalance = liabilitiesList.reduce((sum, d) => {
+        if (d.remainingMonths >= monthOffset) {
+          // linear amortization estimate
+          const remainingPct = (d.remainingMonths - monthOffset) / d.remainingMonths;
+          return sum + (d.outstandingBalance * remainingPct);
+        }
+        return sum;
+      }, 0);
+
+      const totalRevenue = activeIncome + rentalIncome + investmentPayout;
+      const commitmentRatio = totalRevenue > 0 ? (activeInstallments / totalRevenue) * 100 : 0;
+      const debtToIncomeRatio = totalRevenue > 0 ? projectedOutstandingBalance / totalRevenue : 0;
+      const freeInvest = Math.max(0, totalRevenue - activeInstallments);
+
+      result.push({
+        label,
+        totalRevenue,
+        activeInstallments,
+        commitmentRatio,
+        projectedOutstandingBalance,
+        debtToIncomeRatio,
+        freeInvest
+      });
+    }
+
+    return result;
+  }, [liabilitiesList, activeIncome, rentalIncome, investmentPayout, projectionDuration]);
 
   // Selected Debt details for amortization sandbox
   const selectedDebt = liabilitiesList.find(d => d.id === selectedDebtId);
@@ -225,10 +370,16 @@ const Studies: React.FC = () => {
 
   const newProjectInstallment = calculateNewProjectInstallment();
   const prospectiveTotalInstallments = totalMonthlyInstallments + newProjectInstallment;
-  const prospectiveIncomeResult = FinancialEngine.calculateIncomeCommitment({
-    monthlyNetIncome: netMonthlyCashInflow,
-    monthlyDebtPayments: prospectiveTotalInstallments
-  });
+  const prospectiveIncomeResult = React.useMemo(() => {
+    const ratio = netMonthlyCashInflow > 0 
+      ? (prospectiveTotalInstallments / netMonthlyCashInflow) * 100 
+      : 0;
+    const zone = getDynamicZone(ratio, safeCommitmentLimit);
+    return {
+      ratio,
+      zone
+    };
+  }, [netMonthlyCashInflow, prospectiveTotalInstallments, safeCommitmentLimit]);
 
   const getZoneColor = (zone: 'GREEN' | 'YELLOW' | 'RED') => {
     if (zone === 'GREEN') return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
@@ -272,16 +423,10 @@ const Studies: React.FC = () => {
           </p>
         </div>
         
-        {/* Real-time sync / Settings */}
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <button 
-            onClick={loadSupabaseData} 
-            disabled={isLoading}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-100 dark:bg-brand-900/40 dark:border-slate-800 text-slate-500 dark:text-slate-300 rounded-xl text-xs font-black uppercase tracking-wider shadow-sm hover:text-slate-900 active:scale-95 transition-all"
-          >
-            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-            Sincronizar Dados Supabase
-          </button>
+        {/* Sincronizado em tempo real status */}
+        <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-350 bg-slate-50 dark:bg-brand-900/20 px-4 py-2.5 rounded-xl border border-slate-100/50 dark:border-slate-800/40 uppercase tracking-widest shadow-sm">
+          <CheckCircle size={14} className="text-emerald-500" />
+          <span>Sincronizado em tempo real</span>
         </div>
       </div>
 
@@ -330,6 +475,21 @@ const Studies: React.FC = () => {
                 <span className="text-[8px] font-bold text-slate-300 block">Média mensal de proventos de imóveis/FIIs.</span>
               </div>
 
+              {/* Editable Investment Monthly Payout */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Juros Recebidos / Dividendos (R$)</label>
+                <div className="relative">
+                  <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                  <input
+                    type="number"
+                    value={investmentPayout}
+                    onChange={e => setInvestmentPayout(Math.max(0, Number(e.target.value)))}
+                    className="w-full bg-slate-50 border-none dark:bg-brand-900/30 rounded-xl text-xs font-black p-3 pl-8 outline-none focus:ring-2 focus:ring-brand-500 text-slate-800 dark:text-white"
+                  />
+                </div>
+                <span className="text-[8px] font-bold text-slate-300 block">Juros/dividendos mensais resgatados que aumentam sua capacidade de pagamento.</span>
+              </div>
+
               {/* Investment Yield (CDI/Selic) Slider */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-wider">
@@ -356,6 +516,40 @@ const Studies: React.FC = () => {
                   <label htmlFor="taxExempt" className="text-[9px] font-black text-slate-400 uppercase cursor-pointer">
                     LCI / LCA (Isento de IR)
                   </label>
+                </div>
+              </div>
+
+              {/* Strategic Commitment Limit Slider */}
+              <div className="space-y-2 pt-4 border-t border-slate-50 dark:border-slate-800">
+                <div className="flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                  <span>Meta de Comprometimento</span>
+                  <span className="text-brand-600 dark:text-brand-400">{safeCommitmentLimit}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="10"
+                  max="80"
+                  step="5"
+                  value={safeCommitmentLimit}
+                  onChange={e => setSafeCommitmentLimit(Number(e.target.value))}
+                  className="w-full h-1.5 bg-slate-100 dark:bg-brand-800 rounded-lg appearance-none cursor-pointer accent-brand-600"
+                />
+                
+                {/* Dynamic Leverage Profile Explanation */}
+                <div className="p-3 bg-slate-50 dark:bg-brand-900/10 rounded-xl space-y-1 shadow-inner">
+                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Estratégia de Alavancagem:</span>
+                  <span className="text-[10px] font-black uppercase text-brand-600 dark:text-brand-400 block">
+                    {safeCommitmentLimit <= 30 ? '🛡️ Conservador' : 
+                     safeCommitmentLimit <= 45 ? '⚖️ Moderado' : 
+                     safeCommitmentLimit <= 60 ? '🔥 Agressivo' : 
+                     '⚡ Especulativo'}
+                  </span>
+                  <p className="text-[8px] font-bold text-slate-500 dark:text-slate-400 leading-normal uppercase">
+                    {safeCommitmentLimit <= 30 ? 'Alta margem de segurança. Foco em preservação de capital e proteção contra oscilações de renda ativa.' : 
+                     safeCommitmentLimit <= 45 ? 'Uso planejado de alavancagem para aceleração patrimonial de forma controlada e sustentável.' : 
+                     safeCommitmentLimit <= 60 ? 'Exposição de caixa relevante. Exige reservas financeiras expressivas ou renda passiva (ICD) para proteção.' : 
+                     'Risco alto de insolvência. Comprometimento excessivo que esmaga a liquidez livre mensal.'}
+                  </p>
                 </div>
               </div>
 
@@ -390,6 +584,12 @@ const Studies: React.FC = () => {
                 className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${activeTab === 'summary' ? 'bg-brand-900 text-white border-brand-900' : 'bg-transparent text-slate-400 border-transparent hover:bg-slate-50'}`}
               >
                 Resumo Geral
+              </button>
+              <button 
+                onClick={() => setActiveTab('monthly_projection')}
+                className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${activeTab === 'monthly_projection' ? 'bg-brand-900 text-white border-brand-900' : 'bg-transparent text-slate-400 border-transparent hover:bg-slate-50'}`}
+              >
+                Capacidade Mensal
               </button>
               <button 
                 onClick={() => setActiveTab('sust')}
@@ -434,14 +634,14 @@ const Studies: React.FC = () => {
               <div className="space-y-6">
                 {/* 3 Core KPIs */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* KPI 1: Comprometimento de Renda */}
+                  {/* KPI 1: Alavancagem Orçamentária Mensal */}
                   <div className={`backdrop-blur-md border rounded-[32px] p-6 shadow-xl transition-all duration-300 ${getZoneColor(incomeResult.zone)}`}>
                     <div className="flex justify-between items-start">
                       <Wallet size={20} />
-                      <span className="text-[9px] font-black px-2 py-0.5 rounded-full border bg-white/20">RENDA</span>
+                      <span className="text-[9px] font-black px-2 py-0.5 rounded-full border bg-white/20">FLUXO MENSAL</span>
                     </div>
                     <div className="mt-4">
-                      <p className="text-[10px] font-black uppercase tracking-wider opacity-60">Comprometimento de Renda</p>
+                      <p className="text-[10px] font-black uppercase tracking-wider opacity-60">Alavancagem Orçamentária (% Renda)</p>
                       <h4 className="text-3xl font-black mt-1 tracking-tight">{incomeResult.ratio.toFixed(1)}%</h4>
                       <p className="text-[9px] font-bold mt-2 uppercase tracking-wide opacity-80">
                         {getZoneLabel(incomeResult.zone, 'CR')}
@@ -449,11 +649,11 @@ const Studies: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* KPI 2: Alavancagem Patrimonial (APG) */}
+                  {/* KPI 2: Alavancagem Patrimonial Global */}
                   <div className={`backdrop-blur-md border rounded-[32px] p-6 shadow-xl transition-all duration-300 ${getZoneColor(leverageResult.globalLeverageZone)}`}>
                     <div className="flex justify-between items-start">
                       <Layers size={20} />
-                      <span className="text-[9px] font-black px-2 py-0.5 rounded-full border bg-white/20">LTV GLOBAL</span>
+                      <span className="text-[9px] font-black px-2 py-0.5 rounded-full border bg-white/20">BALANÇO GLOBAL</span>
                     </div>
                     <div className="mt-4">
                       <p className="text-[10px] font-black uppercase tracking-wider opacity-60">Alavancagem Patrimonial Global</p>
@@ -464,14 +664,14 @@ const Studies: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* KPI 3: Cobertura de Passivos (ICD) */}
+                  {/* KPI 3: Autossuficiência (ICD) */}
                   <div className={`backdrop-blur-md border rounded-[32px] p-6 shadow-xl transition-all duration-300 ${getZoneColor(coverageResult.zone)}`}>
                     <div className="flex justify-between items-start">
                       <Award size={20} />
                       <span className="text-[9px] font-black px-2 py-0.5 rounded-full border bg-white/20">ICD</span>
                     </div>
                     <div className="mt-4">
-                      <p className="text-[10px] font-black uppercase tracking-wider opacity-60">Autossuficiência (ICD)</p>
+                      <p className="text-[10px] font-black uppercase tracking-wider opacity-60">Autossuficiência de Dívidas (ICD)</p>
                       <h4 className="text-3xl font-black mt-1 tracking-tight">{coverageResult.ratio.toFixed(1)}%</h4>
                       <p className="text-[9px] font-bold mt-2 uppercase tracking-wide opacity-80">
                         {getZoneLabel(coverageResult.zone, 'ICD')}
@@ -483,39 +683,201 @@ const Studies: React.FC = () => {
                 {/* Dashboard summary report card */}
                 <div className="backdrop-blur-md bg-white border border-slate-100 dark:bg-brand-950/30 dark:border-slate-800 p-8 rounded-[32px] shadow-sm space-y-6">
                   <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                    Diagnóstico Patrimonial de Alavancagem
+                    Diagnóstico de Alavancagem e Estrutura de Capitais
                   </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-500 dark:text-slate-300 font-medium">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-xs text-slate-500 dark:text-slate-300 font-medium">
                     <div className="space-y-4">
+                      <h5 className="text-[10px] font-black uppercase text-brand-600 tracking-wider">1. Alavancagem Orçamentária (Fluxo Mensal)</h5>
                       <p>
-                        Sua estrutura de passivos atualmente consome <strong className="text-slate-800 dark:text-white font-bold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalMonthlyInstallments)}</strong> de um total de <strong className="text-slate-800 dark:text-white font-bold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(netMonthlyCashInflow)}</strong> de renda líquida familiar.
+                        Mede o quanto das suas receitas líquidas mensais é utilizado para o pagamento das parcelas de suas dívidas (utilização de caixa mês a mês). Atualmente, suas parcelas de <strong className="text-slate-800 dark:text-white font-bold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalMonthlyInstallments)}</strong> consomem <strong className="text-slate-800 dark:text-white font-bold">{incomeResult.ratio.toFixed(1)}%</strong> da sua receita total recorrente de <strong className="text-slate-800 dark:text-white font-bold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(netMonthlyCashInflow)}</strong>.
                       </p>
-                      {incomeResult.ratio > 30 ? (
-                        <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex gap-3 text-rose-800">
-                          <AlertTriangle className="shrink-0" />
-                          <p className="text-[10px] font-bold leading-normal uppercase">
-                            <strong>Atenção:</strong> Seu comprometimento de renda supera o limite prudencial de 30%. Evite novas dívidas e priorize a amortização das taxas mais altas.
+                      {incomeResult.ratio > safeCommitmentLimit ? (
+                        <div className="p-4 bg-rose-50/50 border border-rose-100 rounded-2xl flex gap-3 text-rose-800">
+                          <AlertTriangle className="shrink-0" size={16} />
+                          <p className="text-[9px] font-bold leading-normal uppercase">
+                            <strong>Atenção:</strong> Seu fluxo mensal ultrapassa a sua meta estratégica de {safeCommitmentLimit}% de comprometimento de receita. Evite novas parcelas imediatas.
                           </p>
                         </div>
                       ) : (
-                        <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex gap-3 text-emerald-800">
-                          <CheckCircle className="shrink-0" />
-                          <p className="text-[10px] font-bold leading-normal uppercase">
-                            <strong>Saudável:</strong> O peso mensal das dívidas está sob total controle, mantendo boa parte da sua renda livre para investimentos.
+                        <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl flex gap-3 text-emerald-800">
+                          <CheckCircle className="shrink-0" size={16} />
+                          <p className="text-[9px] font-bold leading-normal uppercase">
+                            <strong>Fluxo Saudável:</strong> O peso das parcelas mensais está sob controle da meta estratégica de {safeCommitmentLimit}%, mantendo mais de {100 - safeCommitmentLimit}% da sua receita livre para custos de vida e aportes.
                           </p>
                         </div>
                       )}
                     </div>
-
+ 
                     <div className="space-y-4">
+                      <h5 className="text-[10px] font-black uppercase text-brand-600 tracking-wider">2. Alavancagem Patrimonial Global (Balanço LTV)</h5>
                       <p>
-                        Holisticamente, você possui <strong className="text-slate-800 dark:text-white font-bold">{(totalAssets > 0 ? (totalLiabilities / totalAssets) * 100 : 0).toFixed(1)}%</strong> do seu patrimônio total alavancado por capital de terceiros. Seu patrimônio líquido consolidado é de <strong className="text-slate-850 dark:text-white font-bold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAssets - totalLiabilities)}</strong>.
+                        Mede a relação entre seu passivo total consolidado e seus ativos totais (Investimentos + Bens Físicos), indicando quanto de seu patrimônio de longo prazo está atrelado a terceiros. 
                       </p>
                       <p>
-                        Sua liquidez em investimentos acumulada de <strong className="text-slate-800 dark:text-white font-bold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(investmentsTotal)}</strong> assegura estabilidade substancial frente ao saldo devedor consolidado.
+                        Seu saldo devedor total de <strong className="text-slate-800 dark:text-white font-bold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalLiabilities)}</strong> representa <strong className="text-slate-800 dark:text-white font-bold">{(totalAssets > 0 ? (totalLiabilities / totalAssets) * 100 : 0).toFixed(1)}%</strong> do seu patrimônio total de <strong className="text-slate-800 dark:text-white font-bold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAssets)}</strong>. Seu patrimônio líquido consolidado (limpo de dívidas) é de <strong className="text-slate-850 dark:text-white font-bold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAssets - totalLiabilities)}</strong>.
                       </p>
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: 2. CAPACIDADE MENSAL (FLUXO MÊS A MÊS) */}
+            {activeTab === 'monthly_projection' && (
+              <div className="backdrop-blur-md bg-white border border-slate-100 dark:bg-brand-950/30 dark:border-slate-800 p-8 rounded-[32px] shadow-sm space-y-8 animate-in fade-in duration-300">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                    <Calendar size={18} className="text-brand-600" />
+                    Simulador e Projeção de Capacidade Mensal Mês a Mês
+                  </h3>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                    Cronograma detalhado de liberação de caixa e amortização passiva de longo prazo
+                  </p>
+                </div>
+
+                {/* Timeline Stats Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                  <div className="p-5 border border-slate-100 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-brand-900/10">
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Receita Total Recorrente</span>
+                    <span className="text-lg font-black text-slate-800 dark:text-white block mt-1">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(netMonthlyCashInflow)}
+                    </span>
+                  </div>
+                  <div className="p-5 border border-slate-100 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-brand-900/10">
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Total de Parcelas Atuais</span>
+                    <span className="text-lg font-black text-rose-500 block mt-1">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalMonthlyInstallments)}
+                    </span>
+                  </div>
+                  <div className="p-5 border border-slate-100 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-brand-900/10">
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Comprometimento Real</span>
+                    <span className={`text-lg font-black block mt-1 ${incomeResult.ratio > safeCommitmentLimit ? 'text-rose-500' : 'text-emerald-500'}`}>
+                      {incomeResult.ratio.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="p-5 border border-slate-100 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-brand-900/10">
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Sobra de Caixa Livre</span>
+                    <span className="text-lg font-black text-brand-600 dark:text-brand-400 block mt-1">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.max(0, netMonthlyCashInflow - totalMonthlyInstallments))}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Projection settings card */}
+                <div className="p-6 border border-slate-100 dark:border-slate-800 rounded-3xl bg-slate-50/30 dark:bg-brand-900/5 space-y-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Prazo de Projeção Temporal</span>
+                      <p className="text-[8px] font-bold text-slate-500 uppercase tracking-wider mt-1">Simule sua capacidade pelo tempo que você desejar (1 a 360 meses)</p>
+                    </div>
+
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                      <input 
+                        type="range"
+                        min="1"
+                        max="360"
+                        step="1"
+                        value={projectionDuration}
+                        onChange={e => setProjectionDuration(Number(e.target.value))}
+                        className="w-full sm:w-48 h-1.5 bg-slate-200 dark:bg-brand-800 rounded-lg appearance-none cursor-pointer accent-brand-600"
+                      />
+                      <input 
+                        type="number"
+                        min="1"
+                        max="360"
+                        value={projectionDuration}
+                        onChange={e => setProjectionDuration(Math.max(1, Math.min(360, Number(e.target.value))))}
+                        className="w-16 bg-white dark:bg-brand-900 border border-slate-200 dark:border-slate-700 text-xs font-black p-1.5 text-center rounded-lg text-brand-600"
+                      />
+                      <span className="text-[10px] font-black text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-2 py-1 rounded-lg uppercase tracking-wider shrink-0">Meses</span>
+                    </div>
+                  </div>
+
+                  {/* Informative Insight Alert */}
+                  {liabilitiesList.length > 0 && (
+                    <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-100/30 dark:border-emerald-900/30 rounded-2xl text-[9px] font-black text-emerald-800 dark:text-emerald-300 uppercase tracking-wider leading-relaxed flex items-center gap-2 shadow-sm">
+                      <span>💡</span>
+                      <p>
+                        <strong>Insight de Quitação de Passivos:</strong>
+                        {(() => {
+                          const sortedByFinish = [...liabilitiesList].sort((a, b) => a.remainingMonths - b.remainingMonths);
+                          const firstToFinish = sortedByFinish[0];
+                          if (firstToFinish && firstToFinish.remainingMonths <= projectionDuration) {
+                            return ` A dívida "${firstToFinish.name}" será totalmente quitada em ${firstToFinish.remainingMonths} meses, liberando automaticamente ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(firstToFinish.installmentAmount)} mensais adicionais no seu orçamento!`;
+                          }
+                          return " Acompanhe a linha do tempo abaixo para planejar a folga de fluxo de caixa conforme os financiamentos forem sendo quitados.";
+                        })()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Table Timeline */}
+                <div className="overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-3xl bg-slate-50/30 dark:bg-brand-950/10">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100/70 dark:bg-brand-900/40 border-b border-slate-150/50 dark:border-slate-850 text-[9px] font-black uppercase text-slate-400 tracking-widest">
+                        <th className="p-4 pl-6">Mês/Ano</th>
+                        <th className="p-4">Receita Mensal</th>
+                        <th className="p-4">Parcelas Totais</th>
+                        <th className="p-4">Comprometimento</th>
+                        <th className="p-4">Saldo Devedor Restante</th>
+                        <th className="p-4">Dívida / Receita</th>
+                        <th className="p-4">Caixa Livre (Aportes)</th>
+                        <th className="p-4 pr-6">Status de Risco</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 text-xs font-semibold text-slate-700 dark:text-slate-350">
+                      {monthlyProjectionData.map((month, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/40 dark:hover:bg-brand-900/10 transition-colors">
+                          <td className="p-4 pl-6 font-bold text-slate-900 dark:text-white uppercase">{month.label}</td>
+                          <td className="p-4 font-bold text-slate-800 dark:text-slate-200">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(month.totalRevenue)}</td>
+                          <td className="p-4 font-bold text-slate-800 dark:text-slate-200">
+                            {month.activeInstallments > 0 ? (
+                              <span className="text-red-500 font-bold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(month.activeInstallments)}</span>
+                            ) : (
+                              <span className="text-emerald-500 font-bold">R$ 0,00</span>
+                            )}
+                          </td>
+                          <td className="p-4">
+                            <span className={month.commitmentRatio > safeCommitmentLimit ? 'text-rose-600 font-black' : (month.commitmentRatio > safeCommitmentLimit * 0.66 ? 'text-amber-500 font-black' : 'text-emerald-500 font-black')}>
+                              {month.commitmentRatio.toFixed(1)}%
+                            </span>
+                          </td>
+                          <td className="p-4 font-bold text-slate-800 dark:text-slate-200">
+                            {month.projectedOutstandingBalance > 0 ? (
+                              new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(month.projectedOutstandingBalance)
+                            ) : (
+                              <span className="text-emerald-500 font-bold">Quitado</span>
+                            )}
+                          </td>
+                          <td className="p-4 font-bold text-slate-800 dark:text-slate-200">
+                            {month.projectedOutstandingBalance > 0 ? (
+                              <span className={month.debtToIncomeRatio > 12 ? 'text-rose-500 font-black' : (month.debtToIncomeRatio > 4 ? 'text-amber-500 font-black' : 'text-emerald-500 font-black')}>
+                                {month.debtToIncomeRatio.toFixed(1)}x
+                              </span>
+                            ) : (
+                              <span className="text-emerald-500 font-bold">0.0x</span>
+                            )}
+                          </td>
+                          <td className="p-4 font-bold text-slate-850 dark:text-slate-100">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(month.freeInvest)}
+                          </td>
+                          <td className="p-4 pr-6">
+                            <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-1 rounded-lg border ${
+                              month.commitmentRatio > safeCommitmentLimit 
+                                ? 'text-rose-500 bg-rose-500/10 border-rose-500/20' 
+                                : (month.commitmentRatio > safeCommitmentLimit * 0.66 
+                                    ? 'text-amber-500 bg-amber-500/10 border-amber-500/20' 
+                                    : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20')
+                            }`}>
+                              {month.commitmentRatio > safeCommitmentLimit ? 'Inviável' : (month.commitmentRatio > safeCommitmentLimit * 0.66 ? 'Limite' : 'Excelente')}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
@@ -591,6 +953,79 @@ const Studies: React.FC = () => {
                         Necessita de <strong className="text-slate-800 dark:text-white">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.max(0, totalMonthlyInstallments - coverageResult.passiveMonthlyIncome))}</strong> de renda ativa para cobrir parcelas.
                       </p>
                     )}
+                  </div>
+                </div>
+
+                {/* Separação de Investimentos explicativa */}
+                <div className="pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">Como seus Juros e Rendimentos são Classificados</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-[10px] uppercase font-black tracking-wider text-slate-400">
+                    <div className="p-5 bg-slate-50 dark:bg-brand-900/20 border border-slate-100 dark:border-slate-800 rounded-2xl space-y-2">
+                      <span className="text-emerald-500 block text-xs">Juros Recebidos / Dividendos (Caem na Conta)</span>
+                      <p className="text-[9px] font-medium text-slate-500 normal-case leading-relaxed">
+                        São os juros ou proventos pagos periodicamente (ex: cupons de renda fixa, dividendos de ações ou fundos imobiliários) que de fato caem na sua conta corrente. Eles aumentam a sua receita líquida mensal disponível e a sua capacidade de pagamento orçamentária.
+                      </p>
+                      <div className="pt-2 border-t border-slate-200/50 flex justify-between items-center text-slate-900 dark:text-white">
+                        <span>Valor Mensal Estimado:</span>
+                        <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(investmentPayout)}</span>
+                      </div>
+                    </div>
+                    <div className="p-5 bg-slate-50 dark:bg-brand-900/20 border border-slate-100 dark:border-slate-800 rounded-2xl space-y-2">
+                      <span className="text-brand-500 block text-xs">Juros Acumulados / Reinvestidos (Apenas Acompanhamento)</span>
+                      <p className="text-[9px] font-medium text-slate-500 normal-case leading-relaxed">
+                        São os rendimentos obtidos por juros compostos automáticos (ex: CDI acumulado de liquidez diária, títulos prefixados com resgate no vencimento). Estes juros não caem de fato mensalmente na conta corrente e continuam crescendo no saldo total de investimentos. **Eles não contam como receita e nem aumentam a capacidade mensal de pagamento, servindo apenas para acompanhamento patrimonial.**
+                      </p>
+                      <div className="pt-2 border-t border-slate-250 dark:border-slate-800 flex flex-col gap-1.5 text-slate-900 dark:text-white">
+                        <div className="flex justify-between items-center">
+                          <span>Estimativa Teórica (CDI Líquido):</span>
+                          <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(investmentsTotal * assumedNetMonthlyYield)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[9.5px] text-slate-400 dark:text-slate-500">
+                          <span>Lançamentos Acumulados Reais (Mês Atual):</span>
+                          <span className="font-bold text-slate-600 dark:text-slate-400">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(accumulatedInterest)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Guia de Lançamento de Investimento */}
+                <div className="pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">🛠️ Guia do Investidor: Como Lançar Aportes, Resgates e Lucros (Ex: Q3, Lion, Carro)</h4>
+                  <div className="p-6 bg-slate-50 dark:bg-brand-900/20 border border-slate-100 dark:border-slate-800 rounded-3xl space-y-4 text-xs font-medium text-slate-600 dark:text-slate-350 leading-relaxed">
+                    <p>
+                      Para que o FinVision calcule sua capacidade mensal de forma precisa e sem inflar seus números com retornos de capital (que são neutros), siga esta estratégia padrão de lançamento:
+                    </p>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-[10px] uppercase font-black tracking-wider text-slate-400">
+                      <div className="p-4 bg-white dark:bg-brand-950/40 border border-slate-100 dark:border-slate-850 rounded-xl space-y-2">
+                        <span className="text-amber-500 block text-xs">1. O Aporte Inicial (Aplicações)</span>
+                        <p className="text-[9px] font-medium text-slate-500 dark:text-slate-400 normal-case leading-relaxed">
+                          Quando você aplica um dinheiro (ex: compra o carro para revenda ou empresta o capital da Lion): lance como <strong>DESPESA</strong> sob a categoria <strong>"Investimento"</strong> e subcategoria <strong>"Aplicações"</strong> (ou como uma Transferência).
+                        </p>
+                        <span className="text-slate-400 dark:text-slate-500 block text-[8px] mt-2">✓ NÃO AFETA CUSTO DE VIDA MÍNIMO</span>
+                      </div>
+
+                      <div className="p-4 bg-white dark:bg-brand-950/40 border border-slate-100 dark:border-slate-850 rounded-xl space-y-2">
+                        <span className="text-blue-500 block text-xs">2. O Retorno do Principal (Resgates)</span>
+                        <p className="text-[9px] font-medium text-slate-500 dark:text-slate-400 normal-case leading-relaxed">
+                          Quando o dinheiro volta para você, <strong>até o limite do valor que você aportou originalmente</strong>: lance sob a subcategoria <strong>"Resgate de Capital"</strong> (ou como Transferência). O FinVision ignorará este valor nos cálculos de renda mensal, pois é apenas a devolução do seu próprio dinheiro.
+                        </p>
+                        <span className="text-slate-400 dark:text-slate-500 block text-[8px] mt-2">✓ EXCLUÍDO DO FLUXO RECORRENTE</span>
+                      </div>
+
+                      <div className="p-4 bg-white dark:bg-brand-950/40 border border-slate-100 dark:border-slate-850 rounded-xl space-y-2">
+                        <span className="text-emerald-500 block text-xs">3. O Rendimento Real (Lucros)</span>
+                        <p className="text-[9px] font-medium text-slate-500 dark:text-slate-400 normal-case leading-relaxed">
+                          Tudo que você receber <strong>além do seu capital original</strong> é o lucro real (juros/spread): lance como <strong>RECEITA</strong> sob a categoria <strong>"Investimento"</strong> e subcategoria <strong>"Juros Recebidos"</strong>. O sistema somará este valor no cálculo de receitas mensais e na sua alavancagem!
+                        </p>
+                        <span className="text-emerald-500 block text-[8px] mt-2">★ SOMA NA CAPACIDADE ORÇAMENTÁRIA</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-brand-50/50 dark:bg-brand-950/20 border border-brand-100/20 rounded-xl text-[9px] uppercase font-black tracking-wide text-brand-600 dark:text-brand-400">
+                      💡 **Exemplo Prático (Q3 / Lion):** Se você aportou R$ 10.000 e recebeu R$ 12.000 de volta: lance R$ 10.000 como "Resgate de Capital" (neutro) e R$ 2.000 como "Juros Recebidos" (lucro real que aumenta sua capacidade mensal de novos aportes).
+                    </div>
                   </div>
                 </div>
               </div>
@@ -921,14 +1356,14 @@ const Studies: React.FC = () => {
                   {/* Inputs */}
                   <div className="space-y-4">
                     {/* Safe limit message */}
-                    <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl text-[9.5px] font-black uppercase text-indigo-900 tracking-wide leading-relaxed">
-                      Sua margem de segurança recomendada (30% de renda líquida):
+                    <div className="p-4 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100/30 dark:border-indigo-900/30 rounded-2xl text-[9.5px] font-black uppercase text-indigo-900 dark:text-indigo-300 tracking-wide leading-relaxed">
+                      Sua margem estratégica ({safeCommitmentLimit}% de renda líquida):
                       <br />
-                      Margem Máxima de Parcelas: <strong className="text-brand-600 text-sm font-black mt-1 block">
-                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(netMonthlyCashInflow * 0.30)}
+                      Margem Máxima de Parcelas: <strong className="text-brand-600 dark:text-brand-400 text-sm font-black mt-1 block">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(netMonthlyCashInflow * (safeCommitmentLimit / 100))}
                       </strong>
-                      Margem Disponível Saudável: <strong className={Math.max(0, (netMonthlyCashInflow * 0.30) - totalMonthlyInstallments) > 0 ? 'text-emerald-600 text-sm font-black block mt-1' : 'text-rose-600 text-sm font-black block mt-1'}>
-                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.max(0, (netMonthlyCashInflow * 0.30) - totalMonthlyInstallments))}
+                      Margem Disponível Saudável: <strong className={Math.max(0, (netMonthlyCashInflow * (safeCommitmentLimit / 100)) - totalMonthlyInstallments) > 0 ? 'text-emerald-600 text-sm font-black block mt-1' : 'text-rose-600 text-sm font-black block mt-1'}>
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.max(0, (netMonthlyCashInflow * (safeCommitmentLimit / 100)) - totalMonthlyInstallments))}
                       </strong>
                     </div>
 
@@ -1006,7 +1441,7 @@ const Studies: React.FC = () => {
                         </p>
                         <p className="flex justify-between">
                           <span>Comprometimento Renda Projetado:</span>
-                          <span className={prospectiveIncomeResult.ratio > 30 ? 'text-rose-600 font-bold' : (prospectiveIncomeResult.ratio > 20 ? 'text-amber-500 font-bold' : 'text-emerald-500 font-bold')}>
+                          <span className={prospectiveIncomeResult.ratio > safeCommitmentLimit ? 'text-rose-600 font-bold' : (prospectiveIncomeResult.ratio > safeCommitmentLimit * 0.66 ? 'text-amber-500 font-bold' : 'text-emerald-500 font-bold')}>
                             {prospectiveIncomeResult.ratio.toFixed(1)}%
                           </span>
                         </p>
@@ -1022,9 +1457,9 @@ const Studies: React.FC = () => {
 
                     <p className="text-[8.5px] font-bold text-slate-400 leading-normal uppercase">
                       {prospectiveIncomeResult.zone === 'RED' 
-                        ? 'Alerta crítico. A adição dessa nova parcela comprometerá mais do que 30% da sua renda familiar disponível, elevando drasticamente o risco de insolvência de caixa.'
+                        ? `Alerta crítico. A adição dessa nova parcela comprometerá mais do que ${safeCommitmentLimit}% da sua renda familiar disponível, elevando drasticamente o risco de insolvência de caixa.`
                         : (prospectiveIncomeResult.zone === 'YELLOW' 
-                            ? 'Atenção. O projeto cabe no orçamento, porém você ficará no limite recomendado pelas instituições bancárias. Reduz a capacidade de poupar.'
+                            ? `Atenção. O projeto cabe no orçamento, porém você ficará no limite recomendado de comprometimento estratégico (${safeCommitmentLimit}%). Reduz a capacidade de poupar.`
                             : 'Projeto altamente viável. Seu fluxo de caixa mensal é robusto o suficiente para comportar o novo passivo de forma extremamente tranquila.')}
                     </p>
                   </div>

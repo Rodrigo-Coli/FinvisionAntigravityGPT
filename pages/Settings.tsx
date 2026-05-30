@@ -173,6 +173,11 @@ const SettingsPage: React.FC = () => {
   };
 
   const deleteCategory = async (id: string) => {
+    const cat = categories.find(c => c.id === id);
+    if (cat && cat.name.toLowerCase() === 'investimento') {
+      alert("A categoria 'Investimento' é essencial para as análises de alavancagem e estudos patrimoniais do FinVision e não pode ser excluída.");
+      return;
+    }
     if (!supabase || !confirm('Deseja excluir permanentemente? (Transações existentes manterão o nome da categoria mas perderão o vínculo de ID)')) return;
     try { await supabase.from('categories').delete().eq('id', id); fetchData(); } catch (err) { alert('Erro ao excluir'); }
   };
@@ -204,6 +209,11 @@ const SettingsPage: React.FC = () => {
   };
 
   const deleteSubcategory = async (id: string) => {
+    const sub = subcategories.find(s => s.id === id);
+    if (sub && ['juros recebidos', 'juros acumulados'].includes(sub.name.toLowerCase())) {
+      alert(`A subcategoria '${sub.name}' é essencial para os estudos de fluxo de caixa e acompanhamento de investimentos e não pode ser excluída.`);
+      return;
+    }
     if (!supabase || !confirm('Deseja excluir permanentemente a subcategoria?')) return;
     try { await supabase.from('subcategories').delete().eq('id', id); fetchData(); } catch (err) { alert('Erro ao excluir subcategoria'); }
   };
