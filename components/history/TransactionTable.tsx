@@ -106,7 +106,10 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({ value, transactionType,
             </button>
 
             {open && (
-                <div className={`absolute z-50 ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden w-56 animate-in fade-in duration-150`}>
+                <div 
+                    style={{ minWidth: '224px', width: 'max-content' }}
+                    className={`absolute z-50 ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden w-56 animate-in fade-in duration-150`}
+                >
                     <div className="p-2 border-b border-slate-50 space-y-1.5">
                         <div className="relative">
                             <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
@@ -204,7 +207,10 @@ const SubcategoryPicker: React.FC<SubcategoryPickerProps> = ({ value, parentCate
             </button>
 
             {open && (
-                <div className={`absolute z-50 ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden w-48 animate-in fade-in duration-150`}>
+                <div 
+                    style={{ minWidth: '192px', width: 'max-content' }}
+                    className={`absolute z-50 ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden w-48 animate-in fade-in duration-150`}
+                >
                     <div className="p-2 border-b border-slate-50 space-y-1.5">
                         <div className="relative">
                             <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />

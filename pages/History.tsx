@@ -71,6 +71,42 @@ type AddModalState =
     };
   };
 
+const detectLegacySeries = (t: any) => {
+  const baseMetadata = {
+    ...(t.metadata || {}),
+    installment_group_id: t.metadata?.installment_group_id || t.installment_group_id,
+    recurrence_group_id: t.metadata?.recurrence_group_id || t.recurrence_group_id,
+    installment_number: t.metadata?.installment_number || t.installment_number || t.metadata?.installment,
+    installment_total: t.metadata?.installment_total || t.installment_total,
+    is_installment: t.metadata?.is_installment || t.is_installment || !!(t.metadata?.installment_group_id || t.installment_group_id),
+    is_recurring: t.metadata?.is_recurring || t.is_recurring || !!(t.metadata?.recurrence_group_id || t.recurrence_group_id)
+  };
+
+  if (baseMetadata.installment_group_id || baseMetadata.recurrence_group_id) {
+    return baseMetadata;
+  }
+
+  const desc = t.description || '';
+  const match = desc.match(/^(.+?)\s+(\d+)\/(\d+)\s+-\s+(.+)$/i);
+  if (match) {
+    const prefix = match[1].trim();
+    const instNum = parseInt(match[2], 10);
+    const instTotal = parseInt(match[3], 10);
+    const assetName = match[4].trim();
+    const virtualGroupId = `virtual-${prefix.toLowerCase().replace(/\s+/g, '-')}-${assetName.toLowerCase().replace(/\s+/g, '-')}`;
+
+    return {
+      ...baseMetadata,
+      is_installment: true,
+      installment_group_id: virtualGroupId,
+      installment_number: instNum,
+      installment_total: instTotal
+    };
+  }
+
+  return baseMetadata;
+};
+
 const HistoryPage: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [chartTransactions, setChartTransactions] = useState<Transaction[]>([]); // full set for charts (no pagination)
@@ -595,15 +631,7 @@ const HistoryPage: React.FC = () => {
         isPaid: !!t.is_paid,
         paidAmount: Number(t.paid_amount || 0),
         is_amortization: !!t.is_amortization,
-        metadata: {
-          ...(t.metadata || {}),
-          installment_group_id: t.metadata?.installment_group_id || t.installment_group_id,
-          recurrence_group_id: t.metadata?.recurrence_group_id || t.recurrence_group_id,
-          installment_number: t.metadata?.installment_number || t.installment_number || t.metadata?.installment,
-          installment_total: t.metadata?.installment_total || t.installment_total,
-          is_installment: t.metadata?.is_installment || t.is_installment || !!(t.metadata?.installment_group_id || t.installment_group_id),
-          is_recurring: t.metadata?.is_recurring || t.is_recurring || !!(t.metadata?.recurrence_group_id || t.recurrence_group_id)
-        }
+        metadata: detectLegacySeries(t)
       })));
 
       // Paginate table transactions
@@ -635,15 +663,7 @@ const HistoryPage: React.FC = () => {
           parentId: t.parent_id ?? null,
           is_incomplete: isIncomplete,
           attachments: t.attachments || [],
-          metadata: {
-            ...(t.metadata || {}),
-            installment_group_id: t.metadata?.installment_group_id || t.installment_group_id,
-            recurrence_group_id: t.metadata?.recurrence_group_id || t.recurrence_group_id,
-            installment_number: t.metadata?.installment_number || t.installment_number || t.metadata?.installment,
-            installment_total: t.metadata?.installment_total || t.installment_total,
-            is_installment: t.metadata?.is_installment || t.is_installment || !!(t.metadata?.installment_group_id || t.installment_group_id),
-            is_recurring: t.metadata?.is_recurring || t.is_recurring || !!(t.metadata?.recurrence_group_id || t.recurrence_group_id)
-          }
+          metadata: detectLegacySeries(t)
         };
       }));
     } catch (err) {
@@ -795,7 +815,20 @@ const HistoryPage: React.FC = () => {
       } else {
         const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
         const colName = tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id';
-        let query = supabase.from('transactions').update(patch).or(`${colName}.eq.${groupId},metadata->>${colName}.eq.${groupId}`);
+        let query = supabase.from('transactions').update(patch).eq('is_deleted', false);
+        if (groupId && String(groupId).startsWith('virtual-')) {
+          const desc = tx.description || '';
+          const match = desc.match(/^(.+?)\s+(\d+)\/(\d+)\s+-\s+(.+)$/i);
+          if (match) {
+            const prefix = match[1].trim();
+            const assetName = match[4].trim();
+            query = query.ilike('description', `${prefix} % - ${assetName}`);
+          } else {
+            query = query.eq('id', tx.id);
+          }
+        } else {
+          query = query.or(`${colName}.eq.${groupId},metadata->>${colName}.eq.${groupId}`);
+        }
         if (confirmedScope === 'THIS_AND_FUTURE') query = query.gte('date', tx?.date);
         const { error: err } = await query;
         if (err) throw err;
@@ -867,7 +900,21 @@ const HistoryPage: React.FC = () => {
       } else {
         const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
         const colName = tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id';
-        let query = supabase.from('transactions').update({ is_deleted: true }).or(`${colName}.eq.${groupId},metadata->>${colName}.eq.${groupId}`);
+        
+        let query = supabase.from('transactions').update({ is_deleted: true });
+        if (groupId && String(groupId).startsWith('virtual-')) {
+          const desc = tx.description || '';
+          const match = desc.match(/^(.+?)\s+(\d+)\/(\d+)\s+-\s+(.+)$/i);
+          if (match) {
+            const prefix = match[1].trim();
+            const assetName = match[4].trim();
+            query = query.ilike('description', `${prefix} % - ${assetName}`);
+          } else {
+            query = query.eq('id', tx.id);
+          }
+        } else {
+          query = query.or(`${colName}.eq.${groupId},metadata->>${colName}.eq.${groupId}`);
+        }
         if (confirmedScope === 'THIS_AND_FUTURE') query = query.gte('date', tx?.date);
         const { error } = await query;
         if (error) throw error;
