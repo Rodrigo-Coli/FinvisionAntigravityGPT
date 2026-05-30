@@ -62,6 +62,41 @@ const Assets: React.FC = () => {
   const [realEstateTransactions, setRealEstateTransactions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const liabilitySummaries = React.useMemo(() => {
+    const groups = {
+      MORTGAGE: { label: 'Financiamento Imob.', installmentSum: 0, balanceSum: 0, count: 0, color: 'bg-blue-500' },
+      VEHICLE_FINANCING: { label: 'Financ. Veículo', installmentSum: 0, balanceSum: 0, count: 0, color: 'bg-amber-500' },
+      PERSONAL_LOAN: { label: 'Empréstimo Pessoal', installmentSum: 0, balanceSum: 0, count: 0, color: 'bg-indigo-500' },
+      CONSORTIUM: { label: 'Consórcio', installmentSum: 0, balanceSum: 0, count: 0, color: 'bg-emerald-500' },
+      OTHER: { label: 'Outras Dívidas', installmentSum: 0, balanceSum: 0, count: 0, color: 'bg-slate-500' }
+    };
+
+    let totalInstallments = 0;
+    let totalBalance = 0;
+    let futureCredit = 0;
+
+    liabilities.forEach(l => {
+      const type = (l.type in groups) ? (l.type as keyof typeof groups) : 'OTHER';
+      groups[type].installmentSum += l.installmentAmount || 0;
+      groups[type].balanceSum += l.remainingBalance || 0;
+      groups[type].count += 1;
+
+      totalInstallments += l.installmentAmount || 0;
+      totalBalance += l.remainingBalance || 0;
+
+      if (l.type === 'CONSORTIUM') {
+        futureCredit += l.totalAmount || 0;
+      }
+    });
+
+    return {
+      groups: Object.values(groups).filter(g => g.count > 0),
+      totalInstallments,
+      totalBalance,
+      futureCredit
+    };
+  }, [liabilities]);
+
   const [estimatedYieldRate, setEstimatedYieldRate] = useState<number>(0.8);
   const [excludedAssetIds, setExcludedAssetIds] = useState<string[]>([]);
   const [excludedConsortiumIds, setExcludedConsortiumIds] = useState<string[]>([]);
@@ -279,6 +314,9 @@ const Assets: React.FC = () => {
           remaining_balance: parseFloat(liabilityFormData.remainingBalance) || 0,
           interest_rate: liabilityFormData.interestRate ? parseFloat(liabilityFormData.interestRate) : null,
           linked_asset_id: liabilityFormData.linkedAssetId || null,
+          installment_amount: installmentAmt,
+          installments_remaining: installmentsLeft,
+          due_day: dueDay,
           metadata: {
             ...editingLiability.metadata,
             indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
@@ -288,6 +326,27 @@ const Assets: React.FC = () => {
           }
         }).eq('id', editingLiability.id);
         if (error) throw error;
+
+        // Sincronizar automaticamente os nomes das transações se o nome do passivo mudou
+        if (editingLiability.name !== liabilityFormData.name) {
+          const { data: relatedTransactions, error: fetchError } = await supabase
+            .from('transactions')
+            .select('id, description')
+            .eq('liability_id', editingLiability.id);
+          
+          if (!fetchError && relatedTransactions) {
+            for (const tx of relatedTransactions) {
+              const oldDesc = tx.description || '';
+              if (oldDesc.includes(editingLiability.name)) {
+                const newDesc = oldDesc.split(editingLiability.name).join(liabilityFormData.name);
+                await supabase
+                  .from('transactions')
+                  .update({ description: newDesc })
+                  .eq('id', tx.id);
+              }
+            }
+          }
+        }
       } else {
         // 1. Insert the Liability
         const { data: newLiab, error } = await supabase.from('liabilities').insert([{
@@ -513,9 +572,9 @@ const Assets: React.FC = () => {
       totalAmount: String(liability.totalAmount),
       remainingBalance: String(liability.remainingBalance),
       interestRate: liability.interestRate ? String(liability.interestRate) : '',
-      installmentAmount: '',
-      installmentsRemaining: '',
-      dueDay: '',
+      installmentAmount: liability.installmentAmount ? String(liability.installmentAmount) : '',
+      installmentsRemaining: liability.installmentsRemaining ? String(liability.installmentsRemaining) : '',
+      dueDay: liability.dueDay ? String(liability.dueDay) : '',
       linkedAssetId: liability.linkedAssetId || '',
       indexationRate: liability.metadata?.indexationRate ? String(liability.metadata.indexationRate) : '',
       balloonMonth: '',
@@ -2344,45 +2403,137 @@ const Assets: React.FC = () => {
         )}
 
         {activeView === 'liabilities' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {liabilities.map(liability => (
-              <div key={liability.id} className="bg-white rounded-[32px] border border-red-100 shadow-sm overflow-hidden group hover:border-red-200 transition-all duration-300">
-                <div className="p-8 space-y-6">
-                  <div className="flex justify-between items-start">
-                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-red-50 text-red-600 shadow-lg shadow-current/5 shrink-0">
-                      <Landmark size={28} />
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => openEditLiability(liability)} className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-brand-600 transition-colors px-2 py-1">Editar</button>
-                      <button onClick={() => handleDeleteLiability(liability.id)} className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-red-600 transition-colors px-2 py-1">Excluir</button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-xl tracking-tight leading-tight uppercase tracking-tight">{liability.name}</h4>
-                    <span className="inline-block mt-2 px-2 py-1 bg-slate-100 text-slate-500 rounded text-[10px] font-bold uppercase tracking-widest">
-                      {liability.type === 'MORTGAGE' ? 'Financiamento Imob.' : liability.type === 'VEHICLE_FINANCING' ? 'Financ. Veículo' : liability.type === 'PERSONAL_LOAN' ? 'Empréstimo Pessoal' : liability.type === 'CONSORTIUM' ? 'Consórcio' : 'Outros'}
-                    </span>
-                  </div>
-
-                  <div className="pt-6 border-t border-slate-50">
-                    <p className="text-[10px] font-bold uppercase text-red-300 tracking-widest mb-1.5 leading-none">Saldo Devedor Restante</p>
-                    <p className="text-2xl font-bold text-red-600 leading-none">{formatCurrency(liability.remainingBalance)}</p>
-                  </div>
+          <div className="space-y-10 animate-in fade-in duration-500">
+            {/* Resumo Geral de Passivos e Crédito Futuro */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Card 1: Total de Passivos */}
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-[32px] text-white shadow-xl flex flex-col justify-between space-y-6 relative overflow-hidden">
+                <div className="absolute right-0 top-0 w-32 h-32 bg-red-500/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                <div className="space-y-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total de Passivos / Dívidas</span>
+                  <h3 className="text-3xl font-black tracking-tight">{formatCurrency(liabilitySummaries.totalBalance)}</h3>
                 </div>
-                <div className="px-8 py-4 bg-red-50/30 flex justify-between items-center border-t border-red-50">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Total: {formatCurrency(liability.totalAmount)}</span>
-                  <button onClick={() => alert('Integração de pagamento de parcelas e amortização em breve.')} className="text-red-500 text-[10px] font-bold uppercase tracking-widest hover:underline">Amortizar</button>
+                <div className="pt-4 border-t border-slate-700/50 flex justify-between items-center">
+                  <div>
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block mb-1">Parcela Mensal Total</span>
+                    <span className="text-lg font-bold text-red-400">{formatCurrency(liabilitySummaries.totalInstallments)}/mês</span>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-red-400">
+                    <ArrowDownRight size={20} />
+                  </div>
                 </div>
               </div>
-            ))}
-            <button
-              onClick={() => setShowLiabilityModal(true)}
-              className="rounded-[32px] border-2 border-dashed border-red-100 p-8 flex flex-col items-center justify-center gap-4 text-red-300 hover:border-red-300 hover:text-red-500 hover:bg-red-50/30 transition-all min-h-[280px]"
-            >
-              <Plus size={32} />
-              <span className="font-bold text-red-400">Novo Passivo</span>
-            </button>
+
+              {/* Card 2: Crédito Futuro (Consórcios) */}
+              <div className="bg-gradient-to-br from-emerald-950 to-emerald-900 p-8 rounded-[32px] text-white shadow-xl flex flex-col justify-between space-y-6 relative overflow-hidden">
+                <div className="absolute right-0 top-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                <div className="space-y-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Crédito Futuro (Cartas de Crédito)</span>
+                  <h3 className="text-3xl font-black tracking-tight text-emerald-300">{formatCurrency(liabilitySummaries.futureCredit)}</h3>
+                  <p className="text-[10px] text-emerald-400/80 italic font-medium">Potencial de alavancagem patrimonial através de consórcios.</p>
+                </div>
+                <div className="pt-4 border-t border-emerald-900 flex justify-between items-center">
+                  <div>
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-400 block mb-1">Passivos de Consórcio</span>
+                    <span className="text-lg font-bold text-emerald-200">
+                      {formatCurrency(
+                        liabilities.filter(l => l.type === 'CONSORTIUM')
+                          .reduce((sum, l) => sum + (l.remainingBalance || 0), 0)
+                      )}
+                    </span>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-emerald-900 border border-emerald-800 flex items-center justify-center text-emerald-400">
+                    <ArrowUpRight size={20} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Detalhamento por Categoria */}
+              <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm flex flex-col justify-between space-y-4">
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Detalhamento por Categoria</h4>
+                  <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                    {liabilitySummaries.groups.map(group => (
+                      <div key={group.label} className="flex justify-between items-center text-xs font-bold py-1.5 border-b border-slate-50 last:border-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2.5 h-2.5 rounded-full ${group.color}`} />
+                          <span className="text-slate-600 font-bold uppercase text-[10px] tracking-wide">{group.label}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-slate-900 block">{formatCurrency(group.balanceSum)}</span>
+                          <span className="text-[10px] text-slate-400 font-normal">Parcela: {formatCurrency(group.installmentSum)}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {liabilitySummaries.groups.length === 0 && (
+                      <p className="text-slate-400 text-xs italic py-4">Nenhum passivo ativo para detalhar.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Grid de Cartões de Passivos */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {liabilities.map(liability => (
+                <div key={liability.id} className="bg-white rounded-[32px] border border-red-100 shadow-sm overflow-hidden group hover:border-red-200 transition-all duration-300">
+                  <div className="p-8 space-y-6">
+                    <div className="flex justify-between items-start">
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-red-50 text-red-600 shadow-lg shadow-current/5 shrink-0">
+                        <Landmark size={28} />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openEditLiability(liability)} className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-brand-600 transition-colors px-2 py-1">Editar</button>
+                        <button onClick={() => handleDeleteLiability(liability.id)} className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-red-600 transition-colors px-2 py-1">Excluir</button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-xl tracking-tight leading-tight uppercase tracking-tight">{liability.name}</h4>
+                      <span className="inline-block mt-2 px-2 py-1 bg-slate-100 text-slate-500 rounded text-[10px] font-bold uppercase tracking-widest">
+                        {liability.type === 'MORTGAGE' ? 'Financiamento Imob.' : liability.type === 'VEHICLE_FINANCING' ? 'Financ. Veículo' : liability.type === 'PERSONAL_LOAN' ? 'Empréstimo Pessoal' : liability.type === 'CONSORTIUM' ? 'Consórcio' : 'Outros'}
+                      </span>
+                    </div>
+
+                    <div className="pt-6 border-t border-slate-50 grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase text-red-300 tracking-widest mb-1.5 leading-none">Saldo Devedor</p>
+                        <p className="text-xl font-bold text-red-600 leading-none">{formatCurrency(liability.remainingBalance)}</p>
+                      </div>
+                      {liability.installmentAmount ? (
+                        <div>
+                          <p className="text-[10px] font-bold uppercase text-slate-400 tracking-widest mb-1.5 leading-none">Parcela Atual</p>
+                          <p className="text-xl font-bold text-slate-900 leading-none">
+                            {formatCurrency(liability.installmentAmount)}
+                            {liability.installmentsRemaining && (
+                              <span className="text-[10px] font-normal text-slate-400 block mt-1">
+                                ({liability.installmentsRemaining}x rest.)
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="text-[10px] font-bold uppercase text-slate-400 tracking-widest mb-1.5 leading-none">Parcela Atual</p>
+                          <p className="text-xs font-medium text-slate-400 leading-none italic mt-1">Não configurada</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="px-8 py-4 bg-red-50/30 flex justify-between items-center border-t border-red-50">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Total: {formatCurrency(liability.totalAmount)}</span>
+                    <button onClick={() => alert('Integração de pagamento de parcelas e amortização em breve.')} className="text-red-500 text-[10px] font-bold uppercase tracking-widest hover:underline">Amortizar</button>
+                  </div>
+                </div>
+              ))}
+              <button
+                onClick={() => setShowLiabilityModal(true)}
+                className="rounded-[32px] border-2 border-dashed border-red-100 p-8 flex flex-col items-center justify-center gap-4 text-red-300 hover:border-red-300 hover:text-red-500 hover:bg-red-50/30 transition-all min-h-[280px]"
+              >
+                <Plus size={32} />
+                <span className="font-bold text-red-400">Novo Passivo</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -2540,43 +2691,41 @@ const Assets: React.FC = () => {
                 </div>
               </div>
 
-              {!editingLiability && (
-                <div className="grid grid-cols-3 gap-4 border-t border-slate-100 pt-4 mt-2">
-                  <div>
-                    <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor da Parcela</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
-                      placeholder="0.00"
-                      value={liabilityFormData.installmentAmount}
-                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentAmount: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Parcelas Restantes</label>
-                    <input
-                      type="number"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
-                      placeholder="Ex: 170"
-                      value={liabilityFormData.installmentsRemaining}
-                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentsRemaining: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Dia Vencimento</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="31"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
-                      placeholder="Ex: 29"
-                      value={liabilityFormData.dueDay}
-                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, dueDay: e.target.value })}
-                    />
-                  </div>
+              <div className="grid grid-cols-3 gap-4 border-t border-slate-100 pt-4 mt-2">
+                <div>
+                  <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor da Parcela</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
+                    placeholder="0.00"
+                    value={liabilityFormData.installmentAmount}
+                    onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentAmount: e.target.value })}
+                  />
                 </div>
-              )}
+                <div>
+                  <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Parcelas Restantes</label>
+                  <input
+                    type="number"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
+                    placeholder="Ex: 170"
+                    value={liabilityFormData.installmentsRemaining}
+                    onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentsRemaining: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Dia Vencimento</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-brand-500"
+                    placeholder="Ex: 29"
+                    value={liabilityFormData.dueDay}
+                    onChange={(e) => setLiabilityFormData({ ...liabilityFormData, dueDay: e.target.value })}
+                  />
+                </div>
+              </div>
 
               {physicalAssets.length > 0 && (
                 <div className="border-t border-slate-100 pt-4">
