@@ -561,7 +561,15 @@ const HistoryPage: React.FC = () => {
         isPaid: !!t.is_paid,
         paidAmount: Number(t.paid_amount || 0),
         is_amortization: !!t.is_amortization,
-        metadata: t.metadata || {}
+        metadata: {
+          ...(t.metadata || {}),
+          installment_group_id: t.metadata?.installment_group_id || t.installment_group_id,
+          recurrence_group_id: t.metadata?.recurrence_group_id || t.recurrence_group_id,
+          installment_number: t.metadata?.installment_number || t.installment_number || t.metadata?.installment,
+          installment_total: t.metadata?.installment_total || t.installment_total,
+          is_installment: t.metadata?.is_installment || t.is_installment || !!(t.metadata?.installment_group_id || t.installment_group_id),
+          is_recurring: t.metadata?.is_recurring || t.is_recurring || !!(t.metadata?.recurrence_group_id || t.recurrence_group_id)
+        }
       })));
 
       // Paginate table transactions
@@ -591,9 +599,17 @@ const HistoryPage: React.FC = () => {
           paidAmount: Number(t.paid_amount ?? 0),
           paidAt: t.paid_at ?? undefined,
           parentId: t.parent_id ?? null,
-          metadata: t.metadata ?? {},
           is_incomplete: isIncomplete,
-          attachments: t.attachments || []
+          attachments: t.attachments || [],
+          metadata: {
+            ...(t.metadata || {}),
+            installment_group_id: t.metadata?.installment_group_id || t.installment_group_id,
+            recurrence_group_id: t.metadata?.recurrence_group_id || t.recurrence_group_id,
+            installment_number: t.metadata?.installment_number || t.installment_number || t.metadata?.installment,
+            installment_total: t.metadata?.installment_total || t.installment_total,
+            is_installment: t.metadata?.is_installment || t.is_installment || !!(t.metadata?.installment_group_id || t.installment_group_id),
+            is_recurring: t.metadata?.is_recurring || t.is_recurring || !!(t.metadata?.recurrence_group_id || t.recurrence_group_id)
+          }
         };
       }));
     } catch (err) {
@@ -744,7 +760,8 @@ const HistoryPage: React.FC = () => {
         await FinanceService.updateTransaction(id, patch);
       } else {
         const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
-        let query = supabase.from('transactions').update(patch).filter('metadata->>' + (tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id'), 'eq', groupId);
+        const colName = tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id';
+        let query = supabase.from('transactions').update(patch).or(`${colName}.eq.${groupId},metadata->>${colName}.eq.${groupId}`);
         if (confirmedScope === 'THIS_AND_FUTURE') query = query.gte('date', tx?.date);
         const { error: err } = await query;
         if (err) throw err;
@@ -815,7 +832,8 @@ const HistoryPage: React.FC = () => {
         }
       } else {
         const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
-        let query = supabase.from('transactions').update({ is_deleted: true }).filter('metadata->>' + (tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id'), 'eq', groupId);
+        const colName = tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id';
+        let query = supabase.from('transactions').update({ is_deleted: true }).or(`${colName}.eq.${groupId},metadata->>${colName}.eq.${groupId}`);
         if (confirmedScope === 'THIS_AND_FUTURE') query = query.gte('date', tx?.date);
         const { error } = await query;
         if (error) throw error;
