@@ -9,8 +9,17 @@ export const projectionService = {
     const today = new Date();
     const futureEnd = new Date(today.getFullYear(), today.getMonth() + monthsAhead + 1, 0); 
     
+    // Obter perfis desativados para totais
+    const { data: excludedEntities } = await supabase
+      .from('entities')
+      .select('name')
+      .eq('user_id', userId)
+      .eq('include_in_totals', false);
+
+    const excludedSet = new Set((excludedEntities || []).map((e: any) => e.name));
+
     const { data: pendingTx } = await supabase.from('transactions')
-        .select('amount, type, date, recurrence_group_id, recurrence_period, is_amortization')
+        .select('amount, type, date, recurrence_group_id, recurrence_period, is_amortization, owner_name, metadata')
         .eq('user_id', userId)
         .eq('is_deleted', false)
         .eq('is_paid', false)
@@ -18,7 +27,7 @@ export const projectionService = {
         .lte('date', futureEnd.toISOString().split('T')[0]);
 
     const { data: recurringTx } = await supabase.from('transactions')
-        .select('amount, type, date, recurrence_group_id, recurrence_period')
+        .select('amount, type, date, recurrence_group_id, recurrence_period, owner_name, metadata')
         .eq('user_id', userId)
         .eq('is_deleted', false)
         .not('recurrence_period', 'is', null)
@@ -47,6 +56,8 @@ export const projectionService = {
 
     // 1. Pending Transactions (Including Overdue)
     (pendingTx || []).forEach((t: any) => {
+        if (t.owner_name && excludedSet.has(t.owner_name)) return;
+        if (t.metadata?.is_historical === true || t.metadata?.is_historical === 'true') return;
         let key = t.date.substring(0, 7);
         // If overdue, move to current month for projection purposes
         if (key < currentKey) key = currentKey;
@@ -61,11 +72,14 @@ export const projectionService = {
     if (recurringTx) {
         const latestByGroup: Record<string, any> = {};
         recurringTx.forEach((t: any) => {
+            if (t.owner_name && excludedSet.has(t.owner_name)) return;
+            if (t.metadata?.is_historical === true || t.metadata?.is_historical === 'true') return;
             if (!latestByGroup[t.recurrence_group_id] || new Date(t.date) > new Date(latestByGroup[t.recurrence_group_id].date)) {
                 latestByGroup[t.recurrence_group_id] = t;
             }
         });
         Object.values(latestByGroup).forEach((baseTx: any) => {
+            if (baseTx.owner_name && excludedSet.has(baseTx.owner_name)) return;
             let currentDate = new Date(baseTx.date);
             // Move to future if needed
             if (currentDate < today) {

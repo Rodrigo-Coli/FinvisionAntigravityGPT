@@ -149,6 +149,8 @@ export interface PhysicalAsset {
   estimatedValue: number;
   acquisitionDate: string;
   description: string;
+  is_archived?: boolean;
+  metadata?: any;
 }
 
 export interface InvestmentBroker {
@@ -161,6 +163,7 @@ export interface InvestmentBroker {
     value: number;
     color: string;
   }[];
+  metadata?: any;
 }
 
 export interface CreditCardDetailed {
@@ -287,6 +290,7 @@ export interface Liability {
   installmentsRemaining?: number;
   dueDay?: number;
   metadata?: any;
+  is_archived?: boolean;
 }
 
 export interface BalloonPayment {

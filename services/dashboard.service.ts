@@ -91,30 +91,31 @@ export const DashboardService = {
     // 4. Cash Flow & Metrics
     const { data: txs, error: txsErr } = await sb
       .from('transactions')
-      .select('date, amount, type, owner_name')
+      .select('date, amount, type, owner_name, metadata')
       .eq('user_id', user.id)
       .eq('is_deleted', false)
       .gte('date', new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString());
-
+ 
     const cashFlow: any[] = [];
     let totalExpenses = 0;
     let lastMonthExpenses = 0;
     const now = new Date();
     const currentMonth = now.getUTCMonth();
     const lastMonth = (currentMonth - 1 + 12) % 12;
-
+ 
     if (!txsErr && txs) {
       const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
       const grouped = txs.reduce((acc: any, tx: any) => {
         if (tx.owner_name && excludedSet.has(tx.owner_name)) return acc;
-
+        if (tx.metadata?.is_historical === true || tx.metadata?.is_historical === 'true') return acc;
+ 
         // tx.date is usually YYYY-MM-DD
         const datePart = tx.date.split('T')[0];
         const [y, mStr, d] = datePart.split('-');
         const m = parseInt(mStr) - 1; // 0-indexed
         const key = months[m];
         if (!acc[key]) acc[key] = { month: key, income: 0, expense: 0 };
-
+ 
         const val = Number(tx.amount || 0);
         if (tx.type === 'INCOME') {
           acc[key].income += val;
@@ -125,7 +126,7 @@ export const DashboardService = {
         }
         return acc;
       }, {});
-
+ 
       const today = new Date().getUTCMonth();
       for (let i = 5; i >= 0; i--) {
         const mIdx = (today - i + 12) % 12;
@@ -186,7 +187,11 @@ export const DashboardService = {
       .eq('is_deleted', false)
       .or(`date.gte.${new Date().toISOString()},is_recurring.eq.true`);
 
-    const filteredFutureTxs = (futureTxs || []).filter((tx: any) => !tx.owner_name || !excludedSet.has(tx.owner_name));
+    const filteredFutureTxs = (futureTxs || []).filter((tx: any) => {
+      if (tx.owner_name && excludedSet.has(tx.owner_name)) return false;
+      if (tx.metadata?.is_historical === true || tx.metadata?.is_historical === 'true') return false;
+      return true;
+    });
 
     const projectedCashFlow = projectionService.calculateFutureCashFlow(
       consolidatedBalance,
