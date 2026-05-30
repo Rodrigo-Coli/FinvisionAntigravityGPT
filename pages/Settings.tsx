@@ -45,6 +45,110 @@ import { useSubscription } from '../contexts/SubscriptionContext';
 import { DateUtils } from '../lib/dateUtils';
 import { requestNotificationPermission, showLocalNotification, subscribeUserToPush } from '../lib/pushUtils';
 
+export const ensureInvestmentCategoriesAndSubcategories = async (userId: string) => {
+  if (!supabase) return;
+  try {
+    // 1. Handle EXPENSE category
+    const { data: expCat } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', 'Investimento')
+      .eq('type', 'EXPENSE')
+      .eq('is_archived', false)
+      .maybeSingle();
+
+    let expCatId = expCat?.id;
+    if (!expCatId) {
+      const { data: newExpCat, error } = await supabase
+        .from('categories')
+        .insert({
+          user_id: userId,
+          name: 'Investimento',
+          type: 'EXPENSE',
+          color: 'bg-brand-50 text-brand-600',
+          is_archived: false
+        })
+        .select('id')
+        .single();
+      if (!error && newExpCat) {
+        expCatId = newExpCat.id;
+      }
+    }
+
+    if (expCatId) {
+      // Ensure "Aplicações" subcategory exists under EXPENSE Investimento
+      const { data: sub1 } = await supabase
+        .from('subcategories')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('category_id', expCatId)
+        .eq('name', 'Aplicações')
+        .maybeSingle();
+
+      if (!sub1?.id) {
+        await supabase.from('subcategories').insert({
+          user_id: userId,
+          category_id: expCatId,
+          name: 'Aplicações'
+        });
+      }
+    }
+
+    // 2. Handle INCOME category
+    const { data: incCat } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', 'Investimento')
+      .eq('type', 'INCOME')
+      .eq('is_archived', false)
+      .maybeSingle();
+
+    let incCatId = incCat?.id;
+    if (!incCatId) {
+      const { data: newIncCat, error } = await supabase
+        .from('categories')
+        .insert({
+          user_id: userId,
+          name: 'Investimento',
+          type: 'INCOME',
+          color: 'bg-brand-50 text-brand-600',
+          is_archived: false
+        })
+        .select('id')
+        .single();
+      if (!error && newIncCat) {
+        incCatId = newIncCat.id;
+      }
+    }
+
+    if (incCatId) {
+      // Ensure "Resgate de Capital", "Juros Recebidos", "Juros Acumulados" exist
+      const subcategoriesToEnsure = ['Resgate de Capital', 'Juros Recebidos', 'Juros Acumulados'];
+      for (const subName of subcategoriesToEnsure) {
+        const { data: sub } = await supabase
+          .from('subcategories')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('category_id', incCatId)
+          .eq('name', subName)
+          .maybeSingle();
+
+        if (!sub?.id) {
+          await supabase.from('subcategories').insert({
+            user_id: userId,
+            category_id: incCatId,
+            name: subName
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error ensuring investment categories/subcategories:', err);
+  }
+};
+
 const SettingsPage: React.FC = () => {
   const [activeSection, setActiveSection] = useState<'general' | 'navigation' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription'>('general');
   const { subscription, loadingSub } = useSubscription();
@@ -112,6 +216,9 @@ const SettingsPage: React.FC = () => {
       }
 
       if (activeSection === 'categories') {
+        // Auto-provision dynamic investment categories & subcategories
+        await ensureInvestmentCategoriesAndSubcategories(user.id);
+
         let query = supabase.from('categories').select('*').eq('user_id', user.id).order('name');
         if (!showArchived) query = query.eq('is_archived', false);
         const { data } = await query;
@@ -187,8 +294,15 @@ const SettingsPage: React.FC = () => {
     setEditCatName(cat.name);
   };
 
+
   const saveEditCat = async () => {
     if (!editingCatId || !editCatName || !supabase) return;
+    const cat = categories.find(c => c.id === editingCatId);
+    if (cat && cat.name.toLowerCase() === 'investimento') {
+      alert("A categoria 'Investimento' é essencial para as análises do FinVision e não pode ser renomeada.");
+      setEditingCatId(null);
+      return;
+    }
     try {
       await supabase.from('categories').update({ name: editCatName }).eq('id', editingCatId);
       setEditingCatId(null);
@@ -208,9 +322,10 @@ const SettingsPage: React.FC = () => {
     } catch (err) { alert('Erro ao adicionar subcategoria'); }
   };
 
+
   const deleteSubcategory = async (id: string) => {
     const sub = subcategories.find(s => s.id === id);
-    if (sub && ['juros recebidos', 'juros acumulados'].includes(sub.name.toLowerCase())) {
+    if (sub && ['juros recebidos', 'juros acumulados', 'aplicações', 'aplicacoes', 'resgate de capital'].includes(sub.name.toLowerCase())) {
       alert(`A subcategoria '${sub.name}' é essencial para os estudos de fluxo de caixa e acompanhamento de investimentos e não pode ser excluída.`);
       return;
     }
@@ -220,6 +335,12 @@ const SettingsPage: React.FC = () => {
 
   const saveEditSubcat = async () => {
     if (!editingSubcatId || !editSubcatName || !supabase) return;
+    const sub = subcategories.find(s => s.id === editingSubcatId);
+    if (sub && ['juros recebidos', 'juros acumulados', 'aplicações', 'aplicacoes', 'resgate de capital'].includes(sub.name.toLowerCase())) {
+      alert(`A subcategoria '${sub.name}' é essencial para o sistema e não pode ser renomeada.`);
+      setEditingSubcatId(null);
+      return;
+    }
     try {
       await supabase.from('subcategories').update({ name: editSubcatName }).eq('id', editingSubcatId);
       setEditingSubcatId(null);

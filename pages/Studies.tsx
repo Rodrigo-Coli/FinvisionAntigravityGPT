@@ -26,6 +26,122 @@ import {
   FinancingSystem 
 } from '../lib/financialEngine';
 
+export const ensureInvestmentCategoriesAndSubcategories = async (userId: string) => {
+  if (!supabase) return;
+  try {
+    // 1. Handle EXPENSE category
+    const { data: expCat } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', 'Investimento')
+      .eq('type', 'EXPENSE')
+      .eq('is_archived', false)
+      .maybeSingle();
+
+    let expCatId = expCat?.id;
+    if (!expCatId) {
+      const { data: newExpCat, error } = await supabase
+        .from('categories')
+        .insert({
+          user_id: userId,
+          name: 'Investimento',
+          type: 'EXPENSE',
+          color: 'bg-brand-50 text-brand-600',
+          is_archived: false
+        })
+        .select('id')
+        .single();
+      if (!error && newExpCat) {
+        expCatId = newExpCat.id;
+      }
+    }
+
+    if (expCatId) {
+      // Ensure "Aplicações" subcategory exists under EXPENSE Investimento
+      const { data: sub1 } = await supabase
+        .from('subcategories')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('category_id', expCatId)
+        .eq('name', 'Aplicações')
+        .maybeSingle();
+
+      if (!sub1?.id) {
+        await supabase.from('subcategories').insert({
+          user_id: userId,
+          category_id: expCatId,
+          name: 'Aplicações'
+        });
+      }
+    }
+
+    // 2. Handle INCOME category
+    const { data: incCat } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', 'Investimento')
+      .eq('type', 'INCOME')
+      .eq('is_archived', false)
+      .maybeSingle();
+
+    let incCatId = incCat?.id;
+    if (!incCatId) {
+      const { data: newIncCat, error } = await supabase
+        .from('categories')
+        .insert({
+          user_id: userId,
+          name: 'Investimento',
+          type: 'INCOME',
+          color: 'bg-brand-50 text-brand-600',
+          is_archived: false
+        })
+        .select('id')
+        .single();
+      if (!error && newIncCat) {
+        incCatId = newIncCat.id;
+      }
+    }
+
+    if (incCatId) {
+      // Ensure "Resgate de Capital", "Juros Recebidos", "Juros Acumulados" exist
+      const subcategoriesToEnsure = ['Resgate de Capital', 'Juros Recebidos', 'Juros Acumulados'];
+      for (const subName of subcategoriesToEnsure) {
+        const { data: sub } = await supabase
+          .from('subcategories')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('category_id', incCatId)
+          .eq('name', subName)
+          .maybeSingle();
+
+        if (!sub?.id) {
+          await supabase.from('subcategories').insert({
+            user_id: userId,
+            category_id: incCatId,
+            name: subName
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error ensuring investment categories/subcategories:', err);
+  }
+};
+
+export interface InvestmentProject {
+  name: string;
+  totalAportado: number;
+  totalRecuperado: number;
+  saldoRestante: number;
+  lucroRecebido: number;
+  transactionsCount: number;
+  lastTxDate: string;
+  progressPercent: number;
+  status: 'APORTANDO' | 'RECUPERANDO' | 'RECUPERADO';
+}
+
 const Studies: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'summary' | 'monthly_projection' | 'sust' | 'amortize' | 'runway' | 'opportunity' | 'efficiency' | 'new_projects'>('summary');
   
@@ -40,6 +156,7 @@ const Studies: React.FC = () => {
   const [accumulatedInterest, setAccumulatedInterest] = useState(0); // Rendimentos acumulados na aplicação padrão
   const [projectionDuration, setProjectionDuration] = useState(60); // Prazo de simulação padrão (meses)
   const [safeCommitmentLimit, setSafeCommitmentLimit] = useState(30); // Limite estratégico de comprometimento orçamentário (%)
+  const [investmentProjects, setInvestmentProjects] = useState<InvestmentProject[]>([]);
   
   // Interactive Controls state
   const [cdiRate, setCdiRate] = useState(10.75);           // CDI bruto anual (%)
@@ -65,6 +182,9 @@ const Studies: React.FC = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      // Auto-provision dynamic investment categories & subcategories
+      await ensureInvestmentCategoriesAndSubcategories(user.id);
 
       // 1. Fetch Investment Accounts
       const { data: accountsData } = await supabase
@@ -161,12 +281,9 @@ const Studies: React.FC = () => {
 
           // B. IGNORAR Resgates e Transferências de Capital de Investimento Principal (não contam como renda real)
           const isResgate = [
-            'resgate', 'aplicação', 'aplicacao', 'investir', 'compra de ativo', 'venda de ativo'
+            'resgate de capital', 'resgate', 'aplicações', 'aplicacoes', 'aplicação', 'aplicacao', 'investir', 'compra de ativo', 'venda de ativo'
           ].some(c => descLower.includes(c) || subcategoryLower.includes(c));
-          
-          // Descartar resgates/movimentações de capital específicos (como Q3 ou Lion)
-          const isCapitalMovement = ['q3', 'lion'].some(c => descLower === c || subcategoryLower === c);
-          if (isResgate || isCapitalMovement) continue;
+          if (isResgate) continue;
 
           // C. CLASSIFICAR como Aluguel
           const isRent = rentCategories.some(c => categoryLower.includes(c) || subcategoryLower.includes(c) || descLower.includes(c));
@@ -228,6 +345,116 @@ const Studies: React.FC = () => {
         setInvestmentPayout(sumInterest);
         setAccumulatedInterest(sumAccumulatedInterest);
       }
+
+      // 5. Fetch all historical transactions for the Investment Project Tracker
+      const { data: historyData } = await supabase
+        .from('transactions')
+        .select('id, amount, category, subcategory, description, date, type')
+        .eq('user_id', user.id)
+        .eq('is_deleted', false)
+        .or('category.ilike.investimento,subcategory.ilike.%aplicações%,subcategory.ilike.%aplicacoes%,subcategory.ilike.%resgate%,subcategory.ilike.%juros%,description.ilike.%q3%,description.ilike.%lion%')
+        .order('date', { ascending: true });
+
+      const rawHistory = historyData || [];
+      const projectsMap: { [key: string]: { aportado: number; recuperado: number; lucro: number; count: number; lastDate: string } } = {};
+
+      const getProjectName = (desc: string, subcat: string): string => {
+        const d = desc.trim().toLowerCase();
+        if (d.includes('q3')) return 'Q3';
+        if (d.includes('lion')) return 'Lion';
+        
+        // Clean description to get a base project name
+        let clean = desc.split(/[-–—,]/)[0].trim();
+        clean = clean.replace(/\d+\/\d+/g, '')
+                     .replace(/\b(parc|parcela|ap|aporte|resgate|retorno|lucro|juros|compra|venda|pgto|pagamento|investimento|aplicação|aplicacao)\b/gi, '')
+                     .trim();
+        
+        if (!clean || clean.length < 2) {
+          return subcat || desc || 'Outro Investimento';
+        }
+        return clean;
+      };
+
+      for (const tx of rawHistory) {
+        const amount = Number(tx.amount || 0);
+        const desc = tx.description || '';
+        const subcat = tx.subcategory || '';
+        const type = tx.type || 'EXPENSE';
+        const date = tx.date || '';
+
+        const projName = getProjectName(desc, subcat);
+
+        if (!projectsMap[projName]) {
+          projectsMap[projName] = { aportado: 0, recuperado: 0, lucro: 0, count: 0, lastDate: date };
+        }
+
+        const proj = projectsMap[projName];
+        proj.count++;
+        if (date > proj.lastDate) proj.lastDate = date;
+
+        const subcatLower = subcat.toLowerCase();
+        const descLower = desc.toLowerCase();
+
+        // Check if the transaction represents an outflow (Contribution / Aporte)
+        const isAporte = type === 'EXPENSE' || subcatLower.includes('aplicações') || subcatLower.includes('aplicacoes');
+        // Check if it represents principal return (Resgate)
+        const isResgate = type === 'INCOME' && (subcatLower.includes('resgate') || descLower.includes('resgate'));
+        // Check if it represents profit (Lucro / Juros)
+        const isLucro = type === 'INCOME' && (subcatLower.includes('juros recebidos') || subcatLower.includes('lucro') || descLower.includes('lucro') || descLower.includes('juros recebido'));
+
+        if (isAporte) {
+          proj.aportado += amount;
+        } else if (isResgate) {
+          proj.recuperado += amount;
+        } else if (isLucro) {
+          proj.lucro += amount;
+        } else if (type === 'INCOME') {
+          // Fallback logic if subcategory isn't explicitly set yet
+          const isFuzzyLucro = ['lucro', 'rendimento', 'juros', 'ganho', 'retorno'].some(k => descLower.includes(k));
+          if (isFuzzyLucro) {
+            proj.lucro += amount;
+          } else {
+            const remainingToRecover = Math.max(0, proj.aportado - proj.recuperado);
+            if (amount <= remainingToRecover) {
+              proj.recuperado += amount;
+            } else {
+              proj.recuperado += remainingToRecover;
+              proj.lucro += (amount - remainingToRecover);
+            }
+          }
+        }
+      }
+
+      const mappedProjects: InvestmentProject[] = Object.entries(projectsMap)
+        .map(([name, data]) => {
+          const progressPercent = data.aportado > 0 
+            ? Math.min(100, (data.recuperado / data.aportado) * 100) 
+            : 0;
+
+          let status: 'APORTANDO' | 'RECUPERANDO' | 'RECUPERADO' = 'APORTANDO';
+          if (data.aportado > 0) {
+            if (data.recuperado >= data.aportado) {
+              status = 'RECUPERADO';
+            } else if (data.recuperado > 0) {
+              status = 'RECUPERANDO';
+            }
+          }
+
+          return {
+            name,
+            totalAportado: data.aportado,
+            totalRecuperado: data.recuperado,
+            saldoRestante: Math.max(0, data.aportado - data.recuperado),
+            lucroRecebido: data.lucro,
+            transactionsCount: data.count,
+            lastTxDate: data.lastDate,
+            progressPercent,
+            status
+          };
+        })
+        .filter(p => p.totalAportado > 0 || p.totalRecuperado > 0);
+
+      setInvestmentProjects(mappedProjects);
 
     } catch (e) {
       console.error("Erro ao carregar dados do investidor:", e);
@@ -987,6 +1214,114 @@ const Studies: React.FC = () => {
                       </div>
                     </div>
                   </div>
+                </div>
+
+                {/* Acompanhamento de Projetos de Investimento (Capital a Recuperar) */}
+                <div className="pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">📊 Acompanhamento de Projetos de Investimento (Capital a Recuperar)</h4>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Veja quanto falta recuperar de seus aportes originais antes de começar a lançar como lucro real</p>
+                  </div>
+
+                  {investmentProjects.length === 0 ? (
+                    <div className="p-8 border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl text-center bg-slate-50/20">
+                      <Wallet className="text-slate-350 dark:text-slate-600 mx-auto mb-2" size={24} />
+                      <p className="text-[10px] font-black uppercase text-slate-400">Nenhum projeto de investimento histórico detectado.</p>
+                      <p className="text-[9px] font-medium text-slate-400 leading-normal max-w-md mx-auto mt-1">
+                        Use a categoria &quot;Investimento&quot; e lance suas aplicações com a subcategoria &quot;Aplicações&quot; ou inclua o nome do projeto (ex: &quot;Q3&quot;, &quot;Lion&quot;) nas descrições para acompanhá-lo aqui.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {investmentProjects.map((project, idx) => {
+                        const statusColors = {
+                          APORTANDO: 'text-amber-550 bg-amber-500/10 border-amber-500/20',
+                          RECUPERANDO: 'text-brand-500 bg-brand-500/10 border-brand-500/20',
+                          RECUPERADO: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
+                        };
+
+                        const statusLabels = {
+                          APORTANDO: 'Aportando Principal',
+                          RECUPERANDO: 'Recuperando Principal',
+                          RECUPERADO: '100% Recuperado! ✨'
+                        };
+
+                        return (
+                          <div key={idx} className="p-6 border border-slate-100 dark:border-slate-850 rounded-[32px] bg-slate-50/50 dark:bg-brand-950/20 space-y-4 hover:shadow-md transition-shadow relative overflow-hidden">
+                            {/* Glassmorphic border or subtle decorative gradient */}
+                            <div className="absolute top-0 left-0 w-2 h-full bg-brand-500" />
+                            
+                            <div className="flex justify-between items-start pl-2">
+                              <div>
+                                <h5 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">{project.name}</h5>
+                                <span className="text-[8px] font-bold text-slate-400 uppercase block mt-0.5">
+                                  Último fluxo: {new Date(project.lastTxDate).toLocaleDateString('pt-BR')} • {project.transactionsCount} lançamentos
+                                </span>
+                              </div>
+                              <span className={`text-[8px] font-black px-2.5 py-1 rounded-lg border uppercase tracking-wider ${statusColors[project.status]}`}>
+                                {statusLabels[project.status]}
+                              </span>
+                            </div>
+
+                            {/* Metrics display */}
+                            <div className="grid grid-cols-2 gap-4 pl-2 text-[9px] font-black uppercase text-slate-400 tracking-wider">
+                              <div className="p-3 bg-white dark:bg-brand-900/10 rounded-2xl border border-slate-100/50 dark:border-slate-800/30">
+                                <span>Capital Aportado:</span>
+                                <span className="text-slate-800 dark:text-white text-xs block mt-1">
+                                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.totalAportado)}
+                                </span>
+                              </div>
+                              <div className="p-3 bg-white dark:bg-brand-900/10 rounded-2xl border border-slate-100/50 dark:border-slate-800/30">
+                                <span>Capital Recuperado:</span>
+                                <span className="text-blue-500 text-xs block mt-1">
+                                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.totalRecuperado)}
+                                </span>
+                              </div>
+                              <div className="p-3 bg-white dark:bg-brand-900/10 rounded-2xl border border-slate-100/50 dark:border-slate-800/30">
+                                <span>Saldo a Recuperar:</span>
+                                <span className={`text-xs block mt-1 ${project.saldoRestante > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.saldoRestante)}
+                                </span>
+                              </div>
+                              <div className="p-3 bg-white dark:bg-brand-900/10 rounded-2xl border border-slate-100/50 dark:border-slate-800/30">
+                                <span>Lucro Payout Recebido:</span>
+                                <span className="text-emerald-600 text-xs block mt-1">
+                                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.lucroRecebido)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Progress bar */}
+                            <div className="space-y-1.5 pl-2">
+                              <div className="flex justify-between text-[8px] font-black uppercase text-slate-400 tracking-wider">
+                                <span>Recuperação do principal:</span>
+                                <span className="text-slate-900 dark:text-white">{project.progressPercent.toFixed(0)}%</span>
+                              </div>
+                              <div className="w-full h-2 bg-slate-100 dark:bg-brand-900/50 rounded-full overflow-hidden">
+                                <div 
+                                  className={`h-full transition-all duration-500 ${project.status === 'RECUPERADO' ? 'bg-emerald-500' : 'bg-brand-500'}`} 
+                                  style={{ width: `${project.progressPercent}%` }} 
+                                />
+                              </div>
+                            </div>
+
+                            {/* Interactive helper advice box */}
+                            <div className={`p-3 rounded-2xl text-[9px] uppercase font-black tracking-wide leading-normal ${
+                              project.status === 'RECUPERADO' 
+                                ? 'bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100/20 text-emerald-700 dark:text-emerald-400' 
+                                : 'bg-brand-50/40 dark:bg-brand-900/5 border border-brand-100/10 text-brand-700 dark:text-brand-400'
+                            }`}>
+                              {project.status === 'RECUPERADO' ? (
+                                <span>🎉 Capital Inicial 100% Recuperado! Lance qualquer novo pagamento deste projeto como **Receita → Juros Recebidos** para contar como lucro líquido real.</span>
+                              ) : (
+                                <span>👉 Restam {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.saldoRestante)} para recuperar seu principal. Lance os próximos recebimentos como **Receita → Resgate de Capital**.</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Guia de Lançamento de Investimento */}
