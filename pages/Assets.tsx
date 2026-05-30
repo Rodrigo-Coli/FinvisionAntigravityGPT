@@ -379,6 +379,106 @@ const Assets: React.FC = () => {
     };
   };
 
+  // Sync Rental Income Transactions: Activates/Deactivates starting from today forward
+  const syncRentalTransactions = async (
+    assetId: string,
+    isRented: boolean,
+    rentalIncome: number,
+    assetName: string,
+    userId: string
+  ) => {
+    if (!supabase) return;
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // --- CLEAN UP FUTURE / UNPAID RENTAL TRANSACTIONS ---
+      const { data: allTxs, error: fetchErr } = await supabase
+        .from('transactions')
+        .select('id, date, is_paid, metadata')
+        .eq('user_id', userId)
+        .eq('is_deleted', false);
+
+      if (fetchErr) throw fetchErr;
+
+      const targetTxs = (allTxs || []).filter((t: any) => 
+        t.metadata?.linked_asset_id === assetId && 
+        t.metadata?.type === 'rental_income' && 
+        (t.date >= todayStr || !t.is_paid)
+      );
+
+      if (targetTxs.length > 0) {
+        const idsToDelete = targetTxs.map((t: any) => t.id);
+        const { error: delErr } = await supabase
+          .from('transactions')
+          .delete()
+          .in('id', idsToDelete);
+        if (delErr) throw delErr;
+      }
+
+      // --- GENERATE NEW FUTURE RENTAL INCOME TRANSACTIONS IF RENTED ---
+      if (isRented && rentalIncome > 0) {
+        const categoryName = 'Receitas Patrimoniais';
+        let catId = '';
+        const { data: existingCat } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('name', categoryName)
+          .maybeSingle();
+
+        if (existingCat) {
+          catId = existingCat.id;
+        } else {
+          const { data: c } = await supabase
+            .from('categories')
+            .insert({
+              user_id: userId,
+              name: categoryName,
+              type: 'INCOME',
+              color: 'bg-emerald-50 text-emerald-600'
+            })
+            .select('id')
+            .maybeSingle();
+          if (c) catId = c.id;
+        }
+
+        const futureRentTxs = [];
+        const today = new Date();
+        for (let i = 0; i < 24; i++) {
+          const txDate = new Date(today.getFullYear(), today.getMonth() + i, 10);
+          const dateStr = txDate.toISOString().split('T')[0];
+          
+          if (dateStr >= todayStr) {
+            futureRentTxs.push({
+              user_id: userId,
+              description: `Receita de Aluguel - ${assetName}`,
+              amount: rentalIncome,
+              date: dateStr,
+              type: 'INCOME',
+              category: categoryName,
+              category_id: catId || null,
+              is_paid: false,
+              paid_amount: 0,
+              paid_at: null,
+              metadata: {
+                linked_asset_id: assetId,
+                type: 'rental_income',
+                auto_generated: true
+              }
+            });
+          }
+        }
+
+        if (futureRentTxs.length > 0) {
+          const { error: insErr } = await supabase.from('transactions').insert(futureRentTxs);
+          if (insErr) throw insErr;
+        }
+      }
+    } catch (e: any) {
+      console.error("Erro ao sincronizar aluguéis:", e);
+    }
+  };
+
   // Safe Property status toggle
   const togglePropertyTypeDirectly = async (asset: PhysicalAsset) => {
     if (!supabase) return;
@@ -391,6 +491,17 @@ const Assets: React.FC = () => {
     };
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await syncRentalTransactions(
+          asset.id,
+          newStage === 'PLANTA' ? false : !!meta.isRented,
+          newStage === 'PLANTA' ? 0 : (Number(meta.rentalIncome) || 0),
+          asset.name,
+          user.id
+        );
+      }
+
       const { error } = await supabase
         .from('physical_assets')
         .update({ metadata: updatedMeta })
@@ -467,6 +578,16 @@ const Assets: React.FC = () => {
           .eq('id', editingAsset.id);
 
         if (error) throw error;
+
+        if (formData.category === 'REAL_ESTATE') {
+          await syncRentalTransactions(
+            editingAsset.id,
+            formData.isRented,
+            rentVal,
+            formData.name,
+            user.id
+          );
+        }
       } else {
         // INSERT new asset
         const { data: newAsset, error } = await supabase
@@ -484,6 +605,16 @@ const Assets: React.FC = () => {
           .single();
 
         if (error) throw error;
+
+        if (formData.category === 'REAL_ESTATE' && newAsset) {
+          await syncRentalTransactions(
+            newAsset.id,
+            formData.isRented,
+            rentVal,
+            formData.name,
+            user.id
+          );
+        }
 
         // Auto-provision initial disbursement transaction for Loan assets
         if (formData.isLoan && newAsset && loanPrincipalVal > 0) {
@@ -699,6 +830,17 @@ const Assets: React.FC = () => {
           inquilinoPaysCondo: realEstateManageForm.inquilinoPaysCondo,
           inquilinoPaysIPTU: realEstateManageForm.inquilinoPaysIPTU
         };
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await syncRentalTransactions(
+            asset.id,
+            realEstateManageForm.isRented,
+            rentVal,
+            asset.name,
+            user.id
+          );
+        }
 
         await supabase
           .from('physical_assets')
