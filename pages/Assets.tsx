@@ -31,7 +31,8 @@ import {
   Percent,
   Calendar,
   Layers,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Sparkles
 } from 'lucide-react';
 import { PhysicalAsset, InvestmentBroker, Liability, Transaction } from '../types';
 import { supabase } from '../lib/supabase/client';
@@ -97,6 +98,8 @@ const Assets: React.FC = () => {
     iptuFee: '',
     inquilinoPaysCondo: false,
     inquilinoPaysIPTU: false,
+    rentalType: 'anual' as 'anual' | 'short_stay',
+    rentalDate: new Date().toISOString().split('T')[0],
     // Loan assets
     isLoan: false,
     loanPrincipal: '',
@@ -118,7 +121,18 @@ const Assets: React.FC = () => {
     inquilinoPaysIPTU: false,
     isRented: false,
     condoFee: '',
-    iptuFee: ''
+    iptuFee: '',
+    // Add fields for final balance payment
+    deliveryPaymentMethod: 'FINANCIAMENTO' as 'FINANCIAMENTO' | 'A_VISTA' | 'CONSORCIO',
+    deliveryBalance: '',
+    selectedConsortiumId: '',
+    financingInstallment: '',
+    financingInstallmentsCount: '',
+    financingDueDay: '10',
+    rentalType: 'anual' as 'anual' | 'short_stay',
+    financingName: '',
+    financingOriginalTotal: '',
+    rentalDate: new Date().toISOString().split('T')[0]
   });
 
   const [editingLiability, setEditingLiability] = useState<any | null>(null);
@@ -319,8 +333,20 @@ const Assets: React.FC = () => {
     // Rental inflows
     const totalRents = activePhysImob.reduce((acc, curr) => {
       const meta = curr.metadata || {};
-      if (meta.isRented && meta.rentalIncome) {
-        return acc + Number(meta.rentalIncome);
+      if (meta.isRented) {
+        if (meta.rentalType === 'short_stay') {
+          // Sum up transactions linked to this asset in the current month
+          const assetTxs = transactions.filter(t => t.metadata?.linked_asset_id === curr.id);
+          const currentMonthStr = new Date().toISOString().substring(0, 7); // YYYY-MM
+          const currentMonthRents = assetTxs.filter(t => 
+            t.type === 'INCOME' && 
+            (t.metadata?.type === 'rental_income' || t.metadata?.type === 'short_stay_income') &&
+            t.date.substring(0, 7) === currentMonthStr
+          );
+          return acc + currentMonthRents.reduce((sum, tx) => sum + tx.amount, 0);
+        } else {
+          return acc + (Number(meta.rentalIncome) || 0);
+        }
       }
       return acc;
     }, 0);
@@ -357,7 +383,7 @@ const Assets: React.FC = () => {
       selfSustainabilityPercent,
       totalInvestedBalance
     };
-  }, [activePhysicalAssets, activeLiabilities, brokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate]);
+  }, [activePhysicalAssets, activeLiabilities, brokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, transactions]);
 
   // Asset helpers
   const getAssetLinkedTransactions = (assetId: string) => {
@@ -385,13 +411,15 @@ const Assets: React.FC = () => {
     isRented: boolean,
     rentalIncome: number,
     assetName: string,
-    userId: string
+    userId: string,
+    rentalType: 'anual' | 'short_stay' = 'anual',
+    rentalDate: string = new Date().toISOString().split('T')[0]
   ) => {
     if (!supabase) return;
     try {
       const todayStr = new Date().toISOString().split('T')[0];
 
-      // --- CLEAN UP FUTURE / UNPAID RENTAL TRANSACTIONS ---
+      // --- FETCH ALL TRANSACTIONS TO DYNAMICALLY AUDIT ---
       const { data: allTxs, error: fetchErr } = await supabase
         .from('transactions')
         .select('id, date, is_paid, metadata')
@@ -400,23 +428,27 @@ const Assets: React.FC = () => {
 
       if (fetchErr) throw fetchErr;
 
-      const targetTxs = (allTxs || []).filter((t: any) => 
-        t.metadata?.linked_asset_id === assetId && 
-        t.metadata?.type === 'rental_income' && 
-        (t.date >= todayStr || !t.is_paid)
-      );
+      // --- CLEAN UP STRICTLY FUTURE RENTAL TRANSACTIONS ---
+      // If deactivated OR type changed to short stay, delete strictly future rental income transactions (date > todayStr)
+      if (!isRented || rentalType === 'short_stay' || rentalIncome <= 0) {
+        const targetTxs = (allTxs || []).filter((t: any) => 
+          t.metadata?.linked_asset_id === assetId && 
+          t.metadata?.type === 'rental_income' && 
+          t.date > todayStr // Strictly future
+        );
 
-      if (targetTxs.length > 0) {
-        const idsToDelete = targetTxs.map((t: any) => t.id);
-        const { error: delErr } = await supabase
-          .from('transactions')
-          .delete()
-          .in('id', idsToDelete);
-        if (delErr) throw delErr;
+        if (targetTxs.length > 0) {
+          const idsToDelete = targetTxs.map((t: any) => t.id);
+          const { error: delErr } = await supabase
+            .from('transactions')
+            .delete()
+            .in('id', idsToDelete);
+          if (delErr) throw delErr;
+        }
       }
 
-      // --- GENERATE NEW FUTURE RENTAL INCOME TRANSACTIONS IF RENTED ---
-      if (isRented && rentalIncome > 0) {
+      // --- GENERATE / EXTEND ROLLING 24 MONTHS OF RENTAL INCOME FOR ANUAL ---
+      if (isRented && rentalType === 'anual' && rentalIncome > 0) {
         const categoryName = 'Receitas Patrimoniais';
         let catId = '';
         const { data: existingCat } = await supabase
@@ -442,11 +474,42 @@ const Assets: React.FC = () => {
           if (c) catId = c.id;
         }
 
-        const futureRentTxs = [];
+        const existingRentTxs = (allTxs || []).filter((t: any) => 
+          t.metadata?.linked_asset_id === assetId && 
+          t.metadata?.type === 'rental_income'
+        );
+
         const today = new Date();
-        for (let i = 0; i < 24; i++) {
-          const txDate = new Date(today.getFullYear(), today.getMonth() + i, 10);
-          const dateStr = txDate.toISOString().split('T')[0];
+        const baseDate = rentalDate ? new Date(rentalDate) : today;
+        const rentDay = baseDate.getDate();
+
+        const currentMonthFirst = new Date(today.getFullYear(), today.getMonth(), rentDay);
+        let startGeneratingFromDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), rentDay);
+
+        if (existingRentTxs.length > 0) {
+          const dates = existingRentTxs.map((t: any) => new Date(t.date).getTime());
+          const maxTime = Math.max(...dates);
+          const maxDate = new Date(maxTime);
+          const nextMonthOfMax = new Date(maxDate.getFullYear(), maxDate.getMonth() + 1, rentDay);
+          
+          if (nextMonthOfMax.getTime() < currentMonthFirst.getTime()) {
+            startGeneratingFromDate = currentMonthFirst;
+          } else {
+            startGeneratingFromDate = nextMonthOfMax;
+          }
+        }
+
+        const horizonDate = new Date(today.getFullYear(), today.getMonth() + 23, rentDay);
+        const futureRentTxs = [];
+        
+        let currentYear = startGeneratingFromDate.getFullYear();
+        let currentMonth = startGeneratingFromDate.getMonth();
+        
+        while (true) {
+          const currentTarget = new Date(currentYear, currentMonth, rentDay);
+          if (currentTarget > horizonDate) break;
+          
+          const dateStr = currentTarget.toISOString().split('T')[0];
           
           if (dateStr >= todayStr) {
             futureRentTxs.push({
@@ -467,6 +530,12 @@ const Assets: React.FC = () => {
               }
             });
           }
+          
+          currentMonth++;
+          if (currentMonth > 11) {
+            currentMonth = 0;
+            currentYear++;
+          }
         }
 
         if (futureRentTxs.length > 0) {
@@ -484,10 +553,12 @@ const Assets: React.FC = () => {
     if (!supabase) return;
     const meta = asset.metadata || {};
     const newStage = meta.propertyStage === 'PLANTA' ? 'PRONTO' : 'PLANTA';
+    
+    // Requirement 3: Switch from PLANTA to PRONTO sets isRented to false (disabled) by default.
     const updatedMeta = {
       ...meta,
       propertyStage: newStage,
-      isRented: newStage === 'PLANTA' ? false : meta.isRented
+      isRented: false // Deactivated by default on toggle!
     };
 
     try {
@@ -495,10 +566,12 @@ const Assets: React.FC = () => {
       if (user) {
         await syncRentalTransactions(
           asset.id,
-          newStage === 'PLANTA' ? false : !!meta.isRented,
-          newStage === 'PLANTA' ? 0 : (Number(meta.rentalIncome) || 0),
+          false, // Deactivated aluguel
+          0,
           asset.name,
-          user.id
+          user.id,
+          meta.rentalType || 'anual',
+          meta.rentalDate || new Date().toISOString().split('T')[0]
         );
       }
 
@@ -553,6 +626,8 @@ const Assets: React.FC = () => {
         iptuFee: iptuFeeVal,
         inquilinoPaysCondo: formData.inquilinoPaysCondo,
         inquilinoPaysIPTU: formData.inquilinoPaysIPTU,
+        rentalType: formData.rentalType,
+        rentalDate: formData.rentalDate,
         // Loan details
         isLoan: formData.isLoan,
         loanPrincipal: loanPrincipalVal,
@@ -585,7 +660,9 @@ const Assets: React.FC = () => {
             formData.isRented,
             rentVal,
             formData.name,
-            user.id
+            user.id,
+            formData.rentalType,
+            formData.rentalDate
           );
         }
       } else {
@@ -612,7 +689,9 @@ const Assets: React.FC = () => {
             formData.isRented,
             rentVal,
             formData.name,
-            user.id
+            user.id,
+            formData.rentalType,
+            formData.rentalDate
           );
         }
 
@@ -685,6 +764,8 @@ const Assets: React.FC = () => {
       iptuFee: '',
       inquilinoPaysCondo: false,
       inquilinoPaysIPTU: false,
+      rentalType: 'anual',
+      rentalDate: new Date().toISOString().split('T')[0],
       isLoan: false,
       loanPrincipal: '',
       loanInterestType: 'SIMPLE',
@@ -719,6 +800,8 @@ const Assets: React.FC = () => {
       iptuFee: meta.iptuFee ? String(meta.iptuFee) : '',
       inquilinoPaysCondo: !!meta.inquilinoPaysCondo,
       inquilinoPaysIPTU: !!meta.inquilinoPaysIPTU,
+      rentalType: meta.rentalType || 'anual',
+      rentalDate: meta.rentalDate || new Date().toISOString().split('T')[0],
       isLoan: !!meta.isLoan,
       loanPrincipal: meta.loanPrincipal ? String(meta.loanPrincipal) : '',
       loanInterestType: meta.loanInterestType || 'SIMPLE',
@@ -777,7 +860,17 @@ const Assets: React.FC = () => {
         inquilinoPaysIPTU: !!meta.inquilinoPaysIPTU,
         isRented: !!meta.isRented,
         condoFee: meta.condoFee ? String(meta.condoFee) : '',
-        iptuFee: meta.iptuFee ? String(meta.iptuFee) : ''
+        iptuFee: meta.iptuFee ? String(meta.iptuFee) : '',
+        deliveryPaymentMethod: meta.deliveryPaymentMethod || 'FINANCIAMENTO',
+        deliveryBalance: meta.deliveryBalance ? String(meta.deliveryBalance) : '',
+        selectedConsortiumId: meta.selectedConsortiumId || '',
+        financingInstallment: meta.financingInstallment ? String(meta.financingInstallment) : '',
+        financingInstallmentsCount: meta.financingInstallmentsCount ? String(meta.financingInstallmentsCount) : '',
+        financingDueDay: meta.financingDueDay || '10',
+        rentalType: meta.rentalType || 'anual',
+        financingName: liability.name || `Financiamento: ${asset.name}`,
+        financingOriginalTotal: liability.totalAmount ? String(liability.totalAmount) : '',
+        rentalDate: meta.rentalDate || new Date().toISOString().split('T')[0]
       });
     } else {
       setSelectedLiabilityForManage({
@@ -803,7 +896,17 @@ const Assets: React.FC = () => {
         inquilinoPaysIPTU: !!meta.inquilinoPaysIPTU,
         isRented: !!meta.isRented,
         condoFee: meta.condoFee ? String(meta.condoFee) : '',
-        iptuFee: meta.iptuFee ? String(meta.iptuFee) : ''
+        iptuFee: meta.iptuFee ? String(meta.iptuFee) : '',
+        deliveryPaymentMethod: meta.deliveryPaymentMethod || 'FINANCIAMENTO',
+        deliveryBalance: meta.deliveryBalance ? String(meta.deliveryBalance) : '',
+        selectedConsortiumId: meta.selectedConsortiumId || '',
+        financingInstallment: meta.financingInstallment ? String(meta.financingInstallment) : '',
+        financingInstallmentsCount: meta.financingInstallmentsCount ? String(meta.financingInstallmentsCount) : '',
+        financingDueDay: meta.financingDueDay || '10',
+        rentalType: meta.rentalType || 'anual',
+        financingName: `Financiamento: ${asset.name}`,
+        financingOriginalTotal: '',
+        rentalDate: meta.rentalDate || new Date().toISOString().split('T')[0]
       });
     }
     setShowRealEstateManageModal(true);
@@ -817,6 +920,9 @@ const Assets: React.FC = () => {
       const condoVal = parseFloat(realEstateManageForm.condoFee) || 0;
       const iptuVal = parseFloat(realEstateManageForm.iptuFee) || 0;
 
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+
       // Update physical asset metadata
       const asset = physicalAssets.find(p => p.id === selectedLiabilityForManage.linkedAssetId);
       if (asset) {
@@ -828,19 +934,20 @@ const Assets: React.FC = () => {
           condoFee: condoVal,
           iptuFee: iptuVal,
           inquilinoPaysCondo: realEstateManageForm.inquilinoPaysCondo,
-          inquilinoPaysIPTU: realEstateManageForm.inquilinoPaysIPTU
+          inquilinoPaysIPTU: realEstateManageForm.inquilinoPaysIPTU,
+          rentalType: realEstateManageForm.rentalType,
+          rentalDate: realEstateManageForm.rentalDate
         };
 
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await syncRentalTransactions(
-            asset.id,
-            realEstateManageForm.isRented,
-            rentVal,
-            asset.name,
-            user.id
-          );
-        }
+        await syncRentalTransactions(
+          asset.id,
+          realEstateManageForm.isRented,
+          rentVal,
+          asset.name,
+          user.id,
+          realEstateManageForm.rentalType,
+          realEstateManageForm.rentalDate
+        );
 
         await supabase
           .from('physical_assets')
@@ -848,41 +955,120 @@ const Assets: React.FC = () => {
           .eq('id', asset.id);
       }
 
-      // Update liability
-      const updatedMetadata = {
-        ...(selectedLiabilityForManage.metadata || {}),
-        propertyType: realEstateManageForm.propertyType,
-        rentalIncome: rentVal,
-        operationalExpenses: (realEstateManageForm.inquilinoPaysCondo ? 0 : condoVal) + (realEstateManageForm.inquilinoPaysIPTU ? 0 : iptuVal),
-        deliveryDate: realEstateManageForm.deliveryDate
-      };
+      const wasPlanta = asset?.metadata?.propertyStage === 'PLANTA';
+      const isTransitioningToPronto = wasPlanta && realEstateManageForm.propertyType === 'PRONTO';
 
-      if (selectedLiabilityForManage.id === 'new-temp') {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error("Usuário não autenticado");
-
-        const { error } = await supabase.from('liabilities').insert([{
-          user_id: user.id,
-          name: selectedLiabilityForManage.name,
-          type: 'MORTGAGE',
-          total_amount: 0,
-          remaining_balance: 0,
-          installment_amount: instVal,
-          linked_asset_id: selectedLiabilityForManage.linkedAssetId,
-          metadata: {
-            ...updatedMetadata,
-            isRealEstate: true
+      if (isTransitioningToPronto && asset) {
+        const balance = parseFloat(realEstateManageForm.deliveryBalance) || 0;
+        
+        if (realEstateManageForm.deliveryPaymentMethod === 'A_VISTA') {
+          if (balance > 0) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            await supabase.from('transactions').insert([{
+              user_id: user.id,
+              description: `Quitação Saldo Chaves - ${asset.name}`,
+              amount: balance,
+              date: todayStr,
+              type: 'EXPENSE',
+              category: 'Habitação',
+              is_paid: true,
+              paid_amount: balance,
+              paid_at: todayStr,
+              metadata: {
+                linked_asset_id: asset.id,
+                type: 'delivery_quitacao'
+              }
+            }]);
           }
-        }]);
+          if (selectedLiabilityForManage.id !== 'new-temp') {
+            await supabase.from('liabilities').update({ is_archived: true }).eq('id', selectedLiabilityForManage.id);
+          }
+        } 
+        else if (realEstateManageForm.deliveryPaymentMethod === 'FINANCIAMENTO') {
+          const instCount = parseInt(realEstateManageForm.financingInstallmentsCount, 10) || 240;
+          const instAmount = parseFloat(realEstateManageForm.financingInstallment) || instVal;
+          const originalTotal = parseFloat(realEstateManageForm.financingOriginalTotal) || balance;
+          const dueDayVal = parseInt(realEstateManageForm.financingDueDay, 10) || 25;
+          const finName = realEstateManageForm.financingName || `Financiamento: ${asset.name}`;
 
-        if (error) throw error;
+          if (selectedLiabilityForManage.id !== 'new-temp') {
+            await supabase.from('liabilities').update({
+              name: finName,
+              type: 'MORTGAGE',
+              total_amount: originalTotal,
+              remaining_balance: balance,
+              installment_amount: instAmount,
+              installments_remaining: instCount,
+              due_day: dueDayVal,
+              metadata: {
+                ...selectedLiabilityForManage.metadata,
+                propertyType: 'PRONTO',
+                isRealEstate: true
+              }
+            }).eq('id', selectedLiabilityForManage.id);
+          } else {
+            await supabase.from('liabilities').insert([{
+              user_id: user.id,
+              name: finName,
+              type: 'MORTGAGE',
+              total_amount: originalTotal,
+              remaining_balance: balance,
+              installment_amount: instAmount,
+              installments_remaining: instCount,
+              due_day: dueDayVal,
+              linked_asset_id: asset.id,
+              metadata: {
+                propertyType: 'PRONTO',
+                isRealEstate: true
+              }
+            }]);
+          }
+        }
+        else if (realEstateManageForm.deliveryPaymentMethod === 'CONSORCIO') {
+          if (realEstateManageForm.selectedConsortiumId) {
+            await supabase.from('liabilities').update({
+              linked_asset_id: asset.id,
+              metadata: {
+                propertyType: 'PRONTO',
+                isRealEstate: true
+              }
+            }).eq('id', realEstateManageForm.selectedConsortiumId);
+          }
+          if (selectedLiabilityForManage.id !== 'new-temp' && selectedLiabilityForManage.id !== realEstateManageForm.selectedConsortiumId) {
+            await supabase.from('liabilities').update({ is_archived: true }).eq('id', selectedLiabilityForManage.id);
+          }
+        }
       } else {
-        const { error } = await supabase.from('liabilities').update({
-          installment_amount: instVal,
-          metadata: updatedMetadata
-        }).eq('id', selectedLiabilityForManage.id);
+        const updatedMetadata = {
+          ...(selectedLiabilityForManage.metadata || {}),
+          propertyType: realEstateManageForm.propertyType,
+          rentalIncome: rentVal,
+          operationalExpenses: (realEstateManageForm.inquilinoPaysCondo ? 0 : condoVal) + (realEstateManageForm.inquilinoPaysIPTU ? 0 : iptuVal),
+          deliveryDate: realEstateManageForm.deliveryDate
+        };
 
-        if (error) throw error;
+        if (selectedLiabilityForManage.id === 'new-temp') {
+          const { error } = await supabase.from('liabilities').insert([{
+            user_id: user.id,
+            name: selectedLiabilityForManage.name,
+            type: 'MORTGAGE',
+            total_amount: 0,
+            remaining_balance: 0,
+            installment_amount: instVal,
+            linked_asset_id: selectedLiabilityForManage.linkedAssetId,
+            metadata: {
+              ...updatedMetadata,
+              isRealEstate: true
+            }
+          }]);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('liabilities').update({
+            installment_amount: instVal,
+            metadata: updatedMetadata
+          }).eq('id', selectedLiabilityForManage.id);
+          if (error) throw error;
+        }
       }
 
       setShowRealEstateManageModal(false);
@@ -1104,10 +1290,14 @@ const Assets: React.FC = () => {
       }
 
       // Construct metadata referencing the asset and historical status
-      const metadata = {
+      const metadata: Record<string, any> = {
         linked_asset_id: selectedAssetForExtrato.id,
         is_historical: newTxForm.isHistorical
       };
+
+      if (newTxForm.type === 'INCOME') {
+        metadata.type = 'short_stay_income';
+      }
 
       // Save Transaction
       const { error } = await supabase
@@ -1503,7 +1693,18 @@ const Assets: React.FC = () => {
                     const linkedLiab = activeLiabilities.find(l => l.linkedAssetId === asset.id);
                     const propertyStage = meta.propertyStage || 'PRONTO';
                     const isRented = !!meta.isRented;
-                    const rental = Number(meta.rentalIncome) || 0;
+                    const rentalType = meta.rentalType || 'anual';
+
+                    // Sum short stay rents in current month dynamically
+                    const currentMonthStr = new Date().toISOString().substring(0, 7);
+                    const assetTxs = transactions.filter(t => t.metadata?.linked_asset_id === asset.id);
+                    const shortStayRentsThisMonth = assetTxs.filter(t => 
+                      t.type === 'INCOME' && 
+                      (t.metadata?.type === 'rental_income' || t.metadata?.type === 'short_stay_income') &&
+                      t.date.substring(0, 7) === currentMonthStr
+                    ).reduce((sum, tx) => sum + tx.amount, 0);
+
+                    const rental = rentalType === 'short_stay' ? shortStayRentsThisMonth : (Number(meta.rentalIncome) || 0);
                     const condo = Number(meta.condoFee) || 0;
                     const iptu = Number(meta.iptuFee) || 0;
                     const installment = linkedLiab ? Number(linkedLiab.installmentAmount) : 0;
@@ -1579,7 +1780,11 @@ const Assets: React.FC = () => {
                             <div className="space-y-3 pt-2 text-[11px] text-slate-500">
                               <div className="flex justify-between">
                                 <span>Aluguel Líquido:</span>
-                                <span className="font-bold text-emerald-600">{isRented ? formatCurrency(rental) : 'Não Alugado'}</span>
+                                <span className="font-bold text-emerald-600">
+                                  {isRented 
+                                    ? `${formatCurrency(rental)}${rentalType === 'short_stay' ? ' (Short Stay)' : ''}` 
+                                    : 'Não Alugado'}
+                                </span>
                               </div>
                               <div className="flex justify-between">
                                 <span>Prestação Financiamento:</span>
@@ -2162,8 +2367,9 @@ const Assets: React.FC = () => {
                         checked={formData.isSold}
                         onChange={(e) => setFormData({ ...formData, isSold: e.target.checked })}
                       />
-                      Já foi Vendido?
+                      Marcar como Vendido
                     </label>
+
                     {formData.isSold && (
                       <div className="col-span-2">
                         <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Venda (R$)</label>
@@ -2186,7 +2392,7 @@ const Assets: React.FC = () => {
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.propertyStage}
-                          onChange={(e) => setFormData({ ...formData, propertyStage: e.target.value as any })}
+                          onChange={(e) => setFormData({ ...formData, propertyStage: e.target.value as any, isRented: false })}
                         >
                           <option value="PRONTO">Pronto</option>
                           <option value="PLANTA">Na Planta (Em Construção)</option>
@@ -2208,14 +2414,45 @@ const Assets: React.FC = () => {
                       <div className="space-y-3 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                         <div className="grid grid-cols-3 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Aluguel (R$)</label>
-                            <input
-                              type="number"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
-                              value={formData.rentalIncome}
-                              onChange={(e) => setFormData({ ...formData, rentalIncome: e.target.value })}
-                            />
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Tipo de Aluguel</label>
+                            <select
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
+                              value={formData.rentalType}
+                              onChange={(e) => setFormData({ ...formData, rentalType: e.target.value as any })}
+                            >
+                              <option value="anual">Locação Anual</option>
+                              <option value="short_stay">Short Stay (Temporada)</option>
+                            </select>
                           </div>
+                          {formData.rentalType === 'anual' ? (
+                            <>
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Aluguel (R$)</label>
+                                <input
+                                  type="number"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
+                                  value={formData.rentalIncome}
+                                  onChange={(e) => setFormData({ ...formData, rentalIncome: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Data Inicial</label>
+                                <input
+                                  type="date"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
+                                  value={formData.rentalDate}
+                                  onChange={(e) => setFormData({ ...formData, rentalDate: e.target.value })}
+                                />
+                              </div>
+                            </>
+                          ) : (
+                            <div className="col-span-2 flex items-center pt-5">
+                              <span className="text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 rounded p-1 font-bold">Locações devem ser inseridas no Extrato do Card.</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Condomínio (R$)</label>
                             <input
@@ -2387,7 +2624,14 @@ const Assets: React.FC = () => {
                   <select
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                     value={realEstateManageForm.propertyType}
-                    onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, propertyType: e.target.value as any })}
+                    onChange={(e) => {
+                      const newType = e.target.value as 'PLANTA' | 'PRONTO';
+                      setRealEstateManageForm({ 
+                        ...realEstateManageForm, 
+                        propertyType: newType,
+                        isRented: newType === 'PRONTO' ? false : realEstateManageForm.isRented
+                      });
+                    }}
                   >
                     <option value="PRONTO">Pronto / Entregue</option>
                     <option value="PLANTA">Na Planta (Em Construção)</option>
@@ -2405,18 +2649,208 @@ const Assets: React.FC = () => {
                 )}
               </div>
 
+              {/* Delivery Settle Wizard (Detail 5) */}
+              {(() => {
+                const asset = physicalAssets.find(p => p.id === selectedLiabilityForManage?.linkedAssetId);
+                const wasPlanta = asset?.metadata?.propertyStage === 'PLANTA';
+                const isTransitioningToPronto = wasPlanta && realEstateManageForm.propertyType === 'PRONTO';
+
+                if (!isTransitioningToPronto) return null;
+
+                return (
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 space-y-3 animate-in slide-in-from-top-2">
+                    <div className="flex items-center gap-2 text-indigo-800 font-bold text-xs uppercase tracking-wider">
+                      <Sparkles size={16} />
+                      Quitação do Saldo Devedor
+                    </div>
+                    <p className="text-[10px] text-indigo-600 font-bold">
+                      O imóvel passou de "Na Planta" para "Pronto". Defina como quitará o Saldo Devedor final das chaves.
+                    </p>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[8px] font-black text-indigo-700 uppercase tracking-widest mb-1">Valor Saldo Devedor (R$)</label>
+                        <input
+                          type="number"
+                          className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800"
+                          placeholder="0.00"
+                          value={realEstateManageForm.deliveryBalance}
+                          onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, deliveryBalance: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-black text-indigo-700 uppercase tracking-widest mb-1">Forma de Pagamento</label>
+                        <select
+                          className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800"
+                          value={realEstateManageForm.deliveryPaymentMethod}
+                          onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, deliveryPaymentMethod: e.target.value as any })}
+                        >
+                          <option value="A_VISTA">À Vista (Recursos Próprios)</option>
+                          <option value="FINANCIAMENTO">Financiamento Bancário</option>
+                          <option value="CONSORCIO">Contemplar Consórcio Existente</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {realEstateManageForm.deliveryPaymentMethod === 'CONSORCIO' && (
+                      <div className="animate-in slide-in-from-top-2">
+                        <label className="block text-[8px] font-black text-indigo-700 uppercase tracking-widest mb-1">Selecione o Consórcio</label>
+                        <select
+                          className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800"
+                          value={realEstateManageForm.selectedConsortiumId}
+                          onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, selectedConsortiumId: e.target.value })}
+                        >
+                          <option value="">-- Escolha um consórcio --</option>
+                          {liabilities
+                            .filter(l => l.type === 'CONSORTIUM' && !l.is_archived)
+                            .map(c => (
+                              <option key={c.id} value={c.id}>
+                                {c.name} (Saldo: R$ {c.remainingBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {realEstateManageForm.deliveryPaymentMethod === 'FINANCIAMENTO' && (
+                      <div className="space-y-3 pt-2 border-t border-indigo-100/50 animate-in slide-in-from-top-2">
+                        <div>
+                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Nome da Dívida</label>
+                          <input
+                            type="text"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 outline-none"
+                            placeholder="Ex: Financiamento Piazza do Bosque"
+                            value={realEstateManageForm.financingName}
+                            onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, financingName: e.target.value })}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipo de Dívida</label>
+                            <select
+                              disabled
+                              className="w-full bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-500"
+                              value="MORTGAGE"
+                            >
+                              <option value="MORTGAGE">Financiamento Imobiliário</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Bem Vinculado</label>
+                            <select
+                              disabled
+                              className="w-full bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-500"
+                            >
+                              <option>{asset?.name}</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Original Total (R$)</label>
+                            <input
+                              type="number"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900"
+                              placeholder="0.00"
+                              value={realEstateManageForm.financingOriginalTotal}
+                              onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, financingOriginalTotal: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-black text-rose-500 uppercase tracking-widest mb-1">Saldo Devedor Atual (R$)</label>
+                            <input
+                              type="number"
+                              className="w-full bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-900 outline-none focus:border-rose-400"
+                              placeholder="0.00"
+                              value={realEstateManageForm.deliveryBalance}
+                              onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, deliveryBalance: e.target.value })}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Parcela (R$)</label>
+                            <input
+                              type="number"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900"
+                              placeholder="0.00"
+                              value={realEstateManageForm.financingInstallment}
+                              onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, financingInstallment: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Parcelas Rest.</label>
+                            <input
+                              type="number"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900"
+                              placeholder="Ex: 180"
+                              value={realEstateManageForm.financingInstallmentsCount}
+                              onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, financingInstallmentsCount: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Dia Venc.</label>
+                            <input
+                              type="number"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900"
+                              placeholder="Ex: 25"
+                              value={realEstateManageForm.financingDueDay}
+                              onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, financingDueDay: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {realEstateManageForm.propertyType === 'PRONTO' && realEstateManageForm.isRented && (
                 <div className="space-y-3 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Aluguel (R$)</label>
-                      <input
-                        type="number"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
-                        value={realEstateManageForm.rentalIncome}
-                        onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, rentalIncome: e.target.value })}
-                      />
+                      <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Tipo de Aluguel</label>
+                      <select
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold"
+                        value={realEstateManageForm.rentalType}
+                        onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, rentalType: e.target.value as any })}
+                      >
+                        <option value="anual">Locação Anual</option>
+                        <option value="short_stay">Short Stay (Temporada)</option>
+                      </select>
                     </div>
+                    {realEstateManageForm.rentalType === 'anual' ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Aluguel (R$)</label>
+                          <input
+                            type="number"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
+                            value={realEstateManageForm.rentalIncome}
+                            onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, rentalIncome: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Data Inicial</label>
+                          <input
+                            type="date"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
+                            value={realEstateManageForm.rentalDate}
+                            onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, rentalDate: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center pt-3">
+                        <span className="text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 rounded p-1 font-bold">Lançamentos via Extrato do Card.</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Condomínio (R$)</label>
                       <input
