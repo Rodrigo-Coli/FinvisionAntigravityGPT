@@ -40,6 +40,52 @@ export async function handleHealth(req: any, res: any) {
       };
     }
 
+    // Obter detalhes do Webhook configurado no Evolution API
+    try {
+      const cleanUrl = String(evolutionUrl).endsWith('/') ? String(evolutionUrl).slice(0, -1) : evolutionUrl;
+      const response = await fetch(`${cleanUrl}/webhook/find/${evolutionInstance}`, {
+        method: 'GET',
+        headers: { 'apikey': evolutionKey as string }
+      });
+      if (response.ok) {
+        diagnostics.webhookDetails = await response.json().catch(() => null);
+      } else {
+        diagnostics.webhookDetails = { error: `HTTP ${response.status} finding webhook` };
+      }
+    } catch (err: any) {
+      diagnostics.webhookDetails = { error: err.message };
+    }
+
+    // Configurar o webhook se explicitamente solicitado via query param (?setWebhook=true)
+    if (req.query.setWebhook) {
+      try {
+        const cleanUrl = String(evolutionUrl).endsWith('/') ? String(evolutionUrl).slice(0, -1) : evolutionUrl;
+        const response = await fetch(`${cleanUrl}/webhook/set/${evolutionInstance}`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'apikey': evolutionKey as string
+          },
+          body: JSON.stringify({
+            webhook: {
+              enabled: true,
+              url: 'https://finvision-antigravity-gpt.vercel.app/api/whatsapp-webhook',
+              webhookByEvents: false,
+              webhookBase64: false,
+              events: ['MESSAGES_UPSERT']
+            }
+          })
+        });
+        if (response.ok) {
+          diagnostics.webhookSetup = await response.json().catch(() => null);
+        } else {
+          diagnostics.webhookSetup = { error: `HTTP ${response.status} setting webhook` };
+        }
+      } catch (err: any) {
+        diagnostics.webhookSetup = { error: err.message };
+      }
+    }
+
     // Opcional: Testar o envio real se o parametro testWhatsApp estiver presente
     if (req.query.testWhatsApp) {
       try {
