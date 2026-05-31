@@ -89,7 +89,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
       </aside>
 
       {/* Mobile Header */}
-      <nav className="lg:hidden bg-white border-b border-slate-100 h-16 flex items-center justify-between px-4 sticky top-0 z-50">
+      <nav className="lg:hidden bg-white border-b border-slate-100 h-16 flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50">
         <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
           className="p-2 text-slate-500"

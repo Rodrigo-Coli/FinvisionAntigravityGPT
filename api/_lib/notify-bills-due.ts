@@ -25,12 +25,19 @@ if (vapidPub && vapidPriv) {
 
 async function sendWhatsApp(number: string, text: string) {
   if (process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY && process.env.EVOLUTION_INSTANCE) {
-    await fetch(`${process.env.EVOLUTION_API_URL}/message/sendText/${process.env.EVOLUTION_INSTANCE}`, {
+    const cleanBaseUrl = process.env.EVOLUTION_API_URL.endsWith('/') 
+      ? process.env.EVOLUTION_API_URL.slice(0, -1) 
+      : process.env.EVOLUTION_API_URL;
+    await fetch(`${cleanBaseUrl}/message/sendText/${process.env.EVOLUTION_INSTANCE}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY as string },
       body: JSON.stringify({ 
         number: number, 
-        text: text
+        options: {
+          delay: 1200,
+          presence: 'composing'
+        },
+        textMessage: { text: text }
       })
     }).catch(err => console.error('Evolution API Error:', err));
   }
@@ -86,11 +93,7 @@ export async function handleNotifyBillsDue(req: any, res: any) {
           statusLabel = `📅 Venc: ${dateFmt}`;
         }
         
-        const rawAcc = b.accounts;
-        const accName = Array.isArray(rawAcc) ? rawAcc[0]?.institution : rawAcc?.institution;
-        const accountLabel = accName ? ` (Conta: *${accName}*)` : '';
-        
-        msg += `• *${b.description}*\n  └─ Valor: *R$ ${Number(b.amount).toFixed(2)}*\n  └─ Status: *${statusLabel}*${accountLabel}\n\n`;
+        msg += `• *${b.description}*\n  └─ Valor: *R$ ${Number(b.amount).toFixed(2)}*\n  └─ Status: *${statusLabel}*\n\n`;
       });
       msg += `Organize suas finanças com tranquilidade! 🚀`;
 

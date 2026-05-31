@@ -620,6 +620,10 @@ const SettingsPage: React.FC = () => {
                         }
                         const permission = await requestNotificationPermission();
                         if (permission === 'granted') {
+                          const sub = await subscribeUserToPush();
+                          if (sub) {
+                            await updateSetting('push_subscription', sub);
+                          }
                           await updateSetting('push_enabled', true);
                           await showLocalNotification('FinVision Pro ✓', 'Notificações ativadas com sucesso! Você será alertado sobre vencimentos.', { url: '/', tag: 'welcome' });
                         } else {

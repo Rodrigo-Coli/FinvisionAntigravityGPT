@@ -138,7 +138,7 @@ const App: React.FC = () => {
                     <FloatingActions />
                   </>
                 )}
-                <main className="flex-grow overflow-x-hidden min-w-0 flex flex-col">
+                <main className={`flex-grow overflow-x-hidden min-w-0 flex flex-col ${session && profile ? 'pt-16 lg:pt-0' : ''}`}>
                   {session && profile && <DemoBanner />}
                   <Routes>
                     <Route path="/demo" element={<DemoMode />} />

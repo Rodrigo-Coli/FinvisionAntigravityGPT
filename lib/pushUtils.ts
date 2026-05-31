@@ -134,7 +134,44 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
 export async function subscribeUserToPush(): Promise<PushSubscription | null> {
   const permission = await requestNotificationPermission();
   if (permission !== 'granted') return null;
-  // Por enquanto retorna null (sem VAPID configurado), mas não quebra o fluxo
-  console.info('[FinVision] Push VAPID não configurado. Usando notificações locais.');
-  return null;
+
+  try {
+    const sw = await getSwRegistration();
+    if (!sw) {
+      console.warn('[FinVision SW] Service Worker não registrado.');
+      return null;
+    }
+
+    // 1. Buscar chave pública VAPID do backend
+    const res = await fetch('/api/vapid-public-key');
+    if (!res.ok) {
+      console.warn('[FinVision Push] Falha ao obter chave VAPID do servidor.');
+      return null;
+    }
+    const { publicKey } = await res.json();
+    if (!publicKey) {
+      console.warn('[FinVision Push] Chave pública VAPID não configurada no servidor.');
+      return null;
+    }
+
+    // 2. Inscrever o SW para push notifications
+    const applicationServerKey = urlBase64ToUint8Array(publicKey);
+    let subscription = await sw.pushManager.getSubscription();
+
+    // Se já tiver subscrição antiga, desinscreve para garantir compatibilidade
+    if (subscription) {
+      await subscription.unsubscribe();
+    }
+
+    subscription = await sw.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: applicationServerKey as any
+    });
+
+    console.info('[FinVision Push] Usuário inscrito para push notifications com sucesso!');
+    return subscription;
+  } catch (err: any) {
+    console.error('[FinVision Push] Falha ao inscrever para push:', err.message || err);
+    return null;
+  }
 }
