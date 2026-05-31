@@ -179,7 +179,7 @@ const CreditCardsPage: React.FC = () => {
     const params = new URLSearchParams(location.search);
     if (params.get('add') === 'true') {
       setShowAddTxModal(true);
-      navigate('/credit-cards', { replace: true });
+      navigate('/cards', { replace: true });
     }
   }, [location.search]);
 
