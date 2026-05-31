@@ -1718,18 +1718,18 @@ const Assets: React.FC = () => {
                   <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
                   <Zap size={14} className="text-brand-400" />
                 </div>
-                <div className="mt-2 space-y-1">
-                  <div className="flex justify-between text-[10px] text-slate-400">
+                <div className="mt-1 space-y-0.5">
+                  <div className="flex justify-between text-[9px] text-slate-400">
                     <span>Recebimentos:</span>
                     <span className="font-bold text-emerald-400">{formatCurrency(sustainabilitySummary.totalInflow)}</span>
                   </div>
-                  <div className="flex justify-between text-[10px] text-slate-400">
+                  <div className="flex justify-between text-[9px] text-slate-400">
                     <span>Despesas:</span>
                     <span className="font-bold text-rose-400">{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
                   </div>
-                  <div className="flex justify-between text-[11px] border-t border-slate-800 pt-1 mt-1 font-black">
-                    <span>Saldo:</span>
-                    <span className={sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                  <div className="flex justify-between items-baseline border-t border-slate-800 pt-1 mt-1">
+                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Saldo</span>
+                    <span className={`text-base font-black tracking-tight italic ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
                     </span>
                   </div>
