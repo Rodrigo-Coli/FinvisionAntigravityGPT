@@ -1364,6 +1364,183 @@ const Assets: React.FC = () => {
   const totalAssets = totalPhysical + totalFinancial;
   const totalNetWorth = totalAssets - totalLiabilities;
 
+  // Complete, deep executive financial KPIs unifications (excluding archived items)
+  const overviewData = useMemo(() => {
+    const activePhys = activePhysicalAssets;
+    const activeLiab = activeLiabilities;
+    const activeTxs = transactions;
+
+    // 1. INVESTIMENTO IMOBILIÁRIO SUMS
+    const plantaAssets = activePhys.filter(p => p.category === 'REAL_ESTATE' && p.metadata?.propertyStage === 'PLANTA');
+    const prontoAssets = activePhys.filter(p => p.category === 'REAL_ESTATE' && p.metadata?.propertyStage !== 'PLANTA');
+
+    const plantaValue = plantaAssets.reduce((sum, p) => sum + p.estimatedValue, 0);
+    const plantaLiabs = activeLiab.filter(l => l.linkedAssetId && plantaAssets.some(p => p.id === l.linkedAssetId));
+    const plantaInstallments = plantaLiabs.reduce((sum, l) => sum + (l.installmentAmount || 0), 0);
+    
+    const plantaPaid = activeTxs.filter(t => 
+      t.type === 'EXPENSE' && 
+      t.isPaid && 
+      plantaAssets.some(p => p.id === t.metadata?.linked_asset_id)
+    ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
+
+    const plantaLiabRemaining = plantaLiabs.reduce((sum, l) => sum + l.remainingBalance, 0);
+    const plantaBalloonsRemaining = plantaAssets.reduce((sum, p) => {
+      const balloonsList = p.metadata?.balloons || [];
+      return sum + balloonsList.reduce((acc: number, b: any) => acc + (Number(b.amount) || 0), 0);
+    }, 0);
+    const plantaRemainingToPay = plantaLiabRemaining + plantaBalloonsRemaining;
+
+    const plantaAdditionalExpenses = activeTxs.filter(t => 
+      t.type === 'EXPENSE' && 
+      !t.is_recurring && 
+      t.metadata?.type !== 'delivery_quitacao' &&
+      plantaAssets.some(p => p.id === t.metadata?.linked_asset_id)
+    ).reduce((sum, t) => sum + t.amount, 0);
+
+    const prontoValue = prontoAssets.reduce((sum, p) => sum + p.estimatedValue, 0);
+    const prontoLiabs = activeLiab.filter(l => l.linkedAssetId && prontoAssets.some(p => p.id === l.linkedAssetId));
+    const prontoInstallments = prontoLiabs.reduce((sum, l) => sum + (l.installmentAmount || 0), 0);
+    
+    const prontoOperatingCosts = prontoAssets.reduce((sum, p) => {
+      const meta = p.metadata || {};
+      let cost = 0;
+      if (!meta.inquilinoPaysCondo && meta.condoFee) cost += Number(meta.condoFee);
+      if (!meta.inquilinoPaysIPTU && meta.iptuFee) cost += Number(meta.iptuFee);
+      return sum + cost;
+    }, 0);
+
+    const prontoPaid = activeTxs.filter(t => 
+      t.type === 'EXPENSE' && 
+      t.isPaid && 
+      prontoAssets.some(p => p.id === t.metadata?.linked_asset_id)
+    ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
+
+    const prontoRemainingToPay = prontoLiabs.reduce((sum, l) => sum + l.remainingBalance, 0);
+
+    const prontoReceived = activeTxs.filter(t => 
+      t.type === 'INCOME' && 
+      t.isPaid && 
+      (t.metadata?.type === 'rental_income' || t.metadata?.type === 'short_stay_income') &&
+      prontoAssets.some(p => p.id === t.metadata?.linked_asset_id)
+    ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
+
+    const prontoNetFlow = prontoReceived - (prontoPaid + prontoOperatingCosts);
+
+    // 2. BENS FÍSICOS SUMS (Uso vs Investimento, excluding REAL_ESTATE)
+    const physicalUso = activePhys.filter(p => p.category !== 'REAL_ESTATE' && p.metadata?.purpose === 'uso');
+    const physicalInv = activePhys.filter(p => p.category !== 'REAL_ESTATE' && p.metadata?.purpose === 'investimento');
+
+    const usoAcquisitionTotal = physicalUso.reduce((sum, p) => sum + (Number(p.metadata?.purchaseValue) || 0), 0);
+    const usoCurrentValueTotal = physicalUso.reduce((sum, p) => sum + p.estimatedValue, 0);
+    const usoAgioDesagio = usoCurrentValueTotal - usoAcquisitionTotal;
+    const usoAgioDesagioPercent = usoAcquisitionTotal > 0 ? (usoAgioDesagio / usoAcquisitionTotal) * 100 : 0;
+
+    const invAcquisitionTotal = physicalInv.reduce((sum, p) => sum + (Number(p.metadata?.purchaseValue) || 0), 0);
+    const invEstimatedValue = physicalInv.reduce((sum, p) => sum + p.estimatedValue, 0);
+    const invBrokerFees = physicalInv.reduce((sum, p) => sum + (Number(p.metadata?.brokerFee) || 0), 0);
+    
+    const invExtraExpenses = activeTxs.filter(t => 
+      t.type === 'EXPENSE' && 
+      physicalInv.some(p => p.id === t.metadata?.linked_asset_id)
+    ).reduce((sum, t) => sum + t.amount, 0);
+
+    const invNetProfit = invEstimatedValue - (invAcquisitionTotal + invBrokerFees + invExtraExpenses);
+    const invProfitPercent = (invAcquisitionTotal + invBrokerFees + invExtraExpenses) > 0 
+      ? (invNetProfit / (invAcquisitionTotal + invBrokerFees + invExtraExpenses)) * 100 
+      : 0;
+
+    // 3. INVESTIMENTOS FINANCEIROS
+    const totalFinancialFunds = totalFinancial;
+    
+    const financialAllocation = brokers.map(b => {
+      const type = b.metadata?.productType || 'Investimentos';
+      return { type, balance: b.balance };
+    });
+    
+    const allocationGrouped = financialAllocation.reduce((acc: any, curr) => {
+      acc[curr.type] = (acc[curr.type] || 0) + curr.balance;
+      return acc;
+    }, {});
+
+    const allocationList = Object.keys(allocationGrouped).map(type => ({
+      type,
+      balance: allocationGrouped[type],
+      percentage: totalFinancialFunds > 0 ? Math.round((allocationGrouped[type] / totalFinancialFunds) * 100) : 0
+    })).sort((a,b) => b.balance - a.balance);
+
+    const currentMonthStr = new Date().toISOString().substring(0, 7);
+    const currentMonthYield = activeTxs.filter(t => 
+      t.type === 'INCOME' && 
+      (t.category === 'Rendimentos' || t.category === 'Investimentos' || t.metadata?.type === 'investment_yield') &&
+      t.date.substring(0, 7) === currentMonthStr
+    ).reduce((sum, t) => sum + t.amount, 0);
+
+    const allYieldTxs = activeTxs.filter(t => 
+      t.type === 'INCOME' && 
+      (t.category === 'Rendimentos' || t.category === 'Investimentos' || t.metadata?.type === 'investment_yield')
+    );
+    const uniqueMonths = Array.from(new Set(allYieldTxs.map(t => t.date.substring(0, 7))));
+    const averageMonthlyYield = uniqueMonths.length > 0 ? allYieldTxs.reduce((sum, t) => sum + t.amount, 0) / uniqueMonths.length : 0;
+
+    // 4. PASSIVOS E DÍVIDAS (Consórcios vs Financiamentos)
+    const consortiums = activeLiab.filter(l => l.type === 'CONSORTIUM');
+    const financings = activeLiab.filter(l => l.type !== 'CONSORTIUM');
+
+    const consInstallments = consortiums.reduce((sum, l) => sum + (l.installmentAmount || 0), 0);
+    const consContracted = consortiums.reduce((sum, l) => sum + l.totalAmount, 0);
+    const consPaid = consortiums.reduce((sum, l) => sum + (l.totalAmount - l.remainingBalance), 0);
+    const consRemaining = consortiums.reduce((sum, l) => sum + l.remainingBalance, 0);
+    const consLances = consortiums.reduce((sum, l) => sum + (Number(l.metadata?.lanceValue) || 0), 0);
+    const consUtilized = consortiums.filter(l => l.linkedAssetId).reduce((sum, l) => sum + l.remainingBalance, 0);
+    const consToContemplate = consortiums.filter(l => !l.linkedAssetId).reduce((sum, l) => sum + l.remainingBalance, 0);
+
+    const finInstallments = financings.reduce((sum, l) => sum + (l.installmentAmount || 0), 0);
+    const finContracted = financings.reduce((sum, l) => sum + l.totalAmount, 0);
+    const finPaid = financings.reduce((sum, l) => sum + (l.totalAmount - l.remainingBalance), 0);
+    const finRemaining = financings.reduce((sum, l) => sum + l.remainingBalance, 0);
+
+    return {
+      plantaValue,
+      plantaInstallments,
+      plantaPaid,
+      plantaRemainingToPay,
+      plantaAdditionalExpenses,
+      prontoValue,
+      prontoInstallments,
+      prontoOperatingCosts,
+      prontoPaid,
+      prontoRemainingToPay,
+      prontoReceived,
+      prontoNetFlow,
+      usoAcquisitionTotal,
+      usoCurrentValueTotal,
+      usoAgioDesagio,
+      usoAgioDesagioPercent,
+      invAcquisitionTotal,
+      invEstimatedValue,
+      invBrokerFees,
+      invExtraExpenses,
+      invNetProfit,
+      invProfitPercent,
+      totalFinancialFunds,
+      allocationList,
+      currentMonthYield,
+      averageMonthlyYield,
+      consInstallments,
+      consContracted,
+      consPaid,
+      consRemaining,
+      consLances,
+      consUtilized,
+      consToContemplate,
+      finInstallments,
+      finContracted,
+      finPaid,
+      finRemaining
+    };
+  }, [activePhysicalAssets, activeLiabilities, brokers, transactions, totalFinancial]);
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen space-y-4">
@@ -1377,18 +1554,12 @@ const Assets: React.FC = () => {
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 pt-8 pb-36 space-y-8 animate-in fade-in duration-500">
       
       {/* HEADER SECTION */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Patrimônio Líquido</h1>
           <p className="text-sm text-slate-400 font-medium">Bens físicos, investimentos inteligentes e passivos consolidados.</p>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={() => setShowWizardModal(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-white border border-brand-200 text-brand-600 rounded-xl text-sm font-bold shadow-sm hover:bg-brand-50 hover:scale-105 transition-transform active:scale-95"
-          >
-            <Building2 size={18} /> Aquisição Imobiliária
-          </button>
           <button
             onClick={() => {
               resetAssetForm();
@@ -1400,6 +1571,26 @@ const Assets: React.FC = () => {
             <Plus size={18} /> Novo Ativo
           </button>
         </div>
+      </div>
+
+      {/* NAVIGATION TABS - IMMEDIATELY ACCESSIBLE AT TOP */}
+      <div className="flex gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full max-w-full overflow-x-auto scrollbar-hide">
+        {[
+          { id: 'overview', label: 'Visão Geral', icon: <LayoutGrid size={16} /> },
+          { id: 'realestate', label: 'Investimento Imobiliário', icon: <Building2 size={16} /> },
+          { id: 'physical', label: 'Bens Físicos', icon: <Box size={16} /> },
+          { id: 'investments', label: 'Investimentos & Empréstimos', icon: <TrendingUp size={16} /> },
+          { id: 'liabilities', label: 'Passivos (Dívidas)', icon: <Landmark size={16} /> }
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveView(tab.id as any)}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${activeView === tab.id ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* SUMMARY BANNER */}
@@ -1439,86 +1630,400 @@ const Assets: React.FC = () => {
         </div>
       </div>
 
-      {/* NAVIGATION TABS */}
-      <div className="flex gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full max-w-full overflow-x-auto scrollbar-hide">
-        {[
-          { id: 'overview', label: 'Visão Geral', icon: <LayoutGrid size={16} /> },
-          { id: 'realestate', label: 'Investimento Imobiliário', icon: <Building2 size={16} /> },
-          { id: 'physical', label: 'Bens Físicos', icon: <Box size={16} /> },
-          { id: 'investments', label: 'Investimentos & Empréstimos', icon: <TrendingUp size={16} /> },
-          { id: 'liabilities', label: 'Passivos (Dívidas)', icon: <Landmark size={16} /> }
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveView(tab.id as any)}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${activeView === tab.id ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {/* CONTENT AREA */}
 
       {/* CONTENT AREA */}
       <div className="animate-in fade-in duration-700">
         
         {/* OVERVIEW VIEW */}
         {activeView === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white p-10 rounded-[32px] border border-slate-100 shadow-sm space-y-8">
-              <h3 className="font-bold text-slate-900 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center"><PieChart size={18} /></div>
-                Alocação Patrimonial
-              </h3>
-              <div className="flex flex-col sm:flex-row items-center gap-12">
-                <div className="relative w-40 h-40 shrink-0">
-                  <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                    <circle cx="18" cy="18" r="16" fill="none" className="stroke-slate-50" strokeWidth="3" />
-                    <circle cx="18" cy="18" r="16" fill="none" className="stroke-brand-600" strokeWidth="3" strokeDasharray={`${totalAssets > 0 ? Math.round((totalFinancial / totalAssets) * 100) : 0} 100`} />
-                    <circle cx="18" cy="18" r="16" fill="none" className="stroke-emerald-500" strokeWidth="3" strokeDasharray={`${totalAssets > 0 ? Math.round((totalPhysical / totalAssets) * 100) : 0} 100`} strokeDashoffset={`-${totalAssets > 0 ? Math.round((totalFinancial / totalAssets) * 100) : 0}`} />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-xl font-bold text-slate-900">100%</span>
+          <div className="space-y-8 animate-in fade-in duration-500">
+            {/* COMPACT TOTALS GRID (6 Cards) */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {/* Fluxo Mensal */}
+              <div className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group hover:scale-[1.02] transition-all">
+                <div className="absolute -right-4 -bottom-4 w-12 h-12 bg-white/5 rounded-full pointer-events-none" />
+                <div className="flex justify-between items-start">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
+                  <Zap size={14} className="text-brand-400" />
+                </div>
+                <div className="mt-2">
+                  <h4 className={`text-base font-black tracking-tight italic ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
+                  </h4>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Autosuf. {sustainabilitySummary.selfSustainabilityPercent}%</span>
                   </div>
                 </div>
-                <div className="w-full space-y-4">
-                  <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl group cursor-default">
-                    <div className="flex items-center gap-3">
-                      <div className="w-2.5 h-2.5 bg-brand-600 rounded-full" />
-                      <span className="text-xs font-bold text-slate-600 uppercase">Investimentos Ativos</span>
-                    </div>
-                    <span className="text-sm font-bold text-slate-900">{totalAssets ? Math.round((totalFinancial / totalAssets) * 100) : 0}%</span>
-                  </div>
-                  <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl group cursor-default">
-                    <div className="flex items-center gap-3">
-                      <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full" />
-                      <span className="text-xs font-bold text-slate-600 uppercase">Bens Físicos</span>
-                    </div>
-                    <span className="text-sm font-bold text-slate-900">{totalAssets ? Math.round((totalPhysical / totalAssets) * 100) : 0}%</span>
-                  </div>
-                  <div className="flex justify-between items-center p-4 bg-red-50/50 rounded-2xl group cursor-default">
-                    <div className="flex items-center gap-3">
-                      <div className="w-2.5 h-2.5 bg-red-500 rounded-full" />
-                      <span className="text-xs font-bold text-red-600 uppercase">Comprometimento em Dívidas</span>
-                    </div>
-                    <span className="text-sm font-bold text-red-600">{totalAssets ? Math.round((totalLiabilities / totalAssets) * 100) : 0}%</span>
-                  </div>
+              </div>
+
+              {/* Patrimônio Líquido */}
+              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+                <div className="flex justify-between items-start">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Patrimônio Real</span>
+                  <TrendingUp size={14} className="text-emerald-500" />
+                </div>
+                <div className="mt-2">
+                  <h4 className="text-base font-black text-slate-900 tracking-tight italic">
+                    {formatCurrency(totalNetWorth)}
+                  </h4>
+                  <span className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest">Líquido</span>
+                </div>
+              </div>
+
+              {/* Investimento Imobiliário */}
+              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+                <div className="flex justify-between items-start">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Imobiliário</span>
+                  <Building2 size={14} className="text-brand-500" />
+                </div>
+                <div className="mt-2">
+                  <h4 className="text-base font-black text-slate-900 tracking-tight italic">
+                    {formatCurrency(overviewData.plantaValue + overviewData.prontoValue)}
+                  </h4>
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Planta + Pronto</span>
+                </div>
+              </div>
+
+              {/* Bens Físicos */}
+              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+                <div className="flex justify-between items-start">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Bens Físicos</span>
+                  <Box size={14} className="text-brand-500" />
+                </div>
+                <div className="mt-2">
+                  <h4 className="text-base font-black text-slate-900 tracking-tight italic">
+                    {formatCurrency(overviewData.usoCurrentValueTotal + overviewData.invEstimatedValue)}
+                  </h4>
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Uso + Inv.</span>
+                </div>
+              </div>
+
+              {/* Investimentos Financeiros */}
+              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+                <div className="flex justify-between items-start">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Financeiro</span>
+                  <PieChart size={14} className="text-brand-500" />
+                </div>
+                <div className="mt-2">
+                  <h4 className="text-base font-black text-brand-600 tracking-tight italic">
+                    {formatCurrency(overviewData.totalFinancialFunds)}
+                  </h4>
+                  <span className="text-[8px] font-bold text-brand-500 uppercase tracking-widest">Corretoras</span>
+                </div>
+              </div>
+
+              {/* Passivos e Dívidas */}
+              <div className="bg-red-50/30 border border-red-100/50 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+                <div className="flex justify-between items-start">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-red-500">Dívidas</span>
+                  <Landmark size={14} className="text-red-500" />
+                </div>
+                <div className="mt-2">
+                  <h4 className="text-base font-black text-red-600 tracking-tight italic">
+                    {formatCurrency(totalLiabilities)}
+                  </h4>
+                  <span className="text-[8px] font-bold text-red-400 uppercase tracking-widest">Saldo Devedor</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white p-10 rounded-[32px] border border-slate-100 shadow-sm space-y-8">
-              <h3 className="font-bold text-slate-900 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center"><Target size={18} /></div>
-                Objetivos Patrimoniais
-              </h3>
-              <div className="space-y-4">
-                <p className="text-xs text-slate-400 font-medium italic">Seus investimentos estão crescendo de forma saudável!</p>
-                <div className="p-5 bg-brand-50 border border-brand-100 rounded-2xl">
-                  <h4 className="text-xs font-black text-brand-800 uppercase tracking-widest mb-1">Preservação de Capital</h4>
-                  <p className="text-[11px] text-brand-600 leading-relaxed">O valor acumulado em rendimentos mensais cobre a totalidade de custos operacionais com passivos. Continue alocando recursos em ativos inteligentes.</p>
+            {/* 4 DETAILED ANALYTICS SECTIONS (2x2 Grid) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              
+              {/* Bloco A: Investimento Imobiliário */}
+              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
+                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                  <h3 className="font-bold text-slate-900 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
+                      <Building2 size={18} />
+                    </div>
+                    Investimento Imobiliário (Planta vs Entregue)
+                  </h3>
+                  <span className="px-2.5 py-1 bg-brand-50 text-brand-600 text-[10px] font-black uppercase tracking-widest rounded-lg">
+                    Real Estate
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Planta Stage */}
+                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
+                      🏗️ Na Planta / Em Obras
+                    </p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Valor Total dos Ativos:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaValue)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Parcela Mensal:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaInstallments)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Amortizado/Pago:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaPaid)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Restante a Pagar:</span>
+                        <span className="font-bold text-brand-600">{formatCurrency(overviewData.plantaRemainingToPay)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Despesas Extras/Balões:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaAdditionalExpenses)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Pronto Stage */}
+                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
+                      🏢 Imóveis Entregues
+                    </p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Valor Estimado:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoValue)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Prestação Financiamento:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoInstallments)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Custos Operacionais:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoOperatingCosts)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Total Pago Amortização:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoPaid)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Aluguéis Recebidos:</span>
+                        <span className="font-bold text-emerald-600">{formatCurrency(overviewData.prontoReceived)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                        <span className="text-slate-600 font-bold">Fluxo Histórico Líquido:</span>
+                        <span className={`font-black ${overviewData.prontoNetFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {overviewData.prontoNetFlow >= 0 ? '+' : ''}{formatCurrency(overviewData.prontoNetFlow)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
+
+              {/* Bloco B: Bens Físicos */}
+              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
+                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                  <h3 className="font-bold text-slate-900 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
+                      <Box size={18} />
+                    </div>
+                    Bens Físicos (Uso vs Investimento)
+                  </h3>
+                  <span className="px-2.5 py-1 bg-brand-50 text-brand-600 text-[10px] font-black uppercase tracking-widest rounded-lg">
+                    Personal Assets
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Para Uso */}
+                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
+                      🚗 Para Uso Pessoal
+                    </p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Custo de Aquisição:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.usoAcquisitionTotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Valor Estimado FIPE:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.usoCurrentValueTotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                        <span className="text-slate-600 font-bold">Ágio / Deságio:</span>
+                        <span className={`font-black flex items-center gap-1 ${overviewData.usoAgioDesagio >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {overviewData.usoAgioDesagio >= 0 ? '+' : ''}{formatCurrency(overviewData.usoAgioDesagio)}
+                          <span className="text-[9px] font-bold">({overviewData.usoAgioDesagioPercent.toFixed(1)}%)</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Para Investimento */}
+                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
+                      📈 Para Investimento / Venda
+                    </p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Custo de Aquisição:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.invAcquisitionTotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Custos e Reformas:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.invExtraExpenses)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Comissão Garagem/Corretor:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.invBrokerFees)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Valor Estimado Atual:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.invEstimatedValue)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                        <span className="text-slate-600 font-bold">Lucro Líquido Est.:</span>
+                        <span className={`font-black flex items-center gap-1 ${overviewData.invNetProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {overviewData.invNetProfit >= 0 ? '+' : ''}{formatCurrency(overviewData.invNetProfit)}
+                          <span className="text-[9px] font-bold">({overviewData.invProfitPercent.toFixed(1)}% ROI)</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bloco C: Investimentos Financeiros */}
+              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
+                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                  <h3 className="font-bold text-slate-900 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
+                      <TrendingUp size={18} />
+                    </div>
+                    Investimentos Financeiros
+                  </h3>
+                  <span className="px-2.5 py-1 bg-brand-50 text-brand-600 text-[10px] font-black uppercase tracking-widest rounded-lg">
+                    Liquid Assets
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Allocation */}
+                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
+                      📊 Alocação por Classe
+                    </p>
+                    <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                      {overviewData.allocationList.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic">Sem investimentos cadastrados.</p>
+                      ) : (
+                        overviewData.allocationList.map((item, idx) => (
+                          <div key={idx} className="flex justify-between text-xs">
+                            <span className="text-slate-500 font-medium truncate max-w-[120px]">{item.type}</span>
+                            <span className="font-bold text-slate-900">
+                              {formatCurrency(item.balance)} <span className="text-[9px] font-medium text-slate-400">({item.percentage}%)</span>
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Monthly Yield comparison */}
+                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
+                      💵 Rendimentos da Carteira
+                    </p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Recebido no Mês:</span>
+                        <span className="font-black text-emerald-600">{formatCurrency(overviewData.currentMonthYield)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Média Histórica Mensal:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.averageMonthlyYield)}</span>
+                      </div>
+                      <div className="p-3 bg-brand-50 rounded-xl mt-2">
+                        <p className="text-[10px] text-brand-600 leading-relaxed font-medium">
+                          Sua carteira gera aproximadamente <span className="font-bold text-brand-700">{formatCurrency(sustainabilitySummary.estimatedMonthlyYield)}</span> de dividendos implícitos por mês baseado em taxa média mensal de {estimatedYieldRate}%.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bloco D: Passivos e Dívidas */}
+              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
+                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                  <h3 className="font-bold text-slate-900 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
+                      <Landmark size={18} />
+                    </div>
+                    Passivos e Dívidas (Financiamentos vs Consórcios)
+                  </h3>
+                  <span className="px-2.5 py-1 bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-lg">
+                    Liabilities
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Consórcios */}
+                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
+                      💳 Consórcios Ativos
+                    </p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Parcelas Mensais:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.consInstallments)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Total Contratado:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.consContracted)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Total Pago:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.consPaid)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Lances Ofertados:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.consLances)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Cartas em Obras/Uso:</span>
+                        <span className="font-bold text-slate-950">{formatCurrency(overviewData.consUtilized)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Cartas Livres:</span>
+                        <span className="font-bold text-brand-600">{formatCurrency(overviewData.consToContemplate)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                        <span className="text-slate-600 font-bold">Saldo Devedor:</span>
+                        <span className="font-black text-red-600">{formatCurrency(overviewData.consRemaining)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Financiamentos */}
+                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
+                      🏛️ Financiamentos Gerais
+                    </p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Prestações Mensais:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.finInstallments)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Total Contratado:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.finContracted)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Total Pago:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.finPaid)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                        <span className="text-slate-600 font-bold">Saldo Devedor Restante:</span>
+                        <span className="font-black text-red-600">{formatCurrency(overviewData.finRemaining)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
         )}
@@ -1526,18 +2031,26 @@ const Assets: React.FC = () => {
         {/* REAL ESTATE VIEW */}
         {activeView === 'realestate' && (
           <div className="space-y-8">
-            <div className="flex gap-4 border-b border-slate-100 pb-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-100 pb-3 gap-4">
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setActiveSubTab('portfolio')}
+                  className={`pb-2 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeSubTab === 'portfolio' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                >
+                  🏢 Imóveis e Consórcios
+                </button>
+                <button
+                  onClick={() => setActiveSubTab('simulator')}
+                  className={`pb-2 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeSubTab === 'simulator' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                >
+                  📈 Simulador de Sustentabilidade
+                </button>
+              </div>
               <button
-                onClick={() => setActiveSubTab('portfolio')}
-                className={`pb-2 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeSubTab === 'portfolio' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                onClick={() => setShowWizardModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-brand-200 text-brand-600 rounded-xl text-xs font-bold shadow-sm hover:bg-brand-50 hover:scale-105 transition-transform active:scale-95"
               >
-                🏢 Imóveis e Consórcios
-              </button>
-              <button
-                onClick={() => setActiveSubTab('simulator')}
-                className={`pb-2 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeSubTab === 'simulator' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-              >
-                📈 Simulador de Sustentabilidade
+                <Building2 size={16} /> Aquisição Imobiliária
               </button>
             </div>
 
