@@ -1370,6 +1370,40 @@ const Assets: React.FC = () => {
     const activeLiab = activeLiabilities;
     const activeTxs = transactions;
 
+    // Helper to dynamically match transactions to a physical asset using metadata or clean name substring matching
+    const getAssetTransactions = (p: PhysicalAsset) => {
+      const assetId = p.id;
+      const assetName = p.name.toLowerCase();
+      // Clean name: remove common prefix/suffix words for robust substring matching
+      const cleanName = assetName
+        .replace(/apartamento|casa|carro|veículo|jeep|honda|audi|toyota/g, '')
+        .trim();
+
+      return activeTxs.filter(t => {
+        // 1. Explicit link in metadata
+        if (t.metadata?.linked_asset_id === assetId) return true;
+
+        // 2. Explicit link via liability_id if liability is linked to this asset
+        if (t.liability_id) {
+          const isLinkedLiability = activeLiab.some(l => l.id === t.liability_id && l.linkedAssetId === assetId);
+          if (isLinkedLiability) return true;
+        }
+
+        // 3. Substring matching as robust fallback (e.g. description has "Piazza" and asset name has "Apartamento Piazza do Bosque")
+        if (cleanName.length > 2) {
+          const descLower = t.description.toLowerCase();
+          if (descLower.includes(cleanName)) {
+            // Avoid false positives (e.g. Jonas piazzaria is a restaurant expense, not "Piazza do Bosque")
+            if (cleanName === 'piazza' && descLower.includes('piazzaria')) {
+              return false;
+            }
+            return true;
+          }
+        }
+        return false;
+      });
+    };
+
     // 1. INVESTIMENTO IMOBILIÁRIO SUMS
     const plantaAssets = activePhys.filter(p => p.category === 'REAL_ESTATE' && p.metadata?.propertyStage === 'PLANTA');
     const prontoAssets = activePhys.filter(p => p.category === 'REAL_ESTATE' && p.metadata?.propertyStage !== 'PLANTA');
@@ -1378,11 +1412,18 @@ const Assets: React.FC = () => {
     const plantaLiabs = activeLiab.filter(l => l.linkedAssetId && plantaAssets.some(p => p.id === l.linkedAssetId));
     const plantaInstallments = plantaLiabs.reduce((sum, l) => sum + (l.installmentAmount || 0), 0);
     
-    const plantaPaid = activeTxs.filter(t => 
+    // Sum of amortized amount from liability total - remaining balance
+    const plantaLiabAmortized = plantaLiabs.reduce((sum, l) => sum + (l.totalAmount - l.remainingBalance), 0);
+    // Sum of explicit transaction payments
+    const plantaTxAmortized = activeTxs.filter(t => 
       t.type === 'EXPENSE' && 
       t.isPaid && 
-      plantaAssets.some(p => p.id === t.metadata?.linked_asset_id)
+      plantaAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id)) &&
+      !t.description.toLowerCase().includes('condomínio') && 
+      !t.description.toLowerCase().includes('condominio') && 
+      !t.description.toLowerCase().includes('iptu')
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
+    const plantaAmortizationPaid = plantaLiabAmortized > 0 ? plantaLiabAmortized : plantaTxAmortized;
 
     const plantaLiabRemaining = plantaLiabs.reduce((sum, l) => sum + l.remainingBalance, 0);
     const plantaBalloonsRemaining = plantaAssets.reduce((sum, p) => {
@@ -1395,7 +1436,7 @@ const Assets: React.FC = () => {
       t.type === 'EXPENSE' && 
       !t.is_recurring && 
       t.metadata?.type !== 'delivery_quitacao' &&
-      plantaAssets.some(p => p.id === t.metadata?.linked_asset_id)
+      plantaAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id))
     ).reduce((sum, t) => sum + t.amount, 0);
 
     const prontoValue = prontoAssets.reduce((sum, p) => sum + p.estimatedValue, 0);
@@ -1410,22 +1451,53 @@ const Assets: React.FC = () => {
       return sum + cost;
     }, 0);
 
-    const prontoPaid = activeTxs.filter(t => 
+    // Sum of amortized amount from ready liabilities: total_amount - remaining_balance
+    const prontoLiabAmortized = prontoLiabs.reduce((sum, l) => sum + (l.totalAmount - l.remainingBalance), 0);
+    // Fallback transaction-based payments
+    const prontoTxAmortized = activeTxs.filter(t => 
       t.type === 'EXPENSE' && 
       t.isPaid && 
-      prontoAssets.some(p => p.id === t.metadata?.linked_asset_id)
+      prontoAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id)) &&
+      !t.description.toLowerCase().includes('condomínio') && 
+      !t.description.toLowerCase().includes('condominio') && 
+      !t.description.toLowerCase().includes('iptu')
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
+    const prontoAmortizationPaid = prontoLiabAmortized > 0 ? prontoLiabAmortized : prontoTxAmortized;
 
     const prontoRemainingToPay = prontoLiabs.reduce((sum, l) => sum + l.remainingBalance, 0);
 
+    // Total rents matching description or linked metadata
     const prontoReceived = activeTxs.filter(t => 
       t.type === 'INCOME' && 
       t.isPaid && 
-      (t.metadata?.type === 'rental_income' || t.metadata?.type === 'short_stay_income') &&
-      prontoAssets.some(p => p.id === t.metadata?.linked_asset_id)
+      prontoAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id))
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
 
-    const prontoNetFlow = prontoReceived - (prontoPaid + prontoOperatingCosts);
+    // Net value if sold after paying off remaining financing debt: estimatedValue - remainingBalance
+    const prontoNetFlow = prontoValue - prontoRemainingToPay;
+
+    // Monthly net flow for the current month: rent inflows minus monthly mortgage installment, condo, and IPTU
+    const currentMonthStr = new Date().toISOString().substring(0, 7);
+    const prontoCurrentMonthIncome = activeTxs.filter(t => 
+      t.type === 'INCOME' && 
+      t.isPaid && 
+      t.date.substring(0, 7) === currentMonthStr &&
+      prontoAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id))
+    ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
+
+    const prontoExpectedIncome = prontoAssets.reduce((sum, p) => sum + (p.metadata?.isRented ? Number(p.metadata?.rentalIncome || 0) : 0), 0);
+    const prontoInflowActualOrExpected = prontoCurrentMonthIncome > 0 ? prontoCurrentMonthIncome : prontoExpectedIncome;
+
+    const prontoCurrentMonthExpenses = activeTxs.filter(t => 
+      t.type === 'EXPENSE' && 
+      t.isPaid && 
+      t.date.substring(0, 7) === currentMonthStr &&
+      prontoAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id))
+    ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
+    const prontoExpectedExpenses = prontoInstallments + prontoOperatingCosts;
+    const prontoOutflowActualOrExpected = prontoCurrentMonthExpenses > 0 ? prontoCurrentMonthExpenses : prontoExpectedExpenses;
+
+    const prontoMonthlyNetFlow = prontoInflowActualOrExpected - prontoOutflowActualOrExpected;
 
     // 2. BENS FÍSICOS SUMS (Uso vs Investimento, excluding REAL_ESTATE)
     const physicalUso = activePhys.filter(p => p.category !== 'REAL_ESTATE' && p.metadata?.purpose === 'uso');
@@ -1442,7 +1514,7 @@ const Assets: React.FC = () => {
     
     const invExtraExpenses = activeTxs.filter(t => 
       t.type === 'EXPENSE' && 
-      physicalInv.some(p => p.id === t.metadata?.linked_asset_id)
+      physicalInv.some(p => getAssetTransactions(p).some(tx => tx.id === t.id))
     ).reduce((sum, t) => sum + t.amount, 0);
 
     const invNetProfit = invEstimatedValue - (invAcquisitionTotal + invBrokerFees + invExtraExpenses);
@@ -1469,7 +1541,6 @@ const Assets: React.FC = () => {
       percentage: totalFinancialFunds > 0 ? Math.round((allocationGrouped[type] / totalFinancialFunds) * 100) : 0
     })).sort((a,b) => b.balance - a.balance);
 
-    const currentMonthStr = new Date().toISOString().substring(0, 7);
     const currentMonthYield = activeTxs.filter(t => 
       t.type === 'INCOME' && 
       (t.category === 'Rendimentos' || t.category === 'Investimentos' || t.metadata?.type === 'investment_yield') &&
@@ -1503,16 +1574,19 @@ const Assets: React.FC = () => {
     return {
       plantaValue,
       plantaInstallments,
-      plantaPaid,
+      plantaPaid: plantaAmortizationPaid,
       plantaRemainingToPay,
       plantaAdditionalExpenses,
       prontoValue,
       prontoInstallments,
       prontoOperatingCosts,
-      prontoPaid,
+      prontoPaid: prontoAmortizationPaid,
       prontoRemainingToPay,
       prontoReceived,
       prontoNetFlow,
+      prontoMonthlyNetFlow,
+      prontoInflowActualOrExpected,
+      prontoOutflowActualOrExpected,
       usoAcquisitionTotal,
       usoCurrentValueTotal,
       usoAgioDesagio,
@@ -1593,45 +1667,6 @@ const Assets: React.FC = () => {
         ))}
       </div>
 
-      {/* SUMMARY BANNER */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-brand-900 md:col-span-1 rounded-[32px] p-8 text-white relative overflow-hidden group shadow-xl shadow-brand-900/10">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-bl-[100px] -translate-y-10 translate-x-10" />
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Patrimônio Líquido Real</p>
-          <h3 className="text-3xl font-black tracking-tight italic">{formatCurrency(totalNetWorth)}</h3>
-          <div className="mt-6 flex items-center gap-2">
-            <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold rounded-lg">+1.2%</span>
-            <span className="text-slate-400 text-[10px] font-medium uppercase tracking-widest">Crescimento Mensal</span>
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm relative overflow-hidden">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Bens Físicos</p>
-          <h3 className="text-3xl font-black text-slate-900 tracking-tight italic">{formatCurrency(totalPhysical)}</h3>
-          <p className="text-[10px] font-bold text-slate-400 mt-6 uppercase tracking-widest leading-none flex items-center gap-1.5">
-            <Box size={12} className="text-brand-500" /> {activePhysicalAssets.length} Imóveis e Veículos
-          </p>
-        </div>
-
-        <div className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">Ativos Financeiros</p>
-          <h3 className="text-3xl font-black text-brand-600 tracking-tight italic">{formatCurrency(totalFinancial)}</h3>
-          <p className="text-[10px] font-bold text-brand-500 mt-6 uppercase tracking-widest leading-none flex items-center gap-1.5">
-            <TrendingUp size={12} /> XP, BTG e Carteiras
-          </p>
-        </div>
-
-        <div className="bg-red-50/50 border border-red-100/50 rounded-[32px] p-8 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-400 mb-2">Dívidas e Financiamentos</p>
-          <h3 className="text-3xl font-black text-red-600 tracking-tight italic">{formatCurrency(totalLiabilities)}</h3>
-          <p className="text-[10px] font-bold text-red-400 mt-6 uppercase tracking-widest leading-none flex items-center gap-1.5">
-            <Landmark size={12} /> {activeLiabilities.length} Passivos Gerais
-          </p>
-        </div>
-      </div>
-
-      {/* CONTENT AREA */}
-
       {/* CONTENT AREA */}
       <div className="animate-in fade-in duration-700">
         
@@ -1641,18 +1676,26 @@ const Assets: React.FC = () => {
             {/* COMPACT TOTALS GRID (6 Cards) */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               {/* Fluxo Mensal */}
-              <div className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group hover:scale-[1.02] transition-all">
+              <div className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group hover:scale-[1.02] transition-all col-span-2 sm:col-span-1">
                 <div className="absolute -right-4 -bottom-4 w-12 h-12 bg-white/5 rounded-full pointer-events-none" />
                 <div className="flex justify-between items-start">
                   <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
                   <Zap size={14} className="text-brand-400" />
                 </div>
-                <div className="mt-2">
-                  <h4 className={`text-base font-black tracking-tight italic ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
-                  </h4>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Autosuf. {sustainabilitySummary.selfSustainabilityPercent}%</span>
+                <div className="mt-2 space-y-1">
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Recebimentos:</span>
+                    <span className="font-bold text-emerald-400">{formatCurrency(sustainabilitySummary.totalInflow)}</span>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Despesas:</span>
+                    <span className="font-bold text-rose-400">{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
+                  </div>
+                  <div className="flex justify-between text-[11px] border-t border-slate-800 pt-1 mt-1 font-black">
+                    <span>Saldo:</span>
+                    <span className={sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                      {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1740,9 +1783,6 @@ const Assets: React.FC = () => {
                     </div>
                     Investimento Imobiliário (Planta vs Entregue)
                   </h3>
-                  <span className="px-2.5 py-1 bg-brand-50 text-brand-600 text-[10px] font-black uppercase tracking-widest rounded-lg">
-                    Real Estate
-                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1777,8 +1817,8 @@ const Assets: React.FC = () => {
 
                   {/* Pronto Stage */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      🏢 Imóveis Entregues
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span>🏢 Imóveis Entregues</span>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
@@ -1794,15 +1834,21 @@ const Assets: React.FC = () => {
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoOperatingCosts)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Total Pago Amortização:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoPaid)}</span>
+                        <span className="text-slate-500 font-medium">Total Pago Financiamento:</span>
+                        <span className="font-bold text-emerald-600">{formatCurrency(overviewData.prontoPaid)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-500 font-medium">Aluguéis Recebidos:</span>
                         <span className="font-bold text-emerald-600">{formatCurrency(overviewData.prontoReceived)}</span>
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold">Fluxo Histórico Líquido:</span>
+                        <span className="text-slate-600 font-bold">Mensal Líquido (Mês Atual):</span>
+                        <span className={`font-black ${overviewData.prontoMonthlyNetFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {overviewData.prontoMonthlyNetFlow >= 0 ? '+' : ''}{formatCurrency(overviewData.prontoMonthlyNetFlow)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                        <span className="text-slate-600 font-bold">Fluxo Histórico Líquido (Se Vender):</span>
                         <span className={`font-black ${overviewData.prontoNetFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                           {overviewData.prontoNetFlow >= 0 ? '+' : ''}{formatCurrency(overviewData.prontoNetFlow)}
                         </span>
@@ -1821,9 +1867,6 @@ const Assets: React.FC = () => {
                     </div>
                     Bens Físicos (Uso vs Investimento)
                   </h3>
-                  <span className="px-2.5 py-1 bg-brand-50 text-brand-600 text-[10px] font-black uppercase tracking-widest rounded-lg">
-                    Personal Assets
-                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1894,9 +1937,6 @@ const Assets: React.FC = () => {
                     </div>
                     Investimentos Financeiros
                   </h3>
-                  <span className="px-2.5 py-1 bg-brand-50 text-brand-600 text-[10px] font-black uppercase tracking-widest rounded-lg">
-                    Liquid Assets
-                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1954,9 +1994,6 @@ const Assets: React.FC = () => {
                     </div>
                     Passivos e Dívidas (Financiamentos vs Consórcios)
                   </h3>
-                  <span className="px-2.5 py-1 bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-lg">
-                    Liabilities
-                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
