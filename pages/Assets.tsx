@@ -1393,8 +1393,17 @@ const Assets: React.FC = () => {
         if (cleanName.length > 2) {
           const descLower = t.description.toLowerCase();
           if (descLower.includes(cleanName)) {
-            // Avoid false positives (e.g. Jonas piazzaria is a restaurant expense, not "Piazza do Bosque")
+            // Avoid false positives (e.g. Jonas piazzaria is a restaurant expense)
             if (cleanName === 'piazza' && descLower.includes('piazzaria')) {
+              return false;
+            }
+            return true;
+          }
+          // Also check the first significant word if the cleanName has multiple words
+          const firstWord = cleanName.split(/\s+/)[0];
+          if (firstWord && firstWord.length > 3 && descLower.includes(firstWord)) {
+            // Avoid false positives
+            if (firstWord === 'piazza' && descLower.includes('piazzaria')) {
               return false;
             }
             return true;
