@@ -330,23 +330,36 @@ const Assets: React.FC = () => {
     const totalConsortiumInstallments = consortiumLiabs.reduce((acc, curr) => acc + (curr.installmentAmount || 0), 0);
     const totalOtherInstallments = otherLiabs.reduce((acc, curr) => acc + (curr.installmentAmount || 0), 0);
 
-    // Rental inflows
+    // Rental inflows: actual paid rents of the current month using robust name matching fallback
     const totalRents = activePhysImob.reduce((acc, curr) => {
       const meta = curr.metadata || {};
       if (meta.isRented) {
-        if (meta.rentalType === 'short_stay') {
-          // Sum up transactions linked to this asset in the current month
-          const assetTxs = transactions.filter(t => t.metadata?.linked_asset_id === curr.id);
-          const currentMonthStr = new Date().toISOString().substring(0, 7); // YYYY-MM
-          const currentMonthRents = assetTxs.filter(t => 
-            t.type === 'INCOME' && 
-            (t.metadata?.type === 'rental_income' || t.metadata?.type === 'short_stay_income') &&
-            t.date.substring(0, 7) === currentMonthStr
-          );
-          return acc + currentMonthRents.reduce((sum, tx) => sum + tx.amount, 0);
-        } else {
-          return acc + (Number(meta.rentalIncome) || 0);
-        }
+        const currentMonthStr = new Date().toISOString().substring(0, 7); // YYYY-MM
+        const assetNameClean = curr.name.toLowerCase()
+          .replace(/apartamento|casa|carro|veículo|jeep|honda|audi|toyota/g, '')
+          .trim();
+
+        const assetTxs = transactions.filter(t => {
+          if (t.metadata?.linked_asset_id === curr.id) return true;
+          const descLower = t.description.toLowerCase();
+          if (assetNameClean.length > 2) {
+            if (descLower.includes(assetNameClean)) return true;
+            const firstWord = assetNameClean.split(/\s+/)[0];
+            if (firstWord && firstWord.length > 3 && descLower.includes(firstWord)) {
+              if (firstWord === 'piazza' && descLower.includes('piazzaria')) return false;
+              return true;
+            }
+          }
+          return false;
+        });
+
+        const currentMonthRents = assetTxs.filter(t => 
+          t.type === 'INCOME' && 
+          t.isPaid &&
+          t.date.substring(0, 7) === currentMonthStr
+        );
+
+        return acc + currentMonthRents.reduce((sum, tx) => sum + (tx.paidAmount || tx.amount), 0);
       }
       return acc;
     }, 0);
@@ -1413,12 +1426,27 @@ const Assets: React.FC = () => {
       });
     };
 
+    // Helper to dynamically link a liability to an asset with name substring fallback
+    const isLiabilityLinkedToAsset = (l: Liability, p: PhysicalAsset) => {
+      if (l.linkedAssetId === p.id) return true;
+      const assetNameClean = p.name.toLowerCase()
+        .replace(/apartamento|casa|carro|veículo|jeep|honda|audi|toyota/g, '')
+        .trim();
+      const liabNameClean = l.name.toLowerCase()
+        .replace(/financiamento|consórcio|consorcio|dívida|divida/g, '')
+        .trim();
+      if (assetNameClean.length > 2 && liabNameClean.includes(assetNameClean)) return true;
+      const firstWord = assetNameClean.split(/\s+/)[0];
+      if (firstWord && firstWord.length > 3 && liabNameClean.includes(firstWord)) return true;
+      return false;
+    };
+
     // 1. INVESTIMENTO IMOBILIÁRIO SUMS
     const plantaAssets = activePhys.filter(p => p.category === 'REAL_ESTATE' && p.metadata?.propertyStage === 'PLANTA');
     const prontoAssets = activePhys.filter(p => p.category === 'REAL_ESTATE' && p.metadata?.propertyStage !== 'PLANTA');
 
     const plantaValue = plantaAssets.reduce((sum, p) => sum + p.estimatedValue, 0);
-    const plantaLiabs = activeLiab.filter(l => l.linkedAssetId && plantaAssets.some(p => p.id === l.linkedAssetId));
+    const plantaLiabs = activeLiab.filter(l => plantaAssets.some(p => isLiabilityLinkedToAsset(l, p)));
     const plantaInstallments = plantaLiabs.reduce((sum, l) => sum + (l.installmentAmount || 0), 0);
     
     // Sum of amortized amount from liability total - remaining balance
@@ -1449,8 +1477,9 @@ const Assets: React.FC = () => {
     ).reduce((sum, t) => sum + t.amount, 0);
 
     const prontoValue = prontoAssets.reduce((sum, p) => sum + p.estimatedValue, 0);
-    const prontoLiabs = activeLiab.filter(l => l.linkedAssetId && prontoAssets.some(p => p.id === l.linkedAssetId));
+    const prontoLiabs = activeLiab.filter(l => prontoAssets.some(p => isLiabilityLinkedToAsset(l, p)));
     const prontoInstallments = prontoLiabs.reduce((sum, l) => sum + (l.installmentAmount || 0), 0);
+    const prontoContracted = prontoLiabs.reduce((sum, l) => sum + l.totalAmount, 0);
     
     const prontoOperatingCosts = prontoAssets.reduce((sum, p) => {
       const meta = p.metadata || {};
@@ -1494,9 +1523,6 @@ const Assets: React.FC = () => {
       prontoAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id))
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
 
-    const prontoExpectedIncome = prontoAssets.reduce((sum, p) => sum + (p.metadata?.isRented ? Number(p.metadata?.rentalIncome || 0) : 0), 0);
-    const prontoInflowActualOrExpected = prontoCurrentMonthIncome > 0 ? prontoCurrentMonthIncome : prontoExpectedIncome;
-
     const prontoCurrentMonthExpenses = activeTxs.filter(t => 
       t.type === 'EXPENSE' && 
       t.isPaid && 
@@ -1506,7 +1532,8 @@ const Assets: React.FC = () => {
     const prontoExpectedExpenses = prontoInstallments + prontoOperatingCosts;
     const prontoOutflowActualOrExpected = prontoCurrentMonthExpenses > 0 ? prontoCurrentMonthExpenses : prontoExpectedExpenses;
 
-    const prontoMonthlyNetFlow = prontoInflowActualOrExpected - prontoOutflowActualOrExpected;
+    // As requested: If the actual rent of the current month is zero/not cleared, the flow must show negative
+    const prontoMonthlyNetFlow = prontoCurrentMonthIncome - prontoOutflowActualOrExpected;
 
     // 2. BENS FÍSICOS SUMS (Uso vs Investimento, excluding REAL_ESTATE)
     const physicalUso = activePhys.filter(p => p.category !== 'REAL_ESTATE' && p.metadata?.purpose === 'uso');
@@ -1594,7 +1621,7 @@ const Assets: React.FC = () => {
       prontoReceived,
       prontoNetFlow,
       prontoMonthlyNetFlow,
-      prontoInflowActualOrExpected,
+      prontoContracted,
       prontoOutflowActualOrExpected,
       usoAcquisitionTotal,
       usoCurrentValueTotal,
@@ -1837,6 +1864,14 @@ const Assets: React.FC = () => {
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-500 font-medium">Prestação Financiamento:</span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoInstallments)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Financiamento Contratado:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoContracted)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Saldo Devedor Restante:</span>
+                        <span className="font-bold text-red-500">{formatCurrency(overviewData.prontoRemainingToPay)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-500 font-medium">Custos Operacionais:</span>
