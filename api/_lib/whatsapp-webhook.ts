@@ -1506,7 +1506,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
           for (const op of tx.operations) {
             if (op.intent === 'TRANSACTION') {
-              if (op.transaction.is_card || op.transaction.card_id) {
+              if (op.transaction.is_card || op.transaction.card_id || op.transaction.card_name) {
                 // Multi card insertion
                 const { data: cards } = await supabase.from('cards').select('*').eq('user_id', userId).eq('is_archived', false);
                 let selectedCard = cards?.find(c => c.id === op.transaction.card_id) || cards?.find(c => op.transaction.card_name && c.name.toLowerCase().includes(op.transaction.card_name.toLowerCase())) || cards?.[0];
@@ -1626,7 +1626,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           return res.status(200).json({ status: 'confirmed_multi' });
         } else {
           // If credit card transaction
-          if (tx.is_card || tx.card_id) {
+          if (tx.is_card || tx.card_id || tx.card_name) {
             const { data: cards } = await supabase
               .from('cards')
               .select('*')
@@ -1849,6 +1849,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       Analise o conteúdo deste documento e extraia todas as transações financeiras relevantes.
       ${userCaptionContext}
 
+      IMPORTANTE sobre Cartão de Crédito:
+      Se o comprovante ou contexto for de uma compra ou transação no cartão de crédito (ex: contém texto como 'compra aprovada no cartão', 'Bradesco Cartões', 'fatura', 'final XXXX', ou comprova pagamento feito com cartão), defina 'is_card': true e preencha 'card_name' com o nome do cartão de crédito correspondente (ex: 'Bradesco').
+
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
         "operations": [
@@ -1872,6 +1875,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       Você é um especialista em análise de comprovantes e notas fiscais de compras em imagem.
       Extraia todas as transações cruciais desta imagem.
       ${userCaptionContext}
+
+      IMPORTANTE sobre Cartão de Crédito:
+      Se a imagem ou contexto for de uma compra ou transação no cartão de crédito (ex: contém texto como 'compra aprovada no cartão', 'Bradesco Cartões', 'fatura', 'final XXXX', ou comprova pagamento feito com cartão), defina 'is_card': true e preencha 'card_name' com o nome do cartão de crédito correspondente (ex: 'Bradesco').
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
@@ -2165,7 +2171,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         3. Se ele NÃO especificar nenhum período de data, use por padrão os últimos 90 dias (início: ${sixtyDaysAgo.toISOString().split('T')[0]}, fim: ${todayStr}).
         4. Se ele pedir um período muito amplo (ex: "meu histórico inteiro", "desde o começo"), use os últimos 365 dias.
       - Para intenções TRANSACTION ("gastei X", "recebi Y"): se não houver data explícita, use hoje: ${todayStr}.
-      - Se o usuário falar de cartão de crédito (ex: "no cartão Bradesco"), defina "is_card": true e o nome do cartão.
+      - Se o usuário falar de cartão de crédito (ex: "no cartão Bradesco", "Bradesco Cartões") ou o contexto/mensagem se referir a transações no cartão, defina "is_card": true e o nome do cartão em "card_name".
       - Se o usuário citar recorrência (ex: "mensal", "todo mês"), defina "is_recurring": true e o período correspondente.
       - Se for excluir um lançamento, use "DELETE" e preencha "deleteFilters".
       - Se for marcar como pago, use "PAY" e preencha "payFilters".
