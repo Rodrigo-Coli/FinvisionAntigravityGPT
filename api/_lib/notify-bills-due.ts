@@ -28,18 +28,31 @@ async function sendWhatsApp(number: string, text: string) {
     const cleanBaseUrl = process.env.EVOLUTION_API_URL.endsWith('/') 
       ? process.env.EVOLUTION_API_URL.slice(0, -1) 
       : process.env.EVOLUTION_API_URL;
-    await fetch(`${cleanBaseUrl}/message/sendText/${process.env.EVOLUTION_INSTANCE}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY as string },
-      body: JSON.stringify({ 
-        number: number, 
-        options: {
-          delay: 1200,
-          presence: 'composing'
-        },
-        textMessage: { text: text }
-      })
-    }).catch(err => console.error('Evolution API Error:', err));
+    
+    const url = `${cleanBaseUrl}/message/sendText/${process.env.EVOLUTION_INSTANCE}`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY as string },
+        body: JSON.stringify({ 
+          number: number, 
+          text: text, // Para Evolution API v2
+          options: {
+            delay: 1200,
+            presence: 'composing'
+          },
+          textMessage: { text: text } // Para Evolution API v1
+        })
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        console.error(`[Evolution API sendWhatsApp Error] Status ${res.status}: ${errText}`);
+      } else {
+        console.log(`[Evolution API sendWhatsApp Success] Mensagem enviada com sucesso para ${number}`);
+      }
+    } catch (err) {
+      console.error('Evolution API Error:', err);
+    }
   }
 }
 

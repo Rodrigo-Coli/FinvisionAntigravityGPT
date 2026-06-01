@@ -10,18 +10,31 @@ async function sendWhatsApp(number: string, text: string) {
     const cleanBaseUrl = process.env.EVOLUTION_API_URL.endsWith('/') 
       ? process.env.EVOLUTION_API_URL.slice(0, -1) 
       : process.env.EVOLUTION_API_URL;
-    await fetch(`${cleanBaseUrl}/message/sendText/${process.env.EVOLUTION_INSTANCE}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY as string },
-      body: JSON.stringify({ 
-        number: number, 
-        options: {
-          delay: 1200,
-          presence: 'composing'
-        },
-        textMessage: { text: text }
-      })
-    }).catch(err => console.error('Evolution API Error:', err));
+    
+    const url = `${cleanBaseUrl}/message/sendText/${process.env.EVOLUTION_INSTANCE}`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY as string },
+        body: JSON.stringify({ 
+          number: number, 
+          text: text, // Para Evolution API v2
+          options: {
+            delay: 1200,
+            presence: 'composing'
+          },
+          textMessage: { text: text } // Para Evolution API v1
+        })
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        console.error(`[Evolution API sendWhatsApp Error] Status ${res.status}: ${errText}`);
+      } else {
+        console.log(`[Evolution API sendWhatsApp Success] Mensagem enviada com sucesso para ${number}`);
+      }
+    } catch (err) {
+      console.error('Evolution API Error:', err);
+    }
   }
 }
 function extractMessageContent(msg: any): { text: string; media: any; mediaType: 'image' | 'audio' | 'document' | null; mimeType: string | null } {
@@ -458,7 +471,75 @@ async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: 
   const dateVal = tx.date || new Date().toISOString().split('T')[0];
   const ownerVal = tx.owner_name === 'Pessoal' || !tx.owner_name ? 'Pessoal' : tx.owner_name;
 
-  const isTransfer = tx.category?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || tx.type === 'TRANSFER';
+  // Smart Category Resolution
+  let finalCategory = tx.category || 'Outros';
+  let finalCategoryId = null;
+
+  if (tx.category || tx.description) {
+    const { data: allCats } = await supabase.from('categories').select('id, name').eq('user_id', userId);
+    if (allCats && allCats.length > 0) {
+      const normCat = (tx.category || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      const normDesc = (tx.description || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+      // 1. Direct match on category
+      let matched = allCats.find(c => c.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() === normCat);
+
+      // 2. Fuel rule: Posto, Combustível, Abastecer, Carro, Veículo
+      if (!matched && (
+        normCat.includes('transporte') ||
+        normCat.includes('combust') ||
+        normCat.includes('abastec') ||
+        normCat.includes('posto') ||
+        normCat.includes('carro') ||
+        normCat.includes('veiculo') ||
+        normDesc.includes('abastec') ||
+        normDesc.includes('posto') ||
+        normDesc.includes('combust') ||
+        normDesc.includes('posto de comb')
+      )) {
+        matched = allCats.find(c => 
+          c.name.toLowerCase().includes('carro') || 
+          c.name.toLowerCase().includes('transporte') || 
+          c.name.toLowerCase().includes('veiculo') ||
+          c.name.toLowerCase().includes('combust')
+        );
+      }
+
+      // 3. Food rule: Alimentação, Restaurante, Mercado, Supermercado
+      if (!matched && (
+        normCat.includes('alimenta') || 
+        normCat.includes('comida') || 
+        normCat.includes('restaurante') || 
+        normCat.includes('mercado') || 
+        normCat.includes('supermercado') ||
+        normDesc.includes('mercado') ||
+        normDesc.includes('supermercado') ||
+        normDesc.includes('restaurante')
+      )) {
+        matched = allCats.find(c => 
+          c.name.toLowerCase().includes('mercado') || 
+          c.name.toLowerCase().includes('alimenta') ||
+          c.name.toLowerCase().includes('refeic') ||
+          c.name.toLowerCase().includes('comida')
+        );
+      }
+
+      // 4. Fuzzy / substring match
+      if (!matched && normCat) {
+        matched = allCats.find(c => 
+          c.name.toLowerCase().includes(normCat) || 
+          normCat.includes(c.name.toLowerCase())
+        );
+      }
+
+      if (matched) {
+        finalCategoryId = matched.id;
+        finalCategory = matched.name;
+      }
+    }
+  }
+
+  const isTransfer = (tx.category || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || tx.type === 'TRANSFER';
 
   if (isTransfer) {
     const { data: userAccounts } = await supabase.from('accounts').select('id, institution').eq('user_id', userId).eq('is_archived', false);
@@ -550,11 +631,6 @@ async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: 
     let selectedCard = cards?.find(c => c.id === tx.card_id) || cards?.find(c => tx.card_name && c.name.toLowerCase().includes(tx.card_name.toLowerCase())) || cards?.[0];
     if (selectedCard) {
       const targetStmtId = await getOrCreateStatementHelper(userId, selectedCard.id, dateVal);
-      let categoryId = null;
-      if (tx.category) {
-        const { data: catData } = await supabase.from('categories').select('id').eq('user_id', userId).ilike('name', tx.category).maybeSingle();
-        if (catData) categoryId = catData.id;
-      }
       await supabase.from('card_transactions').insert({
         user_id: userId,
         card_id: selectedCard.id,
@@ -565,7 +641,8 @@ async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: 
         status: 'POSTED',
         source: 'MANUAL',
         is_manual: true,
-        category_id: categoryId,
+        category_id: finalCategoryId,
+        category: finalCategory,
         owner_name: ownerVal,
         is_recurring: tx.is_recurring || false,
         recurrence_period: tx.recurrence_period || null,
@@ -603,8 +680,8 @@ async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: 
     amount: tx.amount || 0,
     date: dateVal,
     type: tx.type || 'EXPENSE',
-    category: tx.category || 'Outros',
-    subcategory: tx.subcategory || null,
+    category: finalCategory,
+    category_id: finalCategoryId,
     is_paid: tx.is_paid !== undefined ? tx.is_paid : true,
     owner_name: ownerVal === 'Pessoal' ? null : ownerVal,
     is_recurring: tx.is_recurring || false,
@@ -840,44 +917,78 @@ ${formattedTransactions || 'Nenhuma transação registrada neste período.'}
 }
 
 async function findMatchingTransactions(userId: string, filters: { description?: string; amount?: number; date?: string }, isPay: boolean = false) {
-  let query = supabase
+  // Query both transactions and card_transactions if not isPay
+  let txsQuery = supabase
     .from('transactions')
-    .select('id, description, amount, date, is_paid')
+    .select('id, description, amount, date, is_paid, created_at')
     .eq('user_id', userId)
     .is('is_deleted', false);
 
   if (isPay) {
-    query = query.eq('is_paid', false).eq('type', 'EXPENSE');
+    txsQuery = txsQuery.eq('is_paid', false).eq('type', 'EXPENSE');
   }
 
   if (filters.date) {
-    const targetDate = filters.date.split('T')[0];
-    query = query.eq('date', targetDate);
+    txsQuery = txsQuery.eq('date', filters.date.split('T')[0]);
   }
 
-  const { data: txs, error } = await query.order('date', { ascending: false }).limit(50);
-  if (error) {
-    console.error('Error fetching matching transactions:', error);
-    return [];
-  }
-  if (!txs || txs.length === 0) {
+  const { data: txs, error: txsErr } = await txsQuery.order('date', { ascending: false }).limit(50);
+  if (txsErr) console.error('Error fetching transactions:', txsErr);
+
+  let combined: any[] = (txs || []).map(t => ({ ...t, is_card: false }));
+
+  if (!isPay) {
+    let cardQuery = supabase
+      .from('card_transactions')
+      .select('id, description, amount, date, created_at')
+      .eq('user_id', userId);
+
     if (filters.date) {
-      const fallbackQuery = supabase
-        .from('transactions')
-        .select('id, description, amount, date, is_paid')
-        .eq('user_id', userId)
-        .is('is_deleted', false);
-      const { data: fallbackTxs } = await (isPay ? fallbackQuery.eq('is_paid', false).eq('type', 'EXPENSE') : fallbackQuery)
-        .order('date', { ascending: false })
-        .limit(50);
-      if (fallbackTxs && fallbackTxs.length > 0) {
-        return filterTransactionsInMemory(fallbackTxs, filters);
-      }
+      cardQuery = cardQuery.eq('date', filters.date.split('T')[0]);
+    }
+
+    const { data: cardTxs, error: cardErr } = await cardQuery.order('date', { ascending: false }).limit(50);
+    if (cardErr) console.error('Error fetching card transactions:', cardErr);
+    
+    if (cardTxs && cardTxs.length > 0) {
+      combined = [...combined, ...cardTxs.map(ct => ({ ...ct, is_card: true, is_paid: true }))];
+    }
+  }
+
+  // Sort combined transactions by date descending, then by created_at descending
+  combined.sort((a, b) => {
+    const dateA = new Date(a.date).getTime();
+    const dateB = new Date(b.date).getTime();
+    if (dateA !== dateB) return dateB - dateA;
+    const createA = new Date(a.created_at || 0).getTime();
+    const createB = new Date(b.created_at || 0).getTime();
+    return createB - createA;
+  });
+
+  const hasNoFilters = (!filters.description && (filters.amount === undefined || filters.amount === null));
+
+  if (hasNoFilters) {
+    // Check if there is any transaction created in the last 15 minutes
+    const fifteenMinutesAgo = Date.now() - 15 * 60 * 1000;
+    const veryRecent = combined.find(t => new Date(t.created_at || 0).getTime() >= fifteenMinutesAgo);
+    
+    if (veryRecent) {
+      console.log('[findMatchingTransactions] Found very recent transaction, prioritizing:', veryRecent.description);
+      return [veryRecent];
+    }
+    
+    // Otherwise, return only the single most recent transaction overall to avoid massive disambiguation lists
+    if (combined.length > 0) {
+      return [combined[0]];
     }
     return [];
   }
 
-  return filterTransactionsInMemory(txs, filters);
+  // Apply in-memory filters
+  const filtered = filterTransactionsInMemory(combined, filters);
+
+  // Limit to max 5 matches for clean disambiguation
+  return filtered.slice(0, 5);
 }
 
 function filterTransactionsInMemory(txs: any[], filters: { description?: string; amount?: number; date?: string }) {
@@ -901,16 +1012,7 @@ function filterTransactionsInMemory(txs: any[], filters: { description?: string;
       }
     }
 
-    if (filters.amount !== undefined && filters.amount !== null && filters.description) {
-      return matchesAmount && matchesDesc;
-    }
-    if (filters.amount !== undefined && filters.amount !== null) {
-      return matchesAmount;
-    }
-    if (filters.description) {
-      return matchesDesc;
-    }
-    return true;
+    return matchesAmount && matchesDesc;
   });
 }
 
@@ -951,29 +1053,64 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
     phone = remoteJid.split('@')[0];
 
     // Geração de variantes robusta para números brasileiros (com e sem o nono dígito)
-    let cleanPhone = phone.replace(/\D/g, '');
-    let phoneVariants = [cleanPhone];
-    
-    if (cleanPhone.startsWith('55') && cleanPhone.length === 13 && cleanPhone[4] === '9') {
-      const withoutNine = '55' + cleanPhone.substring(2, 4) + cleanPhone.substring(5);
-      phoneVariants.push(withoutNine);
-    } else if (cleanPhone.startsWith('55') && cleanPhone.length === 12) {
-      const withNine = '55' + cleanPhone.substring(2, 4) + '9' + cleanPhone.substring(4);
-      phoneVariants.push(withNine);
+    let userSet = null;
+
+    // Buscar todas as configurações de usuário com WhatsApp ativo
+    const { data: allSettings, error: settingsError } = await supabase
+      .from('user_settings')
+      .select('user_id, whatsapp_number, whatsapp_enabled')
+      .eq('whatsapp_enabled', true);
+
+    if (settingsError) {
+      console.error('[WhatsApp Webhook] Erro ao buscar user_settings:', settingsError);
     }
 
-    let userSet = null;
-    for (const variant of phoneVariants) {
-      const { data } = await supabase
-        .from('user_settings')
-        .select('user_id, whatsapp_number, whatsapp_enabled')
-        .ilike('whatsapp_number', `%${variant}%`)
-        .maybeSingle();
-      if (data) {
-        userSet = data;
-        break;
+    if (allSettings && allSettings.length > 0) {
+      // Normaliza um número de telefone para apenas dígitos, removendo código do país 55 e zeros à esquerda
+      const normalizePhoneDigits = (numStr: string) => {
+        let clean = String(numStr || '').replace(/\D/g, '');
+        if (clean.startsWith('55')) {
+          clean = clean.substring(2);
+        }
+        if (clean.startsWith('0')) {
+          clean = clean.substring(1);
+        }
+        return clean;
+      };
+
+      // Retorna variantes com e sem o nono dígito (para números brasileiros)
+      const getDDDVariants = (cleanDigits: string) => {
+        const variants = [cleanDigits];
+        if (cleanDigits.length === 11 && cleanDigits[2] === '9') {
+          const withoutNine = cleanDigits.substring(0, 2) + cleanDigits.substring(3);
+          variants.push(withoutNine);
+        } else if (cleanDigits.length === 10) {
+          const withNine = cleanDigits.substring(0, 2) + '9' + cleanDigits.substring(2);
+          variants.push(withNine);
+        }
+        return variants;
+      };
+
+      const incomingClean = normalizePhoneDigits(phone);
+      const incomingVariants = getDDDVariants(incomingClean);
+
+      console.log('[WhatsApp Webhook] Telefone recebido:', phone, 'Normalizado:', incomingClean, 'Variantes:', incomingVariants);
+
+      for (const setting of allSettings) {
+        if (!setting.whatsapp_number) continue;
+        const dbClean = normalizePhoneDigits(setting.whatsapp_number);
+        const dbVariants = getDDDVariants(dbClean);
+
+        // Verifica se alguma variante do telefone recebido coincide com alguma variante salva no banco
+        const isMatch = incomingVariants.some(v => dbVariants.includes(v));
+        if (isMatch) {
+          userSet = setting;
+          console.log('[WhatsApp Webhook] Usuário encontrado:', setting.user_id, 'para o telefone:', setting.whatsapp_number);
+          break;
+        }
       }
     }
+
 
     if (!userSet) {
       await sendWhatsApp(phone, `Olá! Bem-vindo ao *FinVision AI* 💎\n\nEu sou o seu consultor financeiro pessoal inteligente.\n\nIdentifiquei que seu número ainda não está vinculado a uma conta ativa no FinVision Pro.\n\n🆕 *É novo por aqui? Faça seu cadastro rápido em segundos:*\n👉 https://finvision.automanow.com.br/signup?wp=${phone}\n_(Ganhe 7 dias grátis de acesso Wealth Premium no nosso lançamento!)_\n\n🔄 *Já possui uma conta ativa? Veja como é fácil vincular seu número de WhatsApp:*\n1️⃣ Acesse o FinVision Pro pelo computador ou celular.\n2️⃣ Vá no menu **Ajustes** (ícone de engrenagem no painel).\n3️⃣ Na aba **Preferências**, ative a opção **Notificações via WhatsApp**.\n4️⃣ Digite seu número de telefone com DDD (ex: +55 45 99999-9999) e salve.\n\nPronto! Em segundos, seu assistente pessoal estará ativo para receber fotos de cupons, áudios e comandar suas finanças direto por aqui!`);
@@ -1159,8 +1296,31 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       }
     }
 
+    // Pré-processamento e normalização do texto de resposta do usuário
+    const cleanConfirmText = text.toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "");
+
+    const confirmPhrases = [
+      'sim', 's', 'ss', 'confirmar', 'confirmo', 'pode', 'pode sim', 
+      'pode lancar', 'pode lançar', 'ok', 'bora', 'fechado', 
+      'lancar', 'lançar', 'com certeza', 'yes', 'y', 'confirmado'
+    ];
+    const isConfirm = confirmPhrases.includes(cleanConfirmText) || 
+                      cleanConfirmText.startsWith('sim') || 
+                      cleanConfirmText === 's' || 
+                      cleanConfirmText === 'ss';
+
+    const cancelPhrases = [
+      'não', 'nao', 'n', 'nn', 'cancelar', 'cancela', 'esquece', 
+      'para', 'parar', 'pode parar', 'no', 'sair'
+    ];
+    const isCancel = cancelPhrases.includes(cleanConfirmText) || 
+                     cleanConfirmText.startsWith('não') || 
+                     cleanConfirmText.startsWith('nao') || 
+                     cleanConfirmText === 'n' || 
+                     cleanConfirmText === 'nn';
+
     // Confirm draft logic
-    if (text.toLowerCase() === 'sim' || text.toLowerCase() === 'confirmar') {
+    if (isConfirm) {
       const { data: draft } = await supabase
         .from('whatsapp_drafts')
         .select('*')
@@ -1175,7 +1335,11 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         const tx = draft.data;
         
         if (tx.type === 'delete') {
-          await supabase.from('transactions').update({ is_deleted: true }).eq('id', tx.transactionId);
+          if (tx.is_card) {
+            await supabase.from('card_transactions').delete().eq('id', tx.transactionId);
+          } else {
+            await supabase.from('transactions').update({ is_deleted: true }).eq('id', tx.transactionId);
+          }
           await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
           await sendWhatsApp(phone, `✅ *Lançamento Excluído com Sucesso!*\n\n"${tx.description}" de R$ ${Number(tx.amount).toFixed(2)} foi removido.`);
           await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
@@ -1190,29 +1354,113 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           const patch = tx.patch || {};
           const txId = tx.transactionId;
 
-          const { data: normalTx } = await supabase.from('transactions').select('id, account_id').eq('id', txId).maybeSingle();
+          const { data: normalTx } = await supabase.from('transactions').select('id, account_id, type, metadata, amount, date, description').eq('id', txId).maybeSingle();
           if (normalTx) {
-            let updatePayload: any = {};
-            if (patch.description) updatePayload.description = patch.description;
-            if (patch.amount) updatePayload.amount = Number(patch.amount);
-            if (patch.category) updatePayload.category = patch.category;
-            if (patch.subcategory) updatePayload.subcategory = patch.subcategory;
-            if (patch.date) updatePayload.date = patch.date;
-            if (patch.notes) updatePayload.notes = patch.notes;
-            if (patch.tags) updatePayload.tags = patch.tags;
-            if (patch.owner_name) updatePayload.owner_name = patch.owner_name === 'Pessoal' ? null : patch.owner_name;
+            const isTransfer = normalTx.type === 'TRANSFER' || normalTx.metadata?.is_transfer;
+            if (isTransfer) {
+              const { data: counterTx } = await supabase
+                .from('transactions')
+                .select('id, account_id, metadata, type')
+                .eq('user_id', userId)
+                .eq('type', 'TRANSFER')
+                .eq('description', normalTx.description)
+                .eq('amount', normalTx.amount)
+                .eq('date', normalTx.date)
+                .is('is_deleted', false)
+                .neq('id', normalTx.id)
+                .maybeSingle();
 
-            if (patch.account_name) {
-              const { data: userAccounts } = await supabase.from('accounts').select('id, institution').eq('user_id', userId).eq('is_archived', false);
-              const matched = userAccounts?.find(a => a.institution.toLowerCase().includes(patch.account_name.toLowerCase()) || patch.account_name.toLowerCase().includes(a.institution.toLowerCase()));
-              if (matched) {
-                updatePayload.account_id = matched.id;
-                updatePayload.account_name = matched.institution;
+              let sourceTx = normalTx.metadata?.transfer_side === 'DESTINATION' ? counterTx : normalTx;
+              let destTx = normalTx.metadata?.transfer_side === 'DESTINATION' ? normalTx : counterTx;
+
+              let updatePayloadSource: any = {};
+              let updatePayloadDest: any = {};
+
+              if (patch.description) {
+                updatePayloadSource.description = patch.description;
+                if (destTx) updatePayloadDest.description = patch.description;
               }
-            }
+              if (patch.amount) {
+                updatePayloadSource.amount = Number(patch.amount);
+                if (destTx) updatePayloadDest.amount = Number(patch.amount);
+              }
+              if (patch.date) {
+                updatePayloadSource.date = patch.date;
+                if (destTx) updatePayloadDest.date = patch.date;
+              }
+              if (patch.notes) {
+                updatePayloadSource.notes = patch.notes;
+                if (destTx) updatePayloadDest.notes = patch.notes;
+              }
+              if (patch.tags) {
+                updatePayloadSource.tags = patch.tags;
+                if (destTx) updatePayloadDest.tags = patch.tags;
+              }
+              if (patch.owner_name) {
+                const oVal = patch.owner_name === 'Pessoal' ? null : patch.owner_name;
+                updatePayloadSource.owner_name = oVal;
+                if (destTx) updatePayloadDest.owner_name = oVal;
+              }
 
-            await supabase.from('transactions').update(updatePayload).eq('id', txId);
-            await supabase.rpc('recalculate_account_balance', { p_account_id: updatePayload.account_id || normalTx.account_id });
+              const { data: userAccounts } = await supabase.from('accounts').select('id, institution').eq('user_id', userId).eq('is_archived', false);
+
+              if (patch.account_name && userAccounts) {
+                const matched = userAccounts.find(a => a.institution.toLowerCase().includes(patch.account_name.toLowerCase()) || patch.account_name.toLowerCase().includes(a.institution.toLowerCase()));
+                if (matched) {
+                  if (sourceTx) {
+                    updatePayloadSource.account_id = matched.id;
+                    updatePayloadSource.account_name = matched.institution;
+                  }
+                  if (destTx) {
+                    updatePayloadDest.metadata = { ...(destTx.metadata || {}), counter_account_id: matched.id };
+                  }
+                }
+              }
+
+              if (patch.destination_account_name && userAccounts) {
+                const matchedDest = userAccounts.find(a => a.institution.toLowerCase().includes(patch.destination_account_name.toLowerCase()) || patch.destination_account_name.toLowerCase().includes(a.institution.toLowerCase()));
+                if (matchedDest) {
+                  if (destTx) {
+                    updatePayloadDest.account_id = matchedDest.id;
+                    updatePayloadDest.account_name = matchedDest.institution;
+                  }
+                  if (sourceTx) {
+                    updatePayloadSource.metadata = { ...(sourceTx.metadata || {}), counter_account_id: matchedDest.id };
+                  }
+                }
+              }
+
+              if (sourceTx && Object.keys(updatePayloadSource).length > 0) {
+                await supabase.from('transactions').update(updatePayloadSource).eq('id', sourceTx.id);
+                await supabase.rpc('recalculate_account_balance', { p_account_id: updatePayloadSource.account_id || sourceTx.account_id });
+              }
+              if (destTx && Object.keys(updatePayloadDest).length > 0) {
+                await supabase.from('transactions').update(updatePayloadDest).eq('id', destTx.id);
+                await supabase.rpc('recalculate_account_balance', { p_account_id: updatePayloadDest.account_id || destTx.account_id });
+              }
+            } else {
+              let updatePayload: any = {};
+              if (patch.description) updatePayload.description = patch.description;
+              if (patch.amount) updatePayload.amount = Number(patch.amount);
+              if (patch.category) updatePayload.category = patch.category;
+              if (patch.subcategory) updatePayload.subcategory = patch.subcategory;
+              if (patch.date) updatePayload.date = patch.date;
+              if (patch.notes) updatePayload.notes = patch.notes;
+              if (patch.tags) updatePayload.tags = patch.tags;
+              if (patch.owner_name) updatePayload.owner_name = patch.owner_name === 'Pessoal' ? null : patch.owner_name;
+
+              if (patch.account_name) {
+                const { data: userAccounts } = await supabase.from('accounts').select('id, institution').eq('user_id', userId).eq('is_archived', false);
+                const matched = userAccounts?.find(a => a.institution.toLowerCase().includes(patch.account_name.toLowerCase()) || patch.account_name.toLowerCase().includes(a.institution.toLowerCase()));
+                if (matched) {
+                  updatePayload.account_id = matched.id;
+                  updatePayload.account_name = matched.institution;
+                }
+              }
+
+              await supabase.from('transactions').update(updatePayload).eq('id', txId);
+              await supabase.rpc('recalculate_account_balance', { p_account_id: updatePayload.account_id || normalTx.account_id });
+            }
           } else {
             const { data: cardTx } = await supabase.from('card_transactions').select('id, card_id, date').eq('id', txId).maybeSingle();
             if (cardTx) {
@@ -1566,7 +1814,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
     }
 
     // Cancel draft logic
-    if (text.toLowerCase() === 'não' || text.toLowerCase() === 'cancelar') {
+    if (isCancel) {
       await supabase.from('whatsapp_drafts').update({ status: 'canceled' }).eq('user_id', userId).eq('status', 'pending');
       await sendWhatsApp(phone, `🚫 *Ação Cancelada.*`);
       await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
@@ -1616,7 +1864,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             "account_name": "Nome da conta/banco caso o comprovante especifique de onde saiu o dinheiro, ex: Nubank, Itaú, Santander (ou null)",
             "owner_name": string (ou null),
             "notes": "Observações ou detalhes relevantes do comprovante (ou null)",
-            "tags": ["tag1", "tag2"] (um array de strings com palavras-chave relevantes como marcas, tipos de produtos, nomes de projetos ou array vazio)
+            "tags": [] (Sempre retorne um array vazio [] para tags nesta etapa. NUNCA gere ou invente tags por conta própria!)
           }
         ]
       }
@@ -1640,7 +1888,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             "account_name": "Nome da conta/banco caso o comprovante especifique de onde saiu o dinheiro, ex: Nubank, Itaú, Santander (ou null)",
             "owner_name": string (ou null),
             "notes": "Observações ou detalhes adicionais sobre o produto/compra (ou null)",
-            "tags": ["tag1", "tag2"] (um array de strings com palavras-chave baseadas no estabelecimento, marcas compradas ou categoria, ou array vazio)
+            "tags": [] (Sempre retorne um array vazio [] para tags nesta etapa. NUNCA gere ou invente tags por conta própria!)
           }
         ]
       }
@@ -1725,7 +1973,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
     // Text parsing or query classification
     if (text) {
       // Check if there is an active pending draft
-      const { data: activeDraft } = await supabase
+      let { data: activeDraft } = await supabase
         .from('whatsapp_drafts')
         .select('*')
         .eq('user_id', userId)
@@ -1734,6 +1982,17 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      // Proactive Auto-Cleanup: Se o rascunho ativo tiver mais de 20 minutos, consideramos expirado (stale) e deletamos para não assombrar ou travar a conversa
+      if (activeDraft) {
+        const draftAgeMs = Date.now() - new Date(activeDraft.created_at).getTime();
+        const twentyMinutesMs = 20 * 60 * 1000;
+        if (draftAgeMs > twentyMinutesMs) {
+          console.log('[WhatsApp Webhook] Rascunho pendente expirado (> 20 min). Deletando:', activeDraft.id);
+          await supabase.from('whatsapp_drafts').delete().eq('id', activeDraft.id);
+          activeDraft = null;
+        }
+      }
 
       const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
       if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
@@ -1969,7 +2228,8 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           if (patch.category) changesMsg += `\n└─ Nova Categoria: ${patch.category}`;
           if (patch.subcategory) changesMsg += `\n└─ Nova Subcategoria: ${patch.subcategory}`;
           if (patch.date) changesMsg += `\n└─ Nova Data: ${patch.date.split('-').reverse().join('/')}`;
-          if (patch.account_name) changesMsg += `\n└─ Novo Banco/Conta: ${patch.account_name}`;
+          if (patch.account_name) changesMsg += `\n└─ Novo Banco Origem: ${patch.account_name}`;
+          if (patch.destination_account_name) changesMsg += `\n└─ Novo Banco Destino: ${patch.destination_account_name}`;
           if (patch.owner_name) changesMsg += `\n└─ Novo Perfil: ${patch.owner_name}`;
           if (patch.notes) changesMsg += `\n└─ Novas Observações: ${patch.notes}`;
           if (patch.tags && patch.tags.length > 0) changesMsg += `\n└─ Novas Tags: ${patch.tags.join(', ')}`;
@@ -2110,6 +2370,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                   description: matchedTx.description,
                   amount: matchedTx.amount,
                   date: matchedTx.date,
+                  is_card: !!matchedTx.is_card,
                   messageId: message.key.id
                 },
                 status: 'pending'
@@ -2118,7 +2379,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               .eq('data->>messageId', message.key.id);
 
             const dateFmt = matchedTx.date ? matchedTx.date.split('T')[0].split('-').reverse().join('/') : '';
-            await sendWhatsApp(phone, `📝 *Confirmação de Exclusão!* 🗑️\n\nEncontrei o lançamento:\n*Descrição:* ${matchedTx.description}\n*Valor:* R$ ${Number(matchedTx.amount).toFixed(2)}\n*Data:* ${dateFmt}\n\nConfirma a exclusão deste lançamento? Digite *SIM* ou *NÃO*.`);
+            await sendWhatsApp(phone, `📝 *Confirmação de Exclusão!* 🗑️\n\nEncontrei the lançamento:\n*Descrição:* ${matchedTx.description}\n*Valor:* R$ ${Number(matchedTx.amount).toFixed(2)}\n*Data:* ${dateFmt}\n\nConfirma a exclusão deste lançamento? Digite *SIM* ou *NÃO*.`);
             return res.status(200).json({ status: 'delete_draft_created' });
           }
 
@@ -2128,7 +2389,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             .update({
               data: {
                 type: 'delete_disambiguation',
-                candidates: matches.map(m => ({ id: m.id, description: m.description, amount: m.amount, date: m.date })),
+                candidates: matches.map(m => ({ id: m.id, description: m.description, amount: m.amount, date: m.date, is_card: !!m.is_card })),
                 messageId: message.key.id
               },
               status: 'pending'
@@ -2274,7 +2535,8 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           if (patch.category) changesMsg += `\n└─ Nova Categoria: ${patch.category}`;
           if (patch.subcategory) changesMsg += `\n└─ Nova Subcategoria: ${patch.subcategory}`;
           if (patch.date) changesMsg += `\n└─ Nova Data: ${patch.date.split('-').reverse().join('/')}`;
-          if (patch.account_name) changesMsg += `\n└─ Novo Banco/Conta: ${patch.account_name}`;
+          if (patch.account_name) changesMsg += `\n└─ Novo Banco Origem: ${patch.account_name}`;
+          if (patch.destination_account_name) changesMsg += `\n└─ Novo Banco Destino: ${patch.destination_account_name}`;
           if (patch.owner_name) changesMsg += `\n└─ Novo Perfil: ${patch.owner_name}`;
           if (patch.notes) changesMsg += `\n└─ Novas Observações: ${patch.notes}`;
           if (patch.tags && patch.tags.length > 0) changesMsg += `\n└─ Novas Tags: ${patch.tags.join(', ')}`;

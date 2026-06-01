@@ -456,7 +456,7 @@ const HistoryPage: React.FC = () => {
 
         while (hasMoreCards) {
           let chunkQuery = supabase.from('card_transactions')
-            .select('id, date, amount, description, card_id, category_id, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id)')
+            .select('id, date, amount, description, card_id, category_id, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)')
             .eq('user_id', user.id)
             .range(cardOffset, cardOffset + 999);
 
@@ -625,7 +625,7 @@ const HistoryPage: React.FC = () => {
         subcategory: ct.subcategory || undefined,
         description: ct.description,
         account_id: ct.cards?.account_id || undefined,
-        account_name: accounts.find(a => a.id === ct.cards?.account_id)?.institution || 'Cartão de Crédito',
+        account_name: ct.cards?.name || accounts.find(a => a.id === ct.cards?.account_id)?.institution || 'Cartão de Crédito',
         owner_name: ct.owner_name || 'Pessoal',
         notes: ct.notes || '',
         tags: ct.tags || [],
