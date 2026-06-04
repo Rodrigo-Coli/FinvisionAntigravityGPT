@@ -37,12 +37,18 @@ import {
 import { PhysicalAsset, InvestmentBroker, Liability, Transaction } from '../types';
 import { supabase } from '../lib/supabase/client';
 import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModal';
+import { RealEstateDetailModal } from '../components/assets/RealEstateDetailModal';
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
   const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'physical' | 'investments' | 'liabilities'>('overview');
   const [inccRate, setInccRate] = useState<number | null>(null);
   const [loadingIncc, setLoadingIncc] = useState<boolean>(false);
+
+  // Category Selector and Real Estate detail states
+  const [showCategorySelector, setShowCategorySelector] = useState(false);
+  const [selectedRealEstateForDetail, setSelectedRealEstateForDetail] = useState<PhysicalAsset | null>(null);
+  const [showRealEstateDetailModal, setShowRealEstateDetailModal] = useState(false);
 
   // Core Data States
   const [physicalAssets, setPhysicalAssets] = useState<PhysicalAsset[]>([]);
@@ -209,7 +215,7 @@ const Assets: React.FC = () => {
         .order('created_at', { ascending: true });
 
       if (phys) {
-        setPhysicalAssets(phys.map((p: any) => ({
+        const mappedPhys = phys.map((p: any) => ({
           id: p.id,
           name: p.name,
           category: p.category,
@@ -218,7 +224,12 @@ const Assets: React.FC = () => {
           description: p.description,
           is_archived: p.is_archived,
           metadata: p.metadata || {}
-        })));
+        }));
+        setPhysicalAssets(mappedPhys);
+        setSelectedRealEstateForDetail(prev => {
+          if (!prev) return null;
+          return mappedPhys.find((p: any) => p.id === prev.id) || prev;
+        });
       }
 
       // 2. Fetch Accounts (Brokers and Banks alocations)
@@ -1671,11 +1682,7 @@ const Assets: React.FC = () => {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => {
-              resetAssetForm();
-              setEditingAsset(null);
-              setShowModal(true);
-            }}
+            onClick={() => setShowCategorySelector(true)}
             className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
           >
             <Plus size={18} /> Novo Ativo
@@ -1687,9 +1694,9 @@ const Assets: React.FC = () => {
       <div className="flex gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full max-w-full overflow-x-auto scrollbar-hide">
         {[
           { id: 'overview', label: 'Visão Geral', icon: <LayoutGrid size={16} /> },
-          { id: 'realestate', label: 'Investimento Imobiliário', icon: <Building2 size={16} /> },
+          { id: 'realestate', label: 'Ativos Imobiliários', icon: <Building2 size={16} /> },
           { id: 'physical', label: 'Bens Físicos', icon: <Box size={16} /> },
-          { id: 'investments', label: 'Investimentos & Empréstimos', icon: <TrendingUp size={16} /> },
+          { id: 'investments', label: 'Investimentos', icon: <TrendingUp size={16} /> },
           { id: 'liabilities', label: 'Passivos (Dívidas)', icon: <Landmark size={16} /> }
         ].map((tab) => (
           <button
@@ -2310,7 +2317,14 @@ const Assets: React.FC = () => {
                     const netPropertyFlow = isRented ? rental - totalMonthlyCost : -totalMonthlyCost;
 
                     return (
-                      <div key={asset.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+                      <div 
+                        key={asset.id} 
+                        onClick={() => {
+                          setSelectedRealEstateForDetail(asset);
+                          setShowRealEstateDetailModal(true);
+                        }}
+                        className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between cursor-pointer text-left"
+                      >
                         <div className="p-8 space-y-6">
                           <div className="flex justify-between items-start">
                             <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
@@ -2319,14 +2333,14 @@ const Assets: React.FC = () => {
                             <div className="flex gap-1.5">
                               {propertyStage === 'PLANTA' ? (
                                 <button
-                                  onClick={() => togglePropertyTypeDirectly(asset)}
+                                  onClick={(e) => { e.stopPropagation(); togglePropertyTypeDirectly(asset); }}
                                   className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-amber-100 transition-colors"
                                 >
                                   Na Planta 🛠️
                                 </button>
                               ) : (
                                 <button
-                                  onClick={() => togglePropertyTypeDirectly(asset)}
+                                  onClick={(e) => { e.stopPropagation(); togglePropertyTypeDirectly(asset); }}
                                   className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-emerald-100 transition-colors"
                                 >
                                   Pronto / Entregue 🏢
@@ -2419,23 +2433,24 @@ const Assets: React.FC = () => {
                         {/* Card controls and actions */}
                         <div className="px-8 py-5 bg-slate-50 border-t border-slate-100 flex justify-between items-center gap-4">
                           <button
-                            onClick={() => {
-                              setSelectedAssetForExtrato(asset);
-                              setShowExtratoModal(true);
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedRealEstateForDetail(asset);
+                              setShowRealEstateDetailModal(true);
                             }}
                             className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
                           >
-                            <History size={12} /> Extrato & Ajustes
+                            <History size={12} /> Detalhes & Evolução
                           </button>
                           <div className="flex gap-2">
                             <button
-                              onClick={() => openEditAsset(asset)}
+                              onClick={(e) => { e.stopPropagation(); openEditAsset(asset); }}
                               className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600"
                             >
                               Editar
                             </button>
                             <button
-                              onClick={() => handleArchiveAsset(asset)}
+                              onClick={(e) => { e.stopPropagation(); handleArchiveAsset(asset); }}
                               className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-amber-600"
                             >
                               Arquivar
@@ -3816,6 +3831,125 @@ const Assets: React.FC = () => {
             fetchData();
           }}
         />
+      )}
+
+      {showRealEstateDetailModal && selectedRealEstateForDetail && (
+        <RealEstateDetailModal
+          asset={selectedRealEstateForDetail}
+          onClose={() => {
+            setShowRealEstateDetailModal(false);
+            setSelectedRealEstateForDetail(null);
+          }}
+          onSuccess={() => {
+            fetchData();
+          }}
+          transactions={transactions}
+        />
+      )}
+
+      {showCategorySelector && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[45px] w-full max-w-3xl shadow-2xl overflow-hidden border border-white/20 animate-in slide-in-from-bottom-4">
+            <div className="px-10 py-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight italic">Selecione o Tipo de Ativo</h3>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Para onde deseja direcionar seu novo patrimônio?</p>
+              </div>
+              <button onClick={() => setShowCategorySelector(false)} className="w-10 h-10 bg-white border border-slate-200 text-slate-400 hover:text-rose-500 rounded-xl flex items-center justify-center transition-all shadow-sm"><X size={20} /></button>
+            </div>
+
+            <div className="p-10 grid grid-cols-1 sm:grid-cols-2 gap-6">
+              
+              {/* Option 1: Imóvel */}
+              <button
+                onClick={() => {
+                  setShowCategorySelector(false);
+                  setShowWizardModal(true);
+                }}
+                className="p-6 bg-white border border-slate-100 hover:border-brand-500 rounded-[30px] text-left hover:shadow-xl transition-all duration-300 flex items-start gap-4 group"
+              >
+                <div className="w-12 h-12 bg-slate-100 group-hover:bg-slate-900 group-hover:text-white rounded-2xl flex items-center justify-center transition-colors"><Building2 size={24} /></div>
+                <div className="space-y-1">
+                  <h4 className="font-black text-slate-900 text-sm group-hover:text-brand-600">Ativo Imobiliário</h4>
+                  <p className="text-[10px] text-slate-400 leading-normal font-medium">Cadastre imóveis na planta ou prontos, controle financiamentos (SAC/Price), parcelas e aluguéis.</p>
+                </div>
+              </button>
+
+              {/* Option 2: Veículo */}
+              <button
+                onClick={() => {
+                  setShowCategorySelector(false);
+                  resetAssetForm();
+                  setEditingAsset(null);
+                  setFormData(prev => ({ ...prev, category: 'VEHICLE', purpose: 'uso' }));
+                  setShowModal(true);
+                }}
+                className="p-6 bg-white border border-slate-100 hover:border-brand-500 rounded-[30px] text-left hover:shadow-xl transition-all duration-300 flex items-start gap-4 group"
+              >
+                <div className="w-12 h-12 bg-slate-100 group-hover:bg-slate-900 group-hover:text-white rounded-2xl flex items-center justify-center transition-colors"><Car size={24} /></div>
+                <div className="space-y-1">
+                  <h4 className="font-black text-slate-900 text-sm group-hover:text-brand-600">Veículo</h4>
+                  <p className="text-[10px] text-slate-400 leading-normal font-medium">Adicione carros, motos ou outros veículos para acompanhamento automático da tabela FIPE.</p>
+                </div>
+              </button>
+
+              {/* Option 3: Outros Bens */}
+              <button
+                onClick={() => {
+                  setShowCategorySelector(false);
+                  resetAssetForm();
+                  setEditingAsset(null);
+                  setFormData(prev => ({ ...prev, category: 'OTHER', purpose: 'uso' }));
+                  setShowModal(true);
+                }}
+                className="p-6 bg-white border border-slate-100 hover:border-brand-500 rounded-[30px] text-left hover:shadow-xl transition-all duration-300 flex items-start gap-4 group"
+              >
+                <div className="w-12 h-12 bg-slate-100 group-hover:bg-slate-900 group-hover:text-white rounded-2xl flex items-center justify-center transition-colors"><Box size={24} /></div>
+                <div className="space-y-1">
+                  <h4 className="font-black text-slate-950 text-sm group-hover:text-brand-600">Outros Bens Físicos</h4>
+                  <p className="text-[10px] text-slate-400 leading-normal font-medium">Joias, maquinários, cabeças de gado ou qualquer outro bem físico de valor de mercado.</p>
+                </div>
+              </button>
+
+              {/* Option 4: Investimento / Empréstimo */}
+              <div
+                className="p-6 bg-white border border-slate-100 rounded-[30px] text-left flex flex-col justify-between gap-4"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center"><TrendingUp size={24} /></div>
+                  <div className="space-y-1">
+                    <h4 className="font-black text-slate-900 text-sm">Investimentos</h4>
+                    <p className="text-[10px] text-slate-400 leading-normal font-medium">Controle de rendimentos financeiros ou empréstimos ativos a receber.</p>
+                  </div>
+                </div>
+                <div className="flex gap-2 border-t pt-3">
+                  <button
+                    onClick={() => {
+                      setShowCategorySelector(false);
+                      resetAssetForm();
+                      setEditingAsset(null);
+                      setFormData(prev => ({ ...prev, isLoan: true, category: 'OTHER' }));
+                      setShowModal(true);
+                    }}
+                    className="flex-1 py-2 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-[9px] font-black uppercase text-center tracking-wider"
+                  >
+                    Empréstimo Concedido
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowCategorySelector(false);
+                      navigate('/accounts');
+                    }}
+                    className="flex-1 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-[9px] font-black uppercase text-center tracking-wider"
+                  >
+                    Investimento Financeiro
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

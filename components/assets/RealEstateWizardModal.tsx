@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase/client';
-import { X, Plus, Trash2, FileText, Upload, HelpCircle, CheckCircle2, Loader2, Sparkles, Building2, Wallet, ArrowRight, Link as LinkIcon, TrendingUp } from 'lucide-react';
+import { X, Plus, Trash2, Upload, Loader2, Building2, Wallet, ArrowRight, TrendingUp, HelpCircle } from 'lucide-react';
 import { Liability } from '../../types';
 
 interface RealEstateWizardModalProps {
@@ -10,7 +10,7 @@ interface RealEstateWizardModalProps {
 
 export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ onClose, onSuccess }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [propertyType, setPropertyType] = useState<'PLANTA' | 'PRONTO'>('PLANTA');
+  const [propertyStage, setPropertyStage] = useState<'PLANTA' | 'PRONTO'>('PRONTO');
 
   // Identificação do Imóvel
   const [name, setName] = useState('');
@@ -18,34 +18,37 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
   const [acquisitionDate, setAcquisitionDate] = useState(new Date().toISOString().split('T')[0]);
   const [description, setDescription] = useState('');
 
-  // Ato e Contrato
-  const [downPayments, setDownPayments] = useState<{ amount: number; date: string }[]>([]);
-  const [currDownAmount, setCurrDownAmount] = useState('');
-  const [currDownDate, setCurrDownDate] = useState('');
-  const [contractFile, setContractFile] = useState<File | null>(null);
+  // Entradas (Down Payments List)
+  const [downPayments, setDownPayments] = useState<{ amount: number; date: string; label: string }[]>([]);
+  const [inputDownAmount, setInputDownAmount] = useState('');
+  const [inputDownDate, setInputDownDate] = useState(new Date().toISOString().split('T')[0]);
+  const [inputDownFrequency, setInputDownFrequency] = useState<'SINGLE' | 'MONTHLY' | 'QUARTERLY' | 'SEMESTRAL'>('SINGLE');
+  const [inputDownCount, setInputDownCount] = useState('1');
 
-  // Fase de Obras
-  const [constInstallments, setConstInstallments] = useState('');
-  const [constAmount, setConstAmount] = useState('');
-  const [constStartDate, setConstStartDate] = useState('');
-  const [indexType, setIndexType] = useState<'INCC' | 'IPCA' | 'FIXED'>('INCC');
-  const [monthlyIndexRate, setMonthlyIndexRate] = useState('0.5');
+  // Intermediárias (Balloons List)
+  const [balloons, setBalloons] = useState<{ amount: number; date: string; label: string }[]>([]);
+  const [inputBalloonAmount, setInputBalloonAmount] = useState('');
+  const [inputBalloonDate, setInputBalloonDate] = useState(new Date().toISOString().split('T')[0]);
+  const [inputBalloonFrequency, setInputBalloonFrequency] = useState<'SINGLE' | 'MONTHLY' | 'QUARTERLY' | 'SEMESTRAL'>('SINGLE');
+  const [inputBalloonCount, setInputBalloonCount] = useState('1');
 
-  // Intermediárias
-  const [intermFrequency, setIntermFrequency] = useState('6');
-  const [intermAmount, setIntermAmount] = useState('');
-  const [intermTotal, setIntermTotal] = useState('');
+  // Financiamento (Funding & Amortization)
+  const [financingAmount, setFinancingAmount] = useState('');
+  const [financingStartDate, setFinancingStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [financingInstallmentsCount, setFinancingInstallmentsCount] = useState('120');
+  const [financingInterestRate, setFinancingInterestRate] = useState('0.8'); // % ao mês
+  const [financingIndexType, setFinancingIndexType] = useState<'INCC' | 'IPCA' | 'IGP-M' | 'FIXED'>('FIXED');
+  const [financingIndexRate, setFinancingIndexRate] = useState('0.0'); // % ao mês reajuste
+  const [amortizationType, setAmortizationType] = useState<'SAC' | 'PRICE'>('SAC');
 
-  // Saldo Final
-  const [finalBalance, setFinalBalance] = useState('');
-  const [deliveryDate, setDeliveryDate] = useState('');
-  const [adjustBalanceDuringConstruction, setAdjustBalanceDuringConstruction] = useState(true);
-  const [postDeliveryIndex, setPostDeliveryIndex] = useState('IPCA + 1%');
-  
-  // Consórcios
+  // Consórcio Integrado
   const [availableConsortia, setAvailableConsortia] = useState<Liability[]>([]);
-  const [selectedConsortiaIds, setSelectedConsortiaIds] = useState<string[]>([]);
+  const [selectedConsortiumId, setSelectedConsortiumId] = useState<string>('');
   const [isLoadingConsortia, setIsLoadingConsortia] = useState(false);
+
+  // Contract Upload parsing
+  const [contractFile, setContractFile] = useState<File | null>(null);
+  const [isParsingContract, setIsParsingContract] = useState(false);
 
   useEffect(() => {
     fetchConsortia();
@@ -61,7 +64,8 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         .from('liabilities')
         .select('*')
         .eq('user_id', user.id)
-        .eq('type', 'CONSORTIUM');
+        .eq('type', 'CONSORTIUM')
+        .eq('is_archived', false);
       
       if (data) {
         setAvailableConsortia(data.map((l: any) => ({
@@ -70,7 +74,8 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
           type: l.type,
           totalAmount: Number(l.total_amount),
           remainingBalance: Number(l.remaining_balance),
-          metadata: l.metadata
+          installmentAmount: l.installment_amount ? Number(l.installment_amount) : undefined,
+          metadata: l.metadata || {}
         } as Liability)));
       }
     } catch (e) {
@@ -80,16 +85,65 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
     }
   };
 
-  const addDownPayment = () => {
-    if (!currDownAmount || !currDownDate) return;
-    setDownPayments([...downPayments, { amount: parseFloat(currDownAmount), date: currDownDate }]);
-    setCurrDownAmount('');
-    setCurrDownDate('');
+  const addDownPaymentsSeries = () => {
+    const amt = parseFloat(inputDownAmount);
+    if (isNaN(amt) || amt <= 0 || !inputDownDate) return;
+    const count = parseInt(inputDownCount) || 1;
+    const baseDate = new Date(inputDownDate);
+    const newItems: { amount: number; date: string; label: string }[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const targetDate = new Date(baseDate);
+      if (inputDownFrequency === 'MONTHLY') {
+        targetDate.setMonth(baseDate.getMonth() + i);
+      } else if (inputDownFrequency === 'QUARTERLY') {
+        targetDate.setMonth(baseDate.getMonth() + i * 3);
+      } else if (inputDownFrequency === 'SEMESTRAL') {
+        targetDate.setMonth(baseDate.getMonth() + i * 6);
+      }
+      
+      newItems.push({
+        amount: amt,
+        date: targetDate.toISOString().split('T')[0],
+        label: count > 1 ? `Entrada ${i + 1}/${count}` : 'Entrada'
+      });
+    }
+
+    setDownPayments([...downPayments, ...newItems]);
+    setInputDownAmount('');
   };
 
   const removeDownPayment = (idx: number) => setDownPayments(downPayments.filter((_, i) => i !== idx));
 
-  const [isParsingContract, setIsParsingContract] = useState(false);
+  const addBalloonsSeries = () => {
+    const amt = parseFloat(inputBalloonAmount);
+    if (isNaN(amt) || amt <= 0 || !inputBalloonDate) return;
+    const count = parseInt(inputBalloonCount) || 1;
+    const baseDate = new Date(inputBalloonDate);
+    const newItems: { amount: number; date: string; label: string }[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const targetDate = new Date(baseDate);
+      if (inputBalloonFrequency === 'MONTHLY') {
+        targetDate.setMonth(baseDate.getMonth() + i);
+      } else if (inputBalloonFrequency === 'QUARTERLY') {
+        targetDate.setMonth(baseDate.getMonth() + i * 3);
+      } else if (inputBalloonFrequency === 'SEMESTRAL') {
+        targetDate.setMonth(baseDate.getMonth() + i * 6);
+      }
+      
+      newItems.push({
+        amount: amt,
+        date: targetDate.toISOString().split('T')[0],
+        label: count > 1 ? `Intermediária ${i + 1}/${count}` : 'Intermediária'
+      });
+    }
+
+    setBalloons([...balloons, ...newItems]);
+    setInputBalloonAmount('');
+  };
+
+  const removeBalloon = (idx: number) => setBalloons(balloons.filter((_, i) => i !== idx));
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -98,12 +152,10 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
     setIsParsingContract(true);
 
     try {
-      // Converte para Base64
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = async () => {
         const base64 = reader.result?.toString().split(',')[1];
-        
         if (!supabase) return;
 
         const { data, error } = await supabase.functions.invoke('parse-real-estate-contract', {
@@ -112,26 +164,25 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
 
         if (error) throw error;
 
-        // Preencher o formulário com dados extraídos pela IA
         setName(data.propertyName || '');
         setEstimatedValue(String(data.totalValue) || '');
-        setConstAmount(String(data.installmentValue) || '');
-        setConstInstallments(String(data.installmentsCount) || '');
-        setIndexType(data.indexType || 'INCC');
-        setMonthlyIndexRate(String(data.indexMonthlyRate) || '0.65');
-        setFinalBalance(String(data.deliveryBalance) || '');
-        setAdjustBalanceDuringConstruction(data.adjustBalanceDuringObras ?? true);
-        
-        // Se houver intermediárias, poderíamos adicionar lógica aqui também
+        setFinancingAmount(String(data.deliveryBalance) || '');
         
         setIsParsingContract(false);
-        alert("Contrato analisado com sucesso!");
+        alert("Contrato analisado com sucesso pela IA!");
       };
     } catch (err) {
-      console.error("Erro no parsing:", err);
+      console.error("Erro no upload do contrato:", err);
       setIsParsingContract(false);
-      alert("Não foi possível analisar o contrato automaticamente. Por favor, preencha os dados manualmente.");
+      alert("Não foi possível processar o contrato por IA. Complete os dados manualmente.");
     }
+  };
+
+  // Helper to generate UUID locally
+  const generateUUID = () => {
+    return typeof crypto !== 'undefined' && crypto.randomUUID 
+      ? crypto.randomUUID() 
+      : Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   };
 
   const handleSave = async () => {
@@ -141,246 +192,223 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      // 1. Ativo Físico
-      const { data: assetData, error: assetErr } = await supabase.from('physical_assets').insert([{
-        user_id: user.id,
-        name: name,
-        category: 'REAL_ESTATE',
-        estimated_value: parseFloat(estimatedValue) || 0,
-        acquisition_date: acquisitionDate || null,
-        description: `${description} (${propertyType === 'PLANTA' ? 'Na Planta' : 'Pronto'}). Indice: ${indexType}`
-      }]).select().single();
+      const estimatedAmt = parseFloat(estimatedValue) || 0;
+      const initialPurchase = (parseFloat(estimatedValue) || 0);
+
+      // 1. Create the Property asset in physical_assets
+      const assetMetadata: Record<string, any> = {
+        propertyStage,
+        purpose: 'uso',
+        purchaseValue: initialPurchase,
+        indexType: financingIndexType,
+        selectedConsortiumId: selectedConsortiumId || undefined,
+        financingType: selectedConsortiumId ? 'CONSORCIO' : 'FINANCING_SCHEDULE'
+      };
+
+      const { data: assetData, error: assetErr } = await supabase
+        .from('physical_assets')
+        .insert([{
+          user_id: user.id,
+          name: name,
+          category: 'REAL_ESTATE',
+          estimated_value: estimatedAmt,
+          acquisition_date: acquisitionDate || null,
+          description: `${description} (${propertyStage === 'PLANTA' ? 'Na Planta' : 'Pronto'}).`,
+          metadata: assetMetadata
+        }])
+        .select()
+        .single();
 
       if (assetErr) throw assetErr;
       const assetId = assetData.id;
 
-      // 2. Passivo (Dívida Total)
-      const totalLiabilityAmount = 
-        downPayments.reduce((acc, curr) => acc + curr.amount, 0) +
-        (parseFloat(constAmount) * (parseInt(constInstallments) || 0)) +
-        (parseFloat(intermAmount) * (parseInt(intermTotal) || 0)) +
-        (parseFloat(finalBalance) || 0);
-
-      const startDay = constStartDate ? new Date(constStartDate).getDate() : 10;
-
-      const { data: liabData, error: liabErr } = await supabase.from('liabilities').insert([{
-        user_id: user.id,
-        name: `Dívida Imob: ${name}`,
-        type: 'MORTGAGE',
-        total_amount: totalLiabilityAmount,
-        remaining_balance: totalLiabilityAmount,
-        installment_amount: parseFloat(constAmount) || 0,
-        installments_remaining: parseInt(constInstallments) || 0,
-        due_day: startDay,
-        linked_asset_id: assetId,
-        metadata: {
-          propertyType,
-          index_type: indexType, // Alinhado com a Edge Function
-          monthlyIndexRate,
-          deliveryDate,
-          adjust_balance_during_obras: adjustBalanceDuringConstruction, // Alinhado com a Edge Function
-          selectedConsortiaIds,
-          isRealEstate: true
-        }
-      }]).select().single();
-
-      if (liabErr) throw liabErr;
-      const liabId = liabData.id;
-
-      // 3. Auto-provisionar Categoria "Ativos Imobiliários" e Subcategoria no Supabase
+      // 2. Resolve or create "Ativos Imobiliários" category
       let categoryId = null;
-      try {
-        const { data: existingCat } = await supabase
+      const { data: existingCat } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('name', 'Ativos Imobiliários')
+        .maybeSingle();
+
+      if (existingCat) {
+        categoryId = existingCat.id;
+      } else {
+        const { data: newCat } = await supabase
           .from('categories')
-          .select('id')
-          .eq('user_id', user.id)
-          .ilike('name', 'Ativos Imobiliários')
-          .maybeSingle();
-
-        if (existingCat) {
-          categoryId = existingCat.id;
-        } else {
-          const { data: newCat, error: catErr } = await supabase
-            .from('categories')
-            .insert([{
-              user_id: user.id,
-              name: 'Ativos Imobiliários',
-              type: 'EXPENSE'
-            }])
-            .select()
-            .single();
-          if (catErr) throw catErr;
-          categoryId = newCat.id;
-        }
-
-        if (categoryId) {
-          const { data: existingSubcat } = await supabase
-            .from('subcategories')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('category_id', categoryId)
-            .ilike('name', name)
-            .maybeSingle();
-
-          if (!existingSubcat) {
-            await supabase
-              .from('subcategories')
-              .insert([{
-                user_id: user.id,
-                category_id: categoryId,
-                name: name
-              }]);
-          }
-        }
-      } catch (errCat) {
-        console.warn("Erro ao auto-provisionar categoria/subcategoria no Supabase:", errCat);
+          .insert([{
+            user_id: user.id,
+            name: 'Ativos Imobiliários',
+            type: 'EXPENSE',
+            color: 'bg-brand-50 text-brand-600'
+          }])
+          .select()
+          .single();
+        if (newCat) categoryId = newCat.id;
       }
 
-      // 4. Transações
+      // Provision transactions array
       const futureTransactions: any[] = [];
-      const catName = 'Ativos Imobiliários';
-      const subcatName = name;
 
-      const generateUUID = () => {
-        return typeof crypto !== 'undefined' && crypto.randomUUID 
-          ? crypto.randomUUID() 
-          : Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      };
-
-      // Ato
-      const atoGroupId = downPayments.length > 1 ? generateUUID() : null;
+      // 3. Add Down Payments (Entradas)
+      const downPaymentGroupId = downPayments.length > 1 ? generateUUID() : null;
       downPayments.forEach((dp, i) => {
+        const dpDate = new Date(dp.date);
         futureTransactions.push({
           user_id: user.id,
-          description: `ATO ${i + 1}/${downPayments.length} - ${name}`,
+          description: `${dp.label} - ${name}`,
           amount: dp.amount,
           date: dp.date,
           type: 'EXPENSE',
-          category: catName,
-          subcategory: subcatName,
-          is_paid: new Date(dp.date) <= new Date(),
-          is_amortization: true,
-          liability_id: liabId,
+          category: 'Ativos Imobiliários',
+          subcategory: 'Entrada',
+          category_id: categoryId,
+          is_paid: dpDate <= new Date(),
+          paid_amount: dpDate <= new Date() ? dp.amount : 0,
+          paid_at: dpDate <= new Date() ? dp.date : null,
           is_installment: downPayments.length > 1,
           installment_number: downPayments.length > 1 ? i + 1 : null,
           installment_total: downPayments.length > 1 ? downPayments.length : null,
-          installment_group_id: atoGroupId,
-          metadata: { type: 'DOWN_PAYMENT' }
+          installment_group_id: downPaymentGroupId,
+          metadata: {
+            linked_asset_id: assetId,
+            property_tx_type: 'DOWN_PAYMENT'
+          }
         });
       });
 
-      // Parcelas Obras
-      if (propertyType === 'PLANTA' && constAmount && constInstallments && constStartDate) {
-        let baseVal = parseFloat(constAmount);
-        const rate = (parseFloat(monthlyIndexRate) || 0) / 100;
-        const startDate = new Date(constStartDate);
-        const totalInst = parseInt(constInstallments);
-        const obrasGroupId = generateUUID();
-
-        for (let i = 0; i < totalInst; i++) {
-          const txDate = new Date(startDate.getFullYear(), startDate.getMonth() + i, startDate.getDate());
-          if (i > 0) baseVal = baseVal * (1 + rate);
-
-          futureTransactions.push({
-            user_id: user.id,
-            description: `Parcela Obra ${i + 1}/${constInstallments} - ${name}`,
-            amount: baseVal,
-            date: txDate.toISOString().split('T')[0],
-            type: 'EXPENSE',
-            category: catName,
-            subcategory: subcatName,
-            is_paid: false,
-            is_amortization: true,
-            liability_id: liabId,
-            is_installment: true,
-            installment_number: i + 1,
-            installment_total: totalInst,
-            installment_group_id: obrasGroupId,
-            metadata: { 
-              installment: i + 1, 
-              index_type: indexType, 
-              needs_adjustment: indexType !== 'FIXED' 
-            }
-          });
-        }
-      }
-
-      // Balões
-      if (intermAmount && intermTotal && intermFrequency && constStartDate) {
-        const val = parseFloat(intermAmount);
-        const total = parseInt(intermTotal);
-        const freq = parseInt(intermFrequency);
-        const startDate = new Date(constStartDate);
-        const intermGroupId = generateUUID();
-
-        for (let i = 1; i <= total; i++) {
-          const txDate = new Date(startDate.getFullYear(), startDate.getMonth() + (i * freq), startDate.getDate());
-          futureTransactions.push({
-            user_id: user.id,
-            description: `Intermediária ${i}/${total} - ${name}`,
-            amount: val,
-            date: txDate.toISOString().split('T')[0],
-            type: 'EXPENSE',
-            category: catName,
-            subcategory: subcatName,
-            is_paid: false,
-            is_amortization: true,
-            liability_id: liabId,
-            is_installment: true,
-            installment_number: i,
-            installment_total: total,
-            installment_group_id: intermGroupId,
-            metadata: { 
-              type: 'INTERMEDIARY',
-              index_type: indexType,
-              needs_adjustment: indexType !== 'FIXED' 
-            }
-          });
-        }
-      }
-
-      // Saldo Final
-      if (finalBalance && deliveryDate) {
+      // 4. Add Balloons (Intermediárias)
+      const balloonGroupId = balloons.length > 1 ? generateUUID() : null;
+      balloons.forEach((b, i) => {
+        const bDate = new Date(b.date);
         futureTransactions.push({
           user_id: user.id,
-          description: `Saldo Final (Entrega) - ${name}`,
-          amount: parseFloat(finalBalance),
-          date: deliveryDate,
+          description: `${b.label} - ${name}`,
+          amount: b.amount,
+          date: b.date,
           type: 'EXPENSE',
-          category: catName,
-          subcategory: subcatName,
-          is_paid: false,
-          is_amortization: true,
-          liability_id: liabId,
-          is_installment: false,
-          installment_number: null,
-          installment_total: null,
-          installment_group_id: null,
-          metadata: { 
-            type: 'FINAL_BALANCE', 
-            adjust_during_construction: adjustBalanceDuringConstruction,
-            linked_consortia: selectedConsortiaIds
+          category: 'Ativos Imobiliários',
+          subcategory: 'Intermediária',
+          category_id: categoryId,
+          is_paid: bDate <= new Date(),
+          paid_amount: bDate <= new Date() ? b.amount : 0,
+          paid_at: bDate <= new Date() ? b.date : null,
+          is_installment: balloons.length > 1,
+          installment_number: balloons.length > 1 ? i + 1 : null,
+          installment_total: balloons.length > 1 ? balloons.length : null,
+          installment_group_id: balloonGroupId,
+          metadata: {
+            linked_asset_id: assetId,
+            property_tx_type: 'BALLOON'
           }
         });
+      });
+
+      // 5. Add Financing / Amortization Schedule (if not paid by consortium)
+      const fundingAmount = parseFloat(financingAmount) || 0;
+      if (fundingAmount > 0 && financingStartDate) {
+        if (selectedConsortiumId) {
+          // A consortium handles this: Link this consortium to the property
+          await supabase
+            .from('liabilities')
+            .update({
+              linked_asset_id: assetId,
+              metadata: {
+                propertyType: propertyStage,
+                isRealEstate: true
+              }
+            })
+            .eq('id', selectedConsortiumId);
+
+          // Update consortium transactions if any to link to property
+          const { data: consTxs } = await supabase
+            .from('transactions')
+            .select('id, metadata')
+            .eq('liability_id', selectedConsortiumId);
+          
+          if (consTxs) {
+            for (const tx of consTxs) {
+              const txMeta = { ...(tx.metadata || {}), linked_asset_id: assetId };
+              await supabase
+                .from('transactions')
+                .update({ metadata: txMeta })
+                .eq('id', tx.id);
+            }
+          }
+        } else {
+          // Calculate SAC/Price Amortization schedule and add transactions
+          const n = parseInt(financingInstallmentsCount, 10) || 12;
+          const monthlyRate = (parseFloat(financingInterestRate) || 0) / 100;
+          const reajusteRate = (parseFloat(financingIndexRate) || 0) / 100;
+          const baseStartDate = new Date(financingStartDate);
+          const financingGroupId = generateUUID();
+
+          let outstandingBalance = fundingAmount;
+          const sacAmortization = fundingAmount / n;
+
+          for (let k = 1; k <= n; k++) {
+            let installmentVal = 0;
+            if (amortizationType === 'SAC') {
+              const interest = outstandingBalance * monthlyRate;
+              installmentVal = sacAmortization + interest;
+              outstandingBalance -= sacAmortization;
+            } else {
+              // Price formula: PMT = PV * (i * (1+i)^n) / ((1+i)^n - 1)
+              if (monthlyRate === 0) {
+                installmentVal = fundingAmount / n;
+              } else {
+                installmentVal = fundingAmount * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1);
+              }
+            }
+
+            // Apply cumulative correction rate
+            const adjustedVal = installmentVal * Math.pow(1 + reajusteRate, k);
+
+            const txDate = new Date(baseStartDate);
+            txDate.setMonth(baseStartDate.getMonth() + (k - 1));
+            const dateStr = txDate.toISOString().split('T')[0];
+
+            futureTransactions.push({
+              user_id: user.id,
+              description: `Parcela Financiamento ${k}/${n} (${amortizationType}) - ${name}`,
+              amount: adjustedVal,
+              date: dateStr,
+              type: 'EXPENSE',
+              category: 'Ativos Imobiliários',
+              subcategory: 'Financiamento',
+              category_id: categoryId,
+              is_paid: false,
+              is_installment: true,
+              installment_number: k,
+              installment_total: n,
+              installment_group_id: financingGroupId,
+              metadata: {
+                linked_asset_id: assetId,
+                property_tx_type: 'FINANCING',
+                amortization_type: amortizationType
+              }
+            });
+          }
+        }
       }
 
+      // Insert all transactions at once
       if (futureTransactions.length > 0) {
-        await supabase.from('transactions').insert(futureTransactions);
+        const { error: txErr } = await supabase.from('transactions').insert(futureTransactions);
+        if (txErr) throw txErr;
       }
 
+      alert("Ativo Imobiliário criado e transações consolidadas!");
       onSuccess();
     } catch (err: any) {
-      alert(`Erro: ${err.message}`);
+      alert(`Erro ao cadastrar imóvel: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const toggleConsortium = (id: string) => {
-    setSelectedConsortiaIds(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
-  };
+  const formatCurrency = (val: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
@@ -389,10 +417,10 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         {/* HEADER */}
         <div className="px-10 py-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-brand-600 text-white rounded-[22px] flex items-center justify-center shadow-lg shadow-brand-500/20"><Building2 size={28} /></div>
+            <div className="w-14 h-14 bg-slate-900 text-white rounded-[22px] flex items-center justify-center shadow-lg"><Building2 size={28} /></div>
             <div>
               <h3 className="text-2xl font-black text-slate-900 tracking-tight italic">Aquisição Imobiliária</h3>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">Formulário Único Inteligente · FV V6</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">Lançamento de Imóveis & Cronogramas Financeiros</p>
             </div>
           </div>
           <button onClick={onClose} className="w-12 h-12 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-2xl flex items-center justify-center transition-all shadow-sm"><X size={24} /></button>
@@ -400,78 +428,88 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           
-          {/* AI UPLOAD BAR - TOP PRIORITY */}
+          {/* AI UPLOAD BAR */}
           <div className="p-10 pb-0">
             <div className={`relative border-2 border-dashed rounded-[32px] p-8 flex flex-col md:flex-row items-center justify-between gap-6 transition-all ${isParsingContract ? 'bg-brand-50 border-brand-500' : 'bg-slate-50/50 border-slate-200 hover:border-brand-500/50'}`}>
               <div className="flex items-center gap-6">
-                <div className={`w-16 h-16 rounded-[22px] flex items-center justify-center shadow-sm transition-all ${isParsingContract ? 'bg-brand-600 text-white' : 'bg-white text-slate-300'}`}>
-                  {isParsingContract ? <Loader2 size={32} className="animate-spin" /> : <Upload size={32} />}
+                <div className="w-12 h-12 bg-white text-slate-300 rounded-xl flex items-center justify-center">
+                  {isParsingContract ? <Loader2 size={24} className="animate-spin text-brand-600" /> : <Upload size={24} />}
                 </div>
-                <div className="text-center md:text-left">
-                  <h4 className={`font-black italic ${isParsingContract ? 'text-brand-600' : 'text-slate-900'}`}>
-                    {isParsingContract ? 'A IA está lendo seu contrato...' : 'Subir Contrato para Preenchimento Automático'}
-                  </h4>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">A IA identificará parcelas, balões e índices automaticamente.</p>
+                <div>
+                  <h4 className="font-black italic text-slate-950">Subir Contrato com IA</h4>
+                  <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Preenchimento automatizado de valores e parcelas do contrato.</p>
                 </div>
               </div>
               <label className="shrink-0">
                 <input type="file" className="hidden" accept=".pdf,.doc,.docx" onChange={handleFileUpload} disabled={isParsingContract} />
-                <span className="px-8 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all cursor-pointer shadow-lg shadow-slate-900/10 inline-block">
-                  {contractFile ? 'Trocar Arquivo' : 'Selecionar PDF'}
+                <span className="px-8 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all cursor-pointer shadow-lg inline-block">
+                  {contractFile ? 'Trocar Arquivo' : 'Upload Contrato'}
                 </span>
               </label>
-              {isParsingContract && (
-                <div className="absolute inset-0 bg-brand-50/20 backdrop-blur-[1px] rounded-[30px] animate-pulse pointer-events-none" />
-              )}
             </div>
           </div>
 
-          <div className="p-6 space-y-10">
+          <div className="p-10 space-y-10">
             
-            {/* SECTION: IDENTIFICATION */}
+            {/* STAGE & IDENTIFICATION */}
             <div className="space-y-6">
                <div className="flex items-center justify-between">
-                 <div className="flex items-center gap-3">
-                    <div className="w-6 h-6 bg-slate-100 text-slate-900 rounded-lg flex items-center justify-center font-black text-[10px]">1</div>
-                    <h4 className="text-lg font-black text-slate-900 italic">Identificação e Status</h4>
-                 </div>
-                 <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
-                   <button onClick={() => setPropertyType('PLANTA')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${propertyType === 'PLANTA' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Na Planta</button>
-                   <button onClick={() => setPropertyType('PRONTO')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${propertyType === 'PRONTO' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Pronto</button>
-                 </div>
+                  <div className="flex items-center gap-3">
+                     <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">1</div>
+                     <h4 className="text-lg font-black text-slate-900 italic">Identificação e Status do Imóvel</h4>
+                  </div>
+                  <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
+                    <button onClick={() => setPropertyStage('PRONTO')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${propertyStage === 'PRONTO' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Entregue (Pronto)</button>
+                    <button onClick={() => setPropertyStage('PLANTA')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${propertyStage === 'PLANTA' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Na Planta</button>
+                  </div>
                </div>
 
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Nome do Empreendimento / Unidade</label>
-                    <input className="w-full h-12 px-6 bg-slate-50 border border-slate-100 rounded-2xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-brand-500/10 transition-all text-sm" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Apartamento 402 - Ed. Horizonte" />
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Nome do Imóvel / Empreendimento</label>
+                    <input className="w-full h-12 px-6 bg-slate-50 border rounded-2xl font-bold text-slate-900 outline-none text-sm" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Apartamento 304 - Residencial Mirante" />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Avaliação Total (R$)</label>
-                    <input type="number" className="w-full h-12 px-6 bg-slate-50 border border-slate-100 rounded-2xl font-black text-slate-900 outline-none text-sm" value={estimatedValue} onChange={e => setEstimatedValue(e.target.value)} placeholder="0,00" />
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Valor Total do Imóvel (R$)</label>
+                    <input type="number" className="w-full h-12 px-6 bg-slate-50 border rounded-2xl font-bold text-slate-900 outline-none text-sm" value={estimatedValue} onChange={e => setEstimatedValue(e.target.value)} placeholder="0,00" />
                   </div>
                </div>
             </div>
 
-            {/* SECTION: ATO E ENTRADAS */}
+            {/* ENTRADAS (DOWN PAYMENTS GENERATOR) */}
             <div className="space-y-6">
                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 bg-slate-100 text-slate-900 rounded-lg flex items-center justify-center font-black text-[10px]">2</div>
-                  <h4 className="text-lg font-black text-slate-900 italic">Entradas e Fluxo de Ato</h4>
+                  <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">2</div>
+                  <h4 className="text-lg font-black text-slate-900 italic">Cronograma de Entradas / Ato</h4>
                </div>
                
                <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor</label>
-                      <input type="number" className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" placeholder="R$" value={currDownAmount} onChange={e => setCurrDownAmount(e.target.value)} />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 items-end">
+                    <div className="space-y-1.5 md:col-span-2">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor da Parcela</label>
+                      <input type="number" className="w-full h-12 px-5 bg-white border rounded-xl font-bold outline-none text-sm" placeholder="R$" value={inputDownAmount} onChange={e => setInputDownAmount(e.target.value)} />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Data</label>
-                      <input type="date" className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" value={currDownDate} onChange={e => setCurrDownDate(e.target.value)} />
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Data Inicial</label>
+                      <input type="date" className="w-full h-12 px-5 bg-white border rounded-xl font-bold outline-none text-sm" value={inputDownDate} onChange={e => setInputDownDate(e.target.value)} />
                     </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Periodicidade</label>
+                      <select className="w-full h-12 px-3 bg-white border rounded-xl font-bold outline-none text-xs" value={inputDownFrequency} onChange={e => setInputDownFrequency(e.target.value as any)}>
+                        <option value="SINGLE">Única / Pontual</option>
+                        <option value="MONTHLY">Mensal</option>
+                        <option value="QUARTERLY">Trimestral</option>
+                        <option value="SEMESTRAL">Semestral</option>
+                      </select>
+                    </div>
+                    {inputDownFrequency !== 'SINGLE' && (
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Qtd Parcelas</label>
+                        <input type="number" className="w-full h-12 px-5 bg-white border rounded-xl font-bold outline-none text-sm" value={inputDownCount} onChange={e => setInputDownCount(e.target.value)} />
+                      </div>
+                    )}
                     <div className="flex items-end">
-                      <button onClick={addDownPayment} className="w-full h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center gap-2 hover:bg-brand-600 transition-all shadow-md font-black text-[9px] uppercase tracking-widest"><Plus size={16} /> Adicionar</button>
+                      <button onClick={addDownPaymentsSeries} className="w-full h-12 bg-slate-900 hover:bg-brand-600 text-white rounded-xl flex items-center justify-center gap-2 transition-all font-black text-[9px] uppercase tracking-widest"><Plus size={16} /> Adicionar</button>
                     </div>
                   </div>
 
@@ -479,175 +517,165 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                      {downPayments.map((dp, i) => (
                        <div key={i} className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-100 shadow-sm group">
                          <div>
-                           <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Ato #{i+1}</p>
-                           <p className="text-xs font-black text-slate-900">R$ {dp.amount.toLocaleString()}</p>
+                           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{dp.label}</p>
+                           <p className="text-xs font-black text-slate-950">{formatCurrency(dp.amount)}</p>
                            <p className="text-[9px] text-slate-400 font-medium">{new Date(dp.date).toLocaleDateString('pt-BR')}</p>
                          </div>
-                         <button onClick={() => removeDownPayment(i)} className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+                         <button onClick={() => removeDownPayment(i)} className="p-2 text-slate-200 hover:text-rose-500 rounded-lg transition-all"><Trash2 size={16} /></button>
                        </div>
                      ))}
                   </div>
                </div>
             </div>
 
-                    {propertyType === 'PLANTA' && (
-              <div className="space-y-6">
-                 <div className="flex items-center gap-3">
-                    <div className="w-6 h-6 bg-slate-100 text-slate-900 rounded-lg flex items-center justify-center font-black text-[10px]">3</div>
-                    <h4 className="text-lg font-black text-slate-900 italic">Fase de Obras e Correções</h4>
-                 </div>
-
-                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] ml-4">Parcelamento Construtora</p>
-                       <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-2">Qtd Parcelas</label>
-                              <input type="number" className="w-full h-12 px-5 bg-white border border-slate-100 rounded-xl font-black outline-none text-sm" value={constInstallments} onChange={e => setConstInstallments(e.target.value)} placeholder="00" />
-                            </div>
-                            <div className="space-y-1.5">
-                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor Base</label>
-                              <input type="number" className="w-full h-12 px-5 bg-white border border-slate-100 rounded-xl font-black outline-none text-sm" value={constAmount} onChange={e => setConstAmount(e.target.value)} placeholder="R$" />
-                            </div>
-                          </div>
-                          <div className="space-y-1.5">
-                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-2">Início dos Pagamentos</label>
-                             <input type="date" className="w-full h-12 px-5 bg-white border border-slate-100 rounded-xl font-black outline-none text-sm" value={constStartDate} onChange={e => setConstStartDate(e.target.value)} />
-                          </div>
-                       </div>
-                    </div>
-
-                    <div className="space-y-4">
-                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] ml-4">Intermediárias / Balões</p>
-                       <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-2">Freq. (Meses)</label>
-                              <select className="w-full h-12 px-5 bg-white border border-slate-100 rounded-xl font-black outline-none appearance-none text-xs" value={intermFrequency} onChange={e => setIntermFrequency(e.target.value)}>
-                                <option value="3">Trimestral</option>
-                                <option value="6">Semestral</option>
-                                <option value="12">Anual</option>
-                              </select>
-                            </div>
-                            <div className="space-y-1.5">
-                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-2">Total Balões</label>
-                              <input type="number" className="w-full h-12 px-5 bg-white border border-slate-100 rounded-xl font-black outline-none text-sm" value={intermTotal} onChange={e => setIntermTotal(e.target.value)} placeholder="Ex: 4" />
-                            </div>
-                          </div>
-                          <div className="space-y-1.5">
-                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor de Cada Balão</label>
-                              <input type="number" className="w-full h-12 px-5 bg-white border border-slate-100 rounded-xl font-black outline-none text-sm" value={intermAmount} onChange={e => setIntermAmount(e.target.value)} placeholder="R$" />
-                          </div>
-                       </div>
-                    </div>
-                 </div>
-
-                 {/* INDEXATION SETTINGS - COMPACTED */}
-                 <div className="bg-slate-50 p-6 rounded-[32px] border border-slate-100">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-                       <div className="flex items-center gap-3">
-                         <div className="w-8 h-8 bg-brand-600 text-white rounded-lg flex items-center justify-center shadow-md"><TrendingUp size={16} /></div>
-                         <p className="text-[10px] font-black text-slate-900 uppercase tracking-tight italic">Correção Monetária</p>
-                       </div>
-                       
-                       <div className="space-y-1">
-                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Índice</p>
-                          <select className="w-full h-10 px-3 bg-white border border-slate-100 rounded-lg font-black text-xs outline-none" value={indexType} onChange={e => setIndexType(e.target.value as any)}>
-                            <option value="INCC">INCC (Obra)</option>
-                            <option value="IPCA">IPCA</option>
-                            <option value="IGP-M">IGP-M</option>
-                            <option value="FIXED">FIXO / Outros</option>
-                          </select>
-                       </div>
-
-                       <div className="space-y-1">
-                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Percentual Base (% am)</p>
-                          <input type="number" className="w-full h-10 px-3 bg-white border border-slate-100 rounded-lg font-black text-xs outline-none" value={monthlyIndexRate} onChange={e => setMonthlyIndexRate(e.target.value)} />
-                       </div>
-
-                       <div className="space-y-1">
-                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">% Mês Anterior</p>
-                          <div className="w-full h-10 px-3 bg-white/50 border border-slate-100 rounded-lg font-black text-xs flex items-center text-slate-400 italic">IA monitorando...</div>
-                       </div>
-                    </div>
-                 </div>
-              </div>
-            )}
-
-            {/* SECTION: SALDO FINAL E ENTREGA */}
+            {/* INTERMEDIÁRIAS (BALLOONS GENERATOR) */}
             <div className="space-y-6">
                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 bg-slate-100 text-slate-900 rounded-lg flex items-center justify-center font-black text-[10px]">4</div>
-                  <h4 className="text-lg font-black text-slate-900 italic">Saldo Final e Entrega das Chaves</h4>
+                  <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">3</div>
+                  <h4 className="text-lg font-black text-slate-900 italic">Cronograma de Balões / Intermediárias</h4>
+               </div>
+               
+               <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 items-end">
+                    <div className="space-y-1.5 md:col-span-2">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor do Balão</label>
+                      <input type="number" className="w-full h-12 px-5 bg-white border rounded-xl font-bold outline-none text-sm" placeholder="R$" value={inputBalloonAmount} onChange={e => setInputBalloonAmount(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Data Inicial</label>
+                      <input type="date" className="w-full h-12 px-5 bg-white border rounded-xl font-bold outline-none text-sm" value={inputBalloonDate} onChange={e => setInputBalloonDate(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Periodicidade</label>
+                      <select className="w-full h-12 px-3 bg-white border rounded-xl font-bold outline-none text-xs" value={inputBalloonFrequency} onChange={e => setInputBalloonFrequency(e.target.value as any)}>
+                        <option value="SINGLE">Única / Pontual</option>
+                        <option value="MONTHLY">Mensal</option>
+                        <option value="QUARTERLY">Trimestral</option>
+                        <option value="SEMESTRAL">Semestral</option>
+                      </select>
+                    </div>
+                    {inputBalloonFrequency !== 'SINGLE' && (
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Qtd Balões</label>
+                        <input type="number" className="w-full h-12 px-5 bg-white border rounded-xl font-bold outline-none text-sm" value={inputBalloonCount} onChange={e => setInputBalloonCount(e.target.value)} />
+                      </div>
+                    )}
+                    <div className="flex items-end">
+                      <button onClick={addBalloonsSeries} className="w-full h-12 bg-slate-900 hover:bg-brand-600 text-white rounded-xl flex items-center justify-center gap-2 transition-all font-black text-[9px] uppercase tracking-widest"><Plus size={16} /> Adicionar</button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                     {balloons.map((b, i) => (
+                       <div key={i} className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-100 shadow-sm group">
+                         <div>
+                           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{b.label}</p>
+                           <p className="text-xs font-black text-slate-950">{formatCurrency(b.amount)}</p>
+                           <p className="text-[9px] text-slate-400 font-medium">{new Date(b.date).toLocaleDateString('pt-BR')}</p>
+                         </div>
+                         <button onClick={() => removeBalloon(i)} className="p-2 text-slate-200 hover:text-rose-500 rounded-lg transition-all"><Trash2 size={16} /></button>
+                       </div>
+                     ))}
+                  </div>
+               </div>
+            </div>
+
+            {/* FINANCING & AMORTIZATION TABLE (SAC vs PRICE) */}
+            <div className="space-y-6">
+               <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">4</div>
+                  <h4 className="text-lg font-black text-slate-900 italic">Amortização / Financiamento ou Consórcio</h4>
                </div>
 
                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-6">
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Financing Amortization Settings */}
+                  <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
+                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Opção A: Financiamento Direto (SAC / Price)</p>
+                     
+                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1.5">
-                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Saldo a Financiar (Entrega)</label>
-                          <input type="number" className="w-full h-12 px-6 bg-white border border-slate-100 rounded-2xl font-black text-slate-900 outline-none text-sm" value={finalBalance} onChange={e => setFinalBalance(e.target.value)} placeholder="R$ 0,00" />
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saldo a Financiar</label>
+                          <input type="number" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingAmount} onChange={e => setFinancingAmount(e.target.value)} placeholder="0.00" disabled={!!selectedConsortiumId} />
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Data de Entrega (Prevista)</label>
-                          <input type="date" className="w-full h-12 px-6 bg-white border border-slate-100 rounded-2xl font-black text-slate-900 outline-none text-sm" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data 1ª Parcela</label>
+                          <input type="date" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingStartDate} onChange={e => setFinancingStartDate(e.target.value)} disabled={!!selectedConsortiumId} />
                         </div>
                      </div>
 
-                     <div className="p-4 bg-white border border-slate-100 rounded-2xl flex items-center justify-between group shadow-sm">
-                        <div className="flex items-center gap-3">
-                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${adjustBalanceDuringConstruction ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/20' : 'bg-slate-50 text-slate-300'}`}><TrendingUp size={20} /></div>
-                           <div>
-                              <p className="text-[10px] font-black text-slate-900 uppercase tracking-tight italic">Reajuste de Saldo (Obra)</p>
-                              <p className="text-[8px] text-slate-400 font-medium">Reajustar saldo mensal pelo índice {indexType}.</p>
-                           </div>
+                     <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-1.5">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Parcelas (Meses)</label>
+                          <input type="number" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingInstallmentsCount} onChange={e => setFinancingInstallmentsCount(e.target.value)} disabled={!!selectedConsortiumId} />
                         </div>
-                        <button onClick={() => setAdjustBalanceDuringConstruction(!adjustBalanceDuringConstruction)} className={`w-12 h-7 rounded-full p-1 transition-all flex items-center shadow-inner ${adjustBalanceDuringConstruction ? 'bg-brand-600' : 'bg-slate-200'}`}>
-                           <div className={`w-5 h-5 bg-white rounded-full shadow-md transition-all transform ${adjustBalanceDuringConstruction ? 'translate-x-5' : ''}`} />
-                        </button>
+                        <div className="space-y-1.5">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Taxa de Juros (% am)</label>
+                          <input type="number" step="0.01" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingInterestRate} onChange={e => setFinancingInterestRate(e.target.value)} disabled={!!selectedConsortiumId} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Tipo Amortização</label>
+                          <select className="w-full h-10 px-2 bg-white border rounded-xl text-[10px] font-bold outline-none" value={amortizationType} onChange={e => setAmortizationType(e.target.value as any)} disabled={!!selectedConsortiumId}>
+                            <option value="SAC">SAC (Decrescente)</option>
+                            <option value="PRICE">Price (Igual)</option>
+                          </select>
+                        </div>
+                     </div>
+
+                     <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-3">
+                        <div className="space-y-1.5">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Índice Correção</label>
+                          <select className="w-full h-10 px-2 bg-white border rounded-xl text-xs font-bold outline-none" value={financingIndexType} onChange={e => setFinancingIndexType(e.target.value as any)} disabled={!!selectedConsortiumId}>
+                            <option value="FIXED">Fixo (Sem reajuste)</option>
+                            <option value="INCC">INCC</option>
+                            <option value="IPCA">IPCA</option>
+                            <option value="IGP-M">IGP-M</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Projeção Reajuste (% am)</label>
+                          <input type="number" step="0.01" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingIndexRate} onChange={e => setFinancingIndexRate(e.target.value)} placeholder="0.0" disabled={!!selectedConsortiumId} />
+                        </div>
                      </div>
                   </div>
 
+                  {/* Consortium Integration choice */}
                   <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
-                     <div className="flex items-center justify-between">
-                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4 italic">Substituição por Consórcio</p>
-                       <span className="text-[8px] font-black text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full uppercase tracking-tighter">Opcional</span>
-                     </div>
+                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Opção B: Quitar com Consórcio Contemplado</p>
                      
                      <div className="space-y-2">
-                        {/* OPÇÃO 'A DEFINIR' */}
                         <button 
-                          onClick={() => setSelectedConsortiaIds([])}
-                          className={`w-full p-3 rounded-xl border transition-all flex items-center justify-between text-left group ${selectedConsortiaIds.length === 0 ? 'bg-slate-900 border-slate-900 text-white shadow-md' : 'bg-white border-slate-100 text-slate-600 hover:border-brand-200'}`}
+                          onClick={() => setSelectedConsortiumId('')}
+                          className={`w-full p-4 rounded-2xl border transition-all flex items-center justify-between text-left group ${!selectedConsortiumId ? 'bg-slate-900 border-slate-900 text-white shadow-md' : 'bg-white border-slate-100 text-slate-600'}`}
                         >
                           <div className="flex items-center gap-3">
-                            <HelpCircle size={16} className={selectedConsortiaIds.length === 0 ? 'text-white' : 'text-slate-300'} />
+                            <HelpCircle size={16} className={!selectedConsortiumId ? 'text-white' : 'text-slate-300'} />
                             <div>
-                              <p className="text-[10px] font-black uppercase tracking-tight">A Definir / Financiamento</p>
-                              <p className={`text-[8px] font-bold ${selectedConsortiaIds.length === 0 ? 'text-slate-400' : 'text-slate-400'}`}>Poderá ser alterado posteriormente</p>
+                              <p className="text-[10px] font-black uppercase">Não Utilizar Consórcio</p>
+                              <p className="text-[8px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">Seguir com Financiamento Padrão acima</p>
                             </div>
                           </div>
-                          {selectedConsortiaIds.length === 0 && <CheckCircle2 size={12} />}
                         </button>
 
                         {isLoadingConsortia ? (
-                          <div className="flex items-center gap-2 text-slate-400 p-2"><Loader2 size={12} className="animate-spin" /> <span className="text-[8px] font-bold uppercase tracking-widest">Buscando Consórcios...</span></div>
-                        ) : availableConsortia.length > 0 && (
+                          <div className="flex items-center gap-2 text-slate-400 p-2"><Loader2 size={12} className="animate-spin" /> <span className="text-[8px] font-bold uppercase">Buscando Consórcios...</span></div>
+                        ) : (
                           availableConsortia.map(c => (
                             <button 
                               key={c.id} 
-                              onClick={() => toggleConsortium(c.id)}
-                              className={`w-full p-3 rounded-xl border transition-all flex items-center justify-between text-left group ${selectedConsortiaIds.includes(c.id) ? 'bg-brand-600 border-brand-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-600 hover:border-brand-200'}`}
+                              onClick={() => {
+                                setSelectedConsortiumId(c.id);
+                                // Set financing amount equal to consortium's remaining balance as help
+                                setFinancingAmount(String(c.remainingBalance));
+                              }}
+                              className={`w-full p-4 rounded-2xl border transition-all flex items-center justify-between text-left group ${selectedConsortiumId === c.id ? 'bg-brand-600 border-brand-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-600 hover:border-brand-200'}`}
                             >
                               <div className="flex items-center gap-3">
-                                <Wallet size={16} className={selectedConsortiaIds.includes(c.id) ? 'text-white' : 'text-slate-300 group-hover:text-brand-400'} />
+                                <Wallet size={16} className={selectedConsortiumId === c.id ? 'text-white' : 'text-slate-300'} />
                                 <div>
-                                  <p className="text-[10px] font-black uppercase tracking-tight">{c.name}</p>
-                                  <p className={`text-[8px] font-bold ${selectedConsortiaIds.includes(c.id) ? 'text-brand-200' : 'text-slate-400'}`}>Crédito: R$ {c.remainingBalance.toLocaleString()}</p>
+                                  <p className="text-[10px] font-black uppercase">{c.name}</p>
+                                  <p className={`text-[8px] font-bold ${selectedConsortiumId === c.id ? 'text-brand-200' : 'text-slate-400'}`}>Crédito Devedor: {formatCurrency(c.remainingBalance)} | Parcela: {c.installmentAmount ? formatCurrency(c.installmentAmount) : '-'}</p>
                                 </div>
                               </div>
-                              {selectedConsortiaIds.includes(c.id) && <CheckCircle2 size={12} />}
                             </button>
                           ))
                         )}
@@ -656,66 +684,53 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                </div>
             </div>
 
-            {/* IMPACTO PATRIMONIAL NO FIM DO FORMULÁRIO (CONTEÚDO) */}
-            <div className="bg-slate-900 p-8 rounded-[40px] text-white space-y-6">
+            {/* ESTIMATED IMPACT SUMMARY */}
+            <div className="bg-slate-900 p-8 rounded-[40px] text-white space-y-4">
                <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                  <div className="space-y-1 text-center md:text-left">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Impacto Patrimonial Estimado</p>
-                    <div className="flex items-baseline gap-3 justify-center md:justify-start">
-                       <h5 className="text-3xl font-black italic">R$ {(parseFloat(estimatedValue) || 0).toLocaleString()}</h5>
-                       <span className="text-[10px] font-black text-emerald-400 uppercase tracking-tighter flex items-center gap-1"><Plus size={10} /> Ativo Físico</span>
-                    </div>
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Valor do Ativo Imobiliário</p>
+                    <h5 className="text-3xl font-black italic">{formatCurrency(parseFloat(estimatedValue) || 0)}</h5>
                   </div>
-                  <div className="w-px h-12 bg-white/10 hidden md:block" />
-                  <div className="space-y-1 text-center md:text-left">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Dívida / Fluxo a Pagar</p>
-                    <div className="flex items-baseline gap-3 justify-center md:justify-start">
-                       <h5 className="text-3xl font-black text-rose-400 italic">R$ {((downPayments.reduce((acc, curr) => acc + curr.amount, 0) + (parseFloat(constAmount) * (parseInt(constInstallments) || 0)) + (parseFloat(intermAmount) * (parseInt(intermTotal) || 0)) + (parseFloat(finalBalance) || 0))).toLocaleString()}</h5>
-                       <span className="text-[10px] font-black text-rose-300 uppercase tracking-tighter flex items-center gap-1"><ArrowRight size={10} /> Passivo</span>
-                    </div>
+                  <div className="hidden md:block w-px h-12 bg-white/10" />
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Financiado / A Pagar</p>
+                    <h5 className="text-3xl font-black text-rose-400 italic">
+                      {formatCurrency(
+                        downPayments.reduce((acc, curr) => acc + curr.amount, 0) +
+                        balloons.reduce((acc, curr) => acc + curr.amount, 0) +
+                        (selectedConsortiumId ? 0 : (parseFloat(financingAmount) || 0))
+                      )}
+                    </h5>
                   </div>
-               </div>
-               <div className="p-4 bg-white/5 rounded-2xl border border-white/10 text-[9px] text-slate-400 font-bold uppercase tracking-widest text-center leading-relaxed">
-                 O impacto patrimonial representa o valor líquido adicionado ao seu balanço. <br/>
-                 O Ativo (Imóvel) será registrado integralmente, enquanto a dívida aparecerá como Passivo redutor.
                </div>
             </div>
+
           </div>
         </div>
 
-        {/* FOOTER ACTIONS */}
+        {/* FOOTER */}
         <div className="px-10 py-6 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-4 shrink-0">
-
-           <div className="flex gap-4 w-full md:w-auto">
-             <button 
-               onClick={onClose} 
-               className="flex-1 md:flex-none px-10 py-5 bg-white border border-slate-200 text-slate-400 rounded-3xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all"
-             >
-               Descartar
-             </button>
-             
-             <button 
-               disabled={isSubmitting || !name || !estimatedValue} 
-               onClick={handleSave} 
-               className="flex-[2] md:flex-none px-12 py-5 bg-slate-900 text-white rounded-3xl text-[10px] font-black uppercase tracking-widest shadow-2xl shadow-slate-200 hover:bg-brand-600 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-3"
-             >
-               {isSubmitting ? (
-                 <>
-                   <Loader2 size={16} className="animate-spin" />
-                   Consolidando Estrutura...
-                 </>
-               ) : (
-                 <>
-                   Gerar Registro Patrimonial e Parcelas
-                   <ArrowRight size={16} />
-                 </>
-               )}
-             </button>
-           </div>
+           <button onClick={onClose} className="px-10 py-5 bg-white border text-slate-400 rounded-3xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Descartar</button>
+           <button 
+             disabled={isSubmitting || !name || !estimatedValue} 
+             onClick={handleSave} 
+             className="px-12 py-5 bg-slate-900 hover:bg-brand-600 text-white rounded-3xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-xl"
+           >
+             {isSubmitting ? (
+               <>
+                 <Loader2 size={16} className="animate-spin" />
+                 Gerando Registro...
+               </>
+             ) : (
+               <>
+                 Cadastrar Ativo Imobiliário
+                 <ArrowRight size={16} />
+               </>
+             )}
+           </button>
         </div>
+
       </div>
     </div>
   );
 };
-
-
