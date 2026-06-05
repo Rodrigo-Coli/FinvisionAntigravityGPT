@@ -17,6 +17,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
   const [estimatedValue, setEstimatedValue] = useState('');
   const [acquisitionDate, setAcquisitionDate] = useState(new Date().toISOString().split('T')[0]);
   const [description, setDescription] = useState('');
+  const [historicalPaidAmount, setHistoricalPaidAmount] = useState('');
 
   // Entradas (Down Payments List)
   const [downPayments, setDownPayments] = useState<{ amount: number; date: string; label: string }[]>([]);
@@ -204,7 +205,8 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         indexType: financingIndexType,
         selectedConsortiumId: selectedConsortiumId || undefined,
         consortiumAllocationRatio: selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined,
-        financingType: selectedConsortiumId ? 'CONSORCIO' : 'FINANCING_SCHEDULE'
+        financingType: selectedConsortiumId ? 'CONSORCIO' : 'FINANCING_SCHEDULE',
+        historicalPaidAmount: parseFloat(historicalPaidAmount) || 0
       };
 
       const { data: assetData, error: assetErr } = await supabase
@@ -415,44 +417,44 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
-      <div className="bg-white rounded-[40px] w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
+      <div className="bg-white rounded-[32px] sm:rounded-[40px] w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
         
         {/* HEADER */}
-        <div className="px-10 py-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-slate-900 text-white rounded-[22px] flex items-center justify-center shadow-lg"><Building2 size={28} /></div>
+        <div className="px-6 py-5 sm:px-10 sm:py-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 bg-slate-900 text-white rounded-[18px] sm:rounded-[22px] flex items-center justify-center shadow-lg"><Building2 size={24} className="sm:w-[28px] sm:h-[28px]" /></div>
             <div>
-              <h3 className="text-2xl font-black text-slate-900 tracking-tight italic">Aquisição Imobiliária</h3>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">Lançamento de Imóveis & Cronogramas Financeiros</p>
+              <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight italic">Aquisição Imobiliária</h3>
+              <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-0.5 sm:mt-1">Lançamento de Imóveis & Cronogramas Financeiros</p>
             </div>
           </div>
-          <button onClick={onClose} className="w-12 h-12 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-2xl flex items-center justify-center transition-all shadow-sm"><X size={24} /></button>
+          <button onClick={onClose} className="w-10 h-10 sm:w-12 sm:h-12 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all shadow-sm"><X size={20} className="sm:w-[24px] sm:h-[24px]" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           
           {/* AI UPLOAD BAR */}
-          <div className="p-10 pb-0">
-            <div className={`relative border-2 border-dashed rounded-[32px] p-8 flex flex-col md:flex-row items-center justify-between gap-6 transition-all ${isParsingContract ? 'bg-brand-50 border-brand-500' : 'bg-slate-50/50 border-slate-200 hover:border-brand-500/50'}`}>
-              <div className="flex items-center gap-6">
-                <div className="w-12 h-12 bg-white text-slate-300 rounded-xl flex items-center justify-center">
-                  {isParsingContract ? <Loader2 size={24} className="animate-spin text-brand-600" /> : <Upload size={24} />}
+          <div className="p-6 pb-0 sm:p-10 sm:pb-0">
+            <div className={`relative border-2 border-dashed rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 transition-all ${isParsingContract ? 'bg-brand-50 border-brand-500' : 'bg-slate-50/50 border-slate-200 hover:border-brand-500/50'}`}>
+              <div className="flex items-center gap-4 sm:gap-6">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white text-slate-300 rounded-xl flex items-center justify-center shrink-0">
+                  {isParsingContract ? <Loader2 size={20} className="animate-spin text-brand-600 sm:w-[24px] sm:h-[24px]" /> : <Upload size={20} className="sm:w-[24px] sm:h-[24px]" />}
                 </div>
                 <div>
-                  <h4 className="font-black italic text-slate-950">Subir Contrato com IA</h4>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Preenchimento automatizado de valores e parcelas do contrato.</p>
+                  <h4 className="font-black italic text-slate-950 text-sm sm:text-base">Subir Contrato com IA</h4>
+                  <p className="text-[8px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 sm:mt-1 leading-normal">Preenchimento automatizado de valores e parcelas do contrato.</p>
                 </div>
               </div>
-              <label className="shrink-0">
+              <label className="shrink-0 w-full md:w-auto text-center">
                 <input type="file" className="hidden" accept=".pdf,.doc,.docx" onChange={handleFileUpload} disabled={isParsingContract} />
-                <span className="px-8 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all cursor-pointer shadow-lg inline-block">
+                <span className="w-full md:w-auto px-6 sm:px-8 py-3.5 sm:py-4 bg-slate-900 text-white rounded-2xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all cursor-pointer shadow-lg inline-block">
                   {contractFile ? 'Trocar Arquivo' : 'Upload Contrato'}
                 </span>
               </label>
             </div>
           </div>
 
-          <div className="p-10 space-y-10">
+          <div className="p-6 sm:p-10 space-y-8 sm:space-y-10">
             
             {/* STAGE & IDENTIFICATION */}
             <div className="space-y-6">
@@ -486,7 +488,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                   <h4 className="text-lg font-black text-slate-900 italic">Cronograma de Entradas / Ato</h4>
                </div>
                
-               <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
+               <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 items-end">
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor da Parcela</label>
@@ -538,7 +540,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                   <h4 className="text-lg font-black text-slate-900 italic">Cronograma de Balões / Intermediárias</h4>
                </div>
                
-               <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
+               <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 items-end">
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor do Balão</label>
@@ -583,19 +585,45 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                </div>
             </div>
 
-            {/* FINANCING & AMORTIZATION TABLE (SAC vs PRICE) */}
+            {/* HISTÓRICO DE PAGAMENTOS ANTERIORES */}
             <div className="space-y-6">
                <div className="flex items-center gap-3">
                   <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">4</div>
+                  <h4 className="text-lg font-black text-slate-900 italic">Valores Já Pagos (Histórico)</h4>
+               </div>
+               
+               <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-normal">
+                     Se o imóvel foi adquirido antes de você começar a usar o FinVision, informe aqui o valor total já pago acumulado. Este valor será utilizado apenas para cálculos de rentabilidade/Yield e não lançará transações retroativas no seu extrato.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                     <div className="space-y-1.5">
+                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor Total Já Pago anteriormente (R$)</label>
+                       <input 
+                         type="number" 
+                         className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" 
+                         placeholder="0,00" 
+                         value={historicalPaidAmount} 
+                         onChange={e => setHistoricalPaidAmount(e.target.value)} 
+                       />
+                     </div>
+                  </div>
+               </div>
+            </div>
+
+            {/* FINANCING & AMORTIZATION TABLE (SAC vs PRICE) */}
+            <div className="space-y-6">
+               <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">5</div>
                   <h4 className="text-lg font-black text-slate-900 italic">Amortização / Financiamento ou Consórcio</h4>
                </div>
 
                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Financing Amortization Settings */}
-                  <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
+                  <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4">
                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Opção A: Financiamento Direto (SAC / Price)</p>
                      
-                     <div className="grid grid-cols-2 gap-4">
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
                           <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saldo a Financiar</label>
                           <input type="number" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingAmount} onChange={e => setFinancingAmount(e.target.value)} placeholder="0.00" disabled={!!selectedConsortiumId} />
@@ -606,7 +634,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                         </div>
                      </div>
 
-                     <div className="grid grid-cols-3 gap-3">
+                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div className="space-y-1.5">
                           <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Parcelas (Meses)</label>
                           <input type="number" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingInstallmentsCount} onChange={e => setFinancingInstallmentsCount(e.target.value)} disabled={!!selectedConsortiumId} />
@@ -624,7 +652,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                         </div>
                      </div>
 
-                     <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-3">
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100 pt-3">
                         <div className="space-y-1.5">
                           <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Índice Correção</label>
                           <select className="w-full h-10 px-2 bg-white border rounded-xl text-xs font-bold outline-none" value={financingIndexType} onChange={e => setFinancingIndexType(e.target.value as any)} disabled={!!selectedConsortiumId}>
@@ -642,7 +670,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                   </div>
 
                   {/* Consortium Integration choice */}
-                  <div className="bg-slate-50/50 p-6 rounded-[32px] border border-slate-100 space-y-4">
+                  <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4">
                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Opção B: Quitar com Consórcio Contemplado</p>
                      
                      <div className="space-y-2">
@@ -690,7 +718,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                               <span className="text-[8px] font-bold px-2 py-0.5 bg-brand-100 text-brand-700 rounded-full uppercase">Garantia / Recurso</span>
                             </div>
                             
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div className="space-y-1">
                                 <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Alocado ao Imóvel (%)</label>
                                 <input 
@@ -734,16 +762,21 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
             </div>
 
             {/* ESTIMATED IMPACT SUMMARY */}
-            <div className="bg-slate-900 p-8 rounded-[40px] text-white space-y-4">
+            <div className="bg-slate-900 p-6 sm:p-8 rounded-[40px] text-white space-y-4">
                <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                   <div>
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Valor do Ativo Imobiliário</p>
-                    <h5 className="text-3xl font-black italic">{formatCurrency(parseFloat(estimatedValue) || 0)}</h5>
+                    <h5 className="text-2xl sm:text-3xl font-black italic">{formatCurrency(parseFloat(estimatedValue) || 0)}</h5>
                   </div>
                   <div className="hidden md:block w-px h-12 bg-white/10" />
                   <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Financiado / A Pagar</p>
-                    <h5 className="text-3xl font-black text-rose-400 italic">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Já Pago (Histórico)</p>
+                    <h5 className="text-2xl sm:text-3xl font-black text-emerald-400 italic">{formatCurrency(parseFloat(historicalPaidAmount) || 0)}</h5>
+                  </div>
+                  <div className="hidden md:block w-px h-12 bg-white/10" />
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Pagar (Entradas/Balões/Finan.)</p>
+                    <h5 className="text-2xl sm:text-3xl font-black text-rose-400 italic">
                       {formatCurrency(
                         downPayments.reduce((acc, curr) => acc + curr.amount, 0) +
                         balloons.reduce((acc, curr) => acc + curr.amount, 0) +
@@ -758,12 +791,12 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         </div>
 
         {/* FOOTER */}
-        <div className="px-10 py-6 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-4 shrink-0">
-           <button onClick={onClose} className="px-10 py-5 bg-white border text-slate-400 rounded-3xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Descartar</button>
+        <div className="px-6 py-4 sm:px-10 sm:py-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-3 sm:gap-4 shrink-0">
+           <button onClick={onClose} className="w-full sm:w-auto px-6 sm:px-10 py-4 sm:py-5 bg-white border border-slate-200 text-slate-400 rounded-2xl sm:rounded-3xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Descartar</button>
            <button 
              disabled={isSubmitting || !name || !estimatedValue} 
              onClick={handleSave} 
-             className="px-12 py-5 bg-slate-900 hover:bg-brand-600 text-white rounded-3xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-xl"
+             className="w-full sm:w-auto px-6 sm:px-12 py-4 sm:py-5 bg-slate-900 hover:bg-brand-600 text-white rounded-2xl sm:rounded-3xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-xl"
            >
              {isSubmitting ? (
                <>
