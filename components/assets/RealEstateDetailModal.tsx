@@ -178,7 +178,11 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   // Rental yield and flow metrics
   const performanceMetrics = useMemo(() => {
     const rentIncomes = filteredTransactions
-      .filter(t => t.type === 'INCOME' && t.isPaid)
+      .filter(t => t.type === 'INCOME' && t.isPaid && t.metadata?.type !== 'condo_revenue' && t.metadata?.type !== 'iptu_revenue')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const reimbursementIncomes = filteredTransactions
+      .filter(t => t.type === 'INCOME' && t.isPaid && (t.metadata?.type === 'condo_revenue' || t.metadata?.type === 'iptu_revenue'))
       .reduce((sum, t) => sum + t.amount, 0);
 
     const operationalExpenses = filteredTransactions
@@ -202,20 +206,21 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         return sum + (t.amount * ratio);
       }, 0);
 
-    const netIncome = rentIncomes - operationalExpenses;
+    const netIncome = rentIncomes + reimbursementIncomes - operationalExpenses;
     
     // Yield calculation based on total invested initially (annualized if whole history, or monthly)
     const yielRate = totalInvestedInitially > 0 ? (netIncome / totalInvestedInitially) * 100 : 0;
 
     return {
       rentIncomes,
+      reimbursementIncomes,
       operationalExpenses,
       financingExpenses,
       netIncome,
       yielRate,
       totalExpenses: operationalExpenses + financingExpenses
     };
-  }, [filteredTransactions, totalInvestedInitially]);
+  }, [filteredTransactions, totalInvestedInitially, consortiumAllocationRatio]);
 
   // Sync / Auto-generate rolling monthly rents or delete future ones
   const syncRentalTransactions = async (
@@ -1515,6 +1520,12 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                         <span className="text-slate-400">Renda de Aluguel:</span>
                         <span className="font-bold text-emerald-400">+{formatCurrency(performanceMetrics.rentIncomes)}</span>
                       </div>
+                      {(condoPayer === 'PROPRIETARIO_REEMBOLSO' || iptuPayer === 'PROPRIETARIO_REEMBOLSO' || performanceMetrics.reimbursementIncomes > 0) && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Reembolso Condo/IPTU Recebido:</span>
+                          <span className="font-bold text-emerald-400">+{formatCurrency(performanceMetrics.reimbursementIncomes)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span className="text-slate-400">Despesas Operacionais (IPTU/Condo):</span>
                         <span className="font-bold text-rose-400">-{formatCurrency(performanceMetrics.operationalExpenses)}</span>

@@ -50,6 +50,16 @@ const Assets: React.FC = () => {
   const [selectedRealEstateForDetail, setSelectedRealEstateForDetail] = useState<PhysicalAsset | null>(null);
   const [showRealEstateDetailModal, setShowRealEstateDetailModal] = useState(false);
 
+  // Card Period Filtering
+  const [cardPeriod, setCardPeriod] = useState<'CONTRACT' | 'CURRENT_MONTH' | 'PREVIOUS_MONTH' | 'CURRENT_YEAR' | 'CUSTOM'>('CONTRACT');
+  const [cardStartDate, setCardStartDate] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+  });
+  const [cardEndDate, setCardEndDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+
   // Core Data States
   const [physicalAssets, setPhysicalAssets] = useState<PhysicalAsset[]>([]);
   const [brokers, setBrokers] = useState<InvestmentBroker[]>([]);
@@ -1565,54 +1575,54 @@ const Assets: React.FC = () => {
   const totalAssets = totalPhysical + totalFinancial;
   const totalNetWorth = totalAssets - totalLiabilities;
 
+  // Helper to dynamically match transactions to a physical asset using metadata or clean name substring matching
+  const getAssetTransactions = (p: PhysicalAsset) => {
+    const assetId = p.id;
+    const assetName = p.name.toLowerCase();
+    // Clean name: remove common prefix/suffix words for robust substring matching
+    const cleanName = assetName
+      .replace(/apartamento|casa|carro|veículo|jeep|honda|audi|toyota/g, '')
+      .trim();
+
+    return transactions.filter(t => {
+      // 1. Explicit link in metadata
+      if (t.metadata?.linked_asset_id === assetId) return true;
+
+      // 2. Explicit link via liability_id if liability is linked to this asset
+      if (t.liability_id) {
+        const isLinkedLiability = activeLiabilities.some(l => l.id === t.liability_id && l.linkedAssetId === assetId);
+        if (isLinkedLiability) return true;
+      }
+
+      // 3. Substring matching as robust fallback (e.g. description has "Piazza" and asset name has "Apartamento Piazza do Bosque")
+      if (cleanName.length > 2) {
+        const descLower = t.description.toLowerCase();
+        if (descLower.includes(cleanName)) {
+          // Avoid false positives (e.g. Jonas piazzaria is a restaurant expense)
+          if (cleanName === 'piazza' && descLower.includes('piazzaria')) {
+            return false;
+          }
+          return true;
+        }
+        // Also check the first significant word if the cleanName has multiple words
+        const firstWord = cleanName.split(/\s+/)[0];
+        if (firstWord && firstWord.length > 3 && descLower.includes(firstWord)) {
+          // Avoid false positives
+          if (firstWord === 'piazza' && descLower.includes('piazzaria')) {
+            return false;
+          }
+          return true;
+        }
+      }
+      return false;
+    });
+  };
+
   // Complete, deep executive financial KPIs unifications (excluding archived items)
   const overviewData = useMemo(() => {
     const activePhys = activePhysicalAssets;
     const activeLiab = activeLiabilities;
     const activeTxs = transactions;
-
-    // Helper to dynamically match transactions to a physical asset using metadata or clean name substring matching
-    const getAssetTransactions = (p: PhysicalAsset) => {
-      const assetId = p.id;
-      const assetName = p.name.toLowerCase();
-      // Clean name: remove common prefix/suffix words for robust substring matching
-      const cleanName = assetName
-        .replace(/apartamento|casa|carro|veículo|jeep|honda|audi|toyota/g, '')
-        .trim();
-
-      return activeTxs.filter(t => {
-        // 1. Explicit link in metadata
-        if (t.metadata?.linked_asset_id === assetId) return true;
-
-        // 2. Explicit link via liability_id if liability is linked to this asset
-        if (t.liability_id) {
-          const isLinkedLiability = activeLiab.some(l => l.id === t.liability_id && l.linkedAssetId === assetId);
-          if (isLinkedLiability) return true;
-        }
-
-        // 3. Substring matching as robust fallback (e.g. description has "Piazza" and asset name has "Apartamento Piazza do Bosque")
-        if (cleanName.length > 2) {
-          const descLower = t.description.toLowerCase();
-          if (descLower.includes(cleanName)) {
-            // Avoid false positives (e.g. Jonas piazzaria is a restaurant expense)
-            if (cleanName === 'piazza' && descLower.includes('piazzaria')) {
-              return false;
-            }
-            return true;
-          }
-          // Also check the first significant word if the cleanName has multiple words
-          const firstWord = cleanName.split(/\s+/)[0];
-          if (firstWord && firstWord.length > 3 && descLower.includes(firstWord)) {
-            // Avoid false positives
-            if (firstWord === 'piazza' && descLower.includes('piazzaria')) {
-              return false;
-            }
-            return true;
-          }
-        }
-        return false;
-      });
-    };
 
     // Helper to dynamically link a liability to an asset with name substring fallback
     const isLiabilityLinkedToAsset = (l: Liability, p: PhysicalAsset) => {
@@ -2312,6 +2322,28 @@ const Assets: React.FC = () => {
             </div>
 
             <div className="space-y-8">
+              {/* Filter Bar for Real Estate Card Metrics */}
+              <div className="bg-slate-50 p-4 rounded-[25px] border border-slate-100 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Acompanhamento de Caixa:</span>
+                  <div className="flex bg-slate-200/50 p-0.5 rounded-lg border">
+                    <button onClick={() => setCardPeriod('CONTRACT')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all ${cardPeriod === 'CONTRACT' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Contrato</button>
+                    <button onClick={() => setCardPeriod('CURRENT_MONTH')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all ${cardPeriod === 'CURRENT_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Atual</button>
+                    <button onClick={() => setCardPeriod('PREVIOUS_MONTH')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all ${cardPeriod === 'PREVIOUS_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Anterior</button>
+                    <button onClick={() => setCardPeriod('CURRENT_YEAR')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all ${cardPeriod === 'CURRENT_YEAR' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Anual</button>
+                    <button onClick={() => setCardPeriod('CUSTOM')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all ${cardPeriod === 'CUSTOM' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Personalizado</button>
+                  </div>
+                </div>
+                
+                {cardPeriod === 'CUSTOM' && (
+                  <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
+                    <input type="date" className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" value={cardStartDate} onChange={e => setCardStartDate(e.target.value)} />
+                    <span className="text-slate-400 text-xs">até</span>
+                    <input type="date" className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" value={cardEndDate} onChange={e => setCardEndDate(e.target.value)} />
+                  </div>
+                )}
+              </div>
+
               {/* Real Estate Active Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {activePhysicalAssets.filter(p => p.category === 'REAL_ESTATE').map(asset => {
@@ -2323,26 +2355,87 @@ const Assets: React.FC = () => {
 
                   // Sum short stay rents in current month dynamically
                   const currentMonthStr = new Date().toISOString().substring(0, 7);
-                  const assetTxs = transactions.filter(t => t.metadata?.linked_asset_id === asset.id);
-                  const shortStayRentsThisMonth = assetTxs.filter(t => 
+                  const assetTxs = getAssetTransactions(asset);
+                  const shortStayRentsThisMonth = assetTxs.filter((t: Transaction) => 
+                    t.isPaid &&
                     t.type === 'INCOME' && 
-                    (t.metadata?.type === 'rental_income' || t.metadata?.type === 'short_stay_income') &&
+                    (t.metadata?.type === 'rental_income' || t.metadata?.type === 'short_stay_income' || t.metadata?.type === 'short_stay_booking') &&
                     t.date.substring(0, 7) === currentMonthStr
-                  ).reduce((sum, tx) => sum + tx.amount, 0);
+                  ).reduce((sum: number, tx: Transaction) => sum + tx.amount, 0);
 
-                  const rental = rentalType === 'short_stay' ? shortStayRentsThisMonth : (Number(meta.rentalIncome) || 0);
-                  const condo = Number(meta.condoFee) || 0;
-                  const iptu = Number(meta.iptuFee) || 0;
-                  
-                  // Adjusted by consortium allocation ratio if present
-                  const allocationRatio = meta.consortiumAllocationRatio !== undefined ? (Number(meta.consortiumAllocationRatio) / 100) : 1;
-                  const installment = linkedLiab ? (Number(linkedLiab.installmentAmount) * allocationRatio) : 0;
+                  let rental = 0;
+                  let installment = 0;
+                  let displayCondoIptu = 0;
+                  let reimbursement = 0;
+                  let netPropertyFlow = 0;
+                  let totalMonthlyCost = 0;
 
-                  // Calculate sustainability at property level
-                  const actualCondoCost = meta.inquilinoPaysCondo ? 0 : condo;
-                  const actualIptuCost = meta.inquilinoPaysIPTU ? 0 : iptu;
-                  const totalMonthlyCost = installment + actualCondoCost + actualIptuCost;
-                  const netPropertyFlow = isRented ? rental - totalMonthlyCost : -totalMonthlyCost;
+                  if (cardPeriod === 'CONTRACT') {
+                    rental = rentalType === 'short_stay' ? shortStayRentsThisMonth : (Number(meta.rentalIncome) || 0);
+                    const condo = Number(meta.condoFee) || 0;
+                    const iptu = Number(meta.iptuFee) || 0;
+                    displayCondoIptu = condo + iptu;
+                    
+                    const allocationRatio = meta.consortiumAllocationRatio !== undefined ? (Number(meta.consortiumAllocationRatio) / 100) : 1;
+                    installment = linkedLiab ? (Number(linkedLiab.installmentAmount) * allocationRatio) : 0;
+
+                    const actualCondoCost = meta.inquilinoPaysCondo ? 0 : condo;
+                    const actualIptuCost = meta.inquilinoPaysIPTU ? 0 : iptu;
+                    totalMonthlyCost = installment + actualCondoCost + actualIptuCost;
+
+                    const condoReimbursement = meta.condoPayer === 'PROPRIETARIO_REEMBOLSO' ? condo : 0;
+                    const iptuReimbursement = meta.iptuPayer === 'PROPRIETARIO_REEMBOLSO' ? iptu : 0;
+                    reimbursement = condoReimbursement + iptuReimbursement;
+
+                    netPropertyFlow = isRented ? (rental + reimbursement) - totalMonthlyCost : -totalMonthlyCost;
+                  } else {
+                    // Filter paid transactions in selected period
+                    const now = new Date();
+                    const currentMonthStr = now.toISOString().substring(0, 7);
+                    const previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                    const previousMonthStr = previousMonthDate.toISOString().substring(0, 7);
+                    const currentYearStr = String(now.getFullYear());
+
+                    const periodTxs = assetTxs.filter((t: Transaction) => {
+                      if (!t.isPaid) return false;
+                      if (cardPeriod === 'CURRENT_MONTH') {
+                        return t.date.substring(0, 7) === currentMonthStr;
+                      }
+                      if (cardPeriod === 'PREVIOUS_MONTH') {
+                        return t.date.substring(0, 7) === previousMonthStr;
+                      }
+                      if (cardPeriod === 'CURRENT_YEAR') {
+                        return t.date.substring(0, 4) === currentYearStr;
+                      }
+                      if (cardPeriod === 'CUSTOM') {
+                        return t.date >= cardStartDate && t.date <= cardEndDate;
+                      }
+                      return true;
+                    });
+
+                    rental = periodTxs
+                      .filter((t: Transaction) => t.type === 'INCOME' && t.metadata?.type !== 'condo_revenue' && t.metadata?.type !== 'iptu_revenue' && (t.metadata?.type === 'rental_income' || t.metadata?.type === 'short_stay_booking' || t.subcategory?.toLowerCase() === 'aluguel regular' || t.subcategory?.toLowerCase() === 'short stay' || t.description.toLowerCase().includes('aluguel') || t.description.toLowerCase().includes('reserva')))
+                      .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
+
+                    reimbursement = periodTxs
+                      .filter((t: Transaction) => t.type === 'INCOME' && (t.metadata?.type === 'condo_revenue' || t.metadata?.type === 'iptu_revenue' || t.description.toLowerCase().includes('reembolso condomínio') || t.description.toLowerCase().includes('reembolso iptu') || t.description.toLowerCase().includes('reembolso condo')))
+                      .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
+
+                    installment = periodTxs
+                      .filter((t: Transaction) => t.type === 'EXPENSE' && (t.metadata?.type === 'consortium_installment' || t.liability_id || t.subcategory?.toLowerCase() === 'financiamento' || t.description.toLowerCase().includes('financiamento') || t.description.toLowerCase().includes('prestação') || t.description.toLowerCase().includes('consórcio')))
+                      .reduce((sum: number, t: Transaction) => {
+                        const isConsortiumTx = t.metadata?.type === 'consortium_installment' || t.liability_id || t.description.toLowerCase().includes('consórcio');
+                        const ratio = isConsortiumTx ? ((parseFloat(meta.consortiumAllocationRatio) || 100) / 100) : 1;
+                        return sum + (t.amount * ratio);
+                      }, 0);
+
+                    displayCondoIptu = periodTxs
+                      .filter((t: Transaction) => t.type === 'EXPENSE' && (t.subcategory?.toLowerCase() === 'condomínio' || t.subcategory?.toLowerCase() === 'condominio' || t.subcategory?.toLowerCase() === 'iptu' || t.description.toLowerCase().includes('condomínio') || t.description.toLowerCase().includes('condominio') || t.description.toLowerCase().includes('iptu')))
+                      .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
+
+                    totalMonthlyCost = installment + displayCondoIptu;
+                    netPropertyFlow = rental + reimbursement - installment - displayCondoIptu;
+                  }
 
                   return (
                     <div 
@@ -2417,9 +2510,9 @@ const Assets: React.FC = () => {
                             <div className="flex justify-between">
                               <span>Aluguel Líquido:</span>
                               <span className="font-bold text-emerald-600">
-                                {isRented 
-                                  ? `${formatCurrency(rental)}${rentalType === 'short_stay' ? ' (Short Stay)' : ''}` 
-                                  : 'Não Alugado'}
+                                {cardPeriod === 'CONTRACT' && !isRented 
+                                  ? 'Não Alugado' 
+                                  : formatCurrency(rental)}
                               </span>
                             </div>
                             <div className="flex justify-between">
@@ -2427,13 +2520,20 @@ const Assets: React.FC = () => {
                               <span className="font-bold text-slate-700">{formatCurrency(installment)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Condomínio + IPTU:</span>
-                              <span className="font-bold text-slate-700">{formatCurrency(condo + iptu)}</span>
+                              <span>Condomínio + IPTU (Despesa):</span>
+                              <span className="font-bold text-slate-700">{formatCurrency(displayCondoIptu)}</span>
                             </div>
+                            {(cardPeriod !== 'CONTRACT' || meta.condoPayer === 'PROPRIETARIO_REEMBOLSO' || meta.iptuPayer === 'PROPRIETARIO_REEMBOLSO') && (
+                              <div className="flex justify-between">
+                                <span>Reembolso Condo/IPTU (Receita):</span>
+                                <span className="font-bold text-emerald-600">+{formatCurrency(reimbursement)}</span>
+                              </div>
+                            )}
                             <div className="flex justify-between text-[10px] border-t border-dashed border-slate-100 pt-2 font-bold">
                               <span>Saldo Caixa Líquido:</span>
                               <span className={netPropertyFlow >= 0 ? 'text-emerald-600' : 'text-rose-500'}>
-                                {netPropertyFlow >= 0 ? '+' : ''}{formatCurrency(netPropertyFlow)}/mês
+                                {netPropertyFlow >= 0 ? '+' : ''}{formatCurrency(netPropertyFlow)}
+                                {cardPeriod === 'CONTRACT' ? '/mês' : ''}
                               </span>
                             </div>
                           </div>
@@ -2446,7 +2546,14 @@ const Assets: React.FC = () => {
                             <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden flex">
                               <div
                                 className={`h-full ${netPropertyFlow >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                                style={{ width: `${Math.min(isRented && totalMonthlyCost > 0 ? Math.round((rental / totalMonthlyCost) * 100) : 0, 100)}%` }}
+                                style={{ 
+                                  width: `${Math.min(
+                                    cardPeriod === 'CONTRACT'
+                                      ? (isRented && totalMonthlyCost > 0 ? Math.round((rental / totalMonthlyCost) * 100) : 0)
+                                      : ((installment + displayCondoIptu) > 0 ? Math.round((rental / (installment + displayCondoIptu)) * 100) : (rental > 0 ? 100 : 0)), 
+                                    100
+                                  )}%` 
+                                }}
                               />
                             </div>
                             <p className="text-[9px] font-semibold text-slate-500">
