@@ -386,7 +386,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         .from('transactions')
         .select('id, date, is_paid, subcategory, metadata')
         .eq('user_id', userId)
-        .eq('metadata->linked_asset_id', asset.id)
+        .eq('metadata->>linked_asset_id', asset.id)
         .eq('is_deleted', false);
 
       const existingTxs = allTxs || [];
@@ -606,8 +606,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         .from('transactions')
         .select('id, metadata')
         .eq('user_id', userId)
-        .eq('metadata->linked_asset_id', asset.id)
-        .eq('metadata->type', 'short_stay_booking');
+        .eq('metadata->>linked_asset_id', asset.id)
+        .eq('metadata->>type', 'short_stay_booking');
         
       const dbBookingsList = dbBookings || [];
       
@@ -678,8 +678,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
           .from('transactions')
           .select('id')
           .eq('user_id', userId)
-          .eq('metadata->linked_asset_id', asset.id)
-          .eq('metadata->type', 'short_stay_booking')
+          .eq('metadata->>linked_asset_id', asset.id)
+          .eq('metadata->>type', 'short_stay_booking')
           .eq('is_paid', false)
           .gt('date', todayStr);
           
@@ -1020,7 +1020,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       const { error: txErr } = await supabase
         .from('transactions')
         .delete()
-        .eq('metadata->linked_asset_id', asset.id);
+        .eq('metadata->>linked_asset_id', asset.id);
         
       if (txErr) throw txErr;
 
