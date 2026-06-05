@@ -18,6 +18,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
   const [acquisitionDate, setAcquisitionDate] = useState(new Date().toISOString().split('T')[0]);
   const [description, setDescription] = useState('');
   const [historicalPaidAmount, setHistoricalPaidAmount] = useState('');
+  const [historicalRentReceived, setHistoricalRentReceived] = useState('');
 
   // Entradas (Down Payments List)
   const [downPayments, setDownPayments] = useState<{ amount: number; date: string; label: string }[]>([]);
@@ -206,7 +207,8 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         selectedConsortiumId: selectedConsortiumId || undefined,
         consortiumAllocationRatio: selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined,
         financingType: selectedConsortiumId ? 'CONSORCIO' : 'FINANCING_SCHEDULE',
-        historicalPaidAmount: parseFloat(historicalPaidAmount) || 0
+        historicalPaidAmount: parseFloat(historicalPaidAmount) || 0,
+        historicalRentReceived: parseFloat(historicalRentReceived) || 0
       };
 
       const { data: assetData, error: assetErr } = await supabase
@@ -607,6 +609,16 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                          onChange={e => setHistoricalPaidAmount(e.target.value)} 
                        />
                      </div>
+                     <div className="space-y-1.5">
+                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Total Recebido de Aluguel (Histórico) (R$)</label>
+                       <input 
+                         type="number" 
+                         className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" 
+                         placeholder="0,00" 
+                         value={historicalRentReceived} 
+                         onChange={e => setHistoricalRentReceived(e.target.value)} 
+                       />
+                     </div>
                   </div>
                </div>
             </div>
@@ -772,6 +784,11 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                   <div>
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Já Pago (Histórico)</p>
                     <h5 className="text-2xl sm:text-3xl font-black text-emerald-400 italic">{formatCurrency(parseFloat(historicalPaidAmount) || 0)}</h5>
+                  </div>
+                  <div className="hidden md:block w-px h-12 bg-white/10" />
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Aluguel Recebido (Histórico)</p>
+                    <h5 className="text-2xl sm:text-3xl font-black text-emerald-400 italic">{formatCurrency(parseFloat(historicalRentReceived) || 0)}</h5>
                   </div>
                   <div className="hidden md:block w-px h-12 bg-white/10" />
                   <div>

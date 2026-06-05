@@ -28,6 +28,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [despesasCartorarias, setDespesasCartorarias] = useState(String(asset.metadata?.despesasCartorarias || ''));
   const [mobiliarios, setMobiliarios] = useState(String(asset.metadata?.mobiliarios || ''));
   const [historicalPaidAmount, setHistoricalPaidAmount] = useState(String(asset.metadata?.historicalPaidAmount || ''));
+  const [historicalRentReceived, setHistoricalRentReceived] = useState(String(asset.metadata?.historicalRentReceived || ''));
   const [consortiumAllocationRatio, setConsortiumAllocationRatio] = useState(String(asset.metadata?.consortiumAllocationRatio || '100'));
   const [saleValue, setSaleValue] = useState(String(asset.metadata?.saleValue || ''));
 
@@ -134,6 +135,17 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         return sum + (t.amount * ratio);
       }, 0);
   }, [assetTransactions, consortiumAllocationRatio]);
+
+  const totalRentTransactions = useMemo(() => {
+    return assetTransactions
+      .filter(t => t.type === 'INCOME' && t.isPaid)
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [assetTransactions]);
+
+  const totalRentReceived = useMemo(() => {
+    const histRent = parseFloat(historicalRentReceived) || 0;
+    return histRent + totalRentTransactions;
+  }, [historicalRentReceived, totalRentTransactions]);
 
   const agioDesagio = useMemo(() => {
     const saleVal = parseFloat(saleValue) || 0;
@@ -692,6 +704,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       const cartVal = parseFloat(despesasCartorarias) || 0;
       const mobVal = parseFloat(mobiliarios) || 0;
       const histPaid = parseFloat(historicalPaidAmount) || 0;
+      const histRent = parseFloat(historicalRentReceived) || 0;
       const saleVal = parseFloat(saleValue) || 0;
       const rentVal = parseFloat(rentalIncome) || 0;
       const condoVal = parseFloat(condoFee) || 0;
@@ -706,6 +719,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         despesasCartorarias: cartVal,
         mobiliarios: mobVal,
         historicalPaidAmount: histPaid,
+        historicalRentReceived: histRent,
         saleValue: saleVal,
         isRented,
         rentalType,
@@ -902,6 +916,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       const cartVal = parseFloat(despesasCartorarias) || 0;
       const mobVal = parseFloat(mobiliarios) || 0;
       const histPaid = parseFloat(historicalPaidAmount) || 0;
+      const histRent = parseFloat(historicalRentReceived) || 0;
       const rentVal = parseFloat(rentalIncome) || 0;
       const condoVal = parseFloat(condoFee) || 0;
       const iptuVal = parseFloat(iptuFee) || 0;
@@ -915,6 +930,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         despesasCartorarias: cartVal,
         mobiliarios: mobVal,
         historicalPaidAmount: histPaid,
+        historicalRentReceived: histRent,
         saleValue: saleVal,
         isRented,
         rentalType,
@@ -1157,6 +1173,10 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={historicalPaidAmount} onChange={e => setHistoricalPaidAmount(e.target.value)} placeholder="0" />
                 </div>
                 <div className="space-y-1">
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Aluguel Recebido Anteriormente (Histórico)</label>
+                  <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={historicalRentReceived} onChange={e => setHistoricalRentReceived(e.target.value)} placeholder="0" />
+                </div>
+                <div className="space-y-1">
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor de Venda (se vendido)</label>
                   <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={saleValue} onChange={e => setSaleValue(e.target.value)} placeholder="0" />
                 </div>
@@ -1213,6 +1233,18 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                 <div className="flex justify-between">
                   <span className="text-slate-400 font-medium">Restante a Pagar:</span>
                   <span className="font-bold text-rose-400">{formatCurrency(totalToPay)}</span>
+                </div>
+                <div className="flex justify-between border-t border-white/5 pt-1.5">
+                  <span className="text-slate-400 font-medium">Aluguel Recebido Anteriormente (Histórico):</span>
+                  <span className="font-bold text-slate-300">{formatCurrency(parseFloat(historicalRentReceived) || 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-medium">Aluguel Recebido em Transações (Tx):</span>
+                  <span className="font-bold text-slate-300">{formatCurrency(totalRentTransactions)}</span>
+                </div>
+                <div className="flex justify-between border-t border-white/5 pt-1.5 font-bold text-emerald-400">
+                  <span>Total de Aluguel Recebido:</span>
+                  <span>{formatCurrency(totalRentReceived)}</span>
                 </div>
                 <div className="flex justify-between border-t border-white/10 pt-2 font-bold text-sm">
                   <span className="text-slate-300">
