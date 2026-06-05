@@ -113,7 +113,17 @@ const Assets: React.FC = () => {
     loanInterestRate: '',
     loanFixedValue: '',
     loanDueDate: '',
-    loanDebtor: ''
+    loanDebtor: '',
+    // Financing / Consortium details for edit transition
+    deliveryPaymentMethod: 'A_VISTA' as 'A_VISTA' | 'FINANCIAMENTO' | 'CONSORCIO',
+    deliveryBalance: '',
+    selectedConsortiumId: '',
+    consortiumAllocationRatio: '100',
+    financingOriginalTotal: '',
+    financingInstallment: '',
+    financingInstallmentsCount: '',
+    financingDueDay: '10',
+    financingName: '',
   });
 
   const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
@@ -618,20 +628,34 @@ const Assets: React.FC = () => {
     if (!user) return;
 
     try {
-      const value = parseFloat(formData.estimatedValue) || 0;
-      const purchaseVal = parseFloat(formData.purchaseValue) || 0;
+      const isRealEstate = formData.category === 'REAL_ESTATE';
+      
+      const value = isRealEstate && editingAsset 
+        ? editingAsset.estimatedValue 
+        : (parseFloat(formData.estimatedValue) || 0);
+        
+      const purchaseVal = isRealEstate && editingAsset 
+        ? (parseFloat(editingAsset.metadata?.purchaseValue) || 0)
+        : (parseFloat(formData.purchaseValue) || 0);
+        
+      const acqDate = isRealEstate && editingAsset
+        ? editingAsset.acquisitionDate
+        : (formData.acquisitionDate || null);
+
       const fipeVal = parseFloat(formData.fipeValue) || 0;
       const brokerFeeVal = parseFloat(formData.brokerFee) || 0;
       const soldVal = parseFloat(formData.soldValue) || 0;
-      const rentVal = parseFloat(formData.rentalIncome) || 0;
-      const condoFeeVal = parseFloat(formData.condoFee) || 0;
-      const iptuFeeVal = parseFloat(formData.iptuFee) || 0;
+      
+      // If real estate, isRented should only be true if purpose is investimento
+      const finalIsRented = isRealEstate && formData.purpose === 'uso' ? false : formData.isRented;
+      const rentVal = isRealEstate && formData.purpose === 'uso' ? 0 : (parseFloat(formData.rentalIncome) || 0);
 
       // Loans
       const loanPrincipalVal = parseFloat(formData.loanPrincipal) || 0;
       const loanInterestRateVal = parseFloat(formData.loanInterestRate) || 0;
       const loanFixedValueVal = parseFloat(formData.loanFixedValue) || 0;
 
+      // Base metadata from form
       const metadata: Record<string, any> = {
         purpose: formData.purpose,
         purchaseValue: purchaseVal,
@@ -640,16 +664,12 @@ const Assets: React.FC = () => {
         isSold: formData.isSold,
         soldValue: soldVal,
         // Pre-construction
-        propertyStage: formData.category === 'REAL_ESTATE' ? formData.propertyStage : undefined,
+        propertyStage: isRealEstate ? formData.propertyStage : undefined,
         indexType: formData.indexType,
         balloons: formData.balloons,
         // Rental
-        isRented: formData.isRented,
+        isRented: finalIsRented,
         rentalIncome: rentVal,
-        condoFee: condoFeeVal,
-        iptuFee: iptuFeeVal,
-        inquilinoPaysCondo: formData.inquilinoPaysCondo,
-        inquilinoPaysIPTU: formData.inquilinoPaysIPTU,
         rentalType: formData.rentalType,
         rentalDate: formData.rentalDate,
         // Loan details
@@ -659,8 +679,40 @@ const Assets: React.FC = () => {
         loanInterestRate: loanInterestRateVal,
         loanFixedValue: loanFixedValueVal,
         loanDueDate: formData.loanDueDate,
-        loanDebtor: formData.loanDebtor
+        loanDebtor: formData.loanDebtor,
+        // Financing / Consortium details
+        deliveryPaymentMethod: isRealEstate ? formData.deliveryPaymentMethod : undefined,
+        deliveryBalance: isRealEstate ? (parseFloat(formData.deliveryBalance) || 0) : undefined,
+        selectedConsortiumId: isRealEstate ? (formData.selectedConsortiumId || undefined) : undefined,
+        consortiumAllocationRatio: isRealEstate && formData.selectedConsortiumId ? (parseFloat(formData.consortiumAllocationRatio) || 100) : undefined,
+        financingInstallment: isRealEstate ? (parseFloat(formData.financingInstallment) || 0) : undefined,
+        financingInstallmentsCount: isRealEstate ? (parseInt(formData.financingInstallmentsCount, 10) || 0) : undefined,
+        financingDueDay: isRealEstate ? formData.financingDueDay : undefined,
+        financingName: isRealEstate ? formData.financingName : undefined,
+        financingOriginalTotal: isRealEstate ? (parseFloat(formData.financingOriginalTotal) || 0) : undefined,
       };
+
+      // Preserve existing real estate evolution details if editing
+      if (isRealEstate && editingAsset) {
+        const oldMeta = editingAsset.metadata || {};
+        metadata.condoFee = oldMeta.condoFee;
+        metadata.iptuFee = oldMeta.iptuFee;
+        metadata.inquilinoPaysCondo = oldMeta.inquilinoPaysCondo;
+        metadata.inquilinoPaysIPTU = oldMeta.inquilinoPaysIPTU;
+        metadata.condoPayer = oldMeta.condoPayer;
+        metadata.iptuPayer = oldMeta.iptuPayer;
+        metadata.condoNextDate = oldMeta.condoNextDate;
+        metadata.iptuNextDate = oldMeta.iptuNextDate;
+        metadata.iptuFrequency = oldMeta.iptuFrequency;
+        metadata.historicalPaidAmount = oldMeta.historicalPaidAmount;
+        metadata.historicalRentReceived = oldMeta.historicalRentReceived;
+        metadata.valuationHistory = oldMeta.valuationHistory;
+        metadata.shortStayBookings = oldMeta.shortStayBookings;
+        metadata.despesasCartorarias = oldMeta.despesasCartorarias;
+        metadata.mobiliarios = oldMeta.mobiliarios;
+      }
+
+      let assetId = '';
 
       if (editingAsset) {
         // UPDATE existing asset
@@ -670,18 +722,19 @@ const Assets: React.FC = () => {
             name: formData.name,
             category: formData.category,
             estimated_value: value,
-            acquisition_date: formData.acquisitionDate || null,
+            acquisition_date: acqDate,
             description: formData.description,
             metadata
           })
           .eq('id', editingAsset.id);
 
         if (error) throw error;
+        assetId = editingAsset.id;
 
-        if (formData.category === 'REAL_ESTATE') {
+        if (isRealEstate) {
           await syncRentalTransactions(
             editingAsset.id,
-            formData.isRented,
+            finalIsRented,
             rentVal,
             formData.name,
             user.id,
@@ -698,7 +751,7 @@ const Assets: React.FC = () => {
             name: formData.name,
             category: formData.category,
             estimated_value: value,
-            acquisition_date: formData.acquisitionDate || null,
+            acquisition_date: acqDate,
             description: formData.description,
             metadata
           }])
@@ -706,11 +759,12 @@ const Assets: React.FC = () => {
           .single();
 
         if (error) throw error;
+        if (newAsset) assetId = newAsset.id;
 
-        if (formData.category === 'REAL_ESTATE' && newAsset) {
+        if (isRealEstate && newAsset) {
           await syncRentalTransactions(
             newAsset.id,
-            formData.isRented,
+            finalIsRented,
             rentVal,
             formData.name,
             user.id,
@@ -738,22 +792,94 @@ const Assets: React.FC = () => {
           }
 
           // Initial Cash Outflow transaction (Not historical)
-          await supabase.from('transactions').insert({
+          const todayStr = new Date().toISOString().split('T')[0];
+          await supabase.from('transactions').insert([{
             user_id: user.id,
-            description: `Desembolso Empréstimo: ${formData.name}`,
+            description: `Desembolso Empréstimo Concedido - ${formData.name}`,
             amount: loanPrincipalVal,
-            date: formData.acquisitionDate || new Date().toISOString().split('T')[0],
+            date: todayStr,
             type: 'EXPENSE',
-            category: catName,
             category_id: catId || null,
             is_paid: true,
             paid_amount: loanPrincipalVal,
-            paid_at: formData.acquisitionDate || new Date().toISOString().split('T')[0],
+            paid_at: todayStr,
             metadata: {
               linked_asset_id: newAsset.id,
               type: 'loan_disbursement'
             }
-          });
+          }]);
+        }
+      }
+
+      // Sync direct financing / consortium liabilities for Real Estate (Pronto stage)
+      if (isRealEstate && formData.propertyStage === 'PRONTO' && assetId) {
+        const balance = parseFloat(formData.deliveryBalance) || 0;
+        const linkedLiab = activeLiabilities.find(l => l.linkedAssetId === assetId);
+
+        if (formData.deliveryPaymentMethod === 'A_VISTA') {
+          if (linkedLiab) {
+            await supabase.from('liabilities').update({ is_archived: true, linked_asset_id: null }).eq('id', linkedLiab.id);
+          }
+        } 
+        else if (formData.deliveryPaymentMethod === 'FINANCIAMENTO') {
+          const instCount = parseInt(formData.financingInstallmentsCount, 10) || 240;
+          const instAmount = parseFloat(formData.financingInstallment) || 0;
+          const originalTotal = parseFloat(formData.financingOriginalTotal) || balance;
+          const dueDayVal = parseInt(formData.financingDueDay, 10) || 10;
+          const finName = formData.financingName || `Financiamento: ${formData.name}`;
+
+          if (linkedLiab && linkedLiab.type === 'MORTGAGE') {
+            await supabase.from('liabilities').update({
+              name: finName,
+              total_amount: originalTotal,
+              remaining_balance: balance,
+              installment_amount: instAmount,
+              installments_remaining: instCount,
+              due_day: dueDayVal,
+              metadata: {
+                ...linkedLiab.metadata,
+                propertyType: 'PRONTO',
+                isRealEstate: true
+              }
+            }).eq('id', linkedLiab.id);
+          } else {
+            // Unlink if type was different
+            if (linkedLiab) {
+              await supabase.from('liabilities').update({ linked_asset_id: null }).eq('id', linkedLiab.id);
+            }
+            await supabase.from('liabilities').insert([{
+              user_id: user.id,
+              name: finName,
+              type: 'MORTGAGE',
+              total_amount: originalTotal,
+              remaining_balance: balance,
+              installment_amount: instAmount,
+              installments_remaining: instCount,
+              due_day: dueDayVal,
+              linked_asset_id: assetId,
+              metadata: {
+                propertyType: 'PRONTO',
+                isRealEstate: true
+              }
+            }]);
+          }
+        }
+        else if (formData.deliveryPaymentMethod === 'CONSORCIO') {
+          if (formData.selectedConsortiumId) {
+            // Unlink previous if different
+            if (linkedLiab && linkedLiab.id !== formData.selectedConsortiumId) {
+              await supabase.from('liabilities').update({ linked_asset_id: null }).eq('id', linkedLiab.id);
+            }
+            await supabase.from('liabilities').update({
+              linked_asset_id: assetId,
+              metadata: {
+                propertyType: 'PRONTO',
+                isRealEstate: true
+              }
+            }).eq('id', formData.selectedConsortiumId);
+          } else if (linkedLiab) {
+            await supabase.from('liabilities').update({ linked_asset_id: null }).eq('id', linkedLiab.id);
+          }
         }
       }
 
@@ -761,8 +887,9 @@ const Assets: React.FC = () => {
       setEditingAsset(null);
       resetAssetForm();
       fetchData();
+      alert('Ativo salvo com sucesso!');
     } catch (err: any) {
-      alert(`Erro ao salvar: ${err.message}`);
+      alert(`Erro ao salvar ativo: ${err.message}`);
     }
   };
 
@@ -796,13 +923,54 @@ const Assets: React.FC = () => {
       loanInterestRate: '',
       loanFixedValue: '',
       loanDueDate: '',
-      loanDebtor: ''
+      loanDebtor: '',
+      deliveryPaymentMethod: 'A_VISTA',
+      deliveryBalance: '',
+      selectedConsortiumId: '',
+      consortiumAllocationRatio: '100',
+      financingOriginalTotal: '',
+      financingInstallment: '',
+      financingInstallmentsCount: '',
+      financingDueDay: '10',
+      financingName: '',
     });
   };
 
   const openEditAsset = (asset: PhysicalAsset) => {
     setEditingAsset(asset);
     const meta = asset.metadata || {};
+    
+    const linkedLiab = activeLiabilities.find(l => l.linkedAssetId === asset.id);
+    let devPayMethod: 'A_VISTA' | 'FINANCIAMENTO' | 'CONSORCIO' = 'A_VISTA';
+    let selConsortiumId = '';
+    let consAllocRatio = '100';
+    let finOrigTotal = '';
+    let finInst = '';
+    let finInstCount = '';
+    let finDueDay = '10';
+    let finName = `Financiamento: ${asset.name}`;
+    let devBal = '';
+
+    if (linkedLiab) {
+      if (linkedLiab.type === 'MORTGAGE') {
+        devPayMethod = 'FINANCIAMENTO';
+        finName = linkedLiab.name;
+        finOrigTotal = String(linkedLiab.totalAmount || '');
+        devBal = String(linkedLiab.remainingBalance || '');
+        finInst = String(linkedLiab.installmentAmount || '');
+        finInstCount = String(linkedLiab.installmentsRemaining || '');
+        finDueDay = String(linkedLiab.dueDay || '10');
+      } else if (linkedLiab.type === 'CONSORTIUM') {
+        devPayMethod = 'CONSORCIO';
+        selConsortiumId = linkedLiab.id;
+        consAllocRatio = String(meta.consortiumAllocationRatio || 100);
+      }
+    } else if (meta.selectedConsortiumId) {
+      devPayMethod = 'CONSORCIO';
+      selConsortiumId = meta.selectedConsortiumId;
+      consAllocRatio = String(meta.consortiumAllocationRatio || 100);
+    }
+
     setFormData({
       name: asset.name,
       category: asset.category,
@@ -832,7 +1000,16 @@ const Assets: React.FC = () => {
       loanInterestRate: meta.loanInterestRate ? String(meta.loanInterestRate) : '',
       loanFixedValue: meta.loanFixedValue ? String(meta.loanFixedValue) : '',
       loanDueDate: meta.loanDueDate || '',
-      loanDebtor: meta.loanDebtor || ''
+      loanDebtor: meta.loanDebtor || '',
+      deliveryPaymentMethod: devPayMethod,
+      deliveryBalance: devBal,
+      selectedConsortiumId: selConsortiumId,
+      consortiumAllocationRatio: consAllocRatio,
+      financingOriginalTotal: finOrigTotal,
+      financingInstallment: finInst,
+      financingInstallmentsCount: finInstCount,
+      financingDueDay: finDueDay,
+      financingName: finName,
     });
     setShowModal(true);
   };
@@ -2708,55 +2885,61 @@ const Assets: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Categoria</label>
-                  <select
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
-                  >
-                    <option value="REAL_ESTATE">Imóvel</option>
-                    <option value="VEHICLE">Veículo</option>
-                    <option value="OTHER">Outros Bens</option>
-                  </select>
+              {/* Category & Value - Hide for Real Estate edit, edit in Evolution card instead */}
+              {(!editingAsset || editingAsset.category !== 'REAL_ESTATE') && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Categoria</label>
+                    <select
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      value={formData.category}
+                      onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
+                    >
+                      <option value="REAL_ESTATE">Imóvel</option>
+                      <option value="VEHICLE">Veículo</option>
+                      <option value="OTHER">Outros Bens</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Estimado Atual (R$)</label>
+                    <input
+                      required
+                      type="number"
+                      step="0.01"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      placeholder="0.00"
+                      value={formData.estimatedValue}
+                      onChange={(e) => setFormData({ ...formData, estimatedValue: e.target.value })}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Estimado Atual (R$)</label>
-                  <input
-                    required
-                    type="number"
-                    step="0.01"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
-                    placeholder="0.00"
-                    value={formData.estimatedValue}
-                    onChange={(e) => setFormData({ ...formData, estimatedValue: e.target.value })}
-                  />
-                </div>
-              </div>
+              )}
 
-              <div className="grid grid-cols-2 gap-4 border-t border-slate-50 pt-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Aquisição</label>
-                  <input
-                    type="date"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
-                    value={formData.acquisitionDate}
-                    onChange={(e) => setFormData({ ...formData, acquisitionDate: e.target.value })}
-                  />
+              {/* Acquisition Date & Purchase Value - Hide for Real Estate edit */}
+              {(!editingAsset || editingAsset.category !== 'REAL_ESTATE') && (
+                <div className="grid grid-cols-2 gap-4 border-t border-slate-50 pt-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Aquisição</label>
+                    <input
+                      type="date"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      value={formData.acquisitionDate}
+                      onChange={(e) => setFormData({ ...formData, acquisitionDate: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Aquisição (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      placeholder="0.00"
+                      value={formData.purchaseValue}
+                      onChange={(e) => setFormData({ ...formData, purchaseValue: e.target.value })}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Aquisição (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
-                    placeholder="0.00"
-                    value={formData.purchaseValue}
-                    onChange={(e) => setFormData({ ...formData, purchaseValue: e.target.value })}
-                  />
-                </div>
-              </div>
+              )}
 
               {/* Advanced Classification: Uso vs Investimento */}
               <div className="bg-slate-50 rounded-2xl p-4 space-y-4 border border-slate-200">
@@ -2843,7 +3026,7 @@ const Assets: React.FC = () => {
                           <option value="PLANTA">Na Planta (Em Construção)</option>
                         </select>
                       </div>
-                      {formData.propertyStage === 'PRONTO' && (
+                      {formData.propertyStage === 'PRONTO' && formData.purpose === 'investimento' && (
                         <label className="flex items-center gap-2 cursor-pointer font-bold text-xs select-none pt-6">
                           <input
                             type="checkbox"
@@ -2855,7 +3038,7 @@ const Assets: React.FC = () => {
                       )}
                     </div>
 
-                    {formData.propertyStage === 'PRONTO' && formData.isRented && (
+                    {formData.propertyStage === 'PRONTO' && formData.purpose === 'investimento' && formData.isRented && (
                       <div className="space-y-3 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                         <div className="grid grid-cols-3 gap-3">
                           <div>
@@ -2896,46 +3079,115 @@ const Assets: React.FC = () => {
                             </div>
                           )}
                         </div>
+                      </div>
+                    )}
 
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Condomínio (R$)</label>
-                            <input
-                              type="number"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
-                              value={formData.condoFee}
-                              onChange={(e) => setFormData({ ...formData, condoFee: e.target.value })}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">IPTU Mensal (R$)</label>
-                            <input
-                              type="number"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
-                              value={formData.iptuFee}
-                              onChange={(e) => setFormData({ ...formData, iptuFee: e.target.value })}
-                            />
-                          </div>
+                    {/* Opções de Financiamento/Consórcio - Apenas se Pronto */}
+                    {formData.propertyStage === 'PRONTO' && (
+                      <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Pagamento (Saldo Devedor)</label>
+                          <select
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                            value={formData.deliveryPaymentMethod}
+                            onChange={(e) => setFormData({ ...formData, deliveryPaymentMethod: e.target.value as any })}
+                          >
+                            <option value="A_VISTA">À Vista / Quitado</option>
+                            <option value="FINANCIAMENTO">Financiamento Direto</option>
+                            <option value="CONSORCIO">Consórcio Vinculado</option>
+                          </select>
                         </div>
 
-                        <div className="flex gap-4 pt-1">
-                          <label className="flex items-center gap-2 cursor-pointer font-bold text-[10px]">
-                            <input
-                              type="checkbox"
-                              checked={formData.inquilinoPaysCondo}
-                              onChange={(e) => setFormData({ ...formData, inquilinoPaysCondo: e.target.checked })}
-                            />
-                            Inquilino paga Condomínio
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer font-bold text-[10px]">
-                            <input
-                              type="checkbox"
-                              checked={formData.inquilinoPaysIPTU}
-                              onChange={(e) => setFormData({ ...formData, inquilinoPaysIPTU: e.target.checked })}
-                            />
-                            Inquilino paga IPTU
-                          </label>
-                        </div>
+                        {formData.deliveryPaymentMethod === 'CONSORCIO' && (
+                          <div className="space-y-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl animate-in slide-in-from-top-2">
+                            <div>
+                              <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Consórcio Vinculado</label>
+                              <select
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none"
+                                value={formData.selectedConsortiumId}
+                                onChange={(e) => setFormData({ ...formData, selectedConsortiumId: e.target.value })}
+                              >
+                                <option value="">-- Selecione um Consórcio --</option>
+                                {activeLiabilities.filter(l => l.type === 'CONSORTIUM').map(l => (
+                                  <option key={l.id} value={l.id}>{l.name} (Saldo: {formatCurrency(l.remainingBalance)})</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Percentual Alocado ao Imóvel (%)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
+                                value={formData.consortiumAllocationRatio}
+                                onChange={(e) => setFormData({ ...formData, consortiumAllocationRatio: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {formData.deliveryPaymentMethod === 'FINANCIAMENTO' && (
+                          <div className="space-y-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl animate-in slide-in-from-top-2">
+                            <div>
+                              <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Nome do Financiamento</label>
+                              <input
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none"
+                                value={formData.financingName}
+                                onChange={(e) => setFormData({ ...formData, financingName: e.target.value })}
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Saldo a Financiar (R$)</label>
+                                <input
+                                  type="number"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
+                                  value={formData.deliveryBalance}
+                                  onChange={(e) => setFormData({ ...formData, deliveryBalance: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Original (R$)</label>
+                                <input
+                                  type="number"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
+                                  value={formData.financingOriginalTotal}
+                                  onChange={(e) => setFormData({ ...formData, financingOriginalTotal: e.target.value })}
+                                />
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Parcela</label>
+                                <input
+                                  type="number"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
+                                  value={formData.financingInstallment}
+                                  onChange={(e) => setFormData({ ...formData, financingInstallment: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Parcelas</label>
+                                <input
+                                  type="number"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
+                                  value={formData.financingInstallmentsCount}
+                                  onChange={(e) => setFormData({ ...formData, financingInstallmentsCount: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Dia Venc.</label>
+                                <input
+                                  type="number"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
+                                  value={formData.financingDueDay}
+                                  onChange={(e) => setFormData({ ...formData, financingDueDay: e.target.value })}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

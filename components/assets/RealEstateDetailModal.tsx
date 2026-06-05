@@ -711,6 +711,24 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       const iptuVal = parseFloat(iptuFee) || 0;
       const discVal = parseFloat(discountValue) || 0;
 
+      // Evolução de Histórico de Valor Atual
+      let valuationHistory = [...(asset.metadata?.valuationHistory || [])];
+      if (valuationHistory.length === 0 && (buyVal || asset.estimatedValue)) {
+        valuationHistory.push({
+          date: asset.acquisitionDate || new Date().toISOString().split('T')[0],
+          value: buyVal || asset.estimatedValue,
+          label: 'Aquisição'
+        });
+      }
+      const lastVal = valuationHistory.length > 0 ? valuationHistory[valuationHistory.length - 1] : null;
+      if (!lastVal || lastVal.value !== estVal) {
+        valuationHistory.push({
+          date: new Date().toISOString().split('T')[0],
+          value: estVal,
+          label: 'Atualização'
+        });
+      }
+
       const updatedMetadata = {
         ...(asset.metadata || {}),
         propertyStage,
@@ -737,6 +755,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         iptuNextDate,
         iptuFrequency,
         shortStayBookings,
+        valuationHistory,
         consortiumAllocationRatio: asset.metadata?.selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined
       };
 
@@ -922,6 +941,24 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       const iptuVal = parseFloat(iptuFee) || 0;
       const discVal = parseFloat(discountValue) || 0;
 
+      // Evolução de Histórico de Valor Atual
+      let valuationHistory = [...(asset.metadata?.valuationHistory || [])];
+      if (valuationHistory.length === 0 && (buyVal || asset.estimatedValue)) {
+        valuationHistory.push({
+          date: asset.acquisitionDate || new Date().toISOString().split('T')[0],
+          value: buyVal || asset.estimatedValue,
+          label: 'Aquisição'
+        });
+      }
+      const lastVal = valuationHistory.length > 0 ? valuationHistory[valuationHistory.length - 1] : null;
+      if (!lastVal || lastVal.value !== estVal) {
+        valuationHistory.push({
+          date: new Date().toISOString().split('T')[0],
+          value: estVal,
+          label: 'Atualização'
+        });
+      }
+
       const updatedMetadata = {
         ...(asset.metadata || {}),
         propertyStage,
@@ -948,6 +985,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         iptuNextDate,
         iptuFrequency,
         shortStayBookings,
+        valuationHistory,
         consortiumAllocationRatio: asset.metadata?.selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined
       };
 
@@ -1108,6 +1146,21 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   </div>
                 </div>
 
+                {/* Histórico de Evolução de Valor */}
+                {asset.metadata?.valuationHistory && asset.metadata.valuationHistory.length > 0 && (
+                  <div className="border-t border-slate-200/60 pt-3 mt-2 space-y-2">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Histórico de Valor Atual</p>
+                    <div className="max-h-24 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                      {asset.metadata.valuationHistory.map((item: any, idx: number) => (
+                        <div key={idx} className="flex justify-between text-[9px] text-slate-500">
+                          <span>{item.date ? new Date(item.date).toLocaleDateString('pt-BR') : ''} ({item.label || 'Atualização'}):</span>
+                          <span className="font-bold text-slate-800">{formatCurrency(item.value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Condomínio e IPTU (Evolução Inicial) */}
                 <div className="border-t border-slate-200/60 pt-3 mt-2 space-y-3">
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Despesas Periódicas Básicas</p>
@@ -1125,7 +1178,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   </div>
 
                   {/* IPTU */}
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor IPTU (R$)</label>
                       <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={iptuFee} onChange={e => setIptuFee(e.target.value)} placeholder="0" />
@@ -1137,7 +1190,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                         <option value="yearly">Anual</option>
                       </select>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 col-span-2">
                       <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Próx. Venc. IPTU</label>
                       <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="date" value={iptuNextDate} onChange={e => setIptuNextDate(e.target.value)} />
                     </div>
