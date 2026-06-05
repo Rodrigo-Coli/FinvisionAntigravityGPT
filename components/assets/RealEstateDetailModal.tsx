@@ -29,6 +29,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [mobiliarios, setMobiliarios] = useState(String(asset.metadata?.mobiliarios || ''));
   const [historicalPaidAmount, setHistoricalPaidAmount] = useState(String(asset.metadata?.historicalPaidAmount || ''));
   const [consortiumAllocationRatio, setConsortiumAllocationRatio] = useState(String(asset.metadata?.consortiumAllocationRatio || '100'));
+  const [saleValue, setSaleValue] = useState(String(asset.metadata?.saleValue || ''));
 
   // Rental states
   const [isRented, setIsRented] = useState(!!asset.metadata?.isRented);
@@ -81,17 +82,20 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
     return buy + reformsValue + cart + mob;
   }, [purchaseValue, reformsValue, despesasCartorarias, mobiliarios]);
 
-  const totalPaid = useMemo(() => {
-    const hist = parseFloat(historicalPaidAmount) || 0;
-    const paidTxs = assetTransactions
+  const paidTransactionsAmount = useMemo(() => {
+    return assetTransactions
       .filter(t => t.type === 'EXPENSE' && t.isPaid)
       .reduce((sum, t) => {
         const isConsortiumTx = t.metadata?.type === 'consortium_installment' || t.liability_id || t.description.toLowerCase().includes('consórcio');
         const ratio = isConsortiumTx ? ((parseFloat(consortiumAllocationRatio) || 100) / 100) : 1;
         return sum + ((t.paidAmount || t.amount) * ratio);
       }, 0);
-    return hist + paidTxs;
-  }, [historicalPaidAmount, assetTransactions, consortiumAllocationRatio]);
+  }, [assetTransactions, consortiumAllocationRatio]);
+
+  const totalPaid = useMemo(() => {
+    const hist = parseFloat(historicalPaidAmount) || 0;
+    return hist + paidTransactionsAmount;
+  }, [historicalPaidAmount, paidTransactionsAmount]);
 
   const totalToPay = useMemo(() => {
     return assetTransactions
@@ -104,9 +108,10 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   }, [assetTransactions, consortiumAllocationRatio]);
 
   const agioDesagio = useMemo(() => {
-    const current = parseFloat(estimatedValue) || 0;
+    const saleVal = parseFloat(saleValue) || 0;
+    const current = saleVal > 0 ? saleVal : (parseFloat(estimatedValue) || 0);
     return current - totalInvestedInitially;
-  }, [estimatedValue, totalInvestedInitially]);
+  }, [estimatedValue, saleValue, totalInvestedInitially]);
 
   const agioDesagioPercent = useMemo(() => {
     if (totalInvestedInitially <= 0) return 0;
@@ -435,6 +440,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       const cartVal = parseFloat(despesasCartorarias) || 0;
       const mobVal = parseFloat(mobiliarios) || 0;
       const histPaid = parseFloat(historicalPaidAmount) || 0;
+      const saleVal = parseFloat(saleValue) || 0;
       const rentVal = parseFloat(rentalIncome) || 0;
       const condoVal = parseFloat(condoFee) || 0;
       const iptuVal = parseFloat(iptuFee) || 0;
@@ -448,6 +454,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         despesasCartorarias: cartVal,
         mobiliarios: mobVal,
         historicalPaidAmount: histPaid,
+        saleValue: saleVal,
         isRented,
         rentalType,
         rentalIncome: rentVal,
@@ -622,19 +629,108 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
 
   const handleArchiveAsset = async () => {
     if (!supabase) return;
-    if (!window.confirm(`Tem certeza que deseja marcar o imóvel "${name}" como vendido e arquivá-lo? Isso desativará projeções futuras.`)) return;
+    const saleVal = parseFloat(saleValue) || 0;
+    const confirmMsg = saleVal > 0 
+      ? `Tem certeza que deseja marcar o imóvel "${name}" como vendido por ${formatCurrency(saleVal)} e arquivá-lo? Isso desativará projeções futuras.`
+      : `Tem certeza que deseja marcar o imóvel "${name}" como vendido e arquivá-lo? Isso desativará projeções futuras.`;
+    
+    if (!window.confirm(confirmMsg)) return;
+    
+    setIsSubmitting(true);
     try {
+      const estVal = parseFloat(estimatedValue) || 0;
+      const buyVal = parseFloat(purchaseValue) || 0;
+      const cartVal = parseFloat(despesasCartorarias) || 0;
+      const mobVal = parseFloat(mobiliarios) || 0;
+      const histPaid = parseFloat(historicalPaidAmount) || 0;
+      const rentVal = parseFloat(rentalIncome) || 0;
+      const condoVal = parseFloat(condoFee) || 0;
+      const iptuVal = parseFloat(iptuFee) || 0;
+      const discVal = parseFloat(discountValue) || 0;
+
+      const updatedMetadata = {
+        ...(asset.metadata || {}),
+        propertyStage,
+        purpose,
+        purchaseValue: buyVal,
+        despesasCartorarias: cartVal,
+        mobiliarios: mobVal,
+        historicalPaidAmount: histPaid,
+        saleValue: saleVal,
+        isRented,
+        rentalType,
+        rentalIncome: rentVal,
+        rentalDate,
+        discountType,
+        discountValue: discVal,
+        inquilinoPaysCondo,
+        inquilinoPaysIPTU,
+        condoFee: condoVal,
+        iptuFee: iptuVal,
+        condoDueDay: parseInt(condoDueDay, 10) || 10,
+        iptuDueDay: parseInt(iptuDueDay, 10) || 10,
+        iptuFrequency,
+        consortiumAllocationRatio: asset.metadata?.selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined
+      };
+
       const { error } = await supabase
         .from('physical_assets')
-        .update({ is_archived: true })
+        .update({ 
+          name: name,
+          estimated_value: estVal,
+          metadata: updatedMetadata,
+          is_archived: true 
+        })
         .eq('id', asset.id);
 
       if (error) throw error;
-      alert('Imóvel arquivado com sucesso!');
+      alert('Imóvel arquivado e registrado como vendido com sucesso!');
       onClose();
       onSuccess();
     } catch (err: any) {
       alert(`Erro ao arquivar: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteAsset = async () => {
+    if (!supabase) return;
+    if (!window.confirm(`Tem certeza que deseja excluir permanentemente o imóvel "${name}" e todas as suas transações vinculadas? Esta ação não poderá ser desfeita.`)) return;
+    
+    setIsSubmitting(true);
+    try {
+      // 1. Delete linked transactions
+      const { error: txErr } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('metadata->linked_asset_id', asset.id);
+        
+      if (txErr) throw txErr;
+
+      // 2. Unlink consortium liabilities if any
+      const { error: liabErr } = await supabase
+        .from('liabilities')
+        .update({ linked_asset_id: null })
+        .eq('linked_asset_id', asset.id);
+        
+      if (liabErr) throw liabErr;
+
+      // 3. Delete physical asset
+      const { error: assetErr } = await supabase
+        .from('physical_assets')
+        .delete()
+        .eq('id', asset.id);
+
+      if (assetErr) throw assetErr;
+
+      alert('Imóvel e suas transações excluídos com sucesso!');
+      onClose();
+      onSuccess();
+    } catch (err: any) {
+      alert(`Erro ao excluir: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -692,6 +788,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
             <button onClick={exportToExcel} className="p-3 bg-white border border-slate-200 text-slate-500 hover:text-brand-600 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Exportar Excel"><FileSpreadsheet size={18} /></button>
             <button onClick={exportToPdf} className="p-3 bg-white border border-slate-200 text-slate-500 hover:text-brand-600 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Imprimir PDF"><Printer size={18} /></button>
             <button onClick={handleArchiveAsset} className="p-3 bg-white border border-slate-200 text-slate-500 hover:text-rose-600 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Arquivar / Marcar como Vendido"><Archive size={18} /></button>
+            <button onClick={handleDeleteAsset} className="p-3 bg-white border border-slate-200 text-rose-500 hover:bg-rose-50 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Excluir Lançamento do Imóvel"><Trash2 size={18} /></button>
             <button onClick={onClose} className="w-12 h-12 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-2xl flex items-center justify-center transition-all shadow-sm ml-2"><X size={20} /></button>
           </div>
         </div>
@@ -722,9 +819,9 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Nome do Imóvel</label>
                   <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" value={name} onChange={e => setName(e.target.value)} />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Atual (FIPE/Aval.)</label>
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Atual</label>
                     <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={estimatedValue} onChange={e => setEstimatedValue(e.target.value)} />
                   </div>
                   <div className="space-y-1">
@@ -744,7 +841,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   <button onClick={() => setPurpose('investimento')} className={`px-3 py-1 rounded text-[8px] font-black uppercase tracking-wider ${purpose === 'investimento' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Investimento</button>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Reformas Obras (Saldo)</label>
                   <div className="w-full h-10 px-4 bg-slate-100 rounded-xl font-black text-slate-900 text-xs flex items-center">{formatCurrency(reformsValue)}</div>
@@ -758,8 +855,12 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={mobiliarios} onChange={e => setMobiliarios(e.target.value)} placeholder="0" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Histórico Pago (Fora Tx)</label>
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Pago Anteriormente (Histórico)</label>
                   <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={historicalPaidAmount} onChange={e => setHistoricalPaidAmount(e.target.value)} placeholder="0" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor de Venda (se vendido)</label>
+                  <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={saleValue} onChange={e => setSaleValue(e.target.value)} placeholder="0" />
                 </div>
               </div>
             </div>
@@ -800,6 +901,14 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   <span className="font-bold">{formatCurrency(totalInvestedInitially)}</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-slate-400 font-medium">Valor Pago Anteriormente (Histórico):</span>
+                  <span className="font-bold text-slate-300">{formatCurrency(parseFloat(historicalPaidAmount) || 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-medium">Valor Pago em Transações (Tx):</span>
+                  <span className="font-bold text-slate-300">{formatCurrency(paidTransactionsAmount)}</span>
+                </div>
+                <div className="flex justify-between border-t border-white/5 pt-1.5">
                   <span className="text-slate-400 font-medium">Total Pago (Histórico + Tx):</span>
                   <span className="font-bold text-emerald-400">{formatCurrency(totalPaid)}</span>
                 </div>
@@ -808,7 +917,9 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   <span className="font-bold text-rose-400">{formatCurrency(totalToPay)}</span>
                 </div>
                 <div className="flex justify-between border-t border-white/10 pt-2 font-bold text-sm">
-                  <span className="text-slate-300">Ágio / Deságio:</span>
+                  <span className="text-slate-300">
+                    {parseFloat(saleValue) > 0 ? 'Resultado da Venda (Lucro/Preju.):' : 'Ágio / Deságio:'}
+                  </span>
                   <span className={agioDesagio >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                     {agioDesagio >= 0 ? '+' : ''}{formatCurrency(agioDesagio)} ({agioDesagioPercent.toFixed(1)}%)
                   </span>
