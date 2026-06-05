@@ -41,12 +41,40 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [inquilinoPaysCondo, setInquilinoPaysCondo] = useState(!!asset.metadata?.inquilinoPaysCondo);
   const [inquilinoPaysIPTU, setInquilinoPaysIPTU] = useState(!!asset.metadata?.inquilinoPaysIPTU);
 
+  // Condo and IPTU Payer Options
+  const [condoPayer, setCondoPayer] = useState<'PROPRIETARIO' | 'INQUILINO_DIRETO' | 'PROPRIETARIO_REEMBOLSO'>(
+    asset.metadata?.condoPayer || (asset.metadata?.inquilinoPaysCondo ? 'INQUILINO_DIRETO' : 'PROPRIETARIO')
+  );
+  const [iptuPayer, setIptuPayer] = useState<'PROPRIETARIO' | 'INQUILINO_DIRETO' | 'PROPRIETARIO_REEMBOLSO'>(
+    asset.metadata?.iptuPayer || (asset.metadata?.inquilinoPaysIPTU ? 'INQUILINO_DIRETO' : 'PROPRIETARIO')
+  );
+
   // Cost inputs for Condo/IPTU configurations
   const [condoFee, setCondoFee] = useState(String(asset.metadata?.condoFee || ''));
   const [iptuFee, setIptuFee] = useState(String(asset.metadata?.iptuFee || ''));
   const [condoDueDay, setCondoDueDay] = useState(String(asset.metadata?.condoDueDay || '10'));
   const [iptuDueDay, setIptuDueDay] = useState(String(asset.metadata?.iptuDueDay || '10'));
   const [iptuFrequency, setIptuFrequency] = useState<'monthly' | 'yearly'>(asset.metadata?.iptuFrequency || 'monthly');
+
+  // Next due dates (escolha de data) for Condo and IPTU
+  const [condoNextDate, setCondoNextDate] = useState(
+    asset.metadata?.condoNextDate || (asset.metadata?.condoDueDay ? 
+      `${new Date().toISOString().substring(0, 8)}${String(asset.metadata.condoDueDay).padStart(2, '0')}` : 
+      new Date().toISOString().split('T')[0])
+  );
+  const [iptuNextDate, setIptuNextDate] = useState(
+    asset.metadata?.iptuNextDate || (asset.metadata?.iptuDueDay ? 
+      `${new Date().toISOString().substring(0, 8)}${String(asset.metadata.iptuDueDay).padStart(2, '0')}` : 
+      new Date().toISOString().split('T')[0])
+  );
+
+  // Short Stay Bookings
+  const [shortStayBookings, setShortStayBookings] = useState<{ id: string; date: string; amount: number; description: string; isPaid: boolean }[]>(
+    asset.metadata?.shortStayBookings || []
+  );
+  const [newBookingDesc, setNewBookingDesc] = useState('');
+  const [newBookingAmount, setNewBookingAmount] = useState('');
+  const [newBookingDate, setNewBookingDate] = useState(new Date().toISOString().split('T')[0]);
 
   // New Quick Transaction states
   const [showQuickTxForm, setShowQuickTxForm] = useState(false);
@@ -202,12 +230,12 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
 
       if (fetchErr) throw fetchErr;
 
-      // Clean up future unpaid rents if deactivated or type is short_stay
+      // Clean up future unpaid rents if deactivated or type is short_stay or rent income is <= 0
       if (!isRentedVal || rentTypeVal === 'short_stay' || rentIncomeVal <= 0) {
         const targetTxs = (allTxs || []).filter((t: any) =>
           t.metadata?.linked_asset_id === assetId &&
           t.metadata?.type === 'rental_income' &&
-          t.date > todayStr &&
+          t.date >= todayStr &&
           !t.is_paid
         );
 
@@ -216,6 +244,19 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
           await supabase.from('transactions').delete().in('id', idsToDelete);
         }
         return;
+      }
+
+      // Delete future unpaid rents to regenerate them with updated values
+      const targetTxs = (allTxs || []).filter((t: any) =>
+        t.metadata?.linked_asset_id === assetId &&
+        t.metadata?.type === 'rental_income' &&
+        t.date >= todayStr &&
+        !t.is_paid
+      );
+
+      if (targetTxs.length > 0) {
+        const idsToDelete = targetTxs.map((t: any) => t.id);
+        await supabase.from('transactions').delete().in('id', idsToDelete);
       }
 
       // Generate or extend rolling 24 months rents
@@ -244,12 +285,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         if (c) catId = c.id;
       }
 
-      const existingRentTxs = (allTxs || []).filter((t: any) =>
-        t.metadata?.linked_asset_id === assetId &&
-        t.metadata?.type === 'rental_income'
-      );
-
-      // Determine net rent amount after discounts/commissions
+      // Determine net rent amount after Taxa ADM (discountValue)
       let netAmount = rentIncomeVal;
       if (discVal > 0) {
         if (discType === 'PERCENT') {
@@ -260,41 +296,37 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       }
 
       const today = new Date();
-      const baseDate = rentDateVal ? new Date(rentDateVal) : today;
+      const baseDate = rentDateVal ? new Date(rentDateVal + 'T00:00:00') : today;
       const rentDay = baseDate.getDate();
 
-      const currentMonthFirst = new Date(today.getFullYear(), today.getMonth(), rentDay);
-      let startGeneratingFromDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), rentDay);
-
-      if (existingRentTxs.length > 0) {
-        const dates = existingRentTxs.map((t: any) => new Date(t.date).getTime());
-        const maxTime = Math.max(...dates);
-        const maxDate = new Date(maxTime);
-        const nextMonthOfMax = new Date(maxDate.getFullYear(), maxDate.getMonth() + 1, rentDay);
-
-        if (nextMonthOfMax.getTime() < currentMonthFirst.getTime()) {
-          startGeneratingFromDate = currentMonthFirst;
-        } else {
-          startGeneratingFromDate = nextMonthOfMax;
-        }
+      const futureRentTxs = [];
+      let currentYear = baseDate.getFullYear();
+      let currentMonth = baseDate.getMonth();
+      const startTarget = new Date(currentYear, currentMonth, rentDay);
+      if (startTarget.getFullYear() < today.getFullYear() || (startTarget.getFullYear() === today.getFullYear() && startTarget.getMonth() < today.getMonth())) {
+        currentYear = today.getFullYear();
+        currentMonth = today.getMonth();
       }
 
-      const horizonDate = new Date(today.getFullYear(), today.getMonth() + 23, rentDay);
-      const futureRentTxs = [];
-
-      let currentYear = startGeneratingFromDate.getFullYear();
-      let currentMonth = startGeneratingFromDate.getMonth();
-
-      while (true) {
+      for (let i = 0; i < 24; i++) {
         const currentTarget = new Date(currentYear, currentMonth, rentDay);
-        if (currentTarget > horizonDate) break;
-
         const dateStr = currentTarget.toISOString().split('T')[0];
 
-        // Ensure we don't duplicate a rent in the same month
-        const hasRentInMonth = existingRentTxs.some((t: any) => t.date.substring(0, 7) === dateStr.substring(0, 7));
+        if (dateStr < todayStr) {
+          currentMonth++;
+          if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+          continue;
+        }
 
-        if (dateStr >= todayStr && !hasRentInMonth) {
+        // Check if there is already a paid rent in this month
+        const hasPaidRentInMonth = (allTxs || []).some((t: any) =>
+          t.metadata?.linked_asset_id === assetId &&
+          t.metadata?.type === 'rental_income' &&
+          t.date.substring(0, 7) === dateStr.substring(0, 7) &&
+          t.is_paid
+        );
+
+        if (!hasPaidRentInMonth) {
           futureRentTxs.push({
             user_id: userId,
             description: `Receita de Aluguel Regular - ${assetName}`,
@@ -330,7 +362,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
     }
   };
 
-  // Sync Condomínio / IPTU expenses if paid by owner
+  // Sync Condomínio / IPTU expenses & revenues
   const syncExpenseProvisions = async (userId: string) => {
     if (!supabase) return;
     try {
@@ -340,14 +372,14 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       // Retrieve all existing condo/iptu transactions for this asset
       const { data: allTxs } = await supabase
         .from('transactions')
-        .select('id, date, is_paid, subcategory')
+        .select('id, date, is_paid, subcategory, metadata')
         .eq('user_id', userId)
         .eq('metadata->linked_asset_id', asset.id)
         .eq('is_deleted', false);
 
       const existingTxs = allTxs || [];
 
-      // Category Id
+      // Category Id for Ativos Imobiliários
       let catId = '';
       const { data: catRes } = await supabase
         .from('categories')
@@ -357,20 +389,64 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         .maybeSingle();
       if (catRes) catId = catRes.id;
 
-      // 1. CONDO PROVISIONS (if owner pays and condoFee is specified)
+      // Category Id for Receita Operacional Imobiliária
+      let rentCatId = '';
+      const { data: rentCatRes } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('name', 'Receita Operacional Imobiliária')
+        .maybeSingle();
+      if (rentCatRes) rentCatId = rentCatRes.id;
+
+      // Determine effective payer
+      const effCondoPayer = (isRented && rentalType === 'anual') ? condoPayer : 'PROPRIETARIO';
+      const effIptuPayer = (isRented && rentalType === 'anual') ? iptuPayer : 'PROPRIETARIO';
+
+      // 1. CONDO SYNC
       const condoAmt = parseFloat(condoFee) || 0;
-      if (!inquilinoPaysCondo && condoAmt > 0) {
-        const day = parseInt(condoDueDay) || 10;
-        const newProvisions = [];
+      
+      // Delete future unpaid condo provisions
+      const condoFutureUnpaid = existingTxs.filter((t: any) =>
+        (t.metadata?.type === 'condo_provision' || t.metadata?.type === 'condo_expense' || t.metadata?.type === 'condo_revenue') &&
+        t.date >= todayStr &&
+        !t.is_paid
+      );
+      if (condoFutureUnpaid.length > 0) {
+        await supabase.from('transactions').delete().in('id', condoFutureUnpaid.map((t: any) => t.id));
+      }
+
+      if (condoAmt > 0 && effCondoPayer !== 'INQUILINO_DIRETO') {
+        const start = new Date(condoNextDate + 'T00:00:00');
+        const newCondoProvisions = [];
+
+        let currentYear = start.getFullYear();
+        let currentMonth = start.getMonth();
+        const startTarget = new Date(currentYear, currentMonth, start.getDate());
+        if (startTarget.getFullYear() < today.getFullYear() || (startTarget.getFullYear() === today.getFullYear() && startTarget.getMonth() < today.getMonth())) {
+          currentYear = today.getFullYear();
+          currentMonth = today.getMonth();
+        }
+
         for (let i = 0; i < 24; i++) {
-          const txDate = new Date(today.getFullYear(), today.getMonth() + i, day);
+          const txDate = new Date(currentYear, currentMonth, start.getDate());
           const dateStr = txDate.toISOString().split('T')[0];
-          const monthStr = dateStr.substring(0, 7);
 
-          const hasCondo = existingTxs.some((t: any) => t.date.substring(0, 7) === monthStr && (t.subcategory?.toLowerCase() === 'condomínio' || t.subcategory?.toLowerCase() === 'condominio'));
+          if (dateStr < todayStr) {
+            currentMonth++;
+            if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+            continue;
+          }
 
-          if (dateStr >= todayStr && !hasCondo) {
-            newProvisions.push({
+          // Check if there is already a paid condo expense in this month
+          const hasPaidCondoExpense = existingTxs.some((t: any) =>
+            t.date.substring(0, 7) === dateStr.substring(0, 7) &&
+            (t.metadata?.type === 'condo_provision' || t.metadata?.type === 'condo_expense') &&
+            t.is_paid
+          );
+
+          if (!hasPaidCondoExpense) {
+            newCondoProvisions.push({
               user_id: userId,
               description: `Despesa Condomínio - ${name}`,
               amount: condoAmt,
@@ -380,32 +456,85 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
               subcategory: 'Condomínio',
               category_id: catId || null,
               is_paid: false,
-              metadata: { linked_asset_id: asset.id, type: 'condo_provision' }
+              metadata: { linked_asset_id: asset.id, type: 'condo_expense' }
             });
           }
+
+          // Condo revenue provision if reimbursed
+          if (effCondoPayer === 'PROPRIETARIO_REEMBOLSO') {
+            const hasPaidCondoRevenue = existingTxs.some((t: any) =>
+              t.date.substring(0, 7) === dateStr.substring(0, 7) &&
+              t.metadata?.type === 'condo_revenue' &&
+              t.is_paid
+            );
+
+            if (!hasPaidCondoRevenue) {
+              newCondoProvisions.push({
+                user_id: userId,
+                description: `Reembolso Condomínio - ${name}`,
+                amount: condoAmt,
+                date: dateStr,
+                type: 'INCOME',
+                category: 'Receita Operacional Imobiliária',
+                subcategory: 'Condomínio',
+                category_id: rentCatId || null,
+                is_paid: false,
+                metadata: { linked_asset_id: asset.id, type: 'condo_revenue' }
+              });
+            }
+          }
+
+          currentMonth++;
+          if (currentMonth > 11) { currentMonth = 0; currentYear++; }
         }
-        if (newProvisions.length > 0) {
-          await supabase.from('transactions').insert(newProvisions);
+
+        if (newCondoProvisions.length > 0) {
+          await supabase.from('transactions').insert(newCondoProvisions);
         }
       }
 
-      // 2. IPTU PROVISIONS (if owner pays and iptuFee is specified)
+      // 2. IPTU SYNC
       const iptuAmt = parseFloat(iptuFee) || 0;
-      if (!inquilinoPaysIPTU && iptuAmt > 0) {
-        const day = parseInt(iptuDueDay) || 10;
-        const newProvisions = [];
-        const iterations = iptuFrequency === 'monthly' ? 24 : 2; // 24 months vs 2 years
+      
+      // Delete future unpaid iptu provisions
+      const iptuFutureUnpaid = existingTxs.filter((t: any) =>
+        (t.metadata?.type === 'iptu_provision' || t.metadata?.type === 'iptu_expense' || t.metadata?.type === 'iptu_revenue') &&
+        t.date >= todayStr &&
+        !t.is_paid
+      );
+      if (iptuFutureUnpaid.length > 0) {
+        await supabase.from('transactions').delete().in('id', iptuFutureUnpaid.map((t: any) => t.id));
+      }
+
+      if (iptuAmt > 0 && effIptuPayer !== 'INQUILINO_DIRETO') {
+        const start = new Date(iptuNextDate + 'T00:00:00');
+        const newIptuProvisions = [];
+        const iterations = iptuFrequency === 'monthly' ? 24 : 2;
         const monthStep = iptuFrequency === 'monthly' ? 1 : 12;
 
+        let currentYear = start.getFullYear();
+        let currentMonth = start.getMonth();
+        const startTarget = new Date(currentYear, currentMonth, start.getDate());
+        if (startTarget.getFullYear() < today.getFullYear() || (startTarget.getFullYear() === today.getFullYear() && startTarget.getMonth() < today.getMonth())) {
+          currentYear = today.getFullYear();
+          currentMonth = today.getMonth();
+        }
+
         for (let i = 0; i < iterations; i++) {
-          const txDate = new Date(today.getFullYear(), today.getMonth() + (i * monthStep), day);
+          const txDate = new Date(currentYear, currentMonth + (i * monthStep), start.getDate());
           const dateStr = txDate.toISOString().split('T')[0];
-          const monthStr = dateStr.substring(0, 7);
 
-          const hasIptu = existingTxs.some((t: any) => t.date.substring(0, 7) === monthStr && t.subcategory?.toLowerCase() === 'iptu');
+          if (dateStr < todayStr) continue;
 
-          if (dateStr >= todayStr && !hasIptu) {
-            newProvisions.push({
+          // Check if there is already a paid iptu expense in this month/year
+          const hasPaidIptuExpense = existingTxs.some((t: any) =>
+            t.date.substring(0, 7) === dateStr.substring(0, 7) &&
+            (t.metadata?.type === 'iptu_provision' || t.metadata?.type === 'iptu_expense') &&
+            t.is_paid
+          );
+
+          if (!hasPaidIptuExpense) {
+            newIptuProvisions.push({
               user_id: userId,
               description: `Despesa IPTU - ${name}`,
               amount: iptuAmt,
@@ -415,16 +544,139 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
               subcategory: 'IPTU',
               category_id: catId || null,
               is_paid: false,
-              metadata: { linked_asset_id: asset.id, type: 'iptu_provision' }
+              metadata: { linked_asset_id: asset.id, type: 'iptu_expense' }
             });
           }
+
+          // IPTU revenue provision if reimbursed
+          if (effIptuPayer === 'PROPRIETARIO_REEMBOLSO') {
+            const hasPaidIptuRevenue = existingTxs.some((t: any) =>
+              t.date.substring(0, 7) === dateStr.substring(0, 7) &&
+              t.metadata?.type === 'iptu_revenue' &&
+              t.is_paid
+            );
+
+            if (!hasPaidIptuRevenue) {
+              newIptuProvisions.push({
+                user_id: userId,
+                description: `Reembolso IPTU - ${name}`,
+                amount: iptuAmt,
+                date: dateStr,
+                type: 'INCOME',
+                category: 'Receita Operacional Imobiliária',
+                subcategory: 'IPTU',
+                category_id: rentCatId || null,
+                is_paid: false,
+                metadata: { linked_asset_id: asset.id, type: 'iptu_revenue' }
+              });
+            }
+          }
         }
-        if (newProvisions.length > 0) {
-          await supabase.from('transactions').insert(newProvisions);
+
+        if (newIptuProvisions.length > 0) {
+          await supabase.from('transactions').insert(newIptuProvisions);
         }
       }
+
     } catch (err) {
       console.error('Error syncing condo/iptu provisions:', err);
+    }
+  };
+
+  // Sync Short Stay bookings
+  const syncShortStayBookings = async (userId: string) => {
+    if (!supabase) return;
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // Fetch existing bookings transactions from DB
+      const { data: dbBookings } = await supabase
+        .from('transactions')
+        .select('id, metadata')
+        .eq('user_id', userId)
+        .eq('metadata->linked_asset_id', asset.id)
+        .eq('metadata->type', 'short_stay_booking');
+        
+      const dbBookingsList = dbBookings || [];
+      
+      // 1. Delete transactions that are no longer in shortStayBookings state
+      const stateBookingIds = shortStayBookings.map(b => b.id);
+      const toDelete = dbBookingsList.filter((tx: any) => !stateBookingIds.includes(tx.metadata?.booking_id));
+      if (toDelete.length > 0) {
+        await supabase.from('transactions').delete().in('id', toDelete.map((tx: any) => tx.id));
+      }
+      
+      // 2. Insert new bookings or update existing ones
+      if (isRented && rentalType === 'short_stay') {
+        const categoryName = 'Receita Operacional Imobiliária';
+        let catId = '';
+        const { data: existingCat } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('name', categoryName)
+          .maybeSingle();
+        if (existingCat) {
+          catId = existingCat.id;
+        } else {
+          const { data: c } = await supabase
+            .from('categories')
+            .insert({ user_id: userId, name: categoryName, type: 'INCOME', color: 'bg-emerald-50 text-emerald-600' })
+            .select('id').maybeSingle();
+          if (c) catId = c.id;
+        }
+        
+        for (const booking of shortStayBookings) {
+          const existingTx = dbBookingsList.find((tx: any) => tx.metadata?.booking_id === booking.id);
+          if (existingTx) {
+            // Update transaction
+            await supabase
+              .from('transactions')
+              .update({
+                amount: booking.amount,
+                date: booking.date,
+                description: booking.description || `Receita Short Stay - ${name}`
+              })
+              .eq('id', existingTx.id);
+          } else {
+            // Insert new transaction
+            await supabase
+              .from('transactions')
+              .insert({
+                user_id: userId,
+                description: booking.description || `Receita Short Stay - ${name}`,
+                amount: booking.amount,
+                date: booking.date,
+                type: 'INCOME',
+                category: categoryName,
+                subcategory: 'Short Stay',
+                category_id: catId || null,
+                is_paid: booking.isPaid || false,
+                metadata: {
+                  linked_asset_id: asset.id,
+                  type: 'short_stay_booking',
+                  booking_id: booking.id
+                }
+              });
+          }
+        }
+      } else {
+        // If not short stay, delete all future unpaid short stay bookings
+        const { data: dbFutureUnpaidBookings } = await supabase
+          .from('transactions')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('metadata->linked_asset_id', asset.id)
+          .eq('metadata->type', 'short_stay_booking')
+          .eq('is_paid', false)
+          .gt('date', todayStr);
+          
+        if (dbFutureUnpaidBookings && dbFutureUnpaidBookings.length > 0) {
+          await supabase.from('transactions').delete().in('id', dbFutureUnpaidBookings.map((tx: any) => tx.id));
+        }
+      }
+    } catch (e) {
+      console.error('Error syncing short stay bookings:', e);
     }
   };
 
@@ -461,13 +713,16 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         rentalDate,
         discountType,
         discountValue: discVal,
-        inquilinoPaysCondo,
-        inquilinoPaysIPTU,
+        inquilinoPaysCondo: condoPayer === 'INQUILINO_DIRETO',
+        inquilinoPaysIPTU: iptuPayer === 'INQUILINO_DIRETO',
+        condoPayer,
+        iptuPayer,
         condoFee: condoVal,
         iptuFee: iptuVal,
-        condoDueDay: parseInt(condoDueDay, 10) || 10,
-        iptuDueDay: parseInt(iptuDueDay, 10) || 10,
+        condoNextDate,
+        iptuNextDate,
         iptuFrequency,
+        shortStayBookings,
         consortiumAllocationRatio: asset.metadata?.selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined
       };
 
@@ -496,11 +751,15 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         discVal
       );
 
-      // Sync condo / iptu expenses
+      // Sync condo / iptu expenses & revenues
       await syncExpenseProvisions(user.id);
+
+      // Sync short stay bookings
+      await syncShortStayBookings(user.id);
 
       alert('Dados do imóvel atualizados com sucesso!');
       onSuccess();
+      onClose(); // Close modal on success
     } catch (err: any) {
       alert(`Erro ao salvar alterações: ${err.message}`);
     } finally {
@@ -663,13 +922,16 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         rentalDate,
         discountType,
         discountValue: discVal,
-        inquilinoPaysCondo,
-        inquilinoPaysIPTU,
+        inquilinoPaysCondo: condoPayer === 'INQUILINO_DIRETO',
+        inquilinoPaysIPTU: iptuPayer === 'INQUILINO_DIRETO',
+        condoPayer,
+        iptuPayer,
         condoFee: condoVal,
         iptuFee: iptuVal,
-        condoDueDay: parseInt(condoDueDay, 10) || 10,
-        iptuDueDay: parseInt(iptuDueDay, 10) || 10,
+        condoNextDate,
+        iptuNextDate,
         iptuFrequency,
+        shortStayBookings,
         consortiumAllocationRatio: asset.metadata?.selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined
       };
 
@@ -829,6 +1091,42 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                     <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={purchaseValue} onChange={e => setPurchaseValue(e.target.value)} />
                   </div>
                 </div>
+
+                {/* Condomínio e IPTU (Evolução Inicial) */}
+                <div className="border-t border-slate-200/60 pt-3 mt-2 space-y-3">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Despesas Periódicas Básicas</p>
+                  
+                  {/* Condomínio */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Condomínio Mensal (R$)</label>
+                      <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={condoFee} onChange={e => setCondoFee(e.target.value)} placeholder="0" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Próx. Venc. Condo</label>
+                      <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="date" value={condoNextDate} onChange={e => setCondoNextDate(e.target.value)} />
+                    </div>
+                  </div>
+
+                  {/* IPTU */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor IPTU (R$)</label>
+                      <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={iptuFee} onChange={e => setIptuFee(e.target.value)} placeholder="0" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Freq. IPTU</label>
+                      <select className="w-full h-9 px-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" value={iptuFrequency} onChange={e => setIptuFrequency(e.target.value as any)}>
+                        <option value="monthly">Mensal</option>
+                        <option value="yearly">Anual</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Próx. Venc. IPTU</label>
+                      <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="date" value={iptuNextDate} onChange={e => setIptuNextDate(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -957,30 +1255,110 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                     </div>
 
                     <div className="space-y-2">
-                      <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor do Aluguel (Gross)</label>
-                        <input className="w-full h-9 px-3 bg-white border rounded-lg font-bold text-xs" type="number" value={rentalIncome} onChange={e => setRentalIncome(e.target.value)} />
-                      </div>
-                      {rentalType === 'anual' && (
+                      {rentalType === 'anual' ? (
                         <>
+                          <div className="space-y-1">
+                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor do Aluguel (Gross)</label>
+                            <input className="w-full h-9 px-3 bg-white border rounded-lg font-bold text-xs" type="number" value={rentalIncome} onChange={e => setRentalIncome(e.target.value)} />
+                          </div>
                           <div className="space-y-1">
                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data Inicial de Cobrança</label>
                             <input className="w-full h-9 px-3 bg-white border rounded-lg font-bold text-xs" type="date" value={rentalDate} onChange={e => setRentalDate(e.target.value)} />
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Tipo Desconto</label>
-                              <select className="w-full h-9 px-2 bg-white border rounded-lg font-bold text-xs outline-none" value={discountType} onChange={e => setDiscountType(e.target.value as any)}>
-                                <option value="VALUE">Valor Fixo (R$)</option>
-                                <option value="PERCENT">Percentual (%)</option>
-                              </select>
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Desconto / Taxa adm</label>
-                              <input className="w-full h-9 px-3 bg-white border rounded-lg font-bold text-xs" type="number" value={discountValue} onChange={e => setDiscountValue(e.target.value)} />
-                            </div>
+                          <div className="space-y-1">
+                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Taxa ADM (R$)</label>
+                            <input className="w-full h-9 px-3 bg-white border rounded-lg font-bold text-xs" type="number" value={discountValue} onChange={e => setDiscountValue(e.target.value)} placeholder="0" />
                           </div>
                         </>
+                      ) : (
+                        <div className="space-y-3 p-1">
+                          <p className="text-[10px] font-black text-slate-800 uppercase">Reservas de Short Stay</p>
+                          
+                          {/* List existing bookings */}
+                          <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar border border-slate-100 p-2 rounded-xl bg-white">
+                            {shortStayBookings.length === 0 ? (
+                              <p className="text-[9px] text-slate-400 font-bold uppercase italic text-center py-4">Nenhuma reserva.</p>
+                            ) : (
+                              shortStayBookings.map((booking) => (
+                                <div key={booking.id} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg border border-slate-100 text-[10px] font-bold text-slate-700">
+                                  <div className="truncate max-w-[80%]">
+                                    <p className="font-black text-slate-900 truncate">{booking.description}</p>
+                                    <p className="text-[8px] text-slate-400 font-medium">{new Date(booking.date + 'T00:00:00').toLocaleDateString('pt-BR')} • {formatCurrency(booking.amount)}</p>
+                                  </div>
+                                  <button 
+                                    onClick={() => {
+                                      setShortStayBookings(prev => prev.filter(b => b.id !== booking.id));
+                                    }} 
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all"
+                                    title="Remover Reserva"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              ))
+                            )}
+                          </div>
+
+                          {/* Inline form to add new booking */}
+                          <div className="border-t border-slate-200/80 pt-2 space-y-2 bg-slate-50/50 p-2 rounded-xl">
+                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Nova Reserva</p>
+                            <div className="space-y-1">
+                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Descrição</label>
+                              <input 
+                                className="w-full h-8 px-2 bg-white border rounded-lg text-xs font-bold" 
+                                type="text" 
+                                value={newBookingDesc} 
+                                onChange={e => setNewBookingDesc(e.target.value)} 
+                                placeholder="Reserva Airbnb João"
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor (R$)</label>
+                                <input 
+                                  className="w-full h-8 px-2 bg-white border rounded-lg text-xs font-bold" 
+                                  type="number" 
+                                  value={newBookingAmount} 
+                                  onChange={e => setNewBookingAmount(e.target.value)} 
+                                  placeholder="0"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data</label>
+                                <input 
+                                  className="w-full h-8 px-2 bg-white border rounded-lg text-xs font-bold" 
+                                  type="date" 
+                                  value={newBookingDate} 
+                                  onChange={e => setNewBookingDate(e.target.value)} 
+                                />
+                              </div>
+                            </div>
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                const amt = parseFloat(newBookingAmount);
+                                if (!newBookingDate || isNaN(amt) || amt <= 0) {
+                                  alert('Por favor, informe data e valor válidos para a reserva.');
+                                  return;
+                                }
+                                const newBooking = {
+                                  id: 'booking_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                                  date: newBookingDate,
+                                  amount: amt,
+                                  description: newBookingDesc.trim() || 'Reserva Short Stay',
+                                  isPaid: false
+                                };
+                                setShortStayBookings(prev => [...prev, newBooking]);
+                                setNewBookingDesc('');
+                                setNewBookingAmount('');
+                              }} 
+                              className="w-full h-8 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-[8px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 mt-1 shadow-sm"
+                            >
+                              <Plus size={12} />
+                              Adicionar Reserva
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -988,52 +1366,46 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   {/* Condominio and IPTU choices */}
                   <div className="space-y-4 bg-slate-50 p-6 rounded-2xl border border-slate-100">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Despesas Periódicas (Quem Paga?)</p>
-                    <div className="space-y-3">
-                      <div className="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between">
-                        <div>
+                    
+                    {rentalType === 'anual' ? (
+                      <div className="space-y-3">
+                        {/* Condo Payer Select */}
+                        <div className="p-3 bg-white rounded-xl border border-slate-100 space-y-1">
                           <p className="text-[9px] font-black text-slate-900 uppercase">Condomínio</p>
-                          <p className="text-[8px] text-slate-400 font-medium">Inquilino paga diretamente?</p>
-                        </div>
-                        <button onClick={() => setInquilinoPaysCondo(!inquilinoPaysCondo)} className={`w-10 h-6 rounded-full p-1 transition-all flex items-center shadow-inner ${inquilinoPaysCondo ? 'bg-brand-600' : 'bg-slate-200'}`}>
-                          <div className={`w-4 h-4 bg-white rounded-full shadow-md transition-all transform ${inquilinoPaysCondo ? 'translate-x-4' : ''}`} />
-                        </button>
-                      </div>
-
-                      <div className="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between">
-                        <div>
-                          <p className="text-[9px] font-black text-slate-900 uppercase">IPTU</p>
-                          <p className="text-[8px] text-slate-400 font-medium">Inquilino paga diretamente?</p>
-                        </div>
-                        <button onClick={() => setInquilinoPaysIPTU(!inquilinoPaysIPTU)} className={`w-10 h-6 rounded-full p-1 transition-all flex items-center shadow-inner ${inquilinoPaysIPTU ? 'bg-brand-600' : 'bg-slate-200'}`}>
-                          <div className={`w-4 h-4 bg-white rounded-full shadow-md transition-all transform ${inquilinoPaysIPTU ? 'translate-x-4' : ''}`} />
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Condo (R$)</label>
-                          <input className="w-full h-8 px-2 bg-white border rounded-lg text-xs" type="number" value={condoFee} onChange={e => setCondoFee(e.target.value)} disabled={inquilinoPaysCondo} />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor IPTU (R$)</label>
-                          <input className="w-full h-8 px-2 bg-white border rounded-lg text-xs" type="number" value={iptuFee} onChange={e => setIptuFee(e.target.value)} disabled={inquilinoPaysIPTU} />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Frequência IPTU</label>
-                          <select className="w-full h-8 px-1 bg-white border rounded-lg text-[9px] font-bold outline-none" value={iptuFrequency} onChange={e => setIptuFrequency(e.target.value as any)}>
-                            <option value="monthly">Mensal</option>
-                            <option value="yearly">Anual</option>
+                          <select 
+                            className="w-full h-9 px-2 bg-slate-55 border border-slate-200 rounded-lg text-xs font-bold outline-none text-slate-700 mt-1" 
+                            value={condoPayer} 
+                            onChange={e => setCondoPayer(e.target.value as any)}
+                          >
+                            <option value="PROPRIETARIO">Proprietário Paga (Despesa)</option>
+                            <option value="INQUILINO_DIRETO">Inquilino Paga Diretamente</option>
+                            <option value="PROPRIETARIO_REEMBOLSO">Proprietário Paga e Recebe do Inquilino</option>
                           </select>
                         </div>
-                        <div className="space-y-1">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Dia do Venc.</label>
-                          <input className="w-full h-8 px-2 bg-white border rounded-lg text-xs" type="number" value={iptuDueDay} onChange={e => setIptuDueDay(e.target.value)} />
+
+                        {/* IPTU Payer Select */}
+                        <div className="p-3 bg-white rounded-xl border border-slate-100 space-y-1">
+                          <p className="text-[9px] font-black text-slate-900 uppercase">IPTU</p>
+                          <select 
+                            className="w-full h-9 px-2 bg-slate-55 border border-slate-200 rounded-lg text-xs font-bold outline-none text-slate-700 mt-1" 
+                            value={iptuPayer} 
+                            onChange={e => setIptuPayer(e.target.value as any)}
+                          >
+                            <option value="PROPRIETARIO">Proprietário Paga (Despesa)</option>
+                            <option value="INQUILINO_DIRETO">Inquilino Paga Diretamente</option>
+                            <option value="PROPRIETARIO_REEMBOLSO">Proprietário Paga e Recebe do Inquilino</option>
+                          </select>
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="p-4 bg-slate-900 text-white rounded-xl space-y-2">
+                        <AlertTriangle size={18} className="text-amber-400" />
+                        <p className="text-[10px] font-bold uppercase tracking-wider">Regra de Short Stay</p>
+                        <p className="text-[9px] text-slate-355 leading-relaxed font-medium">
+                          No modelo de Short Stay, as despesas de Condomínio e IPTU são <strong>sempre pagas pelo proprietário</strong> e serão lançadas como despesas automáticas conforme vencimento.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Operational financial indicators */}
@@ -1239,6 +1611,24 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
 
           </div>
 
+        </div>
+
+        {/* FOOTER DE AÇÕES GLOBAIS */}
+        <div className="px-10 py-5 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/50 print:hidden">
+          <button 
+            onClick={onClose} 
+            disabled={isSubmitting} 
+            className="px-6 h-11 bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+          >
+            Cancelar Alterações
+          </button>
+          <button 
+            onClick={handleSaveChanges} 
+            disabled={isSubmitting} 
+            className="px-6 h-11 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm shadow-brand-500/10"
+          >
+            {isSubmitting ? 'Salvando...' : 'Salvar Alterações'}
+          </button>
         </div>
 
       </div>
