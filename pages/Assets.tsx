@@ -2118,21 +2118,13 @@ const Assets: React.FC = () => {
 
         {/* REAL ESTATE VIEW */}
         {activeView === 'realestate' && (
-          <div className="space-y-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-100 pb-3 gap-4">
-              <div className="flex gap-4">
-                <button
-                  onClick={() => setActiveSubTab('portfolio')}
-                  className={`pb-2 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeSubTab === 'portfolio' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-                >
-                  🏢 Imóveis e Consórcios
-                </button>
-                <button
-                  onClick={() => setActiveSubTab('simulator')}
-                  className={`pb-2 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeSubTab === 'simulator' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-                >
-                  📈 Simulador de Sustentabilidade
-                </button>
+          <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3 gap-4">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
+                  <Building2 size={20} className="text-slate-500" />
+                  Seus Ativos Imobiliários
+                </h3>
               </div>
               <button
                 onClick={() => setShowWizardModal(true)}
@@ -2142,340 +2134,185 @@ const Assets: React.FC = () => {
               </button>
             </div>
 
-            {activeSubTab === 'portfolio' && (
-              <div className="space-y-8">
-                {/* Sustainable Analysis Indicator */}
-                <div className="bg-slate-900 text-white rounded-[40px] p-8 lg:p-10 shadow-xl space-y-8 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500/5 rounded-bl-[200px] pointer-events-none" />
-                  <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-6 border-b border-white/10">
-                    <div>
-                      <h3 className="text-2xl font-black italic tracking-tight flex items-center gap-2">
-                        <Zap className="text-brand-400 shrink-0" size={24} />
-                        Autossuficiência & Preservação do Imóvel
-                      </h3>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Comparativo de fluxo passivo de aluguéis e dividendos contra dívidas imobiliárias</p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <button
-                        onClick={() => setShowAnalysisSettings(!showAnalysisSettings)}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
-                      >
-                        {showAnalysisSettings ? 'Fechar Ajustes ✕' : '⚙️ Customizar Filtros'}
-                      </button>
-                    </div>
-                  </div>
+            <div className="space-y-8">
+              {/* Real Estate Active Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {activePhysicalAssets.filter(p => p.category === 'REAL_ESTATE').map(asset => {
+                  const meta = asset.metadata || {};
+                  const linkedLiab = activeLiabilities.find(l => l.linkedAssetId === asset.id);
+                  const propertyStage = meta.propertyStage || 'PRONTO';
+                  const isRented = !!meta.isRented;
+                  const rentalType = meta.rentalType || 'anual';
 
-                  {showAnalysisSettings && (
-                    <div className="p-6 bg-white/5 border border-white/10 rounded-3xl grid grid-cols-1 sm:grid-cols-3 gap-6 animate-in slide-in-from-top duration-300">
-                      <div className="space-y-3 bg-slate-950/40 p-5 rounded-2xl border border-white/5">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-white/5 pb-2">🏢 Imóveis Incluídos</p>
-                        <div className="space-y-2.5 max-h-[150px] overflow-y-auto">
-                          {activePhysicalAssets.filter(p => p.category === 'REAL_ESTATE').map(asset => {
-                            const isIncluded = !excludedAssetIds.includes(asset.id);
-                            return (
-                              <label key={asset.id} className="flex items-center gap-3 cursor-pointer text-xs font-medium">
-                                <input
-                                  type="checkbox"
-                                  checked={isIncluded}
-                                  onChange={() => setExcludedAssetIds(prev => isIncluded ? [...prev, asset.id] : prev.filter(id => id !== asset.id))}
-                                  className="w-4 h-4 rounded border-white/20 bg-white/5 text-brand-600 focus:ring-brand-500"
-                                />
-                                <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{asset.name}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-3 bg-slate-950/40 p-5 rounded-2xl border border-white/5">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-white/5 pb-2">💳 Consórcios</p>
-                        <div className="space-y-2.5 max-h-[150px] overflow-y-auto">
-                          {activeLiabilities.filter(l => l.type === 'CONSORTIUM').map(cons => {
-                            const isIncluded = !excludedConsortiumIds.includes(cons.id);
-                            return (
-                              <label key={cons.id} className="flex items-center gap-3 cursor-pointer text-xs font-medium">
-                                <input
-                                  type="checkbox"
-                                  checked={isIncluded}
-                                  onChange={() => setExcludedConsortiumIds(prev => isIncluded ? [...prev, cons.id] : prev.filter(id => id !== cons.id))}
-                                  className="w-4 h-4 rounded border-white/20 bg-white/5 text-brand-600"
-                                />
-                                <span className={isIncluded ? 'text-white' : 'text-slate-500 line-through'}>{cons.name}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
+                  // Sum short stay rents in current month dynamically
+                  const currentMonthStr = new Date().toISOString().substring(0, 7);
+                  const assetTxs = transactions.filter(t => t.metadata?.linked_asset_id === asset.id);
+                  const shortStayRentsThisMonth = assetTxs.filter(t => 
+                    t.type === 'INCOME' && 
+                    (t.metadata?.type === 'rental_income' || t.metadata?.type === 'short_stay_income') &&
+                    t.date.substring(0, 7) === currentMonthStr
+                  ).reduce((sum, tx) => sum + tx.amount, 0);
 
-                      <div className="space-y-3 bg-slate-950/40 p-5 rounded-2xl border border-white/5">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-white/5 pb-2">Rentabilidade XP</p>
-                        <div className="flex items-center gap-2 pt-1">
-                          <input
-                            type="number"
-                            step="0.05"
-                            className="w-16 h-8 bg-white/10 border border-white/10 text-white rounded-lg text-xs font-bold text-center outline-none"
-                            value={estimatedYieldRate}
-                            onChange={e => setEstimatedYieldRate(parseFloat(e.target.value) || 0)}
-                          />
-                          <span className="text-xs text-slate-300">% am</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  const rental = rentalType === 'short_stay' ? shortStayRentsThisMonth : (Number(meta.rentalIncome) || 0);
+                  const condo = Number(meta.condoFee) || 0;
+                  const iptu = Number(meta.iptuFee) || 0;
+                  
+                  // Adjusted by consortium allocation ratio if present
+                  const allocationRatio = meta.consortiumAllocationRatio !== undefined ? (Number(meta.consortiumAllocationRatio) / 100) : 1;
+                  const installment = linkedLiab ? (Number(linkedLiab.installmentAmount) * allocationRatio) : 0;
 
-                  {/* Calculations rendering */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Rendas & Aluguéis (Entradas)</p>
-                      <div className="flex justify-between items-baseline">
-                        <span className="text-2xl font-black text-emerald-400">{formatCurrency(sustainabilitySummary.totalInflow)}</span>
-                        <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter">Entrada Estimada</span>
-                      </div>
-                      <div className="border-t border-white/5 pt-2 text-[9px] text-slate-400 space-y-1">
-                        <div className="flex justify-between">
-                          <span>Aluguéis Ativos:</span>
-                          <span className="font-bold text-slate-200">{formatCurrency(sustainabilitySummary.totalRents)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Yield XP ({estimatedYieldRate}%):</span>
-                          <span className="font-bold text-slate-200">{formatCurrency(sustainabilitySummary.estimatedMonthlyYield)}</span>
-                        </div>
-                      </div>
-                    </div>
+                  // Calculate sustainability at property level
+                  const actualCondoCost = meta.inquilinoPaysCondo ? 0 : condo;
+                  const actualIptuCost = meta.inquilinoPaysIPTU ? 0 : iptu;
+                  const totalMonthlyCost = installment + actualCondoCost + actualIptuCost;
+                  const netPropertyFlow = isRented ? rental - totalMonthlyCost : -totalMonthlyCost;
 
-                    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Prestações & Despesas (Saídas)</p>
-                      <div className="flex justify-between items-baseline">
-                        <span className="text-2xl font-black text-rose-400">{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
-                        <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter">Saídas Mensais</span>
-                      </div>
-                      <div className="border-t border-white/5 pt-2 text-[9px] text-slate-400 space-y-1">
-                        <div className="flex justify-between">
-                          <span>Financiamento Imob:</span>
-                          <span className="font-bold text-slate-200">{formatCurrency(sustainabilitySummary.totalMortgageInstallments)}</span>
+                  return (
+                    <div 
+                      key={asset.id} 
+                      onClick={() => {
+                        setSelectedRealEstateForDetail(asset);
+                        setShowRealEstateDetailModal(true);
+                      }}
+                      className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between cursor-pointer text-left"
+                    >
+                      <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
+                        <div className="flex justify-between items-start">
+                          <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
+                            <HomeIcon size={22} />
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 justify-end">
+                            {propertyStage === 'PLANTA' ? (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); togglePropertyTypeDirectly(asset); }}
+                                className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-amber-100 transition-colors"
+                              >
+                                Na Planta 🛠️
+                              </button>
+                            ) : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); togglePropertyTypeDirectly(asset); }}
+                                className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-emerald-100 transition-colors"
+                              >
+                                Pronto / Entregue 🏢
+                              </button>
+                            )}
+                            {meta.purpose === 'investimento' ? (
+                              <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
+                            ) : (
+                              <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-slate-100">Uso Próprio</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex justify-between">
-                          <span>Custos IPTU / Condomínio:</span>
-                          <span className="font-bold text-slate-200">{formatCurrency(sustainabilitySummary.totalOperatingCosts)}</span>
+
+                        <div>
+                          <h4 className="font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-tight italic break-words">{asset.name}</h4>
+                          <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
+                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Avaliação Atual:</p>
+                            <p className="text-sm font-black text-slate-900">{formatCurrency(asset.estimatedValue)}</p>
+                          </div>
                         </div>
-                        <div className="flex justify-between">
-                          <span>Parcela Consórcios:</span>
-                          <span className="font-bold text-slate-200">{formatCurrency(sustainabilitySummary.totalConsortiumInstallments)}</span>
-                        </div>
-                      </div>
-                    </div>
 
-                    <div className={`rounded-3xl p-6 space-y-4 ${sustainabilitySummary.netFlow >= 0 ? 'bg-emerald-950/60 border border-emerald-500/20' : 'bg-rose-950/60 border border-rose-500/20'}`}>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-300">Resultado Líquido Patrimonial</p>
-                      <div className="flex justify-between items-baseline">
-                        <span className={`text-2xl font-black ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
-                        </span>
-                        <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">Saldo Líquido</span>
-                      </div>
-                      <div className="border-t border-white/5 pt-2 text-[9px] text-slate-300 space-y-1">
-                        <div className="flex justify-between">
-                          <span>Sustentabilidade:</span>
-                          <span className="font-black text-slate-100">{sustainabilitySummary.selfSustainabilityPercent}%</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Autossuficiente:</span>
-                          <span className="font-bold">{sustainabilitySummary.netFlow >= 0 ? 'SIM 🟢' : 'NÃO 🔴'}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Real Estate Active Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  {activePhysicalAssets.filter(p => p.category === 'REAL_ESTATE').map(asset => {
-                    const meta = asset.metadata || {};
-                    const linkedLiab = activeLiabilities.find(l => l.linkedAssetId === asset.id);
-                    const propertyStage = meta.propertyStage || 'PRONTO';
-                    const isRented = !!meta.isRented;
-                    const rentalType = meta.rentalType || 'anual';
-
-                    // Sum short stay rents in current month dynamically
-                    const currentMonthStr = new Date().toISOString().substring(0, 7);
-                    const assetTxs = transactions.filter(t => t.metadata?.linked_asset_id === asset.id);
-                    const shortStayRentsThisMonth = assetTxs.filter(t => 
-                      t.type === 'INCOME' && 
-                      (t.metadata?.type === 'rental_income' || t.metadata?.type === 'short_stay_income') &&
-                      t.date.substring(0, 7) === currentMonthStr
-                    ).reduce((sum, tx) => sum + tx.amount, 0);
-
-                    const rental = rentalType === 'short_stay' ? shortStayRentsThisMonth : (Number(meta.rentalIncome) || 0);
-                    const condo = Number(meta.condoFee) || 0;
-                    const iptu = Number(meta.iptuFee) || 0;
-                    const installment = linkedLiab ? Number(linkedLiab.installmentAmount) : 0;
-
-                    // Calculate sustainability at property level
-                    const actualCondoCost = meta.inquilinoPaysCondo ? 0 : condo;
-                    const actualIptuCost = meta.inquilinoPaysIPTU ? 0 : iptu;
-                    const totalMonthlyCost = installment + actualCondoCost + actualIptuCost;
-                    const netPropertyFlow = isRented ? rental - totalMonthlyCost : -totalMonthlyCost;
-
-                    return (
-                      <div 
-                        key={asset.id} 
-                        onClick={() => {
-                          setSelectedRealEstateForDetail(asset);
-                          setShowRealEstateDetailModal(true);
-                        }}
-                        className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between cursor-pointer text-left"
-                      >
-                        <div className="p-8 space-y-6">
-                          <div className="flex justify-between items-start">
-                            <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
-                              <HomeIcon size={22} />
+                        {/* Pre-construction specs */}
+                        {propertyStage === 'PLANTA' ? (
+                          <div className="space-y-2.5 pt-2 text-[10px] sm:text-[11px] text-slate-500">
+                            <div className="flex justify-between">
+                              <span>Índice Correção:</span>
+                              <span className="font-bold text-brand-600">{meta.indexType || 'INCC'}</span>
                             </div>
-                            <div className="flex gap-1.5">
-                              {propertyStage === 'PLANTA' ? (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); togglePropertyTypeDirectly(asset); }}
-                                  className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-amber-100 transition-colors"
-                                >
-                                  Na Planta 🛠️
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); togglePropertyTypeDirectly(asset); }}
-                                  className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-emerald-100 transition-colors"
-                                >
-                                  Pronto / Entregue 🏢
-                                </button>
-                              )}
-                              {meta.purpose === 'investimento' ? (
-                                <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
-                              ) : (
-                                <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-slate-100">Uso Próprio</span>
-                              )}
+                            <div className="flex justify-between">
+                              <span>Valor de Compra:</span>
+                              <span className="font-bold text-slate-800">{formatCurrency(meta.purchaseValue || 0)}</span>
+                            </div>
+                            {linkedLiab && (
+                              <div className="flex justify-between">
+                                <span>Financiamento Restante:</span>
+                                <span className="font-bold text-red-500">{formatCurrency(linkedLiab.remainingBalance)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between border-t border-dashed border-slate-100 pt-2 font-bold text-slate-600">
+                              <span>Déficit Mensal:</span>
+                              <span className="text-rose-500">{formatCurrency(totalMonthlyCost)}/mês</span>
                             </div>
                           </div>
-
-                          <div>
-                            <h4 className="font-black text-slate-900 text-xl tracking-tight leading-tight italic">{asset.name}</h4>
-                            <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
-                              <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Avaliação Atual:</p>
-                              <p className="text-sm font-black text-slate-900">{formatCurrency(asset.estimatedValue)}</p>
+                        ) : (
+                          <div className="space-y-2.5 pt-2 text-[10px] sm:text-[11px] text-slate-500">
+                            <div className="flex justify-between">
+                              <span>Aluguel Líquido:</span>
+                              <span className="font-bold text-emerald-600">
+                                {isRented 
+                                  ? `${formatCurrency(rental)}${rentalType === 'short_stay' ? ' (Short Stay)' : ''}` 
+                                  : 'Não Alugado'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Prestação Financiamento:</span>
+                              <span className="font-bold text-slate-700">{formatCurrency(installment)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Condomínio + IPTU:</span>
+                              <span className="font-bold text-slate-700">{formatCurrency(condo + iptu)}</span>
+                            </div>
+                            <div className="flex justify-between text-[10px] border-t border-dashed border-slate-100 pt-2 font-bold">
+                              <span>Saldo Caixa Líquido:</span>
+                              <span className={netPropertyFlow >= 0 ? 'text-emerald-600' : 'text-rose-500'}>
+                                {netPropertyFlow >= 0 ? '+' : ''}{formatCurrency(netPropertyFlow)}/mês
+                              </span>
                             </div>
                           </div>
+                        )}
 
-                          {/* Pre-construction specs */}
-                          {propertyStage === 'PLANTA' ? (
-                            <div className="space-y-3 pt-2 text-[11px] text-slate-500">
-                              <div className="flex justify-between">
-                                <span>Índice Correção:</span>
-                                <span className="font-bold text-brand-600">{meta.indexType || 'INCC'}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Valor de Compra:</span>
-                                <span className="font-bold text-slate-800">{formatCurrency(meta.purchaseValue || 0)}</span>
-                              </div>
-                              {linkedLiab && (
-                                <div className="flex justify-between">
-                                  <span>Financiamento Restante:</span>
-                                  <span className="font-bold text-red-500">{formatCurrency(linkedLiab.remainingBalance)}</span>
-                                </div>
-                              )}
-                              <div className="flex justify-between border-t border-dashed border-slate-100 pt-2 font-bold text-slate-600">
-                                <span>Déficit Mensal:</span>
-                                <span className="text-rose-500">{formatCurrency(totalMonthlyCost)}/mês</span>
-                              </div>
+                        {/* Sustainability metrics property health */}
+                        {propertyStage === 'PRONTO' && meta.purpose === 'investimento' && (
+                          <div className="p-3 bg-slate-50 rounded-xl space-y-2 border border-slate-100">
+                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saúde Financeira do Ativo</p>
+                            <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden flex">
+                              <div
+                                className={`h-full ${netPropertyFlow >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                                style={{ width: `${Math.min(isRented && totalMonthlyCost > 0 ? Math.round((rental / totalMonthlyCost) * 100) : 0, 100)}%` }}
+                              />
                             </div>
-                          ) : (
-                            <div className="space-y-3 pt-2 text-[11px] text-slate-500">
-                              <div className="flex justify-between">
-                                <span>Aluguel Líquido:</span>
-                                <span className="font-bold text-emerald-600">
-                                  {isRented 
-                                    ? `${formatCurrency(rental)}${rentalType === 'short_stay' ? ' (Short Stay)' : ''}` 
-                                    : 'Não Alugado'}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Prestação Financiamento:</span>
-                                <span className="font-bold text-slate-700">{formatCurrency(installment)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Condomínio + IPTU:</span>
-                                <span className="font-bold text-slate-700">{formatCurrency(condo + iptu)}</span>
-                              </div>
-                              <div className="flex justify-between text-[10px] border-t border-dashed border-slate-100 pt-2 font-bold">
-                                <span>Saldo Caixa Líquido:</span>
-                                <span className={netPropertyFlow >= 0 ? 'text-emerald-600' : 'text-rose-500'}>
-                                  {netPropertyFlow >= 0 ? '+' : ''}{formatCurrency(netPropertyFlow)}/mês
-                                </span>
-                              </div>
-                            </div>
-                          )}
+                            <p className="text-[9px] font-semibold text-slate-500">
+                              {netPropertyFlow >= 0 
+                                ? '🟢 Imóvel 100% autossuficiente (Se paga e sobra caixa)' 
+                                : '🔴 Imóvel deficitário (Consome capital de outras fontes)'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
 
-                          {/* Sustainability metrics property health */}
-                          {propertyStage === 'PRONTO' && meta.purpose === 'investimento' && (
-                            <div className="p-3 bg-slate-50 rounded-xl space-y-2 border border-slate-100">
-                              <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saúde Financeira do Ativo</p>
-                              <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden flex">
-                                <div
-                                  className={`h-full ${netPropertyFlow >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                                  style={{ width: `${Math.min(isRented && totalMonthlyCost > 0 ? Math.round((rental / totalMonthlyCost) * 100) : 0, 100)}%` }}
-                                />
-                              </div>
-                              <p className="text-[9px] font-semibold text-slate-500">
-                                {netPropertyFlow >= 0 
-                                  ? '🟢 Imóvel 100% autossuficiente (Se paga e sobra caixa)' 
-                                  : '🔴 Imóvel deficitário (Consome capital de outras fontes)'}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Card controls and actions */}
-                        <div className="px-8 py-5 bg-slate-50 border-t border-slate-100 flex justify-between items-center gap-4">
+                      {/* Card controls and actions */}
+                      <div className="px-6 sm:px-8 py-4 sm:py-5 bg-slate-50 border-t border-slate-100 flex flex-wrap justify-between items-center gap-2 sm:gap-4">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedRealEstateForDetail(asset);
+                            setShowRealEstateDetailModal(true);
+                          }}
+                          className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
+                        >
+                          <History size={12} /> Detalhes & Evolução
+                        </button>
+                        <div className="flex gap-2">
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedRealEstateForDetail(asset);
-                              setShowRealEstateDetailModal(true);
-                            }}
-                            className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
+                            onClick={(e) => { e.stopPropagation(); openEditAsset(asset); }}
+                            className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600"
                           >
-                            <History size={12} /> Detalhes & Evolução
+                            Editar
                           </button>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); openEditAsset(asset); }}
-                              className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleArchiveAsset(asset); }}
-                              className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-amber-600"
-                            >
-                              Arquivar
-                            </button>
-                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleArchiveAsset(asset); }}
+                            className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-amber-600"
+                          >
+                            Arquivar
+                          </button>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })}
               </div>
-            )}
-
-            {activeSubTab === 'simulator' && (
-              <div className="bg-white p-10 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
-                <h3 className="font-bold text-slate-900 flex items-center gap-3">
-                  <TrendingUp size={20} className="text-slate-500" />
-                  Projeção e Simulações Imobiliárias
-                </h3>
-                <p className="text-xs text-slate-400 font-medium">Configure cenários hipotéticos de taxa vacância, juros e aluguéis para simular o retorno futuro.</p>
-                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-600 italic">
-                  Simulador de investimento imobiliário avançado integrado. Adicione novas aquisições na planta para simular correções pelo INCC histórico nas prestações mensais e balões.
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -2499,17 +2336,16 @@ const Assets: React.FC = () => {
                 const percentVal = purchase > 0 ? (diffVal / purchase) * 100 : 0;
                 
                 // FIPE analysis
-                const diffFipe = fipe - value;
                 const isDepreciatingFast = purchase > 0 && fipe < purchase * 0.8;
 
                 return (
                   <div key={asset.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
-                    <div className="p-8 space-y-6">
+                    <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
                       <div className="flex justify-between items-start">
                         <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
                           {asset.category === 'VEHICLE' ? <Car size={22} /> : <Box size={22} />}
                         </div>
-                        <div className="flex gap-1.5">
+                        <div className="flex flex-wrap gap-1.5 justify-end">
                           {meta.purpose === 'investimento' ? (
                             <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
                           ) : (
@@ -2519,7 +2355,7 @@ const Assets: React.FC = () => {
                       </div>
 
                       <div>
-                        <h4 className="font-black text-slate-900 text-xl tracking-tight leading-tight italic">{asset.name}</h4>
+                        <h4 className="font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-tight italic break-words">{asset.name}</h4>
                         <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
                           <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Avaliação Atual:</p>
                           <p className="text-sm font-black text-slate-900">{formatCurrency(value)}</p>
@@ -2527,7 +2363,7 @@ const Assets: React.FC = () => {
                       </div>
 
                       {/* Calculations specs */}
-                      <div className="space-y-3 text-[11px] text-slate-500">
+                      <div className="space-y-2.5 text-[10px] sm:text-[11px] text-slate-500">
                         <div className="flex justify-between">
                           <span>Valor Aquisição:</span>
                           <span className="font-bold text-slate-800">{formatCurrency(purchase)}</span>
@@ -2548,19 +2384,19 @@ const Assets: React.FC = () => {
 
                       {/* Yield alerts based on FIPE */}
                       {asset.category === 'VEHICLE' && meta.purpose === 'uso' && (
-                        <div className={`p-3 rounded-xl flex items-start gap-2.5 ${isDepreciatingFast ? 'bg-amber-50 border border-amber-100 text-amber-800' : 'bg-slate-50 border border-slate-100 text-slate-600'}`}>
-                          {isDepreciatingFast ? <AlertTriangle size={16} className="shrink-0 mt-0.5 text-amber-500" /> : <HelpCircle size={16} className="shrink-0 mt-0.5 text-slate-400" />}
-                          <p className="text-[10px] leading-relaxed">
-                            {isDepreciatingFast 
-                              ? '🚨 O veículo desvalorizou mais de 20% em relação ao valor de compra. Pode ser um bom momento para desinvestimento.' 
-                              : '🟢 Nível de depreciação aceitável. Valor está estável comparado à média FIPE.'}
-                          </p>
+                        <div className="p-3 bg-slate-50 rounded-xl space-y-1 border border-slate-100 text-[10px]">
+                          {isDepreciatingFast ? (
+                            <p className="text-rose-500 font-semibold flex items-center gap-1"><AlertTriangle size={10} /> Depreciação rápida observada.</p>
+                          ) : (
+                            <p className="text-emerald-600 font-semibold">Valor estável ou valorizado.</p>
+                          )}
+                          <p className="text-slate-400 font-medium leading-tight">Calculado comparando FIPE atual contra preço de aquisição registrado.</p>
                         </div>
                       )}
                     </div>
 
                     {/* Actions bar */}
-                    <div className="px-8 py-5 bg-slate-50 border-t border-slate-100 flex justify-between items-center gap-4">
+                    <div className="px-6 sm:px-8 py-4 sm:py-5 bg-slate-50 border-t border-slate-100 flex flex-wrap justify-between items-center gap-2 sm:gap-4">
                       <button
                         onClick={() => {
                           setSelectedAssetForExtrato(asset);

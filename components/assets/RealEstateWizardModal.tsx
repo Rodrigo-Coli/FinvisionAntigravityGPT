@@ -44,6 +44,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
   // Consórcio Integrado
   const [availableConsortia, setAvailableConsortia] = useState<Liability[]>([]);
   const [selectedConsortiumId, setSelectedConsortiumId] = useState<string>('');
+  const [consortiumAllocationRatio, setConsortiumAllocationRatio] = useState('100');
   const [isLoadingConsortia, setIsLoadingConsortia] = useState(false);
 
   // Contract Upload parsing
@@ -202,6 +203,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         purchaseValue: initialPurchase,
         indexType: financingIndexType,
         selectedConsortiumId: selectedConsortiumId || undefined,
+        consortiumAllocationRatio: selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined,
         financingType: selectedConsortiumId ? 'CONSORCIO' : 'FINANCING_SCHEDULE'
       };
 
@@ -315,7 +317,8 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
               linked_asset_id: assetId,
               metadata: {
                 propertyType: propertyStage,
-                isRealEstate: true
+                isRealEstate: true,
+                consortiumAllocationRatio: parseFloat(consortiumAllocationRatio) || 100
               }
             })
             .eq('id', selectedConsortiumId);
@@ -678,6 +681,52 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                               </div>
                             </button>
                           ))
+                        )}
+                        
+                        {selectedConsortiumId && (
+                          <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-in slide-in-from-top duration-200">
+                            <div className="flex justify-between items-center">
+                              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Alocação do Consórcio</p>
+                              <span className="text-[8px] font-bold px-2 py-0.5 bg-brand-100 text-brand-700 rounded-full uppercase">Garantia / Recurso</span>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Alocado ao Imóvel (%)</label>
+                                <input 
+                                  type="number" 
+                                  min="0" 
+                                  max="100" 
+                                  className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900" 
+                                  value={consortiumAllocationRatio} 
+                                  onChange={e => {
+                                    const pct = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
+                                    setConsortiumAllocationRatio(String(pct));
+                                    // Automatically adjust financing amount to represent this ratio
+                                    const linkedCons = availableConsortia.find(c => c.id === selectedConsortiumId);
+                                    if (linkedCons) {
+                                      setFinancingAmount(String(Math.round(linkedCons.remainingBalance * (pct / 100))));
+                                    }
+                                  }} 
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Dinheiro Novo (Excedente)</label>
+                                <div className="h-9 px-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold flex items-center text-slate-500">
+                                  {(() => {
+                                    const linkedCons = availableConsortia.find(c => c.id === selectedConsortiumId);
+                                    if (!linkedCons) return '-';
+                                    const pct = parseFloat(consortiumAllocationRatio) || 0;
+                                    const remainingRatio = Math.max(0, 100 - pct);
+                                    return formatCurrency(linkedCons.remainingBalance * (remainingRatio / 100));
+                                  })()}
+                                </div>
+                              </div>
+                            </div>
+                            <p className="text-[8px] text-slate-400 font-bold uppercase leading-normal">
+                              * O Yield e despesas operacionais deste imóvel computarão apenas {consortiumAllocationRatio || 100}% das parcelas pagas deste consórcio. O restante (excedente de dinheiro novo) será considerado recurso de caixa livre.
+                            </p>
+                          </div>
                         )}
                      </div>
                   </div>

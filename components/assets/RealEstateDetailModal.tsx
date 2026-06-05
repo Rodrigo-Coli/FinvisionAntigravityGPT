@@ -28,6 +28,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [despesasCartorarias, setDespesasCartorarias] = useState(String(asset.metadata?.despesasCartorarias || ''));
   const [mobiliarios, setMobiliarios] = useState(String(asset.metadata?.mobiliarios || ''));
   const [historicalPaidAmount, setHistoricalPaidAmount] = useState(String(asset.metadata?.historicalPaidAmount || ''));
+  const [consortiumAllocationRatio, setConsortiumAllocationRatio] = useState(String(asset.metadata?.consortiumAllocationRatio || '100'));
 
   // Rental states
   const [isRented, setIsRented] = useState(!!asset.metadata?.isRented);
@@ -84,15 +85,23 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
     const hist = parseFloat(historicalPaidAmount) || 0;
     const paidTxs = assetTransactions
       .filter(t => t.type === 'EXPENSE' && t.isPaid)
-      .reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
+      .reduce((sum, t) => {
+        const isConsortiumTx = t.metadata?.type === 'consortium_installment' || t.liability_id || t.description.toLowerCase().includes('consórcio');
+        const ratio = isConsortiumTx ? ((parseFloat(consortiumAllocationRatio) || 100) / 100) : 1;
+        return sum + ((t.paidAmount || t.amount) * ratio);
+      }, 0);
     return hist + paidTxs;
-  }, [historicalPaidAmount, assetTransactions]);
+  }, [historicalPaidAmount, assetTransactions, consortiumAllocationRatio]);
 
   const totalToPay = useMemo(() => {
     return assetTransactions
       .filter(t => t.type === 'EXPENSE' && !t.isPaid)
-      .reduce((sum, t) => sum + t.amount, 0);
-  }, [assetTransactions]);
+      .reduce((sum, t) => {
+        const isConsortiumTx = t.metadata?.type === 'consortium_installment' || t.liability_id || t.description.toLowerCase().includes('consórcio');
+        const ratio = isConsortiumTx ? ((parseFloat(consortiumAllocationRatio) || 100) / 100) : 1;
+        return sum + (t.amount * ratio);
+      }, 0);
+  }, [assetTransactions, consortiumAllocationRatio]);
 
   const agioDesagio = useMemo(() => {
     const current = parseFloat(estimatedValue) || 0;
@@ -142,7 +151,11 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         const subLower = (t.subcategory || '').toLowerCase();
         return subLower !== 'condomínio' && subLower !== 'condominio' && subLower !== 'iptu' && subLower !== 'manutenção/reparos' && subLower !== 'manutencao' && subLower !== 'reforma';
       })
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => {
+        const isConsortiumTx = t.metadata?.type === 'consortium_installment' || t.liability_id || t.description.toLowerCase().includes('consórcio');
+        const ratio = isConsortiumTx ? ((parseFloat(consortiumAllocationRatio) || 100) / 100) : 1;
+        return sum + (t.amount * ratio);
+      }, 0);
 
     const netIncome = rentIncomes - operationalExpenses;
     
@@ -447,7 +460,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         iptuFee: iptuVal,
         condoDueDay: parseInt(condoDueDay, 10) || 10,
         iptuDueDay: parseInt(iptuDueDay, 10) || 10,
-        iptuFrequency
+        iptuFrequency,
+        consortiumAllocationRatio: asset.metadata?.selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined
       };
 
       // Update physical assets table
@@ -750,6 +764,33 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
               </div>
             </div>
 
+            {/* Consortium settings if linked */}
+            {asset.metadata?.selectedConsortiumId && (
+              <div className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100 space-y-3">
+                <div className="flex justify-between items-center">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Consórcio Vinculado</p>
+                  <span className="text-[8px] font-bold px-2 py-0.5 bg-brand-100 text-brand-700 rounded-full uppercase">Garantia / Recurso</span>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Percentual Alocado ao Imóvel (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    className="w-full h-10 px-4 bg-white border border-slate-200 rounded-xl text-slate-900 font-bold text-xs"
+                    value={consortiumAllocationRatio}
+                    onChange={e => {
+                      const val = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
+                      setConsortiumAllocationRatio(String(val));
+                    }}
+                  />
+                </div>
+                <p className="text-[8px] text-slate-400 font-bold uppercase leading-normal">
+                  * Apenas {consortiumAllocationRatio}% das parcelas pagas deste consórcio contarão como custo do imóvel. O excedente é considerado caixa livre ("dinheiro novo").
+                </p>
+              </div>
+            )}
+
             {/* Balanço Patrimonial Integrado */}
             <div className="bg-slate-900 text-white p-6 rounded-3xl space-y-4">
               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-white/10 pb-1">Balanço Patrimonial do Ativo</p>
@@ -1049,6 +1090,9 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                             colorClass = 'text-rose-600'; // Red (overdue)
                           }
 
+                          const isConsortiumTx = tx.metadata?.type === 'consortium_installment' || tx.liability_id || tx.description.toLowerCase().includes('consórcio');
+                          const ratio = isConsortiumTx ? ((parseFloat(consortiumAllocationRatio) || 100) / 100) : 1;
+
                           return (
                             <tr key={tx.id} className="border-b border-slate-100 hover:bg-white transition-colors bg-white/40">
                               <td className="p-4">
@@ -1062,7 +1106,14 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                               <td className={`p-4 font-bold ${colorClass}`}>{tx.description}</td>
                               <td className="p-4 text-slate-400 font-medium">{new Date(tx.date).toLocaleDateString('pt-BR')}</td>
                               <td className="p-4"><span className="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{tx.subcategory || '-'}</span></td>
-                              <td className={`p-4 text-right font-black ${colorClass}`}>{tx.type === 'INCOME' ? '+' : '-'}{formatCurrency(tx.amount)}</td>
+                              <td className={`p-4 text-right font-black ${colorClass}`}>
+                                {tx.type === 'INCOME' ? '+' : '-'}{formatCurrency(tx.amount * ratio)}
+                                {isConsortiumTx && ratio < 1 && (
+                                  <span className="block text-[8px] font-bold text-slate-400">
+                                    (Cheio: {formatCurrency(tx.amount)})
+                                  </span>
+                                )}
+                              </td>
                               <td className="p-4 text-right print:hidden">
                                 <button onClick={() => handleDeleteTx(tx.id)} className="p-2 text-slate-300 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-all"><Trash2 size={14} /></button>
                               </td>
