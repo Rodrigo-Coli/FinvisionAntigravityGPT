@@ -308,6 +308,9 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       }
 
       const today = new Date();
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
       const baseDate = rentDateVal ? new Date(rentDateVal + 'T00:00:00') : today;
       const rentDay = baseDate.getDate();
 
@@ -315,7 +318,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       let currentYear = baseDate.getFullYear();
       let currentMonth = baseDate.getMonth();
       const startTarget = new Date(currentYear, currentMonth, rentDay);
-      if (startTarget.getFullYear() < today.getFullYear() || (startTarget.getFullYear() === today.getFullYear() && startTarget.getMonth() < today.getMonth())) {
+      if (startTarget < sixtyDaysAgo) {
         currentYear = today.getFullYear();
         currentMonth = today.getMonth();
       }
@@ -325,9 +328,12 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         const dateStr = currentTarget.toISOString().split('T')[0];
 
         if (dateStr < todayStr) {
-          currentMonth++;
-          if (currentMonth > 11) { currentMonth = 0; currentYear++; }
-          continue;
+          const txDate = new Date(dateStr + 'T00:00:00');
+          if (txDate < sixtyDaysAgo || dateStr < rentDateVal) {
+            currentMonth++;
+            if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+            continue;
+          }
         }
 
         // Check if there is already a paid rent in this month
@@ -380,6 +386,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
     try {
       const todayStr = new Date().toISOString().split('T')[0];
       const today = new Date();
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
       // Retrieve all existing condo/iptu transactions for this asset
       const { data: allTxs } = await supabase
@@ -435,7 +443,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         let currentYear = start.getFullYear();
         let currentMonth = start.getMonth();
         const startTarget = new Date(currentYear, currentMonth, start.getDate());
-        if (startTarget.getFullYear() < today.getFullYear() || (startTarget.getFullYear() === today.getFullYear() && startTarget.getMonth() < today.getMonth())) {
+        if (startTarget < sixtyDaysAgo) {
           currentYear = today.getFullYear();
           currentMonth = today.getMonth();
         }
@@ -445,9 +453,12 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
           const dateStr = txDate.toISOString().split('T')[0];
 
           if (dateStr < todayStr) {
-            currentMonth++;
-            if (currentMonth > 11) { currentMonth = 0; currentYear++; }
-            continue;
+            const txDateObj = new Date(dateStr + 'T00:00:00');
+            if (txDateObj < sixtyDaysAgo || dateStr < condoNextDate) {
+              currentMonth++;
+              if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+              continue;
+            }
           }
 
           // Check if there is already a paid condo expense in this month
@@ -527,7 +538,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         let currentYear = start.getFullYear();
         let currentMonth = start.getMonth();
         const startTarget = new Date(currentYear, currentMonth, start.getDate());
-        if (startTarget.getFullYear() < today.getFullYear() || (startTarget.getFullYear() === today.getFullYear() && startTarget.getMonth() < today.getMonth())) {
+        if (startTarget < sixtyDaysAgo) {
           currentYear = today.getFullYear();
           currentMonth = today.getMonth();
         }
@@ -536,7 +547,10 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
           const txDate = new Date(currentYear, currentMonth + (i * monthStep), start.getDate());
           const dateStr = txDate.toISOString().split('T')[0];
 
-          if (dateStr < todayStr) continue;
+          if (dateStr < todayStr) {
+            const txDateObj = new Date(dateStr + 'T00:00:00');
+            if (txDateObj < sixtyDaysAgo || dateStr < iptuNextDate) continue;
+          }
 
           // Check if there is already a paid iptu expense in this month/year
           const hasPaidIptuExpense = existingTxs.some((t: any) =>
