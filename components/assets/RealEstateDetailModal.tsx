@@ -452,7 +452,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       const effIptuPayer = (isRented && rentalType === 'anual') ? iptuPayer : 'PROPRIETARIO';
 
       // 1. CONDO SYNC
-      const condoAmt = parseFloat(condoFee) || 0;
+      const condoAmt = propertyStage === 'PLANTA' ? 0 : (parseFloat(condoFee) || 0);
       
       // Delete future unpaid condo provisions
       const condoFutureUnpaid = existingTxs.filter((t: any) =>
@@ -545,7 +545,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       }
 
       // 2. IPTU SYNC
-      const iptuAmt = parseFloat(iptuFee) || 0;
+      const iptuAmt = propertyStage === 'PLANTA' ? 0 : (parseFloat(iptuFee) || 0);
       
       // Delete future unpaid iptu provisions
       const iptuFutureUnpaid = existingTxs.filter((t: any) =>
@@ -1259,40 +1259,42 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                 )}
 
                 {/* Condomínio e IPTU (Evolução Inicial) */}
-                <div className="border-t border-slate-200/60 pt-3 mt-2 space-y-3">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Despesas Periódicas Básicas</p>
-                  
-                  {/* Condomínio */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Condomínio Mensal (R$)</label>
-                      <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={condoFee} onChange={e => setCondoFee(e.target.value)} placeholder="0" />
+                {propertyStage !== 'PLANTA' && (
+                  <div className="border-t border-slate-200/60 pt-3 mt-2 space-y-3">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Despesas Periódicas Básicas</p>
+                    
+                    {/* Condomínio */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Condomínio Mensal (R$)</label>
+                        <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={condoFee} onChange={e => setCondoFee(e.target.value)} placeholder="0" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Próx. Venc. Condo</label>
+                        <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="date" value={condoNextDate} onChange={e => setCondoNextDate(e.target.value)} />
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Próx. Venc. Condo</label>
-                      <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="date" value={condoNextDate} onChange={e => setCondoNextDate(e.target.value)} />
-                    </div>
-                  </div>
 
-                  {/* IPTU */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor IPTU (R$)</label>
-                      <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={iptuFee} onChange={e => setIptuFee(e.target.value)} placeholder="0" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Freq. IPTU</label>
-                      <select className="w-full h-9 px-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" value={iptuFrequency} onChange={e => setIptuFrequency(e.target.value as any)}>
-                        <option value="monthly">Mensal</option>
-                        <option value="yearly">Anual</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1 col-span-2">
-                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Próx. Venc. IPTU</label>
-                      <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="date" value={iptuNextDate} onChange={e => setIptuNextDate(e.target.value)} />
+                    {/* IPTU */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor IPTU (R$)</label>
+                        <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={iptuFee} onChange={e => setIptuFee(e.target.value)} placeholder="0" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Freq. IPTU</label>
+                        <select className="w-full h-9 px-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" value={iptuFrequency} onChange={e => setIptuFrequency(e.target.value as any)}>
+                          <option value="monthly">Mensal</option>
+                          <option value="yearly">Anual</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1 col-span-2">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Próx. Venc. IPTU</label>
+                        <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="date" value={iptuNextDate} onChange={e => setIptuNextDate(e.target.value)} />
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -1422,6 +1424,20 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   <span className="text-slate-400 font-medium">Restante a Pagar:</span>
                   <span className="font-bold text-rose-400">{formatCurrency(totalToPay)}</span>
                 </div>
+                {propertyStage === 'PLANTA' && (
+                  <>
+                    <div className="flex justify-between border-t border-white/5 pt-1.5">
+                      <span className="text-slate-400 font-medium">Financiamento na Entrega:</span>
+                      <span className="font-bold text-slate-300">
+                        {formatCurrency(parseFloat(asset.metadata?.deliveryBalance) || parseFloat(asset.metadata?.financingOriginalTotal) || 0)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-medium">Valor Total em Obra (Gastos):</span>
+                      <span className="font-bold text-slate-300">{formatCurrency(totalPaid + totalToPay)}</span>
+                    </div>
+                  </>
+                )}
                 {propertyStage !== 'PLANTA' && (
                   <>
                     <div className="flex justify-between border-t border-white/5 pt-1.5">
