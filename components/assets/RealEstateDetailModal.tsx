@@ -5,6 +5,19 @@ import { PhysicalAsset, Transaction } from '../../types';
 import { DateUtils } from '../../lib/dateUtils';
 import * as XLSX from 'xlsx';
 
+const getMonthsDifference = (d1: string, d2: string) => {
+  const parts1 = d1.split('-');
+  const parts2 = d2.split('-');
+  if (parts1.length !== 3 || parts2.length !== 3) return 0;
+  const year1 = parseInt(parts1[0], 10);
+  const month1 = parseInt(parts1[1], 10);
+  const year2 = parseInt(parts2[0], 10);
+  const month2 = parseInt(parts2[1], 10);
+  
+  const diff = (year2 - year1) * 12 + (month2 - month1);
+  return Math.max(0, diff);
+};
+
 interface RealEstateDetailModalProps {
   asset: PhysicalAsset;
   onClose: () => void;
@@ -32,6 +45,14 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [historicalRentReceived, setHistoricalRentReceived] = useState(String(asset.metadata?.historicalRentReceived || ''));
   const [consortiumAllocationRatio, setConsortiumAllocationRatio] = useState(String(asset.metadata?.consortiumAllocationRatio || '100'));
   const [saleValue, setSaleValue] = useState(String(asset.metadata?.saleValue || ''));
+
+  // Constructor correction states
+  const [constructorIndexType, setConstructorIndexType] = useState<'INCC' | 'IPCA' | 'IGP-M' | 'FIXED'>(
+    asset.metadata?.constructorIndexType || 'INCC'
+  );
+  const [constructorIndexRate, setConstructorIndexRate] = useState(
+    String(asset.metadata?.constructorIndexRate || '0.0')
+  );
 
   // Rental states
   const [isRented, setIsRented] = useState(!!asset.metadata?.isRented);
@@ -780,6 +801,61 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         consortiumAllocationRatio: asset.metadata?.selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined
       };
 
+      if (propertyStage === 'PLANTA') {
+        updatedMetadata.constructorIndexType = constructorIndexType;
+        updatedMetadata.constructorIndexRate = parseFloat(constructorIndexRate) || 0;
+      }
+
+      // Recalcular parcelas da construtora se mudou a taxa/índice
+      if (propertyStage === 'PLANTA') {
+        const oldRate = asset.metadata?.constructorIndexRate !== undefined ? parseFloat(asset.metadata.constructorIndexRate) : null;
+        const oldIndex = asset.metadata?.constructorIndexType || null;
+        const newRate = parseFloat(constructorIndexRate) || 0;
+
+        const rateChanged = oldRate !== newRate || oldIndex !== constructorIndexType;
+
+        if (rateChanged) {
+          // Fetch all active unpaid constructor transactions for this asset
+          const { data: txsToRecalc, error: txFetchErr } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('is_paid', false)
+            .eq('is_deleted', false)
+            .eq('metadata->>linked_asset_id', asset.id);
+
+          if (txFetchErr) throw txFetchErr;
+
+          if (txsToRecalc && txsToRecalc.length > 0) {
+            const acquisitionDateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
+            const ratePercent = newRate / 100;
+
+            for (const tx of txsToRecalc) {
+              const txType = tx.metadata?.property_tx_type;
+              if (txType === 'DOWN_PAYMENT' || txType === 'BALLOON' || txType === 'CONSTRUCTOR_INSTALLMENT') {
+                const originalAmount = tx.metadata?.original_amount !== undefined ? parseFloat(tx.metadata.original_amount) : tx.amount;
+                
+                const t = getMonthsDifference(acquisitionDateStr, tx.date);
+                const correctedAmount = originalAmount * Math.pow(1 + ratePercent, t);
+
+                const updatedMeta = {
+                  ...(tx.metadata || {}),
+                  original_amount: originalAmount
+                };
+
+                await supabase
+                  .from('transactions')
+                  .update({
+                    amount: correctedAmount,
+                    metadata: updatedMeta
+                  })
+                  .eq('id', tx.id);
+              }
+            }
+          }
+        }
+      }
+
       // Update physical assets table
       const { error } = await supabase
         .from('physical_assets')
@@ -1282,6 +1358,42 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                 </div>
                 <p className="text-[8px] text-slate-400 font-bold uppercase leading-normal">
                   * Apenas {consortiumAllocationRatio}% das parcelas pagas deste consórcio contarão como custo do imóvel. O excedente é considerado caixa livre ("dinheiro novo").
+                </p>
+              </div>
+            )}
+
+            {/* Correção e Reajuste da Construtora (Apenas Na Planta) */}
+            {propertyStage === 'PLANTA' && (
+              <div className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100 space-y-4">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Correção / Reajuste da Construtora</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Índice Correção</label>
+                    <select 
+                      className="w-full h-10 px-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" 
+                      value={constructorIndexType} 
+                      onChange={e => setConstructorIndexType(e.target.value as any)}
+                    >
+                      <option value="INCC">INCC</option>
+                      <option value="IPCA">IPCA</option>
+                      <option value="IGP-M">IGP-M</option>
+                      <option value="FIXED">Fixo (Sem reajuste)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Projeção Reajuste (% am)</label>
+                    <input 
+                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" 
+                      type="number" 
+                      step="0.01" 
+                      value={constructorIndexRate} 
+                      onChange={e => setConstructorIndexRate(e.target.value)} 
+                      placeholder="0.0" 
+                    />
+                  </div>
+                </div>
+                <p className="text-[8px] text-slate-400 font-bold uppercase leading-normal">
+                  * Alterar estes campos recalculará automaticamente os valores projetados de todas as parcelas futuras (Entradas, Intermediárias e Construtora) não pagas.
                 </p>
               </div>
             )}

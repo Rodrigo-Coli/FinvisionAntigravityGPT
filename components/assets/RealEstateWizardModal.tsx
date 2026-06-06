@@ -8,6 +8,19 @@ interface RealEstateWizardModalProps {
   onSuccess: () => void;
 }
 
+const getMonthsDifference = (d1: string, d2: string) => {
+  const parts1 = d1.split('-');
+  const parts2 = d2.split('-');
+  if (parts1.length !== 3 || parts2.length !== 3) return 0;
+  const year1 = parseInt(parts1[0], 10);
+  const month1 = parseInt(parts1[1], 10);
+  const year2 = parseInt(parts2[0], 10);
+  const month2 = parseInt(parts2[1], 10);
+  
+  const diff = (year2 - year1) * 12 + (month2 - month1);
+  return Math.max(0, diff);
+};
+
 export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ onClose, onSuccess }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [propertyStage, setPropertyStage] = useState<'PLANTA' | 'PRONTO'>('PRONTO');
@@ -33,6 +46,13 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
   const [inputBalloonDate, setInputBalloonDate] = useState(new Date().toISOString().split('T')[0]);
   const [inputBalloonFrequency, setInputBalloonFrequency] = useState<'SINGLE' | 'MONTHLY' | 'QUARTERLY' | 'SEMESTRAL'>('SINGLE');
   const [inputBalloonCount, setInputBalloonCount] = useState('1');
+
+  // Parcelas da Construtora (Apenas para Na Planta)
+  const [constructorAmount, setConstructorAmount] = useState('');
+  const [constructorStartDate, setConstructorStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [constructorInstallmentsCount, setConstructorInstallmentsCount] = useState('12');
+  const [constructorIndexType, setConstructorIndexType] = useState<'INCC' | 'IPCA' | 'IGP-M' | 'FIXED'>('INCC');
+  const [constructorIndexRate, setConstructorIndexRate] = useState('0.0'); // % ao mês reajuste
 
   // Financiamento (Funding & Amortization)
   const [financingAmount, setFinancingAmount] = useState('');
@@ -212,6 +232,14 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         historicalRentReceived: propertyStage === 'PLANTA' ? 0 : (parseFloat(historicalRentReceived) || 0)
       };
 
+      if (propertyStage === 'PLANTA') {
+        assetMetadata.constructorAmount = parseFloat(constructorAmount) || 0;
+        assetMetadata.constructorStartDate = constructorStartDate;
+        assetMetadata.constructorInstallmentsCount = parseInt(constructorInstallmentsCount, 10) || 0;
+        assetMetadata.constructorIndexType = constructorIndexType;
+        assetMetadata.constructorIndexRate = parseFloat(constructorIndexRate) || 0;
+      }
+
       const { data: assetData, error: assetErr } = await supabase
         .from('physical_assets')
         .insert([{
@@ -261,17 +289,25 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
       const downPaymentGroupId = downPayments.length > 1 ? generateUUID() : null;
       downPayments.forEach((dp, i) => {
         const dpDate = new Date(dp.date);
+        
+        let adjustedAmount = dp.amount;
+        if (propertyStage === 'PLANTA') {
+          const t = getMonthsDifference(acquisitionDate, dp.date);
+          const rate = (parseFloat(constructorIndexRate) || 0) / 100;
+          adjustedAmount = dp.amount * Math.pow(1 + rate, t);
+        }
+
         futureTransactions.push({
           user_id: user.id,
           description: `${dp.label} - ${name}`,
-          amount: dp.amount,
+          amount: adjustedAmount,
           date: dp.date,
           type: 'EXPENSE',
           category: 'Ativos Imobiliários',
           subcategory: 'Entrada',
           category_id: categoryId,
           is_paid: dpDate <= new Date(),
-          paid_amount: dpDate <= new Date() ? dp.amount : 0,
+          paid_amount: dpDate <= new Date() ? adjustedAmount : 0,
           paid_at: dpDate <= new Date() ? dp.date : null,
           is_installment: downPayments.length > 1,
           installment_number: downPayments.length > 1 ? i + 1 : null,
@@ -279,7 +315,8 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
           installment_group_id: downPaymentGroupId,
           metadata: {
             linked_asset_id: assetId,
-            property_tx_type: 'DOWN_PAYMENT'
+            property_tx_type: 'DOWN_PAYMENT',
+            original_amount: dp.amount
           }
         });
       });
@@ -288,17 +325,25 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
       const balloonGroupId = balloons.length > 1 ? generateUUID() : null;
       balloons.forEach((b, i) => {
         const bDate = new Date(b.date);
+        
+        let adjustedAmount = b.amount;
+        if (propertyStage === 'PLANTA') {
+          const t = getMonthsDifference(acquisitionDate, b.date);
+          const rate = (parseFloat(constructorIndexRate) || 0) / 100;
+          adjustedAmount = b.amount * Math.pow(1 + rate, t);
+        }
+
         futureTransactions.push({
           user_id: user.id,
           description: `${b.label} - ${name}`,
-          amount: b.amount,
+          amount: adjustedAmount,
           date: b.date,
           type: 'EXPENSE',
           category: 'Ativos Imobiliários',
           subcategory: 'Intermediária',
           category_id: categoryId,
           is_paid: bDate <= new Date(),
-          paid_amount: bDate <= new Date() ? b.amount : 0,
+          paid_amount: bDate <= new Date() ? adjustedAmount : 0,
           paid_at: bDate <= new Date() ? b.date : null,
           is_installment: balloons.length > 1,
           installment_number: balloons.length > 1 ? i + 1 : null,
@@ -306,10 +351,55 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
           installment_group_id: balloonGroupId,
           metadata: {
             linked_asset_id: assetId,
-            property_tx_type: 'BALLOON'
+            property_tx_type: 'BALLOON',
+            original_amount: b.amount
           }
         });
       });
+
+      // 4.5. Add Constructor Installments (if Na Planta)
+      const constrAmt = propertyStage === 'PLANTA' ? (parseFloat(constructorAmount) || 0) : 0;
+      const constrN = propertyStage === 'PLANTA' ? (parseInt(constructorInstallmentsCount, 10) || 0) : 0;
+      if (propertyStage === 'PLANTA' && constrAmt > 0 && constrN > 0 && constructorStartDate) {
+        const constructorGroupId = generateUUID();
+        const baseInstallmentAmount = constrAmt / constrN;
+        const baseConstructorStartDate = new Date(constructorStartDate + 'T00:00:00');
+        const rate = (parseFloat(constructorIndexRate) || 0) / 100;
+
+        for (let k = 1; k <= constrN; k++) {
+          const txDate = new Date(baseConstructorStartDate);
+          txDate.setMonth(baseConstructorStartDate.getMonth() + (k - 1));
+          const dateStr = txDate.toISOString().split('T')[0];
+
+          const t = getMonthsDifference(acquisitionDate, dateStr);
+          const adjustedAmount = baseInstallmentAmount * Math.pow(1 + rate, t);
+
+          const isPaid = txDate <= new Date();
+
+          futureTransactions.push({
+            user_id: user.id,
+            description: `Parcela Construtora ${k}/${constrN} - ${name}`,
+            amount: adjustedAmount,
+            date: dateStr,
+            type: 'EXPENSE',
+            category: 'Ativos Imobiliários',
+            subcategory: 'Parcela Construtora',
+            category_id: categoryId,
+            is_paid: isPaid,
+            paid_amount: isPaid ? adjustedAmount : 0,
+            paid_at: isPaid ? dateStr : null,
+            is_installment: true,
+            installment_number: k,
+            installment_total: constrN,
+            installment_group_id: constructorGroupId,
+            metadata: {
+              linked_asset_id: assetId,
+              property_tx_type: 'CONSTRUCTOR_INSTALLMENT',
+              original_amount: baseInstallmentAmount
+            }
+          });
+        }
+      }
 
       // 5. Add Financing / Amortization Schedule (if not paid by consortium or defined)
       const fundingAmount = parseFloat(financingAmount) || 0;
@@ -588,10 +678,82 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                </div>
             </div>
 
+            {/* PARCELAS PARA A CONSTRUTORA (Apenas Na Planta) */}
+            {propertyStage === 'PLANTA' && (
+              <div className="space-y-6 animate-in fade-in duration-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">4</div>
+                  <h4 className="text-lg font-black text-slate-900 italic">Parcelas para a Construtora</h4>
+                </div>
+                
+                <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Saldo a parcelar com a construtora (R$)</label>
+                      <input 
+                        type="number" 
+                        className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" 
+                        placeholder="0,00" 
+                        value={constructorAmount} 
+                        onChange={e => setConstructorAmount(e.target.value)} 
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Data da 1ª parcela</label>
+                      <input 
+                        type="date" 
+                        className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" 
+                        value={constructorStartDate} 
+                        onChange={e => setConstructorStartDate(e.target.value)} 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Parcelas (Meses)</label>
+                      <input 
+                        type="number" 
+                        className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" 
+                        value={constructorInstallmentsCount} 
+                        onChange={e => setConstructorInstallmentsCount(e.target.value)} 
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Índice de Correção</label>
+                      <select 
+                        className="w-full h-12 px-3 bg-white border border-slate-200 rounded-xl font-bold outline-none text-xs" 
+                        value={constructorIndexType} 
+                        onChange={e => setConstructorIndexType(e.target.value as any)}
+                      >
+                        <option value="INCC">INCC</option>
+                        <option value="IPCA">IPCA</option>
+                        <option value="IGP-M">IGP-M</option>
+                        <option value="FIXED">Fixo (Sem reajuste)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Projeção de Reajuste (% am)</label>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" 
+                        value={constructorIndexRate} 
+                        onChange={e => setConstructorIndexRate(e.target.value)} 
+                        placeholder="0.0"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* HISTÓRICO DE PAGAMENTOS ANTERIORES */}
             <div className="space-y-6">
                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">4</div>
+                  <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">
+                    {propertyStage === 'PLANTA' ? '5' : '4'}
+                  </div>
                   <h4 className="text-lg font-black text-slate-900 italic">Valores Já Pagos (Histórico)</h4>
                </div>
                
@@ -629,7 +791,9 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
             {/* FINANCING & AMORTIZATION TABLE (SAC vs PRICE) */}
             <div className="space-y-6">
                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">5</div>
+                  <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">
+                    {propertyStage === 'PLANTA' ? '6' : '5'}
+                  </div>
                   <h4 className="text-lg font-black text-slate-900 italic">Amortização / Financiamento ou Consórcio</h4>
                </div>
 

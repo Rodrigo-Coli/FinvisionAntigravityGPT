@@ -109,6 +109,8 @@ const Assets: React.FC = () => {
     propertyStage: 'PRONTO' as 'PLANTA' | 'PRONTO',
     indexType: 'INCC',
     balloons: [] as { month: number; year: number; amount: number }[],
+    constructorIndexType: 'INCC' as 'INCC' | 'IPCA' | 'IGP-M' | 'FIXED',
+    constructorIndexRate: '0.0',
     // Rental info
     isRented: false,
     rentalIncome: '',
@@ -679,6 +681,8 @@ const Assets: React.FC = () => {
         propertyStage: isRealEstate ? formData.propertyStage : undefined,
         indexType: formData.indexType,
         balloons: formData.balloons,
+        constructorIndexType: isRealEstate && formData.propertyStage === 'PLANTA' ? formData.constructorIndexType : undefined,
+        constructorIndexRate: isRealEstate && formData.propertyStage === 'PLANTA' ? (parseFloat(formData.constructorIndexRate) || 0) : undefined,
         // Rental
         isRented: finalIsRented,
         rentalIncome: rentVal,
@@ -722,6 +726,10 @@ const Assets: React.FC = () => {
         metadata.shortStayBookings = oldMeta.shortStayBookings;
         metadata.despesasCartorarias = oldMeta.despesasCartorarias;
         metadata.mobiliarios = oldMeta.mobiliarios;
+        // Preserve constructor details
+        metadata.constructorAmount = oldMeta.constructorAmount;
+        metadata.constructorStartDate = oldMeta.constructorStartDate;
+        metadata.constructorInstallmentsCount = oldMeta.constructorInstallmentsCount;
       }
 
       let assetId = '';
@@ -744,6 +752,61 @@ const Assets: React.FC = () => {
         assetId = editingAsset.id;
 
         if (isRealEstate) {
+          if (formData.propertyStage === 'PLANTA') {
+            const oldMeta = editingAsset.metadata || {};
+            const newRate = parseFloat(formData.constructorIndexRate) || 0;
+            const oldRate = oldMeta.constructorIndexRate !== undefined ? parseFloat(oldMeta.constructorIndexRate) : null;
+            const oldIndex = oldMeta.constructorIndexType || null;
+
+            const rateChanged = oldRate !== newRate || oldIndex !== formData.constructorIndexType;
+
+            if (rateChanged) {
+              const { data: txsToRecalc } = await supabase
+                .from('transactions')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('is_paid', false)
+                .eq('is_deleted', false)
+                .eq('metadata->>linked_asset_id', editingAsset.id);
+
+              if (txsToRecalc && txsToRecalc.length > 0) {
+                const acquisitionDateStr = editingAsset.acquisitionDate || new Date().toISOString().split('T')[0];
+                const ratePercent = newRate / 100;
+
+                const getMonthsDifferenceLocal = (d1: string, d2: string) => {
+                  const parts1 = d1.split('-');
+                  const parts2 = d2.split('-');
+                  if (parts1.length !== 3 || parts2.length !== 3) return 0;
+                  const year1 = parseInt(parts1[0], 10);
+                  const month1 = parseInt(parts1[1], 10);
+                  const year2 = parseInt(parts2[0], 10);
+                  const month2 = parseInt(parts2[1], 10);
+                  return Math.max(0, (year2 - year1) * 12 + (month2 - month1));
+                };
+
+                for (const tx of txsToRecalc) {
+                  const txType = tx.metadata?.property_tx_type;
+                  if (txType === 'DOWN_PAYMENT' || txType === 'BALLOON' || txType === 'CONSTRUCTOR_INSTALLMENT') {
+                    const originalAmount = tx.metadata?.original_amount !== undefined ? parseFloat(tx.metadata.original_amount) : tx.amount;
+                    const t = getMonthsDifferenceLocal(acquisitionDateStr, tx.date);
+                    const correctedAmount = originalAmount * Math.pow(1 + ratePercent, t);
+
+                    await supabase
+                      .from('transactions')
+                      .update({
+                        amount: correctedAmount,
+                        metadata: {
+                          ...(tx.metadata || {}),
+                          original_amount: originalAmount
+                        }
+                      })
+                      .eq('id', tx.id);
+                  }
+                }
+              }
+            }
+          }
+
           await syncRentalTransactions(
             editingAsset.id,
             finalIsRented,
@@ -926,6 +989,8 @@ const Assets: React.FC = () => {
       propertyStage: 'PRONTO',
       indexType: 'INCC',
       balloons: [],
+      constructorIndexType: 'INCC',
+      constructorIndexRate: '0.0',
       isRented: false,
       rentalIncome: '',
       condoFee: '',
@@ -1005,6 +1070,8 @@ const Assets: React.FC = () => {
       propertyStage: meta.propertyStage || 'PRONTO',
       indexType: meta.indexType || 'INCC',
       balloons: meta.balloons || [],
+      constructorIndexType: meta.constructorIndexType || 'INCC',
+      constructorIndexRate: meta.constructorIndexRate !== undefined ? String(meta.constructorIndexRate) : '0.0',
       isRented: !!meta.isRented,
       rentalIncome: meta.rentalIncome ? String(meta.rentalIncome) : '',
       condoFee: meta.condoFee ? String(meta.condoFee) : '',
@@ -3162,6 +3229,34 @@ const Assets: React.FC = () => {
                         </label>
                       )}
                     </div>
+
+                    {formData.propertyStage === 'PLANTA' && (
+                      <div className="grid grid-cols-2 gap-4 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
+                        <div>
+                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Índice Correção Construtora</label>
+                          <select
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none"
+                            value={formData.constructorIndexType}
+                            onChange={(e) => setFormData({ ...formData, constructorIndexType: e.target.value as any })}
+                          >
+                            <option value="INCC">INCC</option>
+                            <option value="IPCA">IPCA</option>
+                            <option value="IGP-M">IGP-M</option>
+                            <option value="FIXED">Fixo (Sem reajuste)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Projeção Reajuste (% am)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
+                            value={formData.constructorIndexRate}
+                            onChange={(e) => setFormData({ ...formData, constructorIndexRate: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     {formData.propertyStage === 'PRONTO' && formData.purpose === 'investimento' && formData.isRented && (
                       <div className="space-y-3 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
