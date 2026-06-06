@@ -758,7 +758,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         despesasCartorarias: cartVal,
         mobiliarios: mobVal,
         historicalPaidAmount: histPaid,
-        historicalRentReceived: histRent,
+        historicalRentReceived: propertyStage === 'PLANTA' ? 0 : histRent,
         saleValue: saleVal,
         isRented,
         rentalType,
@@ -988,7 +988,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         despesasCartorarias: cartVal,
         mobiliarios: mobVal,
         historicalPaidAmount: histPaid,
-        historicalRentReceived: histRent,
+        historicalRentReceived: propertyStage === 'PLANTA' ? 0 : histRent,
         saleValue: saleVal,
         isRented,
         rentalType,
@@ -1246,10 +1246,12 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Pago Anteriormente (Histórico)</label>
                   <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={historicalPaidAmount} onChange={e => setHistoricalPaidAmount(e.target.value)} placeholder="0" />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Aluguel Recebido Anteriormente (Histórico)</label>
-                  <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={historicalRentReceived} onChange={e => setHistoricalRentReceived(e.target.value)} placeholder="0" />
-                </div>
+                {propertyStage !== 'PLANTA' && (
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Aluguel Recebido Anteriormente (Histórico)</label>
+                    <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={historicalRentReceived} onChange={e => setHistoricalRentReceived(e.target.value)} placeholder="0" />
+                  </div>
+                )}
                 <div className="space-y-1">
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor de Venda (se vendido)</label>
                   <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={saleValue} onChange={e => setSaleValue(e.target.value)} placeholder="0" />
@@ -1308,18 +1310,22 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   <span className="text-slate-400 font-medium">Restante a Pagar:</span>
                   <span className="font-bold text-rose-400">{formatCurrency(totalToPay)}</span>
                 </div>
-                <div className="flex justify-between border-t border-white/5 pt-1.5">
-                  <span className="text-slate-400 font-medium">Aluguel Recebido Anteriormente (Histórico):</span>
-                  <span className="font-bold text-slate-300">{formatCurrency(parseFloat(historicalRentReceived) || 0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400 font-medium">Aluguel Recebido em Transações (Tx):</span>
-                  <span className="font-bold text-slate-300">{formatCurrency(totalRentTransactions)}</span>
-                </div>
-                <div className="flex justify-between border-t border-white/5 pt-1.5 font-bold text-emerald-400">
-                  <span>Total de Aluguel Recebido:</span>
-                  <span>{formatCurrency(totalRentReceived)}</span>
-                </div>
+                {propertyStage !== 'PLANTA' && (
+                  <>
+                    <div className="flex justify-between border-t border-white/5 pt-1.5">
+                      <span className="text-slate-400 font-medium">Aluguel Recebido Anteriormente (Histórico):</span>
+                      <span className="font-bold text-slate-300">{formatCurrency(parseFloat(historicalRentReceived) || 0)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-medium">Aluguel Recebido em Transações (Tx):</span>
+                      <span className="font-bold text-slate-300">{formatCurrency(totalRentTransactions)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-white/5 pt-1.5 font-bold text-emerald-400">
+                      <span>Total de Aluguel Recebido:</span>
+                      <span>{formatCurrency(totalRentReceived)}</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between border-t border-white/10 pt-2 font-bold text-sm">
                   <span className="text-slate-300">
                     {parseFloat(saleValue) > 0 ? 'Resultado da Venda (Lucro/Preju.):' : 'Ágio / Deságio:'}

@@ -48,6 +48,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
   const [selectedConsortiumId, setSelectedConsortiumId] = useState<string>('');
   const [consortiumAllocationRatio, setConsortiumAllocationRatio] = useState('100');
   const [isLoadingConsortia, setIsLoadingConsortia] = useState(false);
+  const [financingOption, setFinancingOption] = useState<'A' | 'B' | 'C'>('A');
 
   // Contract Upload parsing
   const [contractFile, setContractFile] = useState<File | null>(null);
@@ -204,11 +205,11 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         purpose: 'uso',
         purchaseValue: initialPurchase,
         indexType: financingIndexType,
-        selectedConsortiumId: selectedConsortiumId || undefined,
-        consortiumAllocationRatio: selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined,
-        financingType: selectedConsortiumId ? 'CONSORCIO' : 'FINANCING_SCHEDULE',
+        selectedConsortiumId: financingOption === 'B' ? (selectedConsortiumId || undefined) : undefined,
+        consortiumAllocationRatio: financingOption === 'B' && selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined,
+        financingType: financingOption === 'B' && selectedConsortiumId ? 'CONSORCIO' : (financingOption === 'C' ? 'A_DEFINIR' : 'FINANCING_SCHEDULE'),
         historicalPaidAmount: parseFloat(historicalPaidAmount) || 0,
-        historicalRentReceived: parseFloat(historicalRentReceived) || 0
+        historicalRentReceived: propertyStage === 'PLANTA' ? 0 : (parseFloat(historicalRentReceived) || 0)
       };
 
       const { data: assetData, error: assetErr } = await supabase
@@ -310,10 +311,10 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         });
       });
 
-      // 5. Add Financing / Amortization Schedule (if not paid by consortium)
+      // 5. Add Financing / Amortization Schedule (if not paid by consortium or defined)
       const fundingAmount = parseFloat(financingAmount) || 0;
-      if (fundingAmount > 0 && financingStartDate) {
-        if (selectedConsortiumId) {
+      if (financingOption !== 'C' && fundingAmount > 0 && financingStartDate) {
+        if (financingOption === 'B' && selectedConsortiumId) {
           // A consortium handles this: Link this consortium to the property
           await supabase
             .from('liabilities')
@@ -342,7 +343,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                 .eq('id', tx.id);
             }
           }
-        } else {
+        } else if (financingOption === 'A') {
           // Calculate SAC/Price Amortization schedule and add transactions
           const n = parseInt(financingInstallmentsCount, 10) || 12;
           const monthlyRate = (parseFloat(financingInterestRate) || 0) / 100;
@@ -598,7 +599,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-normal">
                      Se o imóvel foi adquirido antes de você começar a usar o FinVision, informe aqui o valor total já pago acumulado. Este valor será utilizado apenas para cálculos de rentabilidade/Yield e não lançará transações retroativas no seu extrato.
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className={propertyStage === 'PLANTA' ? 'grid grid-cols-1 gap-4' : 'grid grid-cols-1 sm:grid-cols-2 gap-4'}>
                      <div className="space-y-1.5">
                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Valor Total Já Pago anteriormente (R$)</label>
                        <input 
@@ -609,16 +610,18 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                          onChange={e => setHistoricalPaidAmount(e.target.value)} 
                        />
                      </div>
-                     <div className="space-y-1.5">
-                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Total Recebido de Aluguel (Histórico) (R$)</label>
-                       <input 
-                         type="number" 
-                         className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" 
-                         placeholder="0,00" 
-                         value={historicalRentReceived} 
-                         onChange={e => setHistoricalRentReceived(e.target.value)} 
-                       />
-                     </div>
+                     {propertyStage !== 'PLANTA' && (
+                       <div className="space-y-1.5">
+                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Total Recebido de Aluguel (Histórico) (R$)</label>
+                         <input 
+                           type="number" 
+                           className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" 
+                           placeholder="0,00" 
+                           value={historicalRentReceived} 
+                           onChange={e => setHistoricalRentReceived(e.target.value)} 
+                         />
+                       </div>
+                     )}
                   </div>
                </div>
             </div>
@@ -630,146 +633,192 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                   <h4 className="text-lg font-black text-slate-900 italic">Amortização / Financiamento ou Consórcio</h4>
                </div>
 
-               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+               <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50 w-full md:w-fit mb-4">
+                 <button 
+                   type="button" 
+                   onClick={() => {
+                     setFinancingOption('A');
+                     setSelectedConsortiumId('');
+                   }} 
+                   className={`flex-1 md:flex-initial px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${financingOption === 'A' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}
+                 >
+                   Opção A: Financiamento
+                 </button>
+                 <button 
+                   type="button" 
+                   onClick={() => {
+                     setFinancingOption('B');
+                   }} 
+                   className={`flex-1 md:flex-initial px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${financingOption === 'B' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}
+                 >
+                   Opção B: Consórcio
+                 </button>
+                 <button 
+                   type="button" 
+                   onClick={() => {
+                     setFinancingOption('C');
+                     setSelectedConsortiumId('');
+                   }} 
+                   className={`flex-1 md:flex-initial px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${financingOption === 'C' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}
+                 >
+                   Opção C: A Definir
+                 </button>
+               </div>
+
+               <div>
                   {/* Financing Amortization Settings */}
-                  <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4">
-                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Opção A: Financiamento Direto (SAC / Price)</p>
-                     
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saldo a Financiar</label>
-                          <input type="number" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingAmount} onChange={e => setFinancingAmount(e.target.value)} placeholder="0.00" disabled={!!selectedConsortiumId} />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data 1ª Parcela</label>
-                          <input type="date" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingStartDate} onChange={e => setFinancingStartDate(e.target.value)} disabled={!!selectedConsortiumId} />
-                        </div>
-                     </div>
+                  {financingOption === 'A' && (
+                    <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4 animate-in fade-in duration-200">
+                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Opção A: Financiamento Direto (SAC / Price)</p>
+                       
+                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saldo a Financiar</label>
+                             <input type="number" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingAmount} onChange={e => setFinancingAmount(e.target.value)} placeholder="0.00" />
+                          </div>
+                          <div className="space-y-1.5">
+                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data 1ª Parcela</label>
+                             <input type="date" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingStartDate} onChange={e => setFinancingStartDate(e.target.value)} />
+                          </div>
+                       </div>
 
-                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="space-y-1.5">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Parcelas (Meses)</label>
-                          <input type="number" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingInstallmentsCount} onChange={e => setFinancingInstallmentsCount(e.target.value)} disabled={!!selectedConsortiumId} />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Taxa de Juros (% am)</label>
-                          <input type="number" step="0.01" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingInterestRate} onChange={e => setFinancingInterestRate(e.target.value)} disabled={!!selectedConsortiumId} />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Tipo Amortização</label>
-                          <select className="w-full h-10 px-2 bg-white border rounded-xl text-[10px] font-bold outline-none" value={amortizationType} onChange={e => setAmortizationType(e.target.value as any)} disabled={!!selectedConsortiumId}>
-                            <option value="SAC">SAC (Decrescente)</option>
-                            <option value="PRICE">Price (Igual)</option>
-                          </select>
-                        </div>
-                     </div>
+                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="space-y-1.5">
+                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Parcelas (Meses)</label>
+                             <input type="number" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingInstallmentsCount} onChange={e => setFinancingInstallmentsCount(e.target.value)} />
+                          </div>
+                          <div className="space-y-1.5">
+                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Taxa de Juros (% am)</label>
+                             <input type="number" step="0.01" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingInterestRate} onChange={e => setFinancingInterestRate(e.target.value)} />
+                          </div>
+                          <div className="space-y-1.5">
+                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Tipo Amortização</label>
+                             <select className="w-full h-10 px-2 bg-white border rounded-xl text-[10px] font-bold outline-none" value={amortizationType} onChange={e => setAmortizationType(e.target.value as any)}>
+                               <option value="SAC">SAC (Decrescente)</option>
+                               <option value="PRICE">Price (Igual)</option>
+                             </select>
+                          </div>
+                       </div>
 
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100 pt-3">
-                        <div className="space-y-1.5">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Índice Correção</label>
-                          <select className="w-full h-10 px-2 bg-white border rounded-xl text-xs font-bold outline-none" value={financingIndexType} onChange={e => setFinancingIndexType(e.target.value as any)} disabled={!!selectedConsortiumId}>
-                            <option value="FIXED">Fixo (Sem reajuste)</option>
-                            <option value="INCC">INCC</option>
-                            <option value="IPCA">IPCA</option>
-                            <option value="IGP-M">IGP-M</option>
-                          </select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Projeção Reajuste (% am)</label>
-                          <input type="number" step="0.01" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingIndexRate} onChange={e => setFinancingIndexRate(e.target.value)} placeholder="0.0" disabled={!!selectedConsortiumId} />
-                        </div>
-                     </div>
-                  </div>
+                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100 pt-3">
+                          <div className="space-y-1.5">
+                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Índice Correção</label>
+                             <select className="w-full h-10 px-2 bg-white border rounded-xl text-xs font-bold outline-none" value={financingIndexType} onChange={e => setFinancingIndexType(e.target.value as any)}>
+                               <option value="FIXED">Fixo (Sem reajuste)</option>
+                               <option value="INCC">INCC</option>
+                               <option value="IPCA">IPCA</option>
+                               <option value="IGP-M">IGP-M</option>
+                             </select>
+                          </div>
+                          <div className="space-y-1.5">
+                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Projeção Reajuste (% am)</label>
+                             <input type="number" step="0.01" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingIndexRate} onChange={e => setFinancingIndexRate(e.target.value)} placeholder="0.0" />
+                          </div>
+                       </div>
+                    </div>
+                  )}
 
                   {/* Consortium Integration choice */}
-                  <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4">
-                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Opção B: Quitar com Consórcio Contemplado</p>
-                     
-                     <div className="space-y-2">
-                        <button 
-                          onClick={() => setSelectedConsortiumId('')}
-                          className={`w-full p-4 rounded-2xl border transition-all flex items-center justify-between text-left group ${!selectedConsortiumId ? 'bg-slate-900 border-slate-900 text-white shadow-md' : 'bg-white border-slate-100 text-slate-600'}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <HelpCircle size={16} className={!selectedConsortiumId ? 'text-white' : 'text-slate-300'} />
-                            <div>
-                              <p className="text-[10px] font-black uppercase">Não Utilizar Consórcio</p>
-                              <p className="text-[8px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">Seguir com Financiamento Padrão acima</p>
+                  {financingOption === 'B' && (
+                    <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4 animate-in fade-in duration-200">
+                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Opção B: Quitar com Consórcio Contemplado</p>
+                       
+                       <div className="space-y-2">
+                          {isLoadingConsortia ? (
+                            <div className="flex items-center gap-2 text-slate-400 p-2"><Loader2 size={12} className="animate-spin" /> <span className="text-[8px] font-bold uppercase">Buscando Consórcios...</span></div>
+                          ) : availableConsortia.length === 0 ? (
+                            <p className="text-xs text-slate-500 font-bold uppercase italic p-4 text-center">Nenhum consórcio cadastrado encontrado.</p>
+                          ) : (
+                            availableConsortia.map(c => (
+                              <button 
+                                type="button"
+                                key={c.id} 
+                                onClick={() => {
+                                  setSelectedConsortiumId(c.id);
+                                  // Set financing amount equal to consortium's remaining balance as help
+                                  setFinancingAmount(String(c.remainingBalance));
+                                }}
+                                className={`w-full p-4 rounded-2xl border transition-all flex items-center justify-between text-left group ${selectedConsortiumId === c.id ? 'bg-brand-600 border-brand-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-600 hover:border-brand-200'}`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <Wallet size={16} className={selectedConsortiumId === c.id ? 'text-white' : 'text-slate-300'} />
+                                  <div>
+                                    <p className="text-[10px] font-black uppercase">{c.name}</p>
+                                    <p className={`text-[8px] font-bold ${selectedConsortiumId === c.id ? 'text-brand-200' : 'text-slate-400'}`}>Crédito Devedor: {formatCurrency(c.remainingBalance)} | Parcela: {c.installmentAmount ? formatCurrency(c.installmentAmount) : '-'}</p>
+                                  </div>
+                                </div>
+                              </button>
+                            ))
+                          )}
+                          
+                          {selectedConsortiumId && (
+                            <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-in slide-in-from-top duration-200">
+                              <div className="flex justify-between items-center">
+                                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Alocação do Consórcio</p>
+                                <span className="text-[8px] font-bold px-2 py-0.5 bg-brand-100 text-brand-700 rounded-full uppercase">Garantia / Recurso</span>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Alocado ao Imóvel (%)</label>
+                                  <input 
+                                    type="number" 
+                                    min="0" 
+                                    max="100" 
+                                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900" 
+                                    value={consortiumAllocationRatio} 
+                                    onChange={e => {
+                                      const pct = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
+                                      setConsortiumAllocationRatio(String(pct));
+                                      // Automatically adjust financing amount to represent this ratio
+                                      const linkedCons = availableConsortia.find(c => c.id === selectedConsortiumId);
+                                      if (linkedCons) {
+                                        setFinancingAmount(String(Math.round(linkedCons.remainingBalance * (pct / 100))));
+                                      }
+                                    }} 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Dinheiro Novo (Excedente)</label>
+                                  <div className="h-9 px-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold flex items-center text-slate-500">
+                                    {(() => {
+                                      const linkedCons = availableConsortia.find(c => c.id === selectedConsortiumId);
+                                      if (!linkedCons) return '-';
+                                      const pct = parseFloat(consortiumAllocationRatio) || 0;
+                                      const remainingRatio = Math.max(0, 100 - pct);
+                                      return formatCurrency(linkedCons.remainingBalance * (remainingRatio / 100));
+                                    })()}
+                                  </div>
+                                </div>
+                              </div>
+                              <p className="text-[8px] text-slate-400 font-bold uppercase leading-normal">
+                                * O Yield e despesas operacionais deste imóvel computarão apenas {consortiumAllocationRatio || 100}% das parcelas pagas deste consórcio. O restante (excedente de dinheiro novo) será considerado recurso de caixa livre.
+                              </p>
                             </div>
-                          </div>
-                        </button>
+                          )}
+                       </div>
+                    </div>
+                  )}
 
-                        {isLoadingConsortia ? (
-                          <div className="flex items-center gap-2 text-slate-400 p-2"><Loader2 size={12} className="animate-spin" /> <span className="text-[8px] font-bold uppercase">Buscando Consórcios...</span></div>
-                        ) : (
-                          availableConsortia.map(c => (
-                            <button 
-                              key={c.id} 
-                              onClick={() => {
-                                setSelectedConsortiumId(c.id);
-                                // Set financing amount equal to consortium's remaining balance as help
-                                setFinancingAmount(String(c.remainingBalance));
-                              }}
-                              className={`w-full p-4 rounded-2xl border transition-all flex items-center justify-between text-left group ${selectedConsortiumId === c.id ? 'bg-brand-600 border-brand-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-600 hover:border-brand-200'}`}
-                            >
-                              <div className="flex items-center gap-3">
-                                <Wallet size={16} className={selectedConsortiumId === c.id ? 'text-white' : 'text-slate-300'} />
-                                <div>
-                                  <p className="text-[10px] font-black uppercase">{c.name}</p>
-                                  <p className={`text-[8px] font-bold ${selectedConsortiumId === c.id ? 'text-brand-200' : 'text-slate-400'}`}>Crédito Devedor: {formatCurrency(c.remainingBalance)} | Parcela: {c.installmentAmount ? formatCurrency(c.installmentAmount) : '-'}</p>
-                                </div>
-                              </div>
-                            </button>
-                          ))
-                        )}
-                        
-                        {selectedConsortiumId && (
-                          <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-in slide-in-from-top duration-200">
-                            <div className="flex justify-between items-center">
-                              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Alocação do Consórcio</p>
-                              <span className="text-[8px] font-bold px-2 py-0.5 bg-brand-100 text-brand-700 rounded-full uppercase">Garantia / Recurso</span>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div className="space-y-1">
-                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Alocado ao Imóvel (%)</label>
-                                <input 
-                                  type="number" 
-                                  min="0" 
-                                  max="100" 
-                                  className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900" 
-                                  value={consortiumAllocationRatio} 
-                                  onChange={e => {
-                                    const pct = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
-                                    setConsortiumAllocationRatio(String(pct));
-                                    // Automatically adjust financing amount to represent this ratio
-                                    const linkedCons = availableConsortia.find(c => c.id === selectedConsortiumId);
-                                    if (linkedCons) {
-                                      setFinancingAmount(String(Math.round(linkedCons.remainingBalance * (pct / 100))));
-                                    }
-                                  }} 
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Dinheiro Novo (Excedente)</label>
-                                <div className="h-9 px-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold flex items-center text-slate-500">
-                                  {(() => {
-                                    const linkedCons = availableConsortia.find(c => c.id === selectedConsortiumId);
-                                    if (!linkedCons) return '-';
-                                    const pct = parseFloat(consortiumAllocationRatio) || 0;
-                                    const remainingRatio = Math.max(0, 100 - pct);
-                                    return formatCurrency(linkedCons.remainingBalance * (remainingRatio / 100));
-                                  })()}
-                                </div>
-                              </div>
-                            </div>
-                            <p className="text-[8px] text-slate-400 font-bold uppercase leading-normal">
-                              * O Yield e despesas operacionais deste imóvel computarão apenas {consortiumAllocationRatio || 100}% das parcelas pagas deste consórcio. O restante (excedente de dinheiro novo) será considerado recurso de caixa livre.
-                            </p>
-                          </div>
-                        )}
-                     </div>
-                  </div>
+                  {/* Option C: To be defined */}
+                  {financingOption === 'C' && (
+                    <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4 animate-in fade-in duration-200">
+                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Opção C: Saldo na Entrega a Definir</p>
+                       <p className="text-xs text-slate-600 font-semibold leading-normal">
+                         Selecione esta opção se você ainda não definiu como irá pagar o saldo devedor na entrega das chaves. Você poderá alterar esta opção no futuro para Financiamento ou Consórcio.
+                       </p>
+                       <div className="max-w-xs space-y-1.5">
+                         <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saldo Estimado a Definir (R$)</label>
+                         <input 
+                           type="number" 
+                           className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" 
+                           value={financingAmount} 
+                           onChange={e => setFinancingAmount(e.target.value)} 
+                           placeholder="0.00" 
+                         />
+                       </div>
+                    </div>
+                  )}
                </div>
             </div>
 
@@ -785,11 +834,15 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Já Pago (Histórico)</p>
                     <h5 className="text-2xl sm:text-3xl font-black text-emerald-400 italic">{formatCurrency(parseFloat(historicalPaidAmount) || 0)}</h5>
                   </div>
-                  <div className="hidden md:block w-px h-12 bg-white/10" />
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Aluguel Recebido (Histórico)</p>
-                    <h5 className="text-2xl sm:text-3xl font-black text-emerald-400 italic">{formatCurrency(parseFloat(historicalRentReceived) || 0)}</h5>
-                  </div>
+                  {propertyStage !== 'PLANTA' && (
+                    <>
+                      <div className="hidden md:block w-px h-12 bg-white/10" />
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Aluguel Recebido (Histórico)</p>
+                        <h5 className="text-2xl sm:text-3xl font-black text-emerald-400 italic">{formatCurrency(parseFloat(historicalRentReceived) || 0)}</h5>
+                      </div>
+                    </>
+                  )}
                   <div className="hidden md:block w-px h-12 bg-white/10" />
                   <div>
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Pagar (Entradas/Balões/Finan.)</p>

@@ -127,7 +127,7 @@ const Assets: React.FC = () => {
     loanDueDate: '',
     loanDebtor: '',
     // Financing / Consortium details for edit transition
-    deliveryPaymentMethod: 'A_VISTA' as 'A_VISTA' | 'FINANCIAMENTO' | 'CONSORCIO',
+    deliveryPaymentMethod: 'A_VISTA' as 'A_VISTA' | 'FINANCIAMENTO' | 'CONSORCIO' | 'A_DEFINIR',
     deliveryBalance: '',
     selectedConsortiumId: '',
     consortiumAllocationRatio: '100',
@@ -151,7 +151,7 @@ const Assets: React.FC = () => {
     condoFee: '',
     iptuFee: '',
     // Add fields for final balance payment
-    deliveryPaymentMethod: 'FINANCIAMENTO' as 'FINANCIAMENTO' | 'A_VISTA' | 'CONSORCIO',
+    deliveryPaymentMethod: 'FINANCIAMENTO' as 'FINANCIAMENTO' | 'A_VISTA' | 'CONSORCIO' | 'A_DEFINIR',
     deliveryBalance: '',
     selectedConsortiumId: '',
     financingInstallment: '',
@@ -833,6 +833,11 @@ const Assets: React.FC = () => {
             await supabase.from('liabilities').update({ is_archived: true, linked_asset_id: null }).eq('id', linkedLiab.id);
           }
         } 
+        else if (formData.deliveryPaymentMethod === 'A_DEFINIR') {
+          if (linkedLiab) {
+            await supabase.from('liabilities').update({ linked_asset_id: null }).eq('id', linkedLiab.id);
+          }
+        }
         else if (formData.deliveryPaymentMethod === 'FINANCIAMENTO') {
           const instCount = parseInt(formData.financingInstallmentsCount, 10) || 240;
           const instAmount = parseFloat(formData.financingInstallment) || 0;
@@ -953,7 +958,7 @@ const Assets: React.FC = () => {
     const meta = asset.metadata || {};
     
     const linkedLiab = activeLiabilities.find(l => l.linkedAssetId === asset.id);
-    let devPayMethod: 'A_VISTA' | 'FINANCIAMENTO' | 'CONSORCIO' = 'A_VISTA';
+    let devPayMethod: 'A_VISTA' | 'FINANCIAMENTO' | 'CONSORCIO' | 'A_DEFINIR' = 'A_VISTA';
     let selConsortiumId = '';
     let consAllocRatio = '100';
     let finOrigTotal = '';
@@ -981,6 +986,8 @@ const Assets: React.FC = () => {
       devPayMethod = 'CONSORCIO';
       selConsortiumId = meta.selectedConsortiumId;
       consAllocRatio = String(meta.consortiumAllocationRatio || 100);
+    } else if (meta.financingType === 'A_DEFINIR' || meta.deliveryPaymentMethod === 'A_DEFINIR') {
+      devPayMethod = 'A_DEFINIR';
     }
 
     setFormData({
@@ -1197,6 +1204,11 @@ const Assets: React.FC = () => {
             await supabase.from('liabilities').update({ is_archived: true }).eq('id', selectedLiabilityForManage.id);
           }
         } 
+        else if (realEstateManageForm.deliveryPaymentMethod === 'A_DEFINIR') {
+          if (selectedLiabilityForManage.id !== 'new-temp') {
+            await supabase.from('liabilities').update({ linked_asset_id: null }).eq('id', selectedLiabilityForManage.id);
+          }
+        }
         else if (realEstateManageForm.deliveryPaymentMethod === 'FINANCIAMENTO') {
           const instCount = parseInt(realEstateManageForm.financingInstallmentsCount, 10) || 240;
           const instAmount = parseFloat(realEstateManageForm.financingInstallment) || instVal;
@@ -3195,21 +3207,21 @@ const Assets: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Opções de Financiamento/Consórcio - Apenas se Pronto */}
-                    {formData.propertyStage === 'PRONTO' && (
-                      <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
-                        <div>
-                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Pagamento (Saldo Devedor)</label>
-                          <select
-                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
-                            value={formData.deliveryPaymentMethod}
-                            onChange={(e) => setFormData({ ...formData, deliveryPaymentMethod: e.target.value as any })}
-                          >
-                            <option value="A_VISTA">À Vista / Quitado</option>
-                            <option value="FINANCIAMENTO">Financiamento Direto</option>
-                            <option value="CONSORCIO">Consórcio Vinculado</option>
-                          </select>
-                        </div>
+                    {/* Opções de Financiamento/Consórcio */}
+                    <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Pagamento (Saldo Devedor)</label>
+                        <select
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                          value={formData.deliveryPaymentMethod}
+                          onChange={(e) => setFormData({ ...formData, deliveryPaymentMethod: e.target.value as any })}
+                        >
+                          <option value="A_VISTA">À Vista / Quitado</option>
+                          <option value="FINANCIAMENTO">Financiamento Direto</option>
+                          <option value="CONSORCIO">Consórcio Vinculado</option>
+                          <option value="A_DEFINIR">A Definir (Saldo na Entrega)</option>
+                        </select>
+                      </div>
 
                         {formData.deliveryPaymentMethod === 'CONSORCIO' && (
                           <div className="space-y-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl animate-in slide-in-from-top-2">
@@ -3302,7 +3314,6 @@ const Assets: React.FC = () => {
                           </div>
                         )}
                       </div>
-                    )}
                   </div>
                 )}
 
@@ -3498,6 +3509,7 @@ const Assets: React.FC = () => {
                           <option value="A_VISTA">À Vista (Recursos Próprios)</option>
                           <option value="FINANCIAMENTO">Financiamento Bancário</option>
                           <option value="CONSORCIO">Contemplar Consórcio Existente</option>
+                          <option value="A_DEFINIR">A Definir (Saldo na Entrega)</option>
                         </select>
                       </div>
                     </div>
