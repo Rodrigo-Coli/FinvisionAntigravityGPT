@@ -222,89 +222,165 @@ const Assets: React.FC = () => {
   // Fetch all core data
   const fetchData = async () => {
     if (!supabase) return;
-    setIsLoading(true);
+    
+    // Obter o ID do usuário de forma rápida e offline-safe
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+    const userId = user.id;
+
+    // --- 1. TENTAR CARREGAMENTO INSTANTÂNEO VIA CACHE LOCAL ---
+    let hasCache = false;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setIsLoading(false);
-        return;
-      }
+      const cachedPhys = localStorage.getItem(`finvision_cached_physical_assets_${userId}`);
+      const cachedLiabs = localStorage.getItem(`finvision_cached_liabilities_${userId}`);
+      const cachedTxs = localStorage.getItem(`finvision_cached_raw_txs_${userId}`);
+      const cachedAccounts = localStorage.getItem(`finvision_cached_accounts`);
 
-      // 1. Fetch Physical Assets
-      const { data: phys } = await supabase
-        .from('physical_assets')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_archived', false)
-        .order('created_at', { ascending: true });
-
-      if (phys) {
-        const mappedPhys = phys.map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          category: p.category,
-          estimatedValue: Number(p.estimated_value),
-          acquisitionDate: p.acquisition_date,
-          description: p.description,
-          is_archived: p.is_archived,
-          metadata: p.metadata || {}
-        }));
-        setPhysicalAssets(mappedPhys);
+      if (cachedPhys) {
+        const parsedPhys = JSON.parse(cachedPhys);
+        setPhysicalAssets(parsedPhys);
         setSelectedRealEstateForDetail(prev => {
           if (!prev) return null;
-          return mappedPhys.find((p: any) => p.id === prev.id) || prev;
+          return parsedPhys.find((p: any) => p.id === prev.id) || prev;
         });
+        hasCache = true;
       }
-
-      // 2. Fetch Accounts (Brokers and Banks alocations)
-      const { data: accs } = await supabase
-        .from('accounts')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_archived', false);
-
-      if (accs) {
+      if (cachedLiabs) {
+        setLiabilities(JSON.parse(cachedLiabs));
+        hasCache = true;
+      }
+      if (cachedTxs) {
+        setTransactions(JSON.parse(cachedTxs).map((t: any) => ({
+          id: t.id,
+          description: t.description,
+          amount: Number(t.amount),
+          date: t.date,
+          type: t.type,
+          accountId: t.account_id || t.accountId,
+          accountName: t.account_name || t.accountName,
+          category: t.category,
+          subcategory: t.subcategory,
+          metadata: t.metadata || {},
+          isPaid: t.is_paid !== undefined ? t.is_paid : t.isPaid,
+          liability_id: t.liability_id,
+          is_recurring: t.is_recurring,
+          installment_number: t.installment_number,
+          installment_total: t.installment_total
+        })));
+        hasCache = true;
+      }
+      if (cachedAccounts) {
+        const accs = JSON.parse(cachedAccounts);
         const brokerList = accs.filter((a: any) => a.type === 'INVESTMENT').map((a: any) => {
-          // Custom broker specs inside account metadata
           const meta = a.metadata || {};
           return {
             id: a.id,
             name: a.institution || a.name,
-            balance: Number(a.current_balance),
+            balance: Number(a.current_balance || a.balance),
             allocation: [
-              { type: meta.productType || 'Investimentos', percentage: 100, value: Number(a.current_balance), color: 'bg-brand-500' }
+              { type: meta.productType || 'Investimentos', percentage: 100, value: Number(a.current_balance || a.balance), color: 'bg-brand-500' }
             ],
             metadata: meta
           };
         });
         setBrokers(brokerList as any);
       }
+    } catch (cacheErr) {
+      console.warn("Assets: Falha ao ler cache inicial", cacheErr);
+    }
 
-      // 3. Fetch Liabilities
-      const { data: liabs } = await supabase
-        .from('liabilities')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_archived', false);
+    // Se não tiver cache, exibe o loader completo
+    if (!hasCache) {
+      setIsLoading(true);
+    }
 
-      if (liabs) {
-        setLiabilities(liabs.map((l: any) => ({
-          id: l.id,
-          name: l.name,
-          type: l.type,
-          totalAmount: Number(l.total_amount),
-          remainingBalance: Number(l.remaining_balance),
-          interestRate: l.interest_rate ? Number(l.interest_rate) : undefined,
-          linkedAssetId: l.linked_asset_id,
-          installmentAmount: l.installment_amount ? Number(l.installment_amount) : undefined,
-          installmentsRemaining: l.installments_remaining ? Number(l.installments_remaining) : undefined,
-          dueDay: l.due_day ? Number(l.due_day) : undefined,
-          metadata: l.metadata || {},
-          is_archived: l.is_archived
-        })));
-      }
+    // Se estiver offline, finaliza aqui de forma segura com os dados locais
+    if (!navigator.onLine) {
+      setIsLoading(false);
+      return;
+    }
 
-      // 4. Fetch All non-deleted Transactions for bidirectional references
+    // --- 2. BUSCA ONLINE ATUALIZADA EM PARALELO (SILENT REFRESH) ---
+    try {
+      const [physRes, accsRes, liabsRes] = await Promise.all([
+        supabase
+          .from('physical_assets')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('is_archived', false)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('accounts')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('is_archived', false),
+        supabase
+          .from('liabilities')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('is_archived', false)
+      ]);
+
+      if (physRes.error) throw physRes.error;
+      if (accsRes.error) throw accsRes.error;
+      if (liabsRes.error) throw liabsRes.error;
+
+      const phys = physRes.data || [];
+      const accs = accsRes.data || [];
+      const liabs = liabsRes.data || [];
+
+      // Mapeamento e atualização atômica de estados
+      const mappedPhys = phys.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        estimatedValue: Number(p.estimated_value),
+        acquisitionDate: p.acquisition_date,
+        description: p.description,
+        is_archived: p.is_archived,
+        metadata: p.metadata || {}
+      }));
+      setPhysicalAssets(mappedPhys);
+      setSelectedRealEstateForDetail(prev => {
+        if (!prev) return null;
+        return mappedPhys.find((p: any) => p.id === prev.id) || prev;
+      });
+
+      const brokerList = accs.filter((a: any) => a.type === 'INVESTMENT').map((a: any) => {
+        const meta = a.metadata || {};
+        return {
+          id: a.id,
+          name: a.institution || a.name,
+          balance: Number(a.current_balance),
+          allocation: [
+            { type: meta.productType || 'Investimentos', percentage: 100, value: Number(a.current_balance), color: 'bg-brand-500' }
+          ],
+          metadata: meta
+        };
+      });
+      setBrokers(brokerList as any);
+
+      const mappedLiabs = liabs.map((l: any) => ({
+        id: l.id,
+        name: l.name,
+        type: l.type,
+        totalAmount: Number(l.total_amount),
+        remainingBalance: Number(l.remaining_balance),
+        interestRate: l.interest_rate ? Number(l.interest_rate) : undefined,
+        linkedAssetId: l.linked_asset_id,
+        installmentAmount: l.installment_amount ? Number(l.installment_amount) : undefined,
+        installmentsRemaining: l.installments_remaining ? Number(l.installments_remaining) : undefined,
+        dueDay: l.due_day ? Number(l.due_day) : undefined,
+        metadata: l.metadata || {},
+        is_archived: l.is_archived
+      }));
+      setLiabilities(mappedLiabs);
+
+      // Loop fetch de transações em blocos de 1000
       let allTxs: any[] = [];
       let hasMoreTxs = true;
       let txOffset = 0;
@@ -313,7 +389,7 @@ const Assets: React.FC = () => {
         const { data: chunk, error: txErr } = await supabase
           .from('transactions')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .eq('is_deleted', false)
           .range(txOffset, txOffset + 999);
 
@@ -331,7 +407,7 @@ const Assets: React.FC = () => {
         }
       }
 
-      setTransactions(allTxs.map((t: any) => ({
+      const mappedTxs = allTxs.map((t: any) => ({
         id: t.id,
         description: t.description,
         amount: Number(t.amount),
@@ -347,10 +423,20 @@ const Assets: React.FC = () => {
         is_recurring: t.is_recurring,
         installment_number: t.installment_number,
         installment_total: t.installment_total
-      })));
+      }));
+      setTransactions(mappedTxs);
 
+      // Atualizar cache local
+      try {
+        localStorage.setItem(`finvision_cached_physical_assets_${userId}`, JSON.stringify(mappedPhys));
+        localStorage.setItem(`finvision_cached_liabilities_${userId}`, JSON.stringify(mappedLiabs));
+        localStorage.setItem(`finvision_cached_raw_txs_${userId}`, JSON.stringify(allTxs));
+        localStorage.setItem(`finvision_cached_accounts`, JSON.stringify(accs));
+      } catch (cacheErr) {
+        console.warn("Assets: Falha ao escrever no cache", cacheErr);
+      }
     } catch (e: any) {
-      console.error('Assets: Error fetching data', e);
+      console.error('Assets: Error fetching online data', e);
     } finally {
       setIsLoading(false);
     }
