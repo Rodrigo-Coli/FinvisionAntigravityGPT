@@ -305,31 +305,49 @@ const Assets: React.FC = () => {
       }
 
       // 4. Fetch All non-deleted Transactions for bidirectional references
-      const { data: txs } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_deleted', false);
+      let allTxs: any[] = [];
+      let hasMoreTxs = true;
+      let txOffset = 0;
 
-      if (txs) {
-        setTransactions(txs.map((t: any) => ({
-          id: t.id,
-          description: t.description,
-          amount: Number(t.amount),
-          date: t.date,
-          type: t.type,
-          accountId: t.account_id,
-          accountName: t.account_name,
-          category: t.category,
-          subcategory: t.subcategory,
-          metadata: t.metadata || {},
-          isPaid: t.is_paid,
-          liability_id: t.liability_id,
-          is_recurring: t.is_recurring,
-          installment_number: t.installment_number,
-          installment_total: t.installment_total
-        })));
+      while (hasMoreTxs) {
+        const { data: chunk, error: txErr } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('is_deleted', false)
+          .range(txOffset, txOffset + 999);
+
+        if (txErr) throw txErr;
+
+        if (chunk) {
+          allTxs = [...allTxs, ...chunk];
+          if (chunk.length < 1000) {
+            hasMoreTxs = false;
+          } else {
+            txOffset += 1000;
+          }
+        } else {
+          hasMoreTxs = false;
+        }
       }
+
+      setTransactions(allTxs.map((t: any) => ({
+        id: t.id,
+        description: t.description,
+        amount: Number(t.amount),
+        date: t.date,
+        type: t.type,
+        accountId: t.account_id,
+        accountName: t.account_name,
+        category: t.category,
+        subcategory: t.subcategory,
+        metadata: t.metadata || {},
+        isPaid: t.is_paid,
+        liability_id: t.liability_id,
+        is_recurring: t.is_recurring,
+        installment_number: t.installment_number,
+        installment_total: t.installment_total
+      })));
 
     } catch (e: any) {
       console.error('Assets: Error fetching data', e);
@@ -562,7 +580,7 @@ const Assets: React.FC = () => {
           if (dateStr >= todayStr) {
             futureRentTxs.push({
               user_id: userId,
-              description: `Receita de Aluguel - ${assetName}`,
+              description: `Receita de Aluguel Regular - ${assetName}`,
               amount: rentalIncome,
               date: dateStr,
               type: 'INCOME',

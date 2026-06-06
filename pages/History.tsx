@@ -991,54 +991,82 @@ const HistoryPage: React.FC = () => {
           
           if (txsToUpdate && txsToUpdate.length > 0) {
             const parseDate = (dStr: string) => {
-              const match = dStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-              if (match) {
-                return {
-                  year: parseInt(match[1], 10),
-                  month: parseInt(match[2], 10),
-                  day: parseInt(match[3], 10)
-                };
-              }
               const dateObj = new Date(dStr);
-              return {
-                year: dateObj.getUTCFullYear(),
-                month: dateObj.getUTCMonth() + 1,
-                day: dateObj.getUTCDate()
-              };
+              if (isNaN(dateObj.getTime())) {
+                // Fallback se for string de data inválida
+                const match = dStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                if (match) {
+                  return {
+                    year: parseInt(match[1], 10),
+                    month: parseInt(match[2], 10),
+                    day: parseInt(match[3], 10)
+                  };
+                }
+                return { year: 2026, month: 6, day: 6 };
+              }
+              const tz = DateUtils.getTimeZone();
+              const formatter = new Intl.DateTimeFormat('en-CA', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                timeZone: tz
+              });
+              const formatted = formatter.format(dateObj); // Retorna YYYY-MM-DD no fuso local
+              const [year, month, day] = formatted.split('-').map(Number);
+              return { year, month, day };
             };
             
             const origParsed = parseDate(tx.date);
             const newParsed = parseDate(value);
-            const monthDiff = (newParsed.year - origParsed.year) * 12 + (newParsed.month - origParsed.month);
             const targetDay = newParsed.day;
             
-            const updatePromises = txsToUpdate.map((t: any) => {
-              const tParsed = parseDate(t.date);
-              let newMonth = tParsed.month + monthDiff;
-              let newYear = tParsed.year;
-              
-              while (newMonth > 12) {
-                newMonth -= 12;
-                newYear += 1;
-              }
-              while (newMonth < 1) {
-                newMonth += 12;
-                newYear -= 1;
-              }
-              
-              const lastDay = new Date(Date.UTC(newYear, newMonth, 0)).getUTCDate();
-              const newDay = Math.min(targetDay, lastDay);
-              
-              const pad = (n: number) => String(n).padStart(2, '0');
-              const newDateStr = `${newYear}-${pad(newMonth)}-${pad(newDay)}`;
-              const finalDateStr = `${newDateStr} 00:00:00+00`;
-              
-              return supabase.from('transactions').update({ date: finalDateStr }).eq('id', t.id);
-            });
+            // Ordenar todas as transações da série cronologicamente por data original
+            const sortedTxs = [...txsToUpdate].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
             
-            const results = await Promise.all(updatePromises);
-            const errorResult = results.find(r => r.error);
-            if (errorResult && errorResult.error) throw errorResult.error;
+            // Achar o índice da transação atual na lista ordenada
+            const txIndex = sortedTxs.findIndex(t => t.id === tx.id);
+            
+            if (txIndex !== -1) {
+              const updatePromises = sortedTxs.map((t: any, idx: number) => {
+                // Se a transação já estiver paga, ela NUNCA deve ser alterada (retroativas ou futuras)
+                if (t.is_paid) return Promise.resolve(null);
+                
+                const offsetMonths = idx - txIndex;
+                
+                if (offsetMonths === 0) {
+                  // É a própria transação editada. Atualiza com a nova data 'value'.
+                  const finalDateStr = `${value} 00:00:00+00`;
+                  return supabase.from('transactions').update({ date: finalDateStr }).eq('id', t.id);
+                } else {
+                  // Transações futuras ou passadas (offsetMonths !== 0) se não pagas:
+                  // calcula 'value' + offsetMonths meses
+                  let newMonth = newParsed.month + offsetMonths;
+                  let newYear = newParsed.year;
+                  
+                  while (newMonth > 12) {
+                    newMonth -= 12;
+                    newYear += 1;
+                  }
+                  while (newMonth < 1) {
+                    newMonth += 12;
+                    newYear -= 1;
+                  }
+                  
+                  const lastDay = new Date(Date.UTC(newYear, newMonth, 0)).getUTCDate();
+                  const newDay = Math.min(targetDay, lastDay);
+                  
+                  const pad = (n: number) => String(n).padStart(2, '0');
+                  const newDateStr = `${newYear}-${pad(newMonth)}-${pad(newDay)}`;
+                  const finalDateStr = `${newDateStr} 00:00:00+00`;
+                  
+                  return supabase.from('transactions').update({ date: finalDateStr }).eq('id', t.id);
+                }
+              });
+              
+              const results = await Promise.all(updatePromises);
+              const errorResult = results.find(r => r && r.error);
+              if (errorResult && errorResult.error) throw errorResult.error;
+            }
           }
         } else {
           let updateQuery = supabase.from('transactions').update(patch).eq('is_deleted', false);
