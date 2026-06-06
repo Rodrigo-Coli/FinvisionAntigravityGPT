@@ -2444,6 +2444,72 @@ const Assets: React.FC = () => {
                     t.date.substring(0, 7) === currentMonthStr
                   ).reduce((sum: number, tx: Transaction) => sum + tx.amount, 0);
 
+                  // Cálculos específicos para "Na Planta"
+                  const unpaidObra = assetTxs
+                    .filter((t: Transaction) => !t.isPaid && (t.metadata?.property_tx_type === 'DOWN_PAYMENT' || t.metadata?.property_tx_type === 'BALLOON' || t.metadata?.property_tx_type === 'CONSTRUCTOR_INSTALLMENT'))
+                    .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
+
+                  const paidObra = (Number(meta.historicalPaidAmount) || 0) + assetTxs
+                    .filter((t: Transaction) => t.isPaid && (t.metadata?.property_tx_type === 'DOWN_PAYMENT' || t.metadata?.property_tx_type === 'BALLOON' || t.metadata?.property_tx_type === 'CONSTRUCTOR_INSTALLMENT'))
+                    .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
+
+                  // Constructor installment for current period or fallback
+                  const activePeriodConstructorTxs = assetTxs.filter((t: Transaction) => {
+                    if (t.metadata?.property_tx_type !== 'CONSTRUCTOR_INSTALLMENT') return false;
+                    const cleanDateStr = t.date.substring(0, 10);
+                    const cleanMonthStr = t.date.substring(0, 7);
+                    const cleanYearStr = t.date.substring(0, 4);
+
+                    const nowLocal = new Date();
+                    const currentMonthStrLocal = DateUtils.formatToISODate(nowLocal).substring(0, 7);
+                    const previousMonthDateLocal = new Date(nowLocal.getFullYear(), nowLocal.getMonth() - 1, 1);
+                    const previousMonthStrLocal = DateUtils.formatToISODate(previousMonthDateLocal).substring(0, 7);
+                    const currentYearStrLocal = DateUtils.formatToISODate(nowLocal).substring(0, 4);
+
+                    if (cardPeriod === 'CURRENT_MONTH') return cleanMonthStr === currentMonthStrLocal;
+                    if (cardPeriod === 'PREVIOUS_MONTH') return cleanMonthStr === previousMonthStrLocal;
+                    if (cardPeriod === 'CURRENT_YEAR') return cleanYearStr === currentYearStrLocal;
+                    if (cardPeriod === 'CUSTOM') return cleanDateStr >= cardStartDate && cleanDateStr <= cardEndDate;
+                    return false;
+                  });
+
+                  let currentConstructorInstallmentValue = 0;
+                  if (cardPeriod !== 'CONTRACT' && activePeriodConstructorTxs.length > 0) {
+                    currentConstructorInstallmentValue = activePeriodConstructorTxs[0].amount;
+                  } else {
+                    const nextUnpaidInstallment = assetTxs
+                      .filter((t: Transaction) => t.metadata?.property_tx_type === 'CONSTRUCTOR_INSTALLMENT' && !t.isPaid)
+                      .sort((a, b) => a.date.localeCompare(b.date))[0];
+                    if (nextUnpaidInstallment) {
+                      currentConstructorInstallmentValue = nextUnpaidInstallment.amount;
+                    } else {
+                      const constrAmt = Number(meta.constructorAmount) || 0;
+                      const constrN = Number(meta.constructorInstallmentsCount) || 1;
+                      currentConstructorInstallmentValue = constrAmt / constrN;
+                    }
+                  }
+
+                  // Balloon for current period
+                  const activePeriodBalloonTxs = assetTxs.filter((t: Transaction) => {
+                    if (t.metadata?.property_tx_type !== 'BALLOON') return false;
+                    const cleanDateStr = t.date.substring(0, 10);
+                    const cleanMonthStr = t.date.substring(0, 7);
+                    const cleanYearStr = t.date.substring(0, 4);
+
+                    const nowLocal = new Date();
+                    const currentMonthStrLocal = DateUtils.formatToISODate(nowLocal).substring(0, 7);
+                    const previousMonthDateLocal = new Date(nowLocal.getFullYear(), nowLocal.getMonth() - 1, 1);
+                    const previousMonthStrLocal = DateUtils.formatToISODate(previousMonthDateLocal).substring(0, 7);
+                    const currentYearStrLocal = DateUtils.formatToISODate(nowLocal).substring(0, 4);
+
+                    if (cardPeriod === 'CURRENT_MONTH') return cleanMonthStr === currentMonthStrLocal;
+                    if (cardPeriod === 'PREVIOUS_MONTH') return cleanMonthStr === previousMonthStrLocal;
+                    if (cardPeriod === 'CURRENT_YEAR') return cleanYearStr === currentYearStrLocal;
+                    if (cardPeriod === 'CUSTOM') return cleanDateStr >= cardStartDate && cleanDateStr <= cardEndDate;
+                    return false;
+                  });
+                  const currentBalloonValue = activePeriodBalloonTxs.reduce((sum, t) => sum + t.amount, 0);
+
                   let rental = 0;
                   let installment = 0;
                   let displayCondoIptu = 0;
@@ -2572,22 +2638,28 @@ const Assets: React.FC = () => {
                         {propertyStage === 'PLANTA' ? (
                           <div className="space-y-2.5 pt-2 text-[10px] sm:text-[11px] text-slate-500">
                             <div className="flex justify-between">
-                              <span>Índice Correção:</span>
-                              <span className="font-bold text-brand-600">{meta.indexType || 'INCC'}</span>
+                              <span>Valor devido Obra:</span>
+                              <span className="font-bold text-rose-500">{formatCurrency(unpaidObra)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Valor de Compra:</span>
-                              <span className="font-bold text-slate-800">{formatCurrency(meta.purchaseValue || 0)}</span>
+                              <span>Valor pago obra:</span>
+                              <span className="font-bold text-emerald-600">{formatCurrency(paidObra)}</span>
                             </div>
-                            {linkedLiab && (
-                              <div className="flex justify-between">
-                                <span>Financiamento Restante:</span>
-                                <span className="font-bold text-red-500">{formatCurrency(linkedLiab.remainingBalance)}</span>
-                              </div>
-                            )}
+                            <div className="flex justify-between">
+                              <span>Valor da Parcela atual:</span>
+                              <span className="font-bold text-slate-800">{formatCurrency(currentConstructorInstallmentValue)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Valor intermediária atual:</span>
+                              <span className="font-bold text-slate-800">{formatCurrency(currentBalloonValue)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Índice Correção:</span>
+                              <span className="font-bold text-brand-600">{meta.constructorIndexType || 'INCC'}</span>
+                            </div>
                             <div className="flex justify-between border-t border-dashed border-slate-100 pt-2 font-bold text-slate-600">
-                              <span>Déficit Mensal:</span>
-                              <span className="text-rose-500">{formatCurrency(totalMonthlyCost)}/mês</span>
+                              <span>% de correção atual:</span>
+                              <span className="text-brand-600">{meta.constructorIndexRate !== undefined ? `${meta.constructorIndexRate}% a.m.` : '0.0% a.m.'}</span>
                             </div>
                           </div>
                         ) : (
