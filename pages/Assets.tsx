@@ -38,6 +38,7 @@ import { PhysicalAsset, InvestmentBroker, Liability, Transaction } from '../type
 import { supabase } from '../lib/supabase/client';
 import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModal';
 import { RealEstateDetailModal } from '../components/assets/RealEstateDetailModal';
+import { DateUtils } from '../lib/dateUtils';
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
@@ -54,10 +55,11 @@ const Assets: React.FC = () => {
   const [cardPeriod, setCardPeriod] = useState<'CONTRACT' | 'CURRENT_MONTH' | 'PREVIOUS_MONTH' | 'CURRENT_YEAR' | 'CUSTOM'>('CONTRACT');
   const [cardStartDate, setCardStartDate] = useState(() => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+    const firstDay = new Date(d.getFullYear(), d.getMonth(), 1);
+    return DateUtils.formatToISODate(firstDay);
   });
   const [cardEndDate, setCardEndDate] = useState(() => {
-    return new Date().toISOString().split('T')[0];
+    return DateUtils.formatToISODate(new Date());
   });
 
   // Core Data States
@@ -365,7 +367,7 @@ const Assets: React.FC = () => {
     const totalRents = activePhysImob.reduce((acc, curr) => {
       const meta = curr.metadata || {};
       if (meta.isRented) {
-        const currentMonthStr = new Date().toISOString().substring(0, 7); // YYYY-MM
+        const currentMonthStr = DateUtils.formatToISODate(new Date()).substring(0, 7); // YYYY-MM
         const assetNameClean = curr.name.toLowerCase()
           .replace(/apartamento|casa|carro|veículo|jeep|honda|audi|toyota/g, '')
           .trim();
@@ -1713,7 +1715,7 @@ const Assets: React.FC = () => {
     const prontoNetFlow = prontoValue - prontoRemainingToPay;
 
     // Monthly net flow for the current month: rent inflows minus monthly mortgage installment, condo, and IPTU
-    const currentMonthStr = new Date().toISOString().substring(0, 7);
+    const currentMonthStr = DateUtils.formatToISODate(new Date()).substring(0, 7);
     const prontoCurrentMonthIncome = activeTxs.filter(t => 
       t.type === 'INCOME' && 
       t.isPaid && 
@@ -2326,12 +2328,12 @@ const Assets: React.FC = () => {
               <div className="bg-slate-50 p-4 rounded-[25px] border border-slate-100 flex flex-wrap items-center justify-between gap-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Acompanhamento de Caixa:</span>
-                  <div className="flex bg-slate-200/50 p-0.5 rounded-lg border">
-                    <button onClick={() => setCardPeriod('CONTRACT')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all ${cardPeriod === 'CONTRACT' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Contrato</button>
-                    <button onClick={() => setCardPeriod('CURRENT_MONTH')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all ${cardPeriod === 'CURRENT_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Atual</button>
-                    <button onClick={() => setCardPeriod('PREVIOUS_MONTH')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all ${cardPeriod === 'PREVIOUS_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Anterior</button>
-                    <button onClick={() => setCardPeriod('CURRENT_YEAR')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all ${cardPeriod === 'CURRENT_YEAR' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Anual</button>
-                    <button onClick={() => setCardPeriod('CUSTOM')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all ${cardPeriod === 'CUSTOM' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Personalizado</button>
+                  <div className="flex overflow-x-auto scrollbar-hide bg-slate-200/50 p-0.5 rounded-lg border max-w-full">
+                    <button onClick={() => setCardPeriod('CONTRACT')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CONTRACT' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Contrato</button>
+                    <button onClick={() => setCardPeriod('CURRENT_MONTH')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CURRENT_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Atual</button>
+                    <button onClick={() => setCardPeriod('PREVIOUS_MONTH')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'PREVIOUS_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Anterior</button>
+                    <button onClick={() => setCardPeriod('CURRENT_YEAR')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CURRENT_YEAR' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Anual</button>
+                    <button onClick={() => setCardPeriod('CUSTOM')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CUSTOM' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Personalizado</button>
                   </div>
                 </div>
                 
@@ -2354,7 +2356,7 @@ const Assets: React.FC = () => {
                   const rentalType = meta.rentalType || 'anual';
 
                   // Sum short stay rents in current month dynamically
-                  const currentMonthStr = new Date().toISOString().substring(0, 7);
+                  const currentMonthStr = DateUtils.formatToISODate(new Date()).substring(0, 7);
                   const assetTxs = getAssetTransactions(asset);
                   const shortStayRentsThisMonth = assetTxs.filter((t: Transaction) => 
                     t.isPaid &&
@@ -2391,24 +2393,28 @@ const Assets: React.FC = () => {
                   } else {
                     // Filter paid transactions in selected period
                     const now = new Date();
-                    const currentMonthStr = now.toISOString().substring(0, 7);
+                    const currentMonthStr = DateUtils.formatToISODate(now).substring(0, 7);
                     const previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-                    const previousMonthStr = previousMonthDate.toISOString().substring(0, 7);
-                    const currentYearStr = String(now.getFullYear());
+                    const previousMonthStr = DateUtils.formatToISODate(previousMonthDate).substring(0, 7);
+                    const currentYearStr = DateUtils.formatToISODate(now).substring(0, 4);
 
                     const periodTxs = assetTxs.filter((t: Transaction) => {
                       if (!t.isPaid) return false;
+                      const cleanDateStr = t.date.substring(0, 10);
+                      const cleanMonthStr = t.date.substring(0, 7);
+                      const cleanYearStr = t.date.substring(0, 4);
+
                       if (cardPeriod === 'CURRENT_MONTH') {
-                        return t.date.substring(0, 7) === currentMonthStr;
+                        return cleanMonthStr === currentMonthStr;
                       }
                       if (cardPeriod === 'PREVIOUS_MONTH') {
-                        return t.date.substring(0, 7) === previousMonthStr;
+                        return cleanMonthStr === previousMonthStr;
                       }
                       if (cardPeriod === 'CURRENT_YEAR') {
-                        return t.date.substring(0, 4) === currentYearStr;
+                        return cleanYearStr === currentYearStr;
                       }
                       if (cardPeriod === 'CUSTOM') {
-                        return t.date >= cardStartDate && t.date <= cardEndDate;
+                        return cleanDateStr >= cardStartDate && cleanDateStr <= cardEndDate;
                       }
                       return true;
                     });
