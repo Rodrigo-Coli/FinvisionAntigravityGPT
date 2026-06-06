@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Plus, Trash2, Printer, FileSpreadsheet, Archive, Check, AlertTriangle, TrendingUp, Landmark, Wallet, Building2, HelpCircle, Edit3, DollarSign, Calendar, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
 import { PhysicalAsset, Transaction } from '../../types';
+import { DateUtils } from '../../lib/dateUtils';
 import * as XLSX from 'xlsx';
 
 interface RealEstateDetailModalProps {
@@ -81,16 +82,16 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [showQuickTxForm, setShowQuickTxForm] = useState(false);
   const [quickTxType, setQuickTxType] = useState<'CONDO' | 'IPTU' | 'RENOVATION' | 'MAINTENANCE' | 'OTHER'>('MAINTENANCE');
   const [quickTxAmount, setQuickTxAmount] = useState('');
-  const [quickTxDate, setQuickTxDate] = useState(new Date().toISOString().split('T')[0]);
+  const [quickTxDate, setQuickTxDate] = useState(DateUtils.formatToISODate(new Date()));
   const [quickTxDescription, setQuickTxDescription] = useState('');
   const [quickTxIsPaid, setQuickTxIsPaid] = useState(true);
 
   // Period filtering state for yield
   const [filterPeriod, setFilterPeriod] = useState<'ALL' | 'MONTH' | 'YEAR' | 'CUSTOM'>('ALL');
-  const [filterMonth, setFilterMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
-  const [filterYear, setFilterYear] = useState(String(new Date().getFullYear()));
-  const [filterStartDate, setFilterStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
-  const [filterEndDate, setFilterEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [filterMonth, setFilterMonth] = useState(DateUtils.formatToISODate(new Date()).substring(0, 7)); // YYYY-MM
+  const [filterYear, setFilterYear] = useState(DateUtils.formatToISODate(new Date()).substring(0, 4));
+  const [filterStartDate, setFilterStartDate] = useState(DateUtils.formatToISODate(new Date(new Date().getFullYear(), 0, 1)));
+  const [filterEndDate, setFilterEndDate] = useState(DateUtils.formatToISODate(new Date()));
 
   // Sincronizar transações vinculadas a este imóvel
   const assetTransactions = useMemo(() => {
@@ -169,7 +170,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         return t.date.substring(0, 4) === filterYear;
       }
       if (filterPeriod === 'CUSTOM') {
-        return t.date >= filterStartDate && t.date <= filterEndDate;
+        const cleanDateStr = t.date.substring(0, 10);
+        return cleanDateStr >= filterStartDate && cleanDateStr <= filterEndDate;
       }
       return true;
     });

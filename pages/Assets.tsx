@@ -2328,7 +2328,7 @@ const Assets: React.FC = () => {
               <div className="bg-slate-50 p-4 rounded-[25px] border border-slate-100 flex flex-wrap items-center justify-between gap-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Acompanhamento de Caixa:</span>
-                  <div className="flex overflow-x-auto scrollbar-hide bg-slate-200/50 p-0.5 rounded-lg border max-w-full">
+                  <div className="flex overflow-x-auto scrollbar-hide bg-slate-200/50 p-0.5 rounded-lg border w-full sm:w-auto max-w-[calc(100vw-48px)] sm:max-w-none">
                     <button onClick={() => setCardPeriod('CONTRACT')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CONTRACT' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Contrato</button>
                     <button onClick={() => setCardPeriod('CURRENT_MONTH')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CURRENT_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Atual</button>
                     <button onClick={() => setCardPeriod('PREVIOUS_MONTH')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'PREVIOUS_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Anterior</button>
