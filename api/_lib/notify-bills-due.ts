@@ -79,6 +79,7 @@ export async function handleNotifyBillsDue(req: any, res: any) {
       .select('description, amount, date, user_id, accounts(institution)')
       .in('type', ['EXPENSE', 'BILL_PAYMENT', 'expense', 'bill_payment'])
       .eq('is_paid', false)
+      .eq('is_deleted', false)
       .in('user_id', userIds)
       .gte('date', sevenDaysAgoStr)
       .lte('date', tomorrowStr)

@@ -51,6 +51,7 @@ export default async function handler(req: any, res: any) {
       .select('id, description, amount, date, user_id')
       .eq('type', 'EXPENSE')
       .eq('is_paid', false)
+      .eq('is_deleted', false)
       .in('user_id', userIds)
       .gte('date', todayStr)
       .lte('date', tomorrowStr);

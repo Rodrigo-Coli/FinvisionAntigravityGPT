@@ -136,6 +136,24 @@ const detectLegacySeries = (t: any) => {
     return baseMetadata;
   }
 
+  // Treat asset-linked transactions (rental, condo, iptu) as virtual recurrence series
+  if (baseMetadata.linked_asset_id) {
+    const desc = t.description || '';
+    const typeSuffix = desc.toLowerCase().includes('aluguel') 
+      ? 'rental' 
+      : (desc.toLowerCase().includes('condomínio') || desc.toLowerCase().includes('condominio') || desc.toLowerCase().includes('condo') 
+        ? 'condo' 
+        : (desc.toLowerCase().includes('iptu') 
+          ? 'iptu' 
+          : 'other'));
+    const virtualGroupId = `virtual-asset-${baseMetadata.linked_asset_id}-${typeSuffix}`;
+    return {
+      ...baseMetadata,
+      is_recurring: true,
+      recurrence_group_id: virtualGroupId
+    };
+  }
+
   const desc = t.description || '';
   const match = desc.match(/^(.+?)\s+(\d+)\/(\d+)\s+-\s+(.+)$/i);
   if (match) {
@@ -155,6 +173,40 @@ const detectLegacySeries = (t: any) => {
   }
 
   return baseMetadata;
+};
+
+const buildSeriesFilter = (query: any, tx: any) => {
+  const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
+  const colName = tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id';
+
+  if (groupId && String(groupId).startsWith('virtual-asset-')) {
+    const parts = String(groupId).split('-');
+    const typeSuffix = parts[parts.length - 1];
+    const linkedAssetId = parts.slice(2, parts.length - 1).join('-');
+    
+    query = query.eq('metadata->>linked_asset_id', linkedAssetId);
+    
+    if (typeSuffix === 'rental') {
+      query = query.ilike('description', '%aluguel%');
+    } else if (typeSuffix === 'condo') {
+      query = query.or('description.ilike.%condomínio%,description.ilike.%condominio%,description.ilike.%condo%');
+    } else if (typeSuffix === 'iptu') {
+      query = query.ilike('description', '%iptu%');
+    }
+  } else if (groupId && String(groupId).startsWith('virtual-')) {
+    const desc = tx.description || '';
+    const match = desc.match(/^(.+?)\s+(\d+)\/(\d+)\s+-\s+(.+)$/i);
+    if (match) {
+      const prefix = match[1].trim();
+      const assetName = match[4].trim();
+      query = query.ilike('description', `${prefix} % - ${assetName}`);
+    } else {
+      query = query.eq('id', tx.id);
+    }
+  } else {
+    query = query.or(`${colName}.eq.${groupId},metadata->>${colName}.eq.${groupId}`);
+  }
+  return query;
 };
 
 const HistoryPage: React.FC = () => {
@@ -822,6 +874,7 @@ const HistoryPage: React.FC = () => {
     try {
       let cleanValue = value;
       const tx = transactions.find(t => t.id === id);
+      if (!tx) return;
 
       if (field === 'owner_name' && value) {
         const matched = findCloseMatch(value, owners);
@@ -925,25 +978,77 @@ const HistoryPage: React.FC = () => {
 
         await FinanceService.updateTransaction(id, patch);
       } else {
-        const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
-        const colName = tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id';
-        let query = supabase.from('transactions').update(patch).eq('is_deleted', false);
-        if (groupId && String(groupId).startsWith('virtual-')) {
-          const desc = tx.description || '';
-          const match = desc.match(/^(.+?)\s+(\d+)\/(\d+)\s+-\s+(.+)$/i);
-          if (match) {
-            const prefix = match[1].trim();
-            const assetName = match[4].trim();
-            query = query.ilike('description', `${prefix} % - ${assetName}`);
-          } else {
-            query = query.eq('id', tx.id);
+        if (field === 'date') {
+          // Fetch the transactions to update first
+          let selectQuery = supabase.from('transactions').select('*').eq('is_deleted', false);
+          selectQuery = buildSeriesFilter(selectQuery, tx);
+          if (confirmedScope === 'THIS_AND_FUTURE') {
+            selectQuery = selectQuery.gte('date', tx?.date);
+          }
+          
+          const { data: txsToUpdate, error: fetchErr } = await selectQuery;
+          if (fetchErr) throw fetchErr;
+          
+          if (txsToUpdate && txsToUpdate.length > 0) {
+            const parseDate = (dStr: string) => {
+              const match = dStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (match) {
+                return {
+                  year: parseInt(match[1], 10),
+                  month: parseInt(match[2], 10),
+                  day: parseInt(match[3], 10)
+                };
+              }
+              const dateObj = new Date(dStr);
+              return {
+                year: dateObj.getUTCFullYear(),
+                month: dateObj.getUTCMonth() + 1,
+                day: dateObj.getUTCDate()
+              };
+            };
+            
+            const origParsed = parseDate(tx.date);
+            const newParsed = parseDate(value);
+            const monthDiff = (newParsed.year - origParsed.year) * 12 + (newParsed.month - origParsed.month);
+            const targetDay = newParsed.day;
+            
+            const updatePromises = txsToUpdate.map((t: any) => {
+              const tParsed = parseDate(t.date);
+              let newMonth = tParsed.month + monthDiff;
+              let newYear = tParsed.year;
+              
+              while (newMonth > 12) {
+                newMonth -= 12;
+                newYear += 1;
+              }
+              while (newMonth < 1) {
+                newMonth += 12;
+                newYear -= 1;
+              }
+              
+              const lastDay = new Date(Date.UTC(newYear, newMonth, 0)).getUTCDate();
+              const newDay = Math.min(targetDay, lastDay);
+              
+              const pad = (n: number) => String(n).padStart(2, '0');
+              const newDateStr = `${newYear}-${pad(newMonth)}-${pad(newDay)}`;
+              const finalDateStr = `${newDateStr} 00:00:00+00`;
+              
+              return supabase.from('transactions').update({ date: finalDateStr }).eq('id', t.id);
+            });
+            
+            const results = await Promise.all(updatePromises);
+            const errorResult = results.find(r => r.error);
+            if (errorResult && errorResult.error) throw errorResult.error;
           }
         } else {
-          query = query.or(`${colName}.eq.${groupId},metadata->>${colName}.eq.${groupId}`);
+          let updateQuery = supabase.from('transactions').update(patch).eq('is_deleted', false);
+          updateQuery = buildSeriesFilter(updateQuery, tx);
+          if (confirmedScope === 'THIS_AND_FUTURE') {
+            updateQuery = updateQuery.gte('date', tx?.date);
+          }
+          const { error: err } = await updateQuery;
+          if (err) throw err;
         }
-        if (confirmedScope === 'THIS_AND_FUTURE') query = query.gte('date', tx?.date);
-        const { error: err } = await query;
-        if (err) throw err;
 
         // Reload completo só quando altera parcelas e assinaturas (múltiplas linhas)
         await fetchData(true);
@@ -1010,23 +1115,8 @@ const HistoryPage: React.FC = () => {
           }
         }
       } else {
-        const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
-        const colName = tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id';
-        
         let query = supabase.from('transactions').update({ is_deleted: true });
-        if (groupId && String(groupId).startsWith('virtual-')) {
-          const desc = tx.description || '';
-          const match = desc.match(/^(.+?)\s+(\d+)\/(\d+)\s+-\s+(.+)$/i);
-          if (match) {
-            const prefix = match[1].trim();
-            const assetName = match[4].trim();
-            query = query.ilike('description', `${prefix} % - ${assetName}`);
-          } else {
-            query = query.eq('id', tx.id);
-          }
-        } else {
-          query = query.or(`${colName}.eq.${groupId},metadata->>${colName}.eq.${groupId}`);
-        }
+        query = buildSeriesFilter(query, tx);
         if (confirmedScope === 'THIS_AND_FUTURE') query = query.gte('date', tx?.date);
         const { error } = await query;
         if (error) throw error;
