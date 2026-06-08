@@ -38,9 +38,24 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       return cached ? JSON.parse(cached) : [];
     } catch (e) { return []; }
   });
-  const [projectedData, setProjectedData] = useState<any[]>([]);
+  const [projectedData, setProjectedData] = useState<any[]>(() => {
+    try {
+      if (user?.id) {
+        const cached = localStorage.getItem(`finvision_cached_projections_${user.id}`);
+        return cached ? JSON.parse(cached) : [];
+      }
+      return [];
+    } catch (e) { return []; }
+  });
   const [isLoading, setIsLoading] = useState(!data);
-  const [isProjecting, setIsProjecting] = useState(true);
+  const [isProjecting, setIsProjecting] = useState(() => {
+    try {
+      if (user?.id) {
+        return !localStorage.getItem(`finvision_cached_projections_${user.id}`);
+      }
+    } catch (e) {}
+    return true;
+  });
   const [error, setError] = useState<string | null>(null);
   const [showBalance, setShowBalance] = useState(() => {
     return localStorage.getItem('finvision_privacy') !== 'hidden';
@@ -107,7 +122,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
         // Load 12-month projections
         if (user?.id) {
-          setIsProjecting(true);
+          const cachedProj = localStorage.getItem(`finvision_cached_projections_${user.id}`);
+          if (!cachedProj) {
+            setIsProjecting(true);
+          }
           const proj = await projectionService.getProjectedCashFlow(user.id, dashboardData.consolidatedBalance, 12);
           setProjectedData(proj);
           localStorage.setItem(`finvision_cached_projections_${user.id}`, JSON.stringify(proj));
@@ -204,6 +222,18 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (user?.id) {
+      try {
+        const cachedProj = localStorage.getItem(`finvision_cached_projections_${user.id}`);
+        if (cachedProj) {
+          setProjectedData(JSON.parse(cachedProj));
+          setIsProjecting(false);
+        }
+      } catch (e) {}
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     if (user?.id) loadData();

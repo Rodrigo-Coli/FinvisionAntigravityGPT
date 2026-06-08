@@ -9,39 +9,28 @@ export const projectionService = {
     const today = new Date();
     const futureEnd = new Date(today.getFullYear(), today.getMonth() + monthsAhead + 1, 0); 
     
-    // Obter perfis desativados para totais
-    const { data: excludedEntities } = await supabase
-      .from('entities')
-      .select('name')
-      .eq('user_id', userId)
-      .eq('include_in_totals', false);
+    // Obter todos os dados em paralelo usando Promise.all
+    const [
+      excludedEntitiesRes,
+      pendingTxRes,
+      recurringTxRes,
+      cardStatementsRes,
+      liabilitiesRes
+    ] = await Promise.all([
+      supabase.from('entities').select('name').eq('user_id', userId).eq('include_in_totals', false),
+      supabase.from('transactions').select('amount, type, date, recurrence_group_id, recurrence_period, is_amortization, owner_name, metadata').eq('user_id', userId).eq('is_deleted', false).eq('is_paid', false).or('is_amortization.is.null,is_amortization.eq.false').lte('date', futureEnd.toISOString().split('T')[0]),
+      supabase.from('transactions').select('amount, type, date, recurrence_group_id, recurrence_period, owner_name, metadata').eq('user_id', userId).eq('is_deleted', false).not('recurrence_period', 'is', null).not('recurrence_group_id', 'is', null),
+      supabase.from('card_statements').select('total_amount, paid_amount, due_date').eq('user_id', userId).neq('status', 'PAID').lte('due_date', futureEnd.toISOString().split('T')[0]),
+      supabase.from('liabilities').select('*').eq('user_id', userId)
+    ]);
 
-    const excludedSet = new Set((excludedEntities || []).map((e: any) => e.name));
+    const excludedEntities = excludedEntitiesRes.data || [];
+    const pendingTx = pendingTxRes.data || [];
+    const recurringTx = recurringTxRes.data || [];
+    const cardStatements = cardStatementsRes.data || [];
+    const liabilities = liabilitiesRes.data || [];
 
-    const { data: pendingTx } = await supabase.from('transactions')
-        .select('amount, type, date, recurrence_group_id, recurrence_period, is_amortization, owner_name, metadata')
-        .eq('user_id', userId)
-        .eq('is_deleted', false)
-        .eq('is_paid', false)
-        .or('is_amortization.is.null,is_amortization.eq.false')
-        .lte('date', futureEnd.toISOString().split('T')[0]);
-
-    const { data: recurringTx } = await supabase.from('transactions')
-        .select('amount, type, date, recurrence_group_id, recurrence_period, owner_name, metadata')
-        .eq('user_id', userId)
-        .eq('is_deleted', false)
-        .not('recurrence_period', 'is', null)
-        .not('recurrence_group_id', 'is', null);
-
-    const { data: cardStatements } = await supabase.from('card_statements')
-        .select('total_amount, paid_amount, due_date')
-        .eq('user_id', userId)
-        .neq('status', 'PAID')
-        .lte('due_date', futureEnd.toISOString().split('T')[0]);
-
-    const { data: liabilities } = await supabase.from('liabilities')
-        .select('*')
-        .eq('user_id', userId);
+    const excludedSet = new Set(excludedEntities.map((e: any) => e.name));
 
     const monthlyData: Record<string, { income: number; expense: number }> = {};
     const generatedRecurrences = new Set<string>();

@@ -62,12 +62,89 @@ const Assets: React.FC = () => {
     return DateUtils.formatToISODate(new Date());
   });
 
-  // Core Data States
-  const [physicalAssets, setPhysicalAssets] = useState<PhysicalAsset[]>([]);
-  const [brokers, setBrokers] = useState<InvestmentBroker[]>([]);
-  const [liabilities, setLiabilities] = useState<Liability[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Core Data States with Synchronous Cache Initializers
+  const [physicalAssets, setPhysicalAssets] = useState<PhysicalAsset[]>(() => {
+    try {
+      const cachedProfile = localStorage.getItem('finvision_cached_profile');
+      if (cachedProfile) {
+        const userId = JSON.parse(cachedProfile).id;
+        const cached = localStorage.getItem(`finvision_cached_physical_assets_${userId}`);
+        return cached ? JSON.parse(cached) : [];
+      }
+    } catch (e) {}
+    return [];
+  });
+  const [brokers, setBrokers] = useState<InvestmentBroker[]>(() => {
+    try {
+      const cached = localStorage.getItem('finvision_cached_accounts');
+      if (cached) {
+        const accs = JSON.parse(cached);
+        return accs.filter((a: any) => a.type === 'INVESTMENT').map((a: any) => {
+          const meta = a.metadata || {};
+          return {
+            id: a.id,
+            name: a.institution || a.name,
+            balance: Number(a.current_balance || a.balance),
+            allocation: [
+              { type: meta.productType || 'Investimentos', percentage: 100, value: Number(a.current_balance || a.balance), color: 'bg-brand-500' }
+            ],
+            metadata: meta
+          };
+        });
+      }
+    } catch (e) {}
+    return [];
+  });
+  const [liabilities, setLiabilities] = useState<Liability[]>(() => {
+    try {
+      const cachedProfile = localStorage.getItem('finvision_cached_profile');
+      if (cachedProfile) {
+        const userId = JSON.parse(cachedProfile).id;
+        const cached = localStorage.getItem(`finvision_cached_liabilities_${userId}`);
+        return cached ? JSON.parse(cached) : [];
+      }
+    } catch (e) {}
+    return [];
+  });
+  const [transactions, setTransactions] = useState<any[]>(() => {
+    try {
+      const cachedProfile = localStorage.getItem('finvision_cached_profile');
+      if (cachedProfile) {
+        const userId = JSON.parse(cachedProfile).id;
+        const cached = localStorage.getItem(`finvision_cached_raw_txs_${userId}`);
+        if (cached) {
+          return JSON.parse(cached).map((t: any) => ({
+            id: t.id,
+            description: t.description,
+            amount: Number(t.amount),
+            date: t.date,
+            type: t.type,
+            accountId: t.account_id || t.accountId,
+            accountName: t.account_name || t.accountName,
+            category: t.category,
+            subcategory: t.subcategory,
+            metadata: t.metadata || {},
+            isPaid: t.is_paid !== undefined ? t.is_paid : t.isPaid,
+            liability_id: t.liability_id,
+            is_recurring: t.is_recurring,
+            installment_number: t.installment_number,
+            installment_total: t.installment_total
+          }));
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    try {
+      const cachedProfile = localStorage.getItem('finvision_cached_profile');
+      if (cachedProfile) {
+        const userId = JSON.parse(cachedProfile).id;
+        return !localStorage.getItem(`finvision_cached_physical_assets_${userId}`);
+      }
+    } catch (e) {}
+    return true;
+  });
 
   // Exclusions for Sustainability Analysis
   const [excludedAssetIds, setExcludedAssetIds] = useState<string[]>([]);

@@ -11,20 +11,40 @@ export const DashboardService = {
     if (!user) return { consolidatedBalance: 0, netWorth: 0, creditCards: [], alerts: [], goals: [], cashFlow: [], assets: [] };
 
 
-    // 1. Accounts
-    const { data: accounts, error: accErr } = await sb
-      .from('accounts')
-      .select('current_balance, type, include_in_dashboard')
-      .eq('user_id', user.id)
-      .eq('is_archived', false);
+    // 1. Fetch all core data in parallel using Promise.all
+    const [
+      accountsRes,
+      cardsRes,
+      physRes,
+      entitiesRes,
+      txsRes,
+      liabsRes,
+      futureTxsRes
+    ] = await Promise.all([
+      sb.from('accounts').select('current_balance, type, include_in_dashboard').eq('user_id', user.id).eq('is_archived', false),
+      sb.from('cards').select('id, brand, name, limit_total, last4').eq('user_id', user.id).eq('is_archived', false),
+      sb.from('physical_assets').select('estimated_value, category').eq('user_id', user.id),
+      sb.from('entities').select('name').eq('user_id', user.id).eq('include_in_totals', false),
+      sb.from('transactions').select('date, amount, type, owner_name, metadata').eq('user_id', user.id).eq('is_deleted', false).gte('date', new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString()),
+      sb.from('liabilities').select('*').eq('user_id', user.id),
+      sb.from('transactions').select('*').eq('user_id', user.id).eq('is_deleted', false).or(`date.gte.${new Date().toISOString()},is_recurring.eq.true`)
+    ]);
 
-    if (accErr) throw accErr;
+    if (accountsRes.error) throw accountsRes.error;
+
+    const accounts = accountsRes.data || [];
+    const cards = cardsRes.data || [];
+    const physicalAssets = physRes.data || [];
+    const excludedEntities = entitiesRes.data || [];
+    const txs = txsRes.data || [];
+    const liabilitiesData = liabsRes.data || [];
+    const futureTxs = futureTxsRes.data || [];
 
     let consolidatedBalance = 0;
     let netWorth = 0;
     let totalAssets = 0;
 
-    (accounts || []).forEach((acc: any) => {
+    accounts.forEach((acc: any) => {
       if (acc.include_in_dashboard === false) return; // Ignores private/registration accounts
 
       const balance = Number(acc.current_balance || 0);
@@ -35,14 +55,8 @@ export const DashboardService = {
       }
     });
 
-    // 2. Credit Cards Summary
-    const { data: cards, error: cardErr } = await sb
-      .from('cards')
-      .select('id, brand, name, limit_total, last4')
-      .eq('user_id', user.id)
-      .eq('is_archived', false);
-
-    const creditCardsSummary = !cardErr && cards ? await Promise.all(cards.map(async (card: any) => {
+    // 2. Credit Cards Summary (using parallel fetches for statements if cards are available)
+    const creditCardsSummary = cards.length > 0 ? await Promise.all(cards.map(async (card: any) => {
       const { data: stmt } = await sb
         .from('card_statements')
         .select('total_amount, paid_amount')
@@ -65,37 +79,16 @@ export const DashboardService = {
       };
     })) : [];
 
-    // 3. Physical Assets
-    const { data: physicalAssets, error: physErr } = await sb
-      .from('physical_assets')
-      .select('estimated_value, category')
-      .eq('user_id', user.id);
-
-    if (!physErr && physicalAssets) {
-      physicalAssets.forEach((asset: any) => {
-        const val = Number(asset.estimated_value || 0);
-        netWorth += val;
-        totalAssets += val;
-      });
-    }
-
-    // Obter perfis desativados para totais
-    const { data: excludedEntities } = await sb
-      .from('entities')
-      .select('name')
-      .eq('user_id', user.id)
-      .eq('include_in_totals', false);
+    // 3. Physical Assets mapping
+    physicalAssets.forEach((asset: any) => {
+      const val = Number(asset.estimated_value || 0);
+      netWorth += val;
+      totalAssets += val;
+    });
 
     const excludedSet = new Set((excludedEntities || []).map((e: any) => e.name));
 
     // 4. Cash Flow & Metrics
-    const { data: txs, error: txsErr } = await sb
-      .from('transactions')
-      .select('date, amount, type, owner_name, metadata')
-      .eq('user_id', user.id)
-      .eq('is_deleted', false)
-      .gte('date', new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString());
- 
     const cashFlow: any[] = [];
     let totalExpenses = 0;
     let lastMonthExpenses = 0;
@@ -103,7 +96,7 @@ export const DashboardService = {
     const currentMonth = now.getUTCMonth();
     const lastMonth = (currentMonth - 1 + 12) % 12;
  
-    if (!txsErr && txs) {
+    if (txs) {
       const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
       const grouped = txs.reduce((acc: any, tx: any) => {
         if (tx.owner_name && excludedSet.has(tx.owner_name)) return acc;
@@ -148,15 +141,10 @@ export const DashboardService = {
     const netWorthGrowth = 0;
 
     // 7. Liabilities (Debts/Passivos)
-    const { data: liabilitiesData, error: liabErr } = await sb
-      .from('liabilities')
-      .select('*')
-      .eq('user_id', user.id);
-
     let totalLiabilities = 0;
     const liabilitiesForProj: any[] = [];
     const realEstateLiabilitiesForProj: any[] = [];
-    if (!liabErr && liabilitiesData) {
+    if (liabilitiesData) {
       liabilitiesData.forEach((liab: any) => {
         totalLiabilities += Number(liab.remaining_balance || 0);
         liabilitiesForProj.push({
@@ -179,14 +167,6 @@ export const DashboardService = {
     }
 
     // 7.5 Projected Cash Flow (Advanced Engine)
-    // Fetch future and recurring transactions
-    const { data: futureTxs } = await sb
-      .from('transactions')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_deleted', false)
-      .or(`date.gte.${new Date().toISOString()},is_recurring.eq.true`);
-
     const filteredFutureTxs = (futureTxs || []).filter((tx: any) => {
       if (tx.owner_name && excludedSet.has(tx.owner_name)) return false;
       if (tx.metadata?.is_historical === true || tx.metadata?.is_historical === 'true') return false;

@@ -424,7 +424,9 @@ const HistoryPage: React.FC = () => {
 
   const fetchData = useCallback(async (isSilent: boolean = false) => {
     const requestId = ++lastRequestId.current;
-    if (!isSilent) setIsLoading(true);
+    if (!isSilent && !localStorage.getItem(`finvision_cached_raw_txs_${supabase.auth.session?.()?.user?.id || ''}`)) {
+      setIsLoading(true);
+    }
     setError(null);
 
     try {
@@ -448,104 +450,260 @@ const HistoryPage: React.FC = () => {
       const sixtyDaysAhead = new Date(todayRaw.getFullYear(), todayRaw.getMonth(), todayRaw.getDate() + 60);
       const futureLimit = sixtyDaysAhead.toISOString().split('T')[0];
 
-      if (navigator.onLine) {
-        const [accRes, catRes, subRes, entitiesRes, entityObjs] = await Promise.all([
-          supabase.from('accounts').select('*').eq('is_archived', false),
-          supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name'),
-          supabase.from('subcategories').select('*').eq('user_id', user.id).order('name'),
-          FinanceService.getEntities(),
-          FinanceService.getEntityObjects()
-        ]);
+      const renderData = (
+        accs: any[],
+        cats: any[],
+        subs: any[],
+        entities: any[],
+        entityObjs: any[],
+        txs: any[],
+        cardTxs: any[]
+      ) => {
+        if (requestId !== lastRequestId.current) return;
 
-        if (accRes.error) throw accRes.error;
-        if (catRes.error) throw catRes.error;
-        if (subRes.error) throw subRes.error;
-
-        accData = accRes.data || [];
-        catData = catRes.data || [];
-        subData = subRes.data || [];
-        dbEntities = entitiesRes || [];
-        entityObjsRes = entityObjs || [];
-
-        // Loop fetch for transactions
-        let allTxs: any[] = [];
-        let hasMoreTxs = true;
-        let txOffset = 0;
-
-        while (hasMoreTxs) {
-          let chunkQuery = supabase.from('transactions')
-            .select('*, attachments:documents!documents_transaction_id_fkey(*)')
-            .eq('user_id', user.id)
-            .eq('is_deleted', false)
-            .range(txOffset, txOffset + 999);
-
-          if (startDate && endDate) {
-            chunkQuery = chunkQuery.or(`and(date.gte.${startDate},date.lte.${endDate}),and(metadata->>is_provision.eq.true,date.gte.${startDate},date.lte.${futureLimit})`);
-          } else {
-            if (startDate) chunkQuery = chunkQuery.gte('date', startDate);
-            if (endDate) chunkQuery = chunkQuery.lte('date', endDate);
-          }
-
-          const { data, error } = await chunkQuery;
-          if (error) {
-            console.error("Erro na query de transactions:", error);
-            throw error;
-          }
-
-          allTxs = [...allTxs, ...(data || [])];
-          if (!data || data.length < 1000) {
-            hasMoreTxs = false;
-          } else {
-            txOffset += 1000;
+        // Map state and deduplicate accounts by institution name
+        const uniqueAccData: any[] = [];
+        const seenAccNames = new Set<string>();
+        for (const a of (accs || [])) {
+          const name = (a.institution || a.name || a.bank_name || 'Conta').trim().toLowerCase();
+          if (!seenAccNames.has(name)) {
+            seenAccNames.add(name);
+            uniqueAccData.push(a);
           }
         }
-        transactionsData = allTxs;
 
-        // Loop fetch for card transactions
-        let allCardTxs: any[] = [];
-        let hasMoreCards = true;
-        let cardOffset = 0;
+        setAccounts(uniqueAccData.map((a: any) => {
+          const institution = a.institution || a.name || a.bank_name || 'Conta';
+          const initialBalance = a.initial_balance !== undefined ? Number(a.initial_balance) : (a.initialBalance !== undefined ? Number(a.initialBalance) : 0);
+          const currentBalance = a.current_balance !== undefined ? Number(a.current_balance) : (a.currentBalance !== undefined ? Number(a.currentBalance) : 0);
+          const limit = a.limit !== undefined ? Number(a.limit) : (a.overdraft_limit !== undefined ? Number(a.overdraft_limit) : (a.limitBalance !== undefined ? Number(a.limitBalance) : 0));
+          const isArchived = a.is_archived !== undefined ? !!a.is_archived : (a.isArchived !== undefined ? !!a.isArchived : false);
+          const includeInDashboard = a.include_in_dashboard !== undefined ? !!a.include_in_dashboard : (a.includeDashboard !== undefined ? !!a.includeDashboard : (a.includeInDashboard !== undefined ? !!a.includeInDashboard : true));
+          
+          return {
+            id: a.id,
+            institution,
+            type: a.type,
+            currency: a.currency || 'BRL',
+            initialBalance,
+            currentBalance,
+            limit,
+            color: a.color || '#3b82f6',
+            isArchived,
+            includeInDashboard,
+            lastSync: a.last_sync || a.lastSync
+          };
+        }).sort((a: any, b: any) => a.institution.localeCompare(b.institution)));
 
-        while (hasMoreCards) {
-          let chunkQuery = supabase.from('card_transactions')
-            .select('id, date, amount, description, card_id, category_id, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)')
-            .eq('user_id', user.id)
-            .range(cardOffset, cardOffset + 999);
+        const deduplicatedOwners = Array.from(new Set((entities || []).map((o: string) => o.trim()))).filter(Boolean);
+        setOwners(deduplicatedOwners.sort((a, b) => a.localeCompare(b)));
 
-          if (startDate) chunkQuery = chunkQuery.gte('date', startDate);
-          if (endDate) chunkQuery = chunkQuery.lte('date', endDate);
-
-          const { data, error } = await chunkQuery;
-          if (error) {
-            console.error("Erro na query de card_transactions:", error);
-            throw error;
+        // Initialize filterOwner on first load if there are excluded profiles
+        if (isFirstLoad.current && filterOwner.length === 0) {
+          const excludedSet = new Set((entityObjs || []).filter((e: any) => e.include_in_totals === false).map((e: any) => e.name));
+          if (excludedSet.size > 0) {
+            const defaultOwners = deduplicatedOwners.filter((name: string) => !excludedSet.has(name));
+            setFilterOwner(defaultOwners);
+            isFirstLoad.current = false;
+            setIsLoading(false);
+            return;
           }
+          isFirstLoad.current = false;
+        }
 
-          allCardTxs = [...allCardTxs, ...(data || [])];
-          if (!data || data.length < 1000) {
-            hasMoreCards = false;
+        const mappedSubcats = (subs || []).map(sub => {
+          const parentCat = (cats || []).find((c: any) => c.id === sub.category_id);
+          return { ...sub, category_name: parentCat?.name || sub.category_name };
+        });
+
+        // Deduplicate subcategories by name and category name
+        const uniqueSubcats: typeof mappedSubcats = [];
+        const seenSubcats = new Set<string>();
+        for (const sub of mappedSubcats) {
+          const key = `${sub.name?.toLowerCase().trim()}::${sub.category_name?.toLowerCase().trim()}`;
+          if (!seenSubcats.has(key)) {
+            seenSubcats.add(key);
+            uniqueSubcats.push(sub);
+          }
+        }
+        setSubcategories(uniqueSubcats);
+
+        const dbCategories = Array.from(new Set((cats || []).map((c: any) => c.name.trim()))).filter(Boolean);
+        const essential = ['Outros', 'Conciliação'];
+        const mergedCategories = Array.from(new Set([...DEFAULT_CATEGORIES, ...dbCategories, ...essential])).sort((a, b) => a.localeCompare(b));
+        setAvailableCategories(mergedCategories);
+
+        const catMap = new Map<string, { name: string, type?: 'INCOME' | 'EXPENSE' }>();
+        DEFAULT_CATEGORIES.forEach((c: string) => catMap.set(c.toLowerCase().trim(), { name: c }));
+        (cats || []).forEach((c: any) => {
+          if (c.name) {
+            catMap.set(c.name.toLowerCase().trim(), { name: c.name.trim(), type: c.type });
+          }
+        });
+        setCategoryObjects(Array.from(catMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
+
+        // In-memory processor
+        const applyTrueAmount = (t: any) => ({
+          ...t,
+          _trueAmount: (t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT' || (t.type === 'TRANSFER' && t.amount > 0)) ? -Math.abs(Number(t.amount || 0)) : Math.abs(Number(t.amount || 0))
+        });
+
+        // Normalize card transactions
+        const normalizedCardTxs = (cardTxs || []).map((ct: any) => ({
+          id: ct.id,
+          date: ct.date,
+          type: 'EXPENSE',
+          amount: Number(ct.amount),
+          category: ct.categories?.name || 'Cartão de Crédito',
+          subcategory: ct.subcategory || undefined,
+          description: ct.description,
+          account_id: ct.cards?.account_id || undefined,
+          account_name: ct.cards?.name || accs.find(a => a.id === ct.cards?.account_id)?.institution || 'Cartão de Crédito',
+          owner_name: ct.owner_name || 'Pessoal',
+          notes: ct.notes || '',
+          tags: ct.tags || [],
+          is_paid: true,
+          paid_amount: Number(ct.amount),
+          is_amortization: false,
+          is_installment: ct.is_installment,
+          installment_number: ct.installment_number,
+          installment_total: ct.installment_total,
+          installment_group_id: ct.installment_group_id,
+          is_recurring: ct.is_recurring,
+          recurrence_period: ct.recurrence_period,
+          recurrence_group_id: ct.recurrence_group_id,
+          metadata: {
+            is_card: true,
+            card_id: ct.card_id,
+            installment_number: ct.installment_number,
+            installment_total: ct.installment_total,
+            installment_group_id: ct.installment_group_id,
+            recurrence_group_id: ct.recurrence_group_id
+          }
+        }));
+
+        // Combined transactions for charts and table
+        let combined = [...(txs || []), ...normalizedCardTxs].map(applyTrueAmount);
+
+        // Apply JS Filters
+        if (filterType !== 'ALL') {
+          combined = combined.filter((t: any) => t.type === filterType);
+        }
+        if (filterAccount.length > 0) {
+          combined = combined.filter((t: any) => filterAccount.includes(t.account_id));
+        }
+        if (filterCategory.length > 0) {
+          combined = combined.filter((t: any) => filterCategory.includes(t.category));
+        }
+        if (filterSubcategory.length > 0) {
+          combined = combined.filter((t: any) => filterSubcategory.includes(t.subcategory));
+        }
+        if (filterOwner.length > 0) {
+          combined = combined.filter((t: any) => filterOwner.includes(t.owner_name));
+        }
+        if (minPrice !== '') {
+          combined = combined.filter((t: any) => t._trueAmount >= Number(minPrice));
+        }
+        if (maxPrice !== '') {
+          combined = combined.filter((t: any) => t._trueAmount <= Number(maxPrice));
+        }
+        if (debouncedSearch) {
+          const searchNormalized = normalize(debouncedSearch);
+          combined = combined.filter((t: any) => 
+            normalize(t.description || '').includes(searchNormalized) ||
+            normalize(t.category || '').includes(searchNormalized) ||
+            normalize(t.subcategory || '').includes(searchNormalized) ||
+            normalize(t.account_name || '').includes(searchNormalized) ||
+            normalize(t.owner_name || '').includes(searchNormalized) ||
+            normalize(t.notes || '').includes(searchNormalized) ||
+            (t.tags || []).some((tag: string) => normalize(tag).includes(searchNormalized))
+          );
+        }
+
+        // Sort combined
+        combined.sort((a: any, b: any) => {
+          let valA = a[sortField];
+          let valB = b[sortField];
+          
+          if (sortField === 'amount') {
+            valA = a._trueAmount;
+            valB = b._trueAmount;
+          }
+          
+          if (typeof valA === 'string') {
+            const cmp = valA.localeCompare(valB || '');
+            return sortDirection === 'asc' ? cmp : -cmp;
           } else {
-            cardOffset += 1000;
+            const numA = Number(valA || 0);
+            const numB = Number(valB || 0);
+            if (numA === numB) {
+              return new Date(b.date).getTime() - new Date(a.date).getTime();
+            }
+            return sortDirection === 'asc' ? numA - numB : numB - numA;
           }
-        }
-        cardTxsData = allCardTxs;
+        });
 
+        // Update state for chartTransactions (filtered but not paginated)
+        setChartTransactions(combined.map((t: any) => ({
+          id: t.id,
+          description: t.description || '',
+          amount: Number(t.amount || 0),
+          date: t.date,
+          type: t.type as TransactionType,
+          accountId: t.account_id,
+          accountName: t.account_name ?? '',
+          category: t.category ?? 'Outros',
+          subcategory: t.subcategory ?? undefined,
+          owner_name: t.owner_name ?? 'Pessoal',
+          notes: t.notes ?? '',
+          tags: t.tags ?? [],
+          isDeleted: !!t.is_deleted,
+          isReconciled: !!t.is_reconciled,
+          isPaid: !!t.is_paid,
+          paidAmount: Number(t.paid_amount || 0),
+          is_amortization: !!t.is_amortization,
+          metadata: detectLegacySeries(t)
+        })));
 
-        // Save to cache safely
-        try {
-          localStorage.setItem('finvision_cached_accounts', JSON.stringify(accData));
-          localStorage.setItem('finvision_cached_categories', JSON.stringify(catData));
-          localStorage.setItem('finvision_cached_subcategories', JSON.stringify(subData));
-          localStorage.setItem('finvision_cached_owners', JSON.stringify(dbEntities));
-          localStorage.setItem('finvision_cached_owners_objs', JSON.stringify(entityObjsRes));
-          localStorage.setItem(`finvision_cached_raw_txs_${user.id}`, JSON.stringify(transactionsData));
-          localStorage.setItem(`finvision_cached_raw_card_txs_${user.id}`, JSON.stringify(cardTxsData));
-        } catch (cacheErr) {
-          console.warn("Falha ao salvar cache no localStorage:", cacheErr);
-        }
-      } else {
-        // Retrieve from cache
-        try {
+        // Paginate table transactions
+        const paginated = combined.slice(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
+        
+        setTotalCount(combined.length);
+        setHasMore(combined.length > (page + 1) * PAGE_SIZE);
+
+        setTransactions(paginated.map((t: any) => {
+          const isIncomplete = !t.description || !t.account_name || !t.category || !t.owner_name;
+          return {
+            id: t.id,
+            description: t.description ?? 'Sem descrição',
+            amount: Number(t.amount || 0),
+            date: t.date,
+            type: t.type as TransactionType,
+            accountId: t.account_id,
+            accountName: t.account_name ?? 'Conta antiga',
+            category: t.category ?? 'Outros',
+            subcategory: t.subcategory ?? undefined,
+            owner_name: t.owner_name ?? 'Pessoal',
+            notes: t.notes ?? '',
+            tags: t.tags ?? [],
+            isDeleted: t.is_deleted,
+            isReconciled: t.is_reconciled,
+            isPaid: t.is_paid ?? false,
+            paidAmount: Number(t.paid_amount ?? 0),
+            paidAt: t.paid_at ?? undefined,
+            parentId: t.parent_id ?? null,
+            is_incomplete: isIncomplete,
+            attachments: t.attachments || [],
+            metadata: detectLegacySeries(t)
+          };
+        }));
+      };
+
+      // 1. Tentar ler do cache local primeiro para carregar instantaneamente
+      let hasCache = false;
+      try {
+        const cachedRawTxs = localStorage.getItem(`finvision_cached_raw_txs_${user.id}`);
+        if (cachedRawTxs) {
           accData = JSON.parse(
             localStorage.getItem('finvision_cached_accounts') ||
             localStorage.getItem('finvision_cached_accounts_full') ||
@@ -571,251 +729,122 @@ const HistoryPage: React.FC = () => {
             localStorage.getItem('finvision_cached_owners_objs') ||
             '[]'
           );
-          transactionsData = JSON.parse(localStorage.getItem(`finvision_cached_raw_txs_${user.id}`) || '[]');
+          transactionsData = JSON.parse(cachedRawTxs);
           cardTxsData = JSON.parse(localStorage.getItem(`finvision_cached_raw_card_txs_${user.id}`) || '[]');
-        } catch (e) {
-          console.error("Error reading history cache:", e);
+          hasCache = true;
         }
+      } catch (cacheErr) {
+        console.warn("History: Falha ao ler cache inicial", cacheErr);
       }
 
-      if (requestId !== lastRequestId.current) return;
-
-      // Map state and deduplicate accounts by institution name
-      const uniqueAccData: any[] = [];
-      const seenAccNames = new Set<string>();
-      for (const a of (accData || [])) {
-        const name = (a.institution || a.name || a.bank_name || 'Conta').trim().toLowerCase();
-        if (!seenAccNames.has(name)) {
-          seenAccNames.add(name);
-          uniqueAccData.push(a);
-        }
+      if (hasCache) {
+        renderData(accData, catData, subData, dbEntities, entityObjsRes, transactionsData, cardTxsData);
+        setIsLoading(false);
+      } else if (!isSilent) {
+        setIsLoading(true);
       }
 
-      setAccounts(uniqueAccData.map((a: any) => {
-        const institution = a.institution || a.name || a.bank_name || 'Conta';
-        const initialBalance = a.initial_balance !== undefined ? Number(a.initial_balance) : (a.initialBalance !== undefined ? Number(a.initialBalance) : 0);
-        const currentBalance = a.current_balance !== undefined ? Number(a.current_balance) : (a.currentBalance !== undefined ? Number(a.currentBalance) : 0);
-        const limit = a.limit !== undefined ? Number(a.limit) : (a.overdraft_limit !== undefined ? Number(a.overdraft_limit) : (a.limitBalance !== undefined ? Number(a.limitBalance) : 0));
-        const isArchived = a.is_archived !== undefined ? !!a.is_archived : (a.isArchived !== undefined ? !!a.isArchived : false);
-        const includeInDashboard = a.include_in_dashboard !== undefined ? !!a.include_in_dashboard : (a.includeDashboard !== undefined ? !!a.includeDashboard : (a.includeInDashboard !== undefined ? !!a.includeInDashboard : true));
-        
-        return {
-          id: a.id,
-          institution,
-          type: a.type,
-          currency: a.currency || 'BRL',
-          initialBalance,
-          currentBalance,
-          limit,
-          color: a.color || '#3b82f6',
-          isArchived,
-          includeInDashboard,
-          lastSync: a.last_sync || a.lastSync
-        };
-      }).sort((a: any, b: any) => a.institution.localeCompare(b.institution)));
-
-      const deduplicatedOwners = Array.from(new Set((dbEntities || []).map((o: string) => o.trim()))).filter(Boolean);
-      setOwners(deduplicatedOwners.sort((a, b) => a.localeCompare(b)));
-
-      // Initialize filterOwner on first load if there are excluded profiles
-      if (isFirstLoad.current && filterOwner.length === 0) {
-        const excludedSet = new Set((entityObjsRes || []).filter((e: any) => e.include_in_totals === false).map((e: any) => e.name));
-        if (excludedSet.size > 0) {
-          const defaultOwners = deduplicatedOwners.filter((name: string) => !excludedSet.has(name));
-          setFilterOwner(defaultOwners);
-          isFirstLoad.current = false;
-          setIsLoading(false);
-          return;
-        }
-        isFirstLoad.current = false;
+      // Se estiver offline, finaliza de forma segura com os dados locais
+      if (!navigator.onLine) {
+        return;
       }
 
-      const mappedSubcats = (subData || []).map(sub => {
-        const parentCat = (catData || []).find((c: any) => c.id === sub.category_id);
-        return { ...sub, category_name: parentCat?.name || sub.category_name };
-      });
+      // 2. Busca online atualizada em segundo plano (silent refresh)
+      const [accRes, catRes, subRes, entitiesRes, entityObjs] = await Promise.all([
+        supabase.from('accounts').select('*').eq('is_archived', false),
+        supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name'),
+        supabase.from('subcategories').select('*').eq('user_id', user.id).order('name'),
+        FinanceService.getEntities(),
+        FinanceService.getEntityObjects()
+      ]);
 
-      // Deduplicate subcategories by name and category name
-      const uniqueSubcats: typeof mappedSubcats = [];
-      const seenSubcats = new Set<string>();
-      for (const sub of mappedSubcats) {
-        const key = `${sub.name?.toLowerCase().trim()}::${sub.category_name?.toLowerCase().trim()}`;
-        if (!seenSubcats.has(key)) {
-          seenSubcats.add(key);
-          uniqueSubcats.push(sub);
-        }
-      }
-      setSubcategories(uniqueSubcats);
+      if (accRes.error) throw accRes.error;
+      if (catRes.error) throw catRes.error;
+      if (subRes.error) throw subRes.error;
 
-      const dbCategories = Array.from(new Set((catData || []).map((c: any) => c.name.trim()))).filter(Boolean);
-      const essential = ['Outros', 'Conciliação'];
-      const mergedCategories = Array.from(new Set([...DEFAULT_CATEGORIES, ...dbCategories, ...essential])).sort((a, b) => a.localeCompare(b));
-      setAvailableCategories(mergedCategories);
+      accData = accRes.data || [];
+      catData = catRes.data || [];
+      subData = subRes.data || [];
+      dbEntities = entitiesRes || [];
+      entityObjsRes = entityObjs || [];
 
-      const catMap = new Map<string, { name: string, type?: 'INCOME' | 'EXPENSE' }>();
-      DEFAULT_CATEGORIES.forEach((c: string) => catMap.set(c.toLowerCase().trim(), { name: c }));
-      (catData || []).forEach((c: any) => {
-        if (c.name) {
-          catMap.set(c.name.toLowerCase().trim(), { name: c.name.trim(), type: c.type });
-        }
-      });
-      setCategoryObjects(Array.from(catMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
+      // Loop fetch de transações em blocos de 1000
+      let allTxs: any[] = [];
+      let hasMoreTxs = true;
+      let txOffset = 0;
 
-      // In-memory processor
-      const applyTrueAmount = (t: any) => ({
-        ...t,
-        _trueAmount: (t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT' || (t.type === 'TRANSFER' && t.amount > 0)) ? -Math.abs(Number(t.amount || 0)) : Math.abs(Number(t.amount || 0))
-      });
+      while (hasMoreTxs) {
+        let chunkQuery = supabase.from('transactions')
+          .select('*, attachments:documents!documents_transaction_id_fkey(*)')
+          .eq('user_id', user.id)
+          .eq('is_deleted', false)
+          .range(txOffset, txOffset + 999);
 
-      // Normalize card transactions
-      const normalizedCardTxs = (cardTxsData || []).map((ct: any) => ({
-        id: ct.id,
-        date: ct.date,
-        type: 'EXPENSE',
-        amount: Number(ct.amount),
-        category: ct.categories?.name || 'Cartão de Crédito',
-        subcategory: ct.subcategory || undefined,
-        description: ct.description,
-        account_id: ct.cards?.account_id || undefined,
-        account_name: ct.cards?.name || accounts.find(a => a.id === ct.cards?.account_id)?.institution || 'Cartão de Crédito',
-        owner_name: ct.owner_name || 'Pessoal',
-        notes: ct.notes || '',
-        tags: ct.tags || [],
-        is_paid: true,
-        paid_amount: Number(ct.amount),
-        is_amortization: false,
-        is_installment: ct.is_installment,
-        installment_number: ct.installment_number,
-        installment_total: ct.installment_total,
-        installment_group_id: ct.installment_group_id,
-        is_recurring: ct.is_recurring,
-        recurrence_period: ct.recurrence_period,
-        recurrence_group_id: ct.recurrence_group_id,
-        metadata: {
-          is_card: true,
-          card_id: ct.card_id,
-          installment_number: ct.installment_number,
-          installment_total: ct.installment_total,
-          installment_group_id: ct.installment_group_id,
-          recurrence_group_id: ct.recurrence_group_id
-        }
-      }));
-
-      // Combined transactions for charts and table
-      let combined = [...(transactionsData || []), ...normalizedCardTxs].map(applyTrueAmount);
-
-      // Apply JS Filters
-      if (filterType !== 'ALL') {
-        combined = combined.filter((t: any) => t.type === filterType);
-      }
-      if (filterAccount.length > 0) {
-        combined = combined.filter((t: any) => filterAccount.includes(t.account_id));
-      }
-      if (filterCategory.length > 0) {
-        combined = combined.filter((t: any) => filterCategory.includes(t.category));
-      }
-      if (filterSubcategory.length > 0) {
-        combined = combined.filter((t: any) => filterSubcategory.includes(t.subcategory));
-      }
-      if (filterOwner.length > 0) {
-        combined = combined.filter((t: any) => filterOwner.includes(t.owner_name));
-      }
-      if (minPrice !== '') {
-        combined = combined.filter((t: any) => t._trueAmount >= Number(minPrice));
-      }
-      if (maxPrice !== '') {
-        combined = combined.filter((t: any) => t._trueAmount <= Number(maxPrice));
-      }
-      if (debouncedSearch) {
-        const searchNormalized = normalize(debouncedSearch);
-        combined = combined.filter((t: any) => 
-          normalize(t.description || '').includes(searchNormalized) ||
-          normalize(t.category || '').includes(searchNormalized) ||
-          normalize(t.subcategory || '').includes(searchNormalized) ||
-          normalize(t.account_name || '').includes(searchNormalized) ||
-          normalize(t.owner_name || '').includes(searchNormalized) ||
-          normalize(t.notes || '').includes(searchNormalized) ||
-          (t.tags || []).some((tag: string) => normalize(tag).includes(searchNormalized))
-        );
-      }
-
-      // Sort combined
-      combined.sort((a: any, b: any) => {
-        let valA = a[sortField];
-        let valB = b[sortField];
-        
-        if (sortField === 'amount') {
-          valA = a._trueAmount;
-          valB = b._trueAmount;
-        }
-        
-        if (typeof valA === 'string') {
-          const cmp = valA.localeCompare(valB || '');
-          return sortDirection === 'asc' ? cmp : -cmp;
+        if (startDate && endDate) {
+          chunkQuery = chunkQuery.or(`and(date.gte.${startDate},date.lte.${endDate}),and(metadata->>is_provision.eq.true,date.gte.${startDate},date.lte.${futureLimit})`);
         } else {
-          const numA = Number(valA || 0);
-          const numB = Number(valB || 0);
-          if (numA === numB) {
-            return new Date(b.date).getTime() - new Date(a.date).getTime();
-          }
-          return sortDirection === 'asc' ? numA - numB : numB - numA;
+          if (startDate) chunkQuery = chunkQuery.gte('date', startDate);
+          if (endDate) chunkQuery = chunkQuery.lte('date', endDate);
         }
-      });
 
-      // Update state for chartTransactions (filtered but not paginated)
-      setChartTransactions(combined.map((t: any) => ({
-        id: t.id,
-        description: t.description || '',
-        amount: Number(t.amount || 0),
-        date: t.date,
-        type: t.type as TransactionType,
-        accountId: t.account_id,
-        accountName: t.account_name ?? '',
-        category: t.category ?? 'Outros',
-        subcategory: t.subcategory ?? undefined,
-        owner_name: t.owner_name ?? 'Pessoal',
-        notes: t.notes ?? '',
-        tags: t.tags ?? [],
-        isDeleted: !!t.is_deleted,
-        isReconciled: !!t.is_reconciled,
-        isPaid: !!t.is_paid,
-        paidAmount: Number(t.paid_amount || 0),
-        is_amortization: !!t.is_amortization,
-        metadata: detectLegacySeries(t)
-      })));
+        const { data, error } = await chunkQuery;
+        if (error) {
+          console.error("Erro na query de transactions:", error);
+          throw error;
+        }
 
-      // Paginate table transactions
-      const paginated = combined.slice(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
-      
-      setTotalCount(combined.length);
-      setHasMore(combined.length > (page + 1) * PAGE_SIZE);
+        allTxs = [...allTxs, ...(data || [])];
+        if (!data || data.length < 1000) {
+          hasMoreTxs = false;
+        } else {
+          txOffset += 1000;
+        }
+      }
+      transactionsData = allTxs;
 
-      setTransactions(paginated.map((t: any) => {
-        const isIncomplete = !t.description || !t.account_name || !t.category || !t.owner_name;
-        return {
-          id: t.id,
-          description: t.description ?? 'Sem descrição',
-          amount: Number(t.amount || 0),
-          date: t.date,
-          type: t.type as TransactionType,
-          accountId: t.account_id,
-          accountName: t.account_name ?? 'Conta antiga',
-          category: t.category ?? 'Outros',
-          subcategory: t.subcategory ?? undefined,
-          owner_name: t.owner_name ?? 'Pessoal',
-          notes: t.notes ?? '',
-          tags: t.tags ?? [],
-          isDeleted: t.is_deleted,
-          isReconciled: t.is_reconciled,
-          isPaid: t.is_paid ?? false,
-          paidAmount: Number(t.paid_amount ?? 0),
-          paidAt: t.paid_at ?? undefined,
-          parentId: t.parent_id ?? null,
-          is_incomplete: isIncomplete,
-          attachments: t.attachments || [],
-          metadata: detectLegacySeries(t)
-        };
-      }));
+      // Loop fetch de transações de cartão em blocos de 1000
+      let allCardTxs: any[] = [];
+      let hasMoreCards = true;
+      let cardOffset = 0;
+
+      while (hasMoreCards) {
+        let chunkQuery = supabase.from('card_transactions')
+          .select('id, date, amount, description, card_id, category_id, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)')
+          .eq('user_id', user.id)
+          .range(cardOffset, cardOffset + 999);
+
+        if (startDate) chunkQuery = chunkQuery.gte('date', startDate);
+        if (endDate) chunkQuery = chunkQuery.lte('date', endDate);
+
+        const { data, error } = await chunkQuery;
+        if (error) {
+          console.error("Erro na query de card_transactions:", error);
+          throw error;
+        }
+
+        allCardTxs = [...allCardTxs, ...(data || [])];
+        if (!data || data.length < 1000) {
+          hasMoreCards = false;
+        } else {
+          cardOffset += 1000;
+        }
+      }
+      cardTxsData = allCardTxs;
+
+      // Salvar caches atualizados de forma segura
+      try {
+        localStorage.setItem('finvision_cached_accounts', JSON.stringify(accData));
+        localStorage.setItem('finvision_cached_categories', JSON.stringify(catData));
+        localStorage.setItem('finvision_cached_subcategories', JSON.stringify(subData));
+        localStorage.setItem('finvision_cached_owners', JSON.stringify(dbEntities));
+        localStorage.setItem('finvision_cached_owners_objs', JSON.stringify(entityObjsRes));
+        localStorage.setItem(`finvision_cached_raw_txs_${user.id}`, JSON.stringify(transactionsData));
+        localStorage.setItem(`finvision_cached_raw_card_txs_${user.id}`, JSON.stringify(cardTxsData));
+      } catch (cacheErr) {
+        console.warn("Falha ao salvar cache no localStorage:", cacheErr);
+      }
+
+      renderData(accData, catData, subData, dbEntities, entityObjsRes, transactionsData, cardTxsData);
     } catch (err) {
       console.error(err);
       setError('Erro ao carregar dados.');
