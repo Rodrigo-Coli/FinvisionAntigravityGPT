@@ -8,21 +8,33 @@ const GOAL_COLORS = [
 ];
 
 const Goals: React.FC<{ user: any }> = ({ user }) => {
-    const [goals, setGoals] = useState<Goal[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [goals, setGoals] = useState<Goal[]>(() => {
+        const cached = localStorage.getItem('finvision_cached_goals');
+        return cached ? JSON.parse(cached) : [];
+    });
+    const [isLoading, setIsLoading] = useState(() => {
+        const cached = localStorage.getItem('finvision_cached_goals');
+        return !cached;
+    });
     const [showModal, setShowModal] = useState(false);
     const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
-    const [avgMonthlySavings, setAvgMonthlySavings] = useState(0);
+    const [avgMonthlySavings, setAvgMonthlySavings] = useState(() => {
+        const cached = localStorage.getItem('finvision_cached_avg_monthly_savings');
+        return cached ? Number(cached) : 0;
+    });
     const [formData, setFormData] = useState({
         name: '', description: '', targetAmount: '', currentAmount: '', color: '#6366f1', deadline: ''
     });
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => {
+        const cached = localStorage.getItem('finvision_cached_goals');
+        fetchData(!!cached);
+    }, []);
 
-    const fetchData = async () => {
+    const fetchData = async (silent = false) => {
         const sb = supabase;
         if (!sb) return;
-        setIsLoading(true);
+        if (!silent) setIsLoading(true);
         try {
             const { data: { user: u } } = await sb.auth.getUser();
             if (!u) return;
@@ -30,10 +42,12 @@ const Goals: React.FC<{ user: any }> = ({ user }) => {
             // Fetch goals
             const { data: goalsData } = await sb.from('goals').select('*').eq('user_id', u.id).order('created_at', { ascending: false });
             if (goalsData) {
-                setGoals(goalsData.map((g: any) => ({
+                const mappedGoals = goalsData.map((g: any) => ({
                     id: g.id, name: g.name, description: g.description, targetAmount: Number(g.target_amount),
                     currentAmount: Number(g.current_amount), color: g.color, deadline: g.deadline, isCompleted: g.is_completed
-                })));
+                }));
+                setGoals(mappedGoals);
+                localStorage.setItem('finvision_cached_goals', JSON.stringify(mappedGoals));
             }
 
             // Calc avg monthly savings from last 3 months
@@ -47,7 +61,9 @@ const Goals: React.FC<{ user: any }> = ({ user }) => {
                     if (t.type === 'INCOME') income += Number(t.amount);
                     else if (t.type === 'EXPENSE') expense += Number(t.amount);
                 });
-                setAvgMonthlySavings(Math.max(0, Math.round((income - expense) / 3)));
+                const monthlyAvg = Math.max(0, Math.round((income - expense) / 3));
+                setAvgMonthlySavings(monthlyAvg);
+                localStorage.setItem('finvision_cached_avg_monthly_savings', String(monthlyAvg));
             }
         } finally { setIsLoading(false); }
     };

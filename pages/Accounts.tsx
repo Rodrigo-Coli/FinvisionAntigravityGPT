@@ -88,8 +88,14 @@ const COLORS = [
 ];
 
 const Accounts: React.FC = () => {
-  const [accounts, setAccounts] = useState<BankAccount[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [accounts, setAccounts] = useState<BankAccount[]>(() => {
+    const cached = localStorage.getItem('finvision_cached_accounts_full');
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const cached = localStorage.getItem('finvision_cached_accounts_full');
+    return !cached;
+  });
   const [showModal, setShowModal] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -123,7 +129,8 @@ const Accounts: React.FC = () => {
   const [filterDashboard, setFilterDashboard] = useState<string>('ALL');
 
   useEffect(() => {
-    fetchAccounts();
+    const cached = localStorage.getItem('finvision_cached_accounts_full');
+    fetchAccounts(!!cached);
     
     // Check for auto-open state from navigation
     const state = window.history.state?.usr;
@@ -136,7 +143,7 @@ const Accounts: React.FC = () => {
     }
 
     const handleSyncCompleted = () => {
-      fetchAccounts();
+      fetchAccounts(true);
     };
     window.addEventListener('offline-sync-completed', handleSyncCompleted);
     return () => {
@@ -144,8 +151,8 @@ const Accounts: React.FC = () => {
     };
   }, []);
 
-  const fetchAccounts = async () => {
-    setLoading(true);
+  const fetchAccounts = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       if (navigator.onLine) {
         if (!isSupabaseConfigured || !supabase) {

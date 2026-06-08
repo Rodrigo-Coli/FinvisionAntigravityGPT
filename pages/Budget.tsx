@@ -12,23 +12,39 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const BudgetPage: React.FC<{ user: any }> = ({ user }) => {
-    const [budgets, setBudgets] = useState<Budget[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [budgets, setBudgets] = useState<Budget[]>(() => {
+        const cached = localStorage.getItem('finvision_cached_budgets');
+        return cached ? JSON.parse(cached) : [];
+    });
+    const [isLoading, setIsLoading] = useState(() => {
+        const cached = localStorage.getItem('finvision_cached_budgets');
+        return !cached;
+    });
     const [showModal, setShowModal] = useState(false);
     const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
-    const [totalMonthly, setTotalMonthly] = useState(0);
+    const [totalMonthly, setTotalMonthly] = useState(() => {
+        const cached = localStorage.getItem('finvision_cached_budget_spending');
+        if (cached) {
+            const parsed = JSON.parse(cached);
+            return parsed.totalMonthly || 0;
+        }
+        return 0;
+    });
     const [formData, setFormData] = useState({ category: '', monthlyLimit: '', color: '#6366f1' });
     const [currentMonth] = useState(() => {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => {
+        const cached = localStorage.getItem('finvision_cached_budgets');
+        fetchData(!!cached);
+    }, []);
 
-    const fetchData = async () => {
+    const fetchData = async (silent = false) => {
         const sb = supabase;
         if (!sb) return;
-        setIsLoading(true);
+        if (!silent) setIsLoading(true);
         try {
             const { data: { user: u } } = await sb.auth.getUser();
             if (!u) return;
@@ -56,14 +72,17 @@ const BudgetPage: React.FC<{ user: any }> = ({ user }) => {
                 monthTotal += Number(t.amount);
             });
             setTotalMonthly(monthTotal);
+            localStorage.setItem('finvision_cached_budget_spending', JSON.stringify({ totalMonthly: monthTotal, spendingByCategory }));
 
             // Merge budget with spending
             if (budgetsData) {
-                setBudgets(budgetsData.map((b: any) => ({
+                const mappedBudgets = budgetsData.map((b: any) => ({
                     id: b.id, category: b.category, monthlyLimit: Number(b.monthly_limit),
                     color: b.color, isActive: b.is_active,
                     currentMonthSpent: spendingByCategory[b.category] || 0
-                })));
+                }));
+                setBudgets(mappedBudgets);
+                localStorage.setItem('finvision_cached_budgets', JSON.stringify(mappedBudgets));
             }
         } finally { setIsLoading(false); }
     };

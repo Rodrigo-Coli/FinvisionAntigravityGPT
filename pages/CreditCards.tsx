@@ -74,14 +74,28 @@ type Account = {
 const CreditCardsPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [cards, setCards] = useState<any[]>([]);
-  const [selectedCard, setSelectedCard] = useState<any | null>(null);
+  
+  const [cards, setCards] = useState<any[]>(() => {
+    const cached = localStorage.getItem('finvision_cached_cards');
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [selectedCard, setSelectedCard] = useState<any | null>(() => {
+    const cached = localStorage.getItem('finvision_cached_cards');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      return parsed.length > 0 ? parsed[0] : null;
+    }
+    return null;
+  });
   const [statements, setStatements] = useState<any[]>([]);
   const [selectedStatementId, setSelectedStatementId] = useState<string | 'ALL'>('CURRENT');
   const [transactions, setTransactions] = useState<any[]>([]);
   const [currentStatement, setCurrentStatement] = useState<any | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    const cached = localStorage.getItem('finvision_cached_cards');
+    return !cached;
+  });
   const [loadingTxs, setLoadingTxs] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
 
@@ -91,7 +105,11 @@ const CreditCardsPage: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
 
   // categories + inline edit + manual tx modal
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>(() => {
+    const cached = localStorage.getItem('finvision_cached_categories_cc') ||
+                   localStorage.getItem('finvision_cached_categories');
+    return cached ? JSON.parse(cached) : [];
+  });
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
 
   const [showAddTxModal, setShowAddTxModal] = useState(false);
@@ -100,7 +118,11 @@ const CreditCardsPage: React.FC = () => {
   const [txAmount, setTxAmount] = useState<number | string>('');
   const [txCategoryId, setTxCategoryId] = useState<string>('');
   const [txSubcategory, setTxSubcategory] = useState<string>('');
-  const [subcategories, setSubcategories] = useState<{ id: string, name: string, category_name?: string }[]>([]);
+  const [subcategories, setSubcategories] = useState<{ id: string, name: string, category_name?: string }[]>(() => {
+    const cached = localStorage.getItem('finvision_cached_subcategories_cc') ||
+                   localStorage.getItem('finvision_cached_subcategories');
+    return cached ? JSON.parse(cached) : [];
+  });
   const [txCardId, setTxCardId] = useState<string>('');
   const [txNotes, setTxNotes] = useState('');
   const [txTags, setTxTags] = useState<string[]>([]);
@@ -114,9 +136,23 @@ const CreditCardsPage: React.FC = () => {
   const [txFiles, setTxFiles] = useState<File[]>([]);
 
   // PAY STATEMENT
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>(() => {
+    const cached = localStorage.getItem('finvision_cached_accounts_cc') ||
+                   localStorage.getItem('finvision_cached_accounts') ||
+                   localStorage.getItem('finvision_cached_accounts_full');
+    return cached ? JSON.parse(cached) : [];
+  });
   const [showPayModal, setShowPayModal] = useState(false);
-  const [payAccountId, setPayAccountId] = useState<string>('');
+  const [payAccountId, setPayAccountId] = useState<string>(() => {
+    const cached = localStorage.getItem('finvision_cached_accounts_cc') ||
+                   localStorage.getItem('finvision_cached_accounts') ||
+                   localStorage.getItem('finvision_cached_accounts_full');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      return parsed.length > 0 ? parsed[0].id : '';
+    }
+    return '';
+  });
   const [payDate, setPayDate] = useState<string>(() => DateUtils.formatToISODate());
   const [payAmount, setPayAmount] = useState<number | string>('');
   const [isPaying, setIsPaying] = useState(false);
@@ -136,7 +172,11 @@ const CreditCardsPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [defaultOwner, setDefaultOwner] = useState('Pessoal');
-  const [owners, setOwners] = useState<string[]>([]);
+  const [owners, setOwners] = useState<string[]>(() => {
+    const cached = localStorage.getItem('finvision_cached_owners_cc') ||
+                   localStorage.getItem('finvision_cached_owners');
+    return cached ? JSON.parse(cached) : ['Pessoal'];
+  });
 
   // Series Scope Modal State
   const [seriesModal, setSeriesModal] = useState<{
@@ -149,8 +189,9 @@ const CreditCardsPage: React.FC = () => {
   const isAnyModalBusy = isSaving || isPaying;
 
   useEffect(() => {
+    const hasCache = !!localStorage.getItem('finvision_cached_cards');
     if (isSupabaseConfigured) {
-      fetchCards();
+      fetchCards(hasCache);
       fetchCategories();
       fetchSubcategories();
       fetchAccounts();
@@ -159,21 +200,24 @@ const CreditCardsPage: React.FC = () => {
 
     const handleSyncCompleted = () => {
       if (isSupabaseConfigured) {
-        fetchCards();
+        fetchCards(true);
         fetchCategories();
         fetchSubcategories();
         fetchAccounts();
         fetchOwners();
-        if (selectedCard?.id) {
-          loadCardContext(selectedCard.id);
-        }
+        setSelectedCard((prev: any) => {
+          if (prev?.id) {
+            loadCardContext(prev.id);
+          }
+          return prev;
+        });
       }
     };
     window.addEventListener('offline-sync-completed', handleSyncCompleted);
     return () => {
       window.removeEventListener('offline-sync-completed', handleSyncCompleted);
     };
-  }, [selectedCard?.id]);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -224,9 +268,9 @@ const CreditCardsPage: React.FC = () => {
   // A fatura está pendente se o total calculado for maior que o já pago
   const statementOpen = Math.round(Math.max(0, statementTotal - statementPaid) * 100) / 100;
 
-  const fetchCards = async () => {
+  const fetchCards = async (silent = false) => {
     if (!supabase) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       if (navigator.onLine) {
         const { data: { user } } = await supabase.auth.getUser();
@@ -242,16 +286,16 @@ const CreditCardsPage: React.FC = () => {
         setCards(activeCards);
         localStorage.setItem('finvision_cached_cards', JSON.stringify(activeCards));
 
-        if (activeCards.length > 0 && !selectedCard) {
-          setSelectedCard(activeCards[0]);
+        if (activeCards.length > 0) {
+          setSelectedCard((prev: any) => prev || activeCards[0]);
         }
       } else {
         const cached = localStorage.getItem('finvision_cached_cards');
         if (cached) {
           const parsed = JSON.parse(cached);
           setCards(parsed);
-          if (parsed.length > 0 && !selectedCard) {
-            setSelectedCard(parsed[0]);
+          if (parsed.length > 0) {
+            setSelectedCard((prev: any) => prev || parsed[0]);
           }
         }
       }
@@ -261,8 +305,8 @@ const CreditCardsPage: React.FC = () => {
       if (cached) {
         const parsed = JSON.parse(cached);
         setCards(parsed);
-        if (parsed.length > 0 && !selectedCard) {
-          setSelectedCard(parsed[0]);
+        if (parsed.length > 0) {
+          setSelectedCard((prev: any) => prev || parsed[0]);
         }
       }
     } finally {
@@ -640,64 +684,66 @@ const CreditCardsPage: React.FC = () => {
   };
 
   const fetchStatements = async (cardId: string) => {
-    if (!supabase) return [];
+    const cached = localStorage.getItem(`finvision_cached_statements_${cardId}`);
+    const cachedData = cached ? JSON.parse(cached) : [];
+    if (cachedData.length > 0) {
+      setStatements(cachedData);
+    }
+
+    if (!supabase || !navigator.onLine) return cachedData;
     try {
-      if (navigator.onLine) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return [];
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return cachedData;
 
-        const { data, error } = await supabase
-          .from('card_statements')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('card_id', cardId)
-          .order('due_date', { ascending: false });
+      const { data, error } = await supabase
+        .from('card_statements')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('card_id', cardId)
+        .order('due_date', { ascending: false });
 
-        if (error) throw error;
-        localStorage.setItem(`finvision_cached_statements_${cardId}`, JSON.stringify(data || []));
-        return data || [];
-      } else {
-        const cached = localStorage.getItem(`finvision_cached_statements_${cardId}`);
-        return cached ? JSON.parse(cached) : [];
-      }
+      if (error) throw error;
+      localStorage.setItem(`finvision_cached_statements_${cardId}`, JSON.stringify(data || []));
+      setStatements(data || []);
+      return data || [];
     } catch (err) {
       console.error('Erro ao buscar faturas, fallback cache:', err);
-      const cached = localStorage.getItem(`finvision_cached_statements_${cardId}`);
-      return cached ? JSON.parse(cached) : [];
+      return cachedData;
     }
   };
 
   const fetchTransactions = async (cardId: string, statementId?: string | null) => {
-    if (!supabase) return;
-    setLoadingTxs(true);
     const dynamicKey = `finvision_cached_card_transactions_${cardId}_${statementId || 'all'}`;
+    const cached = localStorage.getItem(dynamicKey);
+    const cachedData = cached ? JSON.parse(cached) : [];
+    if (cachedData.length > 0) {
+      setTransactions(cachedData);
+      setLoadingTxs(false);
+    } else {
+      setLoadingTxs(true);
+    }
+
+    // Update currentStatement to the one being viewed if it's a specific one
+    if (statementId) {
+      const selected = statements.find(s => s.id === statementId);
+      if (selected) setCurrentStatement(selected);
+    }
+
+    if (!supabase || !navigator.onLine) return;
     try {
-      // Update currentStatement to the one being viewed if it's a specific one
-      if (statementId) {
-        const selected = statements.find(s => s.id === statementId);
-        if (selected) setCurrentStatement(selected);
-      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      if (navigator.onLine) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        let query = supabase.from('card_transactions').select('*').eq('user_id', user.id).order('date', { ascending: false });
-        if (statementId) query = query.eq('statement_id', statementId);
-        else query = query.eq('card_id', cardId);
-        const { data, error } = await query;
-        if (error) throw error;
-        
-        setTransactions(data || []);
-        localStorage.setItem(dynamicKey, JSON.stringify(data || []));
-      } else {
-        const cached = localStorage.getItem(dynamicKey);
-        setTransactions(cached ? JSON.parse(cached) : []);
-      }
+      let query = supabase.from('card_transactions').select('*').eq('user_id', user.id).order('date', { ascending: false });
+      if (statementId) query = query.eq('statement_id', statementId);
+      else query = query.eq('card_id', cardId);
+      const { data, error } = await query;
+      if (error) throw error;
+      
+      setTransactions(data || []);
+      localStorage.setItem(dynamicKey, JSON.stringify(data || []));
     } catch (err) {
       console.error('Erro ao buscar transações de cartão, fallback cache:', err);
-      const cached = localStorage.getItem(dynamicKey);
-      setTransactions(cached ? JSON.parse(cached) : []);
     } finally {
       setLoadingTxs(false);
     }
