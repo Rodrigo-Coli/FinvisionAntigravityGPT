@@ -87,6 +87,25 @@
       padding-top: env(safe-area-inset-top, 0px) !important;
     }
 
+    .mobile-header-safe {
+      height: calc(4rem + env(safe-area-inset-top, 0px)) !important;
+      padding-top: env(safe-area-inset-top, 0px) !important;
+    }
+
+    .menu-overlay-safe {
+      padding-top: calc(1.5rem + env(safe-area-inset-top, 0px)) !important;
+    }
+    
+    .main-content-safe {
+      padding-top: calc(4rem + env(safe-area-inset-top, 0px)) !important;
+    }
+
+    @media (min-width: 1024px) {
+      .main-content-safe {
+        padding-top: 0px !important;
+      }
+    }
+
     /* Prevent horizontal overflow on all elements (mobile fix) */
     *, *::before, *::after {
       box-sizing: border-box;

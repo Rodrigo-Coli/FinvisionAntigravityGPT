@@ -89,7 +89,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
       </aside>
 
       {/* Mobile Header */}
-      <nav className="lg:hidden bg-white border-b border-slate-100 h-16 flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50">
+      <nav className="lg:hidden bg-white border-b border-slate-100 mobile-header-safe flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50">
         <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
           className="p-2 text-slate-500"
@@ -113,7 +113,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
       <div className={`fixed inset-0 z-40 lg:hidden transition-all duration-300 ${isMenuOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
         <div className="absolute inset-0 bg-brand-900/20 backdrop-blur-sm" onClick={() => setIsMenuOpen(false)} />
         <div className={`absolute top-0 left-0 w-4/5 h-full bg-white shadow-2xl flex flex-col transition-all duration-300 transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-          <div className="flex items-center justify-between p-6 pb-4">
+          <div className="flex items-center justify-between p-6 pb-4 menu-overlay-safe">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 bg-brand-900 rounded-xl flex items-center justify-center text-white font-bold italic">FV</div>
               <span className="font-bold text-slate-900">FinVision Pro</span>

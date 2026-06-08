@@ -38,7 +38,8 @@ export const IOSInstallPrompt: React.FC = () => {
         
         <button 
           onClick={handleClose}
-          className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+          onTouchStart={handleClose}
+          className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
         >
           <X size={20} />
         </button>
@@ -76,7 +77,8 @@ export const IOSInstallPrompt: React.FC = () => {
 
         <button 
           onClick={handleClose}
-          className="w-full mt-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          onTouchStart={handleClose}
+          className="w-full mt-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
         >
           Entendido
         </button>

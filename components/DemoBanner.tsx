@@ -26,7 +26,14 @@ export default function DemoBanner() {
         </div>
         <div>
           <p className="font-bold text-sm leading-tight">Você está no Modo Demonstração</p>
-          <p className="text-xs text-white/80 font-medium hidden sm:block">Todos os dados aqui são fictícios e resetam periodicamente.</p>
+          {/* Desktop version */}
+          <p className="text-xs text-white/90 font-medium hidden md:block mt-0.5">
+            Dados de teste fictícios. Para gerenciar seus próprios dados reais, saia do simulador clicando em <strong className="underline">Criar minha conta</strong>.
+          </p>
+          {/* Mobile version */}
+          <p className="text-[11px] text-white/95 font-medium md:hidden mt-0.5 leading-snug">
+            Dados fictícios. Para usar dados reais, saia tocando em <strong className="underline">Criar minha conta</strong>.
+          </p>
         </div>
       </div>
       <button onClick={exitDemo}
