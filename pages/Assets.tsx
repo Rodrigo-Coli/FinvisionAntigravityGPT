@@ -261,6 +261,7 @@ const Assets: React.FC = () => {
     permutaImovelNome: '',
     permutaOutrosValor: '',
     permutaOutrosNome: '',
+    permutaItems: [] as { type: 'VEHICLE' | 'REAL_ESTATE' | 'OTHER'; name: string; value: string }[],
   });
 
   const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
@@ -927,7 +928,12 @@ const Assets: React.FC = () => {
           // Valor à vista
           let cashVal = soldAmount;
           if (formValues.salePaymentMethod === 'HIBRIDO') {
-            const permutaVal = (parseFloat(formValues.permutaVeiculoValor) || 0) + (parseFloat(formValues.permutaImovelValor) || 0) + (parseFloat(formValues.permutaOutrosValor) || 0);
+            let permutaVal = 0;
+            if (Array.isArray(formValues.permutaItems)) {
+              permutaVal = formValues.permutaItems.reduce((acc: number, item: any) => acc + (parseFloat(item.value) || 0), 0);
+            } else {
+              permutaVal = (parseFloat(formValues.permutaVeiculoValor) || 0) + (parseFloat(formValues.permutaImovelValor) || 0) + (parseFloat(formValues.permutaOutrosValor) || 0);
+            }
             cashVal = Math.max(0, soldAmount - permutaVal);
           }
 
@@ -977,44 +983,62 @@ const Assets: React.FC = () => {
         }
 
         // Criar bens de permuta automaticamente
-        // Veículo
-        const pVeicVal = parseFloat(formValues.permutaVeiculoValor) || 0;
-        if (pVeicVal > 0 && formValues.permutaVeiculoNome) {
-          await supabase.from('physical_assets').insert([{
-            user_id: userId,
-            name: formValues.permutaVeiculoNome,
-            category: 'VEHICLE',
-            estimated_value: pVeicVal,
-            acquisition_date: todayStr,
-            description: `Recebido em permuta na venda de ${formValues.name}`,
-            metadata: { purpose: 'uso' }
-          }]);
-        }
-        // Imóvel
-        const pImovVal = parseFloat(formValues.permutaImovelValor) || 0;
-        if (pImovVal > 0 && formValues.permutaImovelNome) {
-          await supabase.from('physical_assets').insert([{
-            user_id: userId,
-            name: formValues.permutaImovelNome,
-            category: 'REAL_ESTATE',
-            estimated_value: pImovVal,
-            acquisition_date: todayStr,
-            description: `Recebido em permuta na venda de ${formValues.name}`,
-            metadata: { propertyStage: 'PRONTO', purpose: 'uso' }
-          }]);
-        }
-        // Outros bens
-        const pOutrVal = parseFloat(formValues.permutaOutrosValor) || 0;
-        if (pOutrVal > 0 && formValues.permutaOutrosNome) {
-          await supabase.from('physical_assets').insert([{
-            user_id: userId,
-            name: formValues.permutaOutrosNome,
-            category: 'OTHER',
-            estimated_value: pOutrVal,
-            acquisition_date: todayStr,
-            description: `Recebido em permuta na venda de ${formValues.name}`,
-            metadata: { purpose: 'uso' }
-          }]);
+        if (Array.isArray(formValues.permutaItems)) {
+          const assetsToInsert = formValues.permutaItems
+            .filter((item: any) => item.name && (parseFloat(item.value) || 0) > 0)
+            .map((item: any) => ({
+              user_id: userId,
+              name: item.name,
+              category: item.type,
+              estimated_value: parseFloat(item.value) || 0,
+              acquisition_date: todayStr,
+              description: `Recebido em permuta na venda de ${formValues.name}`,
+              metadata: item.type === 'REAL_ESTATE' ? { propertyStage: 'PRONTO', purpose: 'uso' } : { purpose: 'uso' }
+            }));
+          if (assetsToInsert.length > 0) {
+            await supabase.from('physical_assets').insert(assetsToInsert);
+          }
+        } else {
+          // Fallback para campos antigos
+          // Veículo
+          const pVeicVal = parseFloat(formValues.permutaVeiculoValor) || 0;
+          if (pVeicVal > 0 && formValues.permutaVeiculoNome) {
+            await supabase.from('physical_assets').insert([{
+              user_id: userId,
+              name: formValues.permutaVeiculoNome,
+              category: 'VEHICLE',
+              estimated_value: pVeicVal,
+              acquisition_date: todayStr,
+              description: `Recebido em permuta na venda de ${formValues.name}`,
+              metadata: { purpose: 'uso' }
+            }]);
+          }
+          // Imóvel
+          const pImovVal = parseFloat(formValues.permutaImovelValor) || 0;
+          if (pImovVal > 0 && formValues.permutaImovelNome) {
+            await supabase.from('physical_assets').insert([{
+              user_id: userId,
+              name: formValues.permutaImovelNome,
+              category: 'REAL_ESTATE',
+              estimated_value: pImovVal,
+              acquisition_date: todayStr,
+              description: `Recebido em permuta na venda de ${formValues.name}`,
+              metadata: { propertyStage: 'PRONTO', purpose: 'uso' }
+            }]);
+          }
+          // Outros bens
+          const pOutrVal = parseFloat(formValues.permutaOutrosValor) || 0;
+          if (pOutrVal > 0 && formValues.permutaOutrosNome) {
+            await supabase.from('physical_assets').insert([{
+              user_id: userId,
+              name: formValues.permutaOutrosNome,
+              category: 'OTHER',
+              estimated_value: pOutrVal,
+              acquisition_date: todayStr,
+              description: `Recebido em permuta na venda de ${formValues.name}`,
+              metadata: { purpose: 'uso' }
+            }]);
+          }
         }
 
         // Se arquivamos/vendemos, encerramos as provisões normais
@@ -1270,6 +1294,7 @@ const Assets: React.FC = () => {
         permutaImovelNome: formData.category === 'VEHICLE' && formData.isSold ? formData.permutaImovelNome : undefined,
         permutaOutrosValor: formData.category === 'VEHICLE' && formData.isSold ? (parseFloat(formData.permutaOutrosValor) || 0) : undefined,
         permutaOutrosNome: formData.category === 'VEHICLE' && formData.isSold ? formData.permutaOutrosNome : undefined,
+        permutaItems: formData.category === 'VEHICLE' && formData.isSold ? formData.permutaItems : undefined,
       };
 
       // Preserve existing real estate evolution details if editing
@@ -1605,6 +1630,7 @@ const Assets: React.FC = () => {
       permutaImovelNome: '',
       permutaOutrosValor: '',
       permutaOutrosNome: '',
+      permutaItems: [],
     });
   };
 
@@ -1705,6 +1731,13 @@ const Assets: React.FC = () => {
       permutaImovelNome: meta.permutaImovelNome || '',
       permutaOutrosValor: meta.permutaOutrosValor ? String(meta.permutaOutrosValor) : '',
       permutaOutrosNome: meta.permutaOutrosNome || '',
+      permutaItems: meta.permutaItems || (
+        (meta.permutaVeiculoValor || meta.permutaImovelValor || meta.permutaOutrosValor) ? [
+          ...(meta.permutaVeiculoNome || meta.permutaVeiculoValor ? [{ type: 'VEHICLE' as const, name: meta.permutaVeiculoNome || '', value: String(meta.permutaVeiculoValor || '') }] : []),
+          ...(meta.permutaImovelNome || meta.permutaImovelValor ? [{ type: 'REAL_ESTATE' as const, name: meta.permutaImovelNome || '', value: String(meta.permutaImovelValor || '') }] : []),
+          ...(meta.permutaOutrosNome || meta.permutaOutrosValor ? [{ type: 'OTHER' as const, name: meta.permutaOutrosNome || '', value: String(meta.permutaOutrosValor || '') }] : []),
+        ] : []
+      ),
     });
     setShowModal(true);
   };
@@ -4107,80 +4140,91 @@ const Assets: React.FC = () => {
 
                             {(formData.salePaymentMethod === 'PERMUTA' || formData.salePaymentMethod === 'HIBRIDO') && (
                               <div className="space-y-3 pt-2 border-t border-dashed border-slate-200">
-                                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Bens Recebidos na Permuta</p>
+                                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Bens Recebidos na Permuta</p>
                                 
-                                {/* Permuta de Veículo */}
-                                <div className="grid grid-cols-2 gap-3 bg-white p-3 rounded-xl border border-slate-100">
-                                  <div className="col-span-2 text-[8px] font-black text-slate-400 uppercase tracking-widest">Veículo Recebido</div>
-                                  <div>
-                                    <label className="block text-[8px] font-bold text-slate-400">Nome / Modelo</label>
-                                    <input
-                                      className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs"
-                                      value={formData.permutaVeiculoNome}
-                                      onChange={(e) => setFormData({ ...formData, permutaVeiculoNome: e.target.value })}
-                                      placeholder="Ex: Fiat Uno 2012"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-[8px] font-bold text-slate-400">Valor Avaliado (R$)</label>
-                                    <input
-                                      type="number"
-                                      className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs font-bold"
-                                      value={formData.permutaVeiculoValor}
-                                      onChange={(e) => setFormData({ ...formData, permutaVeiculoValor: e.target.value })}
-                                      placeholder="0.00"
-                                    />
-                                  </div>
-                                </div>
+                                {formData.permutaItems && formData.permutaItems.map((item, idx) => (
+                                  <div key={idx} className="grid grid-cols-12 gap-2 bg-white p-3 rounded-xl border border-slate-100 items-end">
+                                    <div className="col-span-3">
+                                      <label className="block text-[8px] font-bold text-slate-400 mb-1">Tipo</label>
+                                      <select
+                                        className="w-full h-8 px-1.5 bg-slate-50 border rounded-lg text-[10px] font-bold outline-none"
+                                        value={item.type}
+                                        onChange={(e) => {
+                                          const newItems = [...formData.permutaItems];
+                                          newItems[idx].type = e.target.value as any;
+                                          setFormData({ ...formData, permutaItems: newItems });
+                                        }}
+                                      >
+                                        <option value="VEHICLE">Veículo</option>
+                                        <option value="REAL_ESTATE">Imóvel</option>
+                                        <option value="OTHER">Outro Bem</option>
+                                      </select>
+                                    </div>
+                                    
+                                    <div className="col-span-5">
+                                      <label className="block text-[8px] font-bold text-slate-400 mb-1">Nome / Descrição</label>
+                                      <input
+                                        className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs"
+                                        value={item.name}
+                                        onChange={(e) => {
+                                          const newItems = [...formData.permutaItems];
+                                          newItems[idx].name = e.target.value;
+                                          setFormData({ ...formData, permutaItems: newItems });
+                                        }}
+                                        placeholder={
+                                          item.type === 'VEHICLE'
+                                            ? 'Ex: Fiat Uno 2012'
+                                            : item.type === 'REAL_ESTATE'
+                                            ? 'Ex: Terreno Condomínio'
+                                            : 'Ex: Cota Consórcio'
+                                        }
+                                      />
+                                    </div>
 
-                                {/* Permuta de Imóvel */}
-                                <div className="grid grid-cols-2 gap-3 bg-white p-3 rounded-xl border border-slate-100">
-                                  <div className="col-span-2 text-[8px] font-black text-slate-400 uppercase tracking-widest">Imóvel Recebido</div>
-                                  <div>
-                                    <label className="block text-[8px] font-bold text-slate-400">Identificação / Nome</label>
-                                    <input
-                                      className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs"
-                                      value={formData.permutaImovelNome}
-                                      onChange={(e) => setFormData({ ...formData, permutaImovelNome: e.target.value })}
-                                      placeholder="Ex: Terreno Condomínio"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-[8px] font-bold text-slate-400">Valor Avaliado (R$)</label>
-                                    <input
-                                      type="number"
-                                      className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs font-bold"
-                                      value={formData.permutaImovelValor}
-                                      onChange={(e) => setFormData({ ...formData, permutaImovelValor: e.target.value })}
-                                      placeholder="0.00"
-                                    />
-                                  </div>
-                                </div>
+                                    <div className="col-span-3">
+                                      <label className="block text-[8px] font-bold text-slate-400 mb-1">Valor (R$)</label>
+                                      <input
+                                        type="number"
+                                        className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs font-bold"
+                                        value={item.value}
+                                        onChange={(e) => {
+                                          const newItems = [...formData.permutaItems];
+                                          newItems[idx].value = e.target.value;
+                                          setFormData({ ...formData, permutaItems: newItems });
+                                        }}
+                                        placeholder="0.00"
+                                      />
+                                    </div>
 
-                                {/* Permuta de Outros Bens */}
-                                <div className="grid grid-cols-2 gap-3 bg-white p-3 rounded-xl border border-slate-100">
-                                  <div className="col-span-2 text-[8px] font-black text-slate-400 uppercase tracking-widest">Outros Bens</div>
-                                  <div>
-                                    <label className="block text-[8px] font-bold text-slate-400">Descrição do Bem</label>
-                                    <input
-                                      className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs"
-                                      value={formData.permutaOutrosNome}
-                                      onChange={(e) => setFormData({ ...formData, permutaOutrosNome: e.target.value })}
-                                      placeholder="Ex: Cota Consórcio Contemplada"
-                                    />
+                                    <div className="col-span-1 flex justify-center pb-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const newItems = formData.permutaItems.filter((_, i) => i !== idx);
+                                          setFormData({ ...formData, permutaItems: newItems });
+                                        }}
+                                        className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div>
-                                    <label className="block text-[8px] font-bold text-slate-400">Valor Avaliado (R$)</label>
-                                    <input
-                                      type="number"
-                                      className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs font-bold"
-                                      value={formData.permutaOutrosValor}
-                                      onChange={(e) => setFormData({ ...formData, permutaOutrosValor: e.target.value })}
-                                      placeholder="0.00"
-                                    />
-                                  </div>
-                                </div>
+                                ))}
 
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newItems = [
+                                      ...(formData.permutaItems || []),
+                                      { type: 'VEHICLE' as const, name: '', value: '' }
+                                    ];
+                                    setFormData({ ...formData, permutaItems: newItems });
+                                  }}
+                                  className="w-full h-9 border border-dashed border-slate-300 rounded-xl text-[10px] font-bold text-slate-500 hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-1.5"
+                                >
+                                  <Plus size={12} />
+                                  Adicionar Bem Recebido
+                                </button>
                               </div>
                             )}
 
