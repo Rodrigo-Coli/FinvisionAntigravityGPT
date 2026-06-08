@@ -62,14 +62,25 @@ const Assets: React.FC = () => {
     return DateUtils.formatToISODate(new Date());
   });
 
-  // Core Data States with Synchronous Cache Initializers
+  // Core Data States with Synchronous Cache Initializers (Safe Fallbacks)
   const [physicalAssets, setPhysicalAssets] = useState<PhysicalAsset[]>(() => {
     try {
       const cachedProfile = localStorage.getItem('finvision_cached_profile');
       if (cachedProfile) {
         const userId = JSON.parse(cachedProfile).id;
         const cached = localStorage.getItem(`finvision_cached_physical_assets_${userId}`);
-        return cached ? JSON.parse(cached) : [];
+        if (cached) {
+          return JSON.parse(cached).map((p: any) => ({
+            id: p.id,
+            name: p.name || 'Ativo sem nome',
+            category: p.category || 'OTHER',
+            estimatedValue: Number(p.estimatedValue ?? p.estimated_value ?? 0),
+            acquisitionDate: p.acquisitionDate || p.acquisition_date || '',
+            description: p.description || '',
+            is_archived: !!(p.is_archived || p.isArchived),
+            metadata: p.metadata || {}
+          }));
+        }
       }
     } catch (e) {}
     return [];
@@ -81,12 +92,13 @@ const Assets: React.FC = () => {
         const accs = JSON.parse(cached);
         return accs.filter((a: any) => a.type === 'INVESTMENT').map((a: any) => {
           const meta = a.metadata || {};
+          const balanceVal = Number(a.current_balance ?? a.balance ?? 0);
           return {
             id: a.id,
-            name: a.institution || a.name,
-            balance: Number(a.current_balance || a.balance),
+            name: a.institution || a.name || 'Corretora',
+            balance: balanceVal,
             allocation: [
-              { type: meta.productType || 'Investimentos', percentage: 100, value: Number(a.current_balance || a.balance), color: 'bg-brand-500' }
+              { type: meta.productType || 'Investimentos', percentage: 100, value: balanceVal, color: 'bg-brand-500' }
             ],
             metadata: meta
           };
@@ -101,7 +113,22 @@ const Assets: React.FC = () => {
       if (cachedProfile) {
         const userId = JSON.parse(cachedProfile).id;
         const cached = localStorage.getItem(`finvision_cached_liabilities_${userId}`);
-        return cached ? JSON.parse(cached) : [];
+        if (cached) {
+          return JSON.parse(cached).map((l: any) => ({
+            id: l.id,
+            name: l.name || 'Dívida sem nome',
+            type: l.type || 'OTHER',
+            totalAmount: Number(l.totalAmount ?? l.total_amount ?? 0),
+            remainingBalance: Number(l.remainingBalance ?? l.remaining_balance ?? 0),
+            interestRate: l.interestRate ?? l.interest_rate ?? undefined,
+            linkedAssetId: l.linkedAssetId ?? l.linked_asset_id ?? undefined,
+            installmentAmount: l.installmentAmount ?? l.installment_amount ?? undefined,
+            installmentsRemaining: l.installmentsRemaining ?? l.installments_remaining ?? undefined,
+            dueDay: l.dueDay ?? l.due_day ?? undefined,
+            metadata: l.metadata || {},
+            is_archived: !!(l.is_archived || l.isArchived)
+          }));
+        }
       }
     } catch (e) {}
     return [];
@@ -115,18 +142,18 @@ const Assets: React.FC = () => {
         if (cached) {
           return JSON.parse(cached).map((t: any) => ({
             id: t.id,
-            description: t.description,
-            amount: Number(t.amount),
-            date: t.date,
-            type: t.type,
-            accountId: t.account_id || t.accountId,
-            accountName: t.account_name || t.accountName,
-            category: t.category,
-            subcategory: t.subcategory,
+            description: t.description || '', // Safe fallback
+            amount: Number(t.amount ?? 0),
+            date: t.date || '',
+            type: t.type || 'EXPENSE',
+            accountId: t.account_id || t.accountId || '',
+            accountName: t.account_name || t.accountName || '',
+            category: t.category || 'Outros',
+            subcategory: t.subcategory || '',
             metadata: t.metadata || {},
-            isPaid: t.is_paid !== undefined ? t.is_paid : t.isPaid,
+            isPaid: t.is_paid !== undefined ? t.is_paid : (t.isPaid !== undefined ? t.isPaid : false),
             liability_id: t.liability_id,
-            is_recurring: t.is_recurring,
+            is_recurring: !!t.is_recurring,
             installment_number: t.installment_number,
             installment_total: t.installment_total
           }));
@@ -429,15 +456,15 @@ const Assets: React.FC = () => {
       const accs = accsRes.data || [];
       const liabs = liabsRes.data || [];
 
-      // Mapeamento e atualização atômica de estados
+      // Mapeamento e atualização atômica de estados (Mapeamento Seguro)
       const mappedPhys = phys.map((p: any) => ({
         id: p.id,
-        name: p.name,
-        category: p.category,
-        estimatedValue: Number(p.estimated_value),
-        acquisitionDate: p.acquisition_date,
-        description: p.description,
-        is_archived: p.is_archived,
+        name: p.name || 'Ativo sem nome',
+        category: p.category || 'OTHER',
+        estimatedValue: Number(p.estimated_value ?? 0),
+        acquisitionDate: p.acquisition_date || '',
+        description: p.description || '',
+        is_archived: !!p.is_archived,
         metadata: p.metadata || {}
       }));
       setPhysicalAssets(mappedPhys);
@@ -448,12 +475,13 @@ const Assets: React.FC = () => {
 
       const brokerList = accs.filter((a: any) => a.type === 'INVESTMENT').map((a: any) => {
         const meta = a.metadata || {};
+        const balanceVal = Number(a.current_balance ?? a.balance ?? 0);
         return {
           id: a.id,
-          name: a.institution || a.name,
-          balance: Number(a.current_balance),
+          name: a.institution || a.name || 'Corretora',
+          balance: balanceVal,
           allocation: [
-            { type: meta.productType || 'Investimentos', percentage: 100, value: Number(a.current_balance), color: 'bg-brand-500' }
+            { type: meta.productType || 'Investimentos', percentage: 100, value: balanceVal, color: 'bg-brand-500' }
           ],
           metadata: meta
         };
@@ -462,17 +490,17 @@ const Assets: React.FC = () => {
 
       const mappedLiabs = liabs.map((l: any) => ({
         id: l.id,
-        name: l.name,
-        type: l.type,
-        totalAmount: Number(l.total_amount),
-        remainingBalance: Number(l.remaining_balance),
+        name: l.name || 'Dívida sem nome',
+        type: l.type || 'OTHER',
+        totalAmount: Number(l.total_amount ?? 0),
+        remainingBalance: Number(l.remaining_balance ?? 0),
         interestRate: l.interest_rate ? Number(l.interest_rate) : undefined,
         linkedAssetId: l.linked_asset_id,
         installmentAmount: l.installment_amount ? Number(l.installment_amount) : undefined,
         installmentsRemaining: l.installments_remaining ? Number(l.installments_remaining) : undefined,
         dueDay: l.due_day ? Number(l.due_day) : undefined,
         metadata: l.metadata || {},
-        is_archived: l.is_archived
+        is_archived: !!l.is_archived
       }));
       setLiabilities(mappedLiabs);
 
@@ -505,18 +533,18 @@ const Assets: React.FC = () => {
 
       const mappedTxs = allTxs.map((t: any) => ({
         id: t.id,
-        description: t.description,
-        amount: Number(t.amount),
-        date: t.date,
-        type: t.type,
+        description: t.description || '',
+        amount: Number(t.amount ?? 0),
+        date: t.date || '',
+        type: t.type || 'EXPENSE',
         accountId: t.account_id,
         accountName: t.account_name,
-        category: t.category,
-        subcategory: t.subcategory,
+        category: t.category || 'Outros',
+        subcategory: t.subcategory || '',
         metadata: t.metadata || {},
-        isPaid: t.is_paid,
+        isPaid: !!t.is_paid,
         liability_id: t.liability_id,
-        is_recurring: t.is_recurring,
+        is_recurring: !!t.is_recurring,
         installment_number: t.installment_number,
         installment_total: t.installment_total
       }));
