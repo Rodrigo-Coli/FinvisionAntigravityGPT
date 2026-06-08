@@ -46,44 +46,58 @@ const BudgetPage: React.FC<{ user: any }> = ({ user }) => {
         if (!sb) return;
         if (!silent) setIsLoading(true);
         try {
-            const { data: { user: u } } = await sb.auth.getUser();
-            if (!u) return;
+            if (navigator.onLine) {
+                const { data: { user: u } } = await sb.auth.getUser();
+                if (!u) return;
 
-            // Fetch user budgets
-            const { data: budgetsData } = await sb.from('budgets').select('*').eq('user_id', u.id).eq('is_active', true);
+                // Fetch user budgets
+                const { data: budgetsData } = await sb.from('budgets').select('*').eq('user_id', u.id).eq('is_active', true);
 
-            // Fetch current month transactions
-            const startOfMonth = `${currentMonth}-01`;
-            const endOfMonth = new Date(new Date(startOfMonth).getFullYear(), new Date(startOfMonth).getMonth() + 1, 0).toISOString().split('T')[0];
-            const { data: txData } = await sb.from('transactions')
-                .select('amount, category, type')
-                .eq('user_id', u.id)
-                .eq('type', 'EXPENSE')
-                .eq('is_amortization', false)
-                .gte('date', startOfMonth)
-                .lte('date', endOfMonth);
+                // Fetch current month transactions
+                const startOfMonth = `${currentMonth}-01`;
+                const endOfMonth = new Date(new Date(startOfMonth).getFullYear(), new Date(startOfMonth).getMonth() + 1, 0).toISOString().split('T')[0];
+                const { data: txData } = await sb.from('transactions')
+                    .select('amount, category, type')
+                    .eq('user_id', u.id)
+                    .eq('type', 'EXPENSE')
+                    .eq('is_amortization', false)
+                    .gte('date', startOfMonth)
+                    .lte('date', endOfMonth);
 
-            // Group spending by category
-            const spendingByCategory: Record<string, number> = {};
-            let monthTotal = 0;
-            (txData || []).forEach((t: any) => {
-                const cat = t.category || 'Outros';
-                spendingByCategory[cat] = (spendingByCategory[cat] || 0) + Number(t.amount);
-                monthTotal += Number(t.amount);
-            });
-            setTotalMonthly(monthTotal);
-            localStorage.setItem('finvision_cached_budget_spending', JSON.stringify({ totalMonthly: monthTotal, spendingByCategory }));
+                // Group spending by category
+                const spendingByCategory: Record<string, number> = {};
+                let monthTotal = 0;
+                (txData || []).forEach((t: any) => {
+                    const cat = t.category || 'Outros';
+                    spendingByCategory[cat] = (spendingByCategory[cat] || 0) + Number(t.amount);
+                    monthTotal += Number(t.amount);
+                });
+                setTotalMonthly(monthTotal);
+                localStorage.setItem('finvision_cached_budget_spending', JSON.stringify({ totalMonthly: monthTotal, spendingByCategory }));
 
-            // Merge budget with spending
-            if (budgetsData) {
-                const mappedBudgets = budgetsData.map((b: any) => ({
-                    id: b.id, category: b.category, monthlyLimit: Number(b.monthly_limit),
-                    color: b.color, isActive: b.is_active,
-                    currentMonthSpent: spendingByCategory[b.category] || 0
-                }));
-                setBudgets(mappedBudgets);
-                localStorage.setItem('finvision_cached_budgets', JSON.stringify(mappedBudgets));
+                // Merge budget with spending
+                if (budgetsData) {
+                    const mappedBudgets = budgetsData.map((b: any) => ({
+                        id: b.id, category: b.category, monthlyLimit: Number(b.monthly_limit),
+                        color: b.color, isActive: b.is_active,
+                        currentMonthSpent: spendingByCategory[b.category] || 0
+                    }));
+                    setBudgets(mappedBudgets);
+                    localStorage.setItem('finvision_cached_budgets', JSON.stringify(mappedBudgets));
+                }
+            } else {
+                const cachedBudgets = localStorage.getItem('finvision_cached_budgets');
+                if (cachedBudgets) {
+                    setBudgets(JSON.parse(cachedBudgets));
+                }
+                const cachedSpending = localStorage.getItem('finvision_cached_budget_spending');
+                if (cachedSpending) {
+                    const parsed = JSON.parse(cachedSpending);
+                    setTotalMonthly(parsed.totalMonthly || 0);
+                }
             }
+        } catch (err) {
+            console.error('Error fetching budgets:', err);
         } finally { setIsLoading(false); }
     };
 

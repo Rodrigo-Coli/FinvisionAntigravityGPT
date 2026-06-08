@@ -36,35 +36,48 @@ const Goals: React.FC<{ user: any }> = ({ user }) => {
         if (!sb) return;
         if (!silent) setIsLoading(true);
         try {
-            const { data: { user: u } } = await sb.auth.getUser();
-            if (!u) return;
+            if (navigator.onLine) {
+                const { data: { user: u } } = await sb.auth.getUser();
+                if (!u) return;
 
-            // Fetch goals
-            const { data: goalsData } = await sb.from('goals').select('*').eq('user_id', u.id).order('created_at', { ascending: false });
-            if (goalsData) {
-                const mappedGoals = goalsData.map((g: any) => ({
-                    id: g.id, name: g.name, description: g.description, targetAmount: Number(g.target_amount),
-                    currentAmount: Number(g.current_amount), color: g.color, deadline: g.deadline, isCompleted: g.is_completed
-                }));
-                setGoals(mappedGoals);
-                localStorage.setItem('finvision_cached_goals', JSON.stringify(mappedGoals));
-            }
+                // Fetch goals
+                const { data: goalsData } = await sb.from('goals').select('*').eq('user_id', u.id).order('created_at', { ascending: false });
+                if (goalsData) {
+                    const mappedGoals = goalsData.map((g: any) => ({
+                        id: g.id, name: g.name, description: g.description, targetAmount: Number(g.target_amount),
+                        currentAmount: Number(g.current_amount), color: g.color, deadline: g.deadline, isCompleted: g.is_completed
+                    }));
+                    setGoals(mappedGoals);
+                    localStorage.setItem('finvision_cached_goals', JSON.stringify(mappedGoals));
+                }
 
-            // Calc avg monthly savings from last 3 months
-            const threeMonthsAgo = new Date();
-            threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-            const { data: txData } = await sb.from('transactions').select('amount, type')
-                .eq('user_id', u.id).gte('date', threeMonthsAgo.toISOString().split('T')[0]).eq('is_amortization', false);
-            if (txData) {
-                let income = 0, expense = 0;
-                txData.forEach((t: any) => {
-                    if (t.type === 'INCOME') income += Number(t.amount);
-                    else if (t.type === 'EXPENSE') expense += Number(t.amount);
-                });
-                const monthlyAvg = Math.max(0, Math.round((income - expense) / 3));
-                setAvgMonthlySavings(monthlyAvg);
-                localStorage.setItem('finvision_cached_avg_monthly_savings', String(monthlyAvg));
+                // Calc avg monthly savings from last 3 months
+                const threeMonthsAgo = new Date();
+                threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+                const { data: txData } = await sb.from('transactions').select('amount, type')
+                    .eq('user_id', u.id).gte('date', threeMonthsAgo.toISOString().split('T')[0]).eq('is_amortization', false);
+                if (txData) {
+                    let income = 0, expense = 0;
+                    txData.forEach((t: any) => {
+                        if (t.type === 'INCOME') income += Number(t.amount);
+                        else if (t.type === 'EXPENSE') expense += Number(t.amount);
+                    });
+                    const monthlyAvg = Math.max(0, Math.round((income - expense) / 3));
+                    setAvgMonthlySavings(monthlyAvg);
+                    localStorage.setItem('finvision_cached_avg_monthly_savings', String(monthlyAvg));
+                }
+            } else {
+                const cachedGoals = localStorage.getItem('finvision_cached_goals');
+                if (cachedGoals) {
+                    setGoals(JSON.parse(cachedGoals));
+                }
+                const cachedSavings = localStorage.getItem('finvision_cached_avg_monthly_savings');
+                if (cachedSavings) {
+                    setAvgMonthlySavings(Number(cachedSavings));
+                }
             }
+        } catch (err) {
+            console.error('Error fetching goals:', err);
         } finally { setIsLoading(false); }
     };
 
