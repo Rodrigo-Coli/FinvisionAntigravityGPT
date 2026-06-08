@@ -25,7 +25,8 @@ const Reports: React.FC = () => {
   const fetchStats = async () => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       const { data: txs } = await supabase
@@ -61,7 +62,8 @@ const Reports: React.FC = () => {
   const exportToCSV = async () => {
     setExporting('csv');
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       const { data: txs } = await supabase

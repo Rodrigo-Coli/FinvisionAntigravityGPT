@@ -505,34 +505,71 @@ const Assets: React.FC = () => {
       }));
       setLiabilities(mappedLiabs);
 
-      // Loop fetch de transações em blocos de 1000 (filtrando apenas transações relevantes: do último ano, vinculadas a ativos, ou rendimentos)
+      // Busca os primeiros 3 blocos de transações (0 a 2999) em paralelo para reduzir drasticamente a latência de RTT da rede
       let allTxs: any[] = [];
-      let hasMoreTxs = true;
-      let txOffset = 0;
       const oneYearAgo = new Date();
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
       const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
 
-      while (hasMoreTxs) {
-        const { data: chunk, error: txErr } = await supabase
+      const [res1, res2, res3] = await Promise.all([
+        supabase
           .from('transactions')
           .select('*')
           .eq('user_id', userId)
           .eq('is_deleted', false)
           .or(`date.gte.${oneYearAgoStr},metadata->>linked_asset_id.not.is.null,category.eq.Rendimentos,category.eq.Investimentos`)
-          .range(txOffset, txOffset + 999);
+          .range(0, 999),
+        supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('is_deleted', false)
+          .or(`date.gte.${oneYearAgoStr},metadata->>linked_asset_id.not.is.null,category.eq.Rendimentos,category.eq.Investimentos`)
+          .range(1000, 1999),
+        supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('is_deleted', false)
+          .or(`date.gte.${oneYearAgoStr},metadata->>linked_asset_id.not.is.null,category.eq.Rendimentos,category.eq.Investimentos`)
+          .range(2000, 2999)
+      ]);
 
-        if (txErr) throw txErr;
+      if (res1.error) throw res1.error;
+      if (res2.error) throw res2.error;
+      if (res3.error) throw res3.error;
 
-        if (chunk) {
-          allTxs = [...allTxs, ...chunk];
-          if (chunk.length < 1000) {
-            hasMoreTxs = false;
+      const chunk1 = res1.data || [];
+      const chunk2 = res2.data || [];
+      const chunk3 = res3.data || [];
+
+      allTxs = [...chunk1, ...chunk2, ...chunk3];
+
+      // Se o terceiro bloco veio completo (1000 registros), significa que pode haver mais registros acima de 3000
+      if (chunk3.length === 1000) {
+        let hasMoreTxs = true;
+        let txOffset = 3000;
+        while (hasMoreTxs) {
+          const { data: chunk, error: txErr } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('is_deleted', false)
+            .or(`date.gte.${oneYearAgoStr},metadata->>linked_asset_id.not.is.null,category.eq.Rendimentos,category.eq.Investimentos`)
+            .range(txOffset, txOffset + 999);
+
+          if (txErr) throw txErr;
+
+          if (chunk && chunk.length > 0) {
+            allTxs = [...allTxs, ...chunk];
+            if (chunk.length < 1000) {
+              hasMoreTxs = false;
+            } else {
+              txOffset += 1000;
+            }
           } else {
-            txOffset += 1000;
+            hasMoreTxs = false;
           }
-        } else {
-          hasMoreTxs = false;
         }
       }
 
@@ -579,10 +616,63 @@ const Assets: React.FC = () => {
   const activePhysicalAssets = useMemo(() => physicalAssets.filter(p => !p.is_archived), [physicalAssets]);
   const activeLiabilities = useMemo(() => liabilities.filter(l => !l.is_archived), [liabilities]);
 
+  // Pre-computes and maps all transactions to their respective physical assets in O(N) linear time.
+  const linkedTransactionsMap = useMemo(() => {
+    const assetMatches = activePhysicalAssets.map(p => {
+      const assetName = p.name.toLowerCase();
+      const cleanName = assetName
+        .replace(/apartamento|casa|carro|veículo|jeep|honda|audi|toyota/g, '')
+        .trim();
+      const firstWord = cleanName.length > 2 ? cleanName.split(/\s+/)[0] : '';
+      return {
+        id: p.id,
+        cleanName,
+        firstWord: firstWord && firstWord.length > 3 ? firstWord : ''
+      };
+    });
+
+    const txsByAsset = new Map<string, any[]>();
+    activePhysicalAssets.forEach(p => txsByAsset.set(p.id, []));
+
+    transactions.forEach(t => {
+      const explicitId = t.metadata?.linked_asset_id;
+      if (explicitId && txsByAsset.has(explicitId)) {
+        txsByAsset.get(explicitId)!.push(t);
+        return;
+      }
+
+      if (t.liability_id) {
+        const linkedLiab = activeLiabilities.find(l => l.id === t.liability_id);
+        if (linkedLiab && linkedLiab.linkedAssetId && txsByAsset.has(linkedLiab.linkedAssetId)) {
+          txsByAsset.get(linkedLiab.linkedAssetId)!.push(t);
+          return;
+        }
+      }
+
+      const descLower = t.description ? t.description.toLowerCase() : '';
+      for (let i = 0; i < assetMatches.length; i++) {
+        const match = assetMatches[i];
+        if (match.cleanName.length > 2) {
+          if (descLower.includes(match.cleanName)) {
+            if (match.cleanName === 'piazza' && descLower.includes('piazzaria')) continue;
+            txsByAsset.get(match.id)!.push(t);
+            return;
+          }
+          if (match.firstWord && descLower.includes(match.firstWord)) {
+            if (match.firstWord === 'piazza' && descLower.includes('piazzaria')) continue;
+            txsByAsset.get(match.id)!.push(t);
+            return;
+          }
+        }
+      }
+    });
+
+    return txsByAsset;
+  }, [activePhysicalAssets, activeLiabilities, transactions]);
+
   // Sustainability Panel calculations
   const sustainabilitySummary = useMemo(() => {
     const activePhysImob = activePhysicalAssets.filter(p => p.category === 'REAL_ESTATE' && !excludedAssetIds.includes(p.id));
-    const activePhysOthers = activePhysicalAssets.filter(p => p.category !== 'REAL_ESTATE' && !excludedOtherAssetIds.includes(p.id));
     
     // Regular liabilities monthly payments
     const mortgageLiabs = activeLiabilities.filter(l => {
@@ -603,23 +693,7 @@ const Assets: React.FC = () => {
       const meta = curr.metadata || {};
       if (meta.isRented) {
         const currentMonthStr = DateUtils.formatToISODate(new Date()).substring(0, 7); // YYYY-MM
-        const assetNameClean = curr.name.toLowerCase()
-          .replace(/apartamento|casa|carro|veículo|jeep|honda|audi|toyota/g, '')
-          .trim();
-
-        const assetTxs = transactions.filter(t => {
-          if (t.metadata?.linked_asset_id === curr.id) return true;
-          const descLower = t.description.toLowerCase();
-          if (assetNameClean.length > 2) {
-            if (descLower.includes(assetNameClean)) return true;
-            const firstWord = assetNameClean.split(/\s+/)[0];
-            if (firstWord && firstWord.length > 3 && descLower.includes(firstWord)) {
-              if (firstWord === 'piazza' && descLower.includes('piazzaria')) return false;
-              return true;
-            }
-          }
-          return false;
-        });
+        const assetTxs = linkedTransactionsMap.get(curr.id) || [];
 
         const currentMonthRents = assetTxs.filter(t => 
           t.type === 'INCOME' && 
@@ -664,11 +738,11 @@ const Assets: React.FC = () => {
       selfSustainabilityPercent,
       totalInvestedBalance
     };
-  }, [activePhysicalAssets, activeLiabilities, brokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, transactions]);
+  }, [activePhysicalAssets, activeLiabilities, brokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, linkedTransactionsMap]);
 
   // Asset helpers
   const getAssetLinkedTransactions = (assetId: string) => {
-    return transactions.filter(t => t.metadata?.linked_asset_id === assetId);
+    return linkedTransactionsMap.get(assetId) || [];
   };
 
   const getAssetFinancialHistory = (asset: PhysicalAsset) => {
@@ -2309,52 +2383,19 @@ const Assets: React.FC = () => {
 
   // Helper to dynamically match a single transaction to a physical asset
   const isTransactionLinkedToAsset = (t: any, p: PhysicalAsset) => {
-    const assetId = p.id;
-    const assetName = p.name.toLowerCase();
-    // Clean name: remove common prefix/suffix words for robust substring matching
-    const cleanName = assetName
-      .replace(/apartamento|casa|carro|veículo|jeep|honda|audi|toyota/g, '')
-      .trim();
-
-    // 1. Explicit link in metadata
-    if (t.metadata?.linked_asset_id === assetId) return true;
-
-    // 2. Explicit link via liability_id if liability is linked to this asset
-    if (t.liability_id) {
-      const isLinkedLiability = activeLiabilities.some(l => l.id === t.liability_id && l.linkedAssetId === assetId);
-      if (isLinkedLiability) return true;
-    }
-
-    // 3. Substring matching as robust fallback (e.g. description has "Piazza" and asset name has "Apartamento Piazza do Bosque")
-    if (cleanName.length > 2) {
-      const descLower = t.description.toLowerCase();
-      if (descLower.includes(cleanName)) {
-        if (cleanName === 'piazza' && descLower.includes('piazzaria')) {
-          return false;
-        }
-        return true;
-      }
-      const firstWord = cleanName.split(/\s+/)[0];
-      if (firstWord && firstWord.length > 3 && descLower.includes(firstWord)) {
-        if (firstWord === 'piazza' && descLower.includes('piazzaria')) {
-          return false;
-        }
-        return true;
-      }
-    }
-    return false;
+    const linkedTxs = linkedTransactionsMap.get(p.id) || [];
+    return linkedTxs.some(lt => lt.id === t.id);
   };
 
   // Helper to dynamically match transactions to a physical asset using metadata or clean name substring matching
   const getAssetTransactions = (p: PhysicalAsset) => {
-    return transactions.filter(t => isTransactionLinkedToAsset(t, p));
+    return linkedTransactionsMap.get(p.id) || [];
   };
 
   // Complete, deep executive financial KPIs unifications (excluding archived items)
   const overviewData = useMemo(() => {
     const activePhys = activePhysicalAssets;
     const activeLiab = activeLiabilities;
-    const activeTxs = transactions;
 
     // Helper to dynamically link a liability to an asset with name substring fallback
     const isLiabilityLinkedToAsset = (l: Liability, p: PhysicalAsset) => {
@@ -2381,11 +2422,14 @@ const Assets: React.FC = () => {
     
     // Sum of amortized amount from liability total - remaining balance
     const plantaLiabAmortized = plantaLiabs.reduce((sum, l) => sum + (l.totalAmount - l.remainingBalance), 0);
+    
+    // Fetch all transactions linked to planta assets via map
+    const plantaTxs = plantaAssets.flatMap(p => linkedTransactionsMap.get(p.id) || []);
+
     // Sum of explicit transaction payments
-    const plantaTxAmortized = activeTxs.filter(t => 
+    const plantaTxAmortized = plantaTxs.filter(t => 
       t.type === 'EXPENSE' && 
       t.isPaid && 
-      plantaAssets.some(p => isTransactionLinkedToAsset(t, p)) &&
       !t.description.toLowerCase().includes('condomínio') && 
       !t.description.toLowerCase().includes('condominio') && 
       !t.description.toLowerCase().includes('iptu')
@@ -2399,11 +2443,10 @@ const Assets: React.FC = () => {
     }, 0);
     const plantaRemainingToPay = plantaLiabRemaining + plantaBalloonsRemaining;
 
-    const plantaAdditionalExpenses = activeTxs.filter(t => 
+    const plantaAdditionalExpenses = plantaTxs.filter(t => 
       t.type === 'EXPENSE' && 
       !t.is_recurring && 
-      t.metadata?.type !== 'delivery_quitacao' &&
-      plantaAssets.some(p => isTransactionLinkedToAsset(t, p))
+      t.metadata?.type !== 'delivery_quitacao'
     ).reduce((sum, t) => sum + t.amount, 0);
 
     const prontoValue = prontoAssets.reduce((sum, p) => sum + p.estimatedValue, 0);
@@ -2421,11 +2464,14 @@ const Assets: React.FC = () => {
 
     // Sum of amortized amount from ready liabilities: total_amount - remaining_balance
     const prontoLiabAmortized = prontoLiabs.reduce((sum, l) => sum + (l.totalAmount - l.remainingBalance), 0);
+
+    // Fetch all transactions linked to pronto assets via map
+    const prontoTxs = prontoAssets.flatMap(p => linkedTransactionsMap.get(p.id) || []);
+
     // Fallback transaction-based payments
-    const prontoTxAmortized = activeTxs.filter(t => 
+    const prontoTxAmortized = prontoTxs.filter(t => 
       t.type === 'EXPENSE' && 
       t.isPaid && 
-      prontoAssets.some(p => isTransactionLinkedToAsset(t, p)) &&
       !t.description.toLowerCase().includes('condomínio') && 
       !t.description.toLowerCase().includes('condominio') && 
       !t.description.toLowerCase().includes('iptu')
@@ -2435,10 +2481,9 @@ const Assets: React.FC = () => {
     const prontoRemainingToPay = prontoLiabs.reduce((sum, l) => sum + l.remainingBalance, 0);
 
     // Total rents matching description or linked metadata
-    const prontoReceived = activeTxs.filter(t => 
+    const prontoReceived = prontoTxs.filter(t => 
       t.type === 'INCOME' && 
-      t.isPaid && 
-      prontoAssets.some(p => isTransactionLinkedToAsset(t, p))
+      t.isPaid
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
 
     // Net value if sold after paying off remaining financing debt: estimatedValue - remainingBalance
@@ -2446,18 +2491,16 @@ const Assets: React.FC = () => {
 
     // Monthly net flow for the current month: rent inflows minus monthly mortgage installment, condo, and IPTU
     const currentMonthStr = DateUtils.formatToISODate(new Date()).substring(0, 7);
-    const prontoCurrentMonthIncome = activeTxs.filter(t => 
+    const prontoCurrentMonthIncome = prontoTxs.filter(t => 
       t.type === 'INCOME' && 
       t.isPaid && 
-      t.date.substring(0, 7) === currentMonthStr &&
-      prontoAssets.some(p => isTransactionLinkedToAsset(t, p))
+      t.date.substring(0, 7) === currentMonthStr
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
 
-    const prontoCurrentMonthExpenses = activeTxs.filter(t => 
+    const prontoCurrentMonthExpenses = prontoTxs.filter(t => 
       t.type === 'EXPENSE' && 
       t.isPaid && 
-      t.date.substring(0, 7) === currentMonthStr &&
-      prontoAssets.some(p => isTransactionLinkedToAsset(t, p))
+      t.date.substring(0, 7) === currentMonthStr
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
     const prontoExpectedExpenses = prontoInstallments + prontoOperatingCosts;
     const prontoOutflowActualOrExpected = prontoCurrentMonthExpenses > 0 ? prontoCurrentMonthExpenses : prontoExpectedExpenses;
@@ -2478,9 +2521,11 @@ const Assets: React.FC = () => {
     const invEstimatedValue = physicalInv.reduce((sum, p) => sum + p.estimatedValue, 0);
     const invBrokerFees = physicalInv.reduce((sum, p) => sum + (Number(p.metadata?.brokerFee) || 0), 0);
     
-    const invExtraExpenses = activeTxs.filter(t => 
-      t.type === 'EXPENSE' && 
-      physicalInv.some(p => isTransactionLinkedToAsset(t, p))
+    // Fetch all transactions linked to physical investment assets via map
+    const physicalInvTxs = physicalInv.flatMap(p => linkedTransactionsMap.get(p.id) || []);
+
+    const invExtraExpenses = physicalInvTxs.filter(t => 
+      t.type === 'EXPENSE'
     ).reduce((sum, t) => sum + t.amount, 0);
 
     const invNetProfit = invEstimatedValue - (invAcquisitionTotal + invBrokerFees + invExtraExpenses);
@@ -2507,18 +2552,18 @@ const Assets: React.FC = () => {
       percentage: totalFinancialFunds > 0 ? Math.round((allocationGrouped[type] / totalFinancialFunds) * 100) : 0
     })).sort((a,b) => b.balance - a.balance);
 
-    const currentMonthYield = activeTxs.filter(t => 
-      t.type === 'INCOME' && 
-      (t.category === 'Rendimentos' || t.category === 'Investimentos' || t.metadata?.type === 'investment_yield') &&
-      t.date.substring(0, 7) === currentMonthStr
-    ).reduce((sum, t) => sum + t.amount, 0);
-
-    const allYieldTxs = activeTxs.filter(t => 
+    // Yield transactions (categories Rendimentos/Investimentos or metadata type)
+    const yieldTxs = transactions.filter(t => 
       t.type === 'INCOME' && 
       (t.category === 'Rendimentos' || t.category === 'Investimentos' || t.metadata?.type === 'investment_yield')
     );
-    const uniqueMonths = Array.from(new Set(allYieldTxs.map(t => t.date.substring(0, 7))));
-    const averageMonthlyYield = uniqueMonths.length > 0 ? allYieldTxs.reduce((sum, t) => sum + t.amount, 0) / uniqueMonths.length : 0;
+
+    const currentMonthYield = yieldTxs.filter(t => 
+      t.date.substring(0, 7) === currentMonthStr
+    ).reduce((sum, t) => sum + t.amount, 0);
+
+    const uniqueMonths = Array.from(new Set(yieldTxs.map(t => t.date.substring(0, 7))));
+    const averageMonthlyYield = uniqueMonths.length > 0 ? yieldTxs.reduce((sum, t) => sum + t.amount, 0) / uniqueMonths.length : 0;
 
     // 4. PASSIVOS E DÍVIDAS (Consórcios vs Financiamentos)
     const consortiums = activeLiab.filter(l => l.type === 'CONSORTIUM');
@@ -2579,7 +2624,7 @@ const Assets: React.FC = () => {
       finPaid,
       finRemaining
     };
-  }, [activePhysicalAssets, activeLiabilities, brokers, transactions, totalFinancial]);
+  }, [activePhysicalAssets, activeLiabilities, brokers, transactions, totalFinancial, linkedTransactionsMap]);
 
   if (isLoading) {
     return (

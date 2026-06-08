@@ -174,7 +174,8 @@ export default function AdminDashboard() {
 
   const logAdminAction = async (action: string, details: any, targetId?: string) => {
     if (!supabase) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     await supabase.from('admin_audit_logs').insert({
       admin_id: user?.id,
       target_user_id: targetId,

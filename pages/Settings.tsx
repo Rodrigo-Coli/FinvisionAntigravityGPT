@@ -194,7 +194,8 @@ const SettingsPage: React.FC = () => {
     if (!supabase) return;
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       if (activeSection === 'general' || activeSection === 'rates' || activeSection === 'navigation') {
@@ -303,7 +304,8 @@ const SettingsPage: React.FC = () => {
   const addCategory = async () => {
     if (!newCatName || !supabase) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
       await supabase.from('categories').insert({ user_id: user.id, name: newCatName, type: categoryTab, color: 'bg-brand-50 text-brand-600' });
       setNewCatName(''); setIsAddingCat(false); fetchData();
@@ -353,7 +355,8 @@ const SettingsPage: React.FC = () => {
   const addSubcategory = async (categoryId: string) => {
     if (!newSubcatName || !supabase) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
       await supabase.from('subcategories').insert({ user_id: user.id, category_id: categoryId, name: newSubcatName });
       setNewSubcatName('');
@@ -392,7 +395,8 @@ const SettingsPage: React.FC = () => {
     const previousSettings = { ...settings };
     setSettings(prev => ({ ...prev, [key]: value }));
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
       const { error } = await supabase.from('user_settings').upsert({ user_id: user.id, [key]: value, updated_at: DateUtils.getNow().toISOString() });
       if (error) throw error;
@@ -406,7 +410,8 @@ const SettingsPage: React.FC = () => {
   const addEntity = async () => {
     if (!newEntityName || !supabase) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
       await supabase.from('entities').upsert({ user_id: user.id, name: newEntityName }, { onConflict: 'user_id, name' });
       setNewEntityName(''); setIsAddingEntity(false); fetchData();

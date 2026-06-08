@@ -24,7 +24,8 @@ const PendingApproval: React.FC<PendingApprovalProps> = ({ user }) => {
     setChecking(true);
     setStatusMsg(null);
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const authUser = session?.user;
       if (!authUser) { window.location.reload(); return; }
       const { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
       if (error) throw error;

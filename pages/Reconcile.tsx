@@ -120,7 +120,8 @@ const Reconcile: React.FC = () => {
 
   const fetchSubcategories = async () => {
     if (!supabase) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return;
     const { data: cats } = await supabase.from('categories').select('id, name').eq('user_id', user.id);
     const { data: subs } = await supabase.from('subcategories').select('*').eq('user_id', user.id);
@@ -143,7 +144,8 @@ const Reconcile: React.FC = () => {
     if (!supabase) return;
     setIsLoadingTargets(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
       const { data, error } = await supabase.from('accounts').select('*').eq('user_id', user.id);
       if (error) throw error;
@@ -158,7 +160,8 @@ const Reconcile: React.FC = () => {
 
     if (!supabase) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
       const { data, error } = await supabase.from('cards').select('*').eq('user_id', user.id);
       if (error) throw error;
@@ -169,7 +172,8 @@ const Reconcile: React.FC = () => {
   const fetchRecentTransactions = async () => {
     if (!supabase) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       const { data, error } = await supabase
@@ -217,7 +221,8 @@ const Reconcile: React.FC = () => {
   const fetchQueue = async () => {
     if (!supabase) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
       const { data, error } = await supabase.from('imported_transactions').select('*').eq('user_id', user.id).or('status.eq.READY_TO_RECONCILE,status.eq.ready,status.eq.pending').order('date', { ascending: false });
       if (error) throw error;
@@ -651,7 +656,8 @@ const Reconcile: React.FC = () => {
 
     setProcessingItemId(item.id);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       // Auto-provisionamento de categoria e perfil
