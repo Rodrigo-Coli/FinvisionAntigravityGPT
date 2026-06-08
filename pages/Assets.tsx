@@ -505,10 +505,13 @@ const Assets: React.FC = () => {
       }));
       setLiabilities(mappedLiabs);
 
-      // Loop fetch de transações em blocos de 1000
+      // Loop fetch de transações em blocos de 1000 (filtrando apenas transações relevantes: do último ano, vinculadas a ativos, ou rendimentos)
       let allTxs: any[] = [];
       let hasMoreTxs = true;
       let txOffset = 0;
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
 
       while (hasMoreTxs) {
         const { data: chunk, error: txErr } = await supabase
@@ -516,6 +519,7 @@ const Assets: React.FC = () => {
           .select('*')
           .eq('user_id', userId)
           .eq('is_deleted', false)
+          .or(`date.gte.${oneYearAgoStr},metadata->>linked_asset_id.not.is.null,category.eq.Rendimentos,category.eq.Investimentos`)
           .range(txOffset, txOffset + 999);
 
         if (txErr) throw txErr;
@@ -2303,8 +2307,8 @@ const Assets: React.FC = () => {
   const totalAssets = totalPhysical + totalFinancial;
   const totalNetWorth = totalAssets - totalLiabilities;
 
-  // Helper to dynamically match transactions to a physical asset using metadata or clean name substring matching
-  const getAssetTransactions = (p: PhysicalAsset) => {
+  // Helper to dynamically match a single transaction to a physical asset
+  const isTransactionLinkedToAsset = (t: any, p: PhysicalAsset) => {
     const assetId = p.id;
     const assetName = p.name.toLowerCase();
     // Clean name: remove common prefix/suffix words for robust substring matching
@@ -2312,38 +2316,38 @@ const Assets: React.FC = () => {
       .replace(/apartamento|casa|carro|veículo|jeep|honda|audi|toyota/g, '')
       .trim();
 
-    return transactions.filter(t => {
-      // 1. Explicit link in metadata
-      if (t.metadata?.linked_asset_id === assetId) return true;
+    // 1. Explicit link in metadata
+    if (t.metadata?.linked_asset_id === assetId) return true;
 
-      // 2. Explicit link via liability_id if liability is linked to this asset
-      if (t.liability_id) {
-        const isLinkedLiability = activeLiabilities.some(l => l.id === t.liability_id && l.linkedAssetId === assetId);
-        if (isLinkedLiability) return true;
-      }
+    // 2. Explicit link via liability_id if liability is linked to this asset
+    if (t.liability_id) {
+      const isLinkedLiability = activeLiabilities.some(l => l.id === t.liability_id && l.linkedAssetId === assetId);
+      if (isLinkedLiability) return true;
+    }
 
-      // 3. Substring matching as robust fallback (e.g. description has "Piazza" and asset name has "Apartamento Piazza do Bosque")
-      if (cleanName.length > 2) {
-        const descLower = t.description.toLowerCase();
-        if (descLower.includes(cleanName)) {
-          // Avoid false positives (e.g. Jonas piazzaria is a restaurant expense)
-          if (cleanName === 'piazza' && descLower.includes('piazzaria')) {
-            return false;
-          }
-          return true;
+    // 3. Substring matching as robust fallback (e.g. description has "Piazza" and asset name has "Apartamento Piazza do Bosque")
+    if (cleanName.length > 2) {
+      const descLower = t.description.toLowerCase();
+      if (descLower.includes(cleanName)) {
+        if (cleanName === 'piazza' && descLower.includes('piazzaria')) {
+          return false;
         }
-        // Also check the first significant word if the cleanName has multiple words
-        const firstWord = cleanName.split(/\s+/)[0];
-        if (firstWord && firstWord.length > 3 && descLower.includes(firstWord)) {
-          // Avoid false positives
-          if (firstWord === 'piazza' && descLower.includes('piazzaria')) {
-            return false;
-          }
-          return true;
-        }
+        return true;
       }
-      return false;
-    });
+      const firstWord = cleanName.split(/\s+/)[0];
+      if (firstWord && firstWord.length > 3 && descLower.includes(firstWord)) {
+        if (firstWord === 'piazza' && descLower.includes('piazzaria')) {
+          return false;
+        }
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Helper to dynamically match transactions to a physical asset using metadata or clean name substring matching
+  const getAssetTransactions = (p: PhysicalAsset) => {
+    return transactions.filter(t => isTransactionLinkedToAsset(t, p));
   };
 
   // Complete, deep executive financial KPIs unifications (excluding archived items)
@@ -2381,7 +2385,7 @@ const Assets: React.FC = () => {
     const plantaTxAmortized = activeTxs.filter(t => 
       t.type === 'EXPENSE' && 
       t.isPaid && 
-      plantaAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id)) &&
+      plantaAssets.some(p => isTransactionLinkedToAsset(t, p)) &&
       !t.description.toLowerCase().includes('condomínio') && 
       !t.description.toLowerCase().includes('condominio') && 
       !t.description.toLowerCase().includes('iptu')
@@ -2399,7 +2403,7 @@ const Assets: React.FC = () => {
       t.type === 'EXPENSE' && 
       !t.is_recurring && 
       t.metadata?.type !== 'delivery_quitacao' &&
-      plantaAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id))
+      plantaAssets.some(p => isTransactionLinkedToAsset(t, p))
     ).reduce((sum, t) => sum + t.amount, 0);
 
     const prontoValue = prontoAssets.reduce((sum, p) => sum + p.estimatedValue, 0);
@@ -2421,7 +2425,7 @@ const Assets: React.FC = () => {
     const prontoTxAmortized = activeTxs.filter(t => 
       t.type === 'EXPENSE' && 
       t.isPaid && 
-      prontoAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id)) &&
+      prontoAssets.some(p => isTransactionLinkedToAsset(t, p)) &&
       !t.description.toLowerCase().includes('condomínio') && 
       !t.description.toLowerCase().includes('condominio') && 
       !t.description.toLowerCase().includes('iptu')
@@ -2434,7 +2438,7 @@ const Assets: React.FC = () => {
     const prontoReceived = activeTxs.filter(t => 
       t.type === 'INCOME' && 
       t.isPaid && 
-      prontoAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id))
+      prontoAssets.some(p => isTransactionLinkedToAsset(t, p))
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
 
     // Net value if sold after paying off remaining financing debt: estimatedValue - remainingBalance
@@ -2446,14 +2450,14 @@ const Assets: React.FC = () => {
       t.type === 'INCOME' && 
       t.isPaid && 
       t.date.substring(0, 7) === currentMonthStr &&
-      prontoAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id))
+      prontoAssets.some(p => isTransactionLinkedToAsset(t, p))
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
 
     const prontoCurrentMonthExpenses = activeTxs.filter(t => 
       t.type === 'EXPENSE' && 
       t.isPaid && 
       t.date.substring(0, 7) === currentMonthStr &&
-      prontoAssets.some(p => getAssetTransactions(p).some(tx => tx.id === t.id))
+      prontoAssets.some(p => isTransactionLinkedToAsset(t, p))
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
     const prontoExpectedExpenses = prontoInstallments + prontoOperatingCosts;
     const prontoOutflowActualOrExpected = prontoCurrentMonthExpenses > 0 ? prontoCurrentMonthExpenses : prontoExpectedExpenses;
@@ -2476,7 +2480,7 @@ const Assets: React.FC = () => {
     
     const invExtraExpenses = activeTxs.filter(t => 
       t.type === 'EXPENSE' && 
-      physicalInv.some(p => getAssetTransactions(p).some(tx => tx.id === t.id))
+      physicalInv.some(p => isTransactionLinkedToAsset(t, p))
     ).reduce((sum, t) => sum + t.amount, 0);
 
     const invNetProfit = invEstimatedValue - (invAcquisitionTotal + invBrokerFees + invExtraExpenses);
