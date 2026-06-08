@@ -16,7 +16,7 @@
     "prefer_related_applications": false,
     "icons": [
         {
-            "src": "/logo.png",
+            "src": "/logo-192.png",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "any"
@@ -28,7 +28,7 @@
             "purpose": "any"
         },
         {
-            "src": "/logo.png",
+            "src": "/logo-192.png",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "maskable"
@@ -47,21 +47,21 @@
             "short_name": "Lançar",
             "description": "Criar um novo lançamento financeiro",
             "url": "/?source=pwa#/history?add=true",
-            "icons": [{ "src": "/logo.png", "sizes": "192x192", "type": "image/png" }]
+            "icons": [{ "src": "/logo-192.png", "sizes": "192x192", "type": "image/png" }]
         },
         {
             "name": "Histórico",
             "short_name": "Histórico",
             "description": "Ver histórico de transações",
             "url": "/?source=pwa#/history",
-            "icons": [{ "src": "/logo.png", "sizes": "192x192", "type": "image/png" }]
+            "icons": [{ "src": "/logo-192.png", "sizes": "192x192", "type": "image/png" }]
         },
         {
             "name": "Meus Cartões",
             "short_name": "Cartões",
             "description": "Ver faturas e cartões",
             "url": "/?source=pwa#/cards",
-            "icons": [{ "src": "/logo.png", "sizes": "192x192", "type": "image/png" }]
+            "icons": [{ "src": "/logo-192.png", "sizes": "192x192", "type": "image/png" }]
         }
     ]
 }
