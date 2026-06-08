@@ -47,7 +47,8 @@ const BudgetPage: React.FC<{ user: any }> = ({ user }) => {
         if (!silent) setIsLoading(true);
         try {
             if (navigator.onLine) {
-                const { data: { user: u } } = await sb.auth.getUser();
+                const { data: { session } } = await sb.auth.getSession();
+                const u = session?.user;
                 if (!u) return;
 
                 // Fetch user budgets
@@ -107,7 +108,8 @@ const BudgetPage: React.FC<{ user: any }> = ({ user }) => {
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!supabase) return;
-        const { data: { user: u } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const u = session?.user;
         if (!u) return;
         try {
             const payload = { category: formData.category, monthly_limit: parseFloat(formData.monthlyLimit) || 0, color: formData.color };

@@ -432,7 +432,8 @@ const HistoryPage: React.FC = () => {
     try {
       if (!supabase) return;
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) {
         setIsLoading(false);
         return;
@@ -1579,7 +1580,8 @@ const HistoryPage: React.FC = () => {
 
     setAddModal(prev => ({ ...prev, isSubmitting: true, error: null }));
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       const userId = user?.id || 'offline-user';
 
       // Typo correction for manual insertion
@@ -1758,7 +1760,8 @@ const HistoryPage: React.FC = () => {
   const handleCreateCategory = async (name: string, type: 'INCOME' | 'EXPENSE') => {
     if (!supabase) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
       await supabase.from('categories').insert({ user_id: user.id, name, type, color: 'bg-brand-50 text-brand-600' });
       await fetchData(); // Refetch the list
@@ -2127,7 +2130,8 @@ const HistoryPage: React.FC = () => {
         reopenTransaction={async (t) => {
           if (!supabase || !window.confirm('Deseja reabrir este lançamento?')) return;
           try {
-            const { data: { user } } = await supabase.auth.getUser();
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session?.user;
             if (!user) return;
             const isCardPayment = t.type === 'BILL_PAYMENT' || t.description.toLowerCase().includes('pagamento cartão');
             if (isCardPayment) {

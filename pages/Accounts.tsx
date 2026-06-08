@@ -160,7 +160,8 @@ const Accounts: React.FC = () => {
           return;
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user;
         if (!user) return;
 
         const { data, error } = await supabase
@@ -221,7 +222,8 @@ const Accounts: React.FC = () => {
     if (!supabase) return;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) {
         alert('Usuário não autenticado');
         return;
@@ -292,7 +294,8 @@ const Accounts: React.FC = () => {
     setIsSavingAdjust(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) throw new Error("Usuário não autenticado");
 
       if (adjustMode === 'initial') {

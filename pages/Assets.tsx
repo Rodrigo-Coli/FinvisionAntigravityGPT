@@ -1179,7 +1179,8 @@ const Assets: React.FC = () => {
     };
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (user) {
         await syncRentalTransactions(
           asset.id,
@@ -1207,7 +1208,8 @@ const Assets: React.FC = () => {
   const handleSaveAsset = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return;
 
     try {
@@ -1849,7 +1851,8 @@ const Assets: React.FC = () => {
       const condoVal = parseFloat(realEstateManageForm.condoFee) || 0;
       const iptuVal = parseFloat(realEstateManageForm.iptuFee) || 0;
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) throw new Error("Usuário não autenticado");
 
       // Update physical asset metadata
@@ -2017,7 +2020,8 @@ const Assets: React.FC = () => {
   const handleSaveLiability = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return;
 
     try {
@@ -2190,7 +2194,8 @@ const Assets: React.FC = () => {
     e.preventDefault();
     if (!supabase || !selectedAssetForExtrato) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       const amt = parseFloat(newTxForm.amount) || 0;

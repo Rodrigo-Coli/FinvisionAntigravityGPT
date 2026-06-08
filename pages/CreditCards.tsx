@@ -273,7 +273,8 @@ const CreditCardsPage: React.FC = () => {
     if (!silent) setLoading(true);
     try {
       if (navigator.onLine) {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user;
         if (!user) return;
         const { data, error } = await supabase
           .from('cards')
@@ -318,7 +319,8 @@ const CreditCardsPage: React.FC = () => {
     if (!supabase) return;
     try {
       if (navigator.onLine) {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user;
         if (!user) return;
         const { data, error } = await supabase
           .from('categories')
@@ -389,7 +391,8 @@ const CreditCardsPage: React.FC = () => {
     if (!supabase) return;
     try {
       if (navigator.onLine) {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user;
         if (!user) return;
         const { data, error } = await supabase
           .from('subcategories')
@@ -491,7 +494,8 @@ const CreditCardsPage: React.FC = () => {
     if (!supabase) return;
     try {
       if (navigator.onLine) {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user;
         if (!user) return;
         const { data, error } = await supabase
           .from('accounts')
@@ -587,7 +591,8 @@ const CreditCardsPage: React.FC = () => {
     if (!supabase) return;
     try {
       if (navigator.onLine) {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user;
         if (!user) return;
         const { data, error } = await supabase.from('entities').select('name').eq('user_id', user.id).eq('is_archived', false);
         if (error) throw error;
@@ -692,7 +697,8 @@ const CreditCardsPage: React.FC = () => {
 
     if (!supabase || !navigator.onLine) return cachedData;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return cachedData;
 
       const { data, error } = await supabase
@@ -731,7 +737,8 @@ const CreditCardsPage: React.FC = () => {
 
     if (!supabase || !navigator.onLine) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       let query = supabase.from('card_transactions').select('*').eq('user_id', user.id).order('date', { ascending: false });
@@ -775,7 +782,8 @@ const CreditCardsPage: React.FC = () => {
 
     setSavingRowId(id);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
@@ -827,7 +835,8 @@ const CreditCardsPage: React.FC = () => {
     if (!confirmedScope && !confirm('Excluir esta transação?')) return;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
@@ -909,7 +918,8 @@ const CreditCardsPage: React.FC = () => {
     if (!supabase || !txCardId) return;
     setIsSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       const cleanAmount = parseNumeric(txAmount);
@@ -1153,7 +1163,8 @@ const CreditCardsPage: React.FC = () => {
 
     setIsSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       let correctedCategory = defaultCategory || 'Pessoal';
@@ -1249,7 +1260,8 @@ const CreditCardsPage: React.FC = () => {
     }
     setIsPaying(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) throw new Error("Usuário não autenticado.");
 
       let targetStatementId = currentStatement?.id;
