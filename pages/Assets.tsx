@@ -138,6 +138,25 @@ const Assets: React.FC = () => {
     financingInstallmentsCount: '',
     financingDueDay: '10',
     financingName: '',
+    // Vehicle-specific fields
+    vehicleType: 'CAR' as 'CAR' | 'MOTORCYCLE' | 'TRUCK' | 'OTHER',
+    transferFee: '',
+    vehiclePurposeType: 'RENTAL' as 'RENTAL' | 'FLIP',
+    ipvaFee: '',
+    seguroFee: '',
+    licenciamentoFee: '',
+    maintenanceMonthlyEstimated: '',
+    rentalPlatformFee: '',
+    targetSaleValue: '',
+    preparationBudget: '',
+    saleComission: '',
+    salePaymentMethod: 'A_VISTA' as 'A_VISTA' | 'PARCELADO' | 'PERMUTA' | 'HIBRIDO',
+    permutaVeiculoValor: '',
+    permutaVeiculoNome: '',
+    permutaImovelValor: '',
+    permutaImovelNome: '',
+    permutaOutrosValor: '',
+    permutaOutrosNome: '',
   });
 
   const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
@@ -700,6 +719,323 @@ const Assets: React.FC = () => {
     }
   };
 
+  const syncVehicleTransactions = async (
+    vehicleId: string,
+    isNew: boolean,
+    userId: string,
+    formValues: typeof formData
+  ) => {
+    if (!supabase) return;
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const categoryName = 'Ativos Físicos';
+      let catId = '';
+      
+      // Buscar ou criar categoria "Ativos Físicos"
+      const { data: existingCat } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('name', categoryName)
+        .maybeSingle();
+
+      if (existingCat) {
+        catId = existingCat.id;
+      } else {
+        const { data: c } = await supabase
+          .from('categories')
+          .insert({ user_id: userId, name: categoryName, type: 'EXPENSE', color: 'bg-indigo-50 text-indigo-600' })
+          .select('id')
+          .maybeSingle();
+        if (c) catId = c.id;
+      }
+
+      // 1. Custo de Transferência (Apenas no cadastro inicial)
+      const transFee = parseFloat(formValues.transferFee) || 0;
+      if (isNew && transFee > 0) {
+        await supabase.from('transactions').insert([{
+          user_id: userId,
+          description: `Taxa de Transferência/Doc - ${formValues.name}`,
+          amount: transFee,
+          date: todayStr,
+          type: 'EXPENSE',
+          category: categoryName,
+          subcategory: 'Transferência/Doc',
+          category_id: catId || null,
+          is_paid: true,
+          paid_amount: transFee,
+          paid_at: todayStr,
+          metadata: { linked_asset_id: vehicleId, type: 'vehicle_transfer' }
+        }]);
+      }
+
+      // 2. Limpar provisões futuras não pagas de IPVA, Seguro, Licenciamento, Aluguel e parcelas da venda para recalcular
+      const { data: oldProvisions } = await supabase
+        .from('transactions')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('is_paid', false)
+        .eq('is_deleted', false)
+        .eq('metadata->>linked_asset_id', vehicleId)
+        .in('metadata->>type', ['vehicle_ipva', 'vehicle_seguro', 'vehicle_licenciamento', 'vehicle_rental_income', 'vehicle_sale_installment']);
+
+      if (oldProvisions && oldProvisions.length > 0) {
+        await supabase.from('transactions').delete().in('id', oldProvisions.map((p: any) => p.id));
+      }
+
+      // Se o veículo foi vendido, não geramos novas provisões de IPVA/Seguro/Aluguel futuros!
+      if (formValues.isSold) {
+        const soldAmount = parseFloat(formValues.soldValue) || 0;
+        const comission = parseFloat(formValues.saleComission) || 0;
+
+        // Registrar comissão de venda (se houver)
+        if (comission > 0) {
+          await supabase.from('transactions').insert([{
+            user_id: userId,
+            description: `Comissão de Venda - ${formValues.name}`,
+            amount: comission,
+            date: todayStr,
+            type: 'EXPENSE',
+            category: categoryName,
+            subcategory: 'Comissão',
+            category_id: catId || null,
+            is_paid: true,
+            paid_amount: comission,
+            paid_at: todayStr,
+            metadata: { linked_asset_id: vehicleId, type: 'vehicle_sale_comission' }
+          }]);
+        }
+
+        // Registrar recebimento da venda
+        let revenueCatId = '';
+        const { data: revCat } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('name', 'Outras Receitas')
+          .maybeSingle();
+        if (revCat) {
+          revenueCatId = revCat.id;
+        }
+
+        if (formValues.salePaymentMethod === 'A_VISTA' || formValues.salePaymentMethod === 'HIBRIDO') {
+          // Valor à vista
+          let cashVal = soldAmount;
+          if (formValues.salePaymentMethod === 'HIBRIDO') {
+            const permutaVal = (parseFloat(formValues.permutaVeiculoValor) || 0) + (parseFloat(formValues.permutaImovelValor) || 0) + (parseFloat(formValues.permutaOutrosValor) || 0);
+            cashVal = Math.max(0, soldAmount - permutaVal);
+          }
+
+          if (cashVal > 0) {
+            await supabase.from('transactions').insert([{
+              user_id: userId,
+              description: `Receita Venda de Veículo (À Vista) - ${formValues.name}`,
+              amount: cashVal,
+              date: todayStr,
+              type: 'INCOME',
+              category: 'Outras Receitas',
+              subcategory: 'Venda de Ativo',
+              category_id: revenueCatId || null,
+              is_paid: true,
+              paid_amount: cashVal,
+              paid_at: todayStr,
+              metadata: { linked_asset_id: vehicleId, type: 'vehicle_sale_revenue' }
+            }]);
+          }
+        } 
+        else if (formValues.salePaymentMethod === 'PARCELADO') {
+          const parcelas = 10; // 10 parcelas mensais padrão
+          const valorParcela = soldAmount / parcelas;
+          const newSaleInstallments = [];
+          
+          for (let i = 0; i < parcelas; i++) {
+            const futureDate = new Date();
+            futureDate.setMonth(futureDate.getMonth() + i);
+            const futureDateStr = futureDate.toISOString().split('T')[0];
+
+            newSaleInstallments.push({
+              user_id: userId,
+              description: `Receita Parcelada Venda (${i+1}/${parcelas}) - ${formValues.name}`,
+              amount: valorParcela,
+              date: futureDateStr,
+              type: 'INCOME',
+              category: 'Outras Receitas',
+              subcategory: 'Venda de Ativo',
+              category_id: revenueCatId || null,
+              is_paid: false,
+              metadata: { linked_asset_id: vehicleId, type: 'vehicle_sale_installment', installment: i+1 }
+            });
+          }
+          if (newSaleInstallments.length > 0) {
+            await supabase.from('transactions').insert(newSaleInstallments);
+          }
+        }
+
+        // Criar bens de permuta automaticamente
+        // Veículo
+        const pVeicVal = parseFloat(formValues.permutaVeiculoValor) || 0;
+        if (pVeicVal > 0 && formValues.permutaVeiculoNome) {
+          await supabase.from('physical_assets').insert([{
+            user_id: userId,
+            name: formValues.permutaVeiculoNome,
+            category: 'VEHICLE',
+            estimated_value: pVeicVal,
+            acquisition_date: todayStr,
+            description: `Recebido em permuta na venda de ${formValues.name}`,
+            metadata: { purpose: 'uso' }
+          }]);
+        }
+        // Imóvel
+        const pImovVal = parseFloat(formValues.permutaImovelValor) || 0;
+        if (pImovVal > 0 && formValues.permutaImovelNome) {
+          await supabase.from('physical_assets').insert([{
+            user_id: userId,
+            name: formValues.permutaImovelNome,
+            category: 'REAL_ESTATE',
+            estimated_value: pImovVal,
+            acquisition_date: todayStr,
+            description: `Recebido em permuta na venda de ${formValues.name}`,
+            metadata: { propertyStage: 'PRONTO', purpose: 'uso' }
+          }]);
+        }
+        // Outros bens
+        const pOutrVal = parseFloat(formValues.permutaOutrosValor) || 0;
+        if (pOutrVal > 0 && formValues.permutaOutrosNome) {
+          await supabase.from('physical_assets').insert([{
+            user_id: userId,
+            name: formValues.permutaOutrosNome,
+            category: 'OTHER',
+            estimated_value: pOutrVal,
+            acquisition_date: todayStr,
+            description: `Recebido em permuta na venda de ${formValues.name}`,
+            metadata: { purpose: 'uso' }
+          }]);
+        }
+
+        // Se arquivamos/vendemos, encerramos as provisões normais
+        return;
+      }
+
+      // Se NÃO está vendido, gerar provisões recorrentes se houver valores
+      const ipva = parseFloat(formValues.ipvaFee) || 0;
+      const seguro = parseFloat(formValues.seguroFee) || 0;
+      const licenciamento = parseFloat(formValues.licenciamentoFee) || 0;
+
+      // 3. Provisões de IPVA (Cota Única ou Parcelado em 5 vezes para simplificar)
+      if (ipva > 0) {
+        const parcelasIPVA = 5;
+        const valorIPVA = ipva / parcelasIPVA;
+        const newIpvaTxs = [];
+        for (let i = 0; i < parcelasIPVA; i++) {
+          const futureDate = new Date();
+          futureDate.setMonth(futureDate.getMonth() + i);
+          const futureDateStr = futureDate.toISOString().split('T')[0];
+
+          newIpvaTxs.push({
+            user_id: userId,
+            description: `IPVA (${i+1}/${parcelasIPVA}) - ${formValues.name}`,
+            amount: valorIPVA,
+            date: futureDateStr,
+            type: 'EXPENSE',
+            category: categoryName,
+            subcategory: 'IPVA',
+            category_id: catId || null,
+            is_paid: false,
+            metadata: { linked_asset_id: vehicleId, type: 'vehicle_ipva' }
+          });
+        }
+        await supabase.from('transactions').insert(newIpvaTxs);
+      }
+
+      // 4. Provisões de Seguro (Mensalizado em 10 vezes)
+      if (seguro > 0) {
+        const parcelasSeguro = 10;
+        const valorSeguro = seguro / parcelasSeguro;
+        const newSeguroTxs = [];
+        for (let i = 0; i < parcelasSeguro; i++) {
+          const futureDate = new Date();
+          futureDate.setMonth(futureDate.getMonth() + i);
+          const futureDateStr = futureDate.toISOString().split('T')[0];
+
+          newSeguroTxs.push({
+            user_id: userId,
+            description: `Seguro Veicular (${i+1}/${parcelasSeguro}) - ${formValues.name}`,
+            amount: valorSeguro,
+            date: futureDateStr,
+            type: 'EXPENSE',
+            category: categoryName,
+            subcategory: 'Seguro',
+            category_id: catId || null,
+            is_paid: false,
+            metadata: { linked_asset_id: vehicleId, type: 'vehicle_seguro' }
+          });
+        }
+        await supabase.from('transactions').insert(newSeguroTxs);
+      }
+
+      // 5. Provisão de Licenciamento Anual (Uma vez por ano)
+      if (licenciamento > 0) {
+        const futureDate = new Date();
+        futureDate.setMonth(futureDate.getMonth() + 3); // Vence daqui a 3 meses por exemplo
+        const futureDateStr = futureDate.toISOString().split('T')[0];
+
+        await supabase.from('transactions').insert([{
+          user_id: userId,
+          description: `Licenciamento Anual - ${formValues.name}`,
+          amount: licenciamento,
+          date: futureDateStr,
+          type: 'EXPENSE',
+          category: categoryName,
+          subcategory: 'Licenciamento',
+          category_id: catId || null,
+          is_paid: false,
+          metadata: { linked_asset_id: vehicleId, type: 'vehicle_licenciamento' }
+        }]);
+      }
+
+      // 6. Provisões de Aluguel (Se for investimento locação)
+      const aluguel = parseFloat(formValues.rentalIncome) || 0;
+      if (formValues.purpose === 'investimento' && formValues.vehiclePurposeType === 'RENTAL' && aluguel > 0) {
+        const platFee = parseFloat(formValues.rentalPlatformFee) || 0;
+        const aluguelLiquido = Math.max(0, aluguel - platFee);
+        
+        let rentalCatId = '';
+        const { data: rentCat } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('name', 'Receita Operacional Imobiliária') // Utiliza categoria de locação existente
+          .maybeSingle();
+        if (rentCat) {
+          rentalCatId = rentCat.id;
+        }
+
+        const newRentTxs = [];
+        for (let i = 0; i < 24; i++) { // Provisão de 24 meses
+          const futureDate = new Date();
+          futureDate.setMonth(futureDate.getMonth() + i);
+          const futureDateStr = futureDate.toISOString().split('T')[0];
+
+          newRentTxs.push({
+            user_id: userId,
+            description: `Receita Aluguel - ${formValues.name}`,
+            amount: aluguelLiquido,
+            date: futureDateStr,
+            type: 'INCOME',
+            category: 'Receita Operacional Imobiliária',
+            subcategory: 'Aluguel Veículo',
+            category_id: rentalCatId || null,
+            is_paid: false,
+            metadata: { linked_asset_id: vehicleId, type: 'vehicle_rental_income' }
+          });
+        }
+        await supabase.from('transactions').insert(newRentTxs);
+      }
+    } catch (e) {
+      console.error('Error syncing vehicle transactions:', e);
+    }
+  };
+
   // Safe Property status toggle
   const togglePropertyTypeDirectly = async (asset: PhysicalAsset) => {
     if (!supabase) return;
@@ -810,6 +1146,25 @@ const Assets: React.FC = () => {
         financingDueDay: isRealEstate ? formData.financingDueDay : undefined,
         financingName: isRealEstate ? formData.financingName : undefined,
         financingOriginalTotal: isRealEstate ? (parseFloat(formData.financingOriginalTotal) || 0) : undefined,
+        // Vehicle details
+        vehicleType: formData.category === 'VEHICLE' ? formData.vehicleType : undefined,
+        transferFee: formData.category === 'VEHICLE' ? (parseFloat(formData.transferFee) || 0) : undefined,
+        vehiclePurposeType: formData.category === 'VEHICLE' && formData.purpose === 'investimento' ? formData.vehiclePurposeType : undefined,
+        ipvaFee: formData.category === 'VEHICLE' ? (parseFloat(formData.ipvaFee) || 0) : undefined,
+        seguroFee: formData.category === 'VEHICLE' ? (parseFloat(formData.seguroFee) || 0) : undefined,
+        licenciamentoFee: formData.category === 'VEHICLE' ? (parseFloat(formData.licenciamentoFee) || 0) : undefined,
+        maintenanceMonthlyEstimated: formData.category === 'VEHICLE' ? (parseFloat(formData.maintenanceMonthlyEstimated) || 0) : undefined,
+        rentalPlatformFee: formData.category === 'VEHICLE' && formData.purpose === 'investimento' ? (parseFloat(formData.rentalPlatformFee) || 0) : undefined,
+        targetSaleValue: formData.category === 'VEHICLE' && formData.purpose === 'investimento' ? (parseFloat(formData.targetSaleValue) || 0) : undefined,
+        preparationBudget: formData.category === 'VEHICLE' && formData.purpose === 'investimento' ? (parseFloat(formData.preparationBudget) || 0) : undefined,
+        saleComission: formData.category === 'VEHICLE' && formData.isSold ? (parseFloat(formData.saleComission) || 0) : undefined,
+        salePaymentMethod: formData.category === 'VEHICLE' && formData.isSold ? formData.salePaymentMethod : undefined,
+        permutaVeiculoValor: formData.category === 'VEHICLE' && formData.isSold ? (parseFloat(formData.permutaVeiculoValor) || 0) : undefined,
+        permutaVeiculoNome: formData.category === 'VEHICLE' && formData.isSold ? formData.permutaVeiculoNome : undefined,
+        permutaImovelValor: formData.category === 'VEHICLE' && formData.isSold ? (parseFloat(formData.permutaImovelValor) || 0) : undefined,
+        permutaImovelNome: formData.category === 'VEHICLE' && formData.isSold ? formData.permutaImovelNome : undefined,
+        permutaOutrosValor: formData.category === 'VEHICLE' && formData.isSold ? (parseFloat(formData.permutaOutrosValor) || 0) : undefined,
+        permutaOutrosNome: formData.category === 'VEHICLE' && formData.isSold ? formData.permutaOutrosNome : undefined,
       };
 
       // Preserve existing real estate evolution details if editing
@@ -921,6 +1276,9 @@ const Assets: React.FC = () => {
             formData.rentalDate
           );
         }
+        if (formData.category === 'VEHICLE') {
+          await syncVehicleTransactions(editingAsset.id, false, user.id, formData);
+        }
       } else {
         // INSERT new asset
         const { data: newAsset, error } = await supabase
@@ -950,6 +1308,10 @@ const Assets: React.FC = () => {
             formData.rentalType,
             formData.rentalDate
           );
+        }
+
+        if (formData.category === 'VEHICLE' && newAsset) {
+          await syncVehicleTransactions(newAsset.id, true, user.id, formData);
         }
 
         // Auto-provision initial disbursement transaction for Loan assets
@@ -1119,6 +1481,25 @@ const Assets: React.FC = () => {
       financingInstallmentsCount: '',
       financingDueDay: '10',
       financingName: '',
+      // Vehicle-specific fields
+      vehicleType: 'CAR',
+      transferFee: '',
+      vehiclePurposeType: 'RENTAL',
+      ipvaFee: '',
+      seguroFee: '',
+      licenciamentoFee: '',
+      maintenanceMonthlyEstimated: '',
+      rentalPlatformFee: '',
+      targetSaleValue: '',
+      preparationBudget: '',
+      saleComission: '',
+      salePaymentMethod: 'A_VISTA',
+      permutaVeiculoValor: '',
+      permutaVeiculoNome: '',
+      permutaImovelValor: '',
+      permutaImovelNome: '',
+      permutaOutrosValor: '',
+      permutaOutrosNome: '',
     });
   };
 
@@ -1200,6 +1581,25 @@ const Assets: React.FC = () => {
       financingInstallmentsCount: finInstCount,
       financingDueDay: finDueDay,
       financingName: finName,
+      // Vehicle-specific fields
+      vehicleType: meta.vehicleType || 'CAR',
+      transferFee: meta.transferFee ? String(meta.transferFee) : '',
+      vehiclePurposeType: meta.vehiclePurposeType || 'RENTAL',
+      ipvaFee: meta.ipvaFee ? String(meta.ipvaFee) : '',
+      seguroFee: meta.seguroFee ? String(meta.seguroFee) : '',
+      licenciamentoFee: meta.licenciamentoFee ? String(meta.licenciamentoFee) : '',
+      maintenanceMonthlyEstimated: meta.maintenanceMonthlyEstimated ? String(meta.maintenanceMonthlyEstimated) : '',
+      rentalPlatformFee: meta.rentalPlatformFee ? String(meta.rentalPlatformFee) : '',
+      targetSaleValue: meta.targetSaleValue ? String(meta.targetSaleValue) : '',
+      preparationBudget: meta.preparationBudget ? String(meta.preparationBudget) : '',
+      saleComission: meta.saleComission ? String(meta.saleComission) : '',
+      salePaymentMethod: meta.salePaymentMethod || 'A_VISTA',
+      permutaVeiculoValor: meta.permutaVeiculoValor ? String(meta.permutaVeiculoValor) : '',
+      permutaVeiculoNome: meta.permutaVeiculoNome || '',
+      permutaImovelValor: meta.permutaImovelValor ? String(meta.permutaImovelValor) : '',
+      permutaImovelNome: meta.permutaImovelNome || '',
+      permutaOutrosValor: meta.permutaOutrosValor ? String(meta.permutaOutrosValor) : '',
+      permutaOutrosNome: meta.permutaOutrosNome || '',
     });
     setShowModal(true);
   };
@@ -3332,22 +3732,216 @@ const Assets: React.FC = () => {
                   </label>
                 </div>
 
+                {formData.category === 'VEHICLE' && (
+                  <div className="space-y-4 animate-in slide-in-from-top-2">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Veículo</label>
+                        <select
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          value={formData.vehicleType}
+                          onChange={(e) => setFormData({ ...formData, vehicleType: e.target.value as any })}
+                        >
+                          <option value="CAR">Carro</option>
+                          <option value="MOTORCYCLE">Moto</option>
+                          <option value="TRUCK">Caminhão</option>
+                          <option value="OTHER">Outro</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Custo de Transferência (R$)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          value={formData.transferFee}
+                          onChange={(e) => setFormData({ ...formData, transferFee: e.target.value })}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Tabela FIPE Atual (R$)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-900 outline-none"
+                        placeholder="FIPE Atual"
+                        value={formData.fipeValue}
+                        onChange={(e) => setFormData({ ...formData, fipeValue: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {formData.category === 'VEHICLE' && formData.purpose === 'uso' && (
-                  <div className="space-y-2 animate-in slide-in-from-top-2">
-                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest">Valor Atual Tabela FIPE (R$)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-900 outline-none"
-                      placeholder="FIPE Atual"
-                      value={formData.fipeValue}
-                      onChange={(e) => setFormData({ ...formData, fipeValue: e.target.value })}
-                    />
+                  <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Despesas Periódicas Estimadas</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado IPVA (R$)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                          value={formData.ipvaFee}
+                          onChange={(e) => setFormData({ ...formData, ipvaFee: e.target.value })}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado Seguro (R$)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                          value={formData.seguroFee}
+                          onChange={(e) => setFormData({ ...formData, seguroFee: e.target.value })}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Licenciamento Anual (R$)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                          value={formData.licenciamentoFee}
+                          onChange={(e) => setFormData({ ...formData, licenciamentoFee: e.target.value })}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Manutenção Mensal (R$)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                          value={formData.maintenanceMonthlyEstimated}
+                          onChange={(e) => setFormData({ ...formData, maintenanceMonthlyEstimated: e.target.value })}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {formData.category === 'VEHICLE' && formData.purpose === 'investimento' && (
+                  <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Modalidade do Investimento</label>
+                      <select
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                        value={formData.vehiclePurposeType}
+                        onChange={(e) => setFormData({ ...formData, vehiclePurposeType: e.target.value as any })}
+                      >
+                        <option value="RENTAL">Locação / Aluguel (Fluxo de Caixa)</option>
+                        <option value="FLIP">Compra e Venda / Revenda (Flip)</option>
+                      </select>
+                    </div>
+
+                    {formData.vehiclePurposeType === 'RENTAL' ? (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipo de Aluguel</label>
+                            <select
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              value={formData.rentalType}
+                              onChange={(e) => setFormData({ ...formData, rentalType: e.target.value as any })}
+                            >
+                              <option value="anual">Mensal / Assinatura</option>
+                              <option value="short_stay">Diário / Plataforma</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Receita de Aluguel (R$)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              value={formData.rentalIncome}
+                              onChange={(e) => setFormData({ ...formData, rentalIncome: e.target.value })}
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Taxa Plataforma (R$ ou %)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              value={formData.rentalPlatformFee}
+                              onChange={(e) => setFormData({ ...formData, rentalPlatformFee: e.target.value })}
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Seguro Comercial (R$)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              value={formData.seguroFee}
+                              onChange={(e) => setFormData({ ...formData, seguroFee: e.target.value })}
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo IPVA (R$)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              value={formData.ipvaFee}
+                              onChange={(e) => setFormData({ ...formData, ipvaFee: e.target.value })}
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Licenciamento Anual (R$)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              value={formData.licenciamentoFee}
+                              onChange={(e) => setFormData({ ...formData, licenciamentoFee: e.target.value })}
+                              placeholder="0.00"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Venda Alvo (R$)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                            value={formData.targetSaleValue}
+                            onChange={(e) => setFormData({ ...formData, targetSaleValue: e.target.value })}
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Orçamento Preparação (R$)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                            value={formData.preparationBudget}
+                            onChange={(e) => setFormData({ ...formData, preparationBudget: e.target.value })}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
                 {formData.purpose === 'investimento' && formData.category !== 'REAL_ESTATE' && (
-                  <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
+                  <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 border-t border-slate-200 pt-3">
                     <div>
                       <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Taxa de Corretagem (R$)</label>
                       <input
@@ -3367,14 +3961,127 @@ const Assets: React.FC = () => {
                     </label>
 
                     {formData.isSold && (
-                      <div className="col-span-2">
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Venda (R$)</label>
-                        <input
-                          type="number"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold"
-                          value={formData.soldValue}
-                          onChange={(e) => setFormData({ ...formData, soldValue: e.target.value })}
-                        />
+                      <div className="col-span-2 space-y-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Venda (R$)</label>
+                            <input
+                              type="number"
+                              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold"
+                              value={formData.soldValue}
+                              onChange={(e) => setFormData({ ...formData, soldValue: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Comissão de Venda (R$)</label>
+                            <input
+                              type="number"
+                              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold"
+                              value={formData.saleComission}
+                              onChange={(e) => setFormData({ ...formData, saleComission: e.target.value })}
+                              placeholder="0.00"
+                            />
+                          </div>
+                        </div>
+
+                        {formData.category === 'VEHICLE' && (
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Recebimento</label>
+                              <select
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                                value={formData.salePaymentMethod}
+                                onChange={(e) => setFormData({ ...formData, salePaymentMethod: e.target.value as any })}
+                              >
+                                <option value="A_VISTA">À Vista (Dinheiro/PIX)</option>
+                                <option value="PARCELADO">Parcelado (Contas a Receber)</option>
+                                <option value="PERMUTA">Permuta Integral (Troca de Bens)</option>
+                                <option value="HIBRIDO">Híbrido (Parte Dinheiro, Parte Permuta)</option>
+                              </select>
+                            </div>
+
+                            {(formData.salePaymentMethod === 'PERMUTA' || formData.salePaymentMethod === 'HIBRIDO') && (
+                              <div className="space-y-3 pt-2 border-t border-dashed border-slate-200">
+                                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Bens Recebidos na Permuta</p>
+                                
+                                {/* Permuta de Veículo */}
+                                <div className="grid grid-cols-2 gap-3 bg-white p-3 rounded-xl border border-slate-100">
+                                  <div className="col-span-2 text-[8px] font-black text-slate-400 uppercase tracking-widest">Veículo Recebido</div>
+                                  <div>
+                                    <label className="block text-[8px] font-bold text-slate-400">Nome / Modelo</label>
+                                    <input
+                                      className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs"
+                                      value={formData.permutaVeiculoNome}
+                                      onChange={(e) => setFormData({ ...formData, permutaVeiculoNome: e.target.value })}
+                                      placeholder="Ex: Fiat Uno 2012"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[8px] font-bold text-slate-400">Valor Avaliado (R$)</label>
+                                    <input
+                                      type="number"
+                                      className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs font-bold"
+                                      value={formData.permutaVeiculoValor}
+                                      onChange={(e) => setFormData({ ...formData, permutaVeiculoValor: e.target.value })}
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Permuta de Imóvel */}
+                                <div className="grid grid-cols-2 gap-3 bg-white p-3 rounded-xl border border-slate-100">
+                                  <div className="col-span-2 text-[8px] font-black text-slate-400 uppercase tracking-widest">Imóvel Recebido</div>
+                                  <div>
+                                    <label className="block text-[8px] font-bold text-slate-400">Identificação / Nome</label>
+                                    <input
+                                      className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs"
+                                      value={formData.permutaImovelNome}
+                                      onChange={(e) => setFormData({ ...formData, permutaImovelNome: e.target.value })}
+                                      placeholder="Ex: Terreno Condomínio"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[8px] font-bold text-slate-400">Valor Avaliado (R$)</label>
+                                    <input
+                                      type="number"
+                                      className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs font-bold"
+                                      value={formData.permutaImovelValor}
+                                      onChange={(e) => setFormData({ ...formData, permutaImovelValor: e.target.value })}
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Permuta de Outros Bens */}
+                                <div className="grid grid-cols-2 gap-3 bg-white p-3 rounded-xl border border-slate-100">
+                                  <div className="col-span-2 text-[8px] font-black text-slate-400 uppercase tracking-widest">Outros Bens</div>
+                                  <div>
+                                    <label className="block text-[8px] font-bold text-slate-400">Descrição do Bem</label>
+                                    <input
+                                      className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs"
+                                      value={formData.permutaOutrosNome}
+                                      onChange={(e) => setFormData({ ...formData, permutaOutrosNome: e.target.value })}
+                                      placeholder="Ex: Cota Consórcio Contemplada"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[8px] font-bold text-slate-400">Valor Avaliado (R$)</label>
+                                    <input
+                                      type="number"
+                                      className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs font-bold"
+                                      value={formData.permutaOutrosValor}
+                                      onChange={(e) => setFormData({ ...formData, permutaOutrosValor: e.target.value })}
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                </div>
+
+                              </div>
+                            )}
+
+                          </div>
+                        )}
+
                       </div>
                     )}
                   </div>
