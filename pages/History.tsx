@@ -1502,8 +1502,17 @@ const HistoryPage: React.FC = () => {
   const submitPayment = async () => {
     if (!supabase || !payModal.open) return;
     const amount = Number(payModal.payAmount.replace(',', '.'));
-    if (isNaN(amount) || amount <= 0 || amount > payModal.remaining + EPS) return;
-    setPayModal(prev => prev.open ? { ...prev, isSubmitting: true } : prev);
+    
+    if (isNaN(amount) || amount <= 0) {
+      setPayModal(prev => prev.open ? { ...prev, error: 'Por favor, insira um valor válido maior que zero (ex: 120,50).' } : prev);
+      return;
+    }
+    if (amount > payModal.remaining + EPS) {
+      setPayModal(prev => prev.open ? { ...prev, error: 'O valor do pagamento não pode ser maior que o saldo restante.' } : prev);
+      return;
+    }
+
+    setPayModal(prev => prev.open ? { ...prev, isSubmitting: true, error: null } : prev);
     try {
       const { error } = await supabase.rpc('pay_transaction', { p_transaction_id: payModal.tx.id, p_amount: amount, p_split_remainder: payModal.splitRemainder });
       const chosenDate = payModal.payDate || payModal.tx.date || DateUtils.formatToISODate();

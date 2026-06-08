@@ -1236,6 +1236,13 @@ const CreditCardsPage: React.FC = () => {
 
   const handlePayStatement = async () => {
     if (!supabase || !selectedCard?.id) return;
+    
+    const amount = Number(payAmount);
+    if (isNaN(amount) || amount <= 0) {
+      alert("Por favor, insira um valor de pagamento válido maior que zero.");
+      return;
+    }
+    
     if (!payAccountId) {
       alert("Por favor, selecione uma conta bancária para o pagamento.");
       return;
