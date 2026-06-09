@@ -90,6 +90,7 @@ type PayModalState =
     payAmount: string;
     payAccountId: string;
     payDate: string;
+    payRemainderDate: string;
     splitRemainder: boolean;
     isSubmitting: boolean;
     error?: string | null;
@@ -1495,6 +1496,7 @@ const HistoryPage: React.FC = () => {
       payAmount: String(remaining.toFixed(2)),
       payAccountId: tx.accountId,
       payDate: (tx.date || '').split('T')[0] || DateUtils.formatToISODate(),
+      payRemainderDate: DateUtils.formatToISODate(),
       splitRemainder: false,
       isSubmitting: false
     });
@@ -1515,26 +1517,140 @@ const HistoryPage: React.FC = () => {
 
     setPayModal(prev => prev.open ? { ...prev, isSubmitting: true, error: null } : prev);
     try {
-      const { error } = await supabase.rpc('pay_transaction', { p_transaction_id: payModal.tx.id, p_amount: amount, p_split_remainder: payModal.splitRemainder });
       const chosenDate = payModal.payDate || payModal.tx.date || DateUtils.formatToISODate();
-      if (error) {
-        await supabase.from('transactions').update({
-          is_paid: amount >= payModal.remaining - EPS,
-          paid_amount: (payModal.tx.paidAmount || 0) + amount,
-          paid_at: chosenDate,
-          date: chosenDate
-        }).eq('id', payModal.tx.id);
-      } else {
-        await supabase.from('transactions').update({
-          date: chosenDate,
-          paid_at: chosenDate
-        }).eq('id', payModal.tx.id);
-      }
-      // Se conta de débito diferente, atualiza account_id e recalcula ambas
       const payAccId = payModal.payAccountId || payModal.tx.accountId;
+      const payAcc = accounts.find(a => a.id === payAccId);
+      const accountName = payAcc ? (payAcc.institution || '') : '';
+      
+      const isPartial = amount < payModal.remaining - EPS;
+      
+      if (isPartial && payModal.splitRemainder) {
+        // --- NOVO FLUXO DE PAGAMENTO PARCIAL COM DIVISÃO ---
+        const groupId = payModal.tx.metadata?.partial_payment_group_id || 'group-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+        const newPayment = {
+          date: chosenDate,
+          account_name: accountName,
+          amount: amount
+        };
+        const oldHistory = Array.isArray(payModal.tx.metadata?.payment_history) ? payModal.tx.metadata.payment_history : [];
+        const newHistory = [...oldHistory, newPayment];
+        
+        // 1. Atualizar a transação atual Tx A
+        const updatedMeta = {
+          ...(payModal.tx.metadata || {}),
+          partial_payment_group_id: groupId,
+          payment_history: newHistory
+        };
+        
+        await supabase.from('transactions').update({
+          amount: amount,
+          is_paid: true,
+          paid_amount: amount,
+          paid_at: chosenDate,
+          date: chosenDate,
+          account_id: payAccId,
+          account_name: accountName,
+          metadata: updatedMeta
+        }).eq('id', payModal.tx.id);
+        
+        // 2. Inserir a nova transação do restante Tx B
+        const remainderAmount = payModal.remaining - amount;
+        const remainderMeta = {
+          ...(payModal.tx.metadata || {}),
+          partial_payment_group_id: groupId,
+          payment_history: newHistory
+        };
+        
+        await supabase.from('transactions').insert([{
+          user_id: payModal.tx.user_id || null,
+          description: payModal.tx.description,
+          amount: remainderAmount,
+          date: payModal.payRemainderDate || DateUtils.formatToISODate(),
+          type: payModal.tx.type,
+          category: payModal.tx.category,
+          category_id: payModal.tx.category_id || null,
+          subcategory: payModal.tx.subcategory || null,
+          account_id: payModal.tx.accountId,
+          account_name: payModal.tx.accountName || '',
+          owner_name: payModal.tx.owner_name || null,
+          notes: payModal.tx.notes || '',
+          tags: payModal.tx.tags || [],
+          attachments: payModal.tx.attachments || [],
+          liability_id: payModal.tx.liability_id || null,
+          is_paid: false,
+          paid_amount: 0,
+          paid_at: null,
+          metadata: remainderMeta
+        }]);
+        
+        // 3. Atualizar o histórico em todas as transações do mesmo grupo
+        const { data: groupTxs } = await supabase
+          .from('transactions')
+          .select('id, metadata')
+          .eq('metadata->>partial_payment_group_id', groupId);
+          
+        if (groupTxs && groupTxs.length > 0) {
+          for (const gTx of groupTxs) {
+            if (gTx.id !== payModal.tx.id) {
+              const gUpdatedMeta = {
+                ...(gTx.metadata || {}),
+                payment_history: newHistory
+              };
+              await supabase.from('transactions').update({ metadata: gUpdatedMeta }).eq('id', gTx.id);
+            }
+          }
+        }
+      } else {
+        // --- FLUXO DE PAGAMENTO CONVENCIONAL ---
+        const isFullyPaid = amount >= payModal.remaining - EPS;
+        const newPaidAmount = (payModal.tx.paidAmount || 0) + amount;
+        
+        const groupId = payModal.tx.metadata?.partial_payment_group_id || 'group-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+        const newPayment = {
+          date: chosenDate,
+          account_name: accountName,
+          amount: amount
+        };
+        const oldHistory = Array.isArray(payModal.tx.metadata?.payment_history) ? payModal.tx.metadata.payment_history : [];
+        const newHistory = [...oldHistory, newPayment];
+        
+        const updatedMeta = {
+          ...(payModal.tx.metadata || {}),
+          partial_payment_group_id: groupId,
+          payment_history: newHistory
+        };
+        
+        await supabase.from('transactions').update({
+          is_paid: isFullyPaid,
+          paid_amount: isFullyPaid ? payModal.tx.amount : newPaidAmount,
+          paid_at: chosenDate,
+          date: chosenDate,
+          account_id: payAccId,
+          account_name: accountName,
+          metadata: updatedMeta
+        }).eq('id', payModal.tx.id);
+        
+        // Sincronizar o histórico de pagamentos para o grupo se pertencer a um grupo
+        const { data: groupTxs } = await supabase
+          .from('transactions')
+          .select('id, metadata')
+          .eq('metadata->>partial_payment_group_id', groupId);
+          
+        if (groupTxs && groupTxs.length > 0) {
+          for (const gTx of groupTxs) {
+            if (gTx.id !== payModal.tx.id) {
+              const gUpdatedMeta = {
+                ...(gTx.metadata || {}),
+                payment_history: newHistory
+              };
+              await supabase.from('transactions').update({ metadata: gUpdatedMeta }).eq('id', gTx.id);
+            }
+          }
+        }
+      }
+      
+      // Recalcular saldo das contas
       if (payAccId !== payModal.tx.accountId) {
-        const payAcc = accounts.find(a => a.id === payAccId);
-        await supabase.from('transactions').update({ account_id: payAccId, account_name: payAcc?.institution || '' }).eq('id', payModal.tx.id);
         await supabase.rpc('recalculate_account_balance', { p_account_id: payModal.tx.accountId });
       }
       await supabase.rpc('recalculate_account_balance', { p_account_id: payAccId });
@@ -1555,6 +1671,7 @@ const HistoryPage: React.FC = () => {
       setPayModal({ open: false });
       await fetchData(true); // Silent refresh
     } catch (err) {
+      console.error(err);
       setPayModal(prev => prev.open ? { ...prev, isSubmitting: false, error: 'Erro ao processar pagamento.' } : prev);
     }
   };
@@ -2196,6 +2313,7 @@ const HistoryPage: React.FC = () => {
         payAmount={payModal.open ? payModal.payAmount : ''} setPayAmount={(v) => setPayModal(prev => prev.open ? { ...prev, payAmount: v } : prev)}
         payAccountId={payModal.open ? payModal.payAccountId : ''} setPayAccountId={(v) => setPayModal(prev => prev.open ? { ...prev, payAccountId: v } : prev)}
         payDate={payModal.open ? payModal.payDate : ''} setPayDate={(v) => setPayModal(prev => prev.open ? { ...prev, payDate: v } : prev)}
+        payRemainderDate={payModal.open ? payModal.payRemainderDate : ''} setPayRemainderDate={(v) => setPayModal(prev => prev.open ? { ...prev, payRemainderDate: v } : prev)}
         accounts={accounts}
         splitRemainder={payModal.open ? payModal.splitRemainder : false} setSplitRemainder={(v) => setPayModal(prev => prev.open ? { ...prev, splitRemainder: v } : prev)}
         isSubmitting={payModal.open ? payModal.isSubmitting : false} error={payModal.open ? payModal.error : null} formatCurrency={HistoryUtils.formatCurrency}

@@ -15,6 +15,8 @@ interface PaymentModalProps {
     setPayAccountId: (v: string) => void;
     payDate: string;
     setPayDate: (v: string) => void;
+    payRemainderDate: string;
+    setPayRemainderDate: (v: string) => void;
     accounts: BankAccount[];
     splitRemainder: boolean;
     setSplitRemainder: (v: boolean) => void;
@@ -35,6 +37,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setPayAccountId,
     payDate,
     setPayDate,
+    payRemainderDate,
+    setPayRemainderDate,
     accounts,
     splitRemainder,
     setSplitRemainder,
@@ -79,12 +83,35 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                             </div>
                         </div>
 
+                        {tx.metadata?.payment_history && Array.isArray(tx.metadata.payment_history) && tx.metadata.payment_history.length > 0 && (
+                            <div className="p-5 bg-slate-50 rounded-3xl border border-slate-100 space-y-3">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Histórico de Pagamentos Parciais</p>
+                                <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
+                                    {tx.metadata.payment_history.map((p: any, idx: number) => (
+                                        <div key={idx} className="flex justify-between items-center text-xs font-bold text-slate-600">
+                                            <span>{new Date(p.date + 'T00:00:00').toLocaleDateString('pt-BR')} ({p.account_name || 'Conta'})</span>
+                                            <span className="text-emerald-600">{formatCurrency(p.amount)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Valor do Pagamento</label>
                             <input
                                 type="text"
                                 value={payAmount}
-                                onChange={(e) => setPayAmount(e.target.value)}
+                                onChange={(e) => {
+                                    setPayAmount(e.target.value);
+                                    // Se o valor digitado for menor que o restante, marca splitRemainder como true automaticamente
+                                    const parsed = Number(e.target.value.replace(',', '.')) || 0;
+                                    if (parsed > 0 && parsed < remaining - 0.001) {
+                                        setSplitRemainder(true);
+                                    } else {
+                                        setSplitRemainder(false);
+                                    }
+                                }}
                                 placeholder="0,00"
                                 className="w-full h-14 px-6 bg-slate-50 border border-slate-200 rounded-2xl font-black text-xl text-slate-900 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
                                 autoFocus
@@ -127,6 +154,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                                     <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight block">Recomendado para pagamentos parciais</span>
                                 </div>
                             </label>
+
+                            {splitRemainder && (
+                                <div className="space-y-2 pt-3 border-t border-slate-200/60 animate-in slide-in-from-top-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data de Vencimento do Restante</label>
+                                    <input
+                                        type="date"
+                                        value={payRemainderDate}
+                                        onChange={(e) => setPayRemainderDate(e.target.value)}
+                                        className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-sm"
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         {error && (

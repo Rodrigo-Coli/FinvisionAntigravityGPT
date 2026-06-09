@@ -45,6 +45,17 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [historicalRentReceived, setHistoricalRentReceived] = useState(String(asset.metadata?.historicalRentReceived || ''));
   const [consortiumAllocationRatio, setConsortiumAllocationRatio] = useState(String(asset.metadata?.consortiumAllocationRatio || '100'));
   const [saleValue, setSaleValue] = useState(String(asset.metadata?.saleValue || ''));
+  const [brokerFee, setBrokerFee] = useState(String(asset.metadata?.brokerFee || ''));
+  const [isSold, setIsSold] = useState(!!asset.metadata?.isSold);
+  const [saleComission, setSaleComission] = useState(String(asset.metadata?.saleComission || ''));
+  const [salePaymentMethod, setSalePaymentMethod] = useState<'A_VISTA' | 'PARCELADO' | 'PERMUTA' | 'HIBRIDO'>(
+    asset.metadata?.salePaymentMethod || 'A_VISTA'
+  );
+  const [saleDate, setSaleDate] = useState(asset.metadata?.saleDate || new Date().toISOString().split('T')[0]);
+  const [saleCashAmount, setSaleCashAmount] = useState(String(asset.metadata?.saleCashAmount || ''));
+  const [permutaItems, setPermutaItems] = useState<{ type: 'VEHICLE' | 'REAL_ESTATE' | 'OTHER'; name: string; value: string }[]>(
+    asset.metadata?.permutaItems || []
+  );
 
   // Constructor correction states
   const [constructorIndexType, setConstructorIndexType] = useState<'INCC' | 'IPCA' | 'IGP-M' | 'FIXED'>(
@@ -798,8 +809,226 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         iptuFrequency,
         shortStayBookings,
         valuationHistory,
-        consortiumAllocationRatio: asset.metadata?.selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined
+        consortiumAllocationRatio: asset.metadata?.selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined,
+        isSold,
+        brokerFee: parseFloat(brokerFee) || 0,
+        saleComission: parseFloat(saleComission) || 0,
+        salePaymentMethod,
+        saleDate,
+        saleCashAmount: parseFloat(saleCashAmount) || 0,
+        permutaItems
       };
+
+      const wasSoldBefore = !!asset.metadata?.isSold;
+      if (isSold && !wasSoldBefore) {
+        const soldAmount = saleVal;
+        const comission = parseFloat(saleComission) || 0;
+        const saleDateStr = saleDate || new Date().toISOString().split('T')[0];
+
+        // 1. Excluir provisões futuras não pagas vinculadas ao imóvel
+        const { data: oldProvisions } = await supabase
+          .from('transactions')
+          .select('id, metadata')
+          .eq('user_id', user.id)
+          .eq('is_paid', false);
+
+        if (oldProvisions && oldProvisions.length > 0) {
+          const idsToDelete = oldProvisions
+            .filter((t: any) => 
+              t.metadata?.linked_asset_id === asset.id &&
+              (t.metadata?.type === 'rental_income' ||
+               t.metadata?.type === 'condo_provision' ||
+               t.metadata?.type === 'condo_expense' ||
+               t.metadata?.type === 'condo_revenue' ||
+               t.metadata?.type === 'iptu_provision' ||
+               t.metadata?.type === 'iptu_expense' ||
+               t.metadata?.type === 'iptu_revenue' ||
+               t.metadata?.type === 'short_stay_booking')
+            )
+            .map((p: any) => p.id);
+          
+          if (idsToDelete.length > 0) {
+            await supabase.from('transactions').delete().in('id', idsToDelete);
+          }
+        }
+
+        // 2. Comissão de venda (se houver)
+        if (comission > 0) {
+          let catId = null;
+          const { data: catRes } = await supabase
+            .from('categories')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('name', 'Ativos Imobiliários')
+            .maybeSingle();
+          if (catRes) catId = catRes.id;
+
+          await supabase.from('transactions').insert([{
+            user_id: user.id,
+            description: `${name} - Comissão de Venda`,
+            amount: comission,
+            date: saleDateStr,
+            type: 'EXPENSE',
+            category: 'Ativos Imobiliários',
+            subcategory: 'Comissão',
+            category_id: catId,
+            is_paid: true,
+            paid_amount: comission,
+            paid_at: saleDateStr,
+            metadata: { linked_asset_id: asset.id, type: 'real_estate_sale_comission' }
+          }]);
+        }
+
+        // 3. Receita da venda
+        let revenueCatId = null;
+        const { data: revCat } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('name', 'Venda de Ativos')
+          .maybeSingle();
+        if (revCat) {
+          revenueCatId = revCat.id;
+        } else {
+          const { data: newCat } = await supabase
+            .from('categories')
+            .insert({
+              user_id: user.id,
+              name: 'Venda de Ativos',
+              type: 'INCOME',
+              color: 'bg-emerald-50 text-emerald-600'
+            })
+            .select('id')
+            .single();
+          if (newCat) revenueCatId = newCat.id;
+        }
+
+        if (salePaymentMethod === 'A_VISTA' || salePaymentMethod === 'HIBRIDO') {
+          let cashVal = soldAmount;
+          if (salePaymentMethod === 'HIBRIDO') {
+            cashVal = parseFloat(saleCashAmount) || 0;
+          }
+
+          if (cashVal > 0) {
+            await supabase.from('transactions').insert([{
+              user_id: user.id,
+              description: salePaymentMethod === 'HIBRIDO'
+                ? `${name} - Receita Venda de Imóvel (Parte Dinheiro)`
+                : `${name} - Receita Venda de Imóvel (À Vista)`,
+              amount: cashVal,
+              date: saleDateStr,
+              type: 'INCOME',
+              category: 'Venda de Ativos',
+              subcategory: 'Venda de Imóvel',
+              category_id: revenueCatId,
+              is_paid: true,
+              paid_amount: cashVal,
+              paid_at: saleDateStr,
+              metadata: { linked_asset_id: asset.id, type: 'real_estate_sale_revenue' }
+            }]);
+          }
+        } 
+        else if (salePaymentMethod === 'PARCELADO') {
+          const parcelas = 10;
+          const valorParcela = soldAmount / parcelas;
+          const newSaleInstallments = [];
+          
+          for (let i = 0; i < parcelas; i++) {
+            const futureDate = new Date(saleDateStr + 'T00:00:00');
+            futureDate.setMonth(futureDate.getMonth() + i);
+            const futureDateStr = futureDate.toISOString().split('T')[0];
+
+            newSaleInstallments.push({
+              user_id: user.id,
+              description: `${name} - Receita Parcelada Venda (${i+1}/${parcelas})`,
+              amount: valorParcela,
+              date: futureDateStr,
+              type: 'INCOME',
+              category: 'Venda de Ativos',
+              subcategory: 'Venda de Imóvel',
+              category_id: revenueCatId,
+              is_paid: false,
+              metadata: { linked_asset_id: asset.id, type: 'real_estate_sale_installment', installment: i+1 }
+            });
+          }
+          if (newSaleInstallments.length > 0) {
+            await supabase.from('transactions').insert(newSaleInstallments);
+          }
+        }
+
+        // 4. Criar bens de permuta automaticamente com metadados de origem de permuta
+        if (Array.isArray(permutaItems) && permutaItems.length > 0) {
+          const assetsToInsert = permutaItems
+            .filter((item: any) => item.name && (parseFloat(item.value) || 0) > 0)
+            .map((item: any) => ({
+              user_id: user.id,
+              name: item.name,
+              category: item.type,
+              estimated_value: parseFloat(item.value) || 0,
+              acquisition_date: saleDateStr,
+              description: `Recebido em permuta na venda de ${name}`,
+              metadata: {
+                ...(item.type === 'REAL_ESTATE' ? { propertyStage: 'PRONTO', purpose: 'uso' } : { purpose: 'uso' }),
+                permuta_origem_asset_id: asset.id,
+                permuta_original_value: parseFloat(item.value) || 0
+              }
+            }));
+          if (assetsToInsert.length > 0) {
+            await supabase.from('physical_assets').insert(assetsToInsert);
+          }
+        }
+
+        // 5. Se este imóvel for um bem de permuta e está sendo vendido, propagar o valor de venda real ao ativo principal
+        if (asset.metadata?.permuta_origem_asset_id) {
+          const origId = asset.metadata.permuta_origem_asset_id;
+          const origVal = parseFloat(asset.metadata.permuta_original_value) || 0;
+          const diff = soldAmount - origVal;
+          
+          if (diff !== 0) {
+            const { data: origAsset } = await supabase
+              .from('physical_assets')
+              .select('*')
+              .eq('id', origId)
+              .maybeSingle();
+              
+            if (origAsset) {
+              const origMeta = { ...(origAsset.metadata || {}) };
+              if (origAsset.category === 'REAL_ESTATE') {
+                origMeta.saleValue = (parseFloat(origMeta.saleValue) || 0) + diff;
+              } else {
+                origMeta.soldValue = (parseFloat(origMeta.soldValue) || 0) + diff;
+              }
+              
+              await supabase
+                .from('physical_assets')
+                .update({ metadata: origMeta })
+                .eq('id', origId);
+                
+              // Atualizar transação de receita de venda do ativo de origem
+              const { data: origTxs } = await supabase
+                .from('transactions')
+                .select('id, amount, account_id')
+                .eq('is_deleted', false)
+                .eq('metadata->>linked_asset_id', origId)
+                .in('metadata->>type', ['real_estate_sale_revenue', 'vehicle_sale_revenue']);
+                
+              if (origTxs && origTxs.length > 0) {
+                for (const tx of origTxs) {
+                  const newAmt = tx.amount + diff;
+                  await supabase
+                    .from('transactions')
+                    .update({ amount: newAmt, paid_amount: newAmt })
+                    .eq('id', tx.id);
+                    
+                  if (tx.account_id) {
+                    await supabase.rpc('recalculate_account_balance', { p_account_id: tx.account_id });
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
 
       if (propertyStage === 'PLANTA') {
         updatedMetadata.constructorIndexType = constructorIndexType;
@@ -862,30 +1091,33 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         .update({
           name: name,
           estimated_value: estVal,
-          metadata: updatedMetadata
+          metadata: updatedMetadata,
+          is_archived: isSold
         })
         .eq('id', asset.id);
 
       if (error) throw error;
 
-      // Sync future rental incomes
-      await syncRentalTransactions(
-        asset.id,
-        isRented,
-        rentVal,
-        name,
-        user.id,
-        rentalType,
-        rentalDate,
-        discountType,
-        discVal
-      );
+      if (!isSold) {
+        // Sync future rental incomes
+        await syncRentalTransactions(
+          asset.id,
+          isRented,
+          rentVal,
+          name,
+          user.id,
+          rentalType,
+          rentalDate,
+          discountType,
+          discVal
+        );
 
-      // Sync condo / iptu expenses & revenues
-      await syncExpenseProvisions(user.id);
+        // Sync condo / iptu expenses & revenues
+        await syncExpenseProvisions(user.id);
 
-      // Sync short stay bookings
-      await syncShortStayBookings(user.id);
+        // Sync short stay bookings
+        await syncShortStayBookings(user.id);
+      }
 
       alert('Dados do imóvel atualizados com sucesso!');
       onSuccess();
@@ -1016,95 +1248,9 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
     }
   };
 
-  const handleArchiveAsset = async () => {
-    if (!supabase) return;
-    const saleVal = parseFloat(saleValue) || 0;
-    const confirmMsg = saleVal > 0 
-      ? `Tem certeza que deseja marcar o imóvel "${name}" como vendido por ${formatCurrency(saleVal)} e arquivá-lo? Isso desativará projeções futuras.`
-      : `Tem certeza que deseja marcar o imóvel "${name}" como vendido e arquivá-lo? Isso desativará projeções futuras.`;
-    
-    if (!window.confirm(confirmMsg)) return;
-    
-    setIsSubmitting(true);
-    try {
-      const estVal = parseFloat(estimatedValue) || 0;
-      const buyVal = parseFloat(purchaseValue) || 0;
-      const cartVal = parseFloat(despesasCartorarias) || 0;
-      const mobVal = parseFloat(mobiliarios) || 0;
-      const histPaid = parseFloat(historicalPaidAmount) || 0;
-      const histRent = parseFloat(historicalRentReceived) || 0;
-      const rentVal = parseFloat(rentalIncome) || 0;
-      const condoVal = parseFloat(condoFee) || 0;
-      const iptuVal = parseFloat(iptuFee) || 0;
-      const discVal = parseFloat(discountValue) || 0;
-
-      // Evolução de Histórico de Valor Atual
-      let valuationHistory = [...(asset.metadata?.valuationHistory || [])];
-      if (valuationHistory.length === 0 && (buyVal || asset.estimatedValue)) {
-        valuationHistory.push({
-          date: asset.acquisitionDate || new Date().toISOString().split('T')[0],
-          value: buyVal || asset.estimatedValue,
-          label: 'Aquisição'
-        });
-      }
-      const lastVal = valuationHistory.length > 0 ? valuationHistory[valuationHistory.length - 1] : null;
-      if (!lastVal || lastVal.value !== estVal) {
-        valuationHistory.push({
-          date: new Date().toISOString().split('T')[0],
-          value: estVal,
-          label: 'Atualização'
-        });
-      }
-
-      const updatedMetadata = {
-        ...(asset.metadata || {}),
-        propertyStage,
-        purpose,
-        purchaseValue: buyVal,
-        despesasCartorarias: cartVal,
-        mobiliarios: mobVal,
-        historicalPaidAmount: histPaid,
-        historicalRentReceived: propertyStage === 'PLANTA' ? 0 : histRent,
-        saleValue: saleVal,
-        isRented,
-        rentalType,
-        rentalIncome: rentVal,
-        rentalDate,
-        discountType,
-        discountValue: discVal,
-        inquilinoPaysCondo: condoPayer === 'INQUILINO_DIRETO',
-        inquilinoPaysIPTU: iptuPayer === 'INQUILINO_DIRETO',
-        condoPayer,
-        iptuPayer,
-        condoFee: condoVal,
-        iptuFee: iptuVal,
-        condoNextDate,
-        iptuNextDate,
-        iptuFrequency,
-        shortStayBookings,
-        valuationHistory,
-        consortiumAllocationRatio: asset.metadata?.selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined
-      };
-
-      const { error } = await supabase
-        .from('physical_assets')
-        .update({ 
-          name: name,
-          estimated_value: estVal,
-          metadata: updatedMetadata,
-          is_archived: true 
-        })
-        .eq('id', asset.id);
-
-      if (error) throw error;
-      alert('Imóvel arquivado e registrado como vendido com sucesso!');
-      onClose();
-      onSuccess();
-    } catch (err: any) {
-      alert(`Erro ao arquivar: ${err.message}`);
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleArchiveAsset = () => {
+    setIsSold(true);
+    alert('Marcar como Vendido selecionado. Preencha os detalhes da venda no painel de Custos de Aquisição & Capital abaixo e clique em Salvar Alterações.');
   };
 
   const handleDeleteAsset = async () => {
@@ -1331,9 +1477,184 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   </div>
                 )}
                 <div className="space-y-1">
-                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor de Venda (se vendido)</label>
-                  <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={saleValue} onChange={e => setSaleValue(e.target.value)} placeholder="0" />
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Taxa de Corretagem (R$)</label>
+                  <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={brokerFee} onChange={e => setBrokerFee(e.target.value)} placeholder="0" />
                 </div>
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-xs select-none pt-6">
+                  <input
+                    type="checkbox"
+                    checked={isSold}
+                    onChange={(e) => setIsSold(e.target.checked)}
+                  />
+                  Marcar como Vendido
+                </label>
+
+                {isSold && (
+                  <div className="col-span-1 sm:col-span-2 space-y-4 bg-slate-50/80 p-4 rounded-2xl border border-slate-200 mt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Venda (R$)</label>
+                        <input
+                          type="number"
+                          className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs"
+                          value={saleValue}
+                          onChange={(e) => setSaleValue(e.target.value)}
+                          placeholder="0"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Comissão de Venda (R$)</label>
+                        <input
+                          type="number"
+                          className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs"
+                          value={saleComission}
+                          onChange={(e) => setSaleComission(e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Forma de Recebimento</label>
+                      <select
+                        className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-xs outline-none"
+                        value={salePaymentMethod}
+                        onChange={(e) => setSalePaymentMethod(e.target.value as any)}
+                      >
+                        <option value="A_VISTA">À Vista (Dinheiro/PIX)</option>
+                        <option value="PARCELADO">Parcelado (Contas a Receber)</option>
+                        <option value="PERMUTA">Permuta Integral (Troca de Bens)</option>
+                        <option value="HIBRIDO">Híbrido (Parte Dinheiro, Parte Permuta)</option>
+                      </select>
+                    </div>
+
+                    {salePaymentMethod === 'A_VISTA' && (
+                      <div className="space-y-1 animate-in slide-in-from-top-2">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data de Recebimento</label>
+                        <input
+                          type="date"
+                          className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs"
+                          value={saleDate}
+                          onChange={(e) => setSaleDate(e.target.value)}
+                        />
+                      </div>
+                    )}
+
+                    {salePaymentMethod === 'HIBRIDO' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in slide-in-from-top-2">
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor em Dinheiro (R$)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs"
+                            value={saleCashAmount}
+                            onChange={(e) => setSaleCashAmount(e.target.value)}
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data do Recebimento</label>
+                          <input
+                            type="date"
+                            className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs"
+                            value={saleDate}
+                            onChange={(e) => setSaleDate(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {(salePaymentMethod === 'PERMUTA' || salePaymentMethod === 'HIBRIDO') && (
+                      <div className="space-y-3 pt-2 border-t border-dashed border-slate-200">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Bens Recebidos na Permuta</p>
+                        
+                        {permutaItems && permutaItems.map((item, idx) => (
+                          <div key={idx} className="grid grid-cols-12 gap-2 bg-white p-3 rounded-xl border border-slate-100 items-end">
+                            <div className="col-span-3">
+                              <label className="block text-[8px] font-bold text-slate-400 mb-1">Tipo</label>
+                              <select
+                                className="w-full h-8 px-1.5 bg-slate-50 border rounded-lg text-[10px] font-bold outline-none"
+                                value={item.type}
+                                onChange={(e) => {
+                                  const newItems = [...permutaItems];
+                                  newItems[idx].type = e.target.value as any;
+                                  setPermutaItems(newItems);
+                                }}
+                              >
+                                <option value="VEHICLE">Veículo</option>
+                                <option value="REAL_ESTATE">Imóvel</option>
+                                <option value="OTHER">Outro Bem</option>
+                              </select>
+                            </div>
+                            
+                            <div className="col-span-5">
+                              <label className="block text-[8px] font-bold text-slate-400 mb-1">Nome / Descrição</label>
+                              <input
+                                className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs"
+                                value={item.name}
+                                onChange={(e) => {
+                                  const newItems = [...permutaItems];
+                                  newItems[idx].name = e.target.value;
+                                  setPermutaItems(newItems);
+                                }}
+                                placeholder={
+                                  item.type === 'VEHICLE'
+                                    ? 'Ex: Fiat Uno 2012'
+                                    : item.type === 'REAL_ESTATE'
+                                    ? 'Ex: Terreno Condomínio'
+                                    : 'Ex: Cota Consórcio'
+                                }
+                              />
+                            </div>
+
+                            <div className="col-span-3">
+                              <label className="block text-[8px] font-bold text-slate-400 mb-1">Valor (R$)</label>
+                              <input
+                                type="number"
+                                className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs font-bold"
+                                value={item.value}
+                                onChange={(e) => {
+                                  const newItems = [...permutaItems];
+                                  newItems[idx].value = e.target.value;
+                                  setPermutaItems(newItems);
+                                }}
+                                placeholder="0.00"
+                              />
+                            </div>
+
+                            <div className="col-span-1 flex justify-center pb-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newItems = permutaItems.filter((_, i) => i !== idx);
+                                  setPermutaItems(newItems);
+                                }}
+                                className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPermutaItems([
+                              ...permutaItems,
+                              { type: 'VEHICLE', name: '', value: '' }
+                            ]);
+                          }}
+                          className="w-full h-9 border border-dashed border-slate-300 rounded-xl text-[10px] font-bold text-slate-500 hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-1.5"
+                        >
+                          <Plus size={12} />
+                          Adicionar Bem Recebido
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

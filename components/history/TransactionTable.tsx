@@ -686,6 +686,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                             onBlur={() => handleUpdate(t.id, 'description', editValue)}
                                         />
                                     ) : (
+                                        <div className="space-y-1.5 w-full">
                                             <button
                                                 onClick={() => { setEditingRow({ id: t.id, field: 'description' }); setEditValue(t.description); }}
                                                 className="text-sm font-bold text-slate-900 text-left w-full active:text-brand-600 truncate"
@@ -695,6 +696,18 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     <Pencil size={11} className="text-slate-200 shrink-0" />
                                                 </div>
                                             </button>
+                                            {t.metadata?.payment_history && Array.isArray(t.metadata.payment_history) && t.metadata.payment_history.length > 0 && (
+                                                <div className="p-2 bg-slate-50 border border-slate-100 rounded-xl space-y-1 text-[9px] font-bold text-slate-500 max-w-xs animate-in slide-in-from-top-1">
+                                                    <p className="uppercase text-[8px] font-black text-slate-400 tracking-wider">Histórico de Pagamentos:</p>
+                                                    {t.metadata.payment_history.map((ph, phIdx) => (
+                                                        <div key={phIdx} className="flex justify-between items-center">
+                                                            <span>{ph.date ? new Date(ph.date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'} ({ph.account_name || 'Conta'})</span>
+                                                            <span className="text-emerald-600 font-extrabold">{formatCurrency(ph.amount)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                     )}
 
                                     {/* Observações (Notes) - Mobile */}
@@ -985,14 +998,27 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                 onBlur={() => handleUpdate(t.id, 'description', editValue)}
                                             />
                                         ) : (
-                                            <button onClick={() => { setEditingRow({ id: t.id, field: 'description' }); setEditValue(t.description); }}
-                                                className="text-sm font-bold text-slate-900 text-left hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer">
-                                                <div className="flex items-center gap-2 group/edit">
-                                                    {t.description || 'Sem descrição'}
-                                                    <Pencil size={12} className="text-slate-200 group-hover/edit:text-brand-500 transition-colors" />
-                                                </div>
-                                            </button>
-                                        )}
+                                             <div className="space-y-1.5">
+                                                 <button onClick={() => { setEditingRow({ id: t.id, field: 'description' }); setEditValue(t.description); }}
+                                                     className="text-sm font-bold text-slate-900 text-left hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer w-full">
+                                                     <div className="flex items-center gap-2 group/edit">
+                                                         {t.description || 'Sem descrição'}
+                                                         <Pencil size={12} className="text-slate-200 group-hover/edit:text-brand-500 transition-colors" />
+                                                     </div>
+                                                 </button>
+                                                 {t.metadata?.payment_history && Array.isArray(t.metadata.payment_history) && t.metadata.payment_history.length > 0 && (
+                                                     <div className="p-2 bg-slate-50 border border-slate-100 rounded-xl space-y-1 text-[9px] font-bold text-slate-500 max-w-xs animate-in slide-in-from-top-1">
+                                                         <p className="uppercase text-[8px] font-black text-slate-400 tracking-wider">Histórico de Pagamentos:</p>
+                                                         {t.metadata.payment_history.map((ph, phIdx) => (
+                                                             <div key={phIdx} className="flex justify-between items-center gap-4">
+                                                                 <span>{ph.date ? new Date(ph.date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'} ({ph.account_name || 'Conta'})</span>
+                                                                 <span className="text-emerald-600 font-extrabold">{formatCurrency(ph.amount)}</span>
+                                                             </div>
+                                                         ))}
+                                                     </div>
+                                                 )}
+                                             </div>
+                                         )}
 
                                         {/* Observações (Notes) - Desktop */}
                                         {editingRow?.id === t.id && editingRow.field === 'notes' ? (

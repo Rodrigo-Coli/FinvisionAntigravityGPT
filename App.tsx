@@ -135,7 +135,7 @@ const App: React.FC = () => {
                   <>
                     <Nav user={profile} />
                     {profile.preferences?.show_bottom_nav !== false && <BottomNav user={profile} />}
-                    <FloatingActions />
+                    <FloatingActions user={profile} />
                   </>
                 )}
                 <main className={`flex-grow overflow-x-hidden min-w-0 flex flex-col ${session && profile ? 'main-content-safe' : ''}`}>

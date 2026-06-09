@@ -17,6 +17,10 @@ import {
   Search,
   Zap,
   Box,
+  Gem,
+  Watch,
+  Palette,
+  Award,
   Landmark,
   X,
   ArrowDownRight,
@@ -32,8 +36,11 @@ import {
   Calendar,
   Layers,
   ArrowRightLeft,
-  Sparkles
+  Sparkles,
+  FileSpreadsheet,
+  Printer
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { PhysicalAsset, InvestmentBroker, Liability, Transaction } from '../types';
 import { supabase } from '../lib/supabase/client';
 import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModal';
@@ -42,7 +49,7 @@ import { DateUtils } from '../lib/dateUtils';
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'physical' | 'investments' | 'liabilities'>('overview');
+  const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'liabilities'>('overview');
   const [inccRate, setInccRate] = useState<number | null>(null);
   const [loadingIncc, setLoadingIncc] = useState<boolean>(false);
 
@@ -193,6 +200,16 @@ const Assets: React.FC = () => {
   const [selectedAssetForExtrato, setSelectedAssetForExtrato] = useState<PhysicalAsset | null>(null);
   const [showExtratoModal, setShowExtratoModal] = useState(false);
   const [isAddingExtratoTx, setIsAddingExtratoTx] = useState(false);
+
+  const [suggestedNames, setSuggestedNames] = useState<string[]>(() => {
+    const saved = localStorage.getItem('finvision_other_asset_suggestions');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return ['Joias', 'Relógio de Luxo', 'Obra de Arte', 'Consórcio', 'Equipamento', 'Colecionável'];
+  });
 
   // Form States
   const [editingAsset, setEditingAsset] = useState<PhysicalAsset | null>(null);
@@ -941,7 +958,7 @@ const Assets: React.FC = () => {
       if (isNew && transFee > 0) {
         await supabase.from('transactions').insert([{
           user_id: userId,
-          description: `Taxa de Transferência/Doc - ${formValues.name}`,
+          description: `${formValues.name} - Taxa de Transferência/Doc`,
           amount: transFee,
           date: todayStr,
           type: 'EXPENSE',
@@ -979,7 +996,7 @@ const Assets: React.FC = () => {
         if (comission > 0) {
           await supabase.from('transactions').insert([{
             user_id: userId,
-            description: `Comissão de Venda - ${formValues.name}`,
+            description: `${formValues.name} - Comissão de Venda`,
             amount: comission,
             date: saleDateStr,
             type: 'EXPENSE',
@@ -999,10 +1016,17 @@ const Assets: React.FC = () => {
           .from('categories')
           .select('id')
           .eq('user_id', userId)
-          .eq('name', 'Outras Receitas')
+          .eq('name', 'Venda de Ativos')
           .maybeSingle();
         if (revCat) {
           revenueCatId = revCat.id;
+        } else {
+          const { data: newCat } = await supabase
+            .from('categories')
+            .insert({ user_id: userId, name: 'Venda de Ativos', type: 'INCOME', color: 'bg-emerald-50 text-emerald-600' })
+            .select('id')
+            .maybeSingle();
+          if (newCat) revenueCatId = newCat.id;
         }
 
         if (formValues.salePaymentMethod === 'A_VISTA' || formValues.salePaymentMethod === 'HIBRIDO') {
@@ -1016,13 +1040,13 @@ const Assets: React.FC = () => {
             await supabase.from('transactions').insert([{
               user_id: userId,
               description: formValues.salePaymentMethod === 'HIBRIDO'
-                ? `Receita Venda de Veículo (Parte Dinheiro) - ${formValues.name}`
-                : `Receita Venda de Veículo (À Vista) - ${formValues.name}`,
+                ? `${formValues.name} - Receita Venda de Veículo (Parte Dinheiro)`
+                : `${formValues.name} - Receita Venda de Veículo (À Vista)`,
               amount: cashVal,
               date: saleDateStr,
               type: 'INCOME',
-              category: 'Outras Receitas',
-              subcategory: 'Venda de Ativo',
+              category: 'Venda de Ativos',
+              subcategory: 'Venda de Veículo',
               category_id: revenueCatId || null,
               is_paid: true,
               paid_amount: cashVal,
@@ -1043,12 +1067,12 @@ const Assets: React.FC = () => {
 
             newSaleInstallments.push({
               user_id: userId,
-              description: `Receita Parcelada Venda (${i+1}/${parcelas}) - ${formValues.name}`,
+              description: `${formValues.name} - Receita Parcelada Venda (${i+1}/${parcelas})`,
               amount: valorParcela,
               date: futureDateStr,
               type: 'INCOME',
-              category: 'Outras Receitas',
-              subcategory: 'Venda de Ativo',
+              category: 'Venda de Ativos',
+              subcategory: 'Venda de Veículo',
               category_id: revenueCatId || null,
               is_paid: false,
               metadata: { linked_asset_id: vehicleId, type: 'vehicle_sale_installment', installment: i+1 }
@@ -1059,7 +1083,7 @@ const Assets: React.FC = () => {
           }
         }
 
-        // Criar bens de permuta automaticamente
+        // Criar bens de permuta automaticamente com vínculo de origem
         if (Array.isArray(formValues.permutaItems)) {
           const assetsToInsert = formValues.permutaItems
             .filter((item: any) => item.name && (parseFloat(item.value) || 0) > 0)
@@ -1070,7 +1094,11 @@ const Assets: React.FC = () => {
               estimated_value: parseFloat(item.value) || 0,
               acquisition_date: saleDateStr,
               description: `Recebido em permuta na venda de ${formValues.name}`,
-              metadata: item.type === 'REAL_ESTATE' ? { propertyStage: 'PRONTO', purpose: 'uso' } : { purpose: 'uso' }
+              metadata: {
+                ...(item.type === 'REAL_ESTATE' ? { propertyStage: 'PRONTO', purpose: 'uso' } : { purpose: 'uso' }),
+                permuta_origem_asset_id: vehicleId,
+                permuta_original_value: parseFloat(item.value) || 0
+              }
             }));
           if (assetsToInsert.length > 0) {
             await supabase.from('physical_assets').insert(assetsToInsert);
@@ -1087,7 +1115,11 @@ const Assets: React.FC = () => {
               estimated_value: pVeicVal,
               acquisition_date: saleDateStr,
               description: `Recebido em permuta na venda de ${formValues.name}`,
-              metadata: { purpose: 'uso' }
+              metadata: { 
+                purpose: 'uso',
+                permuta_origem_asset_id: vehicleId,
+                permuta_original_value: pVeicVal
+              }
             }]);
           }
           // Imóvel
@@ -1100,7 +1132,12 @@ const Assets: React.FC = () => {
               estimated_value: pImovVal,
               acquisition_date: saleDateStr,
               description: `Recebido em permuta na venda de ${formValues.name}`,
-              metadata: { propertyStage: 'PRONTO', purpose: 'uso' }
+              metadata: { 
+                propertyStage: 'PRONTO', 
+                purpose: 'uso',
+                permuta_origem_asset_id: vehicleId,
+                permuta_original_value: pImovVal
+              }
             }]);
           }
           // Outros bens
@@ -1113,7 +1150,11 @@ const Assets: React.FC = () => {
               estimated_value: pOutrVal,
               acquisition_date: todayStr,
               description: `Recebido em permuta na venda de ${formValues.name}`,
-              metadata: { purpose: 'uso' }
+              metadata: { 
+                purpose: 'uso',
+                permuta_origem_asset_id: vehicleId,
+                permuta_original_value: pOutrVal
+              }
             }]);
           }
         }
@@ -1242,6 +1283,225 @@ const Assets: React.FC = () => {
     }
   };
 
+  const syncOtherAssetTransactions = async (
+    otherId: string,
+    isNew: boolean,
+    userId: string,
+    formValues: typeof formData
+  ) => {
+    if (!supabase) return;
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const categoryName = 'Patrimônio';
+      let catId = '';
+      
+      // Buscar ou criar categoria "Patrimônio"
+      const { data: existingCat } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('name', categoryName)
+        .maybeSingle();
+
+      if (existingCat) {
+        catId = existingCat.id;
+      } else {
+        const { data: c } = await supabase
+          .from('categories')
+          .insert({ user_id: userId, name: categoryName, type: 'EXPENSE', color: 'bg-slate-50 text-slate-600' })
+          .select('id')
+          .maybeSingle();
+        if (c) catId = c.id;
+      }
+
+      // Limpar provisões futuras não pagas de Aluguel/Rendimento e parcelas da venda para recalcular
+      const { data: oldProvisions } = await supabase
+        .from('transactions')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('is_paid', false)
+        .eq('is_deleted', false)
+        .eq('metadata->>linked_asset_id', otherId)
+        .in('metadata->>type', ['other_rental_income', 'other_sale_installment']);
+
+      if (oldProvisions && oldProvisions.length > 0) {
+        await supabase.from('transactions').delete().in('id', oldProvisions.map((p: any) => p.id));
+      }
+
+      // Se o bem foi vendido, não geramos rendimentos futuros
+      if (formValues.isSold) {
+        const soldAmount = parseFloat(formValues.soldValue) || 0;
+        const comission = parseFloat(formValues.saleComission) || 0;
+        const saleDateStr = formValues.saleDate || todayStr;
+
+        // Registrar comissão de venda (se houver)
+        if (comission > 0) {
+          await supabase.from('transactions').insert([{
+            user_id: userId,
+            description: `${formValues.name} - Comissão de Venda`,
+            amount: comission,
+            date: saleDateStr,
+            type: 'EXPENSE',
+            category: categoryName,
+            subcategory: 'Comissão',
+            category_id: catId || null,
+            is_paid: true,
+            paid_amount: comission,
+            paid_at: saleDateStr,
+            metadata: { linked_asset_id: otherId, type: 'other_sale_comission' }
+          }]);
+        }
+
+        // Registrar recebimento da venda
+        let revenueCatId = '';
+        const { data: revCat } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('name', 'Venda de Ativos')
+          .maybeSingle();
+        if (revCat) {
+          revenueCatId = revCat.id;
+        } else {
+          const { data: newCat } = await supabase
+            .from('categories')
+            .insert({ user_id: userId, name: 'Venda de Ativos', type: 'INCOME', color: 'bg-emerald-50 text-emerald-600' })
+            .select('id')
+            .maybeSingle();
+          if (newCat) revenueCatId = newCat.id;
+        }
+
+        if (formValues.salePaymentMethod === 'A_VISTA' || formValues.salePaymentMethod === 'HIBRIDO') {
+          // Valor à vista
+          let cashVal = soldAmount;
+          if (formValues.salePaymentMethod === 'HIBRIDO') {
+            cashVal = parseFloat(formValues.saleCashAmount) || 0;
+          }
+
+          if (cashVal > 0) {
+            await supabase.from('transactions').insert([{
+              user_id: userId,
+              description: formValues.salePaymentMethod === 'HIBRIDO'
+                ? `${formValues.name} - Receita Venda de Ativo (Parte Dinheiro)`
+                : `${formValues.name} - Receita Venda de Ativo (À Vista)`,
+              amount: cashVal,
+              date: saleDateStr,
+              type: 'INCOME',
+              category: 'Venda de Ativos',
+              subcategory: 'Venda de Outros Bens',
+              category_id: revenueCatId || null,
+              is_paid: true,
+              paid_amount: cashVal,
+              paid_at: saleDateStr,
+              metadata: { linked_asset_id: otherId, type: 'other_sale_revenue' }
+            }]);
+          }
+        } 
+        else if (formValues.salePaymentMethod === 'PARCELADO') {
+          const parcelas = 10; // 10 parcelas mensais padrão
+          const valorParcela = soldAmount / parcelas;
+          const newSaleInstallments = [];
+          
+          for (let i = 0; i < parcelas; i++) {
+            const futureDate = new Date();
+            futureDate.setMonth(futureDate.getMonth() + i);
+            const futureDateStr = futureDate.toISOString().split('T')[0];
+
+            newSaleInstallments.push({
+              user_id: userId,
+              description: `${formValues.name} - Receita Parcelada Venda (${i+1}/${parcelas})`,
+              amount: valorParcela,
+              date: futureDateStr,
+              type: 'INCOME',
+              category: 'Venda de Ativos',
+              subcategory: 'Venda de Outros Bens',
+              category_id: revenueCatId || null,
+              is_paid: false,
+              metadata: { linked_asset_id: otherId, type: 'other_sale_installment', installment: i+1 }
+            });
+          }
+          if (newSaleInstallments.length > 0) {
+            await supabase.from('transactions').insert(newSaleInstallments);
+          }
+        }
+
+        // Criar bens de permuta automaticamente com vínculo de origem
+        if (Array.isArray(formValues.permutaItems)) {
+          const assetsToInsert = formValues.permutaItems
+            .filter((item: any) => item.name && (parseFloat(item.value) || 0) > 0)
+            .map((item: any) => ({
+              user_id: userId,
+              name: item.name,
+              category: item.type,
+              estimated_value: parseFloat(item.value) || 0,
+              acquisition_date: saleDateStr,
+              description: `Recebido em permuta na venda de ${formValues.name}`,
+              metadata: {
+                ...(item.type === 'REAL_ESTATE' ? { propertyStage: 'PRONTO', purpose: 'uso' } : { purpose: 'uso' }),
+                permuta_origem_asset_id: otherId,
+                permuta_original_value: parseFloat(item.value) || 0
+              }
+            }));
+          if (assetsToInsert.length > 0) {
+            await supabase.from('physical_assets').insert(assetsToInsert);
+          }
+        }
+
+        // Se arquivamos/vendemos, encerramos as provisões normais
+        return;
+      }
+
+      // Provisões de Rendimento (Se for investimento locação / rendimento periódico)
+      const rendimento = parseFloat(formValues.rentalIncome) || 0;
+      if (formValues.purpose === 'investimento' && formValues.vehiclePurposeType === 'RENTAL' && rendimento > 0 && formValues.isRented) {
+        const platFee = parseFloat(formValues.rentalPlatformFee) || 0;
+        const rendimentoLiquido = Math.max(0, rendimento - platFee);
+        
+        let rentalCatId = '';
+        const { data: rentCat } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('name', 'Rendimento de Bens Físicos')
+          .maybeSingle();
+
+        if (rentCat) {
+          rentalCatId = rentCat.id;
+        } else {
+          const { data: newCat } = await supabase
+            .from('categories')
+            .insert({ user_id: userId, name: 'Rendimento de Bens Físicos', type: 'INCOME', color: 'bg-emerald-50 text-emerald-600' })
+            .select('id')
+            .maybeSingle();
+          if (newCat) rentalCatId = newCat.id;
+        }
+
+        const newRentTxs = [];
+        for (let i = 0; i < 24; i++) { // Provisão de 24 meses
+          const futureDate = new Date();
+          futureDate.setMonth(futureDate.getMonth() + i);
+          const futureDateStr = futureDate.toISOString().split('T')[0];
+
+          newRentTxs.push({
+            user_id: userId,
+            description: `Rendimento Mensal - ${formValues.name}`,
+            amount: rendimentoLiquido,
+            date: futureDateStr,
+            type: 'INCOME',
+            category: 'Rendimento de Bens Físicos',
+            subcategory: 'Rendimento',
+            category_id: rentalCatId || null,
+            is_paid: false,
+            metadata: { linked_asset_id: otherId, type: 'other_rental_income' }
+          });
+        }
+        await supabase.from('transactions').insert(newRentTxs);
+      }
+    } catch (e) {
+      console.error('Error syncing other asset transactions:', e);
+    }
+  };
+
   // Safe Property status toggle
   const togglePropertyTypeDirectly = async (asset: PhysicalAsset) => {
     if (!supabase) return;
@@ -1357,25 +1617,25 @@ const Assets: React.FC = () => {
         // Vehicle details
         vehicleType: formData.category === 'VEHICLE' ? formData.vehicleType : undefined,
         transferFee: formData.category === 'VEHICLE' ? (parseFloat(formData.transferFee) || 0) : undefined,
-        vehiclePurposeType: formData.category === 'VEHICLE' && formData.purpose === 'investimento' ? formData.vehiclePurposeType : undefined,
+        vehiclePurposeType: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? formData.vehiclePurposeType : undefined,
         ipvaFee: formData.category === 'VEHICLE' ? (parseFloat(formData.ipvaFee) || 0) : undefined,
         seguroFee: formData.category === 'VEHICLE' ? (parseFloat(formData.seguroFee) || 0) : undefined,
         licenciamentoFee: formData.category === 'VEHICLE' ? (parseFloat(formData.licenciamentoFee) || 0) : undefined,
-        maintenanceMonthlyEstimated: formData.category === 'VEHICLE' ? (parseFloat(formData.maintenanceMonthlyEstimated) || 0) : undefined,
-        rentalPlatformFee: formData.category === 'VEHICLE' && formData.purpose === 'investimento' ? (parseFloat(formData.rentalPlatformFee) || 0) : undefined,
-        targetSaleValue: formData.category === 'VEHICLE' && formData.purpose === 'investimento' ? (parseFloat(formData.targetSaleValue) || 0) : undefined,
-        preparationBudget: formData.category === 'VEHICLE' && formData.purpose === 'investimento' ? (parseFloat(formData.preparationBudget) || 0) : undefined,
-        saleComission: formData.category === 'VEHICLE' && formData.isSold ? (parseFloat(formData.saleComission) || 0) : undefined,
-        salePaymentMethod: formData.category === 'VEHICLE' && formData.isSold ? formData.salePaymentMethod : undefined,
-        permutaVeiculoValor: formData.category === 'VEHICLE' && formData.isSold ? (parseFloat(formData.permutaVeiculoValor) || 0) : undefined,
-        permutaVeiculoNome: formData.category === 'VEHICLE' && formData.isSold ? formData.permutaVeiculoNome : undefined,
-        permutaImovelValor: formData.category === 'VEHICLE' && formData.isSold ? (parseFloat(formData.permutaImovelValor) || 0) : undefined,
-        permutaImovelNome: formData.category === 'VEHICLE' && formData.isSold ? formData.permutaImovelNome : undefined,
-        permutaOutrosValor: formData.category === 'VEHICLE' && formData.isSold ? (parseFloat(formData.permutaOutrosValor) || 0) : undefined,
-        permutaOutrosNome: formData.category === 'VEHICLE' && formData.isSold ? formData.permutaOutrosNome : undefined,
-        permutaItems: formData.category === 'VEHICLE' && formData.isSold ? formData.permutaItems : undefined,
-        saleDate: formData.category === 'VEHICLE' && formData.isSold ? formData.saleDate : undefined,
-        saleCashAmount: formData.category === 'VEHICLE' && formData.isSold ? (parseFloat(formData.saleCashAmount) || 0) : undefined,
+        maintenanceMonthlyEstimated: (formData.category === 'VEHICLE' || formData.category === 'OTHER') ? (parseFloat(formData.maintenanceMonthlyEstimated) || 0) : undefined,
+        rentalPlatformFee: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? (parseFloat(formData.rentalPlatformFee) || 0) : undefined,
+        targetSaleValue: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? (parseFloat(formData.targetSaleValue) || 0) : undefined,
+        preparationBudget: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? (parseFloat(formData.preparationBudget) || 0) : undefined,
+        saleComission: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? (parseFloat(formData.saleComission) || 0) : undefined,
+        salePaymentMethod: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? formData.salePaymentMethod : undefined,
+        permutaVeiculoValor: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? (parseFloat(formData.permutaVeiculoValor) || 0) : undefined,
+        permutaVeiculoNome: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? formData.permutaVeiculoNome : undefined,
+        permutaImovelValor: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? (parseFloat(formData.permutaImovelValor) || 0) : undefined,
+        permutaImovelNome: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? formData.permutaImovelNome : undefined,
+        permutaOutrosValor: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? (parseFloat(formData.permutaOutrosValor) || 0) : undefined,
+        permutaOutrosNome: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? formData.permutaOutrosNome : undefined,
+        permutaItems: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? formData.permutaItems : undefined,
+        saleDate: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? formData.saleDate : undefined,
+        saleCashAmount: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? (parseFloat(formData.saleCashAmount) || 0) : undefined,
       };
 
       // Preserve existing real estate evolution details if editing
@@ -1490,6 +1750,60 @@ const Assets: React.FC = () => {
         if (formData.category === 'VEHICLE') {
           await syncVehicleTransactions(editingAsset.id, false, user.id, formData);
         }
+        if (formData.category === 'OTHER') {
+          await syncOtherAssetTransactions(editingAsset.id, false, user.id, formData);
+        }
+
+        // Se este ativo físico vendido for uma permuta de origem, atualizar o bem principal de origem
+        if (formData.isSold && !editingAsset.metadata?.isSold && editingAsset.metadata?.permuta_origem_asset_id) {
+          const origId = editingAsset.metadata.permuta_origem_asset_id;
+          const origVal = parseFloat(editingAsset.metadata.permuta_original_value) || 0;
+          const diff = soldVal - origVal;
+          
+          if (diff !== 0) {
+            const { data: origAsset } = await supabase
+              .from('physical_assets')
+              .select('*')
+              .eq('id', origId)
+              .maybeSingle();
+              
+            if (origAsset) {
+              const origMeta = { ...(origAsset.metadata || {}) };
+              if (origAsset.category === 'REAL_ESTATE') {
+                origMeta.saleValue = (parseFloat(origMeta.saleValue) || 0) + diff;
+              } else {
+                origMeta.soldValue = (parseFloat(origMeta.soldValue) || 0) + diff;
+              }
+              
+              await supabase
+                .from('physical_assets')
+                .update({ metadata: origMeta })
+                .eq('id', origId);
+                
+              // Atualizar transação de receita de venda do ativo de origem
+              const { data: origTxs } = await supabase
+                .from('transactions')
+                .select('id, amount, account_id')
+                .eq('is_deleted', false)
+                .eq('metadata->>linked_asset_id', origId)
+                .in('metadata->>type', ['real_estate_sale_revenue', 'vehicle_sale_revenue', 'other_sale_revenue']);
+                
+              if (origTxs && origTxs.length > 0) {
+                for (const tx of origTxs) {
+                  const newAmt = tx.amount + diff;
+                  await supabase
+                    .from('transactions')
+                    .update({ amount: newAmt, paid_amount: newAmt })
+                    .eq('id', tx.id);
+                    
+                  if (tx.account_id) {
+                    await supabase.rpc('recalculate_account_balance', { p_account_id: tx.account_id });
+                  }
+                }
+              }
+            }
+          }
+        }
       } else {
         // INSERT new asset
         const { data: newAsset, error } = await supabase
@@ -1523,6 +1837,9 @@ const Assets: React.FC = () => {
 
         if (formData.category === 'VEHICLE' && newAsset) {
           await syncVehicleTransactions(newAsset.id, true, user.id, formData);
+        }
+        if (formData.category === 'OTHER' && newAsset) {
+          await syncOtherAssetTransactions(newAsset.id, true, user.id, formData);
         }
 
         // Auto-provision initial disbursement transaction for Loan assets
@@ -1857,6 +2174,43 @@ const Assets: React.FC = () => {
     } catch (err: any) {
       alert(`Erro ao excluir: ${err.message}`);
     }
+  };
+
+  const exportExtratoToExcel = (asset: PhysicalAsset) => {
+    const txs = getAssetLinkedTransactions(asset.id);
+    const rows = txs.map((t, idx) => ({
+      '#': idx + 1,
+      'Descrição': t.description,
+      'Valor (R$)': t.amount,
+      'Data': new Date(t.date).toLocaleDateString('pt-BR'),
+      'Categoria': t.category,
+      'Subcategoria': t.subcategory || '-',
+      'Situação': t.isPaid ? 'Pago' : 'Pendente'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Extrato');
+    
+    const info = getAssetFinancialHistory(asset);
+    XLSX.utils.sheet_add_aoa(ws, [
+      [`Extrato do Ativo: ${asset.name}`],
+      [`Categoria: ${asset.category === 'VEHICLE' ? 'Veículo' : 'Outro Bem'}`],
+      [`Valor Estimado: R$ ${asset.estimatedValue.toLocaleString('pt-BR')}`],
+      [`Total Receitas: R$ ${info.totalIncome.toLocaleString('pt-BR')}`],
+      [`Total Gastos Extras: R$ ${info.totalExtraExpenses.toLocaleString('pt-BR')}`],
+      [`Saldo Consolidado: R$ ${(info.totalIncome - info.totalExtraExpenses).toLocaleString('pt-BR')}`],
+      []
+    ], { origin: 'A1' });
+
+    XLSX.writeFile(wb, `extrato_${asset.name.replace(/\s+/g, '_').toLowerCase()}.xlsx`);
+  };
+
+  const handleArchiveAssetFromExtrato = (asset: PhysicalAsset) => {
+    setShowExtratoModal(false);
+    openEditAsset(asset);
+    setFormData(prev => ({ ...prev, isSold: true }));
+    alert('Marcar como Vendido selecionado. Preencha os detalhes da venda no formulário e clique em Salvar Alterações.');
   };
 
   // Real estate manage modal
@@ -2664,9 +3018,10 @@ const Assets: React.FC = () => {
         {[
           { id: 'overview', label: 'Visão Geral', icon: <LayoutGrid size={16} /> },
           { id: 'realestate', label: 'Ativos Imobiliários', icon: <Building2 size={16} /> },
-          { id: 'physical', label: 'Bens Físicos', icon: <Box size={16} /> },
+          { id: 'vehicles', label: 'Veículos', icon: <Car size={16} /> },
           { id: 'investments', label: 'Investimentos', icon: <TrendingUp size={16} /> },
-          { id: 'liabilities', label: 'Passivos (Dívidas)', icon: <Landmark size={16} /> }
+          { id: 'liabilities', label: 'Passivos (Dívidas)', icon: <Landmark size={16} /> },
+          { id: 'physical', label: 'Outros Ativos Físicos', icon: <Box size={16} /> }
         ].map((tab) => (
           <button
             key={tab.id}
@@ -3458,16 +3813,16 @@ const Assets: React.FC = () => {
           </div>
         )}
 
-        {/* PHYSICAL ASSETS VIEW */}
-        {activeView === 'physical' && (
+        {/* VEHICLES VIEW */}
+        {activeView === 'vehicles' && (
           <div className="space-y-6">
             <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
-              <Box size={20} className="text-slate-500" />
-              Seus Bens Físicos
+              <Car size={20} className="text-slate-500" />
+              Seus Veículos
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {activePhysicalAssets.filter(p => p.category !== 'REAL_ESTATE').map(asset => {
+              {activePhysicalAssets.filter(p => p.category === 'VEHICLE').map(asset => {
                 const meta = asset.metadata || {};
                 const value = asset.estimatedValue;
                 const purchase = Number(meta.purchaseValue) || value;
@@ -3485,9 +3840,12 @@ const Assets: React.FC = () => {
                     <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
                       <div className="flex justify-between items-start">
                         <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
-                          {asset.category === 'VEHICLE' ? <Car size={22} /> : <Box size={22} />}
+                          <Car size={22} />
                         </div>
                         <div className="flex flex-wrap gap-1.5 justify-end">
+                          {meta.isSold && (
+                            <span className="px-3 py-1 bg-rose-50 text-rose-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-rose-100">Vendido</span>
+                          )}
                           {meta.purpose === 'investimento' ? (
                             <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
                           ) : (
@@ -3499,8 +3857,8 @@ const Assets: React.FC = () => {
                       <div>
                         <h4 className="font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-tight italic break-words">{asset.name}</h4>
                         <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
-                          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Avaliação Atual:</p>
-                          <p className="text-sm font-black text-slate-900">{formatCurrency(value)}</p>
+                          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{meta.isSold ? 'Valor de Venda:' : 'Avaliação Atual:'}</p>
+                          <p className="text-sm font-black text-slate-900">{formatCurrency(meta.isSold ? Number(meta.soldValue) || value : value)}</p>
                         </div>
                       </div>
 
@@ -3510,12 +3868,10 @@ const Assets: React.FC = () => {
                           <span>Valor Aquisição:</span>
                           <span className="font-bold text-slate-800">{formatCurrency(purchase)}</span>
                         </div>
-                        {asset.category === 'VEHICLE' && (
-                          <div className="flex justify-between">
-                            <span>Valor Tabela FIPE:</span>
-                            <span className="font-bold text-slate-800">{formatCurrency(fipe)}</span>
-                          </div>
-                        )}
+                        <div className="flex justify-between">
+                          <span>Valor Tabela FIPE:</span>
+                          <span className="font-bold text-slate-800">{formatCurrency(fipe)}</span>
+                        </div>
                         <div className="flex justify-between">
                           <span>Margem Ágio/Deságio:</span>
                           <span className={`font-bold ${diffVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
@@ -3525,7 +3881,7 @@ const Assets: React.FC = () => {
                       </div>
 
                       {/* Yield alerts based on FIPE */}
-                      {asset.category === 'VEHICLE' && meta.purpose === 'uso' && (
+                      {meta.purpose === 'uso' && (
                         <div className="p-3 bg-slate-50 rounded-xl space-y-1 border border-slate-100 text-[10px]">
                           {isDepreciatingFast ? (
                             <p className="text-rose-500 font-semibold flex items-center gap-1"><AlertTriangle size={10} /> Depreciação rápida observada.</p>
@@ -3561,12 +3917,133 @@ const Assets: React.FC = () => {
                 onClick={() => {
                   resetAssetForm();
                   setEditingAsset(null);
+                  setFormData(prev => ({ ...prev, category: 'VEHICLE', purpose: 'uso' }));
                   setShowModal(true);
                 }}
                 className="rounded-[32px] border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center gap-4 text-slate-400 hover:border-brand-500 hover:text-brand-600 hover:bg-slate-50 transition-all min-h-[300px]"
               >
                 <Plus size={36} />
-                <span className="font-bold text-slate-600">Novo Bem Físico</span>
+                <span className="font-bold text-slate-600">Novo Veículo</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* OTHER PHYSICAL ASSETS VIEW */}
+        {activeView === 'physical' && (
+          <div className="space-y-6">
+            <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
+              <Box size={20} className="text-slate-500" />
+              Outros Ativos Físicos
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {activePhysicalAssets.filter(p => p.category === 'OTHER' && !p.metadata?.isLoan).map(asset => {
+                const meta = asset.metadata || {};
+                const value = asset.estimatedValue;
+                const purchase = Number(meta.purchaseValue) || value;
+
+                // Margem de ágio / deságio
+                const diffVal = value - purchase;
+                const percentVal = purchase > 0 ? (diffVal / purchase) * 100 : 0;
+
+                // Dynamic icon based on name
+                const getOtherAssetIcon = (name: string) => {
+                  const nameLower = name.toLowerCase();
+                  if (nameLower.includes('joia') || nameLower.includes('ouro') || nameLower.includes('prata') || nameLower.includes('diamante') || nameLower.includes('gema') || nameLower.includes('esmeralda')) {
+                    return <Gem size={22} />;
+                  }
+                  if (nameLower.includes('relógio') || nameLower.includes('rolex') || nameLower.includes('omega') || nameLower.includes('patek') || nameLower.includes('tissot')) {
+                    return <Watch size={22} />;
+                  }
+                  if (nameLower.includes('arte') || nameLower.includes('quadro') || nameLower.includes('pintura') || nameLower.includes('escultura') || nameLower.includes('tela')) {
+                    return <Palette size={22} />;
+                  }
+                  if (nameLower.includes('consórcio') || nameLower.includes('consorcio')) {
+                    return <Award size={22} />;
+                  }
+                  return <Box size={22} />;
+                };
+
+                return (
+                  <div key={asset.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+                    <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
+                      <div className="flex justify-between items-start">
+                        <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
+                          {getOtherAssetIcon(asset.name)}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 justify-end">
+                          {meta.isSold && (
+                            <span className="px-3 py-1 bg-rose-50 text-rose-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-rose-100">Vendido</span>
+                          )}
+                          {meta.purpose === 'investimento' ? (
+                            <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
+                          ) : (
+                            <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-slate-100">Uso Pessoal</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-tight italic break-words">{asset.name}</h4>
+                        <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
+                          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{meta.isSold ? 'Valor de Venda:' : 'Avaliação Atual:'}</p>
+                          <p className="text-sm font-black text-slate-900">{formatCurrency(meta.isSold ? Number(meta.soldValue) || value : value)}</p>
+                        </div>
+                      </div>
+
+                      {/* Calculations specs */}
+                      <div className="space-y-2.5 text-[10px] sm:text-[11px] text-slate-500">
+                        <div className="flex justify-between">
+                          <span>Valor Aquisição:</span>
+                          <span className="font-bold text-slate-800">{formatCurrency(purchase)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Margem Ágio/Deságio:</span>
+                          <span className={`font-bold ${diffVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {diffVal >= 0 ? '+' : ''}{formatCurrency(diffVal)} ({percentVal.toFixed(1)}%)
+                          </span>
+                        </div>
+                        {meta.purpose === 'investimento' && meta.isRented && (
+                          <div className="flex justify-between border-t border-slate-100 pt-2 text-emerald-600 font-semibold">
+                            <span>Rendimento Mensal:</span>
+                            <span>{formatCurrency(Number(meta.rentalIncome) || 0)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions bar */}
+                    <div className="px-6 sm:px-8 py-4 sm:py-5 bg-slate-50 border-t border-slate-100 flex flex-wrap justify-between items-center gap-2 sm:gap-4">
+                      <button
+                        onClick={() => {
+                          setSelectedAssetForExtrato(asset);
+                          setShowExtratoModal(true);
+                        }}
+                        className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
+                      >
+                        <History size={12} /> Extrato & Ajustes
+                      </button>
+                      <div className="flex gap-2">
+                        <button onClick={() => openEditAsset(asset)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Editar</button>
+                        <button onClick={() => handleArchiveAsset(asset)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-amber-600">Arquivar</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <button
+                onClick={() => {
+                  resetAssetForm();
+                  setEditingAsset(null);
+                  setFormData(prev => ({ ...prev, category: 'OTHER', purpose: 'uso', isLoan: false }));
+                  setShowModal(true);
+                }}
+                className="rounded-[32px] border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center gap-4 text-slate-400 hover:border-brand-500 hover:text-brand-600 hover:bg-slate-50 transition-all min-h-[300px]"
+              >
+                <Plus size={36} />
+                <span className="font-bold text-slate-600">Novo Ativo Físico</span>
               </button>
             </div>
           </div>
@@ -3849,6 +4326,49 @@ const Assets: React.FC = () => {
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
               </div>
+
+              {formData.category === 'OTHER' && (
+                <div className="space-y-2 pt-1 animate-in fade-in">
+                  <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Sugestões de Nome (Clique para selecionar, 'X' para remover)</label>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {suggestedNames.map((sugName, index) => (
+                      <span
+                        key={index}
+                        onClick={() => setFormData({ ...formData, name: sugName })}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-all active:scale-95"
+                      >
+                        {sugName}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const newSuggestions = suggestedNames.filter((_, i) => i !== index);
+                            setSuggestedNames(newSuggestions);
+                            localStorage.setItem('finvision_other_asset_suggestions', JSON.stringify(newSuggestions));
+                          }}
+                          className="text-slate-400 hover:text-rose-500 rounded-full hover:bg-slate-200 p-0.5 transition-colors"
+                        >
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newName = prompt('Digite a nova sugestão de ativo físico:');
+                        if (newName && newName.trim()) {
+                          const updated = [...suggestedNames, newName.trim()];
+                          setSuggestedNames(updated);
+                          localStorage.setItem('finvision_other_asset_suggestions', JSON.stringify(updated));
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 border border-dashed border-slate-300 text-slate-400 hover:text-brand-600 hover:border-brand-500 text-xs font-bold rounded-xl transition-all"
+                    >
+                      <Plus size={12} /> Novo
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Category & Value - Hide for Real Estate edit, edit in Evolution card instead */}
               {(!editingAsset || editingAsset.category !== 'REAL_ESTATE') && (
@@ -4137,6 +4657,103 @@ const Assets: React.FC = () => {
                   </div>
                 )}
 
+                {formData.category === 'OTHER' && formData.purpose === 'investimento' && (
+                  <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Modalidade do Investimento</label>
+                      <select
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                        value={formData.vehiclePurposeType}
+                        onChange={(e) => setFormData({ ...formData, vehiclePurposeType: e.target.value as any })}
+                      >
+                        <option value="RENTAL">Locação / Rendimento Periódico</option>
+                        <option value="FLIP">Compra e Venda / Revenda (Flip)</option>
+                      </select>
+                    </div>
+
+                    {formData.vehiclePurposeType === 'RENTAL' ? (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="flex items-center gap-2 cursor-pointer font-bold text-[10px] select-none mb-2 mt-2">
+                              <input
+                                type="checkbox"
+                                checked={formData.isRented}
+                                onChange={(e) => setFormData({ ...formData, isRented: e.target.checked })}
+                              />
+                              Ativo Locado / Rendendo?
+                            </label>
+                          </div>
+                          {formData.isRented && (
+                            <div>
+                              <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Rendimento/Aluguel Mensal (R$)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                                value={formData.rentalIncome}
+                                onChange={(e) => setFormData({ ...formData, rentalIncome: e.target.value })}
+                                placeholder="0.00"
+                              />
+                            </div>
+                          )}
+                          {formData.isRented && (
+                            <>
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Taxa Intermediação/Plataforma (R$)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                                  value={formData.rentalPlatformFee}
+                                  onChange={(e) => setFormData({ ...formData, rentalPlatformFee: e.target.value })}
+                                  placeholder="0.00"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Mensal Guarda/Seguro (R$)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                                  value={formData.maintenanceMonthlyEstimated}
+                                  onChange={(e) => setFormData({ ...formData, maintenanceMonthlyEstimated: e.target.value })}
+                                  placeholder="0.00"
+                                />
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Venda Alvo (R$)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                            value={formData.targetSaleValue}
+                            onChange={(e) => setFormData({ ...formData, targetSaleValue: e.target.value })}
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Orçamento Preparação/Restauração (R$)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                            value={formData.preparationBudget}
+                            onChange={(e) => setFormData({ ...formData, preparationBudget: e.target.value })}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {formData.purpose === 'investimento' && formData.category !== 'REAL_ESTATE' && (
                   <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 border-t border-slate-200 pt-3">
                     <div>
@@ -4181,7 +4798,7 @@ const Assets: React.FC = () => {
                           </div>
                         </div>
 
-                        {formData.category === 'VEHICLE' && (
+                        {(formData.category === 'VEHICLE' || formData.category === 'OTHER') && (
                           <div className="space-y-4">
                             <div>
                               <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Recebimento</label>
@@ -4974,14 +5591,20 @@ const Assets: React.FC = () => {
       {showExtratoModal && selectedAssetForExtrato && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 flex flex-col max-h-[85vh]">
-            <div className="px-8 py-5 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="font-black text-slate-900 uppercase tracking-tight text-lg">Extrato e Lançamentos do Card</h3>
-                <p className="text-xs text-slate-400 font-medium">Bens Físicos: {selectedAssetForExtrato.name}</p>
+            <div className="px-8 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 print:hidden">
+              <div className="flex items-center gap-4">
+                <div>
+                  <h3 className="font-black text-slate-900 uppercase tracking-tight text-lg">Extrato e Lançamentos do Card</h3>
+                  <p className="text-xs text-slate-400 font-medium">Bens Físicos: {selectedAssetForExtrato.name}</p>
+                </div>
               </div>
-              <button onClick={() => { setShowExtratoModal(false); setIsAddingExtratoTx(false); }} className="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-50">
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => exportExtratoToExcel(selectedAssetForExtrato)} className="p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-brand-600 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Exportar Excel"><FileSpreadsheet size={16} /></button>
+                <button onClick={() => window.print()} className="p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-brand-600 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Imprimir PDF"><Printer size={16} /></button>
+                <button onClick={() => handleArchiveAssetFromExtrato(selectedAssetForExtrato)} className="p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-rose-600 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Arquivar / Marcar como Vendido"><Archive size={16} /></button>
+                <button onClick={async () => { await handleDeleteAsset(selectedAssetForExtrato); setShowExtratoModal(false); }} className="p-2.5 bg-white border border-slate-200 text-rose-500 hover:bg-rose-50 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Excluir Lançamento do Bem"><Trash2 size={16} /></button>
+                <button onClick={() => { setShowExtratoModal(false); setIsAddingExtratoTx(false); }} className="w-10 h-10 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-xl flex items-center justify-center transition-all shadow-sm ml-1"><X size={18} /></button>
+              </div>
             </div>
 
             <div className="p-8 flex-1 overflow-y-auto custom-scrollbar space-y-6">
@@ -4990,18 +5613,18 @@ const Assets: React.FC = () => {
               {(() => {
                 const info = getAssetFinancialHistory(selectedAssetForExtrato);
                 return (
-                  <div className="grid grid-cols-3 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-200">
-                    <div>
-                      <p className="text-[8px] font-black uppercase text-slate-400">Total Receitas</p>
-                      <p className="text-base font-black text-emerald-600">{formatCurrency(info.totalIncome)}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                    <div className="flex justify-between items-center sm:flex-col sm:items-start sm:justify-start">
+                      <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Total Receitas</p>
+                      <p className="text-sm sm:text-base font-black text-emerald-600">{formatCurrency(info.totalIncome)}</p>
                     </div>
-                    <div>
-                      <p className="text-[8px] font-black uppercase text-slate-400">Total Gastos Extras</p>
-                      <p className="text-base font-black text-rose-500">{formatCurrency(info.totalExtraExpenses)}</p>
+                    <div className="flex justify-between items-center sm:flex-col sm:items-start sm:justify-start border-t sm:border-t-0 sm:border-l border-slate-200/60 pt-2 sm:pt-0 sm:pl-4">
+                      <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Total Gastos Extras</p>
+                      <p className="text-sm sm:text-base font-black text-rose-500">{formatCurrency(info.totalExtraExpenses)}</p>
                     </div>
-                    <div>
-                      <p className="text-[8px] font-black uppercase text-slate-400">Saldo Consolidado</p>
-                      <p className={`text-base font-black ${info.totalIncome - info.totalExtraExpenses >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                    <div className="flex justify-between items-center sm:flex-col sm:items-start sm:justify-start border-t sm:border-t-0 sm:border-l border-slate-200/60 pt-2 sm:pt-0 sm:pl-4">
+                      <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Saldo Consolidado</p>
+                      <p className={`text-sm sm:text-base font-black ${info.totalIncome - info.totalExtraExpenses >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                         {formatCurrency(info.totalIncome - info.totalExtraExpenses)}
                       </p>
                     </div>
