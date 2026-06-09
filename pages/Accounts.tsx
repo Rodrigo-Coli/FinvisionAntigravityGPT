@@ -406,6 +406,13 @@ const Accounts: React.FC = () => {
     return matchesSearch && matchesType && matchesStatus && matchesCurrency && matchesDashboard;
   });
 
+  const totalBalance = filteredAccounts
+    .filter(acc => acc.includeInDashboard && !acc.isArchived)
+    .reduce((sum, acc) => sum + acc.currentBalance, 0);
+
+  const activeAccountsCount = accounts.filter(acc => !acc.isArchived).length;
+  const investmentAccountsCount = accounts.filter(acc => acc.type === 'INVESTMENT' && !acc.isArchived).length;
+
   const activeFilterCount = (filterType !== 'ALL' ? 1 : 0) +
     (filterStatus !== 'ACTIVE' ? 1 : 0) +
     (filterCurrency !== 'ALL' ? 1 : 0) +
@@ -427,6 +434,45 @@ const Accounts: React.FC = () => {
         >
           <Plus size={18} /> Nova Conta
         </button>
+      </div>
+
+      {/* SUMMARY METRICS */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+          <div className="space-y-1">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Saldo Consolidado</span>
+            <p className={`text-lg font-black tracking-tight ${totalBalance < 0 ? 'text-rose-500' : 'text-slate-900 dark:text-white'}`}>
+              {formatCurrency(totalBalance)}
+            </p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-950/30 flex items-center justify-center text-brand-600 shrink-0">
+            <TrendingUp size={20} />
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+          <div className="space-y-1">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Contas Ativas</span>
+            <p className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+              {activeAccountsCount}
+            </p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center text-blue-600 shrink-0">
+            <Landmark size={20} />
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+          <div className="space-y-1">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Investimentos</span>
+            <p className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+              {investmentAccountsCount} {investmentAccountsCount === 1 ? 'instituição' : 'instituições'}
+            </p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 flex items-center justify-center text-indigo-600 shrink-0">
+            <Zap size={20} />
+          </div>
+        </div>
       </div>
 
       {/* TOOLBAR */}
@@ -478,67 +524,67 @@ const Accounts: React.FC = () => {
           {filteredAccounts.map((acc) => (
             <div
               key={acc.id}
-              className={`bg-white rounded-[32px] border border-slate-100 p-8 shadow-sm group hover:border-brand-200 transition-all duration-300 relative overflow-hidden ${acc.isArchived ? 'opacity-70 grayscale' : ''}`}
+              className={`bg-white rounded-[24px] border border-slate-100 p-5 shadow-sm group hover:border-brand-200 transition-all duration-300 relative overflow-hidden ${acc.isArchived ? 'opacity-70 grayscale' : ''}`}
             >
-              <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-bl-[100px] -translate-y-5 translate-x-5 opacity-0 group-hover:opacity-100 transition-all" />
+              <div className="absolute top-0 right-0 w-20 h-20 bg-slate-50 rounded-bl-[80px] -translate-y-5 translate-x-5 opacity-0 group-hover:opacity-100 transition-all" />
 
-              <div className="relative z-10 space-y-8">
+              <div className="relative z-10 space-y-4">
                 <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3">
                     <div
-                      className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-current/20"
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg shadow-current/20"
                       style={{ backgroundColor: acc.color }}
                     >
-                      {acc.type === 'CHECKING' ? <Building2 size={24} /> : <Wallet size={24} />}
+                      {acc.type === 'CHECKING' ? <Building2 size={20} /> : <Wallet size={20} />}
                     </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 group-hover:text-brand-600 transition-colors uppercase tracking-tight">{acc.institution}</h3>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{getTypeLabel(acc.type)}</p>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-sm text-slate-900 group-hover:text-brand-600 transition-colors uppercase tracking-tight truncate max-w-[150px]">{acc.institution}</h3>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{getTypeLabel(acc.type)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => handleEditAccount(acc)}
-                      className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
+                      className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
                     >
-                      <Edit2 size={16} />
+                      <Edit2 size={14} />
                     </button>
                     <button
                       onClick={() => handleArchiveAccount(acc.id, acc.isArchived)}
-                      className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                      className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
                     >
-                      <Archive size={16} />
+                      <Archive size={14} />
                     </button>
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saldo Atual</p>
-                  <p className={`text-3xl font-bold tracking-tight ${acc.currentBalance < 0 ? 'text-rose-500' : 'text-slate-900'}`}>
+                <div className="space-y-0.5">
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saldo Atual</p>
+                  <p className={`text-xl font-black tracking-tight ${acc.currentBalance < 0 ? 'text-rose-500' : 'text-slate-900'}`}>
                     {formatCurrency(acc.currentBalance)}
                   </p>
                 </div>
 
-                <div className="pt-6 border-t border-slate-50 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${acc.includeInDashboard ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hidden xs:inline">
+                <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-1.5 h-1.5 rounded-full ${acc.includeInDashboard ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
                       {acc.includeInDashboard ? 'No Dashboard' : 'Privada'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => navigate(`/history?account=${acc.id}`)}
-                      className="flex items-center justify-center p-2.5 bg-brand-50 hover:bg-brand-600 text-brand-600 hover:text-white rounded-lg transition-all shadow-sm"
+                      className="flex items-center justify-center p-2 bg-brand-50 hover:bg-brand-600 text-brand-600 hover:text-white rounded-lg transition-all shadow-sm"
                       title="Ver Extrato"
                     >
-                      <HistoryIcon size={14} />
+                      <HistoryIcon size={12} />
                     </button>
                     <button
                       onClick={() => { setAdjustAccount(acc); setAdjustValue(acc.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
-                      className="flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-brand-900 hover:text-white rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-brand-900 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
                     >
-                      <RefreshCw size={12} /> Ajustar Saldo
+                      <RefreshCw size={10} /> Ajustar Saldo
                     </button>
                   </div>
                 </div>
@@ -549,14 +595,14 @@ const Accounts: React.FC = () => {
           {/* ADD CARD BUTTON (MOCK) */}
           <button
             onClick={() => { resetForm(); setShowModal(true); }}
-            className="rounded-[32px] border-2 border-dashed border-slate-100 p-8 flex flex-col items-center justify-center gap-4 text-slate-300 hover:border-brand-200 hover:text-brand-600 hover:bg-brand-50/30 transition-all min-h-[220px] group"
+            className="rounded-[24px] border-2 border-dashed border-slate-100 p-5 flex flex-col items-center justify-center gap-3 text-slate-300 hover:border-brand-200 hover:text-brand-600 hover:bg-brand-50/30 transition-all min-h-[150px] group"
           >
-            <div className="w-14 h-14 bg-slate-50 rounded-full flex items-center justify-center transition-colors group-hover:bg-brand-100">
-              <Plus size={32} />
+            <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center transition-colors group-hover:bg-brand-100">
+              <Plus size={24} />
             </div>
             <div className="text-center">
-              <p className="font-bold text-slate-500">Nova Instituição</p>
-              <p className="text-[10px] font-medium uppercase tracking-widest">Conectar Banco ou Carteira</p>
+              <p className="font-bold text-xs text-slate-500">Nova Instituição</p>
+              <p className="text-[8px] font-medium uppercase tracking-widest">Conectar Banco ou Carteira</p>
             </div>
           </button>
         </div>
