@@ -1,8 +1,9 @@
 {
-  "version": "2026.06.09.0022",
-  "title": "Melhorias de Patrimônio e Atalhos Globais",
+  "version": "2026.06.09.1723",
+  "title": "Melhorias de Patrimônio e Contas",
   "date": "09/06/2026",
   "changes": [
+    "**Contas e Carteiras:** Cards de contas 30% mais compactos, reduzindo rolagem, e novo painel de métricas consolidadas (Saldo Consolidado, Contas Ativas e Investimentos).",
     "**Aba de Patrimônio:** Agora você pode lançar a venda de imóveis de forma completa, com taxas de corretagem, formas de recebimento e permutas vinculadas.",
     "**Veículos Independentes:** Veículos agora tem uma aba exclusiva e limpa para gerenciamento separado.",
     "**Outros Ativos Físicos:** Nova seção dedicada para joias, relógios, artes e consórcios, incluindo ícones inteligentes de identificação baseados no nome.",
