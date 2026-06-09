@@ -617,7 +617,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                          <div>
                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{dp.label}</p>
                            <p className="text-xs font-black text-slate-950">{formatCurrency(dp.amount)}</p>
-                           <p className="text-[9px] text-slate-400 font-medium">{new Date(dp.date).toLocaleDateString('pt-BR')}</p>
+                           <p className="text-[9px] text-slate-400 font-medium">{new Date(dp.date + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
                          </div>
                          <button onClick={() => removeDownPayment(i)} className="p-2 text-slate-200 hover:text-rose-500 rounded-lg transition-all"><Trash2 size={16} /></button>
                        </div>
@@ -669,7 +669,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                          <div>
                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{b.label}</p>
                            <p className="text-xs font-black text-slate-950">{formatCurrency(b.amount)}</p>
-                           <p className="text-[9px] text-slate-400 font-medium">{new Date(b.date).toLocaleDateString('pt-BR')}</p>
+                           <p className="text-[9px] text-slate-400 font-medium">{new Date(b.date + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
                          </div>
                          <button onClick={() => removeBalloon(i)} className="p-2 text-slate-200 hover:text-rose-500 rounded-lg transition-all"><Trash2 size={16} /></button>
                        </div>

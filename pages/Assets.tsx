@@ -262,6 +262,8 @@ const Assets: React.FC = () => {
     permutaOutrosValor: '',
     permutaOutrosNome: '',
     permutaItems: [] as { type: 'VEHICLE' | 'REAL_ESTATE' | 'OTHER'; name: string; value: string }[],
+    saleDate: new Date().toISOString().split('T')[0],
+    saleCashAmount: '',
   });
 
   const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
@@ -971,6 +973,7 @@ const Assets: React.FC = () => {
       if (formValues.isSold) {
         const soldAmount = parseFloat(formValues.soldValue) || 0;
         const comission = parseFloat(formValues.saleComission) || 0;
+        const saleDateStr = formValues.saleDate || todayStr;
 
         // Registrar comissão de venda (se houver)
         if (comission > 0) {
@@ -978,14 +981,14 @@ const Assets: React.FC = () => {
             user_id: userId,
             description: `Comissão de Venda - ${formValues.name}`,
             amount: comission,
-            date: todayStr,
+            date: saleDateStr,
             type: 'EXPENSE',
             category: categoryName,
             subcategory: 'Comissão',
             category_id: catId || null,
             is_paid: true,
             paid_amount: comission,
-            paid_at: todayStr,
+            paid_at: saleDateStr,
             metadata: { linked_asset_id: vehicleId, type: 'vehicle_sale_comission' }
           }]);
         }
@@ -1006,28 +1009,24 @@ const Assets: React.FC = () => {
           // Valor à vista
           let cashVal = soldAmount;
           if (formValues.salePaymentMethod === 'HIBRIDO') {
-            let permutaVal = 0;
-            if (Array.isArray(formValues.permutaItems)) {
-              permutaVal = formValues.permutaItems.reduce((acc: number, item: any) => acc + (parseFloat(item.value) || 0), 0);
-            } else {
-              permutaVal = (parseFloat(formValues.permutaVeiculoValor) || 0) + (parseFloat(formValues.permutaImovelValor) || 0) + (parseFloat(formValues.permutaOutrosValor) || 0);
-            }
-            cashVal = Math.max(0, soldAmount - permutaVal);
+            cashVal = parseFloat(formValues.saleCashAmount) || 0;
           }
 
           if (cashVal > 0) {
             await supabase.from('transactions').insert([{
               user_id: userId,
-              description: `Receita Venda de Veículo (À Vista) - ${formValues.name}`,
+              description: formValues.salePaymentMethod === 'HIBRIDO'
+                ? `Receita Venda de Veículo (Parte Dinheiro) - ${formValues.name}`
+                : `Receita Venda de Veículo (À Vista) - ${formValues.name}`,
               amount: cashVal,
-              date: todayStr,
+              date: saleDateStr,
               type: 'INCOME',
               category: 'Outras Receitas',
               subcategory: 'Venda de Ativo',
               category_id: revenueCatId || null,
               is_paid: true,
               paid_amount: cashVal,
-              paid_at: todayStr,
+              paid_at: saleDateStr,
               metadata: { linked_asset_id: vehicleId, type: 'vehicle_sale_revenue' }
             }]);
           }
@@ -1069,7 +1068,7 @@ const Assets: React.FC = () => {
               name: item.name,
               category: item.type,
               estimated_value: parseFloat(item.value) || 0,
-              acquisition_date: todayStr,
+              acquisition_date: saleDateStr,
               description: `Recebido em permuta na venda de ${formValues.name}`,
               metadata: item.type === 'REAL_ESTATE' ? { propertyStage: 'PRONTO', purpose: 'uso' } : { purpose: 'uso' }
             }));
@@ -1086,7 +1085,7 @@ const Assets: React.FC = () => {
               name: formValues.permutaVeiculoNome,
               category: 'VEHICLE',
               estimated_value: pVeicVal,
-              acquisition_date: todayStr,
+              acquisition_date: saleDateStr,
               description: `Recebido em permuta na venda de ${formValues.name}`,
               metadata: { purpose: 'uso' }
             }]);
@@ -1099,7 +1098,7 @@ const Assets: React.FC = () => {
               name: formValues.permutaImovelNome,
               category: 'REAL_ESTATE',
               estimated_value: pImovVal,
-              acquisition_date: todayStr,
+              acquisition_date: saleDateStr,
               description: `Recebido em permuta na venda de ${formValues.name}`,
               metadata: { propertyStage: 'PRONTO', purpose: 'uso' }
             }]);
@@ -1375,6 +1374,8 @@ const Assets: React.FC = () => {
         permutaOutrosValor: formData.category === 'VEHICLE' && formData.isSold ? (parseFloat(formData.permutaOutrosValor) || 0) : undefined,
         permutaOutrosNome: formData.category === 'VEHICLE' && formData.isSold ? formData.permutaOutrosNome : undefined,
         permutaItems: formData.category === 'VEHICLE' && formData.isSold ? formData.permutaItems : undefined,
+        saleDate: formData.category === 'VEHICLE' && formData.isSold ? formData.saleDate : undefined,
+        saleCashAmount: formData.category === 'VEHICLE' && formData.isSold ? (parseFloat(formData.saleCashAmount) || 0) : undefined,
       };
 
       // Preserve existing real estate evolution details if editing
@@ -1711,6 +1712,8 @@ const Assets: React.FC = () => {
       permutaOutrosValor: '',
       permutaOutrosNome: '',
       permutaItems: [],
+      saleDate: new Date().toISOString().split('T')[0],
+      saleCashAmount: '',
     });
   };
 
@@ -1818,6 +1821,8 @@ const Assets: React.FC = () => {
           ...(meta.permutaOutrosNome || meta.permutaOutrosValor ? [{ type: 'OTHER' as const, name: meta.permutaOutrosNome || '', value: String(meta.permutaOutrosValor || '') }] : []),
         ] : []
       ),
+      saleDate: meta.saleDate || new Date().toISOString().split('T')[0],
+      saleCashAmount: meta.saleCashAmount !== undefined ? String(meta.saleCashAmount) : '',
     });
     setShowModal(true);
   };
@@ -4191,6 +4196,43 @@ const Assets: React.FC = () => {
                                 <option value="HIBRIDO">Híbrido (Parte Dinheiro, Parte Permuta)</option>
                               </select>
                             </div>
+
+                            {formData.salePaymentMethod === 'A_VISTA' && (
+                              <div className="animate-in slide-in-from-top-2">
+                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Recebimento</label>
+                                <input
+                                  type="date"
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                                  value={formData.saleDate}
+                                  onChange={(e) => setFormData({ ...formData, saleDate: e.target.value })}
+                                />
+                              </div>
+                            )}
+
+                            {formData.salePaymentMethod === 'HIBRIDO' && (
+                              <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
+                                <div>
+                                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor em Dinheiro (R$)</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                                    value={formData.saleCashAmount}
+                                    onChange={(e) => setFormData({ ...formData, saleCashAmount: e.target.value })}
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data do Recebimento</label>
+                                  <input
+                                    type="date"
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                                    value={formData.saleDate}
+                                    onChange={(e) => setFormData({ ...formData, saleDate: e.target.value })}
+                                  />
+                                </div>
+                              </div>
+                            )}
 
                             {(formData.salePaymentMethod === 'PERMUTA' || formData.salePaymentMethod === 'HIBRIDO') && (
                               <div className="space-y-3 pt-2 border-t border-dashed border-slate-200">
