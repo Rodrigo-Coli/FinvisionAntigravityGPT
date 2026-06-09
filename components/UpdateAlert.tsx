@@ -2,6 +2,20 @@ import React, { useEffect, useState } from 'react';
 import { RefreshCw, X, Sparkles } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
+interface ChangelogData {
+  version: string;
+  title: string;
+  date: string;
+  changes: string[];
+}
+
+const formatText = (text: string) => {
+  const parts = text.split(/\*\*([^*]+)\*\*/g);
+  return parts.map((part, index) => 
+    index % 2 === 1 ? <strong key={index} className="font-black text-slate-900 dark:text-white">{part}</strong> : part
+  );
+};
+
 export const UpdateAlert: React.FC = () => {
   const {
     offlineReady: [offlineReady, setOfflineReady],
@@ -10,72 +24,137 @@ export const UpdateAlert: React.FC = () => {
   } = useRegisterSW();
 
   const [dismissed, setDismissed] = useState(false);
-
-  const close = () => {
-    setOfflineReady(false);
-    setNeedRefresh(false);
-    setDismissed(false);
-  };
+  const [changelog, setChangelog] = useState<ChangelogData | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     if (needRefresh) {
-      console.log('UpdateAlert: New content available, showing banner');
+      console.log('UpdateAlert: New content available, loading changelog');
+      fetch(`/changelog.json?cb=${Date.now()}`)
+        .then(res => res.json())
+        .then(data => {
+          setChangelog(data);
+        })
+        .catch(err => {
+          console.warn('Failed to load changelog:', err);
+        });
       setDismissed(false);
     }
   }, [needRefresh]);
 
-  if ((!needRefresh && !offlineReady) || dismissed) return null;
+  // If dismissed or nothing to show, render nothing
+  if (dismissed) return null;
 
-  return (
-    <div
-      className="fixed bottom-0 left-0 right-0 z-[9999] p-3 sm:p-4 animate-in slide-in-from-bottom-4 duration-500"
-      role="alert"
-      aria-live="polite"
-    >
-      <div className="max-w-lg mx-auto bg-brand-600 text-white rounded-2xl shadow-2xl shadow-brand-600/30 p-4 flex items-center gap-4 border border-brand-500">
-        {/* Icon */}
-        <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
-          <Sparkles size={18} className="text-white" />
-        </div>
+  // 1. Center Modal for New Update
+  if (needRefresh) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300">
+        {/* Backdrop blur */}
+        <div 
+          className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+          onClick={() => setDismissed(true)} 
+        />
+        
+        {/* Modal Content */}
+        <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-[32px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-300">
+          {/* Header */}
+          <div className="flex flex-col items-center text-center mb-5">
+            <div className="w-12 h-12 bg-gradient-to-tr from-brand-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-brand-500/25 mb-3">
+              <Sparkles size={22} className="animate-pulse" />
+            </div>
+            <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-wider">
+              {changelog?.title || 'Nova Versão Disponível!'}
+            </h3>
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="text-[10px] font-black text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/50 px-2 py-0.5 rounded-lg border border-brand-100 dark:border-brand-900">
+                v{changelog?.version || 'Atualização'}
+              </span>
+              {changelog?.date && (
+                <span className="text-[10px] font-bold text-slate-400">
+                  Lançado em {changelog.date}
+                </span>
+              )}
+            </div>
+          </div>
 
-        {/* Message */}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold leading-tight">
-            {needRefresh ? 'Nova versão disponível!' : 'App pronto para uso offline!'}
-          </p>
-          <p className="text-xs text-brand-300 mt-0.5 leading-relaxed">
-            {needRefresh 
-              ? 'O FinVision Pro foi atualizado. Recarregue para aplicar as melhorias.' 
-              : 'O FinVision Pro foi salvo no seu dispositivo para acesso rápido.'}
-          </p>
-        </div>
+          {/* Change list */}
+          <div className="bg-slate-50/60 dark:bg-slate-950/40 rounded-2xl p-4 mb-6">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+              O que mudou nesta versão:
+            </p>
+            
+            <div className="max-h-60 overflow-y-auto space-y-3.5 pr-1.5 scrollbar-thin">
+              {changelog && changelog.changes && changelog.changes.length > 0 ? (
+                changelog.changes.map((change, idx) => (
+                  <div key={idx} className="flex gap-2.5 items-start text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                    <div className="w-1.5 h-1.5 rounded-full bg-brand-500 shrink-0 mt-1.5" />
+                    <div>{formatText(change)}</div>
+                  </div>
+                ))
+              ) : (
+                <>
+                  <div className="flex gap-2.5 items-start text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                    <div className="w-1.5 h-1.5 rounded-full bg-brand-500 shrink-0 mt-1.5" />
+                    <div>Melhorias de desempenho e estabilidade do sistema.</div>
+                  </div>
+                  <div className="flex gap-2.5 items-start text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                    <div className="w-1.5 h-1.5 rounded-full bg-brand-500 shrink-0 mt-1.5" />
+                    <div>Otimizações de layout e correções de interface.</div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-2 shrink-0">
-          {needRefresh && (
+          {/* Actions */}
+          <div className="flex flex-col gap-2">
             <button
-              onClick={() => updateServiceWorker(true)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-white text-brand-900 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-brand-50 transition-colors active:scale-95"
-              aria-label="Recarregar aplicativo"
+              onClick={() => {
+                setIsUpdating(true);
+                updateServiceWorker(true);
+              }}
+              disabled={isUpdating}
+              className="w-full py-3.5 bg-brand-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-brand-700 active:scale-98 transition-all flex items-center justify-center gap-2 shadow-lg shadow-brand-500/20 disabled:opacity-50"
             >
-              <RefreshCw size={13} />
-              Atualizar
+              <RefreshCw size={14} className={isUpdating ? 'animate-spin' : ''} />
+              {isUpdating ? 'Instalando...' : 'Atualizar FinVision'}
             </button>
-          )}
-          <button
-            onClick={() => {
-                if (needRefresh) setDismissed(true);
-                else close();
-            }}
-            className="p-2 text-brand-400 hover:text-white transition-colors rounded-lg hover:bg-white/10"
-            aria-label="Dispensar alerta"
-          >
-            <X size={16} />
-          </button>
+            
+            <button
+              onClick={() => setDismissed(true)}
+              disabled={isUpdating}
+              className="w-full py-2.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 text-xs font-bold transition-colors"
+            >
+              Atualizar mais tarde
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  // 2. Bottom Toast for Offline Ready status
+  if (offlineReady) {
+    return (
+      <div className="fixed bottom-4 right-4 z-[9999] p-3 max-w-sm bg-slate-900 text-white rounded-2xl shadow-xl border border-slate-800 animate-in slide-in-from-bottom duration-300 flex items-center gap-3">
+        <div className="w-8 h-8 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center shrink-0">
+          <Sparkles size={16} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] font-bold">App pronto para uso offline!</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">O FinVision Pro foi salvo para acesso offline.</p>
+        </div>
+        <button 
+          onClick={() => setDismissed(true)} 
+          className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10"
+        >
+          <X size={14} />
+        </button>
+      </div>
+    );
+  }
+
+  return null;
 };
 
 export default UpdateAlert;
