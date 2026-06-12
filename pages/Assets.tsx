@@ -278,9 +278,13 @@ const Assets: React.FC = () => {
     permutaImovelNome: '',
     permutaOutrosValor: '',
     permutaOutrosNome: '',
-    permutaItems: [] as { type: 'VEHICLE' | 'REAL_ESTATE' | 'OTHER'; name: string; value: string }[],
     saleDate: new Date().toISOString().split('T')[0],
     saleCashAmount: '',
+    ipvaPaymentMethod: 'PARCELADO' as 'A_VISTA' | 'PARCELADO',
+    ipvaInstallmentsCount: '5',
+    seguroPaymentMethod: 'PARCELADO' as 'A_VISTA' | 'RECORRENTE' | 'PARCELADO',
+    seguroInstallmentsCount: '10',
+    permutaItems: [] as { type: 'VEHICLE' | 'REAL_ESTATE' | 'OTHER'; name: string; value: string }[],
   });
 
   const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
@@ -707,31 +711,66 @@ const Assets: React.FC = () => {
     const totalConsortiumInstallments = consortiumLiabs.reduce((acc, curr) => acc + (curr.installmentAmount || 0), 0);
     const totalOtherInstallments = otherLiabs.reduce((acc, curr) => acc + (curr.installmentAmount || 0), 0);
 
-    // Rental inflows: actual paid rents of the current month using robust name matching fallback
-    const totalRents = activePhysImob.reduce((acc, curr) => {
+    // Rental inflows: Sum of monthly rents configured across ALL physical assets
+    const realEstateRents = activePhysicalAssets.filter(p => p.category === 'REAL_ESTATE' && !excludedAssetIds.includes(p.id)).reduce((acc, curr) => {
       const meta = curr.metadata || {};
-      if (meta.isRented) {
-        const currentMonthStr = DateUtils.formatToISODate(new Date()).substring(0, 7); // YYYY-MM
-        const assetTxs = linkedTransactionsMap.get(curr.id) || [];
-
-        const currentMonthRents = assetTxs.filter(t => 
-          t.type === 'INCOME' && 
-          t.isPaid &&
-          t.date.substring(0, 7) === currentMonthStr
-        );
-
-        return acc + currentMonthRents.reduce((sum, tx) => sum + (tx.paidAmount || tx.amount), 0);
-      }
-      return acc;
+      return acc + (meta.isRented ? (Number(meta.rentalIncome) || 0) : 0);
     }, 0);
 
+    const vehicleRents = activePhysicalAssets.filter(p => p.category === 'VEHICLE' && !excludedAssetIds.includes(p.id)).reduce((acc, curr) => {
+      const meta = curr.metadata || {};
+      const isRented = meta.purpose === 'investimento' && meta.vehiclePurposeType === 'RENTAL';
+      return acc + (isRented ? (Number(meta.rentalIncome) || 0) : 0);
+    }, 0);
+
+    const otherRents = activePhysicalAssets.filter(p => p.category === 'OTHER' && !excludedAssetIds.includes(p.id)).reduce((acc, curr) => {
+      const meta = curr.metadata || {};
+      const isRented = meta.purpose === 'investimento' && meta.isRented;
+      return acc + (isRented ? (Number(meta.rentalIncome) || 0) : 0);
+    }, 0);
+
+    const totalRents = realEstateRents + vehicleRents + otherRents;
+
     // Operating expenses (Condo + IPTU if paid by owner)
-    const totalOperatingCosts = activePhysImob.reduce((acc, curr) => {
+    const totalOperatingCosts = activePhysicalAssets.filter(p => p.category === 'REAL_ESTATE' && !excludedAssetIds.includes(p.id)).reduce((acc, curr) => {
       const meta = curr.metadata || {};
       let cost = 0;
       if (!meta.inquilinoPaysCondo && meta.condoFee) cost += Number(meta.condoFee);
       if (!meta.inquilinoPaysIPTU && meta.iptuFee) cost += Number(meta.iptuFee);
       return acc + cost;
+    }, 0);
+
+    // Vehicle recurring expenses
+    const vehicleRecurringExpenses = activePhysicalAssets.filter(p => p.category === 'VEHICLE' && !excludedAssetIds.includes(p.id)).reduce((sum, p) => {
+      const meta = p.metadata || {};
+      const ipva = Number(meta.ipvaFee) || 0;
+      const seguro = Number(meta.seguroFee) || 0;
+      const lic = Number(meta.licenciamentoFee) || 0;
+      const maint = Number(meta.maintenanceMonthlyEstimated) || 0;
+
+      let ipvaMonthly = 0;
+      if (ipva > 0) {
+        if (meta.ipvaPaymentMethod === 'A_VISTA') {
+          ipvaMonthly = ipva / 12;
+        } else {
+          ipvaMonthly = ipva / (Number(meta.ipvaInstallmentsCount) || 5);
+        }
+      }
+
+      let seguroMonthly = 0;
+      if (seguro > 0) {
+        if (meta.seguroPaymentMethod === 'A_VISTA') {
+          seguroMonthly = seguro / 12;
+        } else if (meta.seguroPaymentMethod === 'RECORRENTE') {
+          seguroMonthly = seguro;
+        } else {
+          seguroMonthly = seguro / (Number(meta.seguroInstallmentsCount) || 10);
+        }
+      }
+
+      const licMonthly = lic / 12;
+
+      return sum + ipvaMonthly + seguroMonthly + licMonthly + maint;
     }, 0);
 
     // Investment yield calculation
@@ -740,18 +779,20 @@ const Assets: React.FC = () => {
     const estimatedMonthlyYield = totalInvestedBalance * (estimatedYieldRate / 100);
 
     const totalInflow = totalRents + estimatedMonthlyYield;
-    const totalOutflow = totalMortgageInstallments + totalOperatingCosts + totalConsortiumInstallments + totalOtherInstallments;
+    const totalOutflow = totalMortgageInstallments + totalOperatingCosts + totalConsortiumInstallments + totalOtherInstallments + vehicleRecurringExpenses;
     const netFlow = totalInflow - totalOutflow;
     const selfSustainabilityPercent = totalOutflow > 0 ? Math.round((totalInflow / totalOutflow) * 100) : 100;
 
     return {
       totalRents,
+      realEstateRents,
       estimatedMonthlyYield,
       totalInflow,
       totalMortgageInstallments,
       totalOperatingCosts,
       totalConsortiumInstallments,
       totalOtherInstallments,
+      vehicleRecurringExpenses,
       totalOutflow,
       netFlow,
       selfSustainabilityPercent,
@@ -1168,9 +1209,10 @@ const Assets: React.FC = () => {
       const seguro = parseFloat(formValues.seguroFee) || 0;
       const licenciamento = parseFloat(formValues.licenciamentoFee) || 0;
 
-      // 3. Provisões de IPVA (Cota Única ou Parcelado em 5 vezes para simplificar)
+      // 3. Provisões de IPVA
       if (ipva > 0) {
-        const parcelasIPVA = 5;
+        const isIPVACash = formValues.ipvaPaymentMethod === 'A_VISTA';
+        const parcelasIPVA = isIPVACash ? 1 : (parseInt(formValues.ipvaInstallmentsCount, 10) || 5);
         const valorIPVA = ipva / parcelasIPVA;
         const newIpvaTxs = [];
         for (let i = 0; i < parcelasIPVA; i++) {
@@ -1180,7 +1222,9 @@ const Assets: React.FC = () => {
 
           newIpvaTxs.push({
             user_id: userId,
-            description: `IPVA (${i+1}/${parcelasIPVA}) - ${formValues.name}`,
+            description: parcelasIPVA === 1
+              ? `IPVA (À Vista) - ${formValues.name}`
+              : `IPVA (${i+1}/${parcelasIPVA}) - ${formValues.name}`,
             amount: valorIPVA,
             date: futureDateStr,
             type: 'EXPENSE',
@@ -1194,10 +1238,24 @@ const Assets: React.FC = () => {
         await supabase.from('transactions').insert(newIpvaTxs);
       }
 
-      // 4. Provisões de Seguro (Mensalizado em 10 vezes)
+      // 4. Provisões de Seguro
       if (seguro > 0) {
-        const parcelasSeguro = 10;
-        const valorSeguro = seguro / parcelasSeguro;
+        let parcelasSeguro = 10;
+        let valorSeguro = seguro / 10;
+        let isRecorrente = false;
+
+        if (formValues.seguroPaymentMethod === 'A_VISTA') {
+          parcelasSeguro = 1;
+          valorSeguro = seguro;
+        } else if (formValues.seguroPaymentMethod === 'RECORRENTE') {
+          parcelasSeguro = 12; // Provisão de 12 meses futuros
+          valorSeguro = seguro;
+          isRecorrente = true;
+        } else {
+          parcelasSeguro = parseInt(formValues.seguroInstallmentsCount, 10) || 10;
+          valorSeguro = seguro / parcelasSeguro;
+        }
+
         const newSeguroTxs = [];
         for (let i = 0; i < parcelasSeguro; i++) {
           const futureDate = new Date();
@@ -1206,7 +1264,11 @@ const Assets: React.FC = () => {
 
           newSeguroTxs.push({
             user_id: userId,
-            description: `Seguro Veicular (${i+1}/${parcelasSeguro}) - ${formValues.name}`,
+            description: formValues.seguroPaymentMethod === 'A_VISTA'
+              ? `Seguro Veicular (À Vista) - ${formValues.name}`
+              : isRecorrente
+              ? `Seguro Veicular (Mensal) - ${formValues.name}`
+              : `Seguro Veicular (${i+1}/${parcelasSeguro}) - ${formValues.name}`,
             amount: valorSeguro,
             date: futureDateStr,
             type: 'EXPENSE',
@@ -1619,23 +1681,27 @@ const Assets: React.FC = () => {
         transferFee: formData.category === 'VEHICLE' ? (parseFloat(formData.transferFee) || 0) : undefined,
         vehiclePurposeType: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? formData.vehiclePurposeType : undefined,
         ipvaFee: formData.category === 'VEHICLE' ? (parseFloat(formData.ipvaFee) || 0) : undefined,
+        ipvaPaymentMethod: formData.category === 'VEHICLE' ? formData.ipvaPaymentMethod : undefined,
+        ipvaInstallmentsCount: formData.category === 'VEHICLE' ? (parseInt(formData.ipvaInstallmentsCount, 10) || 5) : undefined,
         seguroFee: formData.category === 'VEHICLE' ? (parseFloat(formData.seguroFee) || 0) : undefined,
+        seguroPaymentMethod: formData.category === 'VEHICLE' ? formData.seguroPaymentMethod : undefined,
+        seguroInstallmentsCount: formData.category === 'VEHICLE' ? (parseInt(formData.seguroInstallmentsCount, 10) || 10) : undefined,
         licenciamentoFee: formData.category === 'VEHICLE' ? (parseFloat(formData.licenciamentoFee) || 0) : undefined,
         maintenanceMonthlyEstimated: (formData.category === 'VEHICLE' || formData.category === 'OTHER') ? (parseFloat(formData.maintenanceMonthlyEstimated) || 0) : undefined,
         rentalPlatformFee: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? (parseFloat(formData.rentalPlatformFee) || 0) : undefined,
         targetSaleValue: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? (parseFloat(formData.targetSaleValue) || 0) : undefined,
         preparationBudget: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? (parseFloat(formData.preparationBudget) || 0) : undefined,
-        saleComission: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? (parseFloat(formData.saleComission) || 0) : undefined,
-        salePaymentMethod: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? formData.salePaymentMethod : undefined,
-        permutaVeiculoValor: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? (parseFloat(formData.permutaVeiculoValor) || 0) : undefined,
-        permutaVeiculoNome: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? formData.permutaVeiculoNome : undefined,
-        permutaImovelValor: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? (parseFloat(formData.permutaImovelValor) || 0) : undefined,
-        permutaImovelNome: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? formData.permutaImovelNome : undefined,
-        permutaOutrosValor: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? (parseFloat(formData.permutaOutrosValor) || 0) : undefined,
-        permutaOutrosNome: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? formData.permutaOutrosNome : undefined,
-        permutaItems: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? formData.permutaItems : undefined,
-        saleDate: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? formData.saleDate : undefined,
-        saleCashAmount: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.isSold ? (parseFloat(formData.saleCashAmount) || 0) : undefined,
+        saleComission: formData.isSold ? (parseFloat(formData.saleComission) || 0) : undefined,
+        salePaymentMethod: formData.isSold ? formData.salePaymentMethod : undefined,
+        permutaVeiculoValor: formData.isSold ? (parseFloat(formData.permutaVeiculoValor) || 0) : undefined,
+        permutaVeiculoNome: formData.isSold ? formData.permutaVeiculoNome : undefined,
+        permutaImovelValor: formData.isSold ? (parseFloat(formData.permutaImovelValor) || 0) : undefined,
+        permutaImovelNome: formData.isSold ? formData.permutaImovelNome : undefined,
+        permutaOutrosValor: formData.isSold ? (parseFloat(formData.permutaOutrosValor) || 0) : undefined,
+        permutaOutrosNome: formData.isSold ? formData.permutaOutrosNome : undefined,
+        permutaItems: formData.isSold ? formData.permutaItems : undefined,
+        saleDate: formData.isSold ? formData.saleDate : undefined,
+        saleCashAmount: formData.isSold ? (parseFloat(formData.saleCashAmount) || 0) : undefined,
       };
 
       // Preserve existing real estate evolution details if editing
@@ -1674,7 +1740,8 @@ const Assets: React.FC = () => {
             estimated_value: value,
             acquisition_date: acqDate,
             description: formData.description,
-            metadata
+            metadata,
+            is_archived: formData.isSold
           })
           .eq('id', editingAsset.id);
 
@@ -1737,15 +1804,17 @@ const Assets: React.FC = () => {
             }
           }
 
-          await syncRentalTransactions(
-            editingAsset.id,
-            finalIsRented,
-            rentVal,
-            formData.name,
-            user.id,
-            formData.rentalType,
-            formData.rentalDate
-          );
+          if (!formData.isSold) {
+            await syncRentalTransactions(
+              editingAsset.id,
+              finalIsRented,
+              rentVal,
+              formData.name,
+              user.id,
+              formData.rentalType,
+              formData.rentalDate
+            );
+          }
         }
         if (formData.category === 'VEHICLE') {
           await syncVehicleTransactions(editingAsset.id, false, user.id, formData);
@@ -1815,7 +1884,8 @@ const Assets: React.FC = () => {
             estimated_value: value,
             acquisition_date: acqDate,
             description: formData.description,
-            metadata
+            metadata,
+            is_archived: formData.isSold
           }])
           .select()
           .single();
@@ -1823,7 +1893,7 @@ const Assets: React.FC = () => {
         if (error) throw error;
         if (newAsset) assetId = newAsset.id;
 
-        if (isRealEstate && newAsset) {
+        if (isRealEstate && newAsset && !formData.isSold) {
           await syncRentalTransactions(
             newAsset.id,
             finalIsRented,
@@ -1957,6 +2027,162 @@ const Assets: React.FC = () => {
         }
       }
 
+      // Automated sale transaction for REAL_ESTATE
+      if (isRealEstate && formData.isSold && (!editingAsset || !editingAsset.metadata?.isSold)) {
+        const soldAmount = parseFloat(formData.soldValue) || 0;
+        const comission = parseFloat(formData.saleComission) || 0;
+        const saleDateStr = formData.saleDate || new Date().toISOString().split('T')[0];
+
+        // 1. Excluir provisões futuras não pagas vinculadas ao imóvel
+        const { data: oldProvisions } = await supabase
+          .from('transactions')
+          .select('id, metadata')
+          .eq('user_id', user.id)
+          .eq('is_paid', false);
+
+        if (oldProvisions && oldProvisions.length > 0) {
+          const idsToDelete = oldProvisions
+            .filter((t: any) => 
+              t.metadata?.linked_asset_id === assetId &&
+              (t.metadata?.type === 'rental_income' ||
+               t.metadata?.type === 'condo_provision' ||
+               t.metadata?.type === 'condo_expense' ||
+               t.metadata?.type === 'condo_revenue' ||
+               t.metadata?.type === 'iptu_provision' ||
+               t.metadata?.type === 'iptu_expense' ||
+               t.metadata?.type === 'iptu_revenue' ||
+               t.metadata?.type === 'short_stay_booking')
+            )
+            .map((p: any) => p.id);
+          
+          if (idsToDelete.length > 0) {
+            await supabase.from('transactions').delete().in('id', idsToDelete);
+          }
+        }
+
+        // 2. Comissão de venda (se houver)
+        if (comission > 0) {
+          let catId = null;
+          const { data: catRes } = await supabase
+            .from('categories')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('name', 'Ativos Imobiliários')
+            .maybeSingle();
+          if (catRes) catId = catRes.id;
+
+          await supabase.from('transactions').insert([{
+            user_id: user.id,
+            description: `Comissão de Venda - ${formData.name}`,
+            amount: comission,
+            date: saleDateStr,
+            type: 'EXPENSE',
+            category: 'Ativos Imobiliários',
+            subcategory: 'Comissão',
+            category_id: catId,
+            is_paid: true,
+            paid_amount: comission,
+            paid_at: saleDateStr,
+            metadata: { linked_asset_id: assetId, type: 'real_estate_sale_comission' }
+          }]);
+        }
+
+        // 3. Receita da venda
+        let revenueCatId = null;
+        const { data: revCat } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('name', 'Outras Receitas')
+          .maybeSingle();
+        if (revCat) {
+          revenueCatId = revCat.id;
+        } else {
+          const { data: newCat } = await supabase
+            .from('categories')
+            .insert({
+              user_id: user.id,
+              name: 'Outras Receitas',
+              type: 'INCOME',
+              color: 'bg-emerald-50 text-emerald-600'
+            })
+            .select('id')
+            .maybeSingle();
+          if (newCat) revenueCatId = newCat.id;
+        }
+
+        if (formData.salePaymentMethod === 'A_VISTA' || formData.salePaymentMethod === 'HIBRIDO') {
+          let cashVal = soldAmount;
+          if (formData.salePaymentMethod === 'HIBRIDO') {
+            cashVal = parseFloat(formData.saleCashAmount) || 0;
+          }
+
+          if (cashVal > 0) {
+            await supabase.from('transactions').insert([{
+              user_id: user.id,
+              description: formData.salePaymentMethod === 'HIBRIDO'
+                ? `Receita Venda de Imóvel (Parte Dinheiro) - ${formData.name}`
+                : `Receita Venda de Imóvel (À Vista) - ${formData.name}`,
+              amount: cashVal,
+              date: saleDateStr,
+              type: 'INCOME',
+              category: 'Outras Receitas',
+              subcategory: 'Venda de Ativo',
+              category_id: revenueCatId,
+              is_paid: true,
+              paid_amount: cashVal,
+              paid_at: saleDateStr,
+              metadata: { linked_asset_id: assetId, type: 'real_estate_sale_revenue' }
+            }]);
+          }
+        } 
+        else if (formData.salePaymentMethod === 'PARCELADO') {
+          const parcelas = 10;
+          const valorParcela = soldAmount / parcelas;
+          const newSaleInstallments = [];
+          
+          for (let i = 0; i < parcelas; i++) {
+            const futureDate = new Date(saleDateStr + 'T00:00:00');
+            futureDate.setMonth(futureDate.getMonth() + i);
+            const futureDateStr = futureDate.toISOString().split('T')[0];
+
+            newSaleInstallments.push({
+              user_id: user.id,
+              description: `Receita Parcelada Venda (${i+1}/${parcelas}) - ${formData.name}`,
+              amount: valorParcela,
+              date: futureDateStr,
+              type: 'INCOME',
+              category: 'Outras Receitas',
+              subcategory: 'Venda de Ativo',
+              category_id: revenueCatId,
+              is_paid: false,
+              metadata: { linked_asset_id: assetId, type: 'real_estate_sale_installment', installment: i+1 }
+            });
+          }
+          if (newSaleInstallments.length > 0) {
+            await supabase.from('transactions').insert(newSaleInstallments);
+          }
+        }
+
+        // 4. Criar bens de permuta automaticamente
+        if (Array.isArray(formData.permutaItems) && formData.permutaItems.length > 0) {
+          const assetsToInsert = formData.permutaItems
+            .filter((item: any) => item.name && (parseFloat(item.value) || 0) > 0)
+            .map((item: any) => ({
+              user_id: user.id,
+              name: item.name,
+              category: item.type,
+              estimated_value: parseFloat(item.value) || 0,
+              acquisition_date: saleDateStr,
+              description: `Recebido em permuta na venda de ${formData.name}`,
+              metadata: item.type === 'REAL_ESTATE' ? { propertyStage: 'PRONTO', purpose: 'uso' } : { purpose: 'uso' }
+            }));
+          if (assetsToInsert.length > 0) {
+            await supabase.from('physical_assets').insert(assetsToInsert);
+          }
+        }
+      }
+
       setShowModal(false);
       setEditingAsset(null);
       resetAssetForm();
@@ -2014,7 +2240,11 @@ const Assets: React.FC = () => {
       transferFee: '',
       vehiclePurposeType: 'RENTAL',
       ipvaFee: '',
+      ipvaPaymentMethod: 'PARCELADO',
+      ipvaInstallmentsCount: '5',
       seguroFee: '',
+      seguroPaymentMethod: 'PARCELADO',
+      seguroInstallmentsCount: '10',
       licenciamentoFee: '',
       maintenanceMonthlyEstimated: '',
       rentalPlatformFee: '',
@@ -2117,7 +2347,11 @@ const Assets: React.FC = () => {
       transferFee: meta.transferFee ? String(meta.transferFee) : '',
       vehiclePurposeType: meta.vehiclePurposeType || 'RENTAL',
       ipvaFee: meta.ipvaFee ? String(meta.ipvaFee) : '',
+      ipvaPaymentMethod: meta.ipvaPaymentMethod || 'PARCELADO',
+      ipvaInstallmentsCount: meta.ipvaInstallmentsCount ? String(meta.ipvaInstallmentsCount) : '5',
       seguroFee: meta.seguroFee ? String(meta.seguroFee) : '',
+      seguroPaymentMethod: meta.seguroPaymentMethod || 'PARCELADO',
+      seguroInstallmentsCount: meta.seguroInstallmentsCount ? String(meta.seguroInstallmentsCount) : '10',
       licenciamentoFee: meta.licenciamentoFee ? String(meta.licenciamentoFee) : '',
       maintenanceMonthlyEstimated: meta.maintenanceMonthlyEstimated ? String(meta.maintenanceMonthlyEstimated) : '',
       rentalPlatformFee: meta.rentalPlatformFee ? String(meta.rentalPlatformFee) : '',
@@ -2795,12 +3029,9 @@ const Assets: React.FC = () => {
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
     const plantaAmortizationPaid = plantaLiabAmortized > 0 ? plantaLiabAmortized : plantaTxAmortized;
 
-    const plantaLiabRemaining = plantaLiabs.reduce((sum, l) => sum + l.remainingBalance, 0);
-    const plantaBalloonsRemaining = plantaAssets.reduce((sum, p) => {
-      const balloonsList = p.metadata?.balloons || [];
-      return sum + balloonsList.reduce((acc: number, b: any) => acc + (Number(b.amount) || 0), 0);
-    }, 0);
-    const plantaRemainingToPay = plantaLiabRemaining + plantaBalloonsRemaining;
+    const plantaPaidTotal = plantaAmortizationPaid;
+    const plantaDeliveryBalance = plantaAssets.reduce((sum, p) => sum + (Number(p.metadata?.deliveryBalance) || 0), 0);
+    const plantaRemainingToPay = plantaValue - plantaPaidTotal;
 
     const plantaAdditionalExpenses = plantaTxs.filter(t => 
       t.type === 'EXPENSE' && 
@@ -2870,6 +3101,8 @@ const Assets: React.FC = () => {
     // 2. BENS FÍSICOS SUMS (Uso vs Investimento, excluding REAL_ESTATE)
     const physicalUso = activePhys.filter(p => p.category !== 'REAL_ESTATE' && p.metadata?.purpose === 'uso');
     const physicalInv = activePhys.filter(p => p.category !== 'REAL_ESTATE' && p.metadata?.purpose === 'investimento');
+    const veiculoValue = activePhys.filter(p => p.category === 'VEHICLE').reduce((sum, p) => sum + p.estimatedValue, 0);
+    const outroFisicoValue = activePhys.filter(p => p.category === 'OTHER').reduce((sum, p) => sum + p.estimatedValue, 0);
 
     const usoAcquisitionTotal = physicalUso.reduce((sum, p) => sum + (Number(p.metadata?.purchaseValue) || 0), 0);
     const usoCurrentValueTotal = physicalUso.reduce((sum, p) => sum + p.estimatedValue, 0);
@@ -2945,7 +3178,9 @@ const Assets: React.FC = () => {
       plantaValue,
       plantaInstallments,
       plantaPaid: plantaAmortizationPaid,
+      plantaPaidTotal,
       plantaRemainingToPay,
+      plantaDeliveryBalance,
       plantaAdditionalExpenses,
       prontoValue,
       prontoInstallments,
@@ -2981,7 +3216,9 @@ const Assets: React.FC = () => {
       finInstallments,
       finContracted,
       finPaid,
-      finRemaining
+      finRemaining,
+      veiculoValue,
+      outroFisicoValue
     };
   }, [activePhysicalAssets, activeLiabilities, brokers, transactions, totalFinancial, linkedTransactionsMap]);
 
@@ -3040,8 +3277,8 @@ const Assets: React.FC = () => {
         {/* OVERVIEW VIEW */}
         {activeView === 'overview' && (
           <div className="space-y-8 animate-in fade-in duration-500">
-            {/* COMPACT TOTALS GRID (6 Cards) */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {/* COMPACT TOTALS GRID (7 Cards) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
               {/* Fluxo Mensal */}
               <div className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group hover:scale-[1.02] transition-all col-span-2 sm:col-span-1">
                 <div className="absolute -right-4 -bottom-4 w-12 h-12 bg-white/5 rounded-full pointer-events-none" />
@@ -3095,17 +3332,31 @@ const Assets: React.FC = () => {
                 </div>
               </div>
 
-              {/* Bens Físicos */}
+              {/* Veículos */}
               <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Bens Físicos</span>
+                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Veículos</span>
+                  <Car size={14} className="text-brand-500" />
+                </div>
+                <div className="mt-2">
+                  <h4 className="text-base font-black text-slate-900 tracking-tight italic">
+                    {formatCurrency(overviewData.veiculoValue)}
+                  </h4>
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">FIPE / Estimado</span>
+                </div>
+              </div>
+
+              {/* Outros Bens Físicos */}
+              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+                <div className="flex justify-between items-start">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Outros Bens</span>
                   <Box size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
-                    {formatCurrency(overviewData.usoCurrentValueTotal + overviewData.invEstimatedValue)}
+                    {formatCurrency(overviewData.outroFisicoValue)}
                   </h4>
-                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Uso + Inv.</span>
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Outros Bens Físicos</span>
                 </div>
               </div>
 
@@ -3169,15 +3420,15 @@ const Assets: React.FC = () => {
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-500 font-medium">Amortizado/Pago:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaPaid)}</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaPaidTotal)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-500 font-medium">Restante a Pagar:</span>
                         <span className="font-bold text-brand-600">{formatCurrency(overviewData.plantaRemainingToPay)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Despesas Extras/Balões:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaAdditionalExpenses)}</span>
+                        <span className="text-slate-500 font-medium">Saldo a Financiar (Entrega):</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaDeliveryBalance)}</span>
                       </div>
                     </div>
                   </div>
@@ -3189,7 +3440,7 @@ const Assets: React.FC = () => {
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Valor Estimado:</span>
+                        <span className="text-slate-500 font-medium">Valor Total dos Ativos:</span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoValue)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
@@ -3197,20 +3448,12 @@ const Assets: React.FC = () => {
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoInstallments)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Financiamento Contratado:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoContracted)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
                         <span className="text-slate-500 font-medium">Saldo Devedor Restante:</span>
                         <span className="font-bold text-red-500">{formatCurrency(overviewData.prontoRemainingToPay)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Custos Operacionais:</span>
+                        <span className="text-slate-500 font-medium">IPTU e Condomínio Mensal:</span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoOperatingCosts)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Total Pago Financiamento:</span>
-                        <span className="font-bold text-emerald-600">{formatCurrency(overviewData.prontoPaid)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-500 font-medium">Aluguéis Recebidos:</span>
@@ -4495,28 +4738,91 @@ const Assets: React.FC = () => {
                   <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Despesas Periódicas Estimadas</p>
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado IPVA (R$)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
-                          value={formData.ipvaFee}
-                          onChange={(e) => setFormData({ ...formData, ipvaFee: e.target.value })}
-                          placeholder="0.00"
-                        />
+                      {/* IPVA Group */}
+                      <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado IPVA (R$)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              value={formData.ipvaFee}
+                              onChange={(e) => setFormData({ ...formData, ipvaFee: e.target.value })}
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento IPVA</label>
+                            <select
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              value={formData.ipvaPaymentMethod}
+                              onChange={(e) => setFormData({ ...formData, ipvaPaymentMethod: e.target.value as any })}
+                            >
+                              <option value="PARCELADO">Parcelado</option>
+                              <option value="A_VISTA">À Vista (1x)</option>
+                            </select>
+                          </div>
+                        </div>
+                        {formData.ipvaPaymentMethod === 'PARCELADO' && (
+                          <div className="animate-in slide-in-from-top-2">
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas IPVA</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="12"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              value={formData.ipvaInstallmentsCount}
+                              onChange={(e) => setFormData({ ...formData, ipvaInstallmentsCount: e.target.value })}
+                              placeholder="5"
+                            />
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado Seguro (R$)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
-                          value={formData.seguroFee}
-                          onChange={(e) => setFormData({ ...formData, seguroFee: e.target.value })}
-                          placeholder="0.00"
-                        />
+
+                      {/* Seguro Group */}
+                      <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado Seguro (R$)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              value={formData.seguroFee}
+                              onChange={(e) => setFormData({ ...formData, seguroFee: e.target.value })}
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento Seguro</label>
+                            <select
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              value={formData.seguroPaymentMethod}
+                              onChange={(e) => setFormData({ ...formData, seguroPaymentMethod: e.target.value as any })}
+                            >
+                              <option value="PARCELADO">Parcelado</option>
+                              <option value="RECORRENTE">Mensal Recorrente</option>
+                              <option value="A_VISTA">Anual (À Vista 1x)</option>
+                            </select>
+                          </div>
+                        </div>
+                        {formData.seguroPaymentMethod === 'PARCELADO' && (
+                          <div className="animate-in slide-in-from-top-2">
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas Seguro</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="12"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              value={formData.seguroInstallmentsCount}
+                              onChange={(e) => setFormData({ ...formData, seguroInstallmentsCount: e.target.value })}
+                              placeholder="10"
+                            />
+                          </div>
+                        )}
                       </div>
+
                       <div>
                         <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Licenciamento Anual (R$)</label>
                         <input
@@ -4593,28 +4899,91 @@ const Assets: React.FC = () => {
                               placeholder="0.00"
                             />
                           </div>
-                          <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Seguro Comercial (R$)</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
-                              value={formData.seguroFee}
-                              onChange={(e) => setFormData({ ...formData, seguroFee: e.target.value })}
-                              placeholder="0.00"
-                            />
+                          {/* IPVA Group */}
+                          <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo IPVA (R$)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                                  value={formData.ipvaFee}
+                                  onChange={(e) => setFormData({ ...formData, ipvaFee: e.target.value })}
+                                  placeholder="0.00"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento IPVA</label>
+                                <select
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                                  value={formData.ipvaPaymentMethod}
+                                  onChange={(e) => setFormData({ ...formData, ipvaPaymentMethod: e.target.value as any })}
+                                >
+                                  <option value="PARCELADO">Parcelado</option>
+                                  <option value="A_VISTA">À Vista (1x)</option>
+                                </select>
+                              </div>
+                            </div>
+                            {formData.ipvaPaymentMethod === 'PARCELADO' && (
+                              <div className="animate-in slide-in-from-top-2">
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas IPVA</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="12"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                                  value={formData.ipvaInstallmentsCount}
+                                  onChange={(e) => setFormData({ ...formData, ipvaInstallmentsCount: e.target.value })}
+                                  placeholder="5"
+                                />
+                              </div>
+                            )}
                           </div>
-                          <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo IPVA (R$)</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
-                              value={formData.ipvaFee}
-                              onChange={(e) => setFormData({ ...formData, ipvaFee: e.target.value })}
-                              placeholder="0.00"
-                            />
+
+                          {/* Seguro Group */}
+                          <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Seguro Comercial (R$)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                                  value={formData.seguroFee}
+                                  onChange={(e) => setFormData({ ...formData, seguroFee: e.target.value })}
+                                  placeholder="0.00"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento Seguro</label>
+                                <select
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                                  value={formData.seguroPaymentMethod}
+                                  onChange={(e) => setFormData({ ...formData, seguroPaymentMethod: e.target.value as any })}
+                                >
+                                  <option value="PARCELADO">Parcelado</option>
+                                  <option value="RECORRENTE">Mensal Recorrente</option>
+                                  <option value="A_VISTA">Anual (À Vista 1x)</option>
+                                </select>
+                              </div>
+                            </div>
+                            {formData.seguroPaymentMethod === 'PARCELADO' && (
+                              <div className="animate-in slide-in-from-top-2">
+                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas Seguro</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="12"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                                  value={formData.seguroInstallmentsCount}
+                                  onChange={(e) => setFormData({ ...formData, seguroInstallmentsCount: e.target.value })}
+                                  placeholder="10"
+                                />
+                              </div>
+                            )}
                           </div>
+
                           <div>
                             <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Licenciamento Anual (R$)</label>
                             <input
@@ -4754,7 +5123,7 @@ const Assets: React.FC = () => {
                   </div>
                 )}
 
-                {formData.purpose === 'investimento' && formData.category !== 'REAL_ESTATE' && (
+                {editingAsset && (
                   <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 border-t border-slate-200 pt-3">
                     <div>
                       <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Taxa de Corretagem (R$)</label>
@@ -4798,7 +5167,7 @@ const Assets: React.FC = () => {
                           </div>
                         </div>
 
-                        {(formData.category === 'VEHICLE' || formData.category === 'OTHER') && (
+                        {true && (
                           <div className="space-y-4">
                             <div>
                               <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Recebimento</label>
