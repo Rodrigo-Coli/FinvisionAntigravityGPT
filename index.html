@@ -185,6 +185,47 @@
     .card-premium {
       @apply transition-all duration-300 hover:shadow-2xl hover:shadow-brand-500/10 hover:-translate-y-1;
     }
+
+    /* ========================================================
+       PRINT STYLES - Extrato de Empréstimo / Asset Ledger
+    ======================================================== */
+    @media print {
+      /* Hide everything except the extrato modal */
+      body > #root > * { display: none !important; }
+
+      /* Show and reset the extrato modal overlay */
+      .fixed.inset-0.z-50 {
+        display: flex !important;
+        position: static !important;
+        background: white !important;
+        backdrop-filter: none !important;
+      }
+
+      /* Make the modal inner box full-page */
+      .fixed.inset-0.z-50 > div {
+        width: 100% !important;
+        max-width: none !important;
+        max-height: none !important;
+        height: auto !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+      }
+
+      /* Scrollable area expands to show all content */
+      .flex-1.overflow-y-auto {
+        overflow: visible !important;
+        max-height: none !important;
+      }
+
+      /* Ensure tables render fully */
+      table { page-break-inside: auto; }
+      tr    { page-break-inside: avoid; page-break-after: auto; }
+
+      /* Utility: hide elements during print */
+      .print\:hidden { display: none !important; }
+      .hidden.print\:block { display: block !important; }
+    }
   </style>
 </head>
 

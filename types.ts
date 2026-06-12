@@ -145,7 +145,7 @@ export interface ReconcileItem {
 export interface PhysicalAsset {
   id: string;
   name: string;
-  category: 'REAL_ESTATE' | 'VEHICLE' | 'OTHER';
+  category: 'REAL_ESTATE' | 'VEHICLE' | 'OTHER' | 'INVESTMENT';
   estimatedValue: number;
   acquisitionDate: string;
   description: string;

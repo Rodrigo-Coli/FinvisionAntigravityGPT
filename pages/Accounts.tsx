@@ -298,58 +298,124 @@ const Accounts: React.FC = () => {
       const user = session?.user;
       if (!user) throw new Error("Usuário não autenticado");
 
-      if (adjustMode === 'initial') {
-        const transactionsSum = adjustAccount.currentBalance - adjustAccount.initialBalance;
-        const newInitialBalance = Number(adjustValue) - transactionsSum;
+      // ── INVESTMENT accounts: saldo = caixa livre (initial_balance) + investimentos (auto-sync)
+      // O ajuste aqui afeta SOMENTE o caixa livre para não sobrescrever o sync automático.
+      if (adjustAccount.type === 'INVESTMENT') {
+        // Busca a soma dos investimentos vinculados a esta corretora
+        const { data: linkedInvests } = await supabase
+          .from('physical_assets')
+          .select('estimated_value, metadata')
+          .eq('user_id', user.id)
+          .eq('category', 'INVESTMENT')
+          .eq('is_archived', false);
 
-        const updatePayload: any = {
-          initial_balance: newInitialBalance,
-          current_balance: adjustValue
-        };
+        const investedTotal = (linkedInvests || [])
+          .filter((inv: any) =>
+            inv.metadata?.brokerAccountId === adjustAccount.id &&
+            inv.metadata?.status !== 'RESGATADO'
+          )
+          .reduce((sum: number, inv: any) => sum + Number(inv.estimated_value || 0), 0);
 
-        const { error } = await supabase
-          .from('accounts')
-          .update(updatePayload)
-          .eq('id', adjustAccount.id)
-          .eq('user_id', user.id);
+        if (adjustMode === 'initial') {
+          // Modo Caixa Livre: o usuário define o novo valor de caixa não investido
+          const newCash = Number(adjustValue);
+          const newTotal = newCash + investedTotal;
 
-        if (error) throw error;
-      } else {
-        const delta = Number(adjustValue) - adjustAccount.currentBalance;
+          const { error } = await supabase
+            .from('accounts')
+            .update({ initial_balance: newCash, current_balance: newTotal })
+            .eq('id', adjustAccount.id)
+            .eq('user_id', user.id);
 
-        if (delta === 0) {
-          alert("O novo saldo é igual ao saldo atual. Informe um valor diferente.");
-          setIsSavingAdjust(false);
-          return;
+          if (error) throw error;
+        } else {
+          // Modo Ajuste Pontual: interpreta adjustValue como novo saldo TOTAL
+          // O caixa livre = novo total - investimentos (protege o sync)
+          const newTotal = Number(adjustValue);
+          const newCash = newTotal - investedTotal;
+          const currentCash = adjustAccount.initialBalance;
+          const cashDelta = newCash - currentCash;
+
+          if (Math.abs(cashDelta) < 0.01) {
+            alert("O novo saldo é igual ao saldo atual. Informe um valor diferente.");
+            setIsSavingAdjust(false);
+            return;
+          }
+
+          const txType = cashDelta > 0 ? 'INCOME' : 'EXPENSE';
+          const txAmount = Math.abs(cashDelta);
+
+          const { error: txError } = await supabase
+            .from('transactions')
+            .insert({
+              user_id: user.id,
+              account_id: adjustAccount.id,
+              account_name: adjustAccount.institution,
+              date: adjustDate,
+              description: adjustDesc,
+              category: adjustCat,
+              type: txType,
+              amount: txAmount
+            });
+
+          if (txError) throw txError;
+
+          const { error: accError } = await supabase
+            .from('accounts')
+            .update({ initial_balance: newCash, current_balance: newTotal })
+            .eq('id', adjustAccount.id)
+            .eq('user_id', user.id);
+
+          if (accError) throw accError;
         }
+      } else {
+        // ── Contas NÃO-INVESTMENT: lógica original preservada
+        if (adjustMode === 'initial') {
+          const transactionsSum = adjustAccount.currentBalance - adjustAccount.initialBalance;
+          const newInitialBalance = Number(adjustValue) - transactionsSum;
 
-        const txType = delta > 0 ? 'INCOME' : 'EXPENSE';
-        const txAmount = Math.abs(delta);
+          const { error } = await supabase
+            .from('accounts')
+            .update({ initial_balance: newInitialBalance, current_balance: adjustValue })
+            .eq('id', adjustAccount.id)
+            .eq('user_id', user.id);
 
-        const { error: txError } = await supabase
-          .from('transactions')
-          .insert({
-            user_id: user.id,
-            account_id: adjustAccount.id,
-            account_name: adjustAccount.institution,
-            date: adjustDate,
-            description: adjustDesc,
-            category: adjustCat,
-            type: txType,
-            amount: txAmount
-          });
+          if (error) throw error;
+        } else {
+          const delta = Number(adjustValue) - adjustAccount.currentBalance;
 
-        if (txError) throw txError;
+          if (delta === 0) {
+            alert("O novo saldo é igual ao saldo atual. Informe um valor diferente.");
+            setIsSavingAdjust(false);
+            return;
+          }
 
-        const { error: accError } = await supabase
-          .from('accounts')
-          .update({
-            current_balance: adjustValue
-          })
-          .eq('id', adjustAccount.id)
-          .eq('user_id', user.id);
+          const txType = delta > 0 ? 'INCOME' : 'EXPENSE';
+          const txAmount = Math.abs(delta);
 
-        if (accError) throw accError;
+          const { error: txError } = await supabase
+            .from('transactions')
+            .insert({
+              user_id: user.id,
+              account_id: adjustAccount.id,
+              account_name: adjustAccount.institution,
+              date: adjustDate,
+              description: adjustDesc,
+              category: adjustCat,
+              type: txType,
+              amount: txAmount
+            });
+
+          if (txError) throw txError;
+
+          const { error: accError } = await supabase
+            .from('accounts')
+            .update({ current_balance: adjustValue })
+            .eq('id', adjustAccount.id)
+            .eq('user_id', user.id);
+
+          if (accError) throw accError;
+        }
       }
 
       setShowAdjustModal(false);
@@ -418,7 +484,13 @@ const Accounts: React.FC = () => {
     (filterCurrency !== 'ALL' ? 1 : 0) +
     (filterDashboard !== 'ALL' ? 1 : 0);
 
-  const currentDelta = adjustAccount ? Number(adjustValue) - (adjustMode === 'initial' ? adjustAccount.initialBalance : adjustAccount.currentBalance) : 0;
+  // Para contas INVESTMENT: delta sempre vs saldo total atual (investido + caixa).
+  // Para outras contas: delta vs saldo atual (modo transaction) ou saldo inicial (modo initial).
+  const currentDelta = adjustAccount
+    ? adjustAccount.type === 'INVESTMENT'
+      ? Number(adjustValue) - adjustAccount.currentBalance
+      : Number(adjustValue) - (adjustMode === 'initial' ? adjustAccount.initialBalance : adjustAccount.currentBalance)
+    : 0;
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 pb-36 space-y-8 animate-in fade-in duration-500">
@@ -622,12 +694,26 @@ const Accounts: React.FC = () => {
                 <button onClick={() => setShowAdjustModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-all"><X size={24} /></button>
               </div>
 
+              {/* Banner informativo para contas de Investimento */}
+              {adjustAccount.type === 'INVESTMENT' && (
+                <div className="flex items-start gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
+                  <Info size={15} className="text-indigo-500 mt-0.5 shrink-0" />
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">Corretora com Sync Automático</p>
+                    <p className="text-[10px] text-indigo-600 leading-relaxed">
+                      Saldo Total = <strong>Caixa Livre</strong> + <strong>Total Investido</strong> (calculado automaticamente pelo Patrimônio).
+                      Aqui você ajusta apenas o caixa livre. Os investimentos são protegidos.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-100">
                 <button
-                  onClick={() => { setAdjustMode('initial'); setAdjustValue(adjustAccount.currentBalance); }}
+                  onClick={() => { setAdjustMode('initial'); setAdjustValue(adjustAccount.type === 'INVESTMENT' ? adjustAccount.initialBalance : adjustAccount.currentBalance); }}
                   className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase transition-all ${adjustMode === 'initial' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}
                 >
-                  Saldo Inicial
+                  {adjustAccount.type === 'INVESTMENT' ? 'Caixa Livre' : 'Saldo Inicial'}
                 </button>
                 <button
                   onClick={() => { setAdjustMode('transaction'); setAdjustValue(adjustAccount.currentBalance); }}
@@ -639,7 +725,12 @@ const Accounts: React.FC = () => {
 
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Novo Saldo</label>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                    {adjustAccount.type === 'INVESTMENT' && adjustMode === 'initial'
+                      ? 'Caixa Livre (não investido)'
+                      : 'Novo Saldo Total'
+                    }
+                  </label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">R$</span>
                     <input

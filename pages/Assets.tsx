@@ -215,7 +215,7 @@ const Assets: React.FC = () => {
   const [editingAsset, setEditingAsset] = useState<PhysicalAsset | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    category: 'REAL_ESTATE' as 'REAL_ESTATE' | 'VEHICLE' | 'OTHER',
+    category: 'REAL_ESTATE' as 'REAL_ESTATE' | 'VEHICLE' | 'OTHER' | 'INVESTMENT',
     estimatedValue: '',
     acquisitionDate: '',
     description: '',
@@ -285,6 +285,15 @@ const Assets: React.FC = () => {
     seguroPaymentMethod: 'PARCELADO' as 'A_VISTA' | 'RECORRENTE' | 'PARCELADO',
     seguroInstallmentsCount: '10',
     permutaItems: [] as { type: 'VEHICLE' | 'REAL_ESTATE' | 'OTHER'; name: string; value: string }[],
+    // Investment-specific fields
+    investmentType: 'CDB',
+    interestType: 'CDI',
+    yieldRate: '',
+    payoutType: 'ACUMULADO' as 'ACUMULADO' | 'MENSAL',
+    brokerAccountId: '',
+    vencimentoDate: '',
+    investmentLiquidity: 'No Vencimento',
+    status: 'ATIVO' as 'ATIVO' | 'RESGATADO',
   });
 
   const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
@@ -1702,6 +1711,15 @@ const Assets: React.FC = () => {
         permutaItems: formData.isSold ? formData.permutaItems : undefined,
         saleDate: formData.isSold ? formData.saleDate : undefined,
         saleCashAmount: formData.isSold ? (parseFloat(formData.saleCashAmount) || 0) : undefined,
+        // Investment-specific fields
+        investmentType: formData.category === 'INVESTMENT' ? formData.investmentType : undefined,
+        interestType: formData.category === 'INVESTMENT' ? formData.interestType : undefined,
+        yieldRate: formData.category === 'INVESTMENT' ? formData.yieldRate : undefined,
+        payoutType: formData.category === 'INVESTMENT' ? formData.payoutType : undefined,
+        brokerAccountId: formData.category === 'INVESTMENT' ? formData.brokerAccountId : undefined,
+        vencimentoDate: formData.category === 'INVESTMENT' ? formData.vencimentoDate : undefined,
+        investmentLiquidity: formData.category === 'INVESTMENT' ? formData.investmentLiquidity : undefined,
+        status: formData.category === 'INVESTMENT' ? (formData.status || 'ATIVO') : undefined,
       };
 
       // Preserve existing real estate evolution details if editing
@@ -1747,6 +1765,64 @@ const Assets: React.FC = () => {
 
         if (error) throw error;
         assetId = editingAsset.id;
+
+        // Auto-generate yield transaction on value increases for investments
+        if (formData.category === 'INVESTMENT') {
+          const oldValue = Number(editingAsset.estimatedValue) || 0;
+          const newValue = value;
+          const delta = newValue - oldValue;
+
+          if (delta > 0) {
+            const isAcumulado = formData.payoutType === 'ACUMULADO';
+            const subcat = isAcumulado ? 'Rendimentos Acumulados' : 'Rendimentos Mensais';
+            
+            let catId = null;
+            const { data: catRes } = await supabase
+              .from('categories')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('name', 'Investimentos')
+              .maybeSingle();
+            
+            if (catRes) {
+              catId = catRes.id;
+            } else {
+              const { data: newCat } = await supabase
+                .from('categories')
+                .insert({
+                  user_id: user.id,
+                  name: 'Investimentos',
+                  type: 'INCOME',
+                  color: 'bg-indigo-50 text-indigo-600'
+                })
+                .select('id')
+                .maybeSingle();
+              if (newCat) catId = newCat.id;
+            }
+
+            const todayStr = new Date().toISOString().split('T')[0];
+            await supabase.from('transactions').insert([{
+              user_id: user.id,
+              description: `Rendimento automático - ${formData.name}`,
+              amount: delta,
+              date: todayStr,
+              type: 'INCOME',
+              category: 'Investimentos',
+              subcategory: subcat,
+              category_id: catId,
+              is_paid: true,
+              paid_amount: delta,
+              paid_at: todayStr,
+              account_id: isAcumulado ? null : (formData.brokerAccountId || null),
+              account_name: isAcumulado ? null : (brokers.find(b => b.id === formData.brokerAccountId)?.name || null),
+              metadata: {
+                linked_asset_id: editingAsset.id,
+                type: 'investment_yield',
+                payout_type: formData.payoutType
+              }
+            }]);
+          }
+        }
 
         if (isRealEstate) {
           if (formData.propertyStage === 'PLANTA') {
@@ -2183,6 +2259,83 @@ const Assets: React.FC = () => {
         }
       }
 
+      // --- BROKER BALANCE SYNC ---
+      // current_balance = initial_balance (caixa livre) + soma de investimentos ativos
+      // Assim o caixa ajustado manualmente em Contas é preservado.
+      if (formData.category === 'INVESTMENT' && formData.brokerAccountId) {
+        try {
+          const [allInvestsRes, brokerAccRes] = await Promise.all([
+            supabase
+              .from('physical_assets')
+              .select('estimated_value, metadata')
+              .eq('user_id', user.id)
+              .eq('category', 'INVESTMENT')
+              .eq('is_archived', false),
+            supabase
+              .from('accounts')
+              .select('initial_balance')
+              .eq('id', formData.brokerAccountId)
+              .eq('user_id', user.id)
+              .maybeSingle()
+          ]);
+
+          const brokerCash = Number(brokerAccRes.data?.initial_balance || 0);
+          const investedTotal = (allInvestsRes.data || [])
+            .filter((inv: any) =>
+              inv.metadata?.brokerAccountId === formData.brokerAccountId &&
+              inv.metadata?.status !== 'RESGATADO'
+            )
+            .reduce((sum: number, inv: any) => sum + Number(inv.estimated_value || 0), 0);
+
+          await supabase
+            .from('accounts')
+            .update({ current_balance: brokerCash + investedTotal })
+            .eq('id', formData.brokerAccountId)
+            .eq('user_id', user.id);
+        } catch (syncErr) {
+          console.warn('[Assets] Broker balance sync failed (non-critical):', syncErr);
+        }
+      }
+
+      // Sync da corretora anterior se o investimento mudou de corretora
+      if (formData.category === 'INVESTMENT' && editingAsset) {
+        const oldBrokerId = editingAsset.metadata?.brokerAccountId;
+        if (oldBrokerId && oldBrokerId !== formData.brokerAccountId) {
+          try {
+            const [oldInvestsRes, oldAccRes] = await Promise.all([
+              supabase
+                .from('physical_assets')
+                .select('estimated_value, metadata')
+                .eq('user_id', user.id)
+                .eq('category', 'INVESTMENT')
+                .eq('is_archived', false),
+              supabase
+                .from('accounts')
+                .select('initial_balance')
+                .eq('id', oldBrokerId)
+                .eq('user_id', user.id)
+                .maybeSingle()
+            ]);
+
+            const oldCash = Number(oldAccRes.data?.initial_balance || 0);
+            const oldInvestedTotal = (oldInvestsRes.data || [])
+              .filter((inv: any) =>
+                inv.metadata?.brokerAccountId === oldBrokerId &&
+                inv.metadata?.status !== 'RESGATADO'
+              )
+              .reduce((sum: number, inv: any) => sum + Number(inv.estimated_value || 0), 0);
+
+            await supabase
+              .from('accounts')
+              .update({ current_balance: oldCash + oldInvestedTotal })
+              .eq('id', oldBrokerId)
+              .eq('user_id', user.id);
+          } catch (syncErr) {
+            console.warn('[Assets] Old broker balance sync failed (non-critical):', syncErr);
+          }
+        }
+      }
+
       setShowModal(false);
       setEditingAsset(null);
       resetAssetForm();
@@ -2261,6 +2414,15 @@ const Assets: React.FC = () => {
       permutaItems: [],
       saleDate: new Date().toISOString().split('T')[0],
       saleCashAmount: '',
+      // Investment-specific fields
+      investmentType: 'CDB',
+      interestType: 'CDI',
+      yieldRate: '',
+      payoutType: 'ACUMULADO',
+      brokerAccountId: '',
+      vencimentoDate: '',
+      investmentLiquidity: 'No Vencimento',
+      status: 'ATIVO',
     });
   };
 
@@ -2375,6 +2537,15 @@ const Assets: React.FC = () => {
       ),
       saleDate: meta.saleDate || new Date().toISOString().split('T')[0],
       saleCashAmount: meta.saleCashAmount !== undefined ? String(meta.saleCashAmount) : '',
+      // Investment-specific fields
+      investmentType: meta.investmentType || 'CDB',
+      interestType: meta.interestType || 'CDI',
+      yieldRate: meta.yieldRate || '',
+      payoutType: meta.payoutType || 'ACUMULADO',
+      brokerAccountId: meta.brokerAccountId || '',
+      vencimentoDate: meta.vencimentoDate || '',
+      investmentLiquidity: meta.investmentLiquidity || 'No Vencimento',
+      status: meta.status || 'ATIVO',
     });
     setShowModal(true);
   };
@@ -2399,12 +2570,54 @@ const Assets: React.FC = () => {
     if (!supabase) return;
     if (!window.confirm(`Atenção: Excluir o bem "${asset.name}" removerá permanentemente o ativo. Suas transações vinculadas serão mantidas para integridade histórica. Deseja continuar?`)) return;
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+
       const { error } = await supabase
         .from('physical_assets')
         .delete()
         .eq('id', asset.id);
 
       if (error) throw error;
+
+      // Sync broker balance if this was an investment linked to a broker
+      // current_balance = initial_balance (caixa livre) + soma restante de investimentos
+      if (asset.category === 'INVESTMENT' && asset.metadata?.brokerAccountId && userId) {
+        try {
+          const [remainingRes, brokerAccRes] = await Promise.all([
+            supabase
+              .from('physical_assets')
+              .select('estimated_value, metadata')
+              .eq('user_id', userId)
+              .eq('category', 'INVESTMENT')
+              .eq('is_archived', false)
+              .neq('id', asset.id),
+            supabase
+              .from('accounts')
+              .select('initial_balance')
+              .eq('id', asset.metadata.brokerAccountId)
+              .eq('user_id', userId)
+              .maybeSingle()
+          ]);
+
+          const brokerCash = Number(brokerAccRes.data?.initial_balance || 0);
+          const remainingInvested = (remainingRes.data || [])
+            .filter((inv: any) =>
+              inv.metadata?.brokerAccountId === asset.metadata.brokerAccountId &&
+              inv.metadata?.status !== 'RESGATADO'
+            )
+            .reduce((sum: number, inv: any) => sum + Number(inv.estimated_value || 0), 0);
+
+          await supabase
+            .from('accounts')
+            .update({ current_balance: brokerCash + remainingInvested })
+            .eq('id', asset.metadata.brokerAccountId)
+            .eq('user_id', userId);
+        } catch (syncErr) {
+          console.warn('[Assets] Broker balance sync on delete failed (non-critical):', syncErr);
+        }
+      }
+
       fetchData();
     } catch (err: any) {
       alert(`Erro ao excluir: ${err.message}`);
@@ -4439,57 +4652,186 @@ const Assets: React.FC = () => {
 
             {/* BANK INVESTMENTS (BROKERS) SECTION */}
             <div className="space-y-6 pt-6">
-              <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
-                <TrendingUp size={20} className="text-slate-500" />
-                Sua Carteira de Investimentos Financeiros
-              </h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
+                  <TrendingUp size={20} className="text-slate-500" />
+                  Sua Carteira de Investimentos Financeiros
+                </h3>
+                <button
+                  onClick={() => {
+                    resetAssetForm();
+                    setEditingAsset(null);
+                    setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento' }));
+                    setShowModal(true);
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm hover:bg-indigo-700 transition-colors"
+                >
+                  <Plus size={12} /> Novo Investimento
+                </button>
+              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {brokers.map(broker => {
+                  const brokerInvestments = activePhysicalAssets.filter(
+                    p => p.category === 'INVESTMENT' && p.metadata?.brokerAccountId === broker.id && p.metadata?.status !== 'RESGATADO'
+                  );
+                  const totalInvested = brokerInvestments.reduce((sum, inv) => sum + Number(inv.estimatedValue || 0), 0);
                   const meta = broker.metadata || {};
-                  const isPre = meta.interestType === 'PRE';
-                  const isCupom = meta.payoutType === 'CUPOM';
 
                   return (
-                    <div key={broker.id} className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-8 space-y-6 flex flex-col justify-between">
-                      <div className="space-y-4">
+                    <div key={broker.id} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+                      {/* Broker Header */}
+                      <div className="p-8 space-y-4">
                         <div className="flex justify-between items-start">
-                          <div className="w-10 h-10 bg-slate-100 text-slate-900 rounded-xl flex items-center justify-center">
-                            <TrendingUp size={20} />
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+                              <TrendingUp size={20} />
+                            </div>
+                            <div>
+                              <h4 className="font-black text-slate-900 text-base uppercase tracking-tight">{broker.name}</h4>
+                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{brokerInvestments.length} ativo{brokerInvestments.length !== 1 ? 's' : ''} vinculado{brokerInvestments.length !== 1 ? 's' : ''}</p>
+                            </div>
                           </div>
-                          <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[8px] font-black uppercase tracking-widest border border-indigo-100">
-                            {meta.allocationType || 'LCI/LCA'}
-                          </span>
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-slate-900 text-lg uppercase tracking-tight">{broker.name}</h4>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Saldo Atual: {formatCurrency(broker.balance)}</p>
+                          <div className="text-right">
+                            <p className="text-xs font-black text-emerald-600">{formatCurrency(broker.balance)}</p>
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Saldo Total</p>
+                          </div>
                         </div>
 
-                        <div className="pt-2 text-[11px] text-slate-500 space-y-2">
-                          <div className="flex justify-between">
-                            <span>Tipo Indexação:</span>
-                            <span className="font-bold text-slate-800">{isPre ? 'Pré-fixado' : 'Pós-fixado (CDI)'}</span>
+                        {totalInvested > 0 && (
+                          <div className="flex items-center gap-2 p-3 bg-indigo-50 rounded-xl border border-indigo-100">
+                            <Check size={13} className="text-indigo-500 shrink-0" />
+                            <span className="text-[9px] font-semibold text-indigo-700">
+                              {formatCurrency(totalInvested)} em ativos financeiros vinculados
+                            </span>
                           </div>
-                          <div className="flex justify-between">
-                            <span>Juros Mensais:</span>
-                            <span className="font-bold text-slate-800">{isCupom ? 'Cupom em Conta 🟢' : 'Acumulado Vencimento 🔒'}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Rentabilidade Estimada:</span>
-                            <span className="font-bold text-emerald-600">{meta.yieldRate || '10.5'}% a.a.</span>
-                          </div>
-                        </div>
+                        )}
                       </div>
 
-                      {/* yield benchmark indicator */}
-                      <div className="p-3 bg-slate-50 rounded-xl flex items-center gap-2 border border-slate-100">
-                        <Check size={14} className="text-emerald-500 shrink-0" />
-                        <span className="text-[9px] font-semibold text-slate-500">🟢 Excelente rentabilidade. Ativo superando taxa CDI média do mercado.</span>
+                      {/* Individual Investments List */}
+                      {brokerInvestments.length > 0 && (
+                        <div className="border-t border-slate-50 divide-y divide-slate-50">
+                          {brokerInvestments.map(inv => {
+                            const invMeta = inv.metadata || {};
+                            const investTypeLabel: Record<string, string> = {
+                              'CDB': 'CDB', 'LCI_LCA': 'LCI/LCA', 'TESOURO': 'Tesouro',
+                              'DEBENTURES': 'Debêntures', 'CRI_CRA': 'CRI/CRA',
+                              'ACOES': 'Ações', 'FIIS': 'FIIs', 'FUNDOS': 'Fundos',
+                              'CRIPTO': 'Cripto', 'PREVIDENCIA': 'Previdência', 'OUTROS': 'Outros'
+                            };
+                            const isAcumulado = invMeta.payoutType === 'ACUMULADO';
+                            return (
+                              <div key={inv.id} className="px-8 py-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors group">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
+                                    <p className="text-[9px] text-slate-400 font-medium">
+                                      {investTypeLabel[invMeta.investmentType] || invMeta.investmentType || 'Investimento'}
+                                      {invMeta.yieldRate ? ` · ${invMeta.yieldRate}` : ''}
+                                      {' · '}
+                                      <span className={isAcumulado ? 'text-indigo-500' : 'text-emerald-500'}>
+                                        {isAcumulado ? '🔒 Acumulado' : '💰 Mensal'}
+                                      </span>
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3 shrink-0">
+                                  <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
+                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      onClick={() => openEditAsset(inv)}
+                                      className="text-[8px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest"
+                                    >Editar</button>
+                                    <button
+                                      onClick={() => handleDeleteAsset(inv)}
+                                      className="text-[8px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest"
+                                    >Excluir</button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Add investment to this broker shortcut */}
+                      <div className="px-8 py-4 border-t border-slate-50">
+                        <button
+                          onClick={() => {
+                            resetAssetForm();
+                            setEditingAsset(null);
+                            setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento', brokerAccountId: broker.id }));
+                            setShowModal(true);
+                          }}
+                          className="text-[9px] font-bold text-indigo-500 hover:text-indigo-700 uppercase tracking-widest flex items-center gap-1"
+                        >
+                          <Plus size={10} /> Adicionar Ativo a {broker.name}
+                        </button>
                       </div>
                     </div>
                   );
                 })}
+
+                {/* Card for investments without a broker */}
+                {(() => {
+                  const unboundInvestments = activePhysicalAssets.filter(
+                    p => p.category === 'INVESTMENT' && !p.metadata?.brokerAccountId && p.metadata?.status !== 'RESGATADO'
+                  );
+                  if (unboundInvestments.length === 0 && brokers.length > 0) return null;
+                  return (
+                    <div className="bg-white rounded-[32px] border border-dashed border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                      <div className="p-8 space-y-4">
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center">
+                              <TrendingUp size={20} />
+                            </div>
+                            <div>
+                              <h4 className="font-black text-slate-600 text-base uppercase tracking-tight">Sem Corretora</h4>
+                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{unboundInvestments.length} ativo{unboundInvestments.length !== 1 ? 's' : ''}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      {unboundInvestments.length > 0 && (
+                        <div className="border-t border-slate-50 divide-y divide-slate-50">
+                          {unboundInvestments.map(inv => (
+                            <div key={inv.id} className="px-8 py-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors group">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
+                                  <p className="text-[9px] text-slate-400 font-medium">{inv.metadata?.investmentType || 'Investimento'}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0">
+                                <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => openEditAsset(inv)} className="text-[8px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest">Editar</button>
+                                  <button onClick={() => handleDeleteAsset(inv)} className="text-[8px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest">Excluir</button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="px-8 py-4 border-t border-slate-50">
+                        <button
+                          onClick={() => {
+                            resetAssetForm();
+                            setEditingAsset(null);
+                            setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento', brokerAccountId: '' }));
+                            setShowModal(true);
+                          }}
+                          className="text-[9px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest flex items-center gap-1"
+                        >
+                          <Plus size={10} /> Adicionar Investimento Avulso
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -4661,6 +5003,7 @@ const Assets: React.FC = () => {
                     >
                       <option value="REAL_ESTATE">Imóvel</option>
                       <option value="VEHICLE">Veículo</option>
+                      <option value="INVESTMENT">Investimento Financeiro</option>
                       <option value="OTHER">Outros Bens</option>
                     </select>
                   </div>
@@ -5665,6 +6008,124 @@ const Assets: React.FC = () => {
                     )}
                   </div>
                 )}
+                {/* Investment parameters */}
+                {formData.category === 'INVESTMENT' && (
+                  <div className="space-y-4 pt-2 border-t border-slate-200 animate-in slide-in-from-top-2">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-left">Parâmetros do Investimento</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Corretora Vinculada</label>
+                        <select
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          value={formData.brokerAccountId}
+                          onChange={(e) => setFormData({ ...formData, brokerAccountId: e.target.value })}
+                        >
+                          <option value="">Sem Corretora (Caixa Livre)</option>
+                          {brokers.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Tipo de Ativo / Alocação</label>
+                        <select
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          value={formData.investmentType}
+                          onChange={(e) => setFormData({ ...formData, investmentType: e.target.value })}
+                        >
+                          <option value="CDB">CDB</option>
+                          <option value="LCI_LCA">LCI / LCA</option>
+                          <option value="TESOURO">Tesouro Direto</option>
+                          <option value="DEBENTURES">Debêntures</option>
+                          <option value="CRI_CRA">CRI / CRA</option>
+                          <option value="ACOES">Ações</option>
+                          <option value="FIIS">FIIs (Fundos Imobiliários)</option>
+                          <option value="FUNDOS">Fundos de Investimento</option>
+                          <option value="CRIPTO">Criptoativos</option>
+                          <option value="PREVIDENCIA">Previdência Privada</option>
+                          <option value="OUTROS">Outros</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Indexador</label>
+                        <select
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          value={formData.interestType}
+                          onChange={(e) => setFormData({ ...formData, interestType: e.target.value })}
+                        >
+                          <option value="CDI">Pós-fixado (CDI)</option>
+                          <option value="PRE">Pré-fixado</option>
+                          <option value="IPCA">Inflação (IPCA+)</option>
+                          <option value="OUTROS">Outros</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Taxa Rentabilidade (ex: 102% CDI)</label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          placeholder="Ex: 102% CDI ou 12.5% a.a."
+                          value={formData.yieldRate}
+                          onChange={(e) => setFormData({ ...formData, yieldRate: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Distribuição de Rendimentos</label>
+                        <select
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          value={formData.payoutType}
+                          onChange={(e) => setFormData({ ...formData, payoutType: e.target.value as any })}
+                        >
+                          <option value="ACUMULADO">Acumulado / Reinvestido no Ativo</option>
+                          <option value="MENSAL">Mensal (Cai na Conta / Cupom)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Liquidez</label>
+                        <select
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          value={formData.investmentLiquidity}
+                          onChange={(e) => setFormData({ ...formData, investmentLiquidity: e.target.value })}
+                        >
+                          <option value="Diária">Diária</option>
+                          <option value="No Vencimento">No Vencimento</option>
+                          <option value="D+1">D+1</option>
+                          <option value="D+30">D+30</option>
+                          <option value="Outra">Outra</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Data de Vencimento (Opcional)</label>
+                        <input
+                          type="date"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          value={formData.vencimentoDate}
+                          onChange={(e) => setFormData({ ...formData, vencimentoDate: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Status</label>
+                        <select
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          value={formData.status || 'ATIVO'}
+                          onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                        >
+                          <option value="ATIVO">Ativo</option>
+                          <option value="RESGATADO">Resgatado</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -6011,11 +6472,14 @@ const Assets: React.FC = () => {
       {showExtratoModal && selectedAssetForExtrato && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 flex flex-col max-h-[85vh]">
+            {/* Header - hidden during print */}
             <div className="px-8 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 print:hidden">
               <div className="flex items-center gap-4">
                 <div>
-                  <h3 className="font-black text-slate-900 uppercase tracking-tight text-lg">Extrato e Lançamentos do Card</h3>
-                  <p className="text-xs text-slate-400 font-medium">Bens Físicos: {selectedAssetForExtrato.name}</p>
+                  <h3 className="font-black text-slate-900 uppercase tracking-tight text-lg">
+                    {selectedAssetForExtrato.metadata?.isLoan ? 'Extrato de Empréstimo Concedido' : 'Extrato e Lançamentos do Card'}
+                  </h3>
+                  <p className="text-xs text-slate-400 font-medium">{selectedAssetForExtrato.name}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -6027,10 +6491,111 @@ const Assets: React.FC = () => {
               </div>
             </div>
 
+            {/* Print header - only visible during print */}
+            <div className="hidden print:block p-8 border-b border-slate-200">
+              <h2 className="text-2xl font-black text-slate-900">FinVision – Extrato de Empréstimo Concedido</h2>
+              <p className="text-sm text-slate-600 mt-1">Empréstimo: <strong>{selectedAssetForExtrato.name}</strong></p>
+              {selectedAssetForExtrato.metadata?.loanDebtor && (
+                <p className="text-sm text-slate-600">Devedor: <strong>{selectedAssetForExtrato.metadata.loanDebtor}</strong></p>
+              )}
+              <p className="text-sm text-slate-600">Emitido em: {new Date().toLocaleDateString('pt-BR')}</p>
+            </div>
+
             <div className="p-8 flex-1 overflow-y-auto custom-scrollbar space-y-6">
-              
-              {/* Financial summary within the card extrato */}
-              {(() => {
+
+              {/* LOAN-specific amortization summary panel */}
+              {selectedAssetForExtrato.metadata?.isLoan && (() => {
+                const meta = selectedAssetForExtrato.metadata || {};
+                const principal = Number(meta.loanPrincipal) || 0;
+                const loanLinkedTxs = getAssetLinkedTransactions(selectedAssetForExtrato.id)
+                  .filter(t => t.type === 'INCOME')
+                  .sort((a, b) => a.date.localeCompare(b.date));
+
+                let runningBalance = principal;
+                const interestType = meta.loanInterestType || 'SIMPLE';
+                const monthlyRate = (Number(meta.loanInterestRate) || 0) / 100;
+
+                // Build amortization schedule from paid receipts
+                const schedule = loanLinkedTxs.map((tx, idx) => {
+                  const interest = interestType === 'COMPOUND'
+                    ? runningBalance * monthlyRate
+                    : principal * monthlyRate;
+                  const totalReceived = Number(tx.amount) || 0;
+                  const interestPaid = Math.min(interest, totalReceived);
+                  const principalPaid = Math.max(0, totalReceived - interestPaid);
+                  runningBalance = Math.max(0, runningBalance - principalPaid);
+                  return { tx, interest: interestPaid, principalPaid, balance: runningBalance, idx };
+                });
+
+                const totalReceived = loanLinkedTxs.reduce((s, t) => s + Number(t.amount), 0);
+                const currentBalance = Math.max(0, runningBalance);
+                const progressPct = principal > 0 ? Math.min(100, Math.round((totalReceived / principal) * 100)) : 0;
+
+                return (
+                  <div className="space-y-4">
+                    {/* Summary Cards */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+                        <p className="text-[8px] font-black uppercase text-emerald-500 tracking-widest">Principal</p>
+                        <p className="text-sm font-black text-emerald-700">{formatCurrency(principal)}</p>
+                      </div>
+                      <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
+                        <p className="text-[8px] font-black uppercase text-amber-500 tracking-widest">Saldo Devedor</p>
+                        <p className="text-sm font-black text-amber-700">{formatCurrency(currentBalance)}</p>
+                      </div>
+                      <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
+                        <p className="text-[8px] font-black uppercase text-indigo-500 tracking-widest">Recebido</p>
+                        <p className="text-sm font-black text-indigo-700">{formatCurrency(totalReceived)}</p>
+                      </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-[9px] font-black uppercase text-slate-400">
+                        <span>Retorno do Principal</span>
+                        <span>{progressPct}% quitado</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                        <div className="bg-emerald-500 h-full rounded-full transition-all" style={{ width: `${progressPct}%` }} />
+                      </div>
+                    </div>
+
+                    {/* Amortization table */}
+                    {schedule.length > 0 && (
+                      <div>
+                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-2">Tabela de Amortização</p>
+                        <div className="rounded-xl border border-slate-200 overflow-hidden">
+                          <table className="w-full text-[10px] font-medium">
+                            <thead className="bg-slate-50">
+                              <tr>
+                                <th className="text-left px-3 py-2 font-black uppercase text-slate-400 tracking-wider">Data</th>
+                                <th className="text-right px-3 py-2 font-black uppercase text-slate-400 tracking-wider">Total Recebido</th>
+                                <th className="text-right px-3 py-2 font-black uppercase text-slate-400 tracking-wider">Juros</th>
+                                <th className="text-right px-3 py-2 font-black uppercase text-slate-400 tracking-wider">Principal</th>
+                                <th className="text-right px-3 py-2 font-black uppercase text-slate-400 tracking-wider">Saldo Rest.</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {schedule.map(({ tx, interest, principalPaid, balance }) => (
+                                <tr key={tx.id} className="hover:bg-slate-50/50">
+                                  <td className="px-3 py-2 text-slate-600">{new Date(tx.date).toLocaleDateString('pt-BR')}</td>
+                                  <td className="px-3 py-2 text-right font-bold text-emerald-600">{formatCurrency(Number(tx.amount))}</td>
+                                  <td className="px-3 py-2 text-right text-amber-600">{formatCurrency(interest)}</td>
+                                  <td className="px-3 py-2 text-right text-indigo-600">{formatCurrency(principalPaid)}</td>
+                                  <td className="px-3 py-2 text-right font-bold text-slate-800">{formatCurrency(balance)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Financial summary within the card extrato (non-loan) */}
+              {!selectedAssetForExtrato.metadata?.isLoan && (() => {
                 const info = getAssetFinancialHistory(selectedAssetForExtrato);
                 return (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-200">
@@ -6054,20 +6619,22 @@ const Assets: React.FC = () => {
 
               {/* Transactions Ledger List */}
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">Histórico de Lançamentos</h4>
+                <div className="flex justify-between items-center print:hidden">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    {selectedAssetForExtrato.metadata?.isLoan ? 'Recebimentos Registrados' : 'Histórico de Lançamentos'}
+                  </h4>
                   {!isAddingExtratoTx && (
                     <button
                       onClick={() => setIsAddingExtratoTx(true)}
                       className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-widest"
                     >
-                      + Novo Lançamento
+                      {selectedAssetForExtrato.metadata?.isLoan ? '+ Lançar Recebimento' : '+ Novo Lançamento'}
                     </button>
                   )}
                 </div>
 
                 {isAddingExtratoTx && (
-                  <form onSubmit={handleSaveCardTransaction} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-in slide-in-from-top-2">
+                  <form onSubmit={handleSaveCardTransaction} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-in slide-in-from-top-2 print:hidden">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Descrição</label>
@@ -6417,7 +6984,10 @@ const Assets: React.FC = () => {
                   <button
                     onClick={() => {
                       setShowCategorySelector(false);
-                      navigate('/accounts');
+                      resetAssetForm();
+                      setEditingAsset(null);
+                      setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento' }));
+                      setShowModal(true);
                     }}
                     className="flex-1 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-[9px] font-black uppercase text-center tracking-wider"
                   >
