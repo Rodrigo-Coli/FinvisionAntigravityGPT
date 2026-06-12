@@ -2277,7 +2277,7 @@ const Assets: React.FC = () => {
     let finInstCount = '';
     let finDueDay = '10';
     let finName = `Financiamento: ${asset.name}`;
-    let devBal = '';
+    let devBal = meta.deliveryBalance ? String(meta.deliveryBalance) : '';
 
     if (linkedLiab) {
       if (linkedLiab.type === 'MORTGAGE') {
@@ -2299,6 +2299,7 @@ const Assets: React.FC = () => {
       consAllocRatio = String(meta.consortiumAllocationRatio || 100);
     } else if (meta.financingType === 'A_DEFINIR' || meta.deliveryPaymentMethod === 'A_DEFINIR') {
       devPayMethod = 'A_DEFINIR';
+      devBal = meta.deliveryBalance ? String(meta.deliveryBalance) : '';
     }
 
     setFormData({
@@ -5466,6 +5467,21 @@ const Assets: React.FC = () => {
                           <option value="A_DEFINIR">A Definir (Saldo na Entrega)</option>
                         </select>
                       </div>
+
+                      {formData.deliveryPaymentMethod === 'A_DEFINIR' && (
+                        <div className="space-y-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl animate-in slide-in-from-top-2">
+                          <div>
+                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Saldo Estimado a Definir (R$)</label>
+                            <input
+                              type="number"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none"
+                              value={formData.deliveryBalance}
+                              onChange={(e) => setFormData({ ...formData, deliveryBalance: e.target.value })}
+                              placeholder="0.00"
+                            />
+                          </div>
+                        </div>
+                      )}
 
                         {formData.deliveryPaymentMethod === 'CONSORCIO' && (
                           <div className="space-y-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl animate-in slide-in-from-top-2">
