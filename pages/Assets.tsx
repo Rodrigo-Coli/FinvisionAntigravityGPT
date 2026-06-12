@@ -3011,7 +3011,30 @@ const Assets: React.FC = () => {
 
     const plantaValue = plantaAssets.reduce((sum, p) => sum + p.estimatedValue, 0);
     const plantaLiabs = activeLiab.filter(l => plantaAssets.some(p => isLiabilityLinkedToAsset(l, p)));
-    const plantaInstallments = plantaLiabs.reduce((sum, l) => sum + (l.installmentAmount || 0), 0);
+    const plantaInstallments = plantaAssets.reduce((sum, p) => {
+      const meta = p.metadata || {};
+      const assetTxs = linkedTransactionsMap.get(p.id) || [];
+      const nextUnpaidInstallment = assetTxs
+        .filter(t => t.metadata?.property_tx_type === 'CONSTRUCTOR_INSTALLMENT' && !t.isPaid)
+        .sort((a, b) => a.date.localeCompare(b.date))[0];
+      
+      let constructorInstallment = 0;
+      if (nextUnpaidInstallment) {
+        constructorInstallment = nextUnpaidInstallment.amount;
+      } else {
+        const constrAmt = Number(meta.constructorAmount) || 0;
+        const constrN = Number(meta.constructorInstallmentsCount) || 1;
+        constructorInstallment = constrAmt > 0 && constrN > 0 ? (constrAmt / constrN) : 0;
+      }
+
+      const linkedLiab = activeLiab.find(l => l.linkedAssetId === p.id);
+      const allocationRatio = meta.consortiumAllocationRatio !== undefined ? (Number(meta.consortiumAllocationRatio) / 100) : 1;
+      const financingInstallment = linkedLiab 
+        ? (Number(linkedLiab.installmentAmount) * allocationRatio) 
+        : (Number(meta.financingInstallment) || 0);
+
+      return sum + constructorInstallment + financingInstallment;
+    }, 0);
     
     // Sum of amortized amount from liability total - remaining balance
     const plantaLiabAmortized = plantaLiabs.reduce((sum, l) => sum + (l.totalAmount - l.remainingBalance), 0);
@@ -3027,7 +3050,8 @@ const Assets: React.FC = () => {
       !t.description.toLowerCase().includes('condominio') && 
       !t.description.toLowerCase().includes('iptu')
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
-    const plantaAmortizationPaid = plantaLiabAmortized > 0 ? plantaLiabAmortized : plantaTxAmortized;
+    const plantaHistoricalPaid = plantaAssets.reduce((sum, p) => sum + (Number(p.metadata?.historicalPaidAmount) || 0), 0);
+    const plantaAmortizationPaid = plantaHistoricalPaid + (plantaLiabAmortized > 0 ? plantaLiabAmortized : plantaTxAmortized);
 
     const plantaPaidTotal = plantaAmortizationPaid;
     const plantaDeliveryBalance = plantaAssets.reduce((sum, p) => sum + (Number(p.metadata?.deliveryBalance) || 0), 0);
@@ -3066,7 +3090,8 @@ const Assets: React.FC = () => {
       !t.description.toLowerCase().includes('condominio') && 
       !t.description.toLowerCase().includes('iptu')
     ).reduce((sum, t) => sum + (t.paidAmount || t.amount), 0);
-    const prontoAmortizationPaid = prontoLiabAmortized > 0 ? prontoLiabAmortized : prontoTxAmortized;
+    const prontoHistoricalPaid = prontoAssets.reduce((sum, p) => sum + (Number(p.metadata?.historicalPaidAmount) || 0), 0);
+    const prontoAmortizationPaid = prontoHistoricalPaid + (prontoLiabAmortized > 0 ? prontoLiabAmortized : prontoTxAmortized);
 
     const prontoRemainingToPay = prontoLiabs.reduce((sum, l) => sum + l.remainingBalance, 0);
 
@@ -3960,6 +3985,16 @@ const Assets: React.FC = () => {
                               <span>% de correção atual:</span>
                               <span className="text-brand-600">{meta.constructorIndexRate !== undefined ? `${meta.constructorIndexRate}% a.m.` : '0.0% a.m.'}</span>
                             </div>
+                            <div className="flex justify-between border-t border-dashed border-slate-100 pt-2 font-semibold text-slate-600">
+                              <span>Saldo a Financiar (Entrega):</span>
+                              <span className="font-bold text-slate-800">{formatCurrency(Number(meta.deliveryBalance) || 0)}</span>
+                            </div>
+                            {(Number(meta.financingInstallment) > 0) && (
+                              <div className="flex justify-between font-semibold text-slate-600">
+                                <span>Parcela a Financiar (Est.):</span>
+                                <span className="font-bold text-slate-800">{formatCurrency(Number(meta.financingInstallment) || 0)}</span>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="space-y-2.5 pt-2 text-[10px] sm:text-[11px] text-slate-500">

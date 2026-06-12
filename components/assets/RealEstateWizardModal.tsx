@@ -220,6 +220,25 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
       const initialPurchase = (parseFloat(estimatedValue) || 0);
 
       // 1. Create the Property asset in physical_assets
+      const fundingAmount = parseFloat(financingAmount) || 0;
+      let firstInstallmentVal = 0;
+      if (financingOption === 'A' && fundingAmount > 0) {
+        const n = parseInt(financingInstallmentsCount, 10) || 12;
+        const monthlyRate = (parseFloat(financingInterestRate) || 0) / 100;
+        const reajusteRate = (parseFloat(financingIndexRate) || 0) / 100;
+        if (amortizationType === 'SAC') {
+          const interest = fundingAmount * monthlyRate;
+          const sacAmortization = fundingAmount / n;
+          firstInstallmentVal = (sacAmortization + interest) * (1 + reajusteRate);
+        } else {
+          if (monthlyRate === 0) {
+            firstInstallmentVal = (fundingAmount / n) * (1 + reajusteRate);
+          } else {
+            firstInstallmentVal = (fundingAmount * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1)) * (1 + reajusteRate);
+          }
+        }
+      }
+
       const assetMetadata: Record<string, any> = {
         propertyStage,
         purpose: 'uso',
@@ -229,7 +248,14 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         consortiumAllocationRatio: financingOption === 'B' && selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined,
         financingType: financingOption === 'B' && selectedConsortiumId ? 'CONSORCIO' : (financingOption === 'C' ? 'A_DEFINIR' : 'FINANCING_SCHEDULE'),
         historicalPaidAmount: parseFloat(historicalPaidAmount) || 0,
-        historicalRentReceived: propertyStage === 'PLANTA' ? 0 : (parseFloat(historicalRentReceived) || 0)
+        historicalRentReceived: propertyStage === 'PLANTA' ? 0 : (parseFloat(historicalRentReceived) || 0),
+        deliveryPaymentMethod: financingOption === 'B' ? 'CONSORCIO' : (financingOption === 'C' ? 'A_DEFINIR' : 'FINANCIAMENTO'),
+        deliveryBalance: fundingAmount,
+        financingInstallment: firstInstallmentVal,
+        financingInstallmentsCount: parseInt(financingInstallmentsCount, 10) || 0,
+        financingOriginalTotal: fundingAmount,
+        financingDueDay: financingStartDate ? new Date(financingStartDate + 'T00:00:00').getDate().toString() : '10',
+        financingName: `Financiamento: ${name}`
       };
 
       if (propertyStage === 'PLANTA') {
@@ -402,7 +428,6 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
       }
 
       // 5. Add Financing / Amortization Schedule (if not paid by consortium or defined)
-      const fundingAmount = parseFloat(financingAmount) || 0;
       if (financingOption !== 'C' && fundingAmount > 0 && financingStartDate) {
         if (financingOption === 'B' && selectedConsortiumId) {
           // A consortium handles this: Link this consortium to the property
