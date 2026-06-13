@@ -7,6 +7,8 @@ import {
   TrendingUp,
   Briefcase,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   PieChart,
   Wallet,
   Building2,
@@ -208,6 +210,11 @@ const Assets: React.FC = () => {
   const [selectedAssetForExtrato, setSelectedAssetForExtrato] = useState<PhysicalAsset | null>(null);
   const [showExtratoModal, setShowExtratoModal] = useState(false);
   const [isAddingExtratoTx, setIsAddingExtratoTx] = useState(false);
+  const [expandedAssetIR, setExpandedAssetIR] = useState<Record<string, boolean>>({});
+  const toggleExpandIR = (assetId: string) => {
+    setExpandedAssetIR(prev => ({ ...prev, [assetId]: !prev[assetId] }));
+  };
+
 
   const [suggestedNames, setSuggestedNames] = useState<string[]>(() => {
     const saved = localStorage.getItem('finvision_other_asset_suggestions');
@@ -4994,11 +5001,11 @@ const Assets: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {brokers.map(broker => {
-                  const brokerInvestments = activePhysicalAssets.filter(
+                {dynamicBrokers.map(broker => {
+                  const brokerInvestments = enrichedPhysicalAssets.filter(
                     p => p.category === 'INVESTMENT' && p.metadata?.brokerAccountId === broker.id && p.metadata?.status !== 'RESGATADO'
                   );
-                  const totalInvested = brokerInvestments.reduce((sum, inv) => sum + Number(inv.estimatedValue || 0), 0);
+                  const totalInvested = brokerInvestments.reduce((sum, inv) => sum + Number(inv.netValue || 0), 0);
                   const meta = broker.metadata || {};
 
                   return (
@@ -5025,7 +5032,7 @@ const Assets: React.FC = () => {
                           <div className="flex items-center gap-2 p-3 bg-indigo-50 rounded-xl border border-indigo-100">
                             <Check size={13} className="text-indigo-500 shrink-0" />
                             <span className="text-[9px] font-semibold text-indigo-700">
-                              {formatCurrency(totalInvested)} em ativos financeiros vinculados
+                              {formatCurrency(totalInvested)} em ativos líquidos (pós-impostos)
                             </span>
                           </div>
                         )}
@@ -5043,35 +5050,92 @@ const Assets: React.FC = () => {
                               'CRIPTO': 'Cripto', 'PREVIDENCIA': 'Previdência', 'OUTROS': 'Outros'
                             };
                             const isAcumulado = invMeta.payoutType === 'ACUMULADO';
+                            const isExpanded = !!expandedAssetIR[inv.id];
+                            const purchase = Number(invMeta.purchaseValue) || Number(invMeta.initialInvestmentAmount) || Number(inv.estimatedValue || 0);
+                            const profit = Math.max(0, Number(inv.estimatedValue || 0) - purchase);
+                            const isExempt = !!invMeta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'FIIS'].includes(invMeta.investmentType);
+                            const taxAmt = inv.taxAmount || 0;
+                            const taxRatePercent = (inv.taxRate || 0) * 100;
+                            const days = inv.daysElapsed || 0;
+                            const netVal = inv.netValue || Number(inv.estimatedValue || 0);
+
                             return (
-                              <div key={inv.id} className="px-8 py-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors group">
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <div className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
-                                    <p className="text-[9px] text-slate-400 font-medium">
-                                      {investTypeLabel[invMeta.investmentType] || invMeta.investmentType || 'Investimento'}
-                                      {invMeta.yieldRate ? ` · ${invMeta.yieldRate}` : ''}
-                                      {' · '}
-                                      <span className={isAcumulado ? 'text-indigo-500' : 'text-emerald-500'}>
-                                        {isAcumulado ? '🔒 Acumulado' : '💰 Mensal'}
-                                      </span>
-                                    </p>
+                              <div key={inv.id} className="px-8 py-4 flex flex-col hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => toggleExpandIR(inv.id)}>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
+                                    <div className="min-w-0 text-left">
+                                      <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
+                                      <p className="text-[9px] text-slate-400 font-medium">
+                                        {investTypeLabel[invMeta.investmentType] || invMeta.investmentType || 'Investimento'}
+                                        {invMeta.yieldRate ? ` · ${invMeta.yieldRate}` : ''}
+                                        {' · '}
+                                        <span className={isAcumulado ? 'text-indigo-500' : 'text-emerald-500'}>
+                                          {isAcumulado ? '🔒 Acumulado' : '💰 Mensal'}
+                                        </span>
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-3 shrink-0">
+                                    <div className="text-right">
+                                      <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
+                                      {isExpanded ? (
+                                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Ocultar IR <ChevronUp size={8} /></span>
+                                      ) : (
+                                        <span className="text-[8px] text-indigo-500 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Detalhar IR <ChevronDown size={8} /></span>
+                                      )}
+                                    </div>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        onClick={() => openEditAsset(inv)}
+                                        className="text-[8px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest"
+                                      >Editar</button>
+                                      <button
+                                        onClick={() => handleDeleteAsset(inv)}
+                                        className="text-[8px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest"
+                                      >Excluir</button>
+                                    </div>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-3 shrink-0">
-                                  <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
-                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                      onClick={() => openEditAsset(inv)}
-                                      className="text-[8px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest"
-                                    >Editar</button>
-                                    <button
-                                      onClick={() => handleDeleteAsset(inv)}
-                                      className="text-[8px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest"
-                                    >Excluir</button>
+
+                                {isExpanded && (
+                                  <div className="mt-3 pl-5 pr-2 py-3 bg-slate-50 rounded-2xl space-y-1.5 text-[10px] text-slate-500 font-semibold border border-slate-100/50 text-left animate-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex justify-between">
+                                      <span>Valor Bruto (Atual):</span>
+                                      <span className="font-bold text-slate-700">{formatCurrency(Number(inv.estimatedValue || 0))}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>Valor Aplicado (Custo):</span>
+                                      <span className="font-bold text-slate-700">{formatCurrency(purchase)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>Rendimento Bruto:</span>
+                                      <span className="font-bold text-emerald-600">+{formatCurrency(profit)}</span>
+                                    </div>
+                                    {!isExempt && profit > 0 && (
+                                      <>
+                                        <div className="flex justify-between">
+                                          <span>Prazo de Custódia:</span>
+                                          <span className="font-bold text-slate-700">{days} dias (Alíquota de {taxRatePercent}%)</span>
+                                        </div>
+                                        <div className="flex justify-between text-rose-600 font-bold">
+                                          <span>Imposto de Renda Estimado:</span>
+                                          <span className="font-black">- {formatCurrency(taxAmt)} <span className="text-[8px] font-normal text-slate-400">(20% a 22.5% sobre lucro)</span></span>
+                                        </div>
+                                      </>
+                                    )}
+                                    {isExempt && (
+                                      <div className="flex justify-between text-emerald-600 font-bold">
+                                        <span>Imposto de Renda:</span>
+                                        <span className="font-black">Isento de IR</span>
+                                      </div>
+                                    )}
+                                    <div className="flex justify-between border-t border-slate-200/60 pt-1.5 mt-1 text-slate-700 font-bold">
+                                      <span>Valor Líquido de Resgate:</span>
+                                      <span className="text-emerald-600 font-black">{formatCurrency(netVal)}</span>
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </div>
                             );
                           })}
@@ -5098,7 +5162,7 @@ const Assets: React.FC = () => {
 
                 {/* Card for investments without a broker */}
                 {(() => {
-                  const unboundInvestments = activePhysicalAssets.filter(
+                  const unboundInvestments = enrichedPhysicalAssets.filter(
                     p => p.category === 'INVESTMENT' && !p.metadata?.brokerAccountId && p.metadata?.status !== 'RESGATADO'
                   );
                   if (unboundInvestments.length === 0 && brokers.length > 0) return null;
@@ -5119,24 +5183,98 @@ const Assets: React.FC = () => {
                       </div>
                       {unboundInvestments.length > 0 && (
                         <div className="border-t border-slate-50 divide-y divide-slate-50">
-                          {unboundInvestments.map(inv => (
-                            <div key={inv.id} className="px-8 py-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors group">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />
-                                <div className="min-w-0">
-                                  <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
-                                  <p className="text-[9px] text-slate-400 font-medium">{inv.metadata?.investmentType || 'Investimento'}</p>
+                          {unboundInvestments.map(inv => {
+                            const invMeta = inv.metadata || {};
+                            const investTypeLabel: Record<string, string> = {
+                              'CDB': 'CDB', 'LCI_LCA': 'LCI/LCA', 'TESOURO': 'Tesouro',
+                              'DEBENTURES': 'Debêntures', 'CRI_CRA': 'CRI/CRA',
+                              'ACOES': 'Ações', 'FIIS': 'FIIs', 'FUNDOS': 'Fundos',
+                              'CRIPTO': 'Cripto', 'PREVIDENCIA': 'Previdência', 'OUTROS': 'Outros'
+                            };
+                            const isAcumulado = invMeta.payoutType === 'ACUMULADO';
+                            const isExpanded = !!expandedAssetIR[inv.id];
+                            const purchase = Number(invMeta.purchaseValue) || Number(invMeta.initialInvestmentAmount) || Number(inv.estimatedValue || 0);
+                            const profit = Math.max(0, Number(inv.estimatedValue || 0) - purchase);
+                            const isExempt = !!invMeta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'FIIS'].includes(invMeta.investmentType);
+                            const taxAmt = inv.taxAmount || 0;
+                            const taxRatePercent = (inv.taxRate || 0) * 100;
+                            const days = inv.daysElapsed || 0;
+                            const netVal = inv.netValue || Number(inv.estimatedValue || 0);
+
+                            return (
+                              <div key={inv.id} className="px-8 py-4 flex flex-col hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => toggleExpandIR(inv.id)}>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />
+                                    <div className="min-w-0 text-left">
+                                      <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
+                                      <p className="text-[9px] text-slate-400 font-medium">
+                                        {investTypeLabel[invMeta.investmentType] || invMeta.investmentType || 'Investimento'}
+                                        {invMeta.yieldRate ? ` · ${invMeta.yieldRate}` : ''}
+                                        {' · '}
+                                        <span className={isAcumulado ? 'text-indigo-500' : 'text-emerald-500'}>
+                                          {isAcumulado ? '🔒 Acumulado' : '💰 Mensal'}
+                                        </span>
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-3 shrink-0">
+                                    <div className="text-right">
+                                      <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
+                                      {isExpanded ? (
+                                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Ocultar IR <ChevronUp size={8} /></span>
+                                      ) : (
+                                        <span className="text-[8px] text-indigo-500 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Detalhar IR <ChevronDown size={8} /></span>
+                                      )}
+                                    </div>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                                      <button onClick={() => openEditAsset(inv)} className="text-[8px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest">Editar</button>
+                                      <button onClick={() => handleDeleteAsset(inv)} className="text-[8px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest">Excluir</button>
+                                    </div>
+                                  </div>
                                 </div>
+
+                                {isExpanded && (
+                                  <div className="mt-3 pl-5 pr-2 py-3 bg-slate-50 rounded-2xl space-y-1.5 text-[10px] text-slate-500 font-semibold border border-slate-100/50 text-left animate-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex justify-between">
+                                      <span>Valor Bruto (Atual):</span>
+                                      <span className="font-bold text-slate-700">{formatCurrency(Number(inv.estimatedValue || 0))}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>Valor Aplicado (Custo):</span>
+                                      <span className="font-bold text-slate-700">{formatCurrency(purchase)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>Rendimento Bruto:</span>
+                                      <span className="font-bold text-emerald-600">+{formatCurrency(profit)}</span>
+                                    </div>
+                                    {!isExempt && profit > 0 && (
+                                      <>
+                                        <div className="flex justify-between">
+                                          <span>Prazo de Custódia:</span>
+                                          <span className="font-bold text-slate-700">{days} dias (Alíquota de {taxRatePercent}%)</span>
+                                        </div>
+                                        <div className="flex justify-between text-rose-600 font-bold">
+                                          <span>Imposto de Renda Estimado:</span>
+                                          <span className="font-black">- {formatCurrency(taxAmt)} <span className="text-[8px] font-normal text-slate-400">(20% a 22.5% sobre lucro)</span></span>
+                                        </div>
+                                      </>
+                                    )}
+                                    {isExempt && (
+                                      <div className="flex justify-between text-emerald-600 font-bold">
+                                        <span>Imposto de Renda:</span>
+                                        <span className="font-black">Isento de IR</span>
+                                      </div>
+                                    )}
+                                    <div className="flex justify-between border-t border-slate-200/60 pt-1.5 mt-1 text-slate-700 font-bold">
+                                      <span>Valor Líquido de Resgate:</span>
+                                      <span className="text-emerald-600 font-black">{formatCurrency(netVal)}</span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex items-center gap-3 shrink-0">
-                                <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button onClick={() => openEditAsset(inv)} className="text-[8px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest">Editar</button>
-                                  <button onClick={() => handleDeleteAsset(inv)} className="text-[8px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest">Excluir</button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                       <div className="px-8 py-4 border-t border-slate-50">
