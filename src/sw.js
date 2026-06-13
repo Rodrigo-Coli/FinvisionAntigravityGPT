@@ -51,6 +51,22 @@ self.addEventListener('fetch', (event) => {
   if (url.hostname.includes('supabase.co')) return;
   if (url.hostname.includes('googleapis.com')) return;
 
+  // Força network-first para version.json e changelog.json para permitir verificação de versão sem cache
+  if (url.pathname.endsWith('version.json') || url.pathname.endsWith('changelog.json')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open('finvision-dynamic-v8').then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   // SPA fallback: retorna index.html para navegação
   if (event.request.mode === 'navigate') {
     event.respondWith(
