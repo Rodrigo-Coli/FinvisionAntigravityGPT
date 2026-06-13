@@ -38,8 +38,7 @@ import {
   ArrowRightLeft,
   Sparkles,
   FileSpreadsheet,
-  Printer,
-  HandCoins
+  Printer
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { PhysicalAsset, InvestmentBroker, Liability, Transaction } from '../types';
@@ -50,7 +49,7 @@ import { DateUtils } from '../lib/dateUtils';
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities'>('overview');
+  const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'liabilities'>('overview');
   const [inccRate, setInccRate] = useState<number | null>(null);
   const [loadingIncc, setLoadingIncc] = useState<boolean>(false);
 
@@ -193,13 +192,8 @@ const Assets: React.FC = () => {
   // Active subtabs
   const [activeSubTab, setActiveSubTab] = useState<'portfolio' | 'simulator'>('portfolio');
 
-  // Liquidity and Maturity filters for investments
-  const [liquidityFilter, setLiquidityFilter] = useState<string>('ALL');
-  const [maturityFilter, setMaturityFilter] = useState<string>('ALL');
-
   // Modals & Wizards States
   const [showModal, setShowModal] = useState(false);
-  const [showLoanModal, setShowLoanModal] = useState(false);
   const [showWizardModal, setShowWizardModal] = useState(false);
   const [showLiabilityModal, setShowLiabilityModal] = useState(false);
   const [showRealEstateManageModal, setShowRealEstateManageModal] = useState(false);
@@ -219,20 +213,6 @@ const Assets: React.FC = () => {
 
   // Form States
   const [editingAsset, setEditingAsset] = useState<PhysicalAsset | null>(null);
-  const [loanFormData, setLoanFormData] = useState({
-    id: '',
-    name: '',
-    loanDebtor: '',
-    loanPrincipal: '',
-    loanInterestRate: '',
-    loanFixedValue: '',
-    loanDueDate: '',
-    loanInterestType: 'SIMPLE' as 'SIMPLE' | 'COMPOUND',
-    acquisitionDate: new Date().toISOString().split('T')[0],
-    description: '',
-    status: 'ATIVO'
-  });
-
   const [formData, setFormData] = useState({
     name: '',
     category: 'REAL_ESTATE' as 'REAL_ESTATE' | 'VEHICLE' | 'OTHER' | 'INVESTMENT',
@@ -314,7 +294,6 @@ const Assets: React.FC = () => {
     vencimentoDate: '',
     investmentLiquidity: 'No Vencimento',
     status: 'ATIVO' as 'ATIVO' | 'RESGATADO',
-    isTaxExempt: false,
   });
 
   const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
@@ -848,159 +827,6 @@ const Assets: React.FC = () => {
       totalExtraExpenses,
       totalIncome
     };
-  };
-
-  const getFilteredInvestments = (investments: PhysicalAsset[]) => {
-    return investments.filter(inv => {
-      const meta = inv.metadata || {};
-      
-      // 1. Liquidity Filter
-      if (liquidityFilter !== 'ALL') {
-        const liq = meta.investmentLiquidity || '';
-        if (liquidityFilter === 'DIARIA' && liq !== 'Diária') return false;
-        if (liquidityFilter === 'D+1' && liq !== 'D+1') return false;
-        if (liquidityFilter === 'D+30' && liq !== 'D+30') return false;
-        if (liquidityFilter === 'VENCIMENTO' && liq !== 'No Vencimento') return false;
-      }
-
-      // 2. Maturity Filter
-      if (maturityFilter !== 'ALL') {
-        const vDateStr = meta.vencimentoDate || '';
-        if (maturityFilter === 'SEM_DATA') {
-          if (vDateStr) return false;
-        } else {
-          if (!vDateStr) return false;
-          const today = new Date();
-          today.setHours(0,0,0,0);
-          const venc = new Date(vDateStr);
-          venc.setHours(0,0,0,0);
-          const diffTime = venc.getTime() - today.getTime();
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-          if (maturityFilter === 'VENCIDOS' && diffDays >= 0) return false;
-          if (maturityFilter === 'CURTO_PRAZO' && (diffDays < 0 || diffDays > 180)) return false;
-          if (maturityFilter === 'LONGO_PRAZO' && (diffDays <= 180)) return false;
-        }
-      }
-
-      return true;
-    });
-  };
-
-  const calculateIRProvisions = (inv: PhysicalAsset) => {
-    const meta = inv.metadata || {};
-    const acqDateStr = inv.acquisitionDate || '';
-    if (!acqDateStr || meta.isTaxExempt) {
-      return { days: 0, rate: 0, tax: 0, netValue: Number(inv.estimatedValue || 0) };
-    }
-
-    const acqDate = new Date(acqDateStr);
-    acqDate.setHours(0,0,0,0);
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    const diffTime = today.getTime() - acqDate.getTime();
-    const days = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-
-    let rate = 0.225; // 22.5%
-    if (days > 720) {
-      rate = 0.15; // 15%
-    } else if (days > 360) {
-      rate = 0.175; // 17.5%
-    } else if (days > 180) {
-      rate = 0.20; // 20%
-    }
-
-    const grossVal = Number(inv.estimatedValue || 0);
-    const purchaseVal = Number(meta.purchaseValue) || Number(meta.initialInvestmentAmount) || grossVal;
-    const profit = Math.max(0, grossVal - purchaseVal);
-    const tax = profit * rate;
-    const netValue = grossVal - tax;
-
-    return { days, rate: rate * 100, tax, netValue };
-  };
-
-  const getInvestmentSubcategoryBreakdown = () => {
-    const currentMonthStr = new Date().toISOString().substring(0, 7);
-    const investmentTxs = transactions.filter(t => {
-      const isCurrentMonth = t.date && t.date.substring(0, 7) === currentMonthStr;
-      if (!isCurrentMonth) return false;
-      const cat = (t.category || '').toLowerCase();
-      return cat.includes('investimento') || cat.includes('empréstimo');
-    });
-
-    const categoriesMap: Record<string, { label: string; amount: number; color: string; tooltip: string }> = {
-      'Aplicações / Aportes': {
-        label: 'Aplicações / Aportes',
-        amount: 0,
-        color: 'bg-indigo-500',
-        tooltip: 'Aportes destinados a novos títulos ou compra de cotas.'
-      },
-      'Rendimentos Mensais': {
-        label: 'Rendimentos Mensais (Liquidez)',
-        amount: 0,
-        color: 'bg-emerald-500',
-        tooltip: 'Dividendos, Juros sobre Capital Próprio ou cupons creditados diretamente no caixa.'
-      },
-      'Rendimentos Acumulados': {
-        label: 'Rendimentos Acumulados',
-        amount: 0,
-        color: 'bg-teal-500',
-        tooltip: 'Juros compostos ou ganhos de capital reinvestidos diretamente no próprio ativo.'
-      },
-      'Resgates Antecipados': {
-        label: 'Resgates Antecipados',
-        amount: 0,
-        color: 'bg-amber-500',
-        tooltip: 'Resgates ou retiradas parciais antes da data original de vencimento do título.'
-      },
-      'Resgates no Vencimento': {
-        label: 'Resgates no Vencimento',
-        amount: 0,
-        color: 'bg-sky-500',
-        tooltip: 'Resgates ou retiradas totais efetuados na data final de vencimento do título.'
-      },
-      'Imposto de Renda Retido': {
-        label: 'Imposto de Renda Retido',
-        amount: 0,
-        color: 'bg-rose-500',
-        tooltip: 'Dedução de Imposto de Renda (IR) retido na fonte incidente sobre os rendimentos.'
-      },
-      'Outros Débitos / Perdas': {
-        label: 'Outros Débitos / Perdas',
-        amount: 0,
-        color: 'bg-slate-400',
-        tooltip: 'Ajustes negativos de marcação a mercado, taxas ou perdas em renda variável.'
-      }
-    };
-
-    investmentTxs.forEach(t => {
-      const sub = (t.subcategory || '').toLowerCase();
-      const type = t.type;
-      const amt = Number(t.amount || 0);
-
-      if (sub.includes('aporte') || sub.includes('aplica') || (type === 'EXPENSE' && !sub.includes('imposto') && !sub.includes('ir') && !sub.includes('taxa'))) {
-        categoriesMap['Aplicações / Aportes'].amount += amt;
-      } else if (sub.includes('mensal') || sub.includes('liquidez') || sub.includes('dividend') || sub.includes('cupom') || sub.includes('juros de capital')) {
-        categoriesMap['Rendimentos Mensais'].amount += amt;
-      } else if (sub.includes('acumulado') || sub.includes('reinvest')) {
-        categoriesMap['Rendimentos Acumulados'].amount += amt;
-      } else if (sub.includes('antecip')) {
-        categoriesMap['Resgates Antecipados'].amount += amt;
-      } else if (sub.includes('venciment') || sub.includes('resgate total')) {
-        categoriesMap['Resgates no Vencimento'].amount += amt;
-      } else if (sub.includes('imposto') || sub.includes('ir') || sub.includes('irrf') || sub.includes('tributo')) {
-        categoriesMap['Imposto de Renda Retido'].amount += amt;
-      } else {
-        categoriesMap['Outros Débitos / Perdas'].amount += amt;
-      }
-    });
-
-    const list = Object.values(categoriesMap).filter(c => c.amount > 0);
-    const total = list.reduce((sum, item) => sum + item.amount, 0);
-
-    const monthLabel = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date()).toUpperCase();
-
-    return { list, total, monthLabel };
   };
 
   // Sync Rental Income Transactions: Activates/Deactivates starting from today forward
@@ -2597,79 +2423,13 @@ const Assets: React.FC = () => {
       vencimentoDate: '',
       investmentLiquidity: 'No Vencimento',
       status: 'ATIVO',
-      isTaxExempt: false,
     });
   };
 
-  const handleNewAssetClick = () => {
-    if (activeView === 'overview') {
-      setShowCategorySelector(true);
-    } else if (activeView === 'realestate') {
-      setShowWizardModal(true);
-    } else if (activeView === 'vehicles') {
-      resetAssetForm();
-      setEditingAsset(null);
-      setFormData(prev => ({ ...prev, category: 'VEHICLE', purpose: 'uso' }));
-      setShowModal(true);
-    } else if (activeView === 'physical') {
-      resetAssetForm();
-      setEditingAsset(null);
-      setFormData(prev => ({ ...prev, category: 'OTHER', purpose: 'uso', isLoan: false }));
-      setShowModal(true);
-    } else if (activeView === 'investments') {
-      resetAssetForm();
-      setEditingAsset(null);
-      setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento' }));
-      setShowModal(true);
-    } else if (activeView === 'loans') {
-      resetAssetForm();
-      setEditingAsset(null);
-      setFormData(prev => ({ ...prev, isLoan: true, category: 'OTHER' }));
-      setShowModal(true);
-    } else if (activeView === 'liabilities') {
-      setLiabilityFormData({
-        name: '',
-        type: 'PERSONAL_LOAN',
-        totalAmount: '',
-        remainingBalance: '',
-        interestRate: '',
-        installmentAmount: '',
-        installmentsRemaining: '',
-        dueDay: '10',
-        linkedAssetId: '',
-        indexationRate: '',
-        balloonMonth: '',
-        balloonYear: '',
-        balloonAmount: '',
-        balloons: [],
-        propertyType: 'PLANTA'
-      });
-      setEditingLiability(null);
-      setShowLiabilityModal(true);
-    }
-  };
-
   const openEditAsset = (asset: PhysicalAsset) => {
-    const meta = asset.metadata || {};
-    if (meta.isLoan) {
-      setLoanFormData({
-        id: asset.id,
-        name: asset.name,
-        loanDebtor: meta.loanDebtor || '',
-        loanPrincipal: meta.loanPrincipal ? String(meta.loanPrincipal) : '',
-        loanInterestRate: meta.loanInterestRate ? String(meta.loanInterestRate) : '',
-        loanFixedValue: meta.loanFixedValue ? String(meta.loanFixedValue) : '',
-        loanDueDate: meta.loanDueDate || '',
-        loanInterestType: meta.loanInterestType || 'SIMPLE',
-        acquisitionDate: asset.acquisitionDate || new Date().toISOString().split('T')[0],
-        description: asset.description || '',
-        status: meta.status || 'ATIVO',
-      });
-      setShowLoanModal(true);
-      return;
-    }
-
     setEditingAsset(asset);
+    const meta = asset.metadata || {};
+    
     const linkedLiab = activeLiabilities.find(l => l.linkedAssetId === asset.id);
     let devPayMethod: 'A_VISTA' | 'FINANCIAMENTO' | 'CONSORCIO' | 'A_DEFINIR' = 'A_VISTA';
     let selConsortiumId = '';
@@ -2786,7 +2546,6 @@ const Assets: React.FC = () => {
       vencimentoDate: meta.vencimentoDate || '',
       investmentLiquidity: meta.investmentLiquidity || 'No Vencimento',
       status: meta.status || 'ATIVO',
-      isTaxExempt: !!meta.isTaxExempt,
     });
     setShowModal(true);
   };
@@ -3722,7 +3481,7 @@ const Assets: React.FC = () => {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={handleNewAssetClick}
+            onClick={() => setShowCategorySelector(true)}
             className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
           >
             <Plus size={18} /> Novo Ativo
@@ -3737,7 +3496,6 @@ const Assets: React.FC = () => {
           { id: 'realestate', label: 'Ativos Imobiliários', icon: <Building2 size={16} /> },
           { id: 'vehicles', label: 'Veículos', icon: <Car size={16} /> },
           { id: 'investments', label: 'Investimentos', icon: <TrendingUp size={16} /> },
-          { id: 'loans', label: 'Empréstimos Concedidos', icon: <HandCoins size={16} /> },
           { id: 'liabilities', label: 'Passivos (Dívidas)', icon: <Landmark size={16} /> },
           { id: 'physical', label: 'Outros Ativos Físicos', icon: <Box size={16} /> }
         ].map((tab) => (
@@ -4783,8 +4541,8 @@ const Assets: React.FC = () => {
           </div>
         )}
 
-        {/* LOANS VIEW */}
-        {activeView === 'loans' && (
+        {/* INVESTMENTS & LOANS VIEW */}
+        {activeView === 'investments' && (
           <div className="space-y-8 animate-in fade-in duration-500">
             
             {/* LENT LOANS (EMPRÉSTIMOS CONCEDIDOS) SECTION */}
@@ -4891,12 +4649,7 @@ const Assets: React.FC = () => {
                 )}
               </div>
             </div>
-          </div>
-        )}
 
-        {/* INVESTMENTS VIEW */}
-        {activeView === 'investments' && (
-          <div className="space-y-8 animate-in fade-in duration-500">
             {/* BANK INVESTMENTS (BROKERS) SECTION */}
             <div className="space-y-6 pt-6">
               <div className="flex justify-between items-center">
