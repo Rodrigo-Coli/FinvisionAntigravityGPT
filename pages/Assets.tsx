@@ -47,6 +47,7 @@ import { supabase } from '../lib/supabase/client';
 import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModal';
 import { RealEstateDetailModal } from '../components/assets/RealEstateDetailModal';
 import { DateUtils } from '../lib/dateUtils';
+import { FinancialEngine } from '../lib/financialEngine';
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
@@ -105,6 +106,7 @@ const Assets: React.FC = () => {
             id: a.id,
             name: a.institution || a.name || 'Corretora',
             balance: balanceVal,
+            initial_balance: Number(a.initial_balance || 0),
             allocation: [
               { type: meta.productType || 'Investimentos', percentage: 100, value: balanceVal, color: 'bg-brand-500' }
             ],
@@ -458,6 +460,7 @@ const Assets: React.FC = () => {
             id: a.id,
             name: a.institution || a.name,
             balance: Number(a.current_balance || a.balance),
+            initial_balance: Number(a.initial_balance || 0),
             allocation: [
               { type: meta.productType || 'Investimentos', percentage: 100, value: Number(a.current_balance || a.balance), color: 'bg-brand-500' }
             ],
@@ -534,6 +537,7 @@ const Assets: React.FC = () => {
           id: a.id,
           name: a.institution || a.name || 'Corretora',
           balance: balanceVal,
+          initial_balance: Number(a.initial_balance || 0),
           allocation: [
             { type: meta.productType || 'Investimentos', percentage: 100, value: balanceVal, color: 'bg-brand-500' }
           ],
@@ -668,6 +672,63 @@ const Assets: React.FC = () => {
   // Filter out archived
   const activePhysicalAssets = useMemo(() => physicalAssets.filter(p => !p.is_archived), [physicalAssets]);
   const activeLiabilities = useMemo(() => liabilities.filter(l => !l.is_archived), [liabilities]);
+
+  const enrichedPhysicalAssets = useMemo(() => {
+    return activePhysicalAssets.map(p => {
+      if (p.category === 'INVESTMENT') {
+        const meta = p.metadata || {};
+        const initial = Number(meta.purchaseValue) || Number(p.estimatedValue) || 0;
+        const acqDate = p.acquisitionDate || new Date().toISOString().split('T')[0];
+        
+        const parsedAnnualRate = FinancialEngine.parseYieldRate(meta.yieldRate || '', meta.interestType || 'PRE');
+        const isExempt = !!meta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'FIIS'].includes(meta.investmentType);
+        
+        const calcs = FinancialEngine.calculateFixedIncomeYield(
+          initial,
+          parsedAnnualRate,
+          acqDate,
+          meta.payoutType === 'MENSAL' ? 'MENSAL' : 'ACUMULADO',
+          isExempt
+        );
+        
+        return {
+          ...p,
+          estimatedValue: calcs.grossValue,
+          netValue: calcs.netValue,
+          grossYield: calcs.grossYield,
+          taxRate: calcs.taxRate,
+          taxAmount: calcs.taxAmount,
+          daysElapsed: calcs.daysElapsed,
+          monthsElapsed: calcs.monthsElapsed,
+          parsedAnnualRate
+        };
+      }
+      return {
+        ...p,
+        netValue: p.estimatedValue,
+        grossYield: 0,
+        taxRate: 0,
+        taxAmount: 0,
+        daysElapsed: 0,
+        monthsElapsed: 0,
+        parsedAnnualRate: 0
+      };
+    });
+  }, [activePhysicalAssets]);
+
+  const dynamicBrokers = useMemo(() => {
+    return brokers.map(b => {
+      const brokerInvestments = enrichedPhysicalAssets.filter(
+        p => p.category === 'INVESTMENT' && p.metadata?.brokerAccountId === b.id && p.metadata?.status !== 'RESGATADO'
+      );
+      const totalInvested = brokerInvestments.reduce((sum, inv) => sum + (inv.netValue || 0), 0);
+      const cash = Number(b.initial_balance || 0);
+      return {
+        ...b,
+        balance: cash + totalInvested
+      };
+    });
+  }, [brokers, enrichedPhysicalAssets]);
 
   // Pre-computes and maps all transactions to their respective physical assets in O(N) linear time.
   const linkedTransactionsMap = useMemo(() => {
@@ -804,7 +865,7 @@ const Assets: React.FC = () => {
     }, 0);
 
     // Investment yield calculation
-    const activeFinancial = brokers.filter(b => !excludedBrokerIds.includes(b.id));
+    const activeFinancial = dynamicBrokers.filter(b => !excludedBrokerIds.includes(b.id));
     const totalInvestedBalance = activeFinancial.reduce((acc, curr) => acc + curr.balance, 0);
     const estimatedMonthlyYield = totalInvestedBalance * (estimatedYieldRate / 100);
 
@@ -828,7 +889,7 @@ const Assets: React.FC = () => {
       selfSustainabilityPercent,
       totalInvestedBalance
     };
-  }, [activePhysicalAssets, activeLiabilities, brokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, linkedTransactionsMap]);
+  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, linkedTransactionsMap]);
 
   // Asset helpers
   const getAssetLinkedTransactions = (assetId: string) => {
@@ -3423,10 +3484,25 @@ const Assets: React.FC = () => {
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   // Totals calculations
-  const totalPhysical = activePhysicalAssets.reduce((acc, curr) => acc + curr.estimatedValue, 0);
-  const totalFinancial = brokers.reduce((acc, curr) => acc + curr.balance, 0);
+  const totalPhysical = enrichedPhysicalAssets
+    .filter(p => p.category !== 'INVESTMENT' && !p.metadata?.isLoan)
+    .reduce((acc, curr) => acc + curr.estimatedValue, 0);
+  
+  const totalFinancial = dynamicBrokers.reduce((acc, curr) => acc + curr.balance, 0);
   const totalLiabilities = activeLiabilities.reduce((acc, curr) => acc + curr.remainingBalance, 0);
-  const totalAssets = totalPhysical + totalFinancial;
+
+  const totalLoans = enrichedPhysicalAssets
+    .filter(p => p.metadata?.isLoan)
+    .reduce((sum, loan) => {
+      const meta = loan.metadata || {};
+      const principal = Number(meta.loanPrincipal) || 0;
+      const txs = linkedTransactionsMap.get(loan.id) || [];
+      const returned = txs.filter(t => t.type === 'INCOME').reduce((s, t) => s + Number(t.amount || 0), 0);
+      const outstanding = Math.max(0, principal - returned);
+      return sum + outstanding;
+    }, 0);
+
+  const totalAssets = totalPhysical + totalFinancial + totalLoans;
   const totalNetWorth = totalAssets - totalLiabilities;
 
   // Helper to dynamically match a single transaction to a physical asset
@@ -3442,7 +3518,7 @@ const Assets: React.FC = () => {
 
   // Complete, deep executive financial KPIs unifications (excluding archived items)
   const overviewData = useMemo(() => {
-    const activePhys = activePhysicalAssets;
+    const activePhys = enrichedPhysicalAssets;
     const activeLiab = activeLiabilities;
 
     // Helper to dynamically link a liability to an asset with name substring fallback
@@ -3608,7 +3684,7 @@ const Assets: React.FC = () => {
     // 3. INVESTIMENTOS FINANCEIROS
     const totalFinancialFunds = totalFinancial;
     
-    const financialAllocation = brokers.map(b => {
+    const financialAllocation = dynamicBrokers.map(b => {
       const type = b.metadata?.productType || 'Investimentos';
       return { type, balance: b.balance };
     });
@@ -3700,7 +3776,7 @@ const Assets: React.FC = () => {
       veiculoValue,
       outroFisicoValue
     };
-  }, [activePhysicalAssets, activeLiabilities, brokers, transactions, totalFinancial, linkedTransactionsMap]);
+  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, transactions, totalFinancial, linkedTransactionsMap]);
 
   if (isLoading) {
     return (

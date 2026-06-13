@@ -308,4 +308,178 @@ export class FinancialEngine {
       passiveMonthlyIncome
     };
   }
+
+  /**
+   * Parses annual yield rate text and index type into a flat annual percentage rate.
+   */
+  static parseYieldRate(yieldRateStr: string, indexType: string): number {
+    const rawVal = parseFloat((yieldRateStr || '').replace(/[^0-9.,]/g, '').replace(',', '.')) || 0;
+    
+    // Default benchmarks
+    const BENCHMARK_CDI = 10.4;
+    const BENCHMARK_IPCA = 4.0;
+    
+    const indexUpper = (indexType || '').toUpperCase();
+    const rateUpper = (yieldRateStr || '').toUpperCase();
+    
+    if (rateUpper.includes('CDI') || indexUpper === 'CDI') {
+      const percentage = yieldRateStr.includes('%') ? (rawVal / 100) : (rawVal > 2 ? rawVal / 100 : rawVal);
+      return (percentage || 1) * BENCHMARK_CDI;
+    }
+    
+    if (rateUpper.includes('IPCA') || indexUpper === 'IPCA') {
+      return BENCHMARK_IPCA + rawVal;
+    }
+    
+    return rawVal;
+  }
+
+  /**
+   * Converts annual rate percentage to monthly decimal rate: ((1 + i_annual/100)^(1/12) - 1).
+   */
+  static getEquivalentMonthlyRate(annualRatePercent: number): number {
+    return Math.pow(1 + annualRatePercent / 100, 1 / 12) - 1;
+  }
+
+  /**
+   * Returns Brazilian regressive tax rate based on days elapsed.
+   */
+  static calculateRegressiveTaxRate(days: number, isTaxExempt: boolean): number {
+    if (isTaxExempt) return 0;
+    if (days <= 180) return 0.225;
+    if (days <= 360) return 0.20;
+    if (days <= 720) return 0.175;
+    return 0.15;
+  }
+
+  /**
+   * Computes the current gross value, IR tax, and net value for fixed income assets.
+   */
+  static calculateFixedIncomeYield(
+    initialValue: number,
+    annualRate: number,
+    acquisitionDateStr: string,
+    payoutType: 'ACUMULADO' | 'MENSAL',
+    isTaxExempt: boolean
+  ): {
+    monthsElapsed: number;
+    daysElapsed: number;
+    monthlyRate: number;
+    grossValue: number;
+    grossYield: number;
+    taxRate: number;
+    taxAmount: number;
+    netValue: number;
+  } {
+    const today = new Date();
+    const acqDate = new Date(acquisitionDateStr);
+    
+    if (isNaN(acqDate.getTime())) {
+      return {
+        monthsElapsed: 0,
+        daysElapsed: 0,
+        monthlyRate: 0,
+        grossValue: initialValue,
+        grossYield: 0,
+        taxRate: 0,
+        taxAmount: 0,
+        netValue: initialValue
+      };
+    }
+    
+    const diffTime = Math.max(0, today.getTime() - acqDate.getTime());
+    const daysElapsed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    let monthsElapsed = (today.getFullYear() - acqDate.getFullYear()) * 12 + (today.getMonth() - acqDate.getMonth());
+    if (today.getDate() < acqDate.getDate()) {
+      monthsElapsed = Math.max(0, monthsElapsed - 1);
+    }
+    
+    const monthlyRate = this.getEquivalentMonthlyRate(annualRate);
+    
+    let grossValue = initialValue;
+    let grossYield = 0;
+    
+    if (payoutType === 'ACUMULADO') {
+      grossValue = initialValue * Math.pow(1 + monthlyRate, monthsElapsed);
+      grossYield = Math.max(0, grossValue - initialValue);
+    } else {
+      grossYield = initialValue * monthlyRate * monthsElapsed;
+    }
+    
+    const taxRate = this.calculateRegressiveTaxRate(daysElapsed, isTaxExempt);
+    const taxAmount = Math.round(grossYield * taxRate * 100) / 100;
+    
+    const netValue = Math.round((grossValue - (payoutType === 'ACUMULADO' ? taxAmount : 0)) * 100) / 100;
+    
+    return {
+      monthsElapsed,
+      daysElapsed,
+      monthlyRate,
+      grossValue: Math.round(grossValue * 100) / 100,
+      grossYield: Math.round(grossYield * 100) / 100,
+      taxRate,
+      taxAmount,
+      netValue
+    };
+  }
+
+  /**
+   * Generates a theoretical Price/SAC amortization schedule for a loan.
+   */
+  static calculateProjectedLoanAmortization(
+    principal: number,
+    monthlyRatePercent: number,
+    installmentsCount: number,
+    system: 'SAC' | 'PRICE' | 'CUSTOM'
+  ): {
+    installmentNumber: number;
+    payment: number;
+    interest: number;
+    amortization: number;
+    outstandingBalance: number;
+  }[] {
+    const schedule = [];
+    let currentBalance = principal;
+    const i = monthlyRatePercent / 100;
+    const n = installmentsCount;
+    
+    if (system === 'SAC') {
+      const fixedAmortization = principal / n;
+      for (let k = 1; k <= n; k++) {
+        const interest = currentBalance * i;
+        const amortization = Math.min(currentBalance, fixedAmortization);
+        const payment = amortization + interest;
+        currentBalance -= amortization;
+        
+        schedule.push({
+          installmentNumber: k,
+          payment: Math.round(payment * 100) / 100,
+          interest: Math.round(interest * 100) / 100,
+          amortization: Math.round(amortization * 100) / 100,
+          outstandingBalance: Math.max(0, Math.round(currentBalance * 100) / 100)
+        });
+      }
+    } else if (system === 'PRICE') {
+      const pmt = i === 0
+        ? principal / n
+        : (principal * i * Math.pow(1 + i, n)) / (Math.pow(1 + i, n) - 1);
+        
+      for (let k = 1; k <= n; k++) {
+        const interest = currentBalance * i;
+        const amortization = Math.min(currentBalance, pmt - interest);
+        const payment = amortization + interest;
+        currentBalance -= amortization;
+        
+        schedule.push({
+          installmentNumber: k,
+          payment: Math.round(payment * 100) / 100,
+          interest: Math.round(interest * 100) / 100,
+          amortization: Math.round(amortization * 100) / 100,
+          outstandingBalance: Math.max(0, Math.round(currentBalance * 100) / 100)
+        });
+      }
+    }
+    return schedule;
+  }
 }

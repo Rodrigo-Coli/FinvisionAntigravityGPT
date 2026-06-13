@@ -157,6 +157,7 @@ export interface InvestmentBroker {
   id: string;
   name: string;
   balance: number;
+  initial_balance?: number;
   allocation: {
     type: string;
     percentage: number;
