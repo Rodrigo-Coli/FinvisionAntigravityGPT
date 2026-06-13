@@ -35,9 +35,10 @@ export const TransactionSeriesUtils = {
         }
 
         const start = new Date(config.startDate + 'T00:00:00Z');
+        const targetDay = start.getUTCDate();
 
         for (let i = 0; i < count; i++) {
-            const current = new Date(start);
+            let current = new Date(start);
 
             if (config.period === 'weekly') current.setUTCDate(start.getUTCDate() + (i * 7));
             else if (config.period === 'biweekly') current.setUTCDate(start.getUTCDate() + (i * 14));
@@ -45,7 +46,24 @@ export const TransactionSeriesUtils = {
                 current.setUTCDate(start.getUTCDate() + (i * config.daysInterval));
             }
             else if (config.period === 'monthly' || config.type === 'INSTALLMENT') {
-                current.setUTCMonth(start.getUTCMonth() + i);
+                let newMonth = start.getUTCMonth() + i;
+                let newYear = start.getUTCFullYear();
+                
+                newYear += Math.floor(newMonth / 12);
+                newMonth = newMonth % 12;
+                if (newMonth < 0) {
+                    newMonth += 12;
+                    newYear -= 1;
+                }
+                
+                let newDay;
+                if ((newMonth + 1) === 2 && targetDay >= 29) {
+                    newDay = 28;
+                } else {
+                    const lastDay = new Date(Date.UTC(newYear, newMonth + 1, 0)).getUTCDate();
+                    newDay = Math.min(targetDay, lastDay);
+                }
+                current = new Date(Date.UTC(newYear, newMonth, newDay));
             }
             else if (config.period === 'yearly') current.setUTCFullYear(start.getUTCFullYear() + i);
 

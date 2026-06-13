@@ -1022,10 +1022,9 @@ const HistoryPage: React.FC = () => {
           
           if (txsToUpdate && txsToUpdate.length > 0) {
             const parseDate = (dStr: string) => {
-              const dateObj = new Date(dStr);
-              if (isNaN(dateObj.getTime())) {
-                // Fallback se for string de data inválida
-                const match = dStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (dStr) {
+                const clean = dStr.split(/[ T]/)[0]; // get 'YYYY-MM-DD'
+                const match = clean.match(/^(\d{4})-(\d{2})-(\d{2})/);
                 if (match) {
                   return {
                     year: parseInt(match[1], 10),
@@ -1033,18 +1032,16 @@ const HistoryPage: React.FC = () => {
                     day: parseInt(match[3], 10)
                   };
                 }
-                return { year: 2026, month: 6, day: 6 };
               }
-              const tz = DateUtils.getTimeZone();
-              const formatter = new Intl.DateTimeFormat('en-CA', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                timeZone: tz
-              });
-              const formatted = formatter.format(dateObj); // Retorna YYYY-MM-DD no fuso local
-              const [year, month, day] = formatted.split('-').map(Number);
-              return { year, month, day };
+              const dateObj = new Date(dStr);
+              if (!isNaN(dateObj.getTime())) {
+                return {
+                  year: dateObj.getUTCFullYear(),
+                  month: dateObj.getUTCMonth() + 1,
+                  day: dateObj.getUTCDate()
+                };
+              }
+              return { year: 2026, month: 6, day: 6 };
             };
             
             const origParsed = parseDate(tx.date);
@@ -1083,8 +1080,13 @@ const HistoryPage: React.FC = () => {
                     newYear -= 1;
                   }
                   
-                  const lastDay = new Date(Date.UTC(newYear, newMonth, 0)).getUTCDate();
-                  const newDay = Math.min(targetDay, lastDay);
+                  let newDay;
+                  if (newMonth === 2 && targetDay >= 29) {
+                    newDay = 28;
+                  } else {
+                    const lastDay = new Date(Date.UTC(newYear, newMonth, 0)).getUTCDate();
+                    newDay = Math.min(targetDay, lastDay);
+                  }
                   
                   const pad = (n: number) => String(n).padStart(2, '0');
                   const newDateStr = `${newYear}-${pad(newMonth)}-${pad(newDay)}`;
