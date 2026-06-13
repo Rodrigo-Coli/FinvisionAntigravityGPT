@@ -29,6 +29,7 @@ import {
   HelpCircle,
   Loader2,
   Trash2,
+  Pencil,
   Archive,
   DollarSign,
   AlertTriangle,
@@ -5307,52 +5308,121 @@ const Assets: React.FC = () => {
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {activeLiabilities.map(liability => (
-                <div key={liability.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
-                  <div className="p-8 space-y-6">
-                    <div className="flex justify-between items-start">
-                      <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-100/50">
-                        <Landmark size={22} />
+              {activeLiabilities.map(liability => {
+                const paidAmount = Math.max(0, liability.totalAmount - liability.remainingBalance);
+                const amortizationPercent = liability.totalAmount > 0 
+                  ? Math.min(100, Math.max(0, Math.round((paidAmount / liability.totalAmount) * 100))) 
+                  : 0;
+                const linkedAsset = liability.linkedAssetId 
+                  ? physicalAssets.find(p => p.id === liability.linkedAssetId) 
+                  : null;
+                const ltvPercent = (linkedAsset && linkedAsset.estimatedValue > 0) 
+                  ? Math.round((liability.remainingBalance / linkedAsset.estimatedValue) * 100) 
+                  : null;
+
+                return (
+                  <div key={liability.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+                    <div className="p-8 space-y-6">
+                      <div className="flex justify-between items-start">
+                        <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-100/50">
+                          <Landmark size={22} />
+                        </div>
+                        <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[8px] font-black uppercase tracking-widest border border-red-100">Dívida Ativa</span>
                       </div>
-                      <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[8px] font-black uppercase tracking-widest border border-red-100">Dívida Ativa</span>
+
+                      <div>
+                        <h4 className="font-black text-slate-900 text-lg tracking-tight leading-tight italic uppercase">{liability.name}</h4>
+                        <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
+                          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Saldo Devedor Atual:</p>
+                          <p className="text-sm font-black text-red-600">{formatCurrency(liability.remainingBalance)}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 text-[11px] text-slate-500">
+                        {liability.installmentAmount ? (
+                          <div className="flex justify-between">
+                            <span>Prestação Mensal:</span>
+                            <span className="font-bold text-slate-800">
+                              {formatCurrency(liability.installmentAmount)}
+                              {liability.installmentsRemaining && ` (${liability.installmentsRemaining}x restante)`}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between">
+                            <span>Prestação Mensal:</span>
+                            <span className="font-bold text-slate-400 italic">Não definida</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-bold">
+                          <span>Original Total:</span>
+                          <span className="text-slate-700">{formatCurrency(liability.totalAmount)}</span>
+                        </div>
+
+                        {/* Amortization Progress Bar */}
+                        <div className="space-y-1.5 pt-3 border-t border-slate-50">
+                          <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            <span>Progresso da Dívida:</span>
+                            <span className="text-red-500 font-extrabold">{amortizationPercent}% quitado</span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div 
+                              className="bg-red-500 h-full rounded-full transition-all duration-500" 
+                              style={{ width: `${amortizationPercent}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[9px] text-slate-400 font-medium italic">
+                            <span>Pago: {formatCurrency(paidAmount)}</span>
+                            <span>Total: {formatCurrency(liability.totalAmount)}</span>
+                          </div>
+                        </div>
+
+                        {/* Linked Asset & LTV Indicator */}
+                        {linkedAsset && (
+                          <div className="bg-slate-50 rounded-2xl p-3.5 space-y-2 border border-slate-100">
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="text-slate-400 font-bold uppercase tracking-wider">Bem Vinculado:</span>
+                              <span className="font-extrabold text-slate-700 truncate max-w-[120px]" title={linkedAsset.name}>
+                                {linkedAsset.name}
+                              </span>
+                            </div>
+                            {ltvPercent !== null && (
+                              <div className="flex justify-between items-center text-[10px] border-t border-slate-200/60 pt-1.5">
+                                <span className="text-slate-400 font-bold uppercase tracking-wider">Índice LTV:</span>
+                                <span className={`font-black px-1.5 py-0.5 rounded-md text-[9px] ${
+                                  ltvPercent > 80 
+                                    ? 'bg-red-50 text-red-600 border border-red-100' 
+                                    : ltvPercent > 50 
+                                      ? 'bg-amber-50 text-amber-600 border border-amber-100' 
+                                      : 'bg-green-50 text-green-600 border border-green-100'
+                                }`}>
+                                  {ltvPercent}% (Dívida/Bem)
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <div>
-                      <h4 className="font-black text-slate-900 text-lg tracking-tight leading-tight italic uppercase">{liability.name}</h4>
-                      <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
-                        <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Saldo Devedor Atual:</p>
-                        <p className="text-sm font-black text-red-600">{formatCurrency(liability.remainingBalance)}</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-[11px] text-slate-500">
-                      {liability.installmentAmount ? (
-                        <div className="flex justify-between">
-                          <span>Prestação Mensal:</span>
-                          <span className="font-bold text-slate-800">
-                            {formatCurrency(liability.installmentAmount)}
-                            {liability.installmentsRemaining && ` (${liability.installmentsRemaining}x restante)`}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex justify-between">
-                          <span>Prestação Mensal:</span>
-                          <span className="font-bold text-slate-400 italic">Não definida</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-bold">
-                        <span>Original Total:</span>
-                        <span className="text-slate-700">{formatCurrency(liability.totalAmount)}</span>
-                      </div>
+                    <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center gap-3">
+                      <button 
+                        onClick={() => openEditLiability(liability)} 
+                        className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 hover:text-brand-600 transition-colors"
+                      >
+                        <Pencil size={12} />
+                        Ajustar
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteLiability(liability.id)} 
+                        className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 hover:text-rose-600 transition-colors"
+                      >
+                        <Trash2 size={12} />
+                        Excluir
+                      </button>
                     </div>
                   </div>
-
-                  <div className="px-8 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-                    <button onClick={() => openEditLiability(liability)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Ajustar Parcelas</button>
-                    <button onClick={() => handleDeleteLiability(liability.id)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-600">Excluir Passivo</button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               
               <button
                 onClick={() => {
