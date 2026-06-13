@@ -4070,7 +4070,7 @@ const Assets: React.FC = () => {
                   {/* Planta Stage */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
                     <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span aria-hidden="true">🏗️ Na Planta / Em Obras</span>
+                      <span><span aria-hidden="true" className="mr-1">🏗️</span>Na Planta / Em Obras</span>
                       <button
                         onClick={() => setActiveView('realestate')}
                         className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
@@ -4108,7 +4108,7 @@ const Assets: React.FC = () => {
                   {/* Pronto Stage */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
                     <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span aria-hidden="true">🏢 Imóveis Entregues</span>
+                      <span><span aria-hidden="true" className="mr-1">🏢</span>Pronto / Entregue</span>
                       <button
                         onClick={() => setActiveView('realestate')}
                         className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
@@ -4168,7 +4168,7 @@ const Assets: React.FC = () => {
                   {/* Para Uso */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
                     <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span aria-hidden="true">🚗 Para Uso Pessoal</span>
+                      <span><span aria-hidden="true" className="mr-1">🚗</span>Bens de Uso Pessoal</span>
                       <button
                         onClick={() => setActiveView('physical')}
                         className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
@@ -4201,7 +4201,7 @@ const Assets: React.FC = () => {
                   {/* Para Investimento */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
                     <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span aria-hidden="true">📈 Para Investimento / Venda</span>
+                      <span><span aria-hidden="true" className="mr-1">📈</span>Bens de Investimento</span>
                       <button
                         onClick={() => setActiveView('physical')}
                         className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
@@ -4253,7 +4253,7 @@ const Assets: React.FC = () => {
                   {/* Allocation */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
                     <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span aria-hidden="true">📊 Alocação por Classe</span>
+                      <span><span aria-hidden="true" className="mr-1">📊</span>Alocação por Classe</span>
                       <button
                         onClick={() => setActiveView('investments')}
                         className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
@@ -4275,7 +4275,14 @@ const Assets: React.FC = () => {
                                     {formatCurrency(item.balance)} <span className="text-[9px] font-medium text-slate-400">({item.percentage}%)</span>
                                   </span>
                                 </div>
-                                <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                <div 
+                                  className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"
+                                  role="progressbar"
+                                  aria-valuenow={item.percentage}
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-label={`Alocação da classe ${item.type}`}
+                                >
                                   <div 
                                     className="bg-brand-500 h-full rounded-full transition-all duration-500" 
                                     style={{ width: `${item.percentage}%` }}
@@ -4302,7 +4309,7 @@ const Assets: React.FC = () => {
                   {/* Monthly Yield comparison */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
                     <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span aria-hidden="true">💵 Rendimentos da Carteira</span>
+                      <span><span aria-hidden="true" className="mr-1">💵</span>Rendimentos da Carteira</span>
                       <button
                         onClick={() => setActiveView('investments')}
                         className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
@@ -4353,7 +4360,7 @@ const Assets: React.FC = () => {
                   {/* Consórcios */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
                     <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span aria-hidden="true">💳 Consórcios Ativos</span>
+                      <span><span aria-hidden="true" className="mr-1">💳</span>Consórcios Ativos</span>
                       <button
                         onClick={() => setActiveView('liabilities')}
                         className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
@@ -4414,7 +4421,7 @@ const Assets: React.FC = () => {
                   {/* Financiamentos */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
                     <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span aria-hidden="true">🏛️ Financiamentos Gerais</span>
+                      <span><span aria-hidden="true" className="mr-1">🏛️</span>Outros Financiamentos e Dívidas</span>
                       <button
                         onClick={() => setActiveView('liabilities')}
                         className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
@@ -4711,23 +4718,23 @@ const Assets: React.FC = () => {
                         {propertyStage === 'PLANTA' ? (
                           <div className="space-y-2.5 pt-2 text-[10px] sm:text-[11px] text-slate-500">
                             <div className="flex justify-between">
-                              <span>Valor devido Obra:</span>
+                              <span className="text-slate-600 font-medium">Valor devido Obra:</span>
                               <span className="font-bold text-rose-500">{formatCurrency(unpaidObra)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Valor pago obra:</span>
+                              <span className="text-slate-600 font-medium">Valor pago obra:</span>
                               <span className="font-bold text-emerald-600">{formatCurrency(paidObra)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Valor da Parcela atual:</span>
+                              <span className="text-slate-600 font-medium">Parcela Mensal Obra:</span>
                               <span className="font-bold text-slate-800">{formatCurrency(currentConstructorInstallmentValue)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Valor intermediária atual:</span>
+                              <span className="text-slate-600 font-medium">Intermediária (Balão) Atual:</span>
                               <span className="font-bold text-slate-800">{formatCurrency(currentBalloonValue)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Índice Correção:</span>
+                              <span className="text-slate-600 font-medium">Índice Correção:</span>
                               <span className="font-bold text-brand-600">{meta.constructorIndexType || 'INCC'}</span>
                             </div>
                             <div className="flex justify-between border-t border-dashed border-slate-100 pt-2 font-bold text-slate-600">
@@ -4744,11 +4751,36 @@ const Assets: React.FC = () => {
                                 <span className="font-bold text-slate-800">{formatCurrency(Number(meta.financingInstallment) || 0)}</span>
                               </div>
                             )}
+                            {/* Barra de Progresso Obra */}
+                            {(() => {
+                              const obraProgress = (paidObra + unpaidObra) > 0 ? Math.round((paidObra / (paidObra + unpaidObra)) * 100) : 0;
+                              return (
+                                <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                                  <div className="flex justify-between text-[9px] font-black uppercase text-slate-400">
+                                    <span>Progresso da Obra / Aporte:</span>
+                                    <span className="font-bold text-emerald-600">{obraProgress}% pago</span>
+                                  </div>
+                                  <div 
+                                    className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"
+                                    role="progressbar"
+                                    aria-valuenow={obraProgress}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
+                                    aria-label="Progresso de pagamento da obra"
+                                  >
+                                    <div 
+                                      className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
+                                      style={{ width: `${obraProgress}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         ) : (
                           <div className="space-y-2.5 pt-2 text-[10px] sm:text-[11px] text-slate-500">
                             <div className="flex justify-between">
-                              <span>Aluguel Líquido:</span>
+                              <span className="text-slate-600 font-medium">Aluguel Líquido:</span>
                               <span className="font-bold text-emerald-600">
                                 {cardPeriod === 'CONTRACT' && !isRented 
                                   ? 'Não Alugado' 
@@ -4756,26 +4788,75 @@ const Assets: React.FC = () => {
                               </span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Prestação Financiamento:</span>
+                              <span className="text-slate-600 font-medium">Parcela Financiamento:</span>
                               <span className="font-bold text-slate-700">{formatCurrency(installment)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Condomínio + IPTU (Despesa):</span>
+                              <span className="text-slate-600 font-medium">Condomínio + IPTU (Despesa):</span>
                               <span className="font-bold text-slate-700">{formatCurrency(displayCondoIptu)}</span>
                             </div>
                             {(cardPeriod !== 'CONTRACT' || meta.condoPayer === 'PROPRIETARIO_REEMBOLSO' || meta.iptuPayer === 'PROPRIETARIO_REEMBOLSO') && (
                               <div className="flex justify-between">
-                                <span>Reembolso Condo/IPTU (Receita):</span>
+                                <span className="text-slate-600 font-medium">Reembolso (Condo/IPTU):</span>
                                 <span className="font-bold text-emerald-600">+{formatCurrency(reimbursement)}</span>
                               </div>
                             )}
                             <div className="flex justify-between text-[10px] border-t border-dashed border-slate-100 pt-2 font-bold">
-                              <span>Saldo Caixa Líquido:</span>
+                              <span className="text-slate-700">Saldo Caixa Líquido:</span>
                               <span className={netPropertyFlow >= 0 ? 'text-emerald-600' : 'text-rose-500'}>
                                 {netPropertyFlow >= 0 ? '+' : ''}{formatCurrency(netPropertyFlow)}
                                 {cardPeriod === 'CONTRACT' ? '/mês' : ''}
                               </span>
                             </div>
+
+                            {/* Métricas de Performance (Cap Rate, Cash-on-Cash) */}
+                            {(() => {
+                              const totalInvestedCapital = Number(meta.totalInvestedCapital) || paidObra || (asset.estimatedValue - (linkedLiab ? linkedLiab.remainingBalance : 0));
+                              const realEstateMetrics = FinancialEngine.calculateRealEstateMetrics({
+                                estimatedValue: asset.estimatedValue,
+                                totalInvestedCapital: totalInvestedCapital,
+                                monthlyGrossRent: Number(meta.rentalIncome) || 0,
+                                monthlyOperationalExpenses: (Number(meta.condoFee) || 0) + (Number(meta.iptuFee) || 0),
+                                monthlyFinancingInstallment: linkedLiab ? Number(linkedLiab.installmentAmount) : 0,
+                                outstandingDebt: linkedLiab ? linkedLiab.remainingBalance : 0
+                              });
+
+                              return (
+                                <>
+                                  {meta.purpose === 'investimento' && (
+                                    <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-dashed border-slate-100 text-[10px] text-slate-500">
+                                      <div className="bg-slate-50 p-2 rounded-xl border border-slate-100/50">
+                                        <span className="block text-[8px] text-slate-400 font-black uppercase tracking-wider">Cap Rate Anual</span>
+                                        <span className="font-bold text-slate-800">{realEstateMetrics.capRateAnnual.toFixed(2)}%</span>
+                                      </div>
+                                      <div className="bg-slate-50/50 p-2 rounded-xl border border-slate-100/50">
+                                        <span className="block text-[8px] text-slate-400 font-black uppercase tracking-wider">Cash-on-Cash</span>
+                                        <span className="font-bold text-slate-800">{realEstateMetrics.cashOnCashReturn.toFixed(2)}%</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {linkedLiab && (
+                                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                                      <div className="flex justify-between text-[9px] font-black uppercase text-slate-400">
+                                        <span>Financiamento LTV / Equity:</span>
+                                        <span className="font-bold text-slate-800">{realEstateMetrics.ltv.toFixed(0)}% LTV / {realEstateMetrics.homeEquityPercent.toFixed(0)}% Equity</span>
+                                      </div>
+                                      <div 
+                                        className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden flex"
+                                        role="progressbar"
+                                        aria-valuenow={realEstateMetrics.homeEquityPercent}
+                                        aria-valuemin={0}
+                                        aria-valuemax={100}
+                                        aria-label="Proporção de LTV e Home Equity"
+                                      >
+                                        <div className="bg-red-400 h-full" style={{ width: `${realEstateMetrics.ltv}%` }} />
+                                        <div className="bg-emerald-500 h-full" style={{ width: `${realEstateMetrics.homeEquityPercent}%` }} />
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         )}
 
@@ -4783,19 +4864,31 @@ const Assets: React.FC = () => {
                         {propertyStage === 'PRONTO' && meta.purpose === 'investimento' && (
                           <div className="p-3 bg-slate-50 rounded-xl space-y-2 border border-slate-100">
                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saúde Financeira do Ativo</p>
-                            <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden flex">
-                              <div
-                                className={`h-full ${netPropertyFlow >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                                style={{ 
-                                  width: `${Math.min(
-                                    cardPeriod === 'CONTRACT'
-                                      ? (isRented && totalMonthlyCost > 0 ? Math.round((rental / totalMonthlyCost) * 100) : 0)
-                                      : ((installment + displayCondoIptu) > 0 ? Math.round((rental / (installment + displayCondoIptu)) * 100) : (rental > 0 ? 100 : 0)), 
-                                    100
-                                  )}%` 
-                                }}
-                              />
-                            </div>
+                            {(() => {
+                              const progressVal = Math.min(
+                                cardPeriod === 'CONTRACT'
+                                  ? (isRented && totalMonthlyCost > 0 ? Math.round((rental / totalMonthlyCost) * 100) : 0)
+                                  : ((installment + displayCondoIptu) > 0 ? Math.round((rental / (installment + displayCondoIptu)) * 100) : (rental > 0 ? 100 : 0)), 
+                                100
+                              );
+                              return (
+                                <>
+                                  <div 
+                                    className="w-full bg-slate-200 h-2 rounded-full overflow-hidden flex"
+                                    role="progressbar"
+                                    aria-valuenow={progressVal}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
+                                    aria-label="Saúde financeira (Autossuficiência) do Ativo"
+                                  >
+                                    <div
+                                      className={`h-full ${netPropertyFlow >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                                      style={{ width: `${progressVal}%` }}
+                                    />
+                                  </div>
+                                </>
+                              );
+                            })()}
                             <p className="text-[9px] font-semibold text-slate-500">
                               {netPropertyFlow >= 0 
                                 ? '🟢 Imóvel 100% autossuficiente (Se paga e sobra caixa)' 
@@ -5132,7 +5225,14 @@ const Assets: React.FC = () => {
                             <span>Retorno do Principal</span>
                             <span>{progressPercent}% ({formatCurrency(returned)})</span>
                           </div>
-                          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                          <div 
+                            className="w-full bg-slate-100 h-2 rounded-full overflow-hidden"
+                            role="progressbar"
+                            aria-valuenow={Math.min(progressPercent, 100)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={`Retorno do principal do empréstimo ${loan.name}`}
+                          >
                             <div className="bg-emerald-500 h-full transition-all" style={{ width: `${Math.min(progressPercent, 100)}%` }} />
                           </div>
                         </div>
@@ -5573,7 +5673,14 @@ const Assets: React.FC = () => {
                             <span>Progresso da Dívida:</span>
                             <span className="text-red-500 font-extrabold">{amortizationPercent}% quitado</span>
                           </div>
-                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div 
+                            className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden"
+                            role="progressbar"
+                            aria-valuenow={amortizationPercent}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={`Progresso de amortização da dívida ${liability.name}`}
+                          >
                             <div 
                               className="bg-red-500 h-full rounded-full transition-all duration-500" 
                               style={{ width: `${amortizationPercent}%` }}
@@ -7295,7 +7402,14 @@ const Assets: React.FC = () => {
                         <span>Retorno do Principal</span>
                         <span>{progressPct}% quitado</span>
                       </div>
-                      <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                      <div 
+                        className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden"
+                        role="progressbar"
+                        aria-valuenow={progressPct}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label="Progresso de amortização do empréstimo"
+                      >
                         <div className="bg-emerald-500 h-full rounded-full transition-all" style={{ width: `${progressPct}%` }} />
                       </div>
                     </div>

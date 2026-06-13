@@ -482,4 +482,68 @@ export class FinancialEngine {
     }
     return schedule;
   }
+
+  /**
+   * Calculates a value compounded by an index rate over a number of months.
+   */
+  static calculateIndexCompoundedValue(
+    baseValue: number,
+    monthlyIndexRatePercent: number,
+    months: number
+  ): number {
+    const rate = monthlyIndexRatePercent / 100;
+    return baseValue * Math.pow(1 + rate, Math.max(0, months));
+  }
+
+  /**
+   * Calculates real estate asset performance and health metrics.
+   */
+  static calculateRealEstateMetrics(input: {
+    estimatedValue: number;
+    totalInvestedCapital: number; // Down payments + balloons + cartórios + reformas paid
+    monthlyGrossRent: number;
+    monthlyOperationalExpenses: number; // Condomínio + IPTU + maintenance
+    monthlyFinancingInstallment: number; // Parcelas / consortium payments
+    outstandingDebt: number; // Remaining balance of financing / consortium
+  }): {
+    capRateAnnual: number;
+    cashOnCashReturn: number;
+    ltv: number;
+    homeEquityPercent: number;
+    netMonthlyCashFlow: number;
+  } {
+    const {
+      estimatedValue,
+      totalInvestedCapital,
+      monthlyGrossRent,
+      monthlyOperationalExpenses,
+      monthlyFinancingInstallment,
+      outstandingDebt
+    } = input;
+
+    // Net Operational Income (NOI) = Gross Rent - Operational Expenses
+    const monthlyNOI = Math.max(0, monthlyGrossRent - monthlyOperationalExpenses);
+    const annualNOI = monthlyNOI * 12;
+
+    const capRateAnnual = estimatedValue > 0 ? (annualNOI / estimatedValue) * 100 : 0;
+
+    // Cash-on-Cash = (Net Annual Cash Flow) / Total Invested Capital
+    // Net Cash Flow = Gross Rent - Operational Expenses - Financing Installment
+    const netMonthlyCashFlow = monthlyGrossRent - monthlyOperationalExpenses - monthlyFinancingInstallment;
+    const annualNetCashFlow = netMonthlyCashFlow * 12;
+
+    const cashOnCashReturn = totalInvestedCapital > 0 ? (annualNetCashFlow / totalInvestedCapital) * 100 : 0;
+
+    // Loan-to-Value (LTV)
+    const ltv = estimatedValue > 0 ? (outstandingDebt / estimatedValue) * 100 : 0;
+    const homeEquityPercent = Math.max(0, 100 - ltv);
+
+    return {
+      capRateAnnual: Math.round(capRateAnnual * 100) / 100,
+      cashOnCashReturn: Math.round(cashOnCashReturn * 100) / 100,
+      ltv: Math.round(ltv * 100) / 100,
+      homeEquityPercent: Math.round(homeEquityPercent * 100) / 100,
+      netMonthlyCashFlow: Math.round(netMonthlyCashFlow * 100) / 100
+    };
+  }
 }
