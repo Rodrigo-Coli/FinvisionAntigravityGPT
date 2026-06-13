@@ -55,6 +55,7 @@ import { FinancialEngine } from '../lib/financialEngine';
 const Assets: React.FC = () => {
   const navigate = useNavigate();
   const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities'>('overview');
+  const [showAllDetails, setShowAllDetails] = useState(false);
   const [inccRate, setInccRate] = useState<number | null>(null);
   const [loadingIncc, setLoadingIncc] = useState<boolean>(false);
 
@@ -3491,6 +3492,40 @@ const Assets: React.FC = () => {
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
+  const InfoTooltip: React.FC<{ content: string }> = ({ content }) => {
+    return (
+      <div className="group relative inline-block ml-1 cursor-help align-middle select-none">
+        <HelpCircle size={12} className="text-slate-400 group-hover:text-brand-500 transition-colors" />
+        <div className="absolute z-[100] bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-950 text-[10px] text-slate-200 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 border border-slate-800 text-center leading-normal normal-case font-medium">
+          {content}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-950" />
+        </div>
+      </div>
+    );
+  };
+
+  const TrendValue: React.FC<{
+    value: number;
+    percent?: number;
+    suffix?: string;
+  }> = ({ value, percent, suffix = '' }) => {
+    const isPositive = value >= 0;
+    return (
+      <span className={`font-black flex items-center gap-0.5 ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+        {isPositive ? '+' : ''}
+        {formatCurrency(value)}
+        {percent !== undefined && (
+          <span className="text-[9px] font-bold">({isPositive ? '+' : ''}{percent.toFixed(1)}%{suffix})</span>
+        )}
+        {isPositive ? (
+          <ArrowUpRight size={12} className="text-emerald-600 inline shrink-0" aria-hidden="true" />
+        ) : (
+          <ArrowDownRight size={12} className="text-rose-600 inline shrink-0" aria-hidden="true" />
+        )}
+      </span>
+    );
+  };
+
   // Totals calculations
   const totalPhysical = enrichedPhysicalAssets
     .filter(p => p.category !== 'INVESTMENT' && !p.metadata?.isLoan)
@@ -3714,12 +3749,28 @@ const Assets: React.FC = () => {
       (t.category === 'Rendimentos' || t.category === 'Investimentos' || t.metadata?.type === 'investment_yield')
     );
 
-    const currentMonthYield = yieldTxs.filter(t => 
+    const transactionCurrentMonthYield = yieldTxs.filter(t => 
       t.date.substring(0, 7) === currentMonthStr
     ).reduce((sum, t) => sum + t.amount, 0);
 
+    const activeInvestments = enrichedPhysicalAssets.filter(
+      p => p.category === 'INVESTMENT' && p.metadata?.status !== 'RESGATADO'
+    );
+
+    const investmentsEstimatedMonthlyYield = activeInvestments.reduce((sum, inv) => {
+      const rate = inv.parsedAnnualRate || 0;
+      const value = inv.estimatedValue || 0;
+      const monthlyRate = Math.pow(1 + rate / 100, 1 / 12) - 1;
+      return sum + (value * monthlyRate);
+    }, 0);
+
+    const currentMonthYield = transactionCurrentMonthYield + investmentsEstimatedMonthlyYield;
+
     const uniqueMonths = Array.from(new Set(yieldTxs.map(t => t.date.substring(0, 7))));
-    const averageMonthlyYield = uniqueMonths.length > 0 ? yieldTxs.reduce((sum, t) => sum + t.amount, 0) / uniqueMonths.length : 0;
+    const transactionAverageYield = uniqueMonths.length > 0 
+      ? yieldTxs.reduce((sum, t) => sum + t.amount, 0) / uniqueMonths.length 
+      : 0;
+    const averageMonthlyYield = transactionAverageYield + investmentsEstimatedMonthlyYield;
 
     // 4. PASSIVOS E DÍVIDAS (Consórcios vs Financiamentos)
     const consortiums = activeLiab.filter(l => l.type === 'CONSORTIUM');
@@ -3784,7 +3835,7 @@ const Assets: React.FC = () => {
       veiculoValue,
       outroFisicoValue
     };
-  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, transactions, totalFinancial, linkedTransactionsMap]);
+  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, transactions, totalFinancial, linkedTransactionsMap, enrichedPhysicalAssets]);
 
   if (isLoading) {
     return (
@@ -3842,116 +3893,163 @@ const Assets: React.FC = () => {
         {/* OVERVIEW VIEW */}
         {activeView === 'overview' && (
           <div className="space-y-8 animate-in fade-in duration-500">
-            {/* COMPACT TOTALS GRID (7 Cards) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            {/* COMPACT TOTALS GRID (8 Cards) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-4">
               {/* Fluxo Mensal */}
-              <div className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group hover:scale-[1.02] transition-all col-span-2 sm:col-span-1">
+              <button
+                onClick={() => setActiveView('overview')}
+                className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group hover:scale-[1.02] transition-all col-span-2 sm:col-span-1 text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
                 <div className="absolute -right-4 -bottom-4 w-12 h-12 bg-white/5 rounded-full pointer-events-none" />
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
+                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
                   <Zap size={14} className="text-brand-400" />
                 </div>
                 <div className="mt-1 space-y-0.5">
                   <div className="flex justify-between text-[9px] text-slate-400">
-                    <span>Recebimentos:</span>
+                    <span>Recebidos:</span>
                     <span className="font-bold text-emerald-400">{formatCurrency(sustainabilitySummary.totalInflow)}</span>
                   </div>
                   <div className="flex justify-between text-[9px] text-slate-400">
                     <span>Despesas:</span>
                     <span className="font-bold text-rose-400">{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
                   </div>
-                  <div className="flex justify-between items-baseline border-t border-slate-800 pt-1 mt-1">
+                  <div className="flex justify-between text-[9px] text-slate-400">
+                    <span>Sustentabilidade:</span>
+                    <span className="font-bold text-brand-400">{sustainabilitySummary.selfSustainabilityPercent}%</span>
+                  </div>
+                  <div className="flex justify-between items-baseline border-t border-slate-800 pt-1 mt-0.5">
                     <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Saldo</span>
                     <span className={`text-base font-black tracking-tight italic ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
                     </span>
                   </div>
                 </div>
-              </div>
+              </button>
 
               {/* Patrimônio Líquido */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+              <button
+                onClick={() => setActiveView('overview')}
+                className="bg-white border-2 border-brand-500 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500 relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 w-8 h-8 bg-brand-500/10 rounded-bl-full flex items-center justify-center pointer-events-none">
+                  <span className="text-[8px] font-black text-brand-600 uppercase tracking-widest mr-1 mb-1">Mestre</span>
+                </div>
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Patrimônio Real</span>
+                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Patrimônio Real</span>
                   <TrendingUp size={14} className="text-emerald-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(totalNetWorth)}
                   </h4>
-                  <span className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest">Líquido</span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-0.5">
+                    Líquido <ArrowUpRight size={10} className="inline shrink-0" />
+                  </span>
                 </div>
-              </div>
+              </button>
 
               {/* Investimento Imobiliário */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+              <button
+                onClick={() => setActiveView('realestate')}
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Imobiliário</span>
+                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Imobiliário</span>
                   <Building2 size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(overviewData.plantaValue + overviewData.prontoValue)}
                   </h4>
-                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Planta + Pronto</span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Planta + Pronto</span>
                 </div>
-              </div>
+              </button>
 
               {/* Veículos */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+              <button
+                onClick={() => setActiveView('vehicles')}
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Veículos</span>
+                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Veículos</span>
                   <Car size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(overviewData.veiculoValue)}
                   </h4>
-                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">FIPE / Estimado</span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">FIPE / Estimado</span>
                 </div>
-              </div>
+              </button>
 
               {/* Outros Bens Físicos */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+              <button
+                onClick={() => setActiveView('physical')}
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Outros Bens</span>
+                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Outros Bens</span>
                   <Box size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(overviewData.outroFisicoValue)}
                   </h4>
-                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Outros Bens Físicos</span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Outros Físicos</span>
                 </div>
-              </div>
+              </button>
 
               {/* Investimentos Financeiros */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+              <button
+                onClick={() => setActiveView('investments')}
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Financeiro</span>
+                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Financeiro</span>
                   <PieChart size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-brand-600 tracking-tight italic">
                     {formatCurrency(overviewData.totalFinancialFunds)}
                   </h4>
-                  <span className="text-[8px] font-bold text-brand-500 uppercase tracking-widest">Corretoras</span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-brand-500 uppercase tracking-widest">Corretoras</span>
                 </div>
-              </div>
+              </button>
+
+              {/* Empréstimos Concedidos */}
+              <button
+                onClick={() => setActiveView('loans')}
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <div className="flex justify-between items-start">
+                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Empréstimos</span>
+                  <HandCoins size={14} className="text-brand-500" />
+                </div>
+                <div className="mt-2">
+                  <h4 className="text-base font-black text-slate-900 tracking-tight italic">
+                    {formatCurrency(totalLoans)}
+                  </h4>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">A Receber</span>
+                </div>
+              </button>
 
               {/* Passivos e Dívidas */}
-              <div className="bg-red-50/30 border border-red-100/50 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+              <button
+                onClick={() => setActiveView('liabilities')}
+                className="bg-red-50/30 border border-red-100/50 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-red-500">Dívidas</span>
+                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-red-500">Dívidas</span>
                   <Landmark size={14} className="text-red-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-red-600 tracking-tight italic">
                     {formatCurrency(totalLiabilities)}
                   </h4>
-                  <span className="text-[8px] font-bold text-red-400 uppercase tracking-widest">Saldo Devedor</span>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-red-400 uppercase tracking-widest">Saldo Devedor</span>
                 </div>
-              </div>
+              </button>
             </div>
 
             {/* 4 DETAILED ANALYTICS SECTIONS (2x2 Grid) */}
@@ -3971,8 +4069,14 @@ const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Planta Stage */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      🏗️ Na Planta / Em Obras
+                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span aria-hidden="true">🏗️ Na Planta / Em Obras</span>
+                      <button
+                        onClick={() => setActiveView('realestate')}
+                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
@@ -3992,7 +4096,10 @@ const Assets: React.FC = () => {
                         <span className="font-bold text-brand-600">{formatCurrency(overviewData.plantaRemainingToPay)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Saldo a Financiar (Entrega):</span>
+                        <span className="text-slate-500 font-medium flex items-center">
+                          Saldo Devedor na Entrega
+                          <InfoTooltip content="Valor estimado a ser quitado/financiado no momento da entrega das chaves do imóvel na planta." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaDeliveryBalance)}</span>
                       </div>
                     </div>
@@ -4000,8 +4107,14 @@ const Assets: React.FC = () => {
 
                   {/* Pronto Stage */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span>🏢 Imóveis Entregues</span>
+                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span aria-hidden="true">🏢 Imóveis Entregues</span>
+                      <button
+                        onClick={() => setActiveView('realestate')}
+                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
@@ -4026,15 +4139,14 @@ const Assets: React.FC = () => {
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
                         <span className="text-slate-600 font-bold">Mensal Líquido (Mês Atual):</span>
-                        <span className={`font-black ${overviewData.prontoMonthlyNetFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {overviewData.prontoMonthlyNetFlow >= 0 ? '+' : ''}{formatCurrency(overviewData.prontoMonthlyNetFlow)}
-                        </span>
+                        <TrendValue value={overviewData.prontoMonthlyNetFlow} />
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold">Fluxo Histórico Líquido (Se Vender):</span>
-                        <span className={`font-black ${overviewData.prontoNetFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {overviewData.prontoNetFlow >= 0 ? '+' : ''}{formatCurrency(overviewData.prontoNetFlow)}
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Equity Imobiliária (Valor − Dívida)
+                          <InfoTooltip content="Equidade líquida estimada se vendesse os imóveis hoje pelo valor de mercado e liquidasse os financiamentos. Não desconta impostos ou taxas imobiliárias." />
                         </span>
+                        <TrendValue value={overviewData.prontoNetFlow} />
                       </div>
                     </div>
                   </div>
@@ -4055,8 +4167,14 @@ const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Para Uso */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      🚗 Para Uso Pessoal
+                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span aria-hidden="true">🚗 Para Uso Pessoal</span>
+                      <button
+                        onClick={() => setActiveView('physical')}
+                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
@@ -4064,23 +4182,32 @@ const Assets: React.FC = () => {
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.usoAcquisitionTotal)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Valor Estimado FIPE:</span>
+                        <span className="text-slate-500 font-medium flex items-center">
+                          Valor FIPE / Mercado
+                          <InfoTooltip content="Valor de mercado estimado para veículos (tabela FIPE) e outros bens pessoais de uso." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.usoCurrentValueTotal)}</span>
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold">Ágio / Deságio:</span>
-                        <span className={`font-black flex items-center gap-1 ${overviewData.usoAgioDesagio >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {overviewData.usoAgioDesagio >= 0 ? '+' : ''}{formatCurrency(overviewData.usoAgioDesagio)}
-                          <span className="text-[9px] font-bold">({overviewData.usoAgioDesagioPercent.toFixed(1)}%)</span>
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Ganho ou Perda vs. Compra
+                          <InfoTooltip content="Diferença entre o valor de mercado atual e o custo histórico de aquisição." />
                         </span>
+                        <TrendValue value={overviewData.usoAgioDesagio} percent={overviewData.usoAgioDesagioPercent} />
                       </div>
                     </div>
                   </div>
 
                   {/* Para Investimento */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      📈 Para Investimento / Venda
+                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span aria-hidden="true">📈 Para Investimento / Venda</span>
+                      <button
+                        onClick={() => setActiveView('physical')}
+                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
@@ -4100,11 +4227,11 @@ const Assets: React.FC = () => {
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.invEstimatedValue)}</span>
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold">Lucro Líquido Est.:</span>
-                        <span className={`font-black flex items-center gap-1 ${overviewData.invNetProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {overviewData.invNetProfit >= 0 ? '+' : ''}{formatCurrency(overviewData.invNetProfit)}
-                          <span className="text-[9px] font-bold">({overviewData.invProfitPercent.toFixed(1)}% ROI)</span>
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Lucro Líquido Est. (ROI)
+                          <InfoTooltip content="Retorno sobre o Investimento (ROI) estimado, considerando preço atual de mercado menos custos de aquisição, reformas e comissões." />
                         </span>
+                        <TrendValue value={overviewData.invNetProfit} percent={overviewData.invProfitPercent} suffix=" ROI" />
                       </div>
                     </div>
                   </div>
@@ -4125,29 +4252,63 @@ const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Allocation */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      📊 Alocação por Classe
+                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span aria-hidden="true">📊 Alocação por Classe</span>
+                      <button
+                        onClick={() => setActiveView('investments')}
+                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
-                    <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                    <div className="space-y-3.5 pr-1">
                       {overviewData.allocationList.length === 0 ? (
                         <p className="text-xs text-slate-400 italic">Sem investimentos cadastrados.</p>
                       ) : (
-                        overviewData.allocationList.map((item, idx) => (
-                          <div key={idx} className="flex justify-between text-xs">
-                            <span className="text-slate-500 font-medium truncate max-w-[120px]">{item.type}</span>
-                            <span className="font-bold text-slate-900">
-                              {formatCurrency(item.balance)} <span className="text-[9px] font-medium text-slate-400">({item.percentage}%)</span>
-                            </span>
+                        <>
+                          <div className="space-y-3">
+                            {overviewData.allocationList.slice(0, 5).map((item, idx) => (
+                              <div key={idx} className="space-y-1">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-slate-600 font-medium truncate max-w-[140px]">{item.type}</span>
+                                  <span className="font-bold text-slate-900">
+                                    {formatCurrency(item.balance)} <span className="text-[9px] font-medium text-slate-400">({item.percentage}%)</span>
+                                  </span>
+                                </div>
+                                <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                  <div 
+                                    className="bg-brand-500 h-full rounded-full transition-all duration-500" 
+                                    style={{ width: `${item.percentage}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))
+                          {overviewData.allocationList.length > 5 && (
+                            <div className="pt-1.5 text-center border-t border-slate-100 mt-2">
+                              <button
+                                onClick={() => setActiveView('investments')}
+                                className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                              >
+                                + {overviewData.allocationList.length - 5} outras classes (Ver Tudo →)
+                              </button>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
 
                   {/* Monthly Yield comparison */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      💵 Rendimentos da Carteira
+                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span aria-hidden="true">💵 Rendimentos da Carteira</span>
+                      <button
+                        onClick={() => setActiveView('investments')}
+                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
@@ -4157,6 +4318,15 @@ const Assets: React.FC = () => {
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-500 font-medium">Média Histórica Mensal:</span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.averageMonthlyYield)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Autossuficiência
+                          <InfoTooltip content="Percentual de cobertura das despesas patrimoniais (parcelas de consórcios, financiamentos, condomínios, IPVA/IPTU) pelas receitas de aluguéis e investimentos." />
+                        </span>
+                        <span className={`font-black ${sustainabilitySummary.selfSustainabilityPercent >= 100 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                          {sustainabilitySummary.selfSustainabilityPercent}%
+                        </span>
                       </div>
                       <div className="p-3 bg-brand-50 rounded-xl mt-2">
                         <p className="text-[10px] text-brand-600 leading-relaxed font-medium">
@@ -4182,36 +4352,60 @@ const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Consórcios */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      💳 Consórcios Ativos
+                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span aria-hidden="true">💳 Consórcios Ativos</span>
+                      <button
+                        onClick={() => setActiveView('liabilities')}
+                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Parcelas Mensais:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Parcelas Mensais
+                          <InfoTooltip content="Soma das parcelas mensais devidas para todos os consórcios ativos." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.consInstallments)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Total Contratado:</span>
+                        <span className="text-slate-600 font-medium">Total Contratado (Cartas):</span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.consContracted)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Total Pago:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Total Pago
+                          <InfoTooltip content="Valor total amortizado/pago das parcelas até o momento." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.consPaid)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Lances Ofertados:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Lances Dados (Tentativas)
+                          <InfoTooltip content="Total ofertado em lances nas assembleias para tentar a contemplação das cartas." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.consLances)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Cartas em Obras/Uso:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Créditos em Uso (Obras/Bens)
+                          <InfoTooltip content="Cartas de consórcio já contempladas que estão atreladas a algum bem físico ou projeto em andamento." />
+                        </span>
                         <span className="font-bold text-slate-950">{formatCurrency(overviewData.consUtilized)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Cartas Livres:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Créditos Disponíveis
+                          <InfoTooltip content="Cartas de consórcio que já foram contempladas mas cujo saldo ainda não foi utilizado para aquisição de bens." />
+                        </span>
                         <span className="font-bold text-brand-600">{formatCurrency(overviewData.consToContemplate)}</span>
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold">Saldo Devedor:</span>
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Saldo Devedor Restante
+                          <InfoTooltip content="Saldo que resta pagar das parcelas vincendas até a quitação dos grupos." />
+                        </span>
                         <span className="font-black text-red-600">{formatCurrency(overviewData.consRemaining)}</span>
                       </div>
                     </div>
@@ -4219,24 +4413,39 @@ const Assets: React.FC = () => {
 
                   {/* Financiamentos */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      🏛️ Financiamentos Gerais
+                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span aria-hidden="true">🏛️ Financiamentos Gerais</span>
+                      <button
+                        onClick={() => setActiveView('liabilities')}
+                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Prestações Mensais:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Prestações Mensais
+                          <InfoTooltip content="Soma das parcelas mensais de todos os financiamentos ativos (imobiliários, veículos, etc.)." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.finInstallments)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Total Contratado:</span>
+                        <span className="text-slate-600 font-medium">Total Financiado (Contrato):</span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.finContracted)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Total Pago:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Total Amortizado (Pago)
+                          <InfoTooltip content="Valor principal do financiamento já pago até o momento." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.finPaid)}</span>
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold">Saldo Devedor Restante:</span>
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Saldo Devedor Restante
+                          <InfoTooltip content="Saldo restante para quitação dos contratos de financiamento." />
+                        </span>
                         <span className="font-black text-red-600">{formatCurrency(overviewData.finRemaining)}</span>
                       </div>
                     </div>
