@@ -47,7 +47,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [saleValue, setSaleValue] = useState(String(asset.metadata?.saleValue || ''));
   const [brokerFee, setBrokerFee] = useState(String(asset.metadata?.brokerFee || ''));
   const [isSold, setIsSold] = useState(!!asset.metadata?.isSold);
-  const [saleComission, setSaleComission] = useState(String(asset.metadata?.saleComission || ''));
+  const [saleCommission, setSaleCommission] = useState(String(asset.metadata?.saleCommission || asset.metadata?.saleComission || ''));
   const [salePaymentMethod, setSalePaymentMethod] = useState<'A_VISTA' | 'PARCELADO' | 'PERMUTA' | 'HIBRIDO'>(
     asset.metadata?.salePaymentMethod || 'A_VISTA'
   );
@@ -812,7 +812,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         consortiumAllocationRatio: asset.metadata?.selectedConsortiumId ? (parseFloat(consortiumAllocationRatio) || 100) : undefined,
         isSold,
         brokerFee: parseFloat(brokerFee) || 0,
-        saleComission: parseFloat(saleComission) || 0,
+        saleCommission: parseFloat(saleCommission) || 0,
+        saleComission: parseFloat(saleCommission) || 0, // deprecated legacy fallback
         salePaymentMethod,
         saleDate,
         saleCashAmount: parseFloat(saleCashAmount) || 0,
@@ -822,7 +823,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       const wasSoldBefore = !!asset.metadata?.isSold;
       if (isSold && !wasSoldBefore) {
         const soldAmount = saleVal;
-        const comission = parseFloat(saleComission) || 0;
+        const comission = parseFloat(saleCommission) || 0;
         const saleDateStr = saleDate || new Date().toISOString().split('T')[0];
 
         // 1. Excluir provisões futuras não pagas vinculadas ao imóvel
@@ -1503,12 +1504,12 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Comissão de Venda (R$)</label>
+                        <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Comissão de Venda (R$)</label>
                         <input
                           type="number"
                           className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs"
-                          value={saleComission}
-                          onChange={(e) => setSaleComission(e.target.value)}
+                          value={saleCommission}
+                          onChange={(e) => setSaleCommission(e.target.value)}
                           placeholder="0.00"
                         />
                       </div>

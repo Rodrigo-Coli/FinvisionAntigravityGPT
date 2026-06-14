@@ -392,19 +392,21 @@ export class FinancialEngine {
     
     let monthsElapsed = (today.getFullYear() - acqDate.getFullYear()) * 12 + (today.getMonth() - acqDate.getMonth());
     if (today.getDate() < acqDate.getDate()) {
-      monthsElapsed = Math.max(0, monthsElapsed - 1);
+      monthsElapsed = monthsElapsed - 1;
     }
+    monthsElapsed = Math.max(0, monthsElapsed);
     
     const monthlyRate = this.getEquivalentMonthlyRate(annualRate);
+    const dailyRate = Math.pow(1 + annualRate / 100, 1 / 365) - 1; // Taxa equivalente diária
     
     let grossValue = initialValue;
     let grossYield = 0;
     
     if (payoutType === 'ACUMULADO') {
-      grossValue = initialValue * Math.pow(1 + monthlyRate, monthsElapsed);
+      grossValue = initialValue * Math.pow(1 + dailyRate, daysElapsed);
       grossYield = Math.max(0, grossValue - initialValue);
     } else {
-      grossYield = initialValue * monthlyRate * monthsElapsed;
+      grossYield = initialValue * dailyRate * daysElapsed;
     }
     
     const taxRate = this.calculateRegressiveTaxRate(daysElapsed, isTaxExempt);

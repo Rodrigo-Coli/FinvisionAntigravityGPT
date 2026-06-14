@@ -4,6 +4,9 @@ import {
   Plus,
   Home as HomeIcon,
   Car,
+  Bike,
+  Truck,
+  Tags,
   TrendingUp,
   Briefcase,
   ChevronRight,
@@ -55,6 +58,15 @@ import { FinancialEngine } from '../lib/financialEngine';
 const Assets: React.FC = () => {
   const navigate = useNavigate();
   const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities'>('overview');
+  const [allAccounts, setAllAccounts] = useState<any[]>([]);
+  const [collapsedBrokers, setCollapsedBrokers] = useState<Record<string, boolean>>({});
+  const [showResgateModal, setShowResgateModal] = useState(false);
+  const [selectedAssetForResgate, setSelectedAssetForResgate] = useState<any | null>(null);
+  const [resgateForm, setResgateForm] = useState({
+    type: 'TOTAL' as 'TOTAL' | 'PARCIAL',
+    amount: '',
+    destinationAccountId: ''
+  });
   const [showAllDetails, setShowAllDetails] = useState(false);
   const [inccRate, setInccRate] = useState<number | null>(null);
   const [loadingIncc, setLoadingIncc] = useState<boolean>(false);
@@ -292,6 +304,10 @@ const Assets: React.FC = () => {
     financingName: '',
     // Vehicle-specific fields
     vehicleType: 'CAR' as 'CAR' | 'MOTORCYCLE' | 'TRUCK' | 'OTHER',
+    licensePlate: '',
+    renavam: '',
+    yearModel: '',
+    mileage: '',
     transferFee: '',
     vehiclePurposeType: 'RENTAL' as 'RENTAL' | 'FLIP',
     ipvaFee: '',
@@ -301,7 +317,7 @@ const Assets: React.FC = () => {
     rentalPlatformFee: '',
     targetSaleValue: '',
     preparationBudget: '',
-    saleComission: '',
+    saleCommission: '',
     salePaymentMethod: 'A_VISTA' as 'A_VISTA' | 'PARCELADO' | 'PERMUTA' | 'HIBRIDO',
     permutaVeiculoValor: '',
     permutaVeiculoNome: '',
@@ -463,6 +479,7 @@ const Assets: React.FC = () => {
       }
       if (cachedAccounts) {
         const accs = JSON.parse(cachedAccounts);
+        setAllAccounts(accs);
         const brokerList = accs.filter((a: any) => a.type === 'INVESTMENT').map((a: any) => {
           const meta = a.metadata || {};
           return {
@@ -521,6 +538,8 @@ const Assets: React.FC = () => {
       const phys = physRes.data || [];
       const accs = accsRes.data || [];
       const liabs = liabsRes.data || [];
+      
+      setAllAccounts(accs);
 
       // Mapeamento e atualização atômica de estados (Mapeamento Seguro)
       const mappedPhys = phys.map((p: any) => ({
@@ -686,31 +705,59 @@ const Assets: React.FC = () => {
     return activePhysicalAssets.map(p => {
       if (p.category === 'INVESTMENT') {
         const meta = p.metadata || {};
-        const initial = Number(meta.purchaseValue) || Number(p.estimatedValue) || 0;
-        const acqDate = p.acquisitionDate || new Date().toISOString().split('T')[0];
+        const purchase = Number(meta.purchaseValue) || Number(meta.initialInvestmentAmount) || Number(p.estimatedValue) || 0;
+        const isVariableIncome = ['ACOES', 'FIIS', 'CRIPTO', 'OUTROS'].includes(meta.investmentType);
         
-        const parsedAnnualRate = FinancialEngine.parseYieldRate(meta.yieldRate || '', meta.interestType || 'PRE');
-        const isExempt = !!meta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'FIIS'].includes(meta.investmentType);
-        
-        const calcs = FinancialEngine.calculateFixedIncomeYield(
-          initial,
-          parsedAnnualRate,
-          acqDate,
-          meta.payoutType === 'MENSAL' ? 'MENSAL' : 'ACUMULADO',
-          isExempt
-        );
-        
-        return {
-          ...p,
-          estimatedValue: calcs.grossValue,
-          netValue: calcs.netValue,
-          grossYield: calcs.grossYield,
-          taxRate: calcs.taxRate,
-          taxAmount: calcs.taxAmount,
-          daysElapsed: calcs.daysElapsed,
-          monthsElapsed: calcs.monthsElapsed,
-          parsedAnnualRate
-        };
+        if (isVariableIncome) {
+          const grossValue = Number(p.estimatedValue || 0);
+          const grossYield = grossValue - purchase;
+          const isExempt = !!meta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'POUPANCA'].includes(meta.investmentType);
+          
+          let taxRate = 0;
+          if (!isExempt) {
+            if (meta.investmentType === 'FIIS') taxRate = 0.20;
+            else if (['ACOES', 'CRIPTO'].includes(meta.investmentType)) taxRate = 0.15;
+          }
+          
+          const taxAmount = !isExempt && grossYield > 0 ? Math.round(grossYield * taxRate * 100) / 100 : 0;
+          const netValue = Math.round((grossValue - taxAmount) * 100) / 100;
+          
+          return {
+            ...p,
+            estimatedValue: grossValue,
+            netValue: netValue,
+            grossYield: grossYield,
+            taxRate: taxRate,
+            taxAmount: taxAmount,
+            daysElapsed: 0,
+            monthsElapsed: 0,
+            parsedAnnualRate: 0
+          };
+        } else {
+          const acqDate = p.acquisitionDate || new Date().toISOString().split('T')[0];
+          const parsedAnnualRate = FinancialEngine.parseYieldRate(meta.yieldRate || '', meta.interestType || 'PRE');
+          const isExempt = !!meta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'POUPANCA'].includes(meta.investmentType);
+          
+          const calcs = FinancialEngine.calculateFixedIncomeYield(
+            purchase,
+            parsedAnnualRate,
+            acqDate,
+            meta.payoutType === 'MENSAL' ? 'MENSAL' : 'ACUMULADO',
+            isExempt
+          );
+          
+          return {
+            ...p,
+            estimatedValue: calcs.grossValue,
+            netValue: calcs.netValue,
+            grossYield: calcs.grossYield,
+            taxRate: calcs.taxRate,
+            taxAmount: calcs.taxAmount,
+            daysElapsed: calcs.daysElapsed,
+            monthsElapsed: calcs.monthsElapsed,
+            parsedAnnualRate
+          };
+        }
       }
       return {
         ...p,
@@ -1283,7 +1330,7 @@ const Assets: React.FC = () => {
       // Se o veículo foi vendido, não geramos novas provisões de IPVA/Seguro/Aluguel futuros!
       if (formValues.isSold) {
         const soldAmount = parseFloat(formValues.soldValue) || 0;
-        const comission = parseFloat(formValues.saleComission) || 0;
+        const comission = parseFloat(formValues.saleCommission || (formValues as any).saleComission) || 0;
         const saleDateStr = formValues.saleDate || todayStr;
 
         // Registrar comissão de venda (se houver)
@@ -1646,7 +1693,7 @@ const Assets: React.FC = () => {
       // Se o bem foi vendido, não geramos rendimentos futuros
       if (formValues.isSold) {
         const soldAmount = parseFloat(formValues.soldValue) || 0;
-        const comission = parseFloat(formValues.saleComission) || 0;
+        const comission = parseFloat(formValues.saleCommission || (formValues as any).saleComission) || 0;
         const saleDateStr = formValues.saleDate || todayStr;
 
         // Registrar comissão de venda (se houver)
@@ -1857,6 +1904,195 @@ const Assets: React.FC = () => {
     }
   };
 
+  const handleRedeemInvestment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !selectedAssetForResgate) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) return;
+
+    try {
+      const asset = selectedAssetForResgate;
+      const isTotal = resgateForm.type === 'TOTAL';
+      const amountToRedeem = isTotal 
+        ? (asset.netValue || Number(asset.estimatedValue || 0)) 
+        : (parseFloat(resgateForm.amount) || 0);
+
+      if (amountToRedeem <= 0) {
+        alert('Por favor, informe um valor de resgate maior que zero.');
+        return;
+      }
+
+      const currentEstimated = Number(asset.estimatedValue || 0);
+      if (amountToRedeem > currentEstimated) {
+        alert('O valor de resgate não pode ser maior do que o Saldo Bruto Atual.');
+        return;
+      }
+
+      const targetAccountId = resgateForm.destinationAccountId;
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // 1. Atualizar o Ativo Físico
+      if (isTotal || amountToRedeem === currentEstimated) {
+        // Resgate Total: Marcar como RESGATADO e zerar o estimated_value
+        const { error: assetErr } = await supabase
+          .from('physical_assets')
+          .update({
+            estimated_value: 0,
+            metadata: {
+              ...(asset.metadata || {}),
+              status: 'RESGATADO',
+              resgateDate: todayStr,
+              resgateAmount: amountToRedeem
+            }
+          })
+          .eq('id', asset.id);
+        
+        if (assetErr) throw assetErr;
+      } else {
+        // Resgate Parcial: Reduzir estimated_value e purchaseValue proporcionalmente
+        const newEstimatedValue = Math.max(0, currentEstimated - amountToRedeem);
+        const oldPurchase = Number(asset.metadata?.purchaseValue || asset.metadata?.initialInvestmentAmount || currentEstimated);
+        const newPurchaseValue = Math.max(0, oldPurchase * (newEstimatedValue / currentEstimated));
+
+        const { error: assetErr } = await supabase
+          .from('physical_assets')
+          .update({
+            estimated_value: newEstimatedValue,
+            metadata: {
+              ...(asset.metadata || {}),
+              purchaseValue: newPurchaseValue,
+              initialInvestmentAmount: newPurchaseValue
+            }
+          })
+          .eq('id', asset.id);
+
+        if (assetErr) throw assetErr;
+      }
+
+      // 2. Se houver conta destino, somar o dinheiro ao caixa livre (initial_balance)
+      if (targetAccountId) {
+        const { data: accRes, error: accGetErr } = await supabase
+          .from('accounts')
+          .select('initial_balance, current_balance')
+          .eq('id', targetAccountId)
+          .single();
+
+        if (accGetErr) throw accGetErr;
+
+        const currentInitial = Number(accRes?.initial_balance || 0);
+        const newInitial = currentInitial + amountToRedeem;
+
+        const { error: accUpdErr } = await supabase
+          .from('accounts')
+          .update({ initial_balance: newInitial })
+          .eq('id', targetAccountId);
+
+        if (accUpdErr) throw accUpdErr;
+      }
+
+      // 3. Criar Transação de Receita
+      let catId = null;
+      const { data: catRes } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('name', 'Investimentos')
+        .maybeSingle();
+
+      if (catRes) {
+        catId = catRes.id;
+      } else {
+        const { data: newCat } = await supabase
+          .from('categories')
+          .insert({
+            user_id: user.id,
+            name: 'Investimentos',
+            type: 'INCOME',
+            color: 'bg-indigo-50 text-indigo-600'
+          })
+          .select('id')
+          .maybeSingle();
+        if (newCat) catId = newCat.id;
+      }
+
+      const desc = isTotal 
+        ? `Resgate Total Investimento - ${asset.name}` 
+        : `Resgate Parcial Investimento - ${asset.name}`;
+
+      const { error: txErr } = await supabase.from('transactions').insert([{
+        user_id: user.id,
+        description: desc,
+        amount: amountToRedeem,
+        date: todayStr,
+        type: 'INCOME',
+        category: 'Investimentos',
+        subcategory: 'Resgate',
+        category_id: catId,
+        is_paid: true,
+        paid_amount: amountToRedeem,
+        paid_at: todayStr,
+        account_id: targetAccountId || null,
+        account_name: targetAccountId ? (allAccounts.find(a => a.id === targetAccountId)?.institution || allAccounts.find(a => a.id === targetAccountId)?.name || null) : null,
+        metadata: {
+          linked_asset_id: asset.id,
+          type: isTotal ? 'investment_redemption_total' : 'investment_redemption_partial',
+          redeemed_amount: amountToRedeem
+        }
+      }]);
+
+      if (txErr) throw txErr;
+
+      // 4. Sincronizar o saldo consolidado (current_balance) para as contas envolvidas
+      const originAccountId = asset.metadata?.brokerAccountId;
+      
+      const syncBroker = async (brokerId: string) => {
+        if (!brokerId) return;
+        const [allInvestsRes, brokerAccRes] = await Promise.all([
+          supabase
+            .from('physical_assets')
+            .select('estimated_value, metadata')
+            .eq('user_id', user.id)
+            .eq('category', 'INVESTMENT')
+            .eq('is_archived', false),
+          supabase
+            .from('accounts')
+            .select('initial_balance')
+            .eq('id', brokerId)
+            .eq('user_id', user.id)
+            .maybeSingle()
+        ]);
+
+        const brokerCash = Number(brokerAccRes.data?.initial_balance || 0);
+        const investedTotal = (allInvestsRes.data || [])
+          .filter((inv: any) =>
+            inv.metadata?.brokerAccountId === brokerId &&
+            inv.metadata?.status !== 'RESGATADO'
+          )
+          .reduce((sum: number, inv: any) => sum + Number(inv.estimated_value || 0), 0);
+
+        await supabase
+          .from('accounts')
+          .update({ current_balance: brokerCash + investedTotal })
+          .eq('id', brokerId)
+          .eq('user_id', user.id);
+      };
+
+      await syncBroker(originAccountId);
+      if (targetAccountId && targetAccountId !== originAccountId) {
+        await syncBroker(targetAccountId);
+      }
+
+      setShowResgateModal(false);
+      setSelectedAssetForResgate(null);
+      setResgateForm({ type: 'TOTAL', amount: '', destinationAccountId: '' });
+      fetchData();
+      alert('Resgate processado com sucesso!');
+    } catch (err: any) {
+      alert(`Erro ao resgatar investimento: ${err.message}`);
+    }
+  };
+
   const handleSaveAsset = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) return;
@@ -1869,11 +2105,15 @@ const Assets: React.FC = () => {
       
       const value = isRealEstate && editingAsset 
         ? editingAsset.estimatedValue 
-        : (parseFloat(formData.estimatedValue) || 0);
+        : (formData.isLoan
+            ? (parseFloat(formData.loanPrincipal) || 0)
+            : (parseFloat(formData.estimatedValue) || 0));
         
       const purchaseVal = isRealEstate && editingAsset 
         ? (parseFloat(editingAsset.metadata?.purchaseValue) || 0)
-        : (parseFloat(formData.purchaseValue) || 0);
+        : (formData.isLoan
+            ? (parseFloat(formData.loanPrincipal) || 0)
+            : (parseFloat(formData.purchaseValue) || 0));
         
       const acqDate = isRealEstate && editingAsset
         ? editingAsset.acquisitionDate
@@ -1931,6 +2171,10 @@ const Assets: React.FC = () => {
         financingOriginalTotal: isRealEstate ? (parseFloat(formData.financingOriginalTotal) || 0) : undefined,
         // Vehicle details
         vehicleType: formData.category === 'VEHICLE' ? formData.vehicleType : undefined,
+        licensePlate: formData.category === 'VEHICLE' ? formData.licensePlate : undefined,
+        renavam: formData.category === 'VEHICLE' ? formData.renavam : undefined,
+        yearModel: formData.category === 'VEHICLE' ? formData.yearModel : undefined,
+        mileage: formData.category === 'VEHICLE' ? (parseFloat(formData.mileage) || 0) : undefined,
         transferFee: formData.category === 'VEHICLE' ? (parseFloat(formData.transferFee) || 0) : undefined,
         vehiclePurposeType: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? formData.vehiclePurposeType : undefined,
         ipvaFee: formData.category === 'VEHICLE' ? (parseFloat(formData.ipvaFee) || 0) : undefined,
@@ -1944,7 +2188,8 @@ const Assets: React.FC = () => {
         rentalPlatformFee: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? (parseFloat(formData.rentalPlatformFee) || 0) : undefined,
         targetSaleValue: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? (parseFloat(formData.targetSaleValue) || 0) : undefined,
         preparationBudget: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? (parseFloat(formData.preparationBudget) || 0) : undefined,
-        saleComission: formData.isSold ? (parseFloat(formData.saleComission) || 0) : undefined,
+        saleCommission: formData.isSold ? (parseFloat(formData.saleCommission) || 0) : undefined,
+        saleComission: formData.isSold ? (parseFloat(formData.saleCommission) || 0) : undefined, // legacy compatibility
         salePaymentMethod: formData.isSold ? formData.salePaymentMethod : undefined,
         permutaVeiculoValor: formData.isSold ? (parseFloat(formData.permutaVeiculoValor) || 0) : undefined,
         permutaVeiculoNome: formData.isSold ? formData.permutaVeiculoNome : undefined,
@@ -1993,13 +2238,85 @@ const Assets: React.FC = () => {
       let assetId = '';
 
       if (editingAsset) {
+        const isInvestmentRedemptionTransition = 
+          formData.category === 'INVESTMENT' && 
+          formData.status === 'RESGATADO' && 
+          editingAsset.metadata?.status !== 'RESGATADO';
+
+        const finalEstimatedValue = isInvestmentRedemptionTransition ? 0 : value;
+
+        if (isInvestmentRedemptionTransition) {
+          const targetAccountId = formData.brokerAccountId;
+          if (targetAccountId) {
+            const { data: accRes } = await supabase
+              .from('accounts')
+              .select('initial_balance')
+              .eq('id', targetAccountId)
+              .single();
+            
+            if (accRes) {
+              const currentInitial = Number(accRes.initial_balance || 0);
+              await supabase
+                .from('accounts')
+                .update({ initial_balance: currentInitial + value })
+                .eq('id', targetAccountId);
+            }
+          }
+
+          let catId = null;
+          const { data: catRes } = await supabase
+            .from('categories')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('name', 'Investimentos')
+            .maybeSingle();
+
+          if (catRes) {
+            catId = catRes.id;
+          } else {
+            const { data: newCat } = await supabase
+              .from('categories')
+              .insert({
+                user_id: user.id,
+                name: 'Investimentos',
+                type: 'INCOME',
+                color: 'bg-indigo-50 text-indigo-600'
+              })
+              .select('id')
+              .maybeSingle();
+            if (newCat) catId = newCat.id;
+          }
+
+          const todayStr = new Date().toISOString().split('T')[0];
+          await supabase.from('transactions').insert([{
+            user_id: user.id,
+            description: `Resgate Total Investimento - ${formData.name}`,
+            amount: value,
+            date: todayStr,
+            type: 'INCOME',
+            category: 'Investimentos',
+            subcategory: 'Resgate',
+            category_id: catId,
+            is_paid: true,
+            paid_amount: value,
+            paid_at: todayStr,
+            account_id: targetAccountId || null,
+            account_name: targetAccountId ? (brokers.find(b => b.id === targetAccountId)?.name || null) : null,
+            metadata: {
+              linked_asset_id: editingAsset.id,
+              type: 'investment_redemption_total',
+              redeemed_amount: value
+            }
+          }]);
+        }
+
         // UPDATE existing asset
         const { error } = await supabase
           .from('physical_assets')
           .update({
             name: formData.name,
             category: formData.category,
-            estimated_value: value,
+            estimated_value: finalEstimatedValue,
             acquisition_date: acqDate,
             description: formData.description,
             metadata,
@@ -2194,6 +2511,31 @@ const Assets: React.FC = () => {
           }
         }
       } else {
+        const isNewInvestmentRedemption = 
+          formData.category === 'INVESTMENT' && 
+          formData.status === 'RESGATADO';
+
+        const finalEstimatedValue = isNewInvestmentRedemption ? 0 : value;
+
+        if (isNewInvestmentRedemption && value > 0) {
+          const targetAccountId = formData.brokerAccountId;
+          if (targetAccountId) {
+            const { data: accRes } = await supabase
+              .from('accounts')
+              .select('initial_balance')
+              .eq('id', targetAccountId)
+              .single();
+            
+            if (accRes) {
+              const currentInitial = Number(accRes.initial_balance || 0);
+              await supabase
+                .from('accounts')
+                .update({ initial_balance: currentInitial + value })
+                .eq('id', targetAccountId);
+            }
+          }
+        }
+
         // INSERT new asset
         const { data: newAsset, error } = await supabase
           .from('physical_assets')
@@ -2201,7 +2543,7 @@ const Assets: React.FC = () => {
             user_id: user.id,
             name: formData.name,
             category: formData.category,
-            estimated_value: value,
+            estimated_value: finalEstimatedValue,
             acquisition_date: acqDate,
             description: formData.description,
             metadata,
@@ -2212,6 +2554,54 @@ const Assets: React.FC = () => {
 
         if (error) throw error;
         if (newAsset) assetId = newAsset.id;
+
+        if (isNewInvestmentRedemption && newAsset && value > 0) {
+          let catId = null;
+          const { data: catRes } = await supabase
+            .from('categories')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('name', 'Investimentos')
+            .maybeSingle();
+
+          if (catRes) {
+            catId = catRes.id;
+          } else {
+            const { data: newCat } = await supabase
+              .from('categories')
+              .insert({
+                user_id: user.id,
+                name: 'Investimentos',
+                type: 'INCOME',
+                color: 'bg-indigo-50 text-indigo-600'
+              })
+              .select('id')
+              .maybeSingle();
+            if (newCat) catId = newCat.id;
+          }
+
+          const todayStr = new Date().toISOString().split('T')[0];
+          await supabase.from('transactions').insert([{
+            user_id: user.id,
+            description: `Resgate Total Investimento - ${formData.name}`,
+            amount: value,
+            date: todayStr,
+            type: 'INCOME',
+            category: 'Investimentos',
+            subcategory: 'Resgate',
+            category_id: catId,
+            is_paid: true,
+            paid_amount: value,
+            paid_at: todayStr,
+            account_id: formData.brokerAccountId || null,
+            account_name: formData.brokerAccountId ? (brokers.find(b => b.id === formData.brokerAccountId)?.name || null) : null,
+            metadata: {
+              linked_asset_id: newAsset.id,
+              type: 'investment_redemption_total',
+              redeemed_amount: value
+            }
+          }]);
+        }
 
         if (isRealEstate && newAsset && !formData.isSold) {
           await syncRentalTransactions(
@@ -2350,7 +2740,7 @@ const Assets: React.FC = () => {
       // Automated sale transaction for REAL_ESTATE
       if (isRealEstate && formData.isSold && (!editingAsset || !editingAsset.metadata?.isSold)) {
         const soldAmount = parseFloat(formData.soldValue) || 0;
-        const comission = parseFloat(formData.saleComission) || 0;
+        const comission = parseFloat(formData.saleCommission || (formData as any).saleComission) || 0;
         const saleDateStr = formData.saleDate || new Date().toISOString().split('T')[0];
 
         // 1. Excluir provisões futuras não pagas vinculadas ao imóvel
@@ -2634,6 +3024,10 @@ const Assets: React.FC = () => {
       financingName: '',
       // Vehicle-specific fields
       vehicleType: 'CAR',
+      licensePlate: '',
+      renavam: '',
+      yearModel: '',
+      mileage: '',
       transferFee: '',
       vehiclePurposeType: 'RENTAL',
       ipvaFee: '',
@@ -2647,7 +3041,7 @@ const Assets: React.FC = () => {
       rentalPlatformFee: '',
       targetSaleValue: '',
       preparationBudget: '',
-      saleComission: '',
+      saleCommission: '',
       salePaymentMethod: 'A_VISTA',
       permutaVeiculoValor: '',
       permutaVeiculoNome: '',
@@ -2721,23 +3115,7 @@ const Assets: React.FC = () => {
 
   const openEditAsset = (asset: PhysicalAsset) => {
     const meta = asset.metadata || {};
-    if (meta.isLoan) {
-      setLoanFormData({
-        id: asset.id,
-        name: asset.name,
-        loanDebtor: meta.loanDebtor || '',
-        loanPrincipal: meta.loanPrincipal ? String(meta.loanPrincipal) : '',
-        loanInterestRate: meta.loanInterestRate ? String(meta.loanInterestRate) : '',
-        loanFixedValue: meta.loanFixedValue ? String(meta.loanFixedValue) : '',
-        loanDueDate: meta.loanDueDate || '',
-        loanInterestType: meta.loanInterestType || 'SIMPLE',
-        acquisitionDate: asset.acquisitionDate || new Date().toISOString().split('T')[0],
-        description: asset.description || '',
-        status: meta.status || 'ATIVO',
-      });
-      setShowLoanModal(true);
-      return;
-    }
+
 
     setEditingAsset(asset);
     const linkedLiab = activeLiabilities.find(l => l.linkedAssetId === asset.id);
@@ -2817,6 +3195,10 @@ const Assets: React.FC = () => {
       financingName: finName,
       // Vehicle-specific fields
       vehicleType: meta.vehicleType || 'CAR',
+      licensePlate: meta.licensePlate || '',
+      renavam: meta.renavam || '',
+      yearModel: meta.yearModel || '',
+      mileage: meta.mileage ? String(meta.mileage) : '',
       transferFee: meta.transferFee ? String(meta.transferFee) : '',
       vehiclePurposeType: meta.vehiclePurposeType || 'RENTAL',
       ipvaFee: meta.ipvaFee ? String(meta.ipvaFee) : '',
@@ -2830,7 +3212,7 @@ const Assets: React.FC = () => {
       rentalPlatformFee: meta.rentalPlatformFee ? String(meta.rentalPlatformFee) : '',
       targetSaleValue: meta.targetSaleValue ? String(meta.targetSaleValue) : '',
       preparationBudget: meta.preparationBudget ? String(meta.preparationBudget) : '',
-      saleComission: meta.saleComission ? String(meta.saleComission) : '',
+      saleCommission: meta.saleCommission ? String(meta.saleCommission) : (meta.saleComission ? String(meta.saleComission) : ''),
       salePaymentMethod: meta.salePaymentMethod || 'A_VISTA',
       permutaVeiculoValor: meta.permutaVeiculoValor ? String(meta.permutaVeiculoValor) : '',
       permutaVeiculoNome: meta.permutaVeiculoNome || '',
@@ -3496,7 +3878,7 @@ const Assets: React.FC = () => {
     return (
       <div className="group relative inline-block ml-1 cursor-help align-middle select-none">
         <HelpCircle size={12} className="text-slate-400 group-hover:text-brand-500 transition-colors" />
-        <div className="absolute z-[100] bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-950 text-[10px] text-slate-200 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 border border-slate-800 text-center leading-normal normal-case font-medium">
+        <div className="absolute z-[100] bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-950 text-xs text-slate-200 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 border border-slate-800 text-center leading-normal normal-case font-medium">
           {content}
           <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-950" />
         </div>
@@ -3515,7 +3897,7 @@ const Assets: React.FC = () => {
         {isPositive ? '+' : ''}
         {formatCurrency(value)}
         {percent !== undefined && (
-          <span className="text-[9px] font-bold">({isPositive ? '+' : ''}{percent.toFixed(1)}%{suffix})</span>
+          <span className="text-xs font-bold">({isPositive ? '+' : ''}{percent.toFixed(1)}%{suffix})</span>
         )}
         {isPositive ? (
           <ArrowUpRight size={12} className="text-emerald-600 inline shrink-0" aria-hidden="true" />
@@ -3727,9 +4109,35 @@ const Assets: React.FC = () => {
     // 3. INVESTIMENTOS FINANCEIROS
     const totalFinancialFunds = totalFinancial;
     
-    const financialAllocation = dynamicBrokers.map(b => {
-      const type = b.metadata?.productType || 'Investimentos';
-      return { type, balance: b.balance };
+    const activeInvests = enrichedPhysicalAssets.filter(
+      p => p.category === 'INVESTMENT' && p.metadata?.status !== 'RESGATADO'
+    );
+    
+    const financialAllocation: { type: string, balance: number }[] = [];
+    
+    // 1. Add individual investments grouped by investmentType
+    activeInvests.forEach(inv => {
+      let type = inv.metadata?.investmentType || 'Outros';
+      // Format investment type to readable name
+      if (type === 'CDB') type = 'CDB / Renda Fixa';
+      else if (type === 'LCI_LCA') type = 'LCI / LCA';
+      else if (type === 'CRI_CRA') type = 'CRI / CRA';
+      else if (type === 'Acoes') type = 'Ações';
+      else if (type === 'FIIs') type = 'FIIs (Fundos Imob.)';
+      else if (type === 'Tesouro') type = 'Tesouro Direto';
+      else if (type === 'COE') type = 'COE';
+      else if (type === 'DEBENTURES') type = 'Debêntures';
+      else if (type === 'FUNDS') type = 'Fundos de Invest.';
+      
+      financialAllocation.push({ type, balance: inv.estimatedValue });
+    });
+    
+    // 2. Add broker cash balances
+    dynamicBrokers.forEach(b => {
+      const cash = Number(b.initial_balance) || 0;
+      if (cash > 0) {
+        financialAllocation.push({ type: 'Saldo em Caixa', balance: cash });
+      }
     });
     
     const allocationGrouped = financialAllocation.reduce((acc: any, curr) => {
@@ -3820,6 +4228,8 @@ const Assets: React.FC = () => {
       totalFinancialFunds,
       allocationList,
       currentMonthYield,
+      transactionCurrentMonthYield,
+      investmentsEstimatedMonthlyYield,
       averageMonthlyYield,
       consInstallments,
       consContracted,
@@ -3841,7 +4251,7 @@ const Assets: React.FC = () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen space-y-4">
         <div className="w-10 h-10 border-2 border-slate-200 border-t-brand-600 rounded-full animate-spin" />
-        <p className="text-slate-400 font-medium tracking-widest text-[10px] uppercase">Carregando Patrimônio Líquido...</p>
+        <p className="text-slate-400 font-medium tracking-widest text-xs uppercase">Carregando Patrimônio Líquido...</p>
       </div>
     );
   }
@@ -3898,28 +4308,28 @@ const Assets: React.FC = () => {
               {/* Fluxo Mensal */}
               <button
                 onClick={() => setActiveView('overview')}
-                className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group hover:scale-[1.02] transition-all col-span-2 sm:col-span-1 text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group hover:scale-[1.02] transition-all col-span-2 sm:col-span-1 text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
               >
                 <div className="absolute -right-4 -bottom-4 w-12 h-12 bg-white/5 rounded-full pointer-events-none" />
                 <div className="flex justify-between items-start">
-                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
                   <Zap size={14} className="text-brand-400" />
                 </div>
                 <div className="mt-1 space-y-0.5">
-                  <div className="flex justify-between text-[9px] text-slate-400">
+                  <div className="flex justify-between text-xs text-slate-400">
                     <span>Recebidos:</span>
                     <span className="font-bold text-emerald-400">{formatCurrency(sustainabilitySummary.totalInflow)}</span>
                   </div>
-                  <div className="flex justify-between text-[9px] text-slate-400">
+                  <div className="flex justify-between text-xs text-slate-400">
                     <span>Despesas:</span>
                     <span className="font-bold text-rose-400">{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
                   </div>
-                  <div className="flex justify-between text-[9px] text-slate-400">
+                  <div className="flex justify-between text-xs text-slate-400">
                     <span>Sustentabilidade:</span>
                     <span className="font-bold text-brand-400">{sustainabilitySummary.selfSustainabilityPercent}%</span>
                   </div>
                   <div className="flex justify-between items-baseline border-t border-slate-800 pt-1 mt-0.5">
-                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Saldo</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Saldo</span>
                     <span className={`text-base font-black tracking-tight italic ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
                     </span>
@@ -3930,20 +4340,20 @@ const Assets: React.FC = () => {
               {/* Patrimônio Líquido */}
               <button
                 onClick={() => setActiveView('overview')}
-                className="bg-white border-2 border-brand-500 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500 relative overflow-hidden"
+                className="bg-white border-2 border-brand-500 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500 relative overflow-hidden"
               >
                 <div className="absolute top-0 right-0 w-8 h-8 bg-brand-500/10 rounded-bl-full flex items-center justify-center pointer-events-none">
-                  <span className="text-[8px] font-black text-brand-600 uppercase tracking-widest mr-1 mb-1">Mestre</span>
+                  <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest mr-1 mb-1">Mestre</span>
                 </div>
                 <div className="flex justify-between items-start">
-                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Patrimônio Real</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Patrimônio Real</span>
                   <TrendingUp size={14} className="text-emerald-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(totalNetWorth)}
                   </h4>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-0.5">
+                  <span className="text-xs sm:text-[11px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-0.5">
                     Líquido <ArrowUpRight size={10} className="inline shrink-0" />
                   </span>
                 </div>
@@ -3952,102 +4362,102 @@ const Assets: React.FC = () => {
               {/* Investimento Imobiliário */}
               <button
                 onClick={() => setActiveView('realestate')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
               >
                 <div className="flex justify-between items-start">
-                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Imobiliário</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Imobiliário</span>
                   <Building2 size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(overviewData.plantaValue + overviewData.prontoValue)}
                   </h4>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Planta + Pronto</span>
+                  <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Planta + Pronto</span>
                 </div>
               </button>
 
               {/* Veículos */}
               <button
                 onClick={() => setActiveView('vehicles')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
               >
                 <div className="flex justify-between items-start">
-                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Veículos</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Veículos</span>
                   <Car size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(overviewData.veiculoValue)}
                   </h4>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">FIPE / Estimado</span>
+                  <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">FIPE / Estimado</span>
                 </div>
               </button>
 
               {/* Outros Bens Físicos */}
               <button
                 onClick={() => setActiveView('physical')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
               >
                 <div className="flex justify-between items-start">
-                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Outros Bens</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Outros Bens</span>
                   <Box size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(overviewData.outroFisicoValue)}
                   </h4>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Outros Físicos</span>
+                  <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Outros Físicos</span>
                 </div>
               </button>
 
               {/* Investimentos Financeiros */}
               <button
                 onClick={() => setActiveView('investments')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
               >
                 <div className="flex justify-between items-start">
-                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Financeiro</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Financeiro</span>
                   <PieChart size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-brand-600 tracking-tight italic">
                     {formatCurrency(overviewData.totalFinancialFunds)}
                   </h4>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-brand-500 uppercase tracking-widest">Corretoras</span>
+                  <span className="text-xs sm:text-[11px] font-bold text-brand-500 uppercase tracking-widest">Corretoras</span>
                 </div>
               </button>
 
               {/* Empréstimos Concedidos */}
               <button
                 onClick={() => setActiveView('loans')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
               >
                 <div className="flex justify-between items-start">
-                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Empréstimos</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Empréstimos</span>
                   <HandCoins size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(totalLoans)}
                   </h4>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">A Receber</span>
+                  <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">A Receber</span>
                 </div>
               </button>
 
               {/* Passivos e Dívidas */}
               <button
                 onClick={() => setActiveView('liabilities')}
-                className="bg-red-50/30 border border-red-100/50 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="bg-red-50/30 border border-red-100/50 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-red-500"
               >
                 <div className="flex justify-between items-start">
-                  <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-red-500">Dívidas</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-red-500">Dívidas</span>
                   <Landmark size={14} className="text-red-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-red-600 tracking-tight italic">
                     {formatCurrency(totalLiabilities)}
                   </h4>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-red-400 uppercase tracking-widest">Saldo Devedor</span>
+                  <span className="text-xs sm:text-[11px] font-bold text-red-400 uppercase tracking-widest">Saldo Devedor</span>
                 </div>
               </button>
             </div>
@@ -4069,11 +4479,11 @@ const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Planta Stage */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
                       <span><span aria-hidden="true" className="mr-1">🏗️</span>Na Planta / Em Obras</span>
                       <button
                         onClick={() => setActiveView('realestate')}
-                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                       >
                         Ver Detalhes →
                       </button>
@@ -4107,11 +4517,11 @@ const Assets: React.FC = () => {
 
                   {/* Pronto Stage */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
                       <span><span aria-hidden="true" className="mr-1">🏢</span>Pronto / Entregue</span>
                       <button
                         onClick={() => setActiveView('realestate')}
-                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                       >
                         Ver Detalhes →
                       </button>
@@ -4167,11 +4577,11 @@ const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Para Uso */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
                       <span><span aria-hidden="true" className="mr-1">🚗</span>Bens de Uso Pessoal</span>
                       <button
                         onClick={() => setActiveView('physical')}
-                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                       >
                         Ver Detalhes →
                       </button>
@@ -4200,11 +4610,11 @@ const Assets: React.FC = () => {
 
                   {/* Para Investimento */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
                       <span><span aria-hidden="true" className="mr-1">📈</span>Bens de Investimento</span>
                       <button
                         onClick={() => setActiveView('physical')}
-                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                       >
                         Ver Detalhes →
                       </button>
@@ -4252,11 +4662,11 @@ const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Allocation */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
-                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
                       <span><span aria-hidden="true" className="mr-1">📊</span>Alocação por Classe</span>
                       <button
                         onClick={() => setActiveView('investments')}
-                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                       >
                         Ver Detalhes →
                       </button>
@@ -4272,7 +4682,7 @@ const Assets: React.FC = () => {
                                 <div className="flex justify-between text-xs">
                                   <span className="text-slate-600 font-medium truncate max-w-[140px]">{item.type}</span>
                                   <span className="font-bold text-slate-900">
-                                    {formatCurrency(item.balance)} <span className="text-[9px] font-medium text-slate-400">({item.percentage}%)</span>
+                                    {formatCurrency(item.balance)} <span className="text-xs font-medium text-slate-400">({item.percentage}%)</span>
                                   </span>
                                 </div>
                                 <div 
@@ -4295,7 +4705,7 @@ const Assets: React.FC = () => {
                             <div className="pt-1.5 text-center border-t border-slate-100 mt-2">
                               <button
                                 onClick={() => setActiveView('investments')}
-                                className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                                className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                               >
                                 + {overviewData.allocationList.length - 5} outras classes (Ver Tudo →)
                               </button>
@@ -4308,11 +4718,11 @@ const Assets: React.FC = () => {
 
                   {/* Monthly Yield comparison */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
-                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
                       <span><span aria-hidden="true" className="mr-1">💵</span>Rendimentos da Carteira</span>
                       <button
                         onClick={() => setActiveView('investments')}
-                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                       >
                         Ver Detalhes →
                       </button>
@@ -4336,7 +4746,7 @@ const Assets: React.FC = () => {
                         </span>
                       </div>
                       <div className="p-3 bg-brand-50 rounded-xl mt-2">
-                        <p className="text-[10px] text-brand-600 leading-relaxed font-medium">
+                        <p className="text-xs text-brand-600 leading-relaxed font-medium">
                           Sua carteira gera aproximadamente <span className="font-bold text-brand-700">{formatCurrency(sustainabilitySummary.estimatedMonthlyYield)}</span> de dividendos implícitos por mês baseado em taxa média mensal de {estimatedYieldRate}%.
                         </p>
                       </div>
@@ -4359,11 +4769,11 @@ const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Consórcios */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
                       <span><span aria-hidden="true" className="mr-1">💳</span>Consórcios Ativos</span>
                       <button
                         onClick={() => setActiveView('liabilities')}
-                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                       >
                         Ver Detalhes →
                       </button>
@@ -4420,11 +4830,11 @@ const Assets: React.FC = () => {
 
                   {/* Financiamentos */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
                       <span><span aria-hidden="true" className="mr-1">🏛️</span>Outros Financiamentos e Dívidas</span>
                       <button
                         onClick={() => setActiveView('liabilities')}
-                        className="text-[10px] text-brand-600 hover:underline font-bold focus:outline-none"
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                       >
                         Ver Detalhes →
                       </button>
@@ -4486,13 +4896,13 @@ const Assets: React.FC = () => {
               {/* Filter Bar for Real Estate Card Metrics */}
               <div className="bg-slate-50 p-4 rounded-[25px] border border-slate-100 flex flex-wrap items-center justify-between gap-4">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Acompanhamento de Caixa:</span>
+                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Acompanhamento de Caixa:</span>
                   <div className="flex overflow-x-auto scrollbar-hide bg-slate-200/50 p-0.5 rounded-lg border w-full sm:w-auto max-w-[calc(100vw-48px)] sm:max-w-none">
-                    <button onClick={() => setCardPeriod('CONTRACT')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CONTRACT' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Contrato</button>
-                    <button onClick={() => setCardPeriod('CURRENT_MONTH')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CURRENT_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Atual</button>
-                    <button onClick={() => setCardPeriod('PREVIOUS_MONTH')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'PREVIOUS_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Anterior</button>
-                    <button onClick={() => setCardPeriod('CURRENT_YEAR')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CURRENT_YEAR' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Anual</button>
-                    <button onClick={() => setCardPeriod('CUSTOM')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CUSTOM' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Personalizado</button>
+                    <button onClick={() => setCardPeriod('CONTRACT')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CONTRACT' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Contrato</button>
+                    <button onClick={() => setCardPeriod('CURRENT_MONTH')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CURRENT_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Atual</button>
+                    <button onClick={() => setCardPeriod('PREVIOUS_MONTH')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'PREVIOUS_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Anterior</button>
+                    <button onClick={() => setCardPeriod('CURRENT_YEAR')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CURRENT_YEAR' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Anual</button>
+                    <button onClick={() => setCardPeriod('CUSTOM')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CUSTOM' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Personalizado</button>
                   </div>
                 </div>
                 
@@ -4675,7 +5085,7 @@ const Assets: React.FC = () => {
                         setSelectedRealEstateForDetail(asset);
                         setShowRealEstateDetailModal(true);
                       }}
-                      className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between cursor-pointer text-left"
+                      className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between cursor-pointer text-left"
                     >
                       <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
                         <div className="flex justify-between items-start">
@@ -4686,22 +5096,22 @@ const Assets: React.FC = () => {
                             {propertyStage === 'PLANTA' ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); togglePropertyTypeDirectly(asset); }}
-                                className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-amber-100 transition-colors"
+                                className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-amber-100 transition-colors"
                               >
                                 Na Planta 🛠️
                               </button>
                             ) : (
                               <button
                                 onClick={(e) => { e.stopPropagation(); togglePropertyTypeDirectly(asset); }}
-                                className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-emerald-100 transition-colors"
+                                className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 transition-colors"
                               >
                                 Pronto / Entregue 🏢
                               </button>
                             )}
                             {meta.purpose === 'investimento' ? (
-                              <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
+                              <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
                             ) : (
-                              <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-slate-100">Uso Próprio</span>
+                              <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-100">Uso Próprio</span>
                             )}
                           </div>
                         </div>
@@ -4709,14 +5119,14 @@ const Assets: React.FC = () => {
                         <div>
                           <h4 className="font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-tight italic break-words">{asset.name}</h4>
                           <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
-                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Avaliação Atual:</p>
+                            <p className="text-xs text-slate-400 font-black uppercase tracking-widest">Avaliação Atual:</p>
                             <p className="text-sm font-black text-slate-900">{formatCurrency(asset.estimatedValue)}</p>
                           </div>
                         </div>
 
                         {/* Pre-construction specs */}
                         {propertyStage === 'PLANTA' ? (
-                          <div className="space-y-2.5 pt-2 text-[10px] sm:text-[11px] text-slate-500">
+                          <div className="space-y-2.5 pt-2 text-xs sm:text-[11px] text-slate-500">
                             <div className="flex justify-between">
                               <span className="text-slate-600 font-medium">Valor devido Obra:</span>
                               <span className="font-bold text-rose-500">{formatCurrency(unpaidObra)}</span>
@@ -4756,7 +5166,7 @@ const Assets: React.FC = () => {
                               const obraProgress = (paidObra + unpaidObra) > 0 ? Math.round((paidObra / (paidObra + unpaidObra)) * 100) : 0;
                               return (
                                 <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                                  <div className="flex justify-between text-[9px] font-black uppercase text-slate-400">
+                                  <div className="flex justify-between text-xs font-black uppercase text-slate-400">
                                     <span>Progresso da Obra / Aporte:</span>
                                     <span className="font-bold text-emerald-600">{obraProgress}% pago</span>
                                   </div>
@@ -4778,7 +5188,7 @@ const Assets: React.FC = () => {
                             })()}
                           </div>
                         ) : (
-                          <div className="space-y-2.5 pt-2 text-[10px] sm:text-[11px] text-slate-500">
+                          <div className="space-y-2.5 pt-2 text-xs sm:text-[11px] text-slate-500">
                             <div className="flex justify-between">
                               <span className="text-slate-600 font-medium">Aluguel Líquido:</span>
                               <span className="font-bold text-emerald-600">
@@ -4801,7 +5211,7 @@ const Assets: React.FC = () => {
                                 <span className="font-bold text-emerald-600">+{formatCurrency(reimbursement)}</span>
                               </div>
                             )}
-                            <div className="flex justify-between text-[10px] border-t border-dashed border-slate-100 pt-2 font-bold">
+                            <div className="flex justify-between text-xs border-t border-dashed border-slate-100 pt-2 font-bold">
                               <span className="text-slate-700">Saldo Caixa Líquido:</span>
                               <span className={netPropertyFlow >= 0 ? 'text-emerald-600' : 'text-rose-500'}>
                                 {netPropertyFlow >= 0 ? '+' : ''}{formatCurrency(netPropertyFlow)}
@@ -4824,20 +5234,20 @@ const Assets: React.FC = () => {
                               return (
                                 <>
                                   {meta.purpose === 'investimento' && (
-                                    <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-dashed border-slate-100 text-[10px] text-slate-500">
+                                    <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-dashed border-slate-100 text-xs text-slate-500">
                                       <div className="bg-slate-50 p-2 rounded-xl border border-slate-100/50">
-                                        <span className="block text-[8px] text-slate-400 font-black uppercase tracking-wider">Cap Rate Anual</span>
+                                        <span className="block text-[10px] text-slate-400 font-black uppercase tracking-wider">Cap Rate Anual</span>
                                         <span className="font-bold text-slate-800">{realEstateMetrics.capRateAnnual.toFixed(2)}%</span>
                                       </div>
                                       <div className="bg-slate-50/50 p-2 rounded-xl border border-slate-100/50">
-                                        <span className="block text-[8px] text-slate-400 font-black uppercase tracking-wider">Cash-on-Cash</span>
+                                        <span className="block text-[10px] text-slate-400 font-black uppercase tracking-wider">Cash-on-Cash</span>
                                         <span className="font-bold text-slate-800">{realEstateMetrics.cashOnCashReturn.toFixed(2)}%</span>
                                       </div>
                                     </div>
                                   )}
                                   {linkedLiab && (
                                     <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                                      <div className="flex justify-between text-[9px] font-black uppercase text-slate-400">
+                                      <div className="flex justify-between text-xs font-black uppercase text-slate-400">
                                         <span>Financiamento LTV / Equity:</span>
                                         <span className="font-bold text-slate-800">{realEstateMetrics.ltv.toFixed(0)}% LTV / {realEstateMetrics.homeEquityPercent.toFixed(0)}% Equity</span>
                                       </div>
@@ -4863,7 +5273,7 @@ const Assets: React.FC = () => {
                         {/* Sustainability metrics property health */}
                         {propertyStage === 'PRONTO' && meta.purpose === 'investimento' && (
                           <div className="p-3 bg-slate-50 rounded-xl space-y-2 border border-slate-100">
-                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saúde Financeira do Ativo</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saúde Financeira do Ativo</p>
                             {(() => {
                               const progressVal = Math.min(
                                 cardPeriod === 'CONTRACT'
@@ -4889,7 +5299,7 @@ const Assets: React.FC = () => {
                                 </>
                               );
                             })()}
-                            <p className="text-[9px] font-semibold text-slate-500">
+                            <p className="text-xs font-semibold text-slate-500">
                               {netPropertyFlow >= 0 
                                 ? '🟢 Imóvel 100% autossuficiente (Se paga e sobra caixa)' 
                                 : '🔴 Imóvel deficitário (Consome capital de outras fontes)'}
@@ -4906,20 +5316,20 @@ const Assets: React.FC = () => {
                             setSelectedRealEstateForDetail(asset);
                             setShowRealEstateDetailModal(true);
                           }}
-                          className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
+                          className="flex items-center gap-1 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
                         >
                           <History size={12} /> Detalhes & Evolução
                         </button>
                         <div className="flex gap-2">
                           <button
                             onClick={(e) => { e.stopPropagation(); openEditAsset(asset); }}
-                            className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600"
+                            className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-brand-600"
                           >
                             Editar
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); handleArchiveAsset(asset); }}
-                            className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-amber-600"
+                            className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-amber-600"
                           >
                             Arquivar
                           </button>
@@ -4948,42 +5358,55 @@ const Assets: React.FC = () => {
                 const purchase = Number(meta.purchaseValue) || value;
                 const fipe = Number(meta.fipeValue) || value;
 
-                // Margem de ágio / deságio
+                // Dynamic Vehicle Icon
+                const VehicleIcon = meta.vehicleType === 'MOTORCYCLE' ? Bike : meta.vehicleType === 'TRUCK' ? Truck : Car;
+
+                // Margem de ágio / deságio (Apenas faz sentido para Investimento ou FLIP)
                 const diffVal = value - purchase;
                 const percentVal = purchase > 0 ? (diffVal / purchase) * 100 : 0;
                 
-                // FIPE analysis
-                const isDepreciatingFast = purchase > 0 && fipe < purchase * 0.8;
+                // FIPE analysis (Calcula com base na FIPE vs Aquisição ou Valor Estimado)
+                const isDepreciatingFast = purchase > 0 && fipe < purchase * 0.85;
+
+                // Depreciação em R$
+                const depreciacaoValor = purchase - fipe;
 
                 return (
-                  <div key={asset.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+                  <div key={asset.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
                     <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
                       <div className="flex justify-between items-start">
                         <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
-                          <Car size={22} />
+                          <VehicleIcon size={22} />
                         </div>
                         <div className="flex flex-wrap gap-1.5 justify-end">
                           {meta.isSold && (
-                            <span className="px-3 py-1 bg-rose-50 text-rose-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-rose-100">Vendido</span>
+                            <span className="px-3 py-1 bg-rose-50 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-rose-100">Vendido</span>
                           )}
                           {meta.purpose === 'investimento' ? (
-                            <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
+                            <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
                           ) : (
-                            <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-slate-100">Uso Pessoal</span>
+                            <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-100">Uso Pessoal</span>
                           )}
                         </div>
                       </div>
 
                       <div>
                         <h4 className="font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-tight italic break-words">{asset.name}</h4>
+                        {(meta.yearModel || meta.licensePlate) && (
+                           <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-medium">
+                             {meta.yearModel && <span>Ano: {meta.yearModel}</span>}
+                             {meta.yearModel && meta.licensePlate && <span>•</span>}
+                             {meta.licensePlate && <span className="uppercase">{meta.licensePlate}</span>}
+                           </div>
+                        )}
                         <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
-                          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{meta.isSold ? 'Valor de Venda:' : 'Avaliação Atual:'}</p>
+                          <p className="text-xs text-slate-400 font-black uppercase tracking-widest">{meta.isSold ? 'Valor de Venda:' : 'Avaliação Atual:'}</p>
                           <p className="text-sm font-black text-slate-900">{formatCurrency(meta.isSold ? Number(meta.soldValue) || value : value)}</p>
                         </div>
                       </div>
 
                       {/* Calculations specs */}
-                      <div className="space-y-2.5 text-[10px] sm:text-[11px] text-slate-500">
+                      <div className="space-y-2.5 text-xs sm:text-[11px] text-slate-500">
                         <div className="flex justify-between">
                           <span>Valor Aquisição:</span>
                           <span className="font-bold text-slate-800">{formatCurrency(purchase)}</span>
@@ -4992,41 +5415,58 @@ const Assets: React.FC = () => {
                           <span>Valor Tabela FIPE:</span>
                           <span className="font-bold text-slate-800">{formatCurrency(fipe)}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span>Margem Ágio/Deságio:</span>
-                          <span className={`font-bold ${diffVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                            {diffVal >= 0 ? '+' : ''}{formatCurrency(diffVal)} ({percentVal.toFixed(1)}%)
-                          </span>
-                        </div>
+                        
+                        {meta.purpose === 'investimento' && (
+                          <div className="flex justify-between">
+                            <span>Margem Ágio/Deságio:</span>
+                            <span className={`font-bold ${diffVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                              {diffVal >= 0 ? '+' : ''}{formatCurrency(diffVal)} ({percentVal.toFixed(1)}%)
+                            </span>
+                          </div>
+                        )}
+                        
+                        {meta.purpose === 'uso' && (
+                           <div className="flex justify-between border-t border-slate-100 pt-2 text-slate-600">
+                             <span>Depreciação Estimada:</span>
+                             <span className={`font-bold ${depreciacaoValor > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                               {depreciacaoValor > 0 ? `-${formatCurrency(depreciacaoValor)}` : `+${formatCurrency(Math.abs(depreciacaoValor))}`}
+                             </span>
+                           </div>
+                        )}
                       </div>
 
                       {/* Yield alerts based on FIPE */}
                       {meta.purpose === 'uso' && (
-                        <div className="p-3 bg-slate-50 rounded-xl space-y-1 border border-slate-100 text-[10px]">
+                        <div className="p-3 bg-slate-50 rounded-xl space-y-1 border border-slate-100 text-xs">
                           {isDepreciatingFast ? (
-                            <p className="text-rose-500 font-semibold flex items-center gap-1"><AlertTriangle size={10} /> Depreciação rápida observada.</p>
+                            <p className="text-rose-500 font-semibold flex items-center gap-1"><AlertTriangle size={10} /> Alta desvalorização frente à FIPE.</p>
+                          ) : depreciacaoValor <= 0 ? (
+                            <p className="text-emerald-600 font-semibold flex items-center gap-1"><Check size={10} /> Valorizado acima da FIPE.</p>
                           ) : (
-                            <p className="text-emerald-600 font-semibold">Valor estável ou valorizado.</p>
+                            <p className="text-slate-500 font-semibold">Desvalorização natural observada.</p>
                           )}
-                          <p className="text-slate-400 font-medium leading-tight">Calculado comparando FIPE atual contra preço de aquisição registrado.</p>
+                          <p className="text-[10px] text-slate-400 font-medium leading-tight mt-1">Comparativo entre FIPE atual e preço de aquisição.</p>
                         </div>
                       )}
                     </div>
 
                     {/* Actions bar */}
-                    <div className="px-6 sm:px-8 py-4 sm:py-5 bg-slate-50 border-t border-slate-100 flex flex-wrap justify-between items-center gap-2 sm:gap-4">
+                    <div className="px-6 sm:px-8 py-4 sm:py-5 bg-slate-50 border-t border-slate-100 flex flex-wrap justify-between items-center gap-3">
                       <button
                         onClick={() => {
                           setSelectedAssetForExtrato(asset);
                           setShowExtratoModal(true);
                         }}
-                        className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
+                        className="flex items-center gap-1 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
                       >
                         <History size={12} /> Extrato & Ajustes
                       </button>
-                      <div className="flex gap-2">
-                        <button onClick={() => openEditAsset(asset)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Editar</button>
-                        <button onClick={() => handleArchiveAsset(asset)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-amber-600">Arquivar</button>
+                      <div className="flex gap-3">
+                        <button onClick={() => openEditAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Editar</button>
+                        <button onClick={() => handleArchiveAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-amber-600">Arquivar</button>
+                        {!meta.isSold && (
+                          <button onClick={() => handleArchiveAssetFromExtrato(asset)} className="text-xs font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-2 py-1 rounded">Vender</button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -5040,7 +5480,7 @@ const Assets: React.FC = () => {
                   setFormData(prev => ({ ...prev, category: 'VEHICLE', purpose: 'uso' }));
                   setShowModal(true);
                 }}
-                className="rounded-[32px] border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center gap-4 text-slate-400 hover:border-brand-500 hover:text-brand-600 hover:bg-slate-50 transition-all min-h-[300px]"
+                className="rounded-[32px] border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center gap-4 text-slate-400 hover:border-brand-500 hover:text-brand-600 hover:bg-slate-50 transition-all h-full"
               >
                 <Plus size={36} />
                 <span className="font-bold text-slate-600">Novo Veículo</span>
@@ -5086,7 +5526,7 @@ const Assets: React.FC = () => {
                 };
 
                 return (
-                  <div key={asset.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+                  <div key={asset.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
                     <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
                       <div className="flex justify-between items-start">
                         <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
@@ -5094,12 +5534,12 @@ const Assets: React.FC = () => {
                         </div>
                         <div className="flex flex-wrap gap-1.5 justify-end">
                           {meta.isSold && (
-                            <span className="px-3 py-1 bg-rose-50 text-rose-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-rose-100">Vendido</span>
+                            <span className="px-3 py-1 bg-rose-50 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-rose-100">Vendido</span>
                           )}
                           {meta.purpose === 'investimento' ? (
-                            <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
+                            <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
                           ) : (
-                            <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-slate-100">Uso Pessoal</span>
+                            <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-100">Uso Pessoal</span>
                           )}
                         </div>
                       </div>
@@ -5107,13 +5547,13 @@ const Assets: React.FC = () => {
                       <div>
                         <h4 className="font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-tight italic break-words">{asset.name}</h4>
                         <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
-                          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{meta.isSold ? 'Valor de Venda:' : 'Avaliação Atual:'}</p>
+                          <p className="text-xs text-slate-400 font-black uppercase tracking-widest">{meta.isSold ? 'Valor de Venda:' : 'Avaliação Atual:'}</p>
                           <p className="text-sm font-black text-slate-900">{formatCurrency(meta.isSold ? Number(meta.soldValue) || value : value)}</p>
                         </div>
                       </div>
 
                       {/* Calculations specs */}
-                      <div className="space-y-2.5 text-[10px] sm:text-[11px] text-slate-500">
+                      <div className="space-y-2.5 text-xs sm:text-[11px] text-slate-500">
                         <div className="flex justify-between">
                           <span>Valor Aquisição:</span>
                           <span className="font-bold text-slate-800">{formatCurrency(purchase)}</span>
@@ -5140,13 +5580,13 @@ const Assets: React.FC = () => {
                           setSelectedAssetForExtrato(asset);
                           setShowExtratoModal(true);
                         }}
-                        className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
+                        className="flex items-center gap-1 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
                       >
                         <History size={12} /> Extrato & Ajustes
                       </button>
                       <div className="flex gap-2">
-                        <button onClick={() => openEditAsset(asset)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Editar</button>
-                        <button onClick={() => handleArchiveAsset(asset)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-amber-600">Arquivar</button>
+                        <button onClick={() => openEditAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Editar</button>
+                        <button onClick={() => handleArchiveAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-amber-600">Arquivar</button>
                       </div>
                     </div>
                   </div>
@@ -5160,7 +5600,7 @@ const Assets: React.FC = () => {
                   setFormData(prev => ({ ...prev, category: 'OTHER', purpose: 'uso', isLoan: false }));
                   setShowModal(true);
                 }}
-                className="rounded-[32px] border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center gap-4 text-slate-400 hover:border-brand-500 hover:text-brand-600 hover:bg-slate-50 transition-all min-h-[300px]"
+                className="rounded-[32px] border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center gap-4 text-slate-400 hover:border-brand-500 hover:text-brand-600 hover:bg-slate-50 transition-all h-full"
               >
                 <Plus size={36} />
                 <span className="font-bold text-slate-600">Novo Ativo Físico</span>
@@ -5187,7 +5627,7 @@ const Assets: React.FC = () => {
                     setFormData(prev => ({ ...prev, isLoan: true, category: 'OTHER' }));
                     setShowModal(true);
                   }}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm hover:bg-slate-800 transition-colors"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-sm hover:bg-slate-800 transition-colors"
                 >
                   <Plus size={12} /> Novo Empréstimo
                 </button>
@@ -5206,22 +5646,26 @@ const Assets: React.FC = () => {
                   const progressPercent = principal > 0 ? Math.round((returned / principal) * 100) : 0;
                   
                   return (
-                    <div key={loan.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm p-8 space-y-6 flex flex-col justify-between">
+                    <div key={loan.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 space-y-6 flex flex-col justify-between">
                       <div className="space-y-4">
                         <div className="flex justify-between items-start">
                           <div className="w-10 h-10 bg-slate-100 text-slate-900 rounded-xl flex items-center justify-center">
                             <ArrowRightLeft size={20} />
                           </div>
-                          <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[8px] font-black uppercase tracking-widest border border-emerald-100">Ativo Corrente</span>
+                          {Math.max(0, principal - returned) === 0 && principal > 0 ? (
+                            <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-blue-100">Quitado</span>
+                          ) : (
+                            <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Ativo</span>
+                          )}
                         </div>
                         <div>
                           <h4 className="font-bold text-slate-900 text-lg uppercase tracking-tight">{loan.name}</h4>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Devedor: {meta.loanDebtor || 'Não Informado'}</p>
+                          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Devedor: {meta.loanDebtor || 'Não Informado'}</p>
                         </div>
 
                         {/* Progress and metrics */}
                         <div className="space-y-2 pt-2">
-                          <div className="flex justify-between text-[9px] font-black uppercase text-slate-400">
+                          <div className="flex justify-between text-xs font-black uppercase text-slate-400">
                             <span>Retorno do Principal</span>
                             <span>{progressPercent}% ({formatCurrency(returned)})</span>
                           </div>
@@ -5241,6 +5685,10 @@ const Assets: React.FC = () => {
                           <div className="flex justify-between">
                             <span>Valor Principal:</span>
                             <span className="font-bold text-slate-800">{formatCurrency(principal)}</span>
+                          </div>
+                          <div className="flex justify-between font-semibold text-amber-600">
+                            <span>Saldo Devedor Atual:</span>
+                            <span>{formatCurrency(Math.max(0, principal - returned))}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Taxa de Juros:</span>
@@ -5262,13 +5710,26 @@ const Assets: React.FC = () => {
                             setSelectedAssetForExtrato(loan);
                             setShowExtratoModal(true);
                           }}
-                          className="text-[9px] font-black uppercase tracking-widest text-brand-600 hover:underline"
+                          className="text-xs font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-800 hover:underline"
+                          aria-label={`Lançar e ver recebimentos de ${loan.name}`}
                         >
                           Lançar Recebimentos
                         </button>
                         <div className="flex gap-2">
-                          <button onClick={() => openEditAsset(loan)} className="text-[9px] font-bold text-slate-400 hover:text-brand-600 uppercase tracking-widest">Editar</button>
-                          <button onClick={() => handleDeleteAsset(loan)} className="text-[9px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest">Remover</button>
+                          <button 
+                            onClick={() => openEditAsset(loan)} 
+                            className="text-xs font-bold text-slate-600 hover:text-brand-600 uppercase tracking-widest"
+                            aria-label={`Editar empréstimo ${loan.name}`}
+                          >
+                            Editar
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteAsset(loan)} 
+                            className="text-xs font-bold text-slate-600 hover:text-rose-600 uppercase tracking-widest"
+                            aria-label={`Remover empréstimo ${loan.name}`}
+                          >
+                            Remover
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -5278,8 +5739,8 @@ const Assets: React.FC = () => {
                 {activePhysicalAssets.filter(p => p.metadata?.isLoan).length === 0 && (
                   <div className="col-span-full py-12 border-2 border-dashed border-slate-100 rounded-[32px] flex flex-col items-center justify-center text-slate-300">
                     <ArrowRightLeft size={36} />
-                    <p className="mt-4 font-black uppercase tracking-widest text-[10px]">Nenhum empréstimo cadastrado</p>
-                    <p className="text-[9px] text-slate-400 mt-2 font-medium italic">Registre os valores emprestados para calcular os retornos de juros.</p>
+                    <p className="mt-4 font-black uppercase tracking-widest text-xs">Nenhum empréstimo cadastrado</p>
+                    <p className="text-xs text-slate-400 mt-2 font-medium italic">Registre os valores emprestados para calcular os retornos de juros.</p>
                   </div>
                 )}
               </div>
@@ -5304,7 +5765,7 @@ const Assets: React.FC = () => {
                     setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento' }));
                     setShowModal(true);
                   }}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm hover:bg-indigo-700 transition-colors"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-sm hover:bg-indigo-700 transition-colors"
                 >
                   <Plus size={12} /> Novo Investimento
                 </button>
@@ -5316,32 +5777,38 @@ const Assets: React.FC = () => {
                     p => p.category === 'INVESTMENT' && p.metadata?.brokerAccountId === broker.id && p.metadata?.status !== 'RESGATADO'
                   );
                   const totalInvested = brokerInvestments.reduce((sum, inv) => sum + Number(inv.netValue || 0), 0);
-                  const meta = broker.metadata || {};
+                  const isCollapsed = !!collapsedBrokers[broker.id];
 
                   return (
                     <div key={broker.id} className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden flex flex-col">
                       {/* Broker Header */}
-                      <div className="p-8 space-y-4">
+                      <div 
+                        className="p-8 space-y-4 cursor-pointer hover:bg-slate-50/50 transition-colors select-none"
+                        onClick={() => setCollapsedBrokers(prev => ({ ...prev, [broker.id]: !prev[broker.id] }))}
+                      >
                         <div className="flex justify-between items-start">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
                               <TrendingUp size={20} />
                             </div>
                             <div>
-                              <h4 className="font-black text-slate-900 text-base uppercase tracking-tight">{broker.name}</h4>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{brokerInvestments.length} ativo{brokerInvestments.length !== 1 ? 's' : ''} vinculado{brokerInvestments.length !== 1 ? 's' : ''}</p>
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-black text-slate-900 text-base uppercase tracking-tight">{broker.name}</h4>
+                                {isCollapsed ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronUp size={14} className="text-slate-400" />}
+                              </div>
+                              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{brokerInvestments.length} ativo{brokerInvestments.length !== 1 ? 's' : ''} vinculado{brokerInvestments.length !== 1 ? 's' : ''}</p>
                             </div>
                           </div>
                           <div className="text-right">
                             <p className="text-xs font-black text-emerald-600">{formatCurrency(broker.balance)}</p>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Saldo Total</p>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Saldo Total</p>
                           </div>
                         </div>
 
-                        {totalInvested > 0 && (
-                          <div className="flex items-center gap-2 p-3 bg-indigo-50 rounded-xl border border-indigo-100">
+                        {totalInvested > 0 && !isCollapsed && (
+                          <div className="flex items-center gap-2 p-3 bg-indigo-50 rounded-xl border border-indigo-100 animate-in fade-in duration-200">
                             <Check size={13} className="text-indigo-500 shrink-0" />
-                            <span className="text-[9px] font-semibold text-indigo-700">
+                            <span className="text-xs font-semibold text-indigo-700">
                               {formatCurrency(totalInvested)} em ativos líquidos (pós-impostos)
                             </span>
                           </div>
@@ -5349,21 +5816,21 @@ const Assets: React.FC = () => {
                       </div>
 
                       {/* Individual Investments List */}
-                      {brokerInvestments.length > 0 && (
-                        <div className="border-t border-slate-50 divide-y divide-slate-50">
+                      {!isCollapsed && brokerInvestments.length > 0 && (
+                        <div className="border-t border-slate-50 divide-y divide-slate-50 animate-in fade-in duration-300">
                           {brokerInvestments.map(inv => {
                             const invMeta = inv.metadata || {};
                             const investTypeLabel: Record<string, string> = {
                               'CDB': 'CDB', 'LCI_LCA': 'LCI/LCA', 'TESOURO': 'Tesouro',
                               'DEBENTURES': 'Debêntures', 'CRI_CRA': 'CRI/CRA',
                               'ACOES': 'Ações', 'FIIS': 'FIIs', 'FUNDOS': 'Fundos',
-                              'CRIPTO': 'Cripto', 'PREVIDENCIA': 'Previdência', 'OUTROS': 'Outros'
+                              'CRIPTO': 'Cripto', 'PREVIDENCIA': 'Previdência', 'POUPANCA': 'Poupança', 'OUTROS': 'Outros'
                             };
                             const isAcumulado = invMeta.payoutType === 'ACUMULADO';
                             const isExpanded = !!expandedAssetIR[inv.id];
                             const purchase = Number(invMeta.purchaseValue) || Number(invMeta.initialInvestmentAmount) || Number(inv.estimatedValue || 0);
-                            const profit = Math.max(0, Number(inv.estimatedValue || 0) - purchase);
-                            const isExempt = !!invMeta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'FIIS'].includes(invMeta.investmentType);
+                            const profit = inv.grossYield !== undefined ? inv.grossYield : (Number(inv.estimatedValue || 0) - purchase);
+                            const isExempt = !!invMeta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'POUPANCA'].includes(invMeta.investmentType);
                             const taxAmt = inv.taxAmount || 0;
                             const taxRatePercent = (inv.taxRate || 0) * 100;
                             const days = inv.daysElapsed || 0;
@@ -5376,7 +5843,7 @@ const Assets: React.FC = () => {
                                     <div className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
                                     <div className="min-w-0 text-left">
                                       <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
-                                      <p className="text-[9px] text-slate-400 font-medium">
+                                      <p className="text-xs text-slate-400 font-medium">
                                         {investTypeLabel[invMeta.investmentType] || invMeta.investmentType || 'Investimento'}
                                         {invMeta.yieldRate ? ` · ${invMeta.yieldRate}` : ''}
                                         {' · '}
@@ -5386,30 +5853,54 @@ const Assets: React.FC = () => {
                                       </p>
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-3 shrink-0">
+                                  <div className="flex items-center gap-4 shrink-0">
                                     <div className="text-right">
                                       <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
                                       {isExpanded ? (
-                                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Ocultar IR <ChevronUp size={8} /></span>
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Ocultar IR <ChevronUp size={8} /></span>
                                       ) : (
-                                        <span className="text-[8px] text-indigo-500 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Detalhar IR <ChevronDown size={8} /></span>
+                                        <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Detalhar IR <ChevronDown size={8} /></span>
                                       )}
                                     </div>
-                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex gap-2 items-center" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedAssetForResgate(inv);
+                                          setResgateForm({
+                                            type: 'TOTAL',
+                                            amount: '',
+                                            destinationAccountId: inv.metadata?.brokerAccountId || ''
+                                          });
+                                          setShowResgateModal(true);
+                                        }}
+                                        className="p-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
+                                        title="Resgatar Ativo"
+                                      >
+                                        <HandCoins size={11} />
+                                        <span className="hidden sm:inline">Resgatar</span>
+                                      </button>
                                       <button
                                         onClick={() => openEditAsset(inv)}
-                                        className="text-[8px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest"
-                                      >Editar</button>
+                                        className="p-1 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
+                                        title="Editar Ativo"
+                                      >
+                                        <Pencil size={11} />
+                                        <span className="hidden sm:inline">Editar</span>
+                                      </button>
                                       <button
                                         onClick={() => handleDeleteAsset(inv)}
-                                        className="text-[8px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest"
-                                      >Excluir</button>
+                                        className="p-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
+                                        title="Excluir Ativo"
+                                      >
+                                        <Trash2 size={11} />
+                                        <span className="hidden sm:inline">Excluir</span>
+                                      </button>
                                     </div>
                                   </div>
                                 </div>
 
                                 {isExpanded && (
-                                  <div className="mt-3 pl-5 pr-2 py-3 bg-slate-50 rounded-2xl space-y-1.5 text-[10px] text-slate-500 font-semibold border border-slate-100/50 text-left animate-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
+                                  <div className="mt-3 px-6 py-4 bg-slate-50 rounded-2xl space-y-1.5 text-xs text-slate-500 font-semibold border border-slate-100/50 text-left animate-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
                                     <div className="flex justify-between">
                                       <span>Valor Bruto (Atual):</span>
                                       <span className="font-bold text-slate-700">{formatCurrency(Number(inv.estimatedValue || 0))}</span>
@@ -5420,18 +5911,34 @@ const Assets: React.FC = () => {
                                     </div>
                                     <div className="flex justify-between">
                                       <span>Rendimento Bruto:</span>
-                                      <span className="font-bold text-emerald-600">+{formatCurrency(profit)}</span>
+                                      <span className={`font-bold ${profit >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                        {profit >= 0 ? '+' : ''}{formatCurrency(profit)}
+                                      </span>
                                     </div>
-                                    {!isExempt && profit > 0 && (
+                                    {!isExempt && (
                                       <>
-                                        <div className="flex justify-between">
-                                          <span>Prazo de Custódia:</span>
-                                          <span className="font-bold text-slate-700">{days} dias (Alíquota de {taxRatePercent}%)</span>
-                                        </div>
-                                        <div className="flex justify-between text-rose-600 font-bold">
-                                          <span>Imposto de Renda Estimado:</span>
-                                          <span className="font-black">- {formatCurrency(taxAmt)} <span className="text-[8px] font-normal text-slate-400">(20% a 22.5% sobre lucro)</span></span>
-                                        </div>
+                                        {['ACOES', 'FIIS', 'CRIPTO'].includes(invMeta.investmentType) ? (
+                                          <div className="flex justify-between text-indigo-600">
+                                            <span>Regime de Tributação (Ganho de Capital):</span>
+                                            <span className="font-bold">{invMeta.investmentType === 'FIIS' ? '20% (FIIs)' : '15% (Ações/Cripto)'}</span>
+                                          </div>
+                                        ) : (
+                                          <div className="flex justify-between">
+                                            <span>Prazo de Custódia:</span>
+                                            <span className="font-bold text-slate-700">{days} dias (Alíquota de {taxRatePercent}%)</span>
+                                          </div>
+                                        )}
+                                        {profit > 0 && (
+                                          <div className="flex justify-between text-rose-600 font-bold">
+                                            <span>Imposto de Renda Estimado:</span>
+                                            <span className="font-black">
+                                              - {formatCurrency(taxAmt)} 
+                                              <span className="text-[10px] font-normal text-slate-400 ml-1">
+                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : '20% a 22.5% sobre lucro'})
+                                              </span>
+                                            </span>
+                                          </div>
+                                        )}
                                       </>
                                     )}
                                     {isExempt && (
@@ -5453,59 +5960,71 @@ const Assets: React.FC = () => {
                       )}
 
                       {/* Add investment to this broker shortcut */}
-                      <div className="px-8 py-4 border-t border-slate-50">
-                        <button
-                          onClick={() => {
-                            resetAssetForm();
-                            setEditingAsset(null);
-                            setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento', brokerAccountId: broker.id }));
-                            setShowModal(true);
-                          }}
-                          className="text-[9px] font-bold text-indigo-500 hover:text-indigo-700 uppercase tracking-widest flex items-center gap-1"
-                        >
-                          <Plus size={10} /> Adicionar Ativo a {broker.name}
-                        </button>
-                      </div>
+                      {!isCollapsed && (
+                        <div className="px-8 py-4 border-t border-slate-50">
+                          <button
+                            onClick={() => {
+                              resetAssetForm();
+                              setEditingAsset(null);
+                              setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento', brokerAccountId: broker.id }));
+                              setShowModal(true);
+                            }}
+                            className="text-xs font-bold text-indigo-500 hover:text-indigo-700 uppercase tracking-widest flex items-center gap-1"
+                          >
+                            <Plus size={10} /> Adicionar Ativo a {broker.name}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
 
                 {/* Card for investments without a broker */}
                 {(() => {
+                  const activeBrokerIds = new Set(brokers.map(b => b.id));
                   const unboundInvestments = enrichedPhysicalAssets.filter(
-                    p => p.category === 'INVESTMENT' && !p.metadata?.brokerAccountId && p.metadata?.status !== 'RESGATADO'
+                    p => p.category === 'INVESTMENT' && (!p.metadata?.brokerAccountId || !activeBrokerIds.has(p.metadata.brokerAccountId)) && p.metadata?.status !== 'RESGATADO'
                   );
                   if (unboundInvestments.length === 0 && brokers.length > 0) return null;
+                  const isCollapsed = !!collapsedBrokers.unbound;
+
                   return (
                     <div className="bg-white rounded-[32px] border border-dashed border-slate-200 shadow-sm overflow-hidden flex flex-col">
-                      <div className="p-8 space-y-4">
+                      <div 
+                        className="p-8 space-y-4 cursor-pointer hover:bg-slate-50/50 transition-colors select-none"
+                        onClick={() => setCollapsedBrokers(prev => ({ ...prev, unbound: !prev.unbound }))}
+                      >
                         <div className="flex justify-between items-start">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center">
                               <TrendingUp size={20} />
                             </div>
                             <div>
-                              <h4 className="font-black text-slate-600 text-base uppercase tracking-tight">Sem Corretora</h4>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{unboundInvestments.length} ativo{unboundInvestments.length !== 1 ? 's' : ''}</p>
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-black text-slate-600 text-base uppercase tracking-tight">Sem Corretora (Caixa Livre)</h4>
+                                {isCollapsed ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronUp size={14} className="text-slate-400" />}
+                              </div>
+                              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{unboundInvestments.length} ativo{unboundInvestments.length !== 1 ? 's' : ''}</p>
                             </div>
                           </div>
                         </div>
                       </div>
-                      {unboundInvestments.length > 0 && (
-                        <div className="border-t border-slate-50 divide-y divide-slate-50">
+
+                      {!isCollapsed && unboundInvestments.length > 0 && (
+                        <div className="border-t border-slate-50 divide-y divide-slate-50 animate-in fade-in duration-300">
                           {unboundInvestments.map(inv => {
                             const invMeta = inv.metadata || {};
                             const investTypeLabel: Record<string, string> = {
                               'CDB': 'CDB', 'LCI_LCA': 'LCI/LCA', 'TESOURO': 'Tesouro',
                               'DEBENTURES': 'Debêntures', 'CRI_CRA': 'CRI/CRA',
                               'ACOES': 'Ações', 'FIIS': 'FIIs', 'FUNDOS': 'Fundos',
-                              'CRIPTO': 'Cripto', 'PREVIDENCIA': 'Previdência', 'OUTROS': 'Outros'
+                              'CRIPTO': 'Cripto', 'PREVIDENCIA': 'Previdência', 'POUPANCA': 'Poupança', 'OUTROS': 'Outros'
                             };
                             const isAcumulado = invMeta.payoutType === 'ACUMULADO';
                             const isExpanded = !!expandedAssetIR[inv.id];
                             const purchase = Number(invMeta.purchaseValue) || Number(invMeta.initialInvestmentAmount) || Number(inv.estimatedValue || 0);
-                            const profit = Math.max(0, Number(inv.estimatedValue || 0) - purchase);
-                            const isExempt = !!invMeta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'FIIS'].includes(invMeta.investmentType);
+                            const profit = inv.grossYield !== undefined ? inv.grossYield : (Number(inv.estimatedValue || 0) - purchase);
+                            const isExempt = !!invMeta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'POUPANCA'].includes(invMeta.investmentType);
                             const taxAmt = inv.taxAmount || 0;
                             const taxRatePercent = (inv.taxRate || 0) * 100;
                             const days = inv.daysElapsed || 0;
@@ -5518,7 +6037,7 @@ const Assets: React.FC = () => {
                                     <div className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />
                                     <div className="min-w-0 text-left">
                                       <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
-                                      <p className="text-[9px] text-slate-400 font-medium">
+                                      <p className="text-xs text-slate-400 font-medium">
                                         {investTypeLabel[invMeta.investmentType] || invMeta.investmentType || 'Investimento'}
                                         {invMeta.yieldRate ? ` · ${invMeta.yieldRate}` : ''}
                                         {' · '}
@@ -5528,24 +6047,40 @@ const Assets: React.FC = () => {
                                       </p>
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-3 shrink-0">
+                                  <div className="flex items-center gap-4 shrink-0">
                                     <div className="text-right">
                                       <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
                                       {isExpanded ? (
-                                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Ocultar IR <ChevronUp size={8} /></span>
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Ocultar IR <ChevronUp size={8} /></span>
                                       ) : (
-                                        <span className="text-[8px] text-indigo-500 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Detalhar IR <ChevronDown size={8} /></span>
+                                        <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Detalhar IR <ChevronDown size={8} /></span>
                                       )}
                                     </div>
-                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                                      <button onClick={() => openEditAsset(inv)} className="text-[8px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest">Editar</button>
-                                      <button onClick={() => handleDeleteAsset(inv)} className="text-[8px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest">Excluir</button>
+                                    <div className="flex gap-2 items-center" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedAssetForResgate(inv);
+                                          setResgateForm({
+                                            type: 'TOTAL',
+                                            amount: '',
+                                            destinationAccountId: ''
+                                          });
+                                          setShowResgateModal(true);
+                                        }}
+                                        className="p-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
+                                        title="Resgatar Ativo"
+                                      >
+                                        <HandCoins size={11} />
+                                        <span className="hidden sm:inline">Resgatar</span>
+                                      </button>
+                                      <button onClick={() => openEditAsset(inv)} className="p-1 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"><Pencil size={11} /><span className="hidden sm:inline">Editar</span></button>
+                                      <button onClick={() => handleDeleteAsset(inv)} className="p-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"><Trash2 size={11} /><span className="hidden sm:inline">Excluir</span></button>
                                     </div>
                                   </div>
                                 </div>
 
                                 {isExpanded && (
-                                  <div className="mt-3 pl-5 pr-2 py-3 bg-slate-50 rounded-2xl space-y-1.5 text-[10px] text-slate-500 font-semibold border border-slate-100/50 text-left animate-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
+                                  <div className="mt-3 px-6 py-4 bg-slate-50 rounded-2xl space-y-1.5 text-xs text-slate-500 font-semibold border border-slate-100/50 text-left animate-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
                                     <div className="flex justify-between">
                                       <span>Valor Bruto (Atual):</span>
                                       <span className="font-bold text-slate-700">{formatCurrency(Number(inv.estimatedValue || 0))}</span>
@@ -5556,18 +6091,34 @@ const Assets: React.FC = () => {
                                     </div>
                                     <div className="flex justify-between">
                                       <span>Rendimento Bruto:</span>
-                                      <span className="font-bold text-emerald-600">+{formatCurrency(profit)}</span>
+                                      <span className={`font-bold ${profit >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                        {profit >= 0 ? '+' : ''}{formatCurrency(profit)}
+                                      </span>
                                     </div>
-                                    {!isExempt && profit > 0 && (
+                                    {!isExempt && (
                                       <>
-                                        <div className="flex justify-between">
-                                          <span>Prazo de Custódia:</span>
-                                          <span className="font-bold text-slate-700">{days} dias (Alíquota de {taxRatePercent}%)</span>
-                                        </div>
-                                        <div className="flex justify-between text-rose-600 font-bold">
-                                          <span>Imposto de Renda Estimado:</span>
-                                          <span className="font-black">- {formatCurrency(taxAmt)} <span className="text-[8px] font-normal text-slate-400">(20% a 22.5% sobre lucro)</span></span>
-                                        </div>
+                                        {['ACOES', 'FIIS', 'CRIPTO'].includes(invMeta.investmentType) ? (
+                                          <div className="flex justify-between text-indigo-600">
+                                            <span>Regime de Tributação (Ganho de Capital):</span>
+                                            <span className="font-bold">{invMeta.investmentType === 'FIIS' ? '20% (FIIs)' : '15% (Ações/Cripto)'}</span>
+                                          </div>
+                                        ) : (
+                                          <div className="flex justify-between">
+                                            <span>Prazo de Custódia:</span>
+                                            <span className="font-bold text-slate-700">{days} dias (Alíquota de {taxRatePercent}%)</span>
+                                          </div>
+                                        )}
+                                        {profit > 0 && (
+                                          <div className="flex justify-between text-rose-600 font-bold">
+                                            <span>Imposto de Renda Estimado:</span>
+                                            <span className="font-black">
+                                              - {formatCurrency(taxAmt)} 
+                                              <span className="text-[10px] font-normal text-slate-400 ml-1">
+                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : '20% a 22.5% sobre lucro'})
+                                              </span>
+                                            </span>
+                                          </div>
+                                        )}
                                       </>
                                     )}
                                     {isExempt && (
@@ -5587,19 +6138,22 @@ const Assets: React.FC = () => {
                           })}
                         </div>
                       )}
-                      <div className="px-8 py-4 border-t border-slate-50">
-                        <button
-                          onClick={() => {
-                            resetAssetForm();
-                            setEditingAsset(null);
-                            setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento', brokerAccountId: '' }));
-                            setShowModal(true);
-                          }}
-                          className="text-[9px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest flex items-center gap-1"
-                        >
-                          <Plus size={10} /> Adicionar Investimento Avulso
-                        </button>
-                      </div>
+                      
+                      {!isCollapsed && (
+                        <div className="px-8 py-4 border-t border-slate-50">
+                          <button
+                            onClick={() => {
+                              resetAssetForm();
+                              setEditingAsset(null);
+                              setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento', brokerAccountId: '' }));
+                              setShowModal(true);
+                            }}
+                            className="text-xs font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest flex items-center gap-1"
+                          >
+                            <Plus size={10} /> Adicionar Investimento Avulso
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -5630,19 +6184,19 @@ const Assets: React.FC = () => {
                   : null;
 
                 return (
-                  <div key={liability.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+                  <div key={liability.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
                     <div className="p-8 space-y-6">
                       <div className="flex justify-between items-start">
                         <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-100/50">
                           <Landmark size={22} />
                         </div>
-                        <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[8px] font-black uppercase tracking-widest border border-red-100">Dívida Ativa</span>
+                        <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-100">Dívida Ativa</span>
                       </div>
 
                       <div>
                         <h4 className="font-black text-slate-900 text-lg tracking-tight leading-tight italic uppercase">{liability.name}</h4>
                         <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
-                          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Saldo Devedor Atual:</p>
+                          <p className="text-xs text-slate-400 font-black uppercase tracking-widest">Saldo Devedor Atual:</p>
                           <p className="text-sm font-black text-red-600">{formatCurrency(liability.remainingBalance)}</p>
                         </div>
                       </div>
@@ -5669,7 +6223,7 @@ const Assets: React.FC = () => {
 
                         {/* Amortization Progress Bar */}
                         <div className="space-y-1.5 pt-3 border-t border-slate-50">
-                          <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <div className="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
                             <span>Progresso da Dívida:</span>
                             <span className="text-red-500 font-extrabold">{amortizationPercent}% quitado</span>
                           </div>
@@ -5686,7 +6240,7 @@ const Assets: React.FC = () => {
                               style={{ width: `${amortizationPercent}%` }}
                             />
                           </div>
-                          <div className="flex justify-between text-[9px] text-slate-400 font-medium italic">
+                          <div className="flex justify-between text-xs text-slate-400 font-medium italic">
                             <span>Pago: {formatCurrency(paidAmount)}</span>
                             <span>Total: {formatCurrency(liability.totalAmount)}</span>
                           </div>
@@ -5695,16 +6249,16 @@ const Assets: React.FC = () => {
                         {/* Linked Asset & LTV Indicator */}
                         {linkedAsset && (
                           <div className="bg-slate-50 rounded-2xl p-3.5 space-y-2 border border-slate-100">
-                            <div className="flex items-center justify-between text-[10px]">
+                            <div className="flex items-center justify-between text-xs">
                               <span className="text-slate-400 font-bold uppercase tracking-wider">Bem Vinculado:</span>
                               <span className="font-extrabold text-slate-700 truncate max-w-[120px]" title={linkedAsset.name}>
                                 {linkedAsset.name}
                               </span>
                             </div>
                             {ltvPercent !== null && (
-                              <div className="flex justify-between items-center text-[10px] border-t border-slate-200/60 pt-1.5">
+                              <div className="flex justify-between items-center text-xs border-t border-slate-200/60 pt-1.5">
                                 <span className="text-slate-400 font-bold uppercase tracking-wider">Índice LTV:</span>
-                                <span className={`font-black px-1.5 py-0.5 rounded-md text-[9px] ${
+                                <span className={`font-black px-1.5 py-0.5 rounded-md text-xs ${
                                   ltvPercent > 80 
                                     ? 'bg-red-50 text-red-600 border border-red-100' 
                                     : ltvPercent > 50 
@@ -5777,7 +6331,11 @@ const Assets: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-black text-slate-900 uppercase tracking-tight">{editingAsset ? 'Editar Ativo Físico' : 'Novo Ativo Físico'}</h3>
+              <h3 className="font-black text-slate-900 uppercase tracking-tight">
+                {formData.isLoan 
+                  ? (editingAsset ? 'Editar Empréstimo Concedido' : 'Novo Empréstimo Concedido') 
+                  : (editingAsset ? 'Editar Ativo Físico' : 'Novo Ativo Físico')}
+              </h3>
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-50">
                 <X size={20} />
               </button>
@@ -5785,11 +6343,13 @@ const Assets: React.FC = () => {
 
             <form onSubmit={handleSaveAsset} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Identificação do Bem</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                  {formData.isLoan ? 'Identificação do Empréstimo (ex: Empréstimo João)' : 'Identificação do Bem'}
+                </label>
                 <input
                   required
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
-                  placeholder="Ex: Jeep Compass"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                  placeholder={formData.isLoan ? 'Ex: Empréstimo João' : 'Ex: Jeep Compass'}
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
@@ -5797,7 +6357,7 @@ const Assets: React.FC = () => {
 
               {formData.category === 'OTHER' && (
                 <div className="space-y-2 pt-1 animate-in fade-in">
-                  <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Sugestões de Nome (Clique para selecionar, 'X' para remover)</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Sugestões de Nome (Clique para selecionar, 'X' para remover)</label>
                   <div className="flex flex-wrap gap-2 items-center">
                     {suggestedNames.map((sugName, index) => (
                       <span
@@ -5839,12 +6399,12 @@ const Assets: React.FC = () => {
               )}
 
               {/* Category & Value - Hide for Real Estate edit, edit in Evolution card instead */}
-              {(!editingAsset || editingAsset.category !== 'REAL_ESTATE') && (
+              {(!editingAsset || editingAsset.category !== 'REAL_ESTATE') && !formData.isLoan && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Categoria</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Categoria</label>
                     <select
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                       value={formData.category}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
                     >
@@ -5855,12 +6415,14 @@ const Assets: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Estimado Atual (R$)</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      {formData.category === 'INVESTMENT' ? 'Saldo Bruto Atual (R$)' : 'Valor Estimado Atual (R$)'}
+                    </label>
                     <input
                       required
                       type="number"
                       step="0.01"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                       placeholder="0.00"
                       value={formData.estimatedValue}
                       onChange={(e) => setFormData({ ...formData, estimatedValue: e.target.value })}
@@ -5870,23 +6432,27 @@ const Assets: React.FC = () => {
               )}
 
               {/* Acquisition Date & Purchase Value - Hide for Real Estate edit */}
-              {(!editingAsset || editingAsset.category !== 'REAL_ESTATE') && (
+              {(!editingAsset || editingAsset.category !== 'REAL_ESTATE') && !formData.isLoan && (
                 <div className="grid grid-cols-2 gap-4 border-t border-slate-50 pt-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Aquisição</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      {formData.category === 'INVESTMENT' ? 'Data de Aplicação' : 'Data de Aquisição'}
+                    </label>
                     <input
                       type="date"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                       value={formData.acquisitionDate}
                       onChange={(e) => setFormData({ ...formData, acquisitionDate: e.target.value })}
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Aquisição (R$)</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                      {formData.category === 'INVESTMENT' ? 'Valor Aplicado (Custo) (R$)' : 'Valor Aquisição (R$)'}
+                    </label>
                     <input
                       type="number"
                       step="0.01"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                       placeholder="0.00"
                       value={formData.purchaseValue}
                       onChange={(e) => setFormData({ ...formData, purchaseValue: e.target.value })}
@@ -5897,32 +6463,34 @@ const Assets: React.FC = () => {
 
               {/* Advanced Classification: Uso vs Investimento */}
               <div className="bg-slate-50 rounded-2xl p-4 space-y-4 border border-slate-200">
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
-                    <input
-                      type="radio"
-                      name="purpose"
-                      checked={formData.purpose === 'uso'}
-                      onChange={() => setFormData({ ...formData, purpose: 'uso', isLoan: false })}
-                    />
-                    Uso Pessoal
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
-                    <input
-                      type="radio"
-                      name="purpose"
-                      checked={formData.purpose === 'investimento'}
-                      onChange={() => setFormData({ ...formData, purpose: 'investimento' })}
-                    />
-                    Investimento / Negócio
-                  </label>
-                </div>
+                {formData.category !== 'INVESTMENT' && !formData.isLoan && (
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
+                      <input
+                        type="radio"
+                        name="purpose"
+                        checked={formData.purpose === 'uso'}
+                        onChange={() => setFormData({ ...formData, purpose: 'uso', isLoan: false })}
+                      />
+                      Uso Pessoal
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
+                      <input
+                        type="radio"
+                        name="purpose"
+                        checked={formData.purpose === 'investimento'}
+                        onChange={() => setFormData({ ...formData, purpose: 'investimento' })}
+                      />
+                      Investimento / Negócio
+                    </label>
+                  </div>
+                )}
 
                 {formData.category === 'VEHICLE' && (
                   <div className="space-y-4 animate-in slide-in-from-top-2">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Veículo</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Veículo</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.vehicleType}
@@ -5935,7 +6503,7 @@ const Assets: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Custo de Transferência (R$)</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Custo de Transferência (R$)</label>
                         <input
                           type="number"
                           step="0.01"
@@ -5946,12 +6514,59 @@ const Assets: React.FC = () => {
                         />
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Placa</label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-brand-500/20"
+                          value={formData.licensePlate || ''}
+                          onChange={(e) => setFormData({ ...formData, licensePlate: e.target.value })}
+                          placeholder="ABC1D23"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Renavam</label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                          value={formData.renavam || ''}
+                          onChange={(e) => setFormData({ ...formData, renavam: e.target.value })}
+                          placeholder="00000000000"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Ano / Modelo</label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                          value={formData.yearModel || ''}
+                          onChange={(e) => setFormData({ ...formData, yearModel: e.target.value })}
+                          placeholder="2023/2024"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Quilometragem</label>
+                        <input
+                          type="number"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                          value={formData.mileage || ''}
+                          onChange={(e) => setFormData({ ...formData, mileage: e.target.value })}
+                          placeholder="Ex: 50000"
+                        />
+                      </div>
+                    </div>
+
                     <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Tabela FIPE Atual (R$)</label>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Tabela FIPE Atual (R$)</label>
                       <input
                         type="number"
                         step="0.01"
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-900 outline-none"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                         placeholder="FIPE Atual"
                         value={formData.fipeValue}
                         onChange={(e) => setFormData({ ...formData, fipeValue: e.target.value })}
@@ -5962,13 +6577,13 @@ const Assets: React.FC = () => {
 
                 {formData.category === 'VEHICLE' && formData.purpose === 'uso' && (
                   <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Despesas Periódicas Estimadas</p>
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest">Despesas Periódicas Estimadas</p>
                     <div className="grid grid-cols-2 gap-4">
                       {/* IPVA Group */}
                       <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 space-y-3">
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado IPVA (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado IPVA (R$)</label>
                             <input
                               type="number"
                               step="0.01"
@@ -5979,7 +6594,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento IPVA</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento IPVA</label>
                             <select
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                               value={formData.ipvaPaymentMethod}
@@ -5992,7 +6607,7 @@ const Assets: React.FC = () => {
                         </div>
                         {formData.ipvaPaymentMethod === 'PARCELADO' && (
                           <div className="animate-in slide-in-from-top-2">
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas IPVA</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas IPVA</label>
                             <input
                               type="number"
                               min="1"
@@ -6010,7 +6625,7 @@ const Assets: React.FC = () => {
                       <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 space-y-3">
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado Seguro (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado Seguro (R$)</label>
                             <input
                               type="number"
                               step="0.01"
@@ -6021,7 +6636,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento Seguro</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento Seguro</label>
                             <select
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                               value={formData.seguroPaymentMethod}
@@ -6035,7 +6650,7 @@ const Assets: React.FC = () => {
                         </div>
                         {formData.seguroPaymentMethod === 'PARCELADO' && (
                           <div className="animate-in slide-in-from-top-2">
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas Seguro</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas Seguro</label>
                             <input
                               type="number"
                               min="1"
@@ -6050,7 +6665,7 @@ const Assets: React.FC = () => {
                       </div>
 
                       <div>
-                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Licenciamento Anual (R$)</label>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Licenciamento Anual (R$)</label>
                         <input
                           type="number"
                           step="0.01"
@@ -6061,7 +6676,7 @@ const Assets: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Manutenção Mensal (R$)</label>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Manutenção Mensal (R$)</label>
                         <input
                           type="number"
                           step="0.01"
@@ -6078,7 +6693,7 @@ const Assets: React.FC = () => {
                 {formData.category === 'VEHICLE' && formData.purpose === 'investimento' && (
                   <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                     <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Modalidade do Investimento</label>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Modalidade do Investimento</label>
                       <select
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                         value={formData.vehiclePurposeType}
@@ -6093,7 +6708,7 @@ const Assets: React.FC = () => {
                       <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipo de Aluguel</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipo de Aluguel</label>
                             <select
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                               value={formData.rentalType}
@@ -6104,7 +6719,7 @@ const Assets: React.FC = () => {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Receita de Aluguel (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Receita de Aluguel (R$)</label>
                             <input
                               type="number"
                               step="0.01"
@@ -6115,7 +6730,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Taxa Plataforma (R$ ou %)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Taxa Plataforma (R$ ou %)</label>
                             <input
                               type="number"
                               step="0.01"
@@ -6129,7 +6744,7 @@ const Assets: React.FC = () => {
                           <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo IPVA (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo IPVA (R$)</label>
                                 <input
                                   type="number"
                                   step="0.01"
@@ -6140,7 +6755,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento IPVA</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento IPVA</label>
                                 <select
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                                   value={formData.ipvaPaymentMethod}
@@ -6153,7 +6768,7 @@ const Assets: React.FC = () => {
                             </div>
                             {formData.ipvaPaymentMethod === 'PARCELADO' && (
                               <div className="animate-in slide-in-from-top-2">
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas IPVA</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas IPVA</label>
                                 <input
                                   type="number"
                                   min="1"
@@ -6171,7 +6786,7 @@ const Assets: React.FC = () => {
                           <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Seguro Comercial (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Seguro Comercial (R$)</label>
                                 <input
                                   type="number"
                                   step="0.01"
@@ -6182,7 +6797,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento Seguro</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento Seguro</label>
                                 <select
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                                   value={formData.seguroPaymentMethod}
@@ -6196,7 +6811,7 @@ const Assets: React.FC = () => {
                             </div>
                             {formData.seguroPaymentMethod === 'PARCELADO' && (
                               <div className="animate-in slide-in-from-top-2">
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas Seguro</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas Seguro</label>
                                 <input
                                   type="number"
                                   min="1"
@@ -6211,7 +6826,7 @@ const Assets: React.FC = () => {
                           </div>
 
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Licenciamento Anual (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Licenciamento Anual (R$)</label>
                             <input
                               type="number"
                               step="0.01"
@@ -6226,7 +6841,7 @@ const Assets: React.FC = () => {
                     ) : (
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Venda Alvo (R$)</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Venda Alvo (R$)</label>
                           <input
                             type="number"
                             step="0.01"
@@ -6237,7 +6852,7 @@ const Assets: React.FC = () => {
                           />
                         </div>
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Orçamento Preparação (R$)</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Orçamento Preparação (R$)</label>
                           <input
                             type="number"
                             step="0.01"
@@ -6255,7 +6870,7 @@ const Assets: React.FC = () => {
                 {formData.category === 'OTHER' && formData.purpose === 'investimento' && (
                   <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                     <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Modalidade do Investimento</label>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Modalidade do Investimento</label>
                       <select
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                         value={formData.vehiclePurposeType}
@@ -6270,7 +6885,7 @@ const Assets: React.FC = () => {
                       <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="flex items-center gap-2 cursor-pointer font-bold text-[10px] select-none mb-2 mt-2">
+                            <label className="flex items-center gap-2 cursor-pointer font-bold text-xs select-none mb-2 mt-2">
                               <input
                                 type="checkbox"
                                 checked={formData.isRented}
@@ -6281,7 +6896,7 @@ const Assets: React.FC = () => {
                           </div>
                           {formData.isRented && (
                             <div>
-                              <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Rendimento/Aluguel Mensal (R$)</label>
+                              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Rendimento/Aluguel Mensal (R$)</label>
                               <input
                                 type="number"
                                 step="0.01"
@@ -6295,7 +6910,7 @@ const Assets: React.FC = () => {
                           {formData.isRented && (
                             <>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Taxa Intermediação/Plataforma (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Taxa Intermediação/Plataforma (R$)</label>
                                 <input
                                   type="number"
                                   step="0.01"
@@ -6306,7 +6921,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Mensal Guarda/Seguro (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Mensal Guarda/Seguro (R$)</label>
                                 <input
                                   type="number"
                                   step="0.01"
@@ -6323,7 +6938,7 @@ const Assets: React.FC = () => {
                     ) : (
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Venda Alvo (R$)</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Venda Alvo (R$)</label>
                           <input
                             type="number"
                             step="0.01"
@@ -6334,7 +6949,7 @@ const Assets: React.FC = () => {
                           />
                         </div>
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Orçamento Preparação/Restauração (R$)</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Orçamento Preparação/Restauração (R$)</label>
                           <input
                             type="number"
                             step="0.01"
@@ -6352,7 +6967,7 @@ const Assets: React.FC = () => {
                 {editingAsset && (
                   <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 border-t border-slate-200 pt-3">
                     <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Taxa de Corretagem (R$)</label>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Taxa de Corretagem (R$)</label>
                       <input
                         type="number"
                         className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold"
@@ -6373,7 +6988,7 @@ const Assets: React.FC = () => {
                       <div className="col-span-2 space-y-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Venda (R$)</label>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Venda (R$)</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold"
@@ -6382,12 +6997,12 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Comissão de Venda (R$)</label>
+                            <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Comissão de Venda (R$)</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold"
-                              value={formData.saleComission}
-                              onChange={(e) => setFormData({ ...formData, saleComission: e.target.value })}
+                              value={formData.saleCommission}
+                              onChange={(e) => setFormData({ ...formData, saleCommission: e.target.value })}
                               placeholder="0.00"
                             />
                           </div>
@@ -6396,7 +7011,7 @@ const Assets: React.FC = () => {
                         {true && (
                           <div className="space-y-4">
                             <div>
-                              <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Recebimento</label>
+                              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Recebimento</label>
                               <select
                                 className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                                 value={formData.salePaymentMethod}
@@ -6411,10 +7026,10 @@ const Assets: React.FC = () => {
 
                             {formData.salePaymentMethod === 'A_VISTA' && (
                               <div className="animate-in slide-in-from-top-2">
-                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Recebimento</label>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Recebimento</label>
                                 <input
                                   type="date"
-                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                                   value={formData.saleDate}
                                   onChange={(e) => setFormData({ ...formData, saleDate: e.target.value })}
                                 />
@@ -6424,21 +7039,21 @@ const Assets: React.FC = () => {
                             {formData.salePaymentMethod === 'HIBRIDO' && (
                               <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
                                 <div>
-                                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor em Dinheiro (R$)</label>
+                                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor em Dinheiro (R$)</label>
                                   <input
                                     type="number"
                                     step="0.01"
-                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                                     value={formData.saleCashAmount}
                                     onChange={(e) => setFormData({ ...formData, saleCashAmount: e.target.value })}
                                     placeholder="0.00"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data do Recebimento</label>
+                                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data do Recebimento</label>
                                   <input
                                     type="date"
-                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                                     value={formData.saleDate}
                                     onChange={(e) => setFormData({ ...formData, saleDate: e.target.value })}
                                   />
@@ -6448,14 +7063,14 @@ const Assets: React.FC = () => {
 
                             {(formData.salePaymentMethod === 'PERMUTA' || formData.salePaymentMethod === 'HIBRIDO') && (
                               <div className="space-y-3 pt-2 border-t border-dashed border-slate-200">
-                                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Bens Recebidos na Permuta</p>
+                                <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Bens Recebidos na Permuta</p>
                                 
                                 {formData.permutaItems && formData.permutaItems.map((item, idx) => (
                                   <div key={idx} className="grid grid-cols-12 gap-2 bg-white p-3 rounded-xl border border-slate-100 items-end">
                                     <div className="col-span-3">
-                                      <label className="block text-[8px] font-bold text-slate-400 mb-1">Tipo</label>
+                                      <label className="block text-[10px] font-bold text-slate-400 mb-1">Tipo</label>
                                       <select
-                                        className="w-full h-8 px-1.5 bg-slate-50 border rounded-lg text-[10px] font-bold outline-none"
+                                        className="w-full h-8 px-1.5 bg-slate-50 border rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
                                         value={item.type}
                                         onChange={(e) => {
                                           const newItems = [...formData.permutaItems];
@@ -6470,7 +7085,7 @@ const Assets: React.FC = () => {
                                     </div>
                                     
                                     <div className="col-span-5">
-                                      <label className="block text-[8px] font-bold text-slate-400 mb-1">Nome / Descrição</label>
+                                      <label className="block text-[10px] font-bold text-slate-400 mb-1">Nome / Descrição</label>
                                       <input
                                         className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs"
                                         value={item.name}
@@ -6490,7 +7105,7 @@ const Assets: React.FC = () => {
                                     </div>
 
                                     <div className="col-span-3">
-                                      <label className="block text-[8px] font-bold text-slate-400 mb-1">Valor (R$)</label>
+                                      <label className="block text-[10px] font-bold text-slate-400 mb-1">Valor (R$)</label>
                                       <input
                                         type="number"
                                         className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs font-bold"
@@ -6528,7 +7143,7 @@ const Assets: React.FC = () => {
                                     ];
                                     setFormData({ ...formData, permutaItems: newItems });
                                   }}
-                                  className="w-full h-9 border border-dashed border-slate-300 rounded-xl text-[10px] font-bold text-slate-500 hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-1.5"
+                                  className="w-full h-9 border border-dashed border-slate-300 rounded-xl text-xs font-bold text-slate-500 hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-1.5"
                                 >
                                   <Plus size={12} />
                                   Adicionar Bem Recebido
@@ -6548,7 +7163,7 @@ const Assets: React.FC = () => {
                   <div className="space-y-4 pt-2 border-t border-slate-200 animate-in slide-in-from-top-2">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Estágio do Imóvel</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Estágio do Imóvel</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.propertyStage}
@@ -6573,9 +7188,9 @@ const Assets: React.FC = () => {
                     {formData.propertyStage === 'PLANTA' && (
                       <div className="grid grid-cols-2 gap-4 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Índice Correção Construtora</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Índice Correção Construtora</label>
                           <select
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                             value={formData.constructorIndexType}
                             onChange={(e) => setFormData({ ...formData, constructorIndexType: e.target.value as any })}
                           >
@@ -6586,7 +7201,7 @@ const Assets: React.FC = () => {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Projeção Reajuste (% am)</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Projeção Reajuste (% am)</label>
                           <input
                             type="number"
                             step="0.01"
@@ -6602,7 +7217,7 @@ const Assets: React.FC = () => {
                       <div className="space-y-3 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                         <div className="grid grid-cols-3 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Tipo de Aluguel</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Tipo de Aluguel</label>
                             <select
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
                               value={formData.rentalType}
@@ -6615,7 +7230,7 @@ const Assets: React.FC = () => {
                           {formData.rentalType === 'anual' ? (
                             <>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Aluguel (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor Aluguel (R$)</label>
                                 <input
                                   type="number"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -6624,7 +7239,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Data Inicial</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Inicial</label>
                                 <input
                                   type="date"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -6635,7 +7250,7 @@ const Assets: React.FC = () => {
                             </>
                           ) : (
                             <div className="col-span-2 flex items-center pt-5">
-                              <span className="text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 rounded p-1 font-bold">Locações devem ser inseridas no Extrato do Card.</span>
+                              <span className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded p-1 font-bold">Locações devem ser inseridas no Extrato do Card.</span>
                             </div>
                           )}
                         </div>
@@ -6645,9 +7260,9 @@ const Assets: React.FC = () => {
                     {/* Opções de Financiamento/Consórcio */}
                     <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Pagamento (Saldo Devedor)</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Pagamento (Saldo Devedor)</label>
                         <select
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                           value={formData.deliveryPaymentMethod}
                           onChange={(e) => setFormData({ ...formData, deliveryPaymentMethod: e.target.value as any })}
                         >
@@ -6661,10 +7276,10 @@ const Assets: React.FC = () => {
                       {formData.deliveryPaymentMethod === 'A_DEFINIR' && (
                         <div className="space-y-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl animate-in slide-in-from-top-2">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Saldo Estimado a Definir (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Saldo Estimado a Definir (R$)</label>
                             <input
                               type="number"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                               value={formData.deliveryBalance}
                               onChange={(e) => setFormData({ ...formData, deliveryBalance: e.target.value })}
                               placeholder="0.00"
@@ -6676,9 +7291,9 @@ const Assets: React.FC = () => {
                         {formData.deliveryPaymentMethod === 'CONSORCIO' && (
                           <div className="space-y-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl animate-in slide-in-from-top-2">
                             <div>
-                              <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Consórcio Vinculado</label>
+                              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consórcio Vinculado</label>
                               <select
-                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none"
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                                 value={formData.selectedConsortiumId}
                                 onChange={(e) => setFormData({ ...formData, selectedConsortiumId: e.target.value })}
                               >
@@ -6689,7 +7304,7 @@ const Assets: React.FC = () => {
                               </select>
                             </div>
                             <div>
-                              <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Percentual Alocado ao Imóvel (%)</label>
+                              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Percentual Alocado ao Imóvel (%)</label>
                               <input
                                 type="number"
                                 min="0"
@@ -6705,16 +7320,16 @@ const Assets: React.FC = () => {
                         {formData.deliveryPaymentMethod === 'FINANCIAMENTO' && (
                           <div className="space-y-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl animate-in slide-in-from-top-2">
                             <div>
-                              <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Nome do Financiamento</label>
+                              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nome do Financiamento</label>
                               <input
-                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none"
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                                 value={formData.financingName}
                                 onChange={(e) => setFormData({ ...formData, financingName: e.target.value })}
                               />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Saldo a Financiar (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Saldo a Financiar (R$)</label>
                                 <input
                                   type="number"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
@@ -6723,7 +7338,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Original (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Original (R$)</label>
                                 <input
                                   type="number"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
@@ -6734,7 +7349,7 @@ const Assets: React.FC = () => {
                             </div>
                             <div className="grid grid-cols-3 gap-2">
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Parcela</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Parcela</label>
                                 <input
                                   type="number"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
@@ -6743,7 +7358,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Parcelas</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Parcelas</label>
                                 <input
                                   type="number"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
@@ -6752,7 +7367,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Dia Venc.</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Dia Venc.</label>
                                 <input
                                   type="number"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
@@ -6783,56 +7398,80 @@ const Assets: React.FC = () => {
                       <div className="space-y-3 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Devedor (Nome)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Devedor (Nome)</label>
                             <input
-                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"
+                              required
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
                               value={formData.loanDebtor}
                               onChange={(e) => setFormData({ ...formData, loanDebtor: e.target.value })}
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Emprestado (Principal)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Data de Concessão</label>
                             <input
-                              type="number"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"
-                              value={formData.loanPrincipal}
-                              onChange={(e) => setFormData({ ...formData, loanPrincipal: e.target.value })}
+                              required
+                              type="date"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
+                              value={formData.acquisitionDate}
+                              onChange={(e) => setFormData({ ...formData, acquisitionDate: e.target.value })}
                             />
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Juros (%) a.m.</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Valor Emprestado (Principal)</label>
                             <input
+                              required
                               type="number"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
-                              value={formData.loanInterestRate}
-                              onChange={(e) => setFormData({ ...formData, loanInterestRate: e.target.value })}
+                              step="0.01"
+                              min="0.01"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
+                              value={formData.loanPrincipal}
+                              onChange={(e) => setFormData({ ...formData, loanPrincipal: e.target.value })}
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Ou Juros Fixo (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Dia de Vencimento (1 a 31)</label>
                             <input
+                              required
                               type="number"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
-                              value={formData.loanFixedValue}
-                              onChange={(e) => setFormData({ ...formData, loanFixedValue: e.target.value })}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Dia Vencimento</label>
-                            <input
-                              type="number"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                              min="1"
+                              max="31"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
                               value={formData.loanDueDate}
                               onChange={(e) => setFormData({ ...formData, loanDueDate: e.target.value })}
                             />
                           </div>
                         </div>
 
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Taxa de Juros (%) a.m.</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
+                              value={formData.loanInterestRate}
+                              onChange={(e) => setFormData({ ...formData, loanInterestRate: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Ou Juros Fixo Mensal (R$)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
+                              value={formData.loanFixedValue}
+                              onChange={(e) => setFormData({ ...formData, loanFixedValue: e.target.value })}
+                            />
+                          </div>
+                        </div>
+
                         <div className="flex gap-4 pt-1">
-                          <label className="flex items-center gap-2 cursor-pointer font-bold text-[10px]">
+                          <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
                             <input
                               type="radio"
                               name="loanInterestType"
@@ -6841,7 +7480,7 @@ const Assets: React.FC = () => {
                             />
                             Juros Simples
                           </label>
-                          <label className="flex items-center gap-2 cursor-pointer font-bold text-[10px]">
+                          <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
                             <input
                               type="radio"
                               name="loanInterestType"
@@ -6858,10 +7497,10 @@ const Assets: React.FC = () => {
                 {/* Investment parameters */}
                 {formData.category === 'INVESTMENT' && (
                   <div className="space-y-4 pt-2 border-t border-slate-200 animate-in slide-in-from-top-2">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-left">Parâmetros do Investimento</p>
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest text-left">Parâmetros do Investimento</p>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Corretora Vinculada</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Corretora Vinculada</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.brokerAccountId}
@@ -6874,13 +7513,14 @@ const Assets: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Tipo de Ativo / Alocação</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Tipo de Ativo / Alocação</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.investmentType}
                           onChange={(e) => setFormData({ ...formData, investmentType: e.target.value })}
                         >
                           <option value="CDB">CDB</option>
+                          <option value="POUPANCA">Poupança</option>
                           <option value="LCI_LCA">LCI / LCA</option>
                           <option value="TESOURO">Tesouro Direto</option>
                           <option value="DEBENTURES">Debêntures</option>
@@ -6895,35 +7535,37 @@ const Assets: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Indexador</label>
-                        <select
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
-                          value={formData.interestType}
-                          onChange={(e) => setFormData({ ...formData, interestType: e.target.value })}
-                        >
-                          <option value="CDI">Pós-fixado (CDI)</option>
-                          <option value="PRE">Pré-fixado</option>
-                          <option value="IPCA">Inflação (IPCA+)</option>
-                          <option value="OUTROS">Outros</option>
-                        </select>
+                    {!['ACOES', 'FIIS', 'CRIPTO', 'OUTROS'].includes(formData.investmentType) && (
+                      <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Indexador</label>
+                          <select
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                            value={formData.interestType}
+                            onChange={(e) => setFormData({ ...formData, interestType: e.target.value })}
+                          >
+                            <option value="CDI">Pós-fixado (CDI)</option>
+                            <option value="PRE">Pré-fixado</option>
+                            <option value="IPCA">Inflação (IPCA+)</option>
+                            <option value="OUTROS">Outros</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Taxa Rentabilidade (ex: 102% CDI)</label>
+                          <input
+                            type="text"
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                            placeholder="Ex: 102% CDI ou 12.5% a.a."
+                            value={formData.yieldRate}
+                            onChange={(e) => setFormData({ ...formData, yieldRate: e.target.value })}
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Taxa Rentabilidade (ex: 102% CDI)</label>
-                        <input
-                          type="text"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
-                          placeholder="Ex: 102% CDI ou 12.5% a.a."
-                          value={formData.yieldRate}
-                          onChange={(e) => setFormData({ ...formData, yieldRate: e.target.value })}
-                        />
-                      </div>
-                    </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Distribuição de Rendimentos</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Distribuição de Rendimentos</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.payoutType}
@@ -6933,34 +7575,38 @@ const Assets: React.FC = () => {
                           <option value="MENSAL">Mensal (Cai na Conta / Cupom)</option>
                         </select>
                       </div>
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Liquidez</label>
-                        <select
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
-                          value={formData.investmentLiquidity}
-                          onChange={(e) => setFormData({ ...formData, investmentLiquidity: e.target.value })}
-                        >
-                          <option value="Diária">Diária</option>
-                          <option value="No Vencimento">No Vencimento</option>
-                          <option value="D+1">D+1</option>
-                          <option value="D+30">D+30</option>
-                          <option value="Outra">Outra</option>
-                        </select>
-                      </div>
+                      {!['ACOES', 'FIIS', 'CRIPTO', 'OUTROS'].includes(formData.investmentType) && (
+                        <div className="animate-in slide-in-from-top-2">
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Liquidez</label>
+                          <select
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                            value={formData.investmentLiquidity}
+                            onChange={(e) => setFormData({ ...formData, investmentLiquidity: e.target.value })}
+                          >
+                            <option value="Diária">Diária</option>
+                            <option value="No Vencimento">No Vencimento</option>
+                            <option value="D+1">D+1</option>
+                            <option value="D+30">D+30</option>
+                            <option value="Outra">Outra</option>
+                          </select>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Data de Vencimento (Opcional)</label>
-                        <input
-                          type="date"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
-                          value={formData.vencimentoDate}
-                          onChange={(e) => setFormData({ ...formData, vencimentoDate: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Status</label>
+                      {!['ACOES', 'FIIS', 'CRIPTO', 'OUTROS'].includes(formData.investmentType) ? (
+                        <div className="animate-in slide-in-from-top-2">
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Data de Vencimento (Opcional)</label>
+                          <input
+                            type="date"
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                            value={formData.vencimentoDate}
+                            onChange={(e) => setFormData({ ...formData, vencimentoDate: e.target.value })}
+                          />
+                        </div>
+                      ) : null}
+                      <div className={['ACOES', 'FIIS', 'CRIPTO', 'OUTROS'].includes(formData.investmentType) ? 'col-span-2' : ''}>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Status</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.status || 'ATIVO'}
@@ -6976,9 +7622,9 @@ const Assets: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Descrição</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Descrição</label>
                 <textarea
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                   rows={2}
                   placeholder="Informações adicionais sobre o bem..."
                   value={formData.description}
@@ -6996,6 +7642,120 @@ const Assets: React.FC = () => {
       )}
 
       {/* MODAL: REAL ESTATE DETAILED CONFIG */}
+      {/* MODAL: RESGATE DE INVESTIMENTO */}
+      {showResgateModal && selectedAssetForResgate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">Resgatar Investimento</h3>
+              <button 
+                type="button"
+                onClick={() => {
+                  setShowResgateModal(false);
+                  setSelectedAssetForResgate(null);
+                }} 
+                className="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-50"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleRedeemInvestment} className="p-6 space-y-4">
+              <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 space-y-1">
+                <p className="text-xs text-indigo-500 font-bold uppercase tracking-wider">Ativo Selecionado</p>
+                <p className="text-sm font-black text-slate-900">{selectedAssetForResgate.name}</p>
+                <div className="flex justify-between items-center pt-2 mt-1 border-t border-indigo-100/50">
+                  <span className="text-xs text-slate-500 font-semibold">Saldo Bruto Atual:</span>
+                  <span className="text-sm font-bold text-slate-800">{formatCurrency(Number(selectedAssetForResgate.estimatedValue || 0))}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-500 font-semibold">Valor Líquido (Estimado):</span>
+                  <span className="text-sm font-black text-emerald-600">{formatCurrency(selectedAssetForResgate.netValue || Number(selectedAssetForResgate.estimatedValue || 0))}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Resgate</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
+                    <input
+                      type="radio"
+                      name="resgateType"
+                      checked={resgateForm.type === 'TOTAL'}
+                      onChange={() => setResgateForm({ ...resgateForm, type: 'TOTAL', amount: '' })}
+                    />
+                    Resgate Total
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
+                    <input
+                      type="radio"
+                      name="resgateType"
+                      checked={resgateForm.type === 'PARCIAL'}
+                      onChange={() => setResgateForm({ ...resgateForm, type: 'PARCIAL', amount: '' })}
+                    />
+                    Resgate Parcial
+                  </label>
+                </div>
+              </div>
+
+              {resgateForm.type === 'PARCIAL' && (
+                <div className="animate-in slide-in-from-top-2">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor do Resgate (R$)</label>
+                  <input
+                    required
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max={Number(selectedAssetForResgate.estimatedValue || 0)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                    placeholder="0.00"
+                    value={resgateForm.amount}
+                    onChange={(e) => setResgateForm({ ...resgateForm, amount: e.target.value })}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Conta de Destino (Para Crédito)</label>
+                <select
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                  value={resgateForm.destinationAccountId}
+                  onChange={(e) => setResgateForm({ ...resgateForm, destinationAccountId: e.target.value })}
+                >
+                  <option value="">Selecione uma conta...</option>
+                  {allAccounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.institution || acc.name} ({acc.type === 'INVESTMENT' ? 'Corretora' : 'Conta Corrente'})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1 font-semibold leading-tight font-medium">O valor líquido resgatado será somado ao saldo livre desta conta e gerará um lançamento de receita automática no extrato.</p>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setShowResgateModal(false);
+                    setSelectedAssetForResgate(null);
+                  }} 
+                  className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-indigo-500/20 hover:scale-[1.02] transition-transform active:scale-95"
+                >
+                  Confirmar Resgate
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showRealEstateManageModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
@@ -7009,7 +7769,7 @@ const Assets: React.FC = () => {
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Estágio do Imóvel</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Estágio do Imóvel</label>
                   <select
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                     value={realEstateManageForm.propertyType}
@@ -7052,13 +7812,13 @@ const Assets: React.FC = () => {
                       <Sparkles size={16} />
                       Quitação do Saldo Devedor
                     </div>
-                    <p className="text-[10px] text-indigo-600 font-bold">
+                    <p className="text-xs text-indigo-600 font-bold">
                       O imóvel passou de "Na Planta" para "Pronto". Defina como quitará o Saldo Devedor final das chaves.
                     </p>
                     
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[8px] font-black text-indigo-700 uppercase tracking-widest mb-1">Valor Saldo Devedor (R$)</label>
+                        <label className="block text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-1">Valor Saldo Devedor (R$)</label>
                         <input
                           type="number"
                           className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800"
@@ -7068,7 +7828,7 @@ const Assets: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-[8px] font-black text-indigo-700 uppercase tracking-widest mb-1">Forma de Pagamento</label>
+                        <label className="block text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-1">Forma de Pagamento</label>
                         <select
                           className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800"
                           value={realEstateManageForm.deliveryPaymentMethod}
@@ -7084,7 +7844,7 @@ const Assets: React.FC = () => {
 
                     {realEstateManageForm.deliveryPaymentMethod === 'CONSORCIO' && (
                       <div className="animate-in slide-in-from-top-2">
-                        <label className="block text-[8px] font-black text-indigo-700 uppercase tracking-widest mb-1">Selecione o Consórcio</label>
+                        <label className="block text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-1">Selecione o Consórcio</label>
                         <select
                           className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800"
                           value={realEstateManageForm.selectedConsortiumId}
@@ -7105,10 +7865,10 @@ const Assets: React.FC = () => {
                     {realEstateManageForm.deliveryPaymentMethod === 'FINANCIAMENTO' && (
                       <div className="space-y-3 pt-2 border-t border-indigo-100/50 animate-in slide-in-from-top-2">
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Nome da Dívida</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nome da Dívida</label>
                           <input
                             type="text"
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 outline-none"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                             placeholder="Ex: Financiamento Piazza do Bosque"
                             value={realEstateManageForm.financingName}
                             onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, financingName: e.target.value })}
@@ -7117,7 +7877,7 @@ const Assets: React.FC = () => {
 
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipo de Dívida</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipo de Dívida</label>
                             <select
                               disabled
                               className="w-full bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-500"
@@ -7127,7 +7887,7 @@ const Assets: React.FC = () => {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Bem Vinculado</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Bem Vinculado</label>
                             <select
                               disabled
                               className="w-full bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-500"
@@ -7139,7 +7899,7 @@ const Assets: React.FC = () => {
 
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Original Total (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Original Total (R$)</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900"
@@ -7149,10 +7909,10 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-rose-500 uppercase tracking-widest mb-1">Saldo Devedor Atual (R$)</label>
+                            <label className="block text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Saldo Devedor Atual (R$)</label>
                             <input
                               type="number"
-                              className="w-full bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-900 outline-none focus:border-rose-400"
+                              className="w-full bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-rose-400"
                               placeholder="0.00"
                               value={realEstateManageForm.deliveryBalance}
                               onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, deliveryBalance: e.target.value })}
@@ -7162,7 +7922,7 @@ const Assets: React.FC = () => {
 
                         <div className="grid grid-cols-3 gap-2">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Parcela (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Parcela (R$)</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900"
@@ -7172,7 +7932,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Parcelas Rest.</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Parcelas Rest.</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900"
@@ -7182,7 +7942,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Dia Venc.</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Dia Venc.</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900"
@@ -7202,7 +7962,7 @@ const Assets: React.FC = () => {
                 <div className="space-y-3 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Tipo de Aluguel</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Tipo de Aluguel</label>
                       <select
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold"
                         value={realEstateManageForm.rentalType}
@@ -7215,7 +7975,7 @@ const Assets: React.FC = () => {
                     {realEstateManageForm.rentalType === 'anual' ? (
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Aluguel (R$)</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Aluguel (R$)</label>
                           <input
                             type="number"
                             className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -7224,7 +7984,7 @@ const Assets: React.FC = () => {
                           />
                         </div>
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Data Inicial</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Inicial</label>
                           <input
                             type="date"
                             className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -7235,14 +7995,14 @@ const Assets: React.FC = () => {
                       </div>
                     ) : (
                       <div className="flex items-center pt-3">
-                        <span className="text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 rounded p-1 font-bold">Lançamentos via Extrato do Card.</span>
+                        <span className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded p-1 font-bold">Lançamentos via Extrato do Card.</span>
                       </div>
                     )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Condomínio (R$)</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Condomínio (R$)</label>
                       <input
                         type="number"
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -7251,7 +8011,7 @@ const Assets: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">IPTU Mensal (R$)</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">IPTU Mensal (R$)</label>
                       <input
                         type="number"
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -7262,7 +8022,7 @@ const Assets: React.FC = () => {
                   </div>
 
                   <div className="flex gap-4 pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer font-bold text-[9px]">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
                       <input
                         type="checkbox"
                         checked={realEstateManageForm.inquilinoPaysCondo}
@@ -7270,7 +8030,7 @@ const Assets: React.FC = () => {
                       />
                       Inquilino paga Condomínio
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer font-bold text-[9px]">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
                       <input
                         type="checkbox"
                         checked={realEstateManageForm.inquilinoPaysIPTU}
@@ -7284,7 +8044,7 @@ const Assets: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-3">
                 <div>
-                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Prestação Financiamento</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Prestação Financiamento</label>
                   <input
                     type="number"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold"
@@ -7295,7 +8055,7 @@ const Assets: React.FC = () => {
                 </div>
                 {realEstateManageForm.propertyType === 'PLANTA' && (
                   <div>
-                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Entrega das Chaves</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Entrega das Chaves</label>
                     <input
                       type="month"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold"
@@ -7362,16 +8122,31 @@ const Assets: React.FC = () => {
                 const interestType = meta.loanInterestType || 'SIMPLE';
                 const monthlyRate = (Number(meta.loanInterestRate) || 0) / 100;
 
-                // Build amortization schedule from paid receipts
+                // Build amortization schedule from paid receipts based on elapsed time
+                const concessionDate = selectedAssetForExtrato.acquisitionDate || new Date().toISOString().split('T')[0];
                 const schedule = loanLinkedTxs.map((tx, idx) => {
+                  const prevDate = idx === 0 ? concessionDate : loanLinkedTxs[idx - 1].date;
+                  const d1 = new Date(prevDate);
+                  const d2 = new Date(tx.date);
+                  const diffTime = Math.max(0, d2.getTime() - d1.getTime());
+                  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                  const elapsedMonths = diffDays / 30.4375;
+
                   const interest = interestType === 'COMPOUND'
-                    ? runningBalance * monthlyRate
-                    : principal * monthlyRate;
+                    ? runningBalance * (Math.pow(1 + monthlyRate, elapsedMonths) - 1)
+                    : principal * monthlyRate * elapsedMonths;
+
                   const totalReceived = Number(tx.amount) || 0;
                   const interestPaid = Math.min(interest, totalReceived);
                   const principalPaid = Math.max(0, totalReceived - interestPaid);
                   runningBalance = Math.max(0, runningBalance - principalPaid);
-                  return { tx, interest: interestPaid, principalPaid, balance: runningBalance, idx };
+                  return {
+                    tx,
+                    interest: Math.round(interestPaid * 100) / 100,
+                    principalPaid: Math.round(principalPaid * 100) / 100,
+                    balance: Math.round(runningBalance * 100) / 100,
+                    idx
+                  };
                 });
 
                 const totalReceived = loanLinkedTxs.reduce((s, t) => s + Number(t.amount), 0);
@@ -7383,29 +8158,29 @@ const Assets: React.FC = () => {
                     {/* Summary Cards */}
                     <div className="grid grid-cols-3 gap-3">
                       <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
-                        <p className="text-[8px] font-black uppercase text-emerald-500 tracking-widest">Principal</p>
+                        <p className="text-[10px] font-black uppercase text-emerald-500 tracking-widest">Principal</p>
                         <p className="text-sm font-black text-emerald-700">{formatCurrency(principal)}</p>
                       </div>
                       <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
-                        <p className="text-[8px] font-black uppercase text-amber-500 tracking-widest">Saldo Devedor</p>
+                        <p className="text-[10px] font-black uppercase text-amber-500 tracking-widest">Saldo Devedor</p>
                         <p className="text-sm font-black text-amber-700">{formatCurrency(currentBalance)}</p>
                       </div>
                       <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
-                        <p className="text-[8px] font-black uppercase text-indigo-500 tracking-widest">Recebido</p>
+                        <p className="text-[10px] font-black uppercase text-indigo-500 tracking-widest">Recebido</p>
                         <p className="text-sm font-black text-indigo-700">{formatCurrency(totalReceived)}</p>
                       </div>
                     </div>
 
                     {/* Progress bar */}
                     <div className="space-y-1.5">
-                      <div className="flex justify-between text-[9px] font-black uppercase text-slate-400">
+                      <div className="flex justify-between text-xs font-black uppercase text-slate-400">
                         <span>Retorno do Principal</span>
                         <span>{progressPct}% quitado</span>
                       </div>
                       <div 
                         className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden"
                         role="progressbar"
-                        aria-valuenow={progressPct}
+                        aria-valuenow={Math.min(100, Math.max(0, progressPct))}
                         aria-valuemin={0}
                         aria-valuemax={100}
                         aria-label="Progresso de amortização do empréstimo"
@@ -7417,9 +8192,9 @@ const Assets: React.FC = () => {
                     {/* Amortization table */}
                     {schedule.length > 0 && (
                       <div>
-                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-2">Tabela de Amortização</p>
+                        <p className="text-xs font-black uppercase text-slate-400 tracking-widest mb-2">Tabela de Amortização</p>
                         <div className="rounded-xl border border-slate-200 overflow-hidden">
-                          <table className="w-full text-[10px] font-medium">
+                          <table className="w-full text-xs font-medium">
                             <thead className="bg-slate-50">
                               <tr>
                                 <th className="text-left px-3 py-2 font-black uppercase text-slate-400 tracking-wider">Data</th>
@@ -7454,15 +8229,15 @@ const Assets: React.FC = () => {
                 return (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-200">
                     <div className="flex justify-between items-center sm:flex-col sm:items-start sm:justify-start">
-                      <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Total Receitas</p>
+                      <p className="text-xs font-black uppercase text-slate-400 tracking-wider">Total Receitas</p>
                       <p className="text-sm sm:text-base font-black text-emerald-600">{formatCurrency(info.totalIncome)}</p>
                     </div>
                     <div className="flex justify-between items-center sm:flex-col sm:items-start sm:justify-start border-t sm:border-t-0 sm:border-l border-slate-200/60 pt-2 sm:pt-0 sm:pl-4">
-                      <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Total Gastos Extras</p>
+                      <p className="text-xs font-black uppercase text-slate-400 tracking-wider">Total Gastos Extras</p>
                       <p className="text-sm sm:text-base font-black text-rose-500">{formatCurrency(info.totalExtraExpenses)}</p>
                     </div>
                     <div className="flex justify-between items-center sm:flex-col sm:items-start sm:justify-start border-t sm:border-t-0 sm:border-l border-slate-200/60 pt-2 sm:pt-0 sm:pl-4">
-                      <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Saldo Consolidado</p>
+                      <p className="text-xs font-black uppercase text-slate-400 tracking-wider">Saldo Consolidado</p>
                       <p className={`text-sm sm:text-base font-black ${info.totalIncome - info.totalExtraExpenses >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                         {formatCurrency(info.totalIncome - info.totalExtraExpenses)}
                       </p>
@@ -7479,8 +8254,31 @@ const Assets: React.FC = () => {
                   </h4>
                   {!isAddingExtratoTx && (
                     <button
-                      onClick={() => setIsAddingExtratoTx(true)}
-                      className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-widest"
+                      onClick={() => {
+                        if (selectedAssetForExtrato.metadata?.isLoan) {
+                          setNewTxForm({
+                            description: `Recebimento de Empréstimo - ${selectedAssetForExtrato.name}`,
+                            amount: '',
+                            type: 'INCOME',
+                            date: new Date().toISOString().split('T')[0],
+                            isHistorical: false,
+                            category: 'Empréstimos/Investimentos',
+                            subcategory: 'Amortização'
+                          });
+                        } else {
+                          setNewTxForm({
+                            description: '',
+                            amount: '',
+                            type: 'EXPENSE',
+                            date: new Date().toISOString().split('T')[0],
+                            isHistorical: false,
+                            category: 'Outros',
+                            subcategory: ''
+                          });
+                        }
+                        setIsAddingExtratoTx(true);
+                      }}
+                      className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-black uppercase tracking-widest"
                     >
                       {selectedAssetForExtrato.metadata?.isLoan ? '+ Lançar Recebimento' : '+ Novo Lançamento'}
                     </button>
@@ -7491,7 +8289,7 @@ const Assets: React.FC = () => {
                   <form onSubmit={handleSaveCardTransaction} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-in slide-in-from-top-2 print:hidden">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Descrição</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Descrição</label>
                         <input
                           required
                           className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"
@@ -7501,7 +8299,7 @@ const Assets: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Valor (R$)</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Valor (R$)</label>
                         <input
                           required
                           type="number"
@@ -7516,7 +8314,7 @@ const Assets: React.FC = () => {
 
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Tipo</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Tipo</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                           value={newTxForm.type}
@@ -7527,7 +8325,7 @@ const Assets: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Data</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Data</label>
                         <input
                           type="date"
                           className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -7536,7 +8334,7 @@ const Assets: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Categoria</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Categoria</label>
                         <input
                           className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                           value={newTxForm.category}
@@ -7546,7 +8344,7 @@ const Assets: React.FC = () => {
                     </div>
 
                     <div className="flex justify-between items-center pt-2">
-                      <label className="flex items-center gap-2 cursor-pointer font-bold text-[10px]">
+                      <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
                         <input
                           type="checkbox"
                           checked={newTxForm.isHistorical}
@@ -7555,8 +8353,8 @@ const Assets: React.FC = () => {
                         Lançamento Passado (Não conta no Dashboard Mensal)
                       </label>
                       <div className="flex gap-2">
-                        <button type="button" onClick={() => setIsAddingExtratoTx(false)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-[9px] font-black uppercase">Cancelar</button>
-                        <button type="submit" className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-[9px] font-black uppercase">Lançar</button>
+                        <button type="button" onClick={() => setIsAddingExtratoTx(false)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-black uppercase">Cancelar</button>
+                        <button type="submit" className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-xs font-black uppercase">Lançar</button>
                       </div>
                     </div>
                   </form>
@@ -7572,7 +8370,7 @@ const Assets: React.FC = () => {
                             <span className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-[7px] font-black uppercase tracking-wider">Histórico</span>
                           )}
                         </p>
-                        <p className="text-[9px] text-slate-400 font-medium">
+                        <p className="text-xs text-slate-400 font-medium">
                           {new Date(tx.date).toLocaleDateString('pt-BR')} • {tx.category}
                         </p>
                       </div>
@@ -7615,10 +8413,10 @@ const Assets: React.FC = () => {
 
             <form onSubmit={handleSaveLiability} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nome da Dívida</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nome da Dívida</label>
                 <input
                   required
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
                   placeholder="Ex: Financiamento Jeep"
                   value={liabilityFormData.name}
                   onChange={(e) => setLiabilityFormData({ ...liabilityFormData, name: e.target.value })}
@@ -7626,9 +8424,9 @@ const Assets: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Dívida</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Dívida</label>
                 <select
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500"
                   value={liabilityFormData.type}
                   onChange={(e) => setLiabilityFormData({ ...liabilityFormData, type: e.target.value as any })}
                 >
@@ -7642,23 +8440,23 @@ const Assets: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Original Total (R$)</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Original Total (R$)</label>
                   <input
                     required
                     type="number"
                     step="0.01"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500"
                     value={liabilityFormData.totalAmount}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, totalAmount: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-red-500 uppercase tracking-widest mb-1.5">Saldo Devedor Atual</label>
+                  <label className="block text-xs font-bold text-red-500 uppercase tracking-widest mb-1.5">Saldo Devedor Atual</label>
                   <input
                     required
                     type="number"
                     step="0.01"
-                    className="w-full bg-red-50/50 border border-red-200 rounded-xl px-4 py-3 text-sm font-bold text-red-900 outline-none focus:border-red-500"
+                    className="w-full bg-red-50/50 border border-red-200 rounded-xl px-4 py-3 text-sm font-bold text-red-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500"
                     value={liabilityFormData.remainingBalance}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, remainingBalance: e.target.value })}
                   />
@@ -7667,31 +8465,31 @@ const Assets: React.FC = () => {
 
               <div className="grid grid-cols-3 gap-4 mt-2">
                 <div>
-                  <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Parcela</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Parcela</label>
                   <input
                     type="number"
                     step="0.01"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
                     value={liabilityFormData.installmentAmount}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentAmount: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Parcelas Restantes</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Parcelas Restantes</label>
                   <input
                     type="number"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
                     value={liabilityFormData.installmentsRemaining}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentsRemaining: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Dia Vencimento</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Dia Vencimento</label>
                   <input
                     type="number"
                     min="1"
                     max="31"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
                     value={liabilityFormData.dueDay}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, dueDay: e.target.value })}
                   />
@@ -7700,9 +8498,9 @@ const Assets: React.FC = () => {
 
               {activePhysicalAssets.length > 0 && (
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Bem Vinculado (Opcional)</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Bem Vinculado (Opcional)</label>
                   <select
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                     value={liabilityFormData.linkedAssetId}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, linkedAssetId: e.target.value })}
                   >
@@ -7771,7 +8569,7 @@ const Assets: React.FC = () => {
                 <div className="w-12 h-12 bg-slate-100 group-hover:bg-slate-900 group-hover:text-white rounded-2xl flex items-center justify-center transition-colors"><Building2 size={24} /></div>
                 <div className="space-y-1">
                   <h4 className="font-black text-slate-900 text-sm group-hover:text-brand-600">Ativo Imobiliário</h4>
-                  <p className="text-[10px] text-slate-400 leading-normal font-medium">Cadastre imóveis na planta ou prontos, controle financiamentos (SAC/Price), parcelas e aluguéis.</p>
+                  <p className="text-xs text-slate-400 leading-normal font-medium">Cadastre imóveis na planta ou prontos, controle financiamentos (SAC/Price), parcelas e aluguéis.</p>
                 </div>
               </button>
 
@@ -7789,7 +8587,7 @@ const Assets: React.FC = () => {
                 <div className="w-12 h-12 bg-slate-100 group-hover:bg-slate-900 group-hover:text-white rounded-2xl flex items-center justify-center transition-colors"><Car size={24} /></div>
                 <div className="space-y-1">
                   <h4 className="font-black text-slate-900 text-sm group-hover:text-brand-600">Veículo</h4>
-                  <p className="text-[10px] text-slate-400 leading-normal font-medium">Adicione carros, motos ou outros veículos para acompanhamento automático da tabela FIPE.</p>
+                  <p className="text-xs text-slate-400 leading-normal font-medium">Adicione carros, motos ou outros veículos para acompanhamento automático da tabela FIPE.</p>
                 </div>
               </button>
 
@@ -7807,7 +8605,7 @@ const Assets: React.FC = () => {
                 <div className="w-12 h-12 bg-slate-100 group-hover:bg-slate-900 group-hover:text-white rounded-2xl flex items-center justify-center transition-colors"><Box size={24} /></div>
                 <div className="space-y-1">
                   <h4 className="font-black text-slate-950 text-sm group-hover:text-brand-600">Outros Bens Físicos</h4>
-                  <p className="text-[10px] text-slate-400 leading-normal font-medium">Joias, maquinários, cabeças de gado ou qualquer outro bem físico de valor de mercado.</p>
+                  <p className="text-xs text-slate-400 leading-normal font-medium">Joias, maquinários, cabeças de gado ou qualquer outro bem físico de valor de mercado.</p>
                 </div>
               </button>
 
@@ -7819,7 +8617,7 @@ const Assets: React.FC = () => {
                   <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center"><TrendingUp size={24} /></div>
                   <div className="space-y-1">
                     <h4 className="font-black text-slate-900 text-sm">Investimentos</h4>
-                    <p className="text-[10px] text-slate-400 leading-normal font-medium">Controle de rendimentos financeiros ou empréstimos ativos a receber.</p>
+                    <p className="text-xs text-slate-400 leading-normal font-medium">Controle de rendimentos financeiros ou empréstimos ativos a receber.</p>
                   </div>
                 </div>
                 <div className="flex gap-2 border-t pt-3">
@@ -7831,7 +8629,7 @@ const Assets: React.FC = () => {
                       setFormData(prev => ({ ...prev, isLoan: true, category: 'OTHER' }));
                       setShowModal(true);
                     }}
-                    className="flex-1 py-2 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-[9px] font-black uppercase text-center tracking-wider"
+                    className="flex-1 py-2 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase text-center tracking-wider"
                   >
                     Empréstimo Concedido
                   </button>
@@ -7843,7 +8641,7 @@ const Assets: React.FC = () => {
                       setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento' }));
                       setShowModal(true);
                     }}
-                    className="flex-1 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-[9px] font-black uppercase text-center tracking-wider"
+                    className="flex-1 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-black uppercase text-center tracking-wider"
                   >
                     Investimento Financeiro
                   </button>
@@ -7859,3 +8657,7 @@ const Assets: React.FC = () => {
 };
 
 export default Assets;
+
+
+
+

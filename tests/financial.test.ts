@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { FinancialEngine } from '../lib/financialEngine';
 
 /**
  * Testes de cálculos financeiros — lógica pura sem dependências do React/Supabase
@@ -212,6 +213,107 @@ describe('Cálculos Financeiros', () => {
 
             expect(liabilityPayments).toBeCloseTo(expectedCorrected, 2);
             expect(balloonPayments).toBe(50000);
+        });
+    });
+
+    describe('Especialistas - Renda Fixa e Amortização de Empréstimos', () => {
+        it('deve converter taxa anualizada para mensal equivalente corretamente', () => {
+            const annual = 12.0; // 12% a.a.
+            const monthly = FinancialEngine.getEquivalentMonthlyRate(annual);
+            // (1 + 0.00948879)^12 = 1.12
+            expect(monthly).toBeCloseTo(0.00948879, 7);
+        });
+
+        it('deve extrair taxa anualizada de strings em diferentes formatos', () => {
+            expect(FinancialEngine.parseYieldRate('12.5% a.a.', 'PRE')).toBe(12.5);
+            expect(FinancialEngine.parseYieldRate('102% CDI', 'CDI')).toBeCloseTo(10.608, 3); // 1.02 * 10.4
+            expect(FinancialEngine.parseYieldRate('IPCA + 6.5%', 'IPCA')).toBeCloseTo(10.5, 1); // 4.0 + 6.5
+        });
+
+        it('deve calcular a alíquota de IR regressivo com base nos dias', () => {
+            expect(FinancialEngine.calculateRegressiveTaxRate(100, false)).toBe(0.225); // <= 180 dias
+            expect(FinancialEngine.calculateRegressiveTaxRate(200, false)).toBe(0.20);  // 181 a 360 dias
+            expect(FinancialEngine.calculateRegressiveTaxRate(400, false)).toBe(0.175); // 361 a 720 dias
+            expect(FinancialEngine.calculateRegressiveTaxRate(800, false)).toBe(0.15);  // > 720 dias
+            expect(FinancialEngine.calculateRegressiveTaxRate(100, true)).toBe(0);      // Isento
+        });
+
+        it('deve calcular rendimento composto e saldo líquido de Renda Fixa', () => {
+            const initial = 10000;
+            const annualRate = 12.0; // 12% a.a.
+            const acqDate = '2025-06-12'; // 1 ano atrás (12 meses, 365 dias)
+            // simulando data fixa comparando com hoje que é 2026-06-12 (12 meses exatos)
+            const today = new Date();
+            const yearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+            const dateStr = yearAgo.toISOString().split('T')[0];
+
+            const result = FinancialEngine.calculateFixedIncomeYield(
+                initial,
+                annualRate,
+                dateStr,
+                'ACUMULADO',
+                false
+            );
+
+            expect(result.monthsElapsed).toBe(12);
+            expect(result.grossValue).toBeCloseTo(11200, 0); // Juros compostos de 12% a.a. = 11200 bruto
+            expect(result.taxRate).toBe(0.175); // 365 dias = 17.5%
+            expect(result.netValue).toBeCloseTo(11200 - (1200 * 0.175), 0);
+        });
+
+        it('deve gerar amortização PRICE e SAC para empréstimos concedidos', () => {
+            const principal = 10000;
+            const ratePercent = 1.0; // 1% a.m.
+            const count = 10; // 10 parcelas
+
+            const sac = FinancialEngine.calculateProjectedLoanAmortization(principal, ratePercent, count, 'SAC');
+            expect(sac.length).toBe(10);
+            expect(sac[0].amortization).toBe(1000); // SAC amortização é constante: 10000/10
+            expect(sac[0].interest).toBe(100); // 10000 * 1%
+            expect(sac[0].payment).toBe(1100);
+            expect(sac[0].outstandingBalance).toBe(9000);
+
+            const price = FinancialEngine.calculateProjectedLoanAmortization(principal, ratePercent, count, 'PRICE');
+            expect(price.length).toBe(10);
+            expect(price[0].payment).toBeCloseTo(1055.82, 1); // PMT da Price
+            expect(price[0].interest).toBe(100); // 10000 * 1%
+            expect(price[0].amortization).toBeCloseTo(955.82, 1);
+            expect(price[0].outstandingBalance).toBeCloseTo(9044.18, 1);
+        });
+
+        it('deve calcular o valor corrigido pelo indice INCC cumulativo', () => {
+            const val = 100000;
+            const rate = 0.5; // 0.5% ao mes
+            const months = 12;
+            const compounded = FinancialEngine.calculateIndexCompoundedValue(val, rate, months);
+            // 100000 * (1.005)^12 = 106167.78
+            expect(compounded).toBeCloseTo(106167.78, 1);
+        });
+
+        it('deve calcular métricas imobiliárias (Cap Rate, Cash-on-Cash, LTV, Home Equity) corretamente', () => {
+            const metrics = FinancialEngine.calculateRealEstateMetrics({
+                estimatedValue: 1000000,
+                totalInvestedCapital: 300000,
+                monthlyGrossRent: 5000,
+                monthlyOperationalExpenses: 1000,
+                monthlyFinancingInstallment: 3000,
+                outstandingDebt: 400000
+            });
+
+            // NOI = 5000 - 1000 = 4000 mensal = 48000 anual
+            // Cap Rate = 48000 / 1000000 = 4.8%
+            expect(metrics.capRateAnnual).toBe(4.8);
+
+            // Fluxo líquido = 5000 - 1000 - 3000 = 1000 mensal = 12000 anual
+            // Cash-on-Cash = 12000 / 300000 = 4%
+            expect(metrics.cashOnCashReturn).toBe(4);
+
+            // LTV = 400000 / 1000000 = 40%
+            expect(metrics.ltv).toBe(40);
+
+            // Home Equity = 100% - 40% = 60%
+            expect(metrics.homeEquityPercent).toBe(60);
+            expect(metrics.netMonthlyCashFlow).toBe(1000);
         });
     });
 });

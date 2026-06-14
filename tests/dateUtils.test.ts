@@ -56,3 +56,65 @@ describe('DateUtils', () => {
         });
     });
 });
+
+import { TransactionSeriesUtils } from '../lib/transactionSeriesUtils';
+
+describe('TransactionSeriesUtils.generateSeries', () => {
+    it('deve gerar parcelas mensais mantendo o dia 30 e limitando fevereiro para 28', () => {
+        const baseTx = { amount: 100, description: 'Parcela Wave' };
+        const config = {
+            type: 'INSTALLMENT' as const,
+            count: 12,
+            startDate: '2026-06-30' // Começa em 30 de Junho
+        };
+
+        const result = TransactionSeriesUtils.generateSeries(baseTx, config);
+
+        // Verificações
+        expect(result.length).toBe(12);
+        
+        // Junho: 2026-06-30
+        expect(result[0].date).toBe('2026-06-30');
+        // Julho: 2026-07-30 (não deve ser 29!)
+        expect(result[1].date).toBe('2026-07-30');
+        // Agosto: 2026-08-30
+        expect(result[2].date).toBe('2026-08-30');
+        // Setembro: 2026-09-30
+        expect(result[3].date).toBe('2026-09-30');
+        // Outubro: 2026-10-30
+        expect(result[4].date).toBe('2026-10-30');
+        // Novembro: 2026-11-30
+        expect(result[5].date).toBe('2026-11-30');
+        // Dezembro: 2026-12-30
+        expect(result[6].date).toBe('2026-12-30');
+        // Janeiro: 2027-01-30
+        expect(result[7].date).toBe('2027-01-30');
+        // Fevereiro: 2027-02-28 (deve ser 28 mesmo em ano não bissexto)
+        expect(result[8].date).toBe('2027-02-28');
+        // Março: 2027-03-30
+        expect(result[9].date).toBe('2027-03-30');
+    });
+
+    it('deve limitar fevereiro para dia 28 mesmo em ano bissexto se vencimento for 29, 30 ou 31', () => {
+        const baseTx = { amount: 100, description: 'Parcela Bissexta' };
+        
+        // Ano 2028 é bissexto (fevereiro tem 29 dias)
+        // Se a data de início for 2027-12-31, o vencimento é dia 31.
+        // O segundo mês da série (índice 2) será Fevereiro de 2028.
+        const config = {
+            type: 'INSTALLMENT' as const,
+            count: 3,
+            startDate: '2027-12-31'
+        };
+
+        const result = TransactionSeriesUtils.generateSeries(baseTx, config);
+
+        // Dezembro 2027: 31
+        expect(result[0].date).toBe('2027-12-31');
+        // Janeiro 2028: 31
+        expect(result[1].date).toBe('2028-01-31');
+        // Fevereiro 2028: Deve ser 28, conforme nova regra de negócio de todos os anos ser 28
+        expect(result[2].date).toBe('2028-02-28');
+    });
+});
+

@@ -4,9 +4,14 @@ import {
   Plus,
   Home as HomeIcon,
   Car,
+  Bike,
+  Truck,
+  Tags,
   TrendingUp,
   Briefcase,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   PieChart,
   Wallet,
   Building2,
@@ -27,6 +32,7 @@ import {
   HelpCircle,
   Loader2,
   Trash2,
+  Pencil,
   Archive,
   DollarSign,
   AlertTriangle,
@@ -38,7 +44,8 @@ import {
   ArrowRightLeft,
   Sparkles,
   FileSpreadsheet,
-  Printer
+  Printer,
+  HandCoins
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { PhysicalAsset, InvestmentBroker, Liability, Transaction } from '../types';
@@ -46,10 +53,12 @@ import { supabase } from '../lib/supabase/client';
 import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModal';
 import { RealEstateDetailModal } from '../components/assets/RealEstateDetailModal';
 import { DateUtils } from '../lib/dateUtils';
+import { FinancialEngine } from '../lib/financialEngine';
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'liabilities'>('overview');
+  const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities'>('overview');
+  const [showAllDetails, setShowAllDetails] = useState(false);
   const [inccRate, setInccRate] = useState<number | null>(null);
   const [loadingIncc, setLoadingIncc] = useState<boolean>(false);
 
@@ -104,6 +113,7 @@ const Assets: React.FC = () => {
             id: a.id,
             name: a.institution || a.name || 'Corretora',
             balance: balanceVal,
+            initial_balance: Number(a.initial_balance || 0),
             allocation: [
               { type: meta.productType || 'Investimentos', percentage: 100, value: balanceVal, color: 'bg-brand-500' }
             ],
@@ -192,14 +202,24 @@ const Assets: React.FC = () => {
   // Active subtabs
   const [activeSubTab, setActiveSubTab] = useState<'portfolio' | 'simulator'>('portfolio');
 
+  // Liquidity and Maturity filters for investments
+  const [liquidityFilter, setLiquidityFilter] = useState<string>('ALL');
+  const [maturityFilter, setMaturityFilter] = useState<string>('ALL');
+
   // Modals & Wizards States
   const [showModal, setShowModal] = useState(false);
+  const [showLoanModal, setShowLoanModal] = useState(false);
   const [showWizardModal, setShowWizardModal] = useState(false);
   const [showLiabilityModal, setShowLiabilityModal] = useState(false);
   const [showRealEstateManageModal, setShowRealEstateManageModal] = useState(false);
   const [selectedAssetForExtrato, setSelectedAssetForExtrato] = useState<PhysicalAsset | null>(null);
   const [showExtratoModal, setShowExtratoModal] = useState(false);
   const [isAddingExtratoTx, setIsAddingExtratoTx] = useState(false);
+  const [expandedAssetIR, setExpandedAssetIR] = useState<Record<string, boolean>>({});
+  const toggleExpandIR = (assetId: string) => {
+    setExpandedAssetIR(prev => ({ ...prev, [assetId]: !prev[assetId] }));
+  };
+
 
   const [suggestedNames, setSuggestedNames] = useState<string[]>(() => {
     const saved = localStorage.getItem('finvision_other_asset_suggestions');
@@ -213,6 +233,20 @@ const Assets: React.FC = () => {
 
   // Form States
   const [editingAsset, setEditingAsset] = useState<PhysicalAsset | null>(null);
+  const [loanFormData, setLoanFormData] = useState({
+    id: '',
+    name: '',
+    loanDebtor: '',
+    loanPrincipal: '',
+    loanInterestRate: '',
+    loanFixedValue: '',
+    loanDueDate: '',
+    loanInterestType: 'SIMPLE' as 'SIMPLE' | 'COMPOUND',
+    acquisitionDate: new Date().toISOString().split('T')[0],
+    description: '',
+    status: 'ATIVO'
+  });
+
   const [formData, setFormData] = useState({
     name: '',
     category: 'REAL_ESTATE' as 'REAL_ESTATE' | 'VEHICLE' | 'OTHER' | 'INVESTMENT',
@@ -261,6 +295,10 @@ const Assets: React.FC = () => {
     financingName: '',
     // Vehicle-specific fields
     vehicleType: 'CAR' as 'CAR' | 'MOTORCYCLE' | 'TRUCK' | 'OTHER',
+    licensePlate: '',
+    renavam: '',
+    yearModel: '',
+    mileage: '',
     transferFee: '',
     vehiclePurposeType: 'RENTAL' as 'RENTAL' | 'FLIP',
     ipvaFee: '',
@@ -270,7 +308,7 @@ const Assets: React.FC = () => {
     rentalPlatformFee: '',
     targetSaleValue: '',
     preparationBudget: '',
-    saleComission: '',
+    saleCommission: '',
     salePaymentMethod: 'A_VISTA' as 'A_VISTA' | 'PARCELADO' | 'PERMUTA' | 'HIBRIDO',
     permutaVeiculoValor: '',
     permutaVeiculoNome: '',
@@ -294,6 +332,7 @@ const Assets: React.FC = () => {
     vencimentoDate: '',
     investmentLiquidity: 'No Vencimento',
     status: 'ATIVO' as 'ATIVO' | 'RESGATADO',
+    isTaxExempt: false,
   });
 
   const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
@@ -437,6 +476,7 @@ const Assets: React.FC = () => {
             id: a.id,
             name: a.institution || a.name,
             balance: Number(a.current_balance || a.balance),
+            initial_balance: Number(a.initial_balance || 0),
             allocation: [
               { type: meta.productType || 'Investimentos', percentage: 100, value: Number(a.current_balance || a.balance), color: 'bg-brand-500' }
             ],
@@ -513,6 +553,7 @@ const Assets: React.FC = () => {
           id: a.id,
           name: a.institution || a.name || 'Corretora',
           balance: balanceVal,
+          initial_balance: Number(a.initial_balance || 0),
           allocation: [
             { type: meta.productType || 'Investimentos', percentage: 100, value: balanceVal, color: 'bg-brand-500' }
           ],
@@ -647,6 +688,63 @@ const Assets: React.FC = () => {
   // Filter out archived
   const activePhysicalAssets = useMemo(() => physicalAssets.filter(p => !p.is_archived), [physicalAssets]);
   const activeLiabilities = useMemo(() => liabilities.filter(l => !l.is_archived), [liabilities]);
+
+  const enrichedPhysicalAssets = useMemo(() => {
+    return activePhysicalAssets.map(p => {
+      if (p.category === 'INVESTMENT') {
+        const meta = p.metadata || {};
+        const initial = Number(meta.purchaseValue) || Number(p.estimatedValue) || 0;
+        const acqDate = p.acquisitionDate || new Date().toISOString().split('T')[0];
+        
+        const parsedAnnualRate = FinancialEngine.parseYieldRate(meta.yieldRate || '', meta.interestType || 'PRE');
+        const isExempt = !!meta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'FIIS'].includes(meta.investmentType);
+        
+        const calcs = FinancialEngine.calculateFixedIncomeYield(
+          initial,
+          parsedAnnualRate,
+          acqDate,
+          meta.payoutType === 'MENSAL' ? 'MENSAL' : 'ACUMULADO',
+          isExempt
+        );
+        
+        return {
+          ...p,
+          estimatedValue: calcs.grossValue,
+          netValue: calcs.netValue,
+          grossYield: calcs.grossYield,
+          taxRate: calcs.taxRate,
+          taxAmount: calcs.taxAmount,
+          daysElapsed: calcs.daysElapsed,
+          monthsElapsed: calcs.monthsElapsed,
+          parsedAnnualRate
+        };
+      }
+      return {
+        ...p,
+        netValue: p.estimatedValue,
+        grossYield: 0,
+        taxRate: 0,
+        taxAmount: 0,
+        daysElapsed: 0,
+        monthsElapsed: 0,
+        parsedAnnualRate: 0
+      };
+    });
+  }, [activePhysicalAssets]);
+
+  const dynamicBrokers = useMemo(() => {
+    return brokers.map(b => {
+      const brokerInvestments = enrichedPhysicalAssets.filter(
+        p => p.category === 'INVESTMENT' && p.metadata?.brokerAccountId === b.id && p.metadata?.status !== 'RESGATADO'
+      );
+      const totalInvested = brokerInvestments.reduce((sum, inv) => sum + (inv.netValue || 0), 0);
+      const cash = Number(b.initial_balance || 0);
+      return {
+        ...b,
+        balance: cash + totalInvested
+      };
+    });
+  }, [brokers, enrichedPhysicalAssets]);
 
   // Pre-computes and maps all transactions to their respective physical assets in O(N) linear time.
   const linkedTransactionsMap = useMemo(() => {
@@ -783,7 +881,7 @@ const Assets: React.FC = () => {
     }, 0);
 
     // Investment yield calculation
-    const activeFinancial = brokers.filter(b => !excludedBrokerIds.includes(b.id));
+    const activeFinancial = dynamicBrokers.filter(b => !excludedBrokerIds.includes(b.id));
     const totalInvestedBalance = activeFinancial.reduce((acc, curr) => acc + curr.balance, 0);
     const estimatedMonthlyYield = totalInvestedBalance * (estimatedYieldRate / 100);
 
@@ -807,7 +905,7 @@ const Assets: React.FC = () => {
       selfSustainabilityPercent,
       totalInvestedBalance
     };
-  }, [activePhysicalAssets, activeLiabilities, brokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, linkedTransactionsMap]);
+  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, linkedTransactionsMap]);
 
   // Asset helpers
   const getAssetLinkedTransactions = (assetId: string) => {
@@ -827,6 +925,159 @@ const Assets: React.FC = () => {
       totalExtraExpenses,
       totalIncome
     };
+  };
+
+  const getFilteredInvestments = (investments: PhysicalAsset[]) => {
+    return investments.filter(inv => {
+      const meta = inv.metadata || {};
+      
+      // 1. Liquidity Filter
+      if (liquidityFilter !== 'ALL') {
+        const liq = meta.investmentLiquidity || '';
+        if (liquidityFilter === 'DIARIA' && liq !== 'Diária') return false;
+        if (liquidityFilter === 'D+1' && liq !== 'D+1') return false;
+        if (liquidityFilter === 'D+30' && liq !== 'D+30') return false;
+        if (liquidityFilter === 'VENCIMENTO' && liq !== 'No Vencimento') return false;
+      }
+
+      // 2. Maturity Filter
+      if (maturityFilter !== 'ALL') {
+        const vDateStr = meta.vencimentoDate || '';
+        if (maturityFilter === 'SEM_DATA') {
+          if (vDateStr) return false;
+        } else {
+          if (!vDateStr) return false;
+          const today = new Date();
+          today.setHours(0,0,0,0);
+          const venc = new Date(vDateStr);
+          venc.setHours(0,0,0,0);
+          const diffTime = venc.getTime() - today.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+          if (maturityFilter === 'VENCIDOS' && diffDays >= 0) return false;
+          if (maturityFilter === 'CURTO_PRAZO' && (diffDays < 0 || diffDays > 180)) return false;
+          if (maturityFilter === 'LONGO_PRAZO' && (diffDays <= 180)) return false;
+        }
+      }
+
+      return true;
+    });
+  };
+
+  const calculateIRProvisions = (inv: PhysicalAsset) => {
+    const meta = inv.metadata || {};
+    const acqDateStr = inv.acquisitionDate || '';
+    if (!acqDateStr || meta.isTaxExempt) {
+      return { days: 0, rate: 0, tax: 0, netValue: Number(inv.estimatedValue || 0) };
+    }
+
+    const acqDate = new Date(acqDateStr);
+    acqDate.setHours(0,0,0,0);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const diffTime = today.getTime() - acqDate.getTime();
+    const days = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+
+    let rate = 0.225; // 22.5%
+    if (days > 720) {
+      rate = 0.15; // 15%
+    } else if (days > 360) {
+      rate = 0.175; // 17.5%
+    } else if (days > 180) {
+      rate = 0.20; // 20%
+    }
+
+    const grossVal = Number(inv.estimatedValue || 0);
+    const purchaseVal = Number(meta.purchaseValue) || Number(meta.initialInvestmentAmount) || grossVal;
+    const profit = Math.max(0, grossVal - purchaseVal);
+    const tax = profit * rate;
+    const netValue = grossVal - tax;
+
+    return { days, rate: rate * 100, tax, netValue };
+  };
+
+  const getInvestmentSubcategoryBreakdown = () => {
+    const currentMonthStr = new Date().toISOString().substring(0, 7);
+    const investmentTxs = transactions.filter(t => {
+      const isCurrentMonth = t.date && t.date.substring(0, 7) === currentMonthStr;
+      if (!isCurrentMonth) return false;
+      const cat = (t.category || '').toLowerCase();
+      return cat.includes('investimento') || cat.includes('empréstimo');
+    });
+
+    const categoriesMap: Record<string, { label: string; amount: number; color: string; tooltip: string }> = {
+      'Aplicações / Aportes': {
+        label: 'Aplicações / Aportes',
+        amount: 0,
+        color: 'bg-indigo-500',
+        tooltip: 'Aportes destinados a novos títulos ou compra de cotas.'
+      },
+      'Rendimentos Mensais': {
+        label: 'Rendimentos Mensais (Liquidez)',
+        amount: 0,
+        color: 'bg-emerald-500',
+        tooltip: 'Dividendos, Juros sobre Capital Próprio ou cupons creditados diretamente no caixa.'
+      },
+      'Rendimentos Acumulados': {
+        label: 'Rendimentos Acumulados',
+        amount: 0,
+        color: 'bg-teal-500',
+        tooltip: 'Juros compostos ou ganhos de capital reinvestidos diretamente no próprio ativo.'
+      },
+      'Resgates Antecipados': {
+        label: 'Resgates Antecipados',
+        amount: 0,
+        color: 'bg-amber-500',
+        tooltip: 'Resgates ou retiradas parciais antes da data original de vencimento do título.'
+      },
+      'Resgates no Vencimento': {
+        label: 'Resgates no Vencimento',
+        amount: 0,
+        color: 'bg-sky-500',
+        tooltip: 'Resgates ou retiradas totais efetuados na data final de vencimento do título.'
+      },
+      'Imposto de Renda Retido': {
+        label: 'Imposto de Renda Retido',
+        amount: 0,
+        color: 'bg-rose-500',
+        tooltip: 'Dedução de Imposto de Renda (IR) retido na fonte incidente sobre os rendimentos.'
+      },
+      'Outros Débitos / Perdas': {
+        label: 'Outros Débitos / Perdas',
+        amount: 0,
+        color: 'bg-slate-400',
+        tooltip: 'Ajustes negativos de marcação a mercado, taxas ou perdas em renda variável.'
+      }
+    };
+
+    investmentTxs.forEach(t => {
+      const sub = (t.subcategory || '').toLowerCase();
+      const type = t.type;
+      const amt = Number(t.amount || 0);
+
+      if (sub.includes('aporte') || sub.includes('aplica') || (type === 'EXPENSE' && !sub.includes('imposto') && !sub.includes('ir') && !sub.includes('taxa'))) {
+        categoriesMap['Aplicações / Aportes'].amount += amt;
+      } else if (sub.includes('mensal') || sub.includes('liquidez') || sub.includes('dividend') || sub.includes('cupom') || sub.includes('juros de capital')) {
+        categoriesMap['Rendimentos Mensais'].amount += amt;
+      } else if (sub.includes('acumulado') || sub.includes('reinvest')) {
+        categoriesMap['Rendimentos Acumulados'].amount += amt;
+      } else if (sub.includes('antecip')) {
+        categoriesMap['Resgates Antecipados'].amount += amt;
+      } else if (sub.includes('venciment') || sub.includes('resgate total')) {
+        categoriesMap['Resgates no Vencimento'].amount += amt;
+      } else if (sub.includes('imposto') || sub.includes('ir') || sub.includes('irrf') || sub.includes('tributo')) {
+        categoriesMap['Imposto de Renda Retido'].amount += amt;
+      } else {
+        categoriesMap['Outros Débitos / Perdas'].amount += amt;
+      }
+    });
+
+    const list = Object.values(categoriesMap).filter(c => c.amount > 0);
+    const total = list.reduce((sum, item) => sum + item.amount, 0);
+
+    const monthLabel = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date()).toUpperCase();
+
+    return { list, total, monthLabel };
   };
 
   // Sync Rental Income Transactions: Activates/Deactivates starting from today forward
@@ -1039,7 +1290,7 @@ const Assets: React.FC = () => {
       // Se o veículo foi vendido, não geramos novas provisões de IPVA/Seguro/Aluguel futuros!
       if (formValues.isSold) {
         const soldAmount = parseFloat(formValues.soldValue) || 0;
-        const comission = parseFloat(formValues.saleComission) || 0;
+        const comission = parseFloat(formValues.saleCommission || (formValues as any).saleComission) || 0;
         const saleDateStr = formValues.saleDate || todayStr;
 
         // Registrar comissão de venda (se houver)
@@ -1402,7 +1653,7 @@ const Assets: React.FC = () => {
       // Se o bem foi vendido, não geramos rendimentos futuros
       if (formValues.isSold) {
         const soldAmount = parseFloat(formValues.soldValue) || 0;
-        const comission = parseFloat(formValues.saleComission) || 0;
+        const comission = parseFloat(formValues.saleCommission || (formValues as any).saleComission) || 0;
         const saleDateStr = formValues.saleDate || todayStr;
 
         // Registrar comissão de venda (se houver)
@@ -1687,6 +1938,10 @@ const Assets: React.FC = () => {
         financingOriginalTotal: isRealEstate ? (parseFloat(formData.financingOriginalTotal) || 0) : undefined,
         // Vehicle details
         vehicleType: formData.category === 'VEHICLE' ? formData.vehicleType : undefined,
+        licensePlate: formData.category === 'VEHICLE' ? formData.licensePlate : undefined,
+        renavam: formData.category === 'VEHICLE' ? formData.renavam : undefined,
+        yearModel: formData.category === 'VEHICLE' ? formData.yearModel : undefined,
+        mileage: formData.category === 'VEHICLE' ? (parseFloat(formData.mileage) || 0) : undefined,
         transferFee: formData.category === 'VEHICLE' ? (parseFloat(formData.transferFee) || 0) : undefined,
         vehiclePurposeType: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? formData.vehiclePurposeType : undefined,
         ipvaFee: formData.category === 'VEHICLE' ? (parseFloat(formData.ipvaFee) || 0) : undefined,
@@ -1700,7 +1955,8 @@ const Assets: React.FC = () => {
         rentalPlatformFee: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? (parseFloat(formData.rentalPlatformFee) || 0) : undefined,
         targetSaleValue: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? (parseFloat(formData.targetSaleValue) || 0) : undefined,
         preparationBudget: (formData.category === 'VEHICLE' || formData.category === 'OTHER') && formData.purpose === 'investimento' ? (parseFloat(formData.preparationBudget) || 0) : undefined,
-        saleComission: formData.isSold ? (parseFloat(formData.saleComission) || 0) : undefined,
+        saleCommission: formData.isSold ? (parseFloat(formData.saleCommission) || 0) : undefined,
+        saleComission: formData.isSold ? (parseFloat(formData.saleCommission) || 0) : undefined, // legacy compatibility
         salePaymentMethod: formData.isSold ? formData.salePaymentMethod : undefined,
         permutaVeiculoValor: formData.isSold ? (parseFloat(formData.permutaVeiculoValor) || 0) : undefined,
         permutaVeiculoNome: formData.isSold ? formData.permutaVeiculoNome : undefined,
@@ -2106,7 +2362,7 @@ const Assets: React.FC = () => {
       // Automated sale transaction for REAL_ESTATE
       if (isRealEstate && formData.isSold && (!editingAsset || !editingAsset.metadata?.isSold)) {
         const soldAmount = parseFloat(formData.soldValue) || 0;
-        const comission = parseFloat(formData.saleComission) || 0;
+        const comission = parseFloat(formData.saleCommission || (formData as any).saleComission) || 0;
         const saleDateStr = formData.saleDate || new Date().toISOString().split('T')[0];
 
         // 1. Excluir provisões futuras não pagas vinculadas ao imóvel
@@ -2390,6 +2646,10 @@ const Assets: React.FC = () => {
       financingName: '',
       // Vehicle-specific fields
       vehicleType: 'CAR',
+      licensePlate: '',
+      renavam: '',
+      yearModel: '',
+      mileage: '',
       transferFee: '',
       vehiclePurposeType: 'RENTAL',
       ipvaFee: '',
@@ -2403,7 +2663,7 @@ const Assets: React.FC = () => {
       rentalPlatformFee: '',
       targetSaleValue: '',
       preparationBudget: '',
-      saleComission: '',
+      saleCommission: '',
       salePaymentMethod: 'A_VISTA',
       permutaVeiculoValor: '',
       permutaVeiculoNome: '',
@@ -2423,13 +2683,79 @@ const Assets: React.FC = () => {
       vencimentoDate: '',
       investmentLiquidity: 'No Vencimento',
       status: 'ATIVO',
+      isTaxExempt: false,
     });
   };
 
+  const handleNewAssetClick = () => {
+    if (activeView === 'overview') {
+      setShowCategorySelector(true);
+    } else if (activeView === 'realestate') {
+      setShowWizardModal(true);
+    } else if (activeView === 'vehicles') {
+      resetAssetForm();
+      setEditingAsset(null);
+      setFormData(prev => ({ ...prev, category: 'VEHICLE', purpose: 'uso' }));
+      setShowModal(true);
+    } else if (activeView === 'physical') {
+      resetAssetForm();
+      setEditingAsset(null);
+      setFormData(prev => ({ ...prev, category: 'OTHER', purpose: 'uso', isLoan: false }));
+      setShowModal(true);
+    } else if (activeView === 'investments') {
+      resetAssetForm();
+      setEditingAsset(null);
+      setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento' }));
+      setShowModal(true);
+    } else if (activeView === 'loans') {
+      resetAssetForm();
+      setEditingAsset(null);
+      setFormData(prev => ({ ...prev, isLoan: true, category: 'OTHER' }));
+      setShowModal(true);
+    } else if (activeView === 'liabilities') {
+      setLiabilityFormData({
+        name: '',
+        type: 'PERSONAL_LOAN',
+        totalAmount: '',
+        remainingBalance: '',
+        interestRate: '',
+        installmentAmount: '',
+        installmentsRemaining: '',
+        dueDay: '10',
+        linkedAssetId: '',
+        indexationRate: '',
+        balloonMonth: '',
+        balloonYear: '',
+        balloonAmount: '',
+        balloons: [],
+        propertyType: 'PLANTA'
+      });
+      setEditingLiability(null);
+      setShowLiabilityModal(true);
+    }
+  };
+
   const openEditAsset = (asset: PhysicalAsset) => {
-    setEditingAsset(asset);
     const meta = asset.metadata || {};
-    
+    if (meta.isLoan) {
+      setLoanFormData({
+        id: asset.id,
+        name: asset.name,
+        loanDebtor: meta.loanDebtor || '',
+        loanPrincipal: meta.loanPrincipal ? String(meta.loanPrincipal) : '',
+        loanInterestRate: meta.loanInterestRate ? String(meta.loanInterestRate) : '',
+        loanFixedValue: meta.loanFixedValue ? String(meta.loanFixedValue) : '',
+        loanDueDate: meta.loanDueDate || '',
+        loanInterestType: meta.loanInterestType || 'SIMPLE',
+        acquisitionDate: asset.acquisitionDate || new Date().toISOString().split('T')[0],
+        description: asset.description || '',
+        status: meta.status || 'ATIVO',
+      });
+      setShowLoanModal(true);
+      return;
+    }
+
+    setEditingAsset(asset);
     const linkedLiab = activeLiabilities.find(l => l.linkedAssetId === asset.id);
     let devPayMethod: 'A_VISTA' | 'FINANCIAMENTO' | 'CONSORCIO' | 'A_DEFINIR' = 'A_VISTA';
     let selConsortiumId = '';
@@ -2507,6 +2833,10 @@ const Assets: React.FC = () => {
       financingName: finName,
       // Vehicle-specific fields
       vehicleType: meta.vehicleType || 'CAR',
+      licensePlate: meta.licensePlate || '',
+      renavam: meta.renavam || '',
+      yearModel: meta.yearModel || '',
+      mileage: meta.mileage ? String(meta.mileage) : '',
       transferFee: meta.transferFee ? String(meta.transferFee) : '',
       vehiclePurposeType: meta.vehiclePurposeType || 'RENTAL',
       ipvaFee: meta.ipvaFee ? String(meta.ipvaFee) : '',
@@ -2520,7 +2850,7 @@ const Assets: React.FC = () => {
       rentalPlatformFee: meta.rentalPlatformFee ? String(meta.rentalPlatformFee) : '',
       targetSaleValue: meta.targetSaleValue ? String(meta.targetSaleValue) : '',
       preparationBudget: meta.preparationBudget ? String(meta.preparationBudget) : '',
-      saleComission: meta.saleComission ? String(meta.saleComission) : '',
+      saleCommission: meta.saleCommission ? String(meta.saleCommission) : (meta.saleComission ? String(meta.saleComission) : ''),
       salePaymentMethod: meta.salePaymentMethod || 'A_VISTA',
       permutaVeiculoValor: meta.permutaVeiculoValor ? String(meta.permutaVeiculoValor) : '',
       permutaVeiculoNome: meta.permutaVeiculoNome || '',
@@ -2546,6 +2876,7 @@ const Assets: React.FC = () => {
       vencimentoDate: meta.vencimentoDate || '',
       investmentLiquidity: meta.investmentLiquidity || 'No Vencimento',
       status: meta.status || 'ATIVO',
+      isTaxExempt: !!meta.isTaxExempt,
     });
     setShowModal(true);
   };
@@ -3181,11 +3512,60 @@ const Assets: React.FC = () => {
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
+  const InfoTooltip: React.FC<{ content: string }> = ({ content }) => {
+    return (
+      <div className="group relative inline-block ml-1 cursor-help align-middle select-none">
+        <HelpCircle size={12} className="text-slate-400 group-hover:text-brand-500 transition-colors" />
+        <div className="absolute z-[100] bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 bg-slate-950 text-xs text-slate-200 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 border border-slate-800 text-center leading-normal normal-case font-medium">
+          {content}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-950" />
+        </div>
+      </div>
+    );
+  };
+
+  const TrendValue: React.FC<{
+    value: number;
+    percent?: number;
+    suffix?: string;
+  }> = ({ value, percent, suffix = '' }) => {
+    const isPositive = value >= 0;
+    return (
+      <span className={`font-black flex items-center gap-0.5 ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+        {isPositive ? '+' : ''}
+        {formatCurrency(value)}
+        {percent !== undefined && (
+          <span className="text-xs font-bold">({isPositive ? '+' : ''}{percent.toFixed(1)}%{suffix})</span>
+        )}
+        {isPositive ? (
+          <ArrowUpRight size={12} className="text-emerald-600 inline shrink-0" aria-hidden="true" />
+        ) : (
+          <ArrowDownRight size={12} className="text-rose-600 inline shrink-0" aria-hidden="true" />
+        )}
+      </span>
+    );
+  };
+
   // Totals calculations
-  const totalPhysical = activePhysicalAssets.reduce((acc, curr) => acc + curr.estimatedValue, 0);
-  const totalFinancial = brokers.reduce((acc, curr) => acc + curr.balance, 0);
+  const totalPhysical = enrichedPhysicalAssets
+    .filter(p => p.category !== 'INVESTMENT' && !p.metadata?.isLoan)
+    .reduce((acc, curr) => acc + curr.estimatedValue, 0);
+  
+  const totalFinancial = dynamicBrokers.reduce((acc, curr) => acc + curr.balance, 0);
   const totalLiabilities = activeLiabilities.reduce((acc, curr) => acc + curr.remainingBalance, 0);
-  const totalAssets = totalPhysical + totalFinancial;
+
+  const totalLoans = enrichedPhysicalAssets
+    .filter(p => p.metadata?.isLoan)
+    .reduce((sum, loan) => {
+      const meta = loan.metadata || {};
+      const principal = Number(meta.loanPrincipal) || 0;
+      const txs = linkedTransactionsMap.get(loan.id) || [];
+      const returned = txs.filter(t => t.type === 'INCOME').reduce((s, t) => s + Number(t.amount || 0), 0);
+      const outstanding = Math.max(0, principal - returned);
+      return sum + outstanding;
+    }, 0);
+
+  const totalAssets = totalPhysical + totalFinancial + totalLoans;
   const totalNetWorth = totalAssets - totalLiabilities;
 
   // Helper to dynamically match a single transaction to a physical asset
@@ -3201,7 +3581,7 @@ const Assets: React.FC = () => {
 
   // Complete, deep executive financial KPIs unifications (excluding archived items)
   const overviewData = useMemo(() => {
-    const activePhys = activePhysicalAssets;
+    const activePhys = enrichedPhysicalAssets;
     const activeLiab = activeLiabilities;
 
     // Helper to dynamically link a liability to an asset with name substring fallback
@@ -3367,9 +3747,35 @@ const Assets: React.FC = () => {
     // 3. INVESTIMENTOS FINANCEIROS
     const totalFinancialFunds = totalFinancial;
     
-    const financialAllocation = brokers.map(b => {
-      const type = b.metadata?.productType || 'Investimentos';
-      return { type, balance: b.balance };
+    const activeInvests = enrichedPhysicalAssets.filter(
+      p => p.category === 'INVESTMENT' && p.metadata?.status !== 'RESGATADO'
+    );
+    
+    const financialAllocation: { type: string, balance: number }[] = [];
+    
+    // 1. Add individual investments grouped by investmentType
+    activeInvests.forEach(inv => {
+      let type = inv.metadata?.investmentType || 'Outros';
+      // Format investment type to readable name
+      if (type === 'CDB') type = 'CDB / Renda Fixa';
+      else if (type === 'LCI_LCA') type = 'LCI / LCA';
+      else if (type === 'CRI_CRA') type = 'CRI / CRA';
+      else if (type === 'Acoes') type = 'Ações';
+      else if (type === 'FIIs') type = 'FIIs (Fundos Imob.)';
+      else if (type === 'Tesouro') type = 'Tesouro Direto';
+      else if (type === 'COE') type = 'COE';
+      else if (type === 'DEBENTURES') type = 'Debêntures';
+      else if (type === 'FUNDS') type = 'Fundos de Invest.';
+      
+      financialAllocation.push({ type, balance: inv.estimatedValue });
+    });
+    
+    // 2. Add broker cash balances
+    dynamicBrokers.forEach(b => {
+      const cash = Number(b.initial_balance) || 0;
+      if (cash > 0) {
+        financialAllocation.push({ type: 'Saldo em Caixa', balance: cash });
+      }
     });
     
     const allocationGrouped = financialAllocation.reduce((acc: any, curr) => {
@@ -3389,12 +3795,28 @@ const Assets: React.FC = () => {
       (t.category === 'Rendimentos' || t.category === 'Investimentos' || t.metadata?.type === 'investment_yield')
     );
 
-    const currentMonthYield = yieldTxs.filter(t => 
+    const transactionCurrentMonthYield = yieldTxs.filter(t => 
       t.date.substring(0, 7) === currentMonthStr
     ).reduce((sum, t) => sum + t.amount, 0);
 
+    const activeInvestments = enrichedPhysicalAssets.filter(
+      p => p.category === 'INVESTMENT' && p.metadata?.status !== 'RESGATADO'
+    );
+
+    const investmentsEstimatedMonthlyYield = activeInvestments.reduce((sum, inv) => {
+      const rate = inv.parsedAnnualRate || 0;
+      const value = inv.estimatedValue || 0;
+      const monthlyRate = Math.pow(1 + rate / 100, 1 / 12) - 1;
+      return sum + (value * monthlyRate);
+    }, 0);
+
+    const currentMonthYield = transactionCurrentMonthYield + investmentsEstimatedMonthlyYield;
+
     const uniqueMonths = Array.from(new Set(yieldTxs.map(t => t.date.substring(0, 7))));
-    const averageMonthlyYield = uniqueMonths.length > 0 ? yieldTxs.reduce((sum, t) => sum + t.amount, 0) / uniqueMonths.length : 0;
+    const transactionAverageYield = uniqueMonths.length > 0 
+      ? yieldTxs.reduce((sum, t) => sum + t.amount, 0) / uniqueMonths.length 
+      : 0;
+    const averageMonthlyYield = transactionAverageYield + investmentsEstimatedMonthlyYield;
 
     // 4. PASSIVOS E DÍVIDAS (Consórcios vs Financiamentos)
     const consortiums = activeLiab.filter(l => l.type === 'CONSORTIUM');
@@ -3444,6 +3866,8 @@ const Assets: React.FC = () => {
       totalFinancialFunds,
       allocationList,
       currentMonthYield,
+      transactionCurrentMonthYield,
+      investmentsEstimatedMonthlyYield,
       averageMonthlyYield,
       consInstallments,
       consContracted,
@@ -3459,13 +3883,13 @@ const Assets: React.FC = () => {
       veiculoValue,
       outroFisicoValue
     };
-  }, [activePhysicalAssets, activeLiabilities, brokers, transactions, totalFinancial, linkedTransactionsMap]);
+  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, transactions, totalFinancial, linkedTransactionsMap, enrichedPhysicalAssets]);
 
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen space-y-4">
         <div className="w-10 h-10 border-2 border-slate-200 border-t-brand-600 rounded-full animate-spin" />
-        <p className="text-slate-400 font-medium tracking-widest text-[10px] uppercase">Carregando Patrimônio Líquido...</p>
+        <p className="text-slate-400 font-medium tracking-widest text-xs uppercase">Carregando Patrimônio Líquido...</p>
       </div>
     );
   }
@@ -3481,7 +3905,7 @@ const Assets: React.FC = () => {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => setShowCategorySelector(true)}
+            onClick={handleNewAssetClick}
             className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
           >
             <Plus size={18} /> Novo Ativo
@@ -3496,6 +3920,7 @@ const Assets: React.FC = () => {
           { id: 'realestate', label: 'Ativos Imobiliários', icon: <Building2 size={16} /> },
           { id: 'vehicles', label: 'Veículos', icon: <Car size={16} /> },
           { id: 'investments', label: 'Investimentos', icon: <TrendingUp size={16} /> },
+          { id: 'loans', label: 'Empréstimos Concedidos', icon: <HandCoins size={16} /> },
           { id: 'liabilities', label: 'Passivos (Dívidas)', icon: <Landmark size={16} /> },
           { id: 'physical', label: 'Outros Ativos Físicos', icon: <Box size={16} /> }
         ].map((tab) => (
@@ -3516,116 +3941,163 @@ const Assets: React.FC = () => {
         {/* OVERVIEW VIEW */}
         {activeView === 'overview' && (
           <div className="space-y-8 animate-in fade-in duration-500">
-            {/* COMPACT TOTALS GRID (7 Cards) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            {/* COMPACT TOTALS GRID (8 Cards) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-4">
               {/* Fluxo Mensal */}
-              <div className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group hover:scale-[1.02] transition-all col-span-2 sm:col-span-1">
+              <button
+                onClick={() => setActiveView('overview')}
+                className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group hover:scale-[1.02] transition-all col-span-2 sm:col-span-1 text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
+              >
                 <div className="absolute -right-4 -bottom-4 w-12 h-12 bg-white/5 rounded-full pointer-events-none" />
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
                   <Zap size={14} className="text-brand-400" />
                 </div>
                 <div className="mt-1 space-y-0.5">
-                  <div className="flex justify-between text-[9px] text-slate-400">
-                    <span>Recebimentos:</span>
+                  <div className="flex justify-between text-xs text-slate-400">
+                    <span>Recebidos:</span>
                     <span className="font-bold text-emerald-400">{formatCurrency(sustainabilitySummary.totalInflow)}</span>
                   </div>
-                  <div className="flex justify-between text-[9px] text-slate-400">
+                  <div className="flex justify-between text-xs text-slate-400">
                     <span>Despesas:</span>
                     <span className="font-bold text-rose-400">{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
                   </div>
-                  <div className="flex justify-between items-baseline border-t border-slate-800 pt-1 mt-1">
-                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Saldo</span>
+                  <div className="flex justify-between text-xs text-slate-400">
+                    <span>Sustentabilidade:</span>
+                    <span className="font-bold text-brand-400">{sustainabilitySummary.selfSustainabilityPercent}%</span>
+                  </div>
+                  <div className="flex justify-between items-baseline border-t border-slate-800 pt-1 mt-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Saldo</span>
                     <span className={`text-base font-black tracking-tight italic ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
                     </span>
                   </div>
                 </div>
-              </div>
+              </button>
 
               {/* Patrimônio Líquido */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+              <button
+                onClick={() => setActiveView('overview')}
+                className="bg-white border-2 border-brand-500 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500 relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 w-8 h-8 bg-brand-500/10 rounded-bl-full flex items-center justify-center pointer-events-none">
+                  <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest mr-1 mb-1">Mestre</span>
+                </div>
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Patrimônio Real</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Patrimônio Real</span>
                   <TrendingUp size={14} className="text-emerald-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(totalNetWorth)}
                   </h4>
-                  <span className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest">Líquido</span>
+                  <span className="text-xs sm:text-[11px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-0.5">
+                    Líquido <ArrowUpRight size={10} className="inline shrink-0" />
+                  </span>
                 </div>
-              </div>
+              </button>
 
               {/* Investimento Imobiliário */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+              <button
+                onClick={() => setActiveView('realestate')}
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
+              >
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Imobiliário</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Imobiliário</span>
                   <Building2 size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(overviewData.plantaValue + overviewData.prontoValue)}
                   </h4>
-                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Planta + Pronto</span>
+                  <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Planta + Pronto</span>
                 </div>
-              </div>
+              </button>
 
               {/* Veículos */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+              <button
+                onClick={() => setActiveView('vehicles')}
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
+              >
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Veículos</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Veículos</span>
                   <Car size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(overviewData.veiculoValue)}
                   </h4>
-                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">FIPE / Estimado</span>
+                  <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">FIPE / Estimado</span>
                 </div>
-              </div>
+              </button>
 
               {/* Outros Bens Físicos */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+              <button
+                onClick={() => setActiveView('physical')}
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
+              >
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Outros Bens</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Outros Bens</span>
                   <Box size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(overviewData.outroFisicoValue)}
                   </h4>
-                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Outros Bens Físicos</span>
+                  <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Outros Físicos</span>
                 </div>
-              </div>
+              </button>
 
               {/* Investimentos Financeiros */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+              <button
+                onClick={() => setActiveView('investments')}
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
+              >
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Financeiro</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Financeiro</span>
                   <PieChart size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-brand-600 tracking-tight italic">
                     {formatCurrency(overviewData.totalFinancialFunds)}
                   </h4>
-                  <span className="text-[8px] font-bold text-brand-500 uppercase tracking-widest">Corretoras</span>
+                  <span className="text-xs sm:text-[11px] font-bold text-brand-500 uppercase tracking-widest">Corretoras</span>
                 </div>
-              </div>
+              </button>
+
+              {/* Empréstimos Concedidos */}
+              <button
+                onClick={() => setActiveView('loans')}
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
+              >
+                <div className="flex justify-between items-start">
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Empréstimos</span>
+                  <HandCoins size={14} className="text-brand-500" />
+                </div>
+                <div className="mt-2">
+                  <h4 className="text-base font-black text-slate-900 tracking-tight italic">
+                    {formatCurrency(totalLoans)}
+                  </h4>
+                  <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">A Receber</span>
+                </div>
+              </button>
 
               {/* Passivos e Dívidas */}
-              <div className="bg-red-50/30 border border-red-100/50 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all">
+              <button
+                onClick={() => setActiveView('liabilities')}
+                className="bg-red-50/30 border border-red-100/50 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-red-500"
+              >
                 <div className="flex justify-between items-start">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-red-500">Dívidas</span>
+                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-red-500">Dívidas</span>
                   <Landmark size={14} className="text-red-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-red-600 tracking-tight italic">
                     {formatCurrency(totalLiabilities)}
                   </h4>
-                  <span className="text-[8px] font-bold text-red-400 uppercase tracking-widest">Saldo Devedor</span>
+                  <span className="text-xs sm:text-[11px] font-bold text-red-400 uppercase tracking-widest">Saldo Devedor</span>
                 </div>
-              </div>
+              </button>
             </div>
 
             {/* 4 DETAILED ANALYTICS SECTIONS (2x2 Grid) */}
@@ -3645,8 +4117,14 @@ const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Planta Stage */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      🏗️ Na Planta / Em Obras
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span><span aria-hidden="true" className="mr-1">🏗️</span>Na Planta / Em Obras</span>
+                      <button
+                        onClick={() => setActiveView('realestate')}
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
@@ -3666,7 +4144,10 @@ const Assets: React.FC = () => {
                         <span className="font-bold text-brand-600">{formatCurrency(overviewData.plantaRemainingToPay)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Saldo a Financiar (Entrega):</span>
+                        <span className="text-slate-500 font-medium flex items-center">
+                          Saldo Devedor na Entrega
+                          <InfoTooltip content="Valor estimado a ser quitado/financiado no momento da entrega das chaves do imóvel na planta." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaDeliveryBalance)}</span>
                       </div>
                     </div>
@@ -3674,8 +4155,14 @@ const Assets: React.FC = () => {
 
                   {/* Pronto Stage */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span>🏢 Imóveis Entregues</span>
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span><span aria-hidden="true" className="mr-1">🏢</span>Pronto / Entregue</span>
+                      <button
+                        onClick={() => setActiveView('realestate')}
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
@@ -3700,15 +4187,14 @@ const Assets: React.FC = () => {
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
                         <span className="text-slate-600 font-bold">Mensal Líquido (Mês Atual):</span>
-                        <span className={`font-black ${overviewData.prontoMonthlyNetFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {overviewData.prontoMonthlyNetFlow >= 0 ? '+' : ''}{formatCurrency(overviewData.prontoMonthlyNetFlow)}
-                        </span>
+                        <TrendValue value={overviewData.prontoMonthlyNetFlow} />
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold">Fluxo Histórico Líquido (Se Vender):</span>
-                        <span className={`font-black ${overviewData.prontoNetFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {overviewData.prontoNetFlow >= 0 ? '+' : ''}{formatCurrency(overviewData.prontoNetFlow)}
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Equity Imobiliária (Valor − Dívida)
+                          <InfoTooltip content="Equidade líquida estimada se vendesse os imóveis hoje pelo valor de mercado e liquidasse os financiamentos. Não desconta impostos ou taxas imobiliárias." />
                         </span>
+                        <TrendValue value={overviewData.prontoNetFlow} />
                       </div>
                     </div>
                   </div>
@@ -3729,8 +4215,14 @@ const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Para Uso */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      🚗 Para Uso Pessoal
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span><span aria-hidden="true" className="mr-1">🚗</span>Bens de Uso Pessoal</span>
+                      <button
+                        onClick={() => setActiveView('physical')}
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
@@ -3738,23 +4230,32 @@ const Assets: React.FC = () => {
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.usoAcquisitionTotal)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Valor Estimado FIPE:</span>
+                        <span className="text-slate-500 font-medium flex items-center">
+                          Valor FIPE / Mercado
+                          <InfoTooltip content="Valor de mercado estimado para veículos (tabela FIPE) e outros bens pessoais de uso." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.usoCurrentValueTotal)}</span>
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold">Ágio / Deságio:</span>
-                        <span className={`font-black flex items-center gap-1 ${overviewData.usoAgioDesagio >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {overviewData.usoAgioDesagio >= 0 ? '+' : ''}{formatCurrency(overviewData.usoAgioDesagio)}
-                          <span className="text-[9px] font-bold">({overviewData.usoAgioDesagioPercent.toFixed(1)}%)</span>
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Ganho ou Perda vs. Compra
+                          <InfoTooltip content="Diferença entre o valor de mercado atual e o custo histórico de aquisição." />
                         </span>
+                        <TrendValue value={overviewData.usoAgioDesagio} percent={overviewData.usoAgioDesagioPercent} />
                       </div>
                     </div>
                   </div>
 
                   {/* Para Investimento */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      📈 Para Investimento / Venda
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span><span aria-hidden="true" className="mr-1">📈</span>Bens de Investimento</span>
+                      <button
+                        onClick={() => setActiveView('physical')}
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
@@ -3774,11 +4275,11 @@ const Assets: React.FC = () => {
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.invEstimatedValue)}</span>
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold">Lucro Líquido Est.:</span>
-                        <span className={`font-black flex items-center gap-1 ${overviewData.invNetProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {overviewData.invNetProfit >= 0 ? '+' : ''}{formatCurrency(overviewData.invNetProfit)}
-                          <span className="text-[9px] font-bold">({overviewData.invProfitPercent.toFixed(1)}% ROI)</span>
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Lucro Líquido Est. (ROI)
+                          <InfoTooltip content="Retorno sobre o Investimento (ROI) estimado, considerando preço atual de mercado menos custos de aquisição, reformas e comissões." />
                         </span>
+                        <TrendValue value={overviewData.invNetProfit} percent={overviewData.invProfitPercent} suffix=" ROI" />
                       </div>
                     </div>
                   </div>
@@ -3799,29 +4300,70 @@ const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Allocation */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      📊 Alocação por Classe
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span><span aria-hidden="true" className="mr-1">📊</span>Alocação por Classe</span>
+                      <button
+                        onClick={() => setActiveView('investments')}
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
-                    <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                    <div className="space-y-3.5 pr-1">
                       {overviewData.allocationList.length === 0 ? (
                         <p className="text-xs text-slate-400 italic">Sem investimentos cadastrados.</p>
                       ) : (
-                        overviewData.allocationList.map((item, idx) => (
-                          <div key={idx} className="flex justify-between text-xs">
-                            <span className="text-slate-500 font-medium truncate max-w-[120px]">{item.type}</span>
-                            <span className="font-bold text-slate-900">
-                              {formatCurrency(item.balance)} <span className="text-[9px] font-medium text-slate-400">({item.percentage}%)</span>
-                            </span>
+                        <>
+                          <div className="space-y-3">
+                            {overviewData.allocationList.slice(0, 5).map((item, idx) => (
+                              <div key={idx} className="space-y-1">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-slate-600 font-medium truncate max-w-[140px]">{item.type}</span>
+                                  <span className="font-bold text-slate-900">
+                                    {formatCurrency(item.balance)} <span className="text-xs font-medium text-slate-400">({item.percentage}%)</span>
+                                  </span>
+                                </div>
+                                <div 
+                                  className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"
+                                  role="progressbar"
+                                  aria-valuenow={item.percentage}
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-label={`Alocação da classe ${item.type}`}
+                                >
+                                  <div 
+                                    className="bg-brand-500 h-full rounded-full transition-all duration-500" 
+                                    style={{ width: `${item.percentage}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))
+                          {overviewData.allocationList.length > 5 && (
+                            <div className="pt-1.5 text-center border-t border-slate-100 mt-2">
+                              <button
+                                onClick={() => setActiveView('investments')}
+                                className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                              >
+                                + {overviewData.allocationList.length - 5} outras classes (Ver Tudo →)
+                              </button>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
 
                   {/* Monthly Yield comparison */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      💵 Rendimentos da Carteira
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span><span aria-hidden="true" className="mr-1">💵</span>Rendimentos da Carteira</span>
+                      <button
+                        onClick={() => setActiveView('investments')}
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
@@ -3832,8 +4374,17 @@ const Assets: React.FC = () => {
                         <span className="text-slate-500 font-medium">Média Histórica Mensal:</span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.averageMonthlyYield)}</span>
                       </div>
+                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Autossuficiência
+                          <InfoTooltip content="Percentual de cobertura das despesas patrimoniais (parcelas de consórcios, financiamentos, condomínios, IPVA/IPTU) pelas receitas de aluguéis e investimentos." />
+                        </span>
+                        <span className={`font-black ${sustainabilitySummary.selfSustainabilityPercent >= 100 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                          {sustainabilitySummary.selfSustainabilityPercent}%
+                        </span>
+                      </div>
                       <div className="p-3 bg-brand-50 rounded-xl mt-2">
-                        <p className="text-[10px] text-brand-600 leading-relaxed font-medium">
+                        <p className="text-xs text-brand-600 leading-relaxed font-medium">
                           Sua carteira gera aproximadamente <span className="font-bold text-brand-700">{formatCurrency(sustainabilitySummary.estimatedMonthlyYield)}</span> de dividendos implícitos por mês baseado em taxa média mensal de {estimatedYieldRate}%.
                         </p>
                       </div>
@@ -3856,36 +4407,60 @@ const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Consórcios */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      💳 Consórcios Ativos
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span><span aria-hidden="true" className="mr-1">💳</span>Consórcios Ativos</span>
+                      <button
+                        onClick={() => setActiveView('liabilities')}
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Parcelas Mensais:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Parcelas Mensais
+                          <InfoTooltip content="Soma das parcelas mensais devidas para todos os consórcios ativos." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.consInstallments)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Total Contratado:</span>
+                        <span className="text-slate-600 font-medium">Total Contratado (Cartas):</span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.consContracted)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Total Pago:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Total Pago
+                          <InfoTooltip content="Valor total amortizado/pago das parcelas até o momento." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.consPaid)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Lances Ofertados:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Lances Dados (Tentativas)
+                          <InfoTooltip content="Total ofertado em lances nas assembleias para tentar a contemplação das cartas." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.consLances)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Cartas em Obras/Uso:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Créditos em Uso (Obras/Bens)
+                          <InfoTooltip content="Cartas de consórcio já contempladas que estão atreladas a algum bem físico ou projeto em andamento." />
+                        </span>
                         <span className="font-bold text-slate-950">{formatCurrency(overviewData.consUtilized)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Cartas Livres:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Créditos Disponíveis
+                          <InfoTooltip content="Cartas de consórcio que já foram contempladas mas cujo saldo ainda não foi utilizado para aquisição de bens." />
+                        </span>
                         <span className="font-bold text-brand-600">{formatCurrency(overviewData.consToContemplate)}</span>
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold">Saldo Devedor:</span>
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Saldo Devedor Restante
+                          <InfoTooltip content="Saldo que resta pagar das parcelas vincendas até a quitação dos grupos." />
+                        </span>
                         <span className="font-black text-red-600">{formatCurrency(overviewData.consRemaining)}</span>
                       </div>
                     </div>
@@ -3893,24 +4468,39 @@ const Assets: React.FC = () => {
 
                   {/* Financiamentos */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-1.5">
-                      🏛️ Financiamentos Gerais
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span><span aria-hidden="true" className="mr-1">🏛️</span>Outros Financiamentos e Dívidas</span>
+                      <button
+                        onClick={() => setActiveView('liabilities')}
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        Ver Detalhes →
+                      </button>
                     </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Prestações Mensais:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Prestações Mensais
+                          <InfoTooltip content="Soma das parcelas mensais de todos os financiamentos ativos (imobiliários, veículos, etc.)." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.finInstallments)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Total Contratado:</span>
+                        <span className="text-slate-600 font-medium">Total Financiado (Contrato):</span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.finContracted)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Total Pago:</span>
+                        <span className="text-slate-600 font-medium flex items-center">
+                          Total Amortizado (Pago)
+                          <InfoTooltip content="Valor principal do financiamento já pago até o momento." />
+                        </span>
                         <span className="font-bold text-slate-900">{formatCurrency(overviewData.finPaid)}</span>
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold">Saldo Devedor Restante:</span>
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Saldo Devedor Restante
+                          <InfoTooltip content="Saldo restante para quitação dos contratos de financiamento." />
+                        </span>
                         <span className="font-black text-red-600">{formatCurrency(overviewData.finRemaining)}</span>
                       </div>
                     </div>
@@ -3944,13 +4534,13 @@ const Assets: React.FC = () => {
               {/* Filter Bar for Real Estate Card Metrics */}
               <div className="bg-slate-50 p-4 rounded-[25px] border border-slate-100 flex flex-wrap items-center justify-between gap-4">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Acompanhamento de Caixa:</span>
+                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Acompanhamento de Caixa:</span>
                   <div className="flex overflow-x-auto scrollbar-hide bg-slate-200/50 p-0.5 rounded-lg border w-full sm:w-auto max-w-[calc(100vw-48px)] sm:max-w-none">
-                    <button onClick={() => setCardPeriod('CONTRACT')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CONTRACT' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Contrato</button>
-                    <button onClick={() => setCardPeriod('CURRENT_MONTH')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CURRENT_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Atual</button>
-                    <button onClick={() => setCardPeriod('PREVIOUS_MONTH')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'PREVIOUS_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Anterior</button>
-                    <button onClick={() => setCardPeriod('CURRENT_YEAR')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CURRENT_YEAR' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Anual</button>
-                    <button onClick={() => setCardPeriod('CUSTOM')} className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CUSTOM' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Personalizado</button>
+                    <button onClick={() => setCardPeriod('CONTRACT')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CONTRACT' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Contrato</button>
+                    <button onClick={() => setCardPeriod('CURRENT_MONTH')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CURRENT_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Atual</button>
+                    <button onClick={() => setCardPeriod('PREVIOUS_MONTH')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'PREVIOUS_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Anterior</button>
+                    <button onClick={() => setCardPeriod('CURRENT_YEAR')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CURRENT_YEAR' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Anual</button>
+                    <button onClick={() => setCardPeriod('CUSTOM')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${cardPeriod === 'CUSTOM' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Personalizado</button>
                   </div>
                 </div>
                 
@@ -4133,7 +4723,7 @@ const Assets: React.FC = () => {
                         setSelectedRealEstateForDetail(asset);
                         setShowRealEstateDetailModal(true);
                       }}
-                      className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between cursor-pointer text-left"
+                      className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between cursor-pointer text-left"
                     >
                       <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
                         <div className="flex justify-between items-start">
@@ -4144,22 +4734,22 @@ const Assets: React.FC = () => {
                             {propertyStage === 'PLANTA' ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); togglePropertyTypeDirectly(asset); }}
-                                className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-amber-100 transition-colors"
+                                className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-amber-100 transition-colors"
                               >
                                 Na Planta 🛠️
                               </button>
                             ) : (
                               <button
                                 onClick={(e) => { e.stopPropagation(); togglePropertyTypeDirectly(asset); }}
-                                className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-emerald-100 transition-colors"
+                                className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 transition-colors"
                               >
                                 Pronto / Entregue 🏢
                               </button>
                             )}
                             {meta.purpose === 'investimento' ? (
-                              <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
+                              <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
                             ) : (
-                              <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-slate-100">Uso Próprio</span>
+                              <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-100">Uso Próprio</span>
                             )}
                           </div>
                         </div>
@@ -4167,32 +4757,32 @@ const Assets: React.FC = () => {
                         <div>
                           <h4 className="font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-tight italic break-words">{asset.name}</h4>
                           <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
-                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Avaliação Atual:</p>
+                            <p className="text-xs text-slate-400 font-black uppercase tracking-widest">Avaliação Atual:</p>
                             <p className="text-sm font-black text-slate-900">{formatCurrency(asset.estimatedValue)}</p>
                           </div>
                         </div>
 
                         {/* Pre-construction specs */}
                         {propertyStage === 'PLANTA' ? (
-                          <div className="space-y-2.5 pt-2 text-[10px] sm:text-[11px] text-slate-500">
+                          <div className="space-y-2.5 pt-2 text-xs sm:text-[11px] text-slate-500">
                             <div className="flex justify-between">
-                              <span>Valor devido Obra:</span>
+                              <span className="text-slate-600 font-medium">Valor devido Obra:</span>
                               <span className="font-bold text-rose-500">{formatCurrency(unpaidObra)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Valor pago obra:</span>
+                              <span className="text-slate-600 font-medium">Valor pago obra:</span>
                               <span className="font-bold text-emerald-600">{formatCurrency(paidObra)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Valor da Parcela atual:</span>
+                              <span className="text-slate-600 font-medium">Parcela Mensal Obra:</span>
                               <span className="font-bold text-slate-800">{formatCurrency(currentConstructorInstallmentValue)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Valor intermediária atual:</span>
+                              <span className="text-slate-600 font-medium">Intermediária (Balão) Atual:</span>
                               <span className="font-bold text-slate-800">{formatCurrency(currentBalloonValue)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Índice Correção:</span>
+                              <span className="text-slate-600 font-medium">Índice Correção:</span>
                               <span className="font-bold text-brand-600">{meta.constructorIndexType || 'INCC'}</span>
                             </div>
                             <div className="flex justify-between border-t border-dashed border-slate-100 pt-2 font-bold text-slate-600">
@@ -4209,11 +4799,36 @@ const Assets: React.FC = () => {
                                 <span className="font-bold text-slate-800">{formatCurrency(Number(meta.financingInstallment) || 0)}</span>
                               </div>
                             )}
+                            {/* Barra de Progresso Obra */}
+                            {(() => {
+                              const obraProgress = (paidObra + unpaidObra) > 0 ? Math.round((paidObra / (paidObra + unpaidObra)) * 100) : 0;
+                              return (
+                                <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                                  <div className="flex justify-between text-xs font-black uppercase text-slate-400">
+                                    <span>Progresso da Obra / Aporte:</span>
+                                    <span className="font-bold text-emerald-600">{obraProgress}% pago</span>
+                                  </div>
+                                  <div 
+                                    className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"
+                                    role="progressbar"
+                                    aria-valuenow={obraProgress}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
+                                    aria-label="Progresso de pagamento da obra"
+                                  >
+                                    <div 
+                                      className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
+                                      style={{ width: `${obraProgress}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         ) : (
-                          <div className="space-y-2.5 pt-2 text-[10px] sm:text-[11px] text-slate-500">
+                          <div className="space-y-2.5 pt-2 text-xs sm:text-[11px] text-slate-500">
                             <div className="flex justify-between">
-                              <span>Aluguel Líquido:</span>
+                              <span className="text-slate-600 font-medium">Aluguel Líquido:</span>
                               <span className="font-bold text-emerald-600">
                                 {cardPeriod === 'CONTRACT' && !isRented 
                                   ? 'Não Alugado' 
@@ -4221,47 +4836,108 @@ const Assets: React.FC = () => {
                               </span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Prestação Financiamento:</span>
+                              <span className="text-slate-600 font-medium">Parcela Financiamento:</span>
                               <span className="font-bold text-slate-700">{formatCurrency(installment)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Condomínio + IPTU (Despesa):</span>
+                              <span className="text-slate-600 font-medium">Condomínio + IPTU (Despesa):</span>
                               <span className="font-bold text-slate-700">{formatCurrency(displayCondoIptu)}</span>
                             </div>
                             {(cardPeriod !== 'CONTRACT' || meta.condoPayer === 'PROPRIETARIO_REEMBOLSO' || meta.iptuPayer === 'PROPRIETARIO_REEMBOLSO') && (
                               <div className="flex justify-between">
-                                <span>Reembolso Condo/IPTU (Receita):</span>
+                                <span className="text-slate-600 font-medium">Reembolso (Condo/IPTU):</span>
                                 <span className="font-bold text-emerald-600">+{formatCurrency(reimbursement)}</span>
                               </div>
                             )}
-                            <div className="flex justify-between text-[10px] border-t border-dashed border-slate-100 pt-2 font-bold">
-                              <span>Saldo Caixa Líquido:</span>
+                            <div className="flex justify-between text-xs border-t border-dashed border-slate-100 pt-2 font-bold">
+                              <span className="text-slate-700">Saldo Caixa Líquido:</span>
                               <span className={netPropertyFlow >= 0 ? 'text-emerald-600' : 'text-rose-500'}>
                                 {netPropertyFlow >= 0 ? '+' : ''}{formatCurrency(netPropertyFlow)}
                                 {cardPeriod === 'CONTRACT' ? '/mês' : ''}
                               </span>
                             </div>
+
+                            {/* Métricas de Performance (Cap Rate, Cash-on-Cash) */}
+                            {(() => {
+                              const totalInvestedCapital = Number(meta.totalInvestedCapital) || paidObra || (asset.estimatedValue - (linkedLiab ? linkedLiab.remainingBalance : 0));
+                              const realEstateMetrics = FinancialEngine.calculateRealEstateMetrics({
+                                estimatedValue: asset.estimatedValue,
+                                totalInvestedCapital: totalInvestedCapital,
+                                monthlyGrossRent: Number(meta.rentalIncome) || 0,
+                                monthlyOperationalExpenses: (Number(meta.condoFee) || 0) + (Number(meta.iptuFee) || 0),
+                                monthlyFinancingInstallment: linkedLiab ? Number(linkedLiab.installmentAmount) : 0,
+                                outstandingDebt: linkedLiab ? linkedLiab.remainingBalance : 0
+                              });
+
+                              return (
+                                <>
+                                  {meta.purpose === 'investimento' && (
+                                    <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-dashed border-slate-100 text-xs text-slate-500">
+                                      <div className="bg-slate-50 p-2 rounded-xl border border-slate-100/50">
+                                        <span className="block text-[10px] text-slate-400 font-black uppercase tracking-wider">Cap Rate Anual</span>
+                                        <span className="font-bold text-slate-800">{realEstateMetrics.capRateAnnual.toFixed(2)}%</span>
+                                      </div>
+                                      <div className="bg-slate-50/50 p-2 rounded-xl border border-slate-100/50">
+                                        <span className="block text-[10px] text-slate-400 font-black uppercase tracking-wider">Cash-on-Cash</span>
+                                        <span className="font-bold text-slate-800">{realEstateMetrics.cashOnCashReturn.toFixed(2)}%</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {linkedLiab && (
+                                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                                      <div className="flex justify-between text-xs font-black uppercase text-slate-400">
+                                        <span>Financiamento LTV / Equity:</span>
+                                        <span className="font-bold text-slate-800">{realEstateMetrics.ltv.toFixed(0)}% LTV / {realEstateMetrics.homeEquityPercent.toFixed(0)}% Equity</span>
+                                      </div>
+                                      <div 
+                                        className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden flex"
+                                        role="progressbar"
+                                        aria-valuenow={realEstateMetrics.homeEquityPercent}
+                                        aria-valuemin={0}
+                                        aria-valuemax={100}
+                                        aria-label="Proporção de LTV e Home Equity"
+                                      >
+                                        <div className="bg-red-400 h-full" style={{ width: `${realEstateMetrics.ltv}%` }} />
+                                        <div className="bg-emerald-500 h-full" style={{ width: `${realEstateMetrics.homeEquityPercent}%` }} />
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         )}
 
                         {/* Sustainability metrics property health */}
                         {propertyStage === 'PRONTO' && meta.purpose === 'investimento' && (
                           <div className="p-3 bg-slate-50 rounded-xl space-y-2 border border-slate-100">
-                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saúde Financeira do Ativo</p>
-                            <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden flex">
-                              <div
-                                className={`h-full ${netPropertyFlow >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                                style={{ 
-                                  width: `${Math.min(
-                                    cardPeriod === 'CONTRACT'
-                                      ? (isRented && totalMonthlyCost > 0 ? Math.round((rental / totalMonthlyCost) * 100) : 0)
-                                      : ((installment + displayCondoIptu) > 0 ? Math.round((rental / (installment + displayCondoIptu)) * 100) : (rental > 0 ? 100 : 0)), 
-                                    100
-                                  )}%` 
-                                }}
-                              />
-                            </div>
-                            <p className="text-[9px] font-semibold text-slate-500">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saúde Financeira do Ativo</p>
+                            {(() => {
+                              const progressVal = Math.min(
+                                cardPeriod === 'CONTRACT'
+                                  ? (isRented && totalMonthlyCost > 0 ? Math.round((rental / totalMonthlyCost) * 100) : 0)
+                                  : ((installment + displayCondoIptu) > 0 ? Math.round((rental / (installment + displayCondoIptu)) * 100) : (rental > 0 ? 100 : 0)), 
+                                100
+                              );
+                              return (
+                                <>
+                                  <div 
+                                    className="w-full bg-slate-200 h-2 rounded-full overflow-hidden flex"
+                                    role="progressbar"
+                                    aria-valuenow={progressVal}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
+                                    aria-label="Saúde financeira (Autossuficiência) do Ativo"
+                                  >
+                                    <div
+                                      className={`h-full ${netPropertyFlow >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                                      style={{ width: `${progressVal}%` }}
+                                    />
+                                  </div>
+                                </>
+                              );
+                            })()}
+                            <p className="text-xs font-semibold text-slate-500">
                               {netPropertyFlow >= 0 
                                 ? '🟢 Imóvel 100% autossuficiente (Se paga e sobra caixa)' 
                                 : '🔴 Imóvel deficitário (Consome capital de outras fontes)'}
@@ -4278,20 +4954,20 @@ const Assets: React.FC = () => {
                             setSelectedRealEstateForDetail(asset);
                             setShowRealEstateDetailModal(true);
                           }}
-                          className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
+                          className="flex items-center gap-1 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
                         >
                           <History size={12} /> Detalhes & Evolução
                         </button>
                         <div className="flex gap-2">
                           <button
                             onClick={(e) => { e.stopPropagation(); openEditAsset(asset); }}
-                            className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600"
+                            className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-brand-600"
                           >
                             Editar
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); handleArchiveAsset(asset); }}
-                            className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-amber-600"
+                            className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-amber-600"
                           >
                             Arquivar
                           </button>
@@ -4320,42 +4996,55 @@ const Assets: React.FC = () => {
                 const purchase = Number(meta.purchaseValue) || value;
                 const fipe = Number(meta.fipeValue) || value;
 
-                // Margem de ágio / deságio
+                // Dynamic Vehicle Icon
+                const VehicleIcon = meta.vehicleType === 'MOTORCYCLE' ? Bike : meta.vehicleType === 'TRUCK' ? Truck : Car;
+
+                // Margem de ágio / deságio (Apenas faz sentido para Investimento ou FLIP)
                 const diffVal = value - purchase;
                 const percentVal = purchase > 0 ? (diffVal / purchase) * 100 : 0;
                 
-                // FIPE analysis
-                const isDepreciatingFast = purchase > 0 && fipe < purchase * 0.8;
+                // FIPE analysis (Calcula com base na FIPE vs Aquisição ou Valor Estimado)
+                const isDepreciatingFast = purchase > 0 && fipe < purchase * 0.85;
+
+                // Depreciação em R$
+                const depreciacaoValor = purchase - fipe;
 
                 return (
-                  <div key={asset.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+                  <div key={asset.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
                     <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
                       <div className="flex justify-between items-start">
                         <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
-                          <Car size={22} />
+                          <VehicleIcon size={22} />
                         </div>
                         <div className="flex flex-wrap gap-1.5 justify-end">
                           {meta.isSold && (
-                            <span className="px-3 py-1 bg-rose-50 text-rose-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-rose-100">Vendido</span>
+                            <span className="px-3 py-1 bg-rose-50 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-rose-100">Vendido</span>
                           )}
                           {meta.purpose === 'investimento' ? (
-                            <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
+                            <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
                           ) : (
-                            <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-slate-100">Uso Pessoal</span>
+                            <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-100">Uso Pessoal</span>
                           )}
                         </div>
                       </div>
 
                       <div>
                         <h4 className="font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-tight italic break-words">{asset.name}</h4>
+                        {(meta.yearModel || meta.licensePlate) && (
+                           <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-medium">
+                             {meta.yearModel && <span>Ano: {meta.yearModel}</span>}
+                             {meta.yearModel && meta.licensePlate && <span>•</span>}
+                             {meta.licensePlate && <span className="uppercase">{meta.licensePlate}</span>}
+                           </div>
+                        )}
                         <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
-                          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{meta.isSold ? 'Valor de Venda:' : 'Avaliação Atual:'}</p>
+                          <p className="text-xs text-slate-400 font-black uppercase tracking-widest">{meta.isSold ? 'Valor de Venda:' : 'Avaliação Atual:'}</p>
                           <p className="text-sm font-black text-slate-900">{formatCurrency(meta.isSold ? Number(meta.soldValue) || value : value)}</p>
                         </div>
                       </div>
 
                       {/* Calculations specs */}
-                      <div className="space-y-2.5 text-[10px] sm:text-[11px] text-slate-500">
+                      <div className="space-y-2.5 text-xs sm:text-[11px] text-slate-500">
                         <div className="flex justify-between">
                           <span>Valor Aquisição:</span>
                           <span className="font-bold text-slate-800">{formatCurrency(purchase)}</span>
@@ -4364,41 +5053,58 @@ const Assets: React.FC = () => {
                           <span>Valor Tabela FIPE:</span>
                           <span className="font-bold text-slate-800">{formatCurrency(fipe)}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span>Margem Ágio/Deságio:</span>
-                          <span className={`font-bold ${diffVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                            {diffVal >= 0 ? '+' : ''}{formatCurrency(diffVal)} ({percentVal.toFixed(1)}%)
-                          </span>
-                        </div>
+                        
+                        {meta.purpose === 'investimento' && (
+                          <div className="flex justify-between">
+                            <span>Margem Ágio/Deságio:</span>
+                            <span className={`font-bold ${diffVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                              {diffVal >= 0 ? '+' : ''}{formatCurrency(diffVal)} ({percentVal.toFixed(1)}%)
+                            </span>
+                          </div>
+                        )}
+                        
+                        {meta.purpose === 'uso' && (
+                           <div className="flex justify-between border-t border-slate-100 pt-2 text-slate-600">
+                             <span>Depreciação Estimada:</span>
+                             <span className={`font-bold ${depreciacaoValor > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                               {depreciacaoValor > 0 ? `-${formatCurrency(depreciacaoValor)}` : `+${formatCurrency(Math.abs(depreciacaoValor))}`}
+                             </span>
+                           </div>
+                        )}
                       </div>
 
                       {/* Yield alerts based on FIPE */}
                       {meta.purpose === 'uso' && (
-                        <div className="p-3 bg-slate-50 rounded-xl space-y-1 border border-slate-100 text-[10px]">
+                        <div className="p-3 bg-slate-50 rounded-xl space-y-1 border border-slate-100 text-xs">
                           {isDepreciatingFast ? (
-                            <p className="text-rose-500 font-semibold flex items-center gap-1"><AlertTriangle size={10} /> Depreciação rápida observada.</p>
+                            <p className="text-rose-500 font-semibold flex items-center gap-1"><AlertTriangle size={10} /> Alta desvalorização frente à FIPE.</p>
+                          ) : depreciacaoValor <= 0 ? (
+                            <p className="text-emerald-600 font-semibold flex items-center gap-1"><Check size={10} /> Valorizado acima da FIPE.</p>
                           ) : (
-                            <p className="text-emerald-600 font-semibold">Valor estável ou valorizado.</p>
+                            <p className="text-slate-500 font-semibold">Desvalorização natural observada.</p>
                           )}
-                          <p className="text-slate-400 font-medium leading-tight">Calculado comparando FIPE atual contra preço de aquisição registrado.</p>
+                          <p className="text-[10px] text-slate-400 font-medium leading-tight mt-1">Comparativo entre FIPE atual e preço de aquisição.</p>
                         </div>
                       )}
                     </div>
 
                     {/* Actions bar */}
-                    <div className="px-6 sm:px-8 py-4 sm:py-5 bg-slate-50 border-t border-slate-100 flex flex-wrap justify-between items-center gap-2 sm:gap-4">
+                    <div className="px-6 sm:px-8 py-4 sm:py-5 bg-slate-50 border-t border-slate-100 flex flex-wrap justify-between items-center gap-3">
                       <button
                         onClick={() => {
                           setSelectedAssetForExtrato(asset);
                           setShowExtratoModal(true);
                         }}
-                        className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
+                        className="flex items-center gap-1 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
                       >
                         <History size={12} /> Extrato & Ajustes
                       </button>
-                      <div className="flex gap-2">
-                        <button onClick={() => openEditAsset(asset)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Editar</button>
-                        <button onClick={() => handleArchiveAsset(asset)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-amber-600">Arquivar</button>
+                      <div className="flex gap-3">
+                        <button onClick={() => openEditAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Editar</button>
+                        <button onClick={() => handleArchiveAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-amber-600">Arquivar</button>
+                        {!meta.isSold && (
+                          <button onClick={() => handleArchiveAssetFromExtrato(asset)} className="text-xs font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-2 py-1 rounded">Vender</button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -4412,7 +5118,7 @@ const Assets: React.FC = () => {
                   setFormData(prev => ({ ...prev, category: 'VEHICLE', purpose: 'uso' }));
                   setShowModal(true);
                 }}
-                className="rounded-[32px] border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center gap-4 text-slate-400 hover:border-brand-500 hover:text-brand-600 hover:bg-slate-50 transition-all min-h-[300px]"
+                className="rounded-[32px] border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center gap-4 text-slate-400 hover:border-brand-500 hover:text-brand-600 hover:bg-slate-50 transition-all h-full"
               >
                 <Plus size={36} />
                 <span className="font-bold text-slate-600">Novo Veículo</span>
@@ -4458,7 +5164,7 @@ const Assets: React.FC = () => {
                 };
 
                 return (
-                  <div key={asset.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+                  <div key={asset.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
                     <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
                       <div className="flex justify-between items-start">
                         <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
@@ -4466,12 +5172,12 @@ const Assets: React.FC = () => {
                         </div>
                         <div className="flex flex-wrap gap-1.5 justify-end">
                           {meta.isSold && (
-                            <span className="px-3 py-1 bg-rose-50 text-rose-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-rose-100">Vendido</span>
+                            <span className="px-3 py-1 bg-rose-50 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-rose-100">Vendido</span>
                           )}
                           {meta.purpose === 'investimento' ? (
-                            <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
+                            <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
                           ) : (
-                            <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[8px] font-black uppercase tracking-widest border border-slate-100">Uso Pessoal</span>
+                            <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-100">Uso Pessoal</span>
                           )}
                         </div>
                       </div>
@@ -4479,13 +5185,13 @@ const Assets: React.FC = () => {
                       <div>
                         <h4 className="font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-tight italic break-words">{asset.name}</h4>
                         <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
-                          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{meta.isSold ? 'Valor de Venda:' : 'Avaliação Atual:'}</p>
+                          <p className="text-xs text-slate-400 font-black uppercase tracking-widest">{meta.isSold ? 'Valor de Venda:' : 'Avaliação Atual:'}</p>
                           <p className="text-sm font-black text-slate-900">{formatCurrency(meta.isSold ? Number(meta.soldValue) || value : value)}</p>
                         </div>
                       </div>
 
                       {/* Calculations specs */}
-                      <div className="space-y-2.5 text-[10px] sm:text-[11px] text-slate-500">
+                      <div className="space-y-2.5 text-xs sm:text-[11px] text-slate-500">
                         <div className="flex justify-between">
                           <span>Valor Aquisição:</span>
                           <span className="font-bold text-slate-800">{formatCurrency(purchase)}</span>
@@ -4512,13 +5218,13 @@ const Assets: React.FC = () => {
                           setSelectedAssetForExtrato(asset);
                           setShowExtratoModal(true);
                         }}
-                        className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
+                        className="flex items-center gap-1 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
                       >
                         <History size={12} /> Extrato & Ajustes
                       </button>
                       <div className="flex gap-2">
-                        <button onClick={() => openEditAsset(asset)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Editar</button>
-                        <button onClick={() => handleArchiveAsset(asset)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-amber-600">Arquivar</button>
+                        <button onClick={() => openEditAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Editar</button>
+                        <button onClick={() => handleArchiveAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-amber-600">Arquivar</button>
                       </div>
                     </div>
                   </div>
@@ -4532,7 +5238,7 @@ const Assets: React.FC = () => {
                   setFormData(prev => ({ ...prev, category: 'OTHER', purpose: 'uso', isLoan: false }));
                   setShowModal(true);
                 }}
-                className="rounded-[32px] border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center gap-4 text-slate-400 hover:border-brand-500 hover:text-brand-600 hover:bg-slate-50 transition-all min-h-[300px]"
+                className="rounded-[32px] border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center gap-4 text-slate-400 hover:border-brand-500 hover:text-brand-600 hover:bg-slate-50 transition-all h-full"
               >
                 <Plus size={36} />
                 <span className="font-bold text-slate-600">Novo Ativo Físico</span>
@@ -4541,8 +5247,8 @@ const Assets: React.FC = () => {
           </div>
         )}
 
-        {/* INVESTMENTS & LOANS VIEW */}
-        {activeView === 'investments' && (
+        {/* LOANS VIEW */}
+        {activeView === 'loans' && (
           <div className="space-y-8 animate-in fade-in duration-500">
             
             {/* LENT LOANS (EMPRÉSTIMOS CONCEDIDOS) SECTION */}
@@ -4559,7 +5265,7 @@ const Assets: React.FC = () => {
                     setFormData(prev => ({ ...prev, isLoan: true, category: 'OTHER' }));
                     setShowModal(true);
                   }}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm hover:bg-slate-800 transition-colors"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-sm hover:bg-slate-800 transition-colors"
                 >
                   <Plus size={12} /> Novo Empréstimo
                 </button>
@@ -4578,26 +5284,33 @@ const Assets: React.FC = () => {
                   const progressPercent = principal > 0 ? Math.round((returned / principal) * 100) : 0;
                   
                   return (
-                    <div key={loan.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm p-8 space-y-6 flex flex-col justify-between">
+                    <div key={loan.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 space-y-6 flex flex-col justify-between">
                       <div className="space-y-4">
                         <div className="flex justify-between items-start">
                           <div className="w-10 h-10 bg-slate-100 text-slate-900 rounded-xl flex items-center justify-center">
                             <ArrowRightLeft size={20} />
                           </div>
-                          <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[8px] font-black uppercase tracking-widest border border-emerald-100">Ativo Corrente</span>
+                          <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Ativo Corrente</span>
                         </div>
                         <div>
                           <h4 className="font-bold text-slate-900 text-lg uppercase tracking-tight">{loan.name}</h4>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Devedor: {meta.loanDebtor || 'Não Informado'}</p>
+                          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Devedor: {meta.loanDebtor || 'Não Informado'}</p>
                         </div>
 
                         {/* Progress and metrics */}
                         <div className="space-y-2 pt-2">
-                          <div className="flex justify-between text-[9px] font-black uppercase text-slate-400">
+                          <div className="flex justify-between text-xs font-black uppercase text-slate-400">
                             <span>Retorno do Principal</span>
                             <span>{progressPercent}% ({formatCurrency(returned)})</span>
                           </div>
-                          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                          <div 
+                            className="w-full bg-slate-100 h-2 rounded-full overflow-hidden"
+                            role="progressbar"
+                            aria-valuenow={Math.min(progressPercent, 100)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={`Retorno do principal do empréstimo ${loan.name}`}
+                          >
                             <div className="bg-emerald-500 h-full transition-all" style={{ width: `${Math.min(progressPercent, 100)}%` }} />
                           </div>
                         </div>
@@ -4627,13 +5340,13 @@ const Assets: React.FC = () => {
                             setSelectedAssetForExtrato(loan);
                             setShowExtratoModal(true);
                           }}
-                          className="text-[9px] font-black uppercase tracking-widest text-brand-600 hover:underline"
+                          className="text-xs font-black uppercase tracking-widest text-brand-600 hover:underline"
                         >
                           Lançar Recebimentos
                         </button>
                         <div className="flex gap-2">
-                          <button onClick={() => openEditAsset(loan)} className="text-[9px] font-bold text-slate-400 hover:text-brand-600 uppercase tracking-widest">Editar</button>
-                          <button onClick={() => handleDeleteAsset(loan)} className="text-[9px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest">Remover</button>
+                          <button onClick={() => openEditAsset(loan)} className="text-xs font-bold text-slate-400 hover:text-brand-600 uppercase tracking-widest">Editar</button>
+                          <button onClick={() => handleDeleteAsset(loan)} className="text-xs font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest">Remover</button>
                         </div>
                       </div>
                     </div>
@@ -4643,13 +5356,18 @@ const Assets: React.FC = () => {
                 {activePhysicalAssets.filter(p => p.metadata?.isLoan).length === 0 && (
                   <div className="col-span-full py-12 border-2 border-dashed border-slate-100 rounded-[32px] flex flex-col items-center justify-center text-slate-300">
                     <ArrowRightLeft size={36} />
-                    <p className="mt-4 font-black uppercase tracking-widest text-[10px]">Nenhum empréstimo cadastrado</p>
-                    <p className="text-[9px] text-slate-400 mt-2 font-medium italic">Registre os valores emprestados para calcular os retornos de juros.</p>
+                    <p className="mt-4 font-black uppercase tracking-widest text-xs">Nenhum empréstimo cadastrado</p>
+                    <p className="text-xs text-slate-400 mt-2 font-medium italic">Registre os valores emprestados para calcular os retornos de juros.</p>
                   </div>
                 )}
               </div>
             </div>
+          </div>
+        )}
 
+        {/* INVESTMENTS VIEW */}
+        {activeView === 'investments' && (
+          <div className="space-y-8 animate-in fade-in duration-500">
             {/* BANK INVESTMENTS (BROKERS) SECTION */}
             <div className="space-y-6 pt-6">
               <div className="flex justify-between items-center">
@@ -4664,18 +5382,18 @@ const Assets: React.FC = () => {
                     setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento' }));
                     setShowModal(true);
                   }}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm hover:bg-indigo-700 transition-colors"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-sm hover:bg-indigo-700 transition-colors"
                 >
                   <Plus size={12} /> Novo Investimento
                 </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {brokers.map(broker => {
-                  const brokerInvestments = activePhysicalAssets.filter(
+                {dynamicBrokers.map(broker => {
+                  const brokerInvestments = enrichedPhysicalAssets.filter(
                     p => p.category === 'INVESTMENT' && p.metadata?.brokerAccountId === broker.id && p.metadata?.status !== 'RESGATADO'
                   );
-                  const totalInvested = brokerInvestments.reduce((sum, inv) => sum + Number(inv.estimatedValue || 0), 0);
+                  const totalInvested = brokerInvestments.reduce((sum, inv) => sum + Number(inv.netValue || 0), 0);
                   const meta = broker.metadata || {};
 
                   return (
@@ -4689,20 +5407,20 @@ const Assets: React.FC = () => {
                             </div>
                             <div>
                               <h4 className="font-black text-slate-900 text-base uppercase tracking-tight">{broker.name}</h4>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{brokerInvestments.length} ativo{brokerInvestments.length !== 1 ? 's' : ''} vinculado{brokerInvestments.length !== 1 ? 's' : ''}</p>
+                              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{brokerInvestments.length} ativo{brokerInvestments.length !== 1 ? 's' : ''} vinculado{brokerInvestments.length !== 1 ? 's' : ''}</p>
                             </div>
                           </div>
                           <div className="text-right">
                             <p className="text-xs font-black text-emerald-600">{formatCurrency(broker.balance)}</p>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Saldo Total</p>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Saldo Total</p>
                           </div>
                         </div>
 
                         {totalInvested > 0 && (
                           <div className="flex items-center gap-2 p-3 bg-indigo-50 rounded-xl border border-indigo-100">
                             <Check size={13} className="text-indigo-500 shrink-0" />
-                            <span className="text-[9px] font-semibold text-indigo-700">
-                              {formatCurrency(totalInvested)} em ativos financeiros vinculados
+                            <span className="text-xs font-semibold text-indigo-700">
+                              {formatCurrency(totalInvested)} em ativos líquidos (pós-impostos)
                             </span>
                           </div>
                         )}
@@ -4720,35 +5438,92 @@ const Assets: React.FC = () => {
                               'CRIPTO': 'Cripto', 'PREVIDENCIA': 'Previdência', 'OUTROS': 'Outros'
                             };
                             const isAcumulado = invMeta.payoutType === 'ACUMULADO';
+                            const isExpanded = !!expandedAssetIR[inv.id];
+                            const purchase = Number(invMeta.purchaseValue) || Number(invMeta.initialInvestmentAmount) || Number(inv.estimatedValue || 0);
+                            const profit = Math.max(0, Number(inv.estimatedValue || 0) - purchase);
+                            const isExempt = !!invMeta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'FIIS'].includes(invMeta.investmentType);
+                            const taxAmt = inv.taxAmount || 0;
+                            const taxRatePercent = (inv.taxRate || 0) * 100;
+                            const days = inv.daysElapsed || 0;
+                            const netVal = inv.netValue || Number(inv.estimatedValue || 0);
+
                             return (
-                              <div key={inv.id} className="px-8 py-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors group">
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <div className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
-                                    <p className="text-[9px] text-slate-400 font-medium">
-                                      {investTypeLabel[invMeta.investmentType] || invMeta.investmentType || 'Investimento'}
-                                      {invMeta.yieldRate ? ` · ${invMeta.yieldRate}` : ''}
-                                      {' · '}
-                                      <span className={isAcumulado ? 'text-indigo-500' : 'text-emerald-500'}>
-                                        {isAcumulado ? '🔒 Acumulado' : '💰 Mensal'}
-                                      </span>
-                                    </p>
+                              <div key={inv.id} className="px-8 py-4 flex flex-col hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => toggleExpandIR(inv.id)}>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
+                                    <div className="min-w-0 text-left">
+                                      <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
+                                      <p className="text-xs text-slate-400 font-medium">
+                                        {investTypeLabel[invMeta.investmentType] || invMeta.investmentType || 'Investimento'}
+                                        {invMeta.yieldRate ? ` · ${invMeta.yieldRate}` : ''}
+                                        {' · '}
+                                        <span className={isAcumulado ? 'text-indigo-500' : 'text-emerald-500'}>
+                                          {isAcumulado ? '🔒 Acumulado' : '💰 Mensal'}
+                                        </span>
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-3 shrink-0">
+                                    <div className="text-right">
+                                      <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
+                                      {isExpanded ? (
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Ocultar IR <ChevronUp size={8} /></span>
+                                      ) : (
+                                        <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Detalhar IR <ChevronDown size={8} /></span>
+                                      )}
+                                    </div>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        onClick={() => openEditAsset(inv)}
+                                        className="text-[10px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest"
+                                      >Editar</button>
+                                      <button
+                                        onClick={() => handleDeleteAsset(inv)}
+                                        className="text-[10px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest"
+                                      >Excluir</button>
+                                    </div>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-3 shrink-0">
-                                  <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
-                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                      onClick={() => openEditAsset(inv)}
-                                      className="text-[8px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest"
-                                    >Editar</button>
-                                    <button
-                                      onClick={() => handleDeleteAsset(inv)}
-                                      className="text-[8px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest"
-                                    >Excluir</button>
+
+                                {isExpanded && (
+                                  <div className="mt-3 pl-5 pr-2 py-3 bg-slate-50 rounded-2xl space-y-1.5 text-xs text-slate-500 font-semibold border border-slate-100/50 text-left animate-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex justify-between">
+                                      <span>Valor Bruto (Atual):</span>
+                                      <span className="font-bold text-slate-700">{formatCurrency(Number(inv.estimatedValue || 0))}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>Valor Aplicado (Custo):</span>
+                                      <span className="font-bold text-slate-700">{formatCurrency(purchase)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>Rendimento Bruto:</span>
+                                      <span className="font-bold text-emerald-600">+{formatCurrency(profit)}</span>
+                                    </div>
+                                    {!isExempt && profit > 0 && (
+                                      <>
+                                        <div className="flex justify-between">
+                                          <span>Prazo de Custódia:</span>
+                                          <span className="font-bold text-slate-700">{days} dias (Alíquota de {taxRatePercent}%)</span>
+                                        </div>
+                                        <div className="flex justify-between text-rose-600 font-bold">
+                                          <span>Imposto de Renda Estimado:</span>
+                                          <span className="font-black">- {formatCurrency(taxAmt)} <span className="text-[10px] font-normal text-slate-400">(20% a 22.5% sobre lucro)</span></span>
+                                        </div>
+                                      </>
+                                    )}
+                                    {isExempt && (
+                                      <div className="flex justify-between text-emerald-600 font-bold">
+                                        <span>Imposto de Renda:</span>
+                                        <span className="font-black">Isento de IR</span>
+                                      </div>
+                                    )}
+                                    <div className="flex justify-between border-t border-slate-200/60 pt-1.5 mt-1 text-slate-700 font-bold">
+                                      <span>Valor Líquido de Resgate:</span>
+                                      <span className="text-emerald-600 font-black">{formatCurrency(netVal)}</span>
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </div>
                             );
                           })}
@@ -4764,7 +5539,7 @@ const Assets: React.FC = () => {
                             setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento', brokerAccountId: broker.id }));
                             setShowModal(true);
                           }}
-                          className="text-[9px] font-bold text-indigo-500 hover:text-indigo-700 uppercase tracking-widest flex items-center gap-1"
+                          className="text-xs font-bold text-indigo-500 hover:text-indigo-700 uppercase tracking-widest flex items-center gap-1"
                         >
                           <Plus size={10} /> Adicionar Ativo a {broker.name}
                         </button>
@@ -4775,7 +5550,7 @@ const Assets: React.FC = () => {
 
                 {/* Card for investments without a broker */}
                 {(() => {
-                  const unboundInvestments = activePhysicalAssets.filter(
+                  const unboundInvestments = enrichedPhysicalAssets.filter(
                     p => p.category === 'INVESTMENT' && !p.metadata?.brokerAccountId && p.metadata?.status !== 'RESGATADO'
                   );
                   if (unboundInvestments.length === 0 && brokers.length > 0) return null;
@@ -4789,31 +5564,105 @@ const Assets: React.FC = () => {
                             </div>
                             <div>
                               <h4 className="font-black text-slate-600 text-base uppercase tracking-tight">Sem Corretora</h4>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{unboundInvestments.length} ativo{unboundInvestments.length !== 1 ? 's' : ''}</p>
+                              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{unboundInvestments.length} ativo{unboundInvestments.length !== 1 ? 's' : ''}</p>
                             </div>
                           </div>
                         </div>
                       </div>
                       {unboundInvestments.length > 0 && (
                         <div className="border-t border-slate-50 divide-y divide-slate-50">
-                          {unboundInvestments.map(inv => (
-                            <div key={inv.id} className="px-8 py-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors group">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />
-                                <div className="min-w-0">
-                                  <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
-                                  <p className="text-[9px] text-slate-400 font-medium">{inv.metadata?.investmentType || 'Investimento'}</p>
+                          {unboundInvestments.map(inv => {
+                            const invMeta = inv.metadata || {};
+                            const investTypeLabel: Record<string, string> = {
+                              'CDB': 'CDB', 'LCI_LCA': 'LCI/LCA', 'TESOURO': 'Tesouro',
+                              'DEBENTURES': 'Debêntures', 'CRI_CRA': 'CRI/CRA',
+                              'ACOES': 'Ações', 'FIIS': 'FIIs', 'FUNDOS': 'Fundos',
+                              'CRIPTO': 'Cripto', 'PREVIDENCIA': 'Previdência', 'OUTROS': 'Outros'
+                            };
+                            const isAcumulado = invMeta.payoutType === 'ACUMULADO';
+                            const isExpanded = !!expandedAssetIR[inv.id];
+                            const purchase = Number(invMeta.purchaseValue) || Number(invMeta.initialInvestmentAmount) || Number(inv.estimatedValue || 0);
+                            const profit = Math.max(0, Number(inv.estimatedValue || 0) - purchase);
+                            const isExempt = !!invMeta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'FIIS'].includes(invMeta.investmentType);
+                            const taxAmt = inv.taxAmount || 0;
+                            const taxRatePercent = (inv.taxRate || 0) * 100;
+                            const days = inv.daysElapsed || 0;
+                            const netVal = inv.netValue || Number(inv.estimatedValue || 0);
+
+                            return (
+                              <div key={inv.id} className="px-8 py-4 flex flex-col hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => toggleExpandIR(inv.id)}>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />
+                                    <div className="min-w-0 text-left">
+                                      <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
+                                      <p className="text-xs text-slate-400 font-medium">
+                                        {investTypeLabel[invMeta.investmentType] || invMeta.investmentType || 'Investimento'}
+                                        {invMeta.yieldRate ? ` · ${invMeta.yieldRate}` : ''}
+                                        {' · '}
+                                        <span className={isAcumulado ? 'text-indigo-500' : 'text-emerald-500'}>
+                                          {isAcumulado ? '🔒 Acumulado' : '💰 Mensal'}
+                                        </span>
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-3 shrink-0">
+                                    <div className="text-right">
+                                      <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
+                                      {isExpanded ? (
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Ocultar IR <ChevronUp size={8} /></span>
+                                      ) : (
+                                        <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Detalhar IR <ChevronDown size={8} /></span>
+                                      )}
+                                    </div>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                                      <button onClick={() => openEditAsset(inv)} className="text-[10px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest">Editar</button>
+                                      <button onClick={() => handleDeleteAsset(inv)} className="text-[10px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest">Excluir</button>
+                                    </div>
+                                  </div>
                                 </div>
+
+                                {isExpanded && (
+                                  <div className="mt-3 pl-5 pr-2 py-3 bg-slate-50 rounded-2xl space-y-1.5 text-xs text-slate-500 font-semibold border border-slate-100/50 text-left animate-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex justify-between">
+                                      <span>Valor Bruto (Atual):</span>
+                                      <span className="font-bold text-slate-700">{formatCurrency(Number(inv.estimatedValue || 0))}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>Valor Aplicado (Custo):</span>
+                                      <span className="font-bold text-slate-700">{formatCurrency(purchase)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>Rendimento Bruto:</span>
+                                      <span className="font-bold text-emerald-600">+{formatCurrency(profit)}</span>
+                                    </div>
+                                    {!isExempt && profit > 0 && (
+                                      <>
+                                        <div className="flex justify-between">
+                                          <span>Prazo de Custódia:</span>
+                                          <span className="font-bold text-slate-700">{days} dias (Alíquota de {taxRatePercent}%)</span>
+                                        </div>
+                                        <div className="flex justify-between text-rose-600 font-bold">
+                                          <span>Imposto de Renda Estimado:</span>
+                                          <span className="font-black">- {formatCurrency(taxAmt)} <span className="text-[10px] font-normal text-slate-400">(20% a 22.5% sobre lucro)</span></span>
+                                        </div>
+                                      </>
+                                    )}
+                                    {isExempt && (
+                                      <div className="flex justify-between text-emerald-600 font-bold">
+                                        <span>Imposto de Renda:</span>
+                                        <span className="font-black">Isento de IR</span>
+                                      </div>
+                                    )}
+                                    <div className="flex justify-between border-t border-slate-200/60 pt-1.5 mt-1 text-slate-700 font-bold">
+                                      <span>Valor Líquido de Resgate:</span>
+                                      <span className="text-emerald-600 font-black">{formatCurrency(netVal)}</span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex items-center gap-3 shrink-0">
-                                <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button onClick={() => openEditAsset(inv)} className="text-[8px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest">Editar</button>
-                                  <button onClick={() => handleDeleteAsset(inv)} className="text-[8px] font-bold text-slate-400 hover:text-rose-600 uppercase tracking-widest">Excluir</button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                       <div className="px-8 py-4 border-t border-slate-50">
@@ -4824,7 +5673,7 @@ const Assets: React.FC = () => {
                             setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento', brokerAccountId: '' }));
                             setShowModal(true);
                           }}
-                          className="text-[9px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest flex items-center gap-1"
+                          className="text-xs font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-widest flex items-center gap-1"
                         >
                           <Plus size={10} /> Adicionar Investimento Avulso
                         </button>
@@ -4846,52 +5695,128 @@ const Assets: React.FC = () => {
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {activeLiabilities.map(liability => (
-                <div key={liability.id} className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
-                  <div className="p-8 space-y-6">
-                    <div className="flex justify-between items-start">
-                      <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-100/50">
-                        <Landmark size={22} />
+              {activeLiabilities.map(liability => {
+                const paidAmount = Math.max(0, liability.totalAmount - liability.remainingBalance);
+                const amortizationPercent = liability.totalAmount > 0 
+                  ? Math.min(100, Math.max(0, Math.round((paidAmount / liability.totalAmount) * 100))) 
+                  : 0;
+                const linkedAsset = liability.linkedAssetId 
+                  ? physicalAssets.find(p => p.id === liability.linkedAssetId) 
+                  : null;
+                const ltvPercent = (linkedAsset && linkedAsset.estimatedValue > 0) 
+                  ? Math.round((liability.remainingBalance / linkedAsset.estimatedValue) * 100) 
+                  : null;
+
+                return (
+                  <div key={liability.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+                    <div className="p-8 space-y-6">
+                      <div className="flex justify-between items-start">
+                        <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-100/50">
+                          <Landmark size={22} />
+                        </div>
+                        <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-100">Dívida Ativa</span>
                       </div>
-                      <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[8px] font-black uppercase tracking-widest border border-red-100">Dívida Ativa</span>
+
+                      <div>
+                        <h4 className="font-black text-slate-900 text-lg tracking-tight leading-tight italic uppercase">{liability.name}</h4>
+                        <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
+                          <p className="text-xs text-slate-400 font-black uppercase tracking-widest">Saldo Devedor Atual:</p>
+                          <p className="text-sm font-black text-red-600">{formatCurrency(liability.remainingBalance)}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 text-[11px] text-slate-500">
+                        {liability.installmentAmount ? (
+                          <div className="flex justify-between">
+                            <span>Prestação Mensal:</span>
+                            <span className="font-bold text-slate-800">
+                              {formatCurrency(liability.installmentAmount)}
+                              {liability.installmentsRemaining && ` (${liability.installmentsRemaining}x restante)`}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between">
+                            <span>Prestação Mensal:</span>
+                            <span className="font-bold text-slate-400 italic">Não definida</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-bold">
+                          <span>Original Total:</span>
+                          <span className="text-slate-700">{formatCurrency(liability.totalAmount)}</span>
+                        </div>
+
+                        {/* Amortization Progress Bar */}
+                        <div className="space-y-1.5 pt-3 border-t border-slate-50">
+                          <div className="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+                            <span>Progresso da Dívida:</span>
+                            <span className="text-red-500 font-extrabold">{amortizationPercent}% quitado</span>
+                          </div>
+                          <div 
+                            className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden"
+                            role="progressbar"
+                            aria-valuenow={amortizationPercent}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={`Progresso de amortização da dívida ${liability.name}`}
+                          >
+                            <div 
+                              className="bg-red-500 h-full rounded-full transition-all duration-500" 
+                              style={{ width: `${amortizationPercent}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-xs text-slate-400 font-medium italic">
+                            <span>Pago: {formatCurrency(paidAmount)}</span>
+                            <span>Total: {formatCurrency(liability.totalAmount)}</span>
+                          </div>
+                        </div>
+
+                        {/* Linked Asset & LTV Indicator */}
+                        {linkedAsset && (
+                          <div className="bg-slate-50 rounded-2xl p-3.5 space-y-2 border border-slate-100">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-slate-400 font-bold uppercase tracking-wider">Bem Vinculado:</span>
+                              <span className="font-extrabold text-slate-700 truncate max-w-[120px]" title={linkedAsset.name}>
+                                {linkedAsset.name}
+                              </span>
+                            </div>
+                            {ltvPercent !== null && (
+                              <div className="flex justify-between items-center text-xs border-t border-slate-200/60 pt-1.5">
+                                <span className="text-slate-400 font-bold uppercase tracking-wider">Índice LTV:</span>
+                                <span className={`font-black px-1.5 py-0.5 rounded-md text-xs ${
+                                  ltvPercent > 80 
+                                    ? 'bg-red-50 text-red-600 border border-red-100' 
+                                    : ltvPercent > 50 
+                                      ? 'bg-amber-50 text-amber-600 border border-amber-100' 
+                                      : 'bg-green-50 text-green-600 border border-green-100'
+                                }`}>
+                                  {ltvPercent}% (Dívida/Bem)
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <div>
-                      <h4 className="font-black text-slate-900 text-lg tracking-tight leading-tight italic uppercase">{liability.name}</h4>
-                      <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
-                        <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Saldo Devedor Atual:</p>
-                        <p className="text-sm font-black text-red-600">{formatCurrency(liability.remainingBalance)}</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-[11px] text-slate-500">
-                      {liability.installmentAmount ? (
-                        <div className="flex justify-between">
-                          <span>Prestação Mensal:</span>
-                          <span className="font-bold text-slate-800">
-                            {formatCurrency(liability.installmentAmount)}
-                            {liability.installmentsRemaining && ` (${liability.installmentsRemaining}x restante)`}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex justify-between">
-                          <span>Prestação Mensal:</span>
-                          <span className="font-bold text-slate-400 italic">Não definida</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-bold">
-                        <span>Original Total:</span>
-                        <span className="text-slate-700">{formatCurrency(liability.totalAmount)}</span>
-                      </div>
+                    <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center gap-3">
+                      <button 
+                        onClick={() => openEditLiability(liability)} 
+                        className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 hover:text-brand-600 transition-colors"
+                      >
+                        <Pencil size={12} />
+                        Ajustar
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteLiability(liability.id)} 
+                        className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 hover:text-rose-600 transition-colors"
+                      >
+                        <Trash2 size={12} />
+                        Excluir
+                      </button>
                     </div>
                   </div>
-
-                  <div className="px-8 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-                    <button onClick={() => openEditLiability(liability)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Ajustar Parcelas</button>
-                    <button onClick={() => handleDeleteLiability(liability.id)} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-600">Excluir Passivo</button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               
               <button
                 onClick={() => {
@@ -4938,10 +5863,10 @@ const Assets: React.FC = () => {
 
             <form onSubmit={handleSaveAsset} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Identificação do Bem</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Identificação do Bem</label>
                 <input
                   required
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
                   placeholder="Ex: Jeep Compass"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -4950,7 +5875,7 @@ const Assets: React.FC = () => {
 
               {formData.category === 'OTHER' && (
                 <div className="space-y-2 pt-1 animate-in fade-in">
-                  <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Sugestões de Nome (Clique para selecionar, 'X' para remover)</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Sugestões de Nome (Clique para selecionar, 'X' para remover)</label>
                   <div className="flex flex-wrap gap-2 items-center">
                     {suggestedNames.map((sugName, index) => (
                       <span
@@ -4995,9 +5920,9 @@ const Assets: React.FC = () => {
               {(!editingAsset || editingAsset.category !== 'REAL_ESTATE') && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Categoria</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Categoria</label>
                     <select
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                       value={formData.category}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
                     >
@@ -5008,12 +5933,12 @@ const Assets: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Estimado Atual (R$)</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Estimado Atual (R$)</label>
                     <input
                       required
                       type="number"
                       step="0.01"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                       placeholder="0.00"
                       value={formData.estimatedValue}
                       onChange={(e) => setFormData({ ...formData, estimatedValue: e.target.value })}
@@ -5026,20 +5951,20 @@ const Assets: React.FC = () => {
               {(!editingAsset || editingAsset.category !== 'REAL_ESTATE') && (
                 <div className="grid grid-cols-2 gap-4 border-t border-slate-50 pt-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Aquisição</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Aquisição</label>
                     <input
                       type="date"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                       value={formData.acquisitionDate}
                       onChange={(e) => setFormData({ ...formData, acquisitionDate: e.target.value })}
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Aquisição (R$)</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Aquisição (R$)</label>
                     <input
                       type="number"
                       step="0.01"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                       placeholder="0.00"
                       value={formData.purchaseValue}
                       onChange={(e) => setFormData({ ...formData, purchaseValue: e.target.value })}
@@ -5075,7 +6000,7 @@ const Assets: React.FC = () => {
                   <div className="space-y-4 animate-in slide-in-from-top-2">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Veículo</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Veículo</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.vehicleType}
@@ -5088,7 +6013,7 @@ const Assets: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Custo de Transferência (R$)</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Custo de Transferência (R$)</label>
                         <input
                           type="number"
                           step="0.01"
@@ -5099,12 +6024,59 @@ const Assets: React.FC = () => {
                         />
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Placa</label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-brand-500/20"
+                          value={formData.licensePlate || ''}
+                          onChange={(e) => setFormData({ ...formData, licensePlate: e.target.value })}
+                          placeholder="ABC1D23"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Renavam</label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                          value={formData.renavam || ''}
+                          onChange={(e) => setFormData({ ...formData, renavam: e.target.value })}
+                          placeholder="00000000000"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Ano / Modelo</label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                          value={formData.yearModel || ''}
+                          onChange={(e) => setFormData({ ...formData, yearModel: e.target.value })}
+                          placeholder="2023/2024"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Quilometragem</label>
+                        <input
+                          type="number"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                          value={formData.mileage || ''}
+                          onChange={(e) => setFormData({ ...formData, mileage: e.target.value })}
+                          placeholder="Ex: 50000"
+                        />
+                      </div>
+                    </div>
+
                     <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Tabela FIPE Atual (R$)</label>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Tabela FIPE Atual (R$)</label>
                       <input
                         type="number"
                         step="0.01"
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-900 outline-none"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                         placeholder="FIPE Atual"
                         value={formData.fipeValue}
                         onChange={(e) => setFormData({ ...formData, fipeValue: e.target.value })}
@@ -5115,13 +6087,13 @@ const Assets: React.FC = () => {
 
                 {formData.category === 'VEHICLE' && formData.purpose === 'uso' && (
                   <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Despesas Periódicas Estimadas</p>
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest">Despesas Periódicas Estimadas</p>
                     <div className="grid grid-cols-2 gap-4">
                       {/* IPVA Group */}
                       <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 space-y-3">
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado IPVA (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado IPVA (R$)</label>
                             <input
                               type="number"
                               step="0.01"
@@ -5132,7 +6104,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento IPVA</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento IPVA</label>
                             <select
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                               value={formData.ipvaPaymentMethod}
@@ -5145,7 +6117,7 @@ const Assets: React.FC = () => {
                         </div>
                         {formData.ipvaPaymentMethod === 'PARCELADO' && (
                           <div className="animate-in slide-in-from-top-2">
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas IPVA</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas IPVA</label>
                             <input
                               type="number"
                               min="1"
@@ -5163,7 +6135,7 @@ const Assets: React.FC = () => {
                       <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 space-y-3">
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado Seguro (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Estimado Seguro (R$)</label>
                             <input
                               type="number"
                               step="0.01"
@@ -5174,7 +6146,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento Seguro</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento Seguro</label>
                             <select
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                               value={formData.seguroPaymentMethod}
@@ -5188,7 +6160,7 @@ const Assets: React.FC = () => {
                         </div>
                         {formData.seguroPaymentMethod === 'PARCELADO' && (
                           <div className="animate-in slide-in-from-top-2">
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas Seguro</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas Seguro</label>
                             <input
                               type="number"
                               min="1"
@@ -5203,7 +6175,7 @@ const Assets: React.FC = () => {
                       </div>
 
                       <div>
-                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Licenciamento Anual (R$)</label>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Licenciamento Anual (R$)</label>
                         <input
                           type="number"
                           step="0.01"
@@ -5214,7 +6186,7 @@ const Assets: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Manutenção Mensal (R$)</label>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Manutenção Mensal (R$)</label>
                         <input
                           type="number"
                           step="0.01"
@@ -5231,7 +6203,7 @@ const Assets: React.FC = () => {
                 {formData.category === 'VEHICLE' && formData.purpose === 'investimento' && (
                   <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                     <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Modalidade do Investimento</label>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Modalidade do Investimento</label>
                       <select
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                         value={formData.vehiclePurposeType}
@@ -5246,7 +6218,7 @@ const Assets: React.FC = () => {
                       <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipo de Aluguel</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipo de Aluguel</label>
                             <select
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                               value={formData.rentalType}
@@ -5257,7 +6229,7 @@ const Assets: React.FC = () => {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Receita de Aluguel (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Receita de Aluguel (R$)</label>
                             <input
                               type="number"
                               step="0.01"
@@ -5268,7 +6240,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Taxa Plataforma (R$ ou %)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Taxa Plataforma (R$ ou %)</label>
                             <input
                               type="number"
                               step="0.01"
@@ -5282,7 +6254,7 @@ const Assets: React.FC = () => {
                           <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo IPVA (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo IPVA (R$)</label>
                                 <input
                                   type="number"
                                   step="0.01"
@@ -5293,7 +6265,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento IPVA</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento IPVA</label>
                                 <select
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                                   value={formData.ipvaPaymentMethod}
@@ -5306,7 +6278,7 @@ const Assets: React.FC = () => {
                             </div>
                             {formData.ipvaPaymentMethod === 'PARCELADO' && (
                               <div className="animate-in slide-in-from-top-2">
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas IPVA</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas IPVA</label>
                                 <input
                                   type="number"
                                   min="1"
@@ -5324,7 +6296,7 @@ const Assets: React.FC = () => {
                           <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Seguro Comercial (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Seguro Comercial (R$)</label>
                                 <input
                                   type="number"
                                   step="0.01"
@@ -5335,7 +6307,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento Seguro</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagamento Seguro</label>
                                 <select
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                                   value={formData.seguroPaymentMethod}
@@ -5349,7 +6321,7 @@ const Assets: React.FC = () => {
                             </div>
                             {formData.seguroPaymentMethod === 'PARCELADO' && (
                               <div className="animate-in slide-in-from-top-2">
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas Seguro</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quantidade de Parcelas Seguro</label>
                                 <input
                                   type="number"
                                   min="1"
@@ -5364,7 +6336,7 @@ const Assets: React.FC = () => {
                           </div>
 
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Licenciamento Anual (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Licenciamento Anual (R$)</label>
                             <input
                               type="number"
                               step="0.01"
@@ -5379,7 +6351,7 @@ const Assets: React.FC = () => {
                     ) : (
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Venda Alvo (R$)</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Venda Alvo (R$)</label>
                           <input
                             type="number"
                             step="0.01"
@@ -5390,7 +6362,7 @@ const Assets: React.FC = () => {
                           />
                         </div>
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Orçamento Preparação (R$)</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Orçamento Preparação (R$)</label>
                           <input
                             type="number"
                             step="0.01"
@@ -5408,7 +6380,7 @@ const Assets: React.FC = () => {
                 {formData.category === 'OTHER' && formData.purpose === 'investimento' && (
                   <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                     <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Modalidade do Investimento</label>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Modalidade do Investimento</label>
                       <select
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                         value={formData.vehiclePurposeType}
@@ -5423,7 +6395,7 @@ const Assets: React.FC = () => {
                       <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="flex items-center gap-2 cursor-pointer font-bold text-[10px] select-none mb-2 mt-2">
+                            <label className="flex items-center gap-2 cursor-pointer font-bold text-xs select-none mb-2 mt-2">
                               <input
                                 type="checkbox"
                                 checked={formData.isRented}
@@ -5434,7 +6406,7 @@ const Assets: React.FC = () => {
                           </div>
                           {formData.isRented && (
                             <div>
-                              <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Rendimento/Aluguel Mensal (R$)</label>
+                              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Rendimento/Aluguel Mensal (R$)</label>
                               <input
                                 type="number"
                                 step="0.01"
@@ -5448,7 +6420,7 @@ const Assets: React.FC = () => {
                           {formData.isRented && (
                             <>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Taxa Intermediação/Plataforma (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Taxa Intermediação/Plataforma (R$)</label>
                                 <input
                                   type="number"
                                   step="0.01"
@@ -5459,7 +6431,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Mensal Guarda/Seguro (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Mensal Guarda/Seguro (R$)</label>
                                 <input
                                   type="number"
                                   step="0.01"
@@ -5476,7 +6448,7 @@ const Assets: React.FC = () => {
                     ) : (
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Venda Alvo (R$)</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Venda Alvo (R$)</label>
                           <input
                             type="number"
                             step="0.01"
@@ -5487,7 +6459,7 @@ const Assets: React.FC = () => {
                           />
                         </div>
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Orçamento Preparação/Restauração (R$)</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Orçamento Preparação/Restauração (R$)</label>
                           <input
                             type="number"
                             step="0.01"
@@ -5505,7 +6477,7 @@ const Assets: React.FC = () => {
                 {editingAsset && (
                   <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 border-t border-slate-200 pt-3">
                     <div>
-                      <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Taxa de Corretagem (R$)</label>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Taxa de Corretagem (R$)</label>
                       <input
                         type="number"
                         className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold"
@@ -5526,7 +6498,7 @@ const Assets: React.FC = () => {
                       <div className="col-span-2 space-y-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Venda (R$)</label>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Venda (R$)</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold"
@@ -5535,12 +6507,12 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Comissão de Venda (R$)</label>
+                            <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Comissão de Venda (R$)</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold"
-                              value={formData.saleComission}
-                              onChange={(e) => setFormData({ ...formData, saleComission: e.target.value })}
+                              value={formData.saleCommission}
+                              onChange={(e) => setFormData({ ...formData, saleCommission: e.target.value })}
                               placeholder="0.00"
                             />
                           </div>
@@ -5549,7 +6521,7 @@ const Assets: React.FC = () => {
                         {true && (
                           <div className="space-y-4">
                             <div>
-                              <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Recebimento</label>
+                              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Recebimento</label>
                               <select
                                 className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                                 value={formData.salePaymentMethod}
@@ -5564,10 +6536,10 @@ const Assets: React.FC = () => {
 
                             {formData.salePaymentMethod === 'A_VISTA' && (
                               <div className="animate-in slide-in-from-top-2">
-                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Recebimento</label>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Recebimento</label>
                                 <input
                                   type="date"
-                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                                   value={formData.saleDate}
                                   onChange={(e) => setFormData({ ...formData, saleDate: e.target.value })}
                                 />
@@ -5577,21 +6549,21 @@ const Assets: React.FC = () => {
                             {formData.salePaymentMethod === 'HIBRIDO' && (
                               <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
                                 <div>
-                                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor em Dinheiro (R$)</label>
+                                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor em Dinheiro (R$)</label>
                                   <input
                                     type="number"
                                     step="0.01"
-                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                                     value={formData.saleCashAmount}
                                     onChange={(e) => setFormData({ ...formData, saleCashAmount: e.target.value })}
                                     placeholder="0.00"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data do Recebimento</label>
+                                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data do Recebimento</label>
                                   <input
                                     type="date"
-                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                                     value={formData.saleDate}
                                     onChange={(e) => setFormData({ ...formData, saleDate: e.target.value })}
                                   />
@@ -5601,14 +6573,14 @@ const Assets: React.FC = () => {
 
                             {(formData.salePaymentMethod === 'PERMUTA' || formData.salePaymentMethod === 'HIBRIDO') && (
                               <div className="space-y-3 pt-2 border-t border-dashed border-slate-200">
-                                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Bens Recebidos na Permuta</p>
+                                <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Bens Recebidos na Permuta</p>
                                 
                                 {formData.permutaItems && formData.permutaItems.map((item, idx) => (
                                   <div key={idx} className="grid grid-cols-12 gap-2 bg-white p-3 rounded-xl border border-slate-100 items-end">
                                     <div className="col-span-3">
-                                      <label className="block text-[8px] font-bold text-slate-400 mb-1">Tipo</label>
+                                      <label className="block text-[10px] font-bold text-slate-400 mb-1">Tipo</label>
                                       <select
-                                        className="w-full h-8 px-1.5 bg-slate-50 border rounded-lg text-[10px] font-bold outline-none"
+                                        className="w-full h-8 px-1.5 bg-slate-50 border rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
                                         value={item.type}
                                         onChange={(e) => {
                                           const newItems = [...formData.permutaItems];
@@ -5623,7 +6595,7 @@ const Assets: React.FC = () => {
                                     </div>
                                     
                                     <div className="col-span-5">
-                                      <label className="block text-[8px] font-bold text-slate-400 mb-1">Nome / Descrição</label>
+                                      <label className="block text-[10px] font-bold text-slate-400 mb-1">Nome / Descrição</label>
                                       <input
                                         className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs"
                                         value={item.name}
@@ -5643,7 +6615,7 @@ const Assets: React.FC = () => {
                                     </div>
 
                                     <div className="col-span-3">
-                                      <label className="block text-[8px] font-bold text-slate-400 mb-1">Valor (R$)</label>
+                                      <label className="block text-[10px] font-bold text-slate-400 mb-1">Valor (R$)</label>
                                       <input
                                         type="number"
                                         className="w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs font-bold"
@@ -5681,7 +6653,7 @@ const Assets: React.FC = () => {
                                     ];
                                     setFormData({ ...formData, permutaItems: newItems });
                                   }}
-                                  className="w-full h-9 border border-dashed border-slate-300 rounded-xl text-[10px] font-bold text-slate-500 hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-1.5"
+                                  className="w-full h-9 border border-dashed border-slate-300 rounded-xl text-xs font-bold text-slate-500 hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-1.5"
                                 >
                                   <Plus size={12} />
                                   Adicionar Bem Recebido
@@ -5701,7 +6673,7 @@ const Assets: React.FC = () => {
                   <div className="space-y-4 pt-2 border-t border-slate-200 animate-in slide-in-from-top-2">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Estágio do Imóvel</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Estágio do Imóvel</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.propertyStage}
@@ -5726,9 +6698,9 @@ const Assets: React.FC = () => {
                     {formData.propertyStage === 'PLANTA' && (
                       <div className="grid grid-cols-2 gap-4 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Índice Correção Construtora</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Índice Correção Construtora</label>
                           <select
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                             value={formData.constructorIndexType}
                             onChange={(e) => setFormData({ ...formData, constructorIndexType: e.target.value as any })}
                           >
@@ -5739,7 +6711,7 @@ const Assets: React.FC = () => {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Projeção Reajuste (% am)</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Projeção Reajuste (% am)</label>
                           <input
                             type="number"
                             step="0.01"
@@ -5755,7 +6727,7 @@ const Assets: React.FC = () => {
                       <div className="space-y-3 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                         <div className="grid grid-cols-3 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Tipo de Aluguel</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Tipo de Aluguel</label>
                             <select
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
                               value={formData.rentalType}
@@ -5768,7 +6740,7 @@ const Assets: React.FC = () => {
                           {formData.rentalType === 'anual' ? (
                             <>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Aluguel (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor Aluguel (R$)</label>
                                 <input
                                   type="number"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -5777,7 +6749,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Data Inicial</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Inicial</label>
                                 <input
                                   type="date"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -5788,7 +6760,7 @@ const Assets: React.FC = () => {
                             </>
                           ) : (
                             <div className="col-span-2 flex items-center pt-5">
-                              <span className="text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 rounded p-1 font-bold">Locações devem ser inseridas no Extrato do Card.</span>
+                              <span className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded p-1 font-bold">Locações devem ser inseridas no Extrato do Card.</span>
                             </div>
                           )}
                         </div>
@@ -5798,9 +6770,9 @@ const Assets: React.FC = () => {
                     {/* Opções de Financiamento/Consórcio */}
                     <div className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Pagamento (Saldo Devedor)</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Forma de Pagamento (Saldo Devedor)</label>
                         <select
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                           value={formData.deliveryPaymentMethod}
                           onChange={(e) => setFormData({ ...formData, deliveryPaymentMethod: e.target.value as any })}
                         >
@@ -5814,10 +6786,10 @@ const Assets: React.FC = () => {
                       {formData.deliveryPaymentMethod === 'A_DEFINIR' && (
                         <div className="space-y-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl animate-in slide-in-from-top-2">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Saldo Estimado a Definir (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Saldo Estimado a Definir (R$)</label>
                             <input
                               type="number"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                               value={formData.deliveryBalance}
                               onChange={(e) => setFormData({ ...formData, deliveryBalance: e.target.value })}
                               placeholder="0.00"
@@ -5829,9 +6801,9 @@ const Assets: React.FC = () => {
                         {formData.deliveryPaymentMethod === 'CONSORCIO' && (
                           <div className="space-y-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl animate-in slide-in-from-top-2">
                             <div>
-                              <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Consórcio Vinculado</label>
+                              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consórcio Vinculado</label>
                               <select
-                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none"
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                                 value={formData.selectedConsortiumId}
                                 onChange={(e) => setFormData({ ...formData, selectedConsortiumId: e.target.value })}
                               >
@@ -5842,7 +6814,7 @@ const Assets: React.FC = () => {
                               </select>
                             </div>
                             <div>
-                              <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Percentual Alocado ao Imóvel (%)</label>
+                              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Percentual Alocado ao Imóvel (%)</label>
                               <input
                                 type="number"
                                 min="0"
@@ -5858,16 +6830,16 @@ const Assets: React.FC = () => {
                         {formData.deliveryPaymentMethod === 'FINANCIAMENTO' && (
                           <div className="space-y-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl animate-in slide-in-from-top-2">
                             <div>
-                              <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Nome do Financiamento</label>
+                              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nome do Financiamento</label>
                               <input
-                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none"
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                                 value={formData.financingName}
                                 onChange={(e) => setFormData({ ...formData, financingName: e.target.value })}
                               />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Saldo a Financiar (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Saldo a Financiar (R$)</label>
                                 <input
                                   type="number"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
@@ -5876,7 +6848,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Original (R$)</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Original (R$)</label>
                                 <input
                                   type="number"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
@@ -5887,7 +6859,7 @@ const Assets: React.FC = () => {
                             </div>
                             <div className="grid grid-cols-3 gap-2">
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Parcela</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Parcela</label>
                                 <input
                                   type="number"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
@@ -5896,7 +6868,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Parcelas</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Parcelas</label>
                                 <input
                                   type="number"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
@@ -5905,7 +6877,7 @@ const Assets: React.FC = () => {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Dia Venc.</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Dia Venc.</label>
                                 <input
                                   type="number"
                                   className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900"
@@ -5936,7 +6908,7 @@ const Assets: React.FC = () => {
                       <div className="space-y-3 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Devedor (Nome)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Devedor (Nome)</label>
                             <input
                               className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"
                               value={formData.loanDebtor}
@@ -5944,7 +6916,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Emprestado (Principal)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor Emprestado (Principal)</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"
@@ -5956,7 +6928,7 @@ const Assets: React.FC = () => {
 
                         <div className="grid grid-cols-3 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Juros (%) a.m.</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Juros (%) a.m.</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
@@ -5965,7 +6937,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Ou Juros Fixo (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Ou Juros Fixo (R$)</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
@@ -5974,7 +6946,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Dia Vencimento</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Dia Vencimento</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
@@ -5985,7 +6957,7 @@ const Assets: React.FC = () => {
                         </div>
 
                         <div className="flex gap-4 pt-1">
-                          <label className="flex items-center gap-2 cursor-pointer font-bold text-[10px]">
+                          <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
                             <input
                               type="radio"
                               name="loanInterestType"
@@ -5994,7 +6966,7 @@ const Assets: React.FC = () => {
                             />
                             Juros Simples
                           </label>
-                          <label className="flex items-center gap-2 cursor-pointer font-bold text-[10px]">
+                          <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
                             <input
                               type="radio"
                               name="loanInterestType"
@@ -6011,10 +6983,10 @@ const Assets: React.FC = () => {
                 {/* Investment parameters */}
                 {formData.category === 'INVESTMENT' && (
                   <div className="space-y-4 pt-2 border-t border-slate-200 animate-in slide-in-from-top-2">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-left">Parâmetros do Investimento</p>
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest text-left">Parâmetros do Investimento</p>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Corretora Vinculada</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Corretora Vinculada</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.brokerAccountId}
@@ -6027,7 +6999,7 @@ const Assets: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Tipo de Ativo / Alocação</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Tipo de Ativo / Alocação</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.investmentType}
@@ -6050,7 +7022,7 @@ const Assets: React.FC = () => {
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Indexador</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Indexador</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.interestType}
@@ -6063,7 +7035,7 @@ const Assets: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Taxa Rentabilidade (ex: 102% CDI)</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Taxa Rentabilidade (ex: 102% CDI)</label>
                         <input
                           type="text"
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
@@ -6076,7 +7048,7 @@ const Assets: React.FC = () => {
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Distribuição de Rendimentos</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Distribuição de Rendimentos</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.payoutType}
@@ -6087,7 +7059,7 @@ const Assets: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Liquidez</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Liquidez</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.investmentLiquidity}
@@ -6104,7 +7076,7 @@ const Assets: React.FC = () => {
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Data de Vencimento (Opcional)</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Data de Vencimento (Opcional)</label>
                         <input
                           type="date"
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
@@ -6113,7 +7085,7 @@ const Assets: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Status</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Status</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                           value={formData.status || 'ATIVO'}
@@ -6129,9 +7101,9 @@ const Assets: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Descrição</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Descrição</label>
                 <textarea
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                   rows={2}
                   placeholder="Informações adicionais sobre o bem..."
                   value={formData.description}
@@ -6162,7 +7134,7 @@ const Assets: React.FC = () => {
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Estágio do Imóvel</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Estágio do Imóvel</label>
                   <select
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                     value={realEstateManageForm.propertyType}
@@ -6205,13 +7177,13 @@ const Assets: React.FC = () => {
                       <Sparkles size={16} />
                       Quitação do Saldo Devedor
                     </div>
-                    <p className="text-[10px] text-indigo-600 font-bold">
+                    <p className="text-xs text-indigo-600 font-bold">
                       O imóvel passou de "Na Planta" para "Pronto". Defina como quitará o Saldo Devedor final das chaves.
                     </p>
                     
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[8px] font-black text-indigo-700 uppercase tracking-widest mb-1">Valor Saldo Devedor (R$)</label>
+                        <label className="block text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-1">Valor Saldo Devedor (R$)</label>
                         <input
                           type="number"
                           className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800"
@@ -6221,7 +7193,7 @@ const Assets: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-[8px] font-black text-indigo-700 uppercase tracking-widest mb-1">Forma de Pagamento</label>
+                        <label className="block text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-1">Forma de Pagamento</label>
                         <select
                           className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800"
                           value={realEstateManageForm.deliveryPaymentMethod}
@@ -6237,7 +7209,7 @@ const Assets: React.FC = () => {
 
                     {realEstateManageForm.deliveryPaymentMethod === 'CONSORCIO' && (
                       <div className="animate-in slide-in-from-top-2">
-                        <label className="block text-[8px] font-black text-indigo-700 uppercase tracking-widest mb-1">Selecione o Consórcio</label>
+                        <label className="block text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-1">Selecione o Consórcio</label>
                         <select
                           className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800"
                           value={realEstateManageForm.selectedConsortiumId}
@@ -6258,10 +7230,10 @@ const Assets: React.FC = () => {
                     {realEstateManageForm.deliveryPaymentMethod === 'FINANCIAMENTO' && (
                       <div className="space-y-3 pt-2 border-t border-indigo-100/50 animate-in slide-in-from-top-2">
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Nome da Dívida</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nome da Dívida</label>
                           <input
                             type="text"
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 outline-none"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                             placeholder="Ex: Financiamento Piazza do Bosque"
                             value={realEstateManageForm.financingName}
                             onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, financingName: e.target.value })}
@@ -6270,7 +7242,7 @@ const Assets: React.FC = () => {
 
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipo de Dívida</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipo de Dívida</label>
                             <select
                               disabled
                               className="w-full bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-500"
@@ -6280,7 +7252,7 @@ const Assets: React.FC = () => {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Bem Vinculado</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Bem Vinculado</label>
                             <select
                               disabled
                               className="w-full bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-500"
@@ -6292,7 +7264,7 @@ const Assets: React.FC = () => {
 
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Original Total (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Original Total (R$)</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900"
@@ -6302,10 +7274,10 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-rose-500 uppercase tracking-widest mb-1">Saldo Devedor Atual (R$)</label>
+                            <label className="block text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Saldo Devedor Atual (R$)</label>
                             <input
                               type="number"
-                              className="w-full bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-900 outline-none focus:border-rose-400"
+                              className="w-full bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-rose-400"
                               placeholder="0.00"
                               value={realEstateManageForm.deliveryBalance}
                               onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, deliveryBalance: e.target.value })}
@@ -6315,7 +7287,7 @@ const Assets: React.FC = () => {
 
                         <div className="grid grid-cols-3 gap-2">
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Parcela (R$)</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Parcela (R$)</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900"
@@ -6325,7 +7297,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Parcelas Rest.</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Parcelas Rest.</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900"
@@ -6335,7 +7307,7 @@ const Assets: React.FC = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Dia Venc.</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Dia Venc.</label>
                             <input
                               type="number"
                               className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900"
@@ -6355,7 +7327,7 @@ const Assets: React.FC = () => {
                 <div className="space-y-3 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Tipo de Aluguel</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Tipo de Aluguel</label>
                       <select
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold"
                         value={realEstateManageForm.rentalType}
@@ -6368,7 +7340,7 @@ const Assets: React.FC = () => {
                     {realEstateManageForm.rentalType === 'anual' ? (
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Aluguel (R$)</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Aluguel (R$)</label>
                           <input
                             type="number"
                             className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -6377,7 +7349,7 @@ const Assets: React.FC = () => {
                           />
                         </div>
                         <div>
-                          <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Data Inicial</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Inicial</label>
                           <input
                             type="date"
                             className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -6388,14 +7360,14 @@ const Assets: React.FC = () => {
                       </div>
                     ) : (
                       <div className="flex items-center pt-3">
-                        <span className="text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 rounded p-1 font-bold">Lançamentos via Extrato do Card.</span>
+                        <span className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded p-1 font-bold">Lançamentos via Extrato do Card.</span>
                       </div>
                     )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Condomínio (R$)</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Condomínio (R$)</label>
                       <input
                         type="number"
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -6404,7 +7376,7 @@ const Assets: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">IPTU Mensal (R$)</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">IPTU Mensal (R$)</label>
                       <input
                         type="number"
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -6415,7 +7387,7 @@ const Assets: React.FC = () => {
                   </div>
 
                   <div className="flex gap-4 pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer font-bold text-[9px]">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
                       <input
                         type="checkbox"
                         checked={realEstateManageForm.inquilinoPaysCondo}
@@ -6423,7 +7395,7 @@ const Assets: React.FC = () => {
                       />
                       Inquilino paga Condomínio
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer font-bold text-[9px]">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
                       <input
                         type="checkbox"
                         checked={realEstateManageForm.inquilinoPaysIPTU}
@@ -6437,7 +7409,7 @@ const Assets: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-3">
                 <div>
-                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Prestação Financiamento</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Prestação Financiamento</label>
                   <input
                     type="number"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold"
@@ -6448,7 +7420,7 @@ const Assets: React.FC = () => {
                 </div>
                 {realEstateManageForm.propertyType === 'PLANTA' && (
                   <div>
-                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Entrega das Chaves</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Entrega das Chaves</label>
                     <input
                       type="month"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold"
@@ -6536,26 +7508,33 @@ const Assets: React.FC = () => {
                     {/* Summary Cards */}
                     <div className="grid grid-cols-3 gap-3">
                       <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
-                        <p className="text-[8px] font-black uppercase text-emerald-500 tracking-widest">Principal</p>
+                        <p className="text-[10px] font-black uppercase text-emerald-500 tracking-widest">Principal</p>
                         <p className="text-sm font-black text-emerald-700">{formatCurrency(principal)}</p>
                       </div>
                       <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
-                        <p className="text-[8px] font-black uppercase text-amber-500 tracking-widest">Saldo Devedor</p>
+                        <p className="text-[10px] font-black uppercase text-amber-500 tracking-widest">Saldo Devedor</p>
                         <p className="text-sm font-black text-amber-700">{formatCurrency(currentBalance)}</p>
                       </div>
                       <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
-                        <p className="text-[8px] font-black uppercase text-indigo-500 tracking-widest">Recebido</p>
+                        <p className="text-[10px] font-black uppercase text-indigo-500 tracking-widest">Recebido</p>
                         <p className="text-sm font-black text-indigo-700">{formatCurrency(totalReceived)}</p>
                       </div>
                     </div>
 
                     {/* Progress bar */}
                     <div className="space-y-1.5">
-                      <div className="flex justify-between text-[9px] font-black uppercase text-slate-400">
+                      <div className="flex justify-between text-xs font-black uppercase text-slate-400">
                         <span>Retorno do Principal</span>
                         <span>{progressPct}% quitado</span>
                       </div>
-                      <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                      <div 
+                        className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden"
+                        role="progressbar"
+                        aria-valuenow={progressPct}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label="Progresso de amortização do empréstimo"
+                      >
                         <div className="bg-emerald-500 h-full rounded-full transition-all" style={{ width: `${progressPct}%` }} />
                       </div>
                     </div>
@@ -6563,9 +7542,9 @@ const Assets: React.FC = () => {
                     {/* Amortization table */}
                     {schedule.length > 0 && (
                       <div>
-                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-2">Tabela de Amortização</p>
+                        <p className="text-xs font-black uppercase text-slate-400 tracking-widest mb-2">Tabela de Amortização</p>
                         <div className="rounded-xl border border-slate-200 overflow-hidden">
-                          <table className="w-full text-[10px] font-medium">
+                          <table className="w-full text-xs font-medium">
                             <thead className="bg-slate-50">
                               <tr>
                                 <th className="text-left px-3 py-2 font-black uppercase text-slate-400 tracking-wider">Data</th>
@@ -6600,15 +7579,15 @@ const Assets: React.FC = () => {
                 return (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-200">
                     <div className="flex justify-between items-center sm:flex-col sm:items-start sm:justify-start">
-                      <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Total Receitas</p>
+                      <p className="text-xs font-black uppercase text-slate-400 tracking-wider">Total Receitas</p>
                       <p className="text-sm sm:text-base font-black text-emerald-600">{formatCurrency(info.totalIncome)}</p>
                     </div>
                     <div className="flex justify-between items-center sm:flex-col sm:items-start sm:justify-start border-t sm:border-t-0 sm:border-l border-slate-200/60 pt-2 sm:pt-0 sm:pl-4">
-                      <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Total Gastos Extras</p>
+                      <p className="text-xs font-black uppercase text-slate-400 tracking-wider">Total Gastos Extras</p>
                       <p className="text-sm sm:text-base font-black text-rose-500">{formatCurrency(info.totalExtraExpenses)}</p>
                     </div>
                     <div className="flex justify-between items-center sm:flex-col sm:items-start sm:justify-start border-t sm:border-t-0 sm:border-l border-slate-200/60 pt-2 sm:pt-0 sm:pl-4">
-                      <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Saldo Consolidado</p>
+                      <p className="text-xs font-black uppercase text-slate-400 tracking-wider">Saldo Consolidado</p>
                       <p className={`text-sm sm:text-base font-black ${info.totalIncome - info.totalExtraExpenses >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                         {formatCurrency(info.totalIncome - info.totalExtraExpenses)}
                       </p>
@@ -6626,7 +7605,7 @@ const Assets: React.FC = () => {
                   {!isAddingExtratoTx && (
                     <button
                       onClick={() => setIsAddingExtratoTx(true)}
-                      className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-widest"
+                      className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-black uppercase tracking-widest"
                     >
                       {selectedAssetForExtrato.metadata?.isLoan ? '+ Lançar Recebimento' : '+ Novo Lançamento'}
                     </button>
@@ -6637,7 +7616,7 @@ const Assets: React.FC = () => {
                   <form onSubmit={handleSaveCardTransaction} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-in slide-in-from-top-2 print:hidden">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Descrição</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Descrição</label>
                         <input
                           required
                           className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"
@@ -6647,7 +7626,7 @@ const Assets: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Valor (R$)</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Valor (R$)</label>
                         <input
                           required
                           type="number"
@@ -6662,7 +7641,7 @@ const Assets: React.FC = () => {
 
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Tipo</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Tipo</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                           value={newTxForm.type}
@@ -6673,7 +7652,7 @@ const Assets: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Data</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Data</label>
                         <input
                           type="date"
                           className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
@@ -6682,7 +7661,7 @@ const Assets: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1">Categoria</label>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Categoria</label>
                         <input
                           className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                           value={newTxForm.category}
@@ -6692,7 +7671,7 @@ const Assets: React.FC = () => {
                     </div>
 
                     <div className="flex justify-between items-center pt-2">
-                      <label className="flex items-center gap-2 cursor-pointer font-bold text-[10px]">
+                      <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
                         <input
                           type="checkbox"
                           checked={newTxForm.isHistorical}
@@ -6701,8 +7680,8 @@ const Assets: React.FC = () => {
                         Lançamento Passado (Não conta no Dashboard Mensal)
                       </label>
                       <div className="flex gap-2">
-                        <button type="button" onClick={() => setIsAddingExtratoTx(false)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-[9px] font-black uppercase">Cancelar</button>
-                        <button type="submit" className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-[9px] font-black uppercase">Lançar</button>
+                        <button type="button" onClick={() => setIsAddingExtratoTx(false)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-black uppercase">Cancelar</button>
+                        <button type="submit" className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-xs font-black uppercase">Lançar</button>
                       </div>
                     </div>
                   </form>
@@ -6718,7 +7697,7 @@ const Assets: React.FC = () => {
                             <span className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-[7px] font-black uppercase tracking-wider">Histórico</span>
                           )}
                         </p>
-                        <p className="text-[9px] text-slate-400 font-medium">
+                        <p className="text-xs text-slate-400 font-medium">
                           {new Date(tx.date).toLocaleDateString('pt-BR')} • {tx.category}
                         </p>
                       </div>
@@ -6761,10 +7740,10 @@ const Assets: React.FC = () => {
 
             <form onSubmit={handleSaveLiability} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nome da Dívida</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nome da Dívida</label>
                 <input
                   required
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
                   placeholder="Ex: Financiamento Jeep"
                   value={liabilityFormData.name}
                   onChange={(e) => setLiabilityFormData({ ...liabilityFormData, name: e.target.value })}
@@ -6772,9 +7751,9 @@ const Assets: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Dívida</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Dívida</label>
                 <select
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500"
                   value={liabilityFormData.type}
                   onChange={(e) => setLiabilityFormData({ ...liabilityFormData, type: e.target.value as any })}
                 >
@@ -6788,23 +7767,23 @@ const Assets: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Original Total (R$)</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Original Total (R$)</label>
                   <input
                     required
                     type="number"
                     step="0.01"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500"
                     value={liabilityFormData.totalAmount}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, totalAmount: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-red-500 uppercase tracking-widest mb-1.5">Saldo Devedor Atual</label>
+                  <label className="block text-xs font-bold text-red-500 uppercase tracking-widest mb-1.5">Saldo Devedor Atual</label>
                   <input
                     required
                     type="number"
                     step="0.01"
-                    className="w-full bg-red-50/50 border border-red-200 rounded-xl px-4 py-3 text-sm font-bold text-red-900 outline-none focus:border-red-500"
+                    className="w-full bg-red-50/50 border border-red-200 rounded-xl px-4 py-3 text-sm font-bold text-red-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500"
                     value={liabilityFormData.remainingBalance}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, remainingBalance: e.target.value })}
                   />
@@ -6813,31 +7792,31 @@ const Assets: React.FC = () => {
 
               <div className="grid grid-cols-3 gap-4 mt-2">
                 <div>
-                  <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Parcela</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Parcela</label>
                   <input
                     type="number"
                     step="0.01"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
                     value={liabilityFormData.installmentAmount}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentAmount: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Parcelas Restantes</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Parcelas Restantes</label>
                   <input
                     type="number"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
                     value={liabilityFormData.installmentsRemaining}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentsRemaining: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Dia Vencimento</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Dia Vencimento</label>
                   <input
                     type="number"
                     min="1"
                     max="31"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
                     value={liabilityFormData.dueDay}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, dueDay: e.target.value })}
                   />
@@ -6846,9 +7825,9 @@ const Assets: React.FC = () => {
 
               {activePhysicalAssets.length > 0 && (
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Bem Vinculado (Opcional)</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Bem Vinculado (Opcional)</label>
                   <select
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                     value={liabilityFormData.linkedAssetId}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, linkedAssetId: e.target.value })}
                   >
@@ -6917,7 +7896,7 @@ const Assets: React.FC = () => {
                 <div className="w-12 h-12 bg-slate-100 group-hover:bg-slate-900 group-hover:text-white rounded-2xl flex items-center justify-center transition-colors"><Building2 size={24} /></div>
                 <div className="space-y-1">
                   <h4 className="font-black text-slate-900 text-sm group-hover:text-brand-600">Ativo Imobiliário</h4>
-                  <p className="text-[10px] text-slate-400 leading-normal font-medium">Cadastre imóveis na planta ou prontos, controle financiamentos (SAC/Price), parcelas e aluguéis.</p>
+                  <p className="text-xs text-slate-400 leading-normal font-medium">Cadastre imóveis na planta ou prontos, controle financiamentos (SAC/Price), parcelas e aluguéis.</p>
                 </div>
               </button>
 
@@ -6935,7 +7914,7 @@ const Assets: React.FC = () => {
                 <div className="w-12 h-12 bg-slate-100 group-hover:bg-slate-900 group-hover:text-white rounded-2xl flex items-center justify-center transition-colors"><Car size={24} /></div>
                 <div className="space-y-1">
                   <h4 className="font-black text-slate-900 text-sm group-hover:text-brand-600">Veículo</h4>
-                  <p className="text-[10px] text-slate-400 leading-normal font-medium">Adicione carros, motos ou outros veículos para acompanhamento automático da tabela FIPE.</p>
+                  <p className="text-xs text-slate-400 leading-normal font-medium">Adicione carros, motos ou outros veículos para acompanhamento automático da tabela FIPE.</p>
                 </div>
               </button>
 
@@ -6953,7 +7932,7 @@ const Assets: React.FC = () => {
                 <div className="w-12 h-12 bg-slate-100 group-hover:bg-slate-900 group-hover:text-white rounded-2xl flex items-center justify-center transition-colors"><Box size={24} /></div>
                 <div className="space-y-1">
                   <h4 className="font-black text-slate-950 text-sm group-hover:text-brand-600">Outros Bens Físicos</h4>
-                  <p className="text-[10px] text-slate-400 leading-normal font-medium">Joias, maquinários, cabeças de gado ou qualquer outro bem físico de valor de mercado.</p>
+                  <p className="text-xs text-slate-400 leading-normal font-medium">Joias, maquinários, cabeças de gado ou qualquer outro bem físico de valor de mercado.</p>
                 </div>
               </button>
 
@@ -6965,7 +7944,7 @@ const Assets: React.FC = () => {
                   <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center"><TrendingUp size={24} /></div>
                   <div className="space-y-1">
                     <h4 className="font-black text-slate-900 text-sm">Investimentos</h4>
-                    <p className="text-[10px] text-slate-400 leading-normal font-medium">Controle de rendimentos financeiros ou empréstimos ativos a receber.</p>
+                    <p className="text-xs text-slate-400 leading-normal font-medium">Controle de rendimentos financeiros ou empréstimos ativos a receber.</p>
                   </div>
                 </div>
                 <div className="flex gap-2 border-t pt-3">
@@ -6977,7 +7956,7 @@ const Assets: React.FC = () => {
                       setFormData(prev => ({ ...prev, isLoan: true, category: 'OTHER' }));
                       setShowModal(true);
                     }}
-                    className="flex-1 py-2 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-[9px] font-black uppercase text-center tracking-wider"
+                    className="flex-1 py-2 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase text-center tracking-wider"
                   >
                     Empréstimo Concedido
                   </button>
@@ -6989,7 +7968,7 @@ const Assets: React.FC = () => {
                       setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento' }));
                       setShowModal(true);
                     }}
-                    className="flex-1 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-[9px] font-black uppercase text-center tracking-wider"
+                    className="flex-1 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-black uppercase text-center tracking-wider"
                   >
                     Investimento Financeiro
                   </button>
@@ -7005,3 +7984,7 @@ const Assets: React.FC = () => {
 };
 
 export default Assets;
+
+
+
+
