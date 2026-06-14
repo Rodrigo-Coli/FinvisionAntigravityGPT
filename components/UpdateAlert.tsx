@@ -27,12 +27,12 @@ export const UpdateAlert: React.FC = () => {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
-    onRegistered(r) {
+    onRegistered(r: ServiceWorkerRegistration | undefined) {
       if (r) {
         console.log('[SW] Service Worker registrado com sucesso. Polling de atualizações ativado.');
         // Verifica atualizações a cada 10 minutos
         const intervalId = setInterval(() => {
-          r.update().catch(err => console.warn('[SW] Falha ao atualizar SW no polling:', err));
+          r.update().catch((err: any) => console.warn('[SW] Falha ao atualizar SW no polling:', err));
         }, 10 * 60 * 1000);
         return () => clearInterval(intervalId);
       }
@@ -44,7 +44,7 @@ export const UpdateAlert: React.FC = () => {
     const checkUpdatesOnFocus = () => {
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(reg => {
-          reg.update().catch(err => console.warn('[SW] Falha ao atualizar SW no foco:', err));
+          reg.update().catch((err: any) => console.warn('[SW] Falha ao atualizar SW no foco:', err));
         });
       }
     };
@@ -71,7 +71,7 @@ export const UpdateAlert: React.FC = () => {
         if (versionData && versionData.version) {
           setServerVersion(versionData.version);
         }
-      }).catch(err => {
+      }).catch((err: any) => {
         console.warn('[SW] Erro ao obter dados de atualização:', err);
       });
       
