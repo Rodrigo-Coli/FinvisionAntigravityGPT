@@ -222,8 +222,10 @@ const Assets: React.FC = () => {
   const [showLiabilityModal, setShowLiabilityModal] = useState(false);
   const [showRealEstateManageModal, setShowRealEstateManageModal] = useState(false);
   const [selectedAssetForExtrato, setSelectedAssetForExtrato] = useState<PhysicalAsset | null>(null);
+  const [selectedLiabilityForExtrato, setSelectedLiabilityForExtrato] = useState<Liability | null>(null);
   const [showExtratoModal, setShowExtratoModal] = useState(false);
   const [isAddingExtratoTx, setIsAddingExtratoTx] = useState(false);
+  const [isAddingLiabilityTx, setIsAddingLiabilityTx] = useState(false);
   const [expandedAssetIR, setExpandedAssetIR] = useState<Record<string, boolean>>({});
   const toggleExpandIR = (assetId: string) => {
     setExpandedAssetIR(prev => ({ ...prev, [assetId]: !prev[assetId] }));
@@ -964,6 +966,26 @@ const Assets: React.FC = () => {
       txs,
       totalExtraExpenses,
       totalIncome
+    };
+  };
+
+  // Liability helpers
+  const getLiabilityLinkedTransactions = (liabilityId: string) => {
+    return transactions.filter(t => t.liability_id === liabilityId);
+  };
+
+  const getLiabilityFinancialHistory = (liability: Liability) => {
+    const txs = getLiabilityLinkedTransactions(liability.id);
+    const inTxs = txs.filter(t => t.type === 'INCOME');
+    const outTxs = txs.filter(t => t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT');
+
+    const totalPaid = outTxs.reduce((acc, curr) => acc + curr.amount, 0);
+    const totalRefunded = inTxs.reduce((acc, curr) => acc + curr.amount, 0);
+
+    return {
+      txs,
+      totalPaid,
+      totalRefunded
     };
   };
 
@@ -3347,6 +3369,35 @@ const Assets: React.FC = () => {
     XLSX.writeFile(wb, `extrato_${asset.name.replace(/\s+/g, '_').toLowerCase()}.xlsx`);
   };
 
+  const exportLiabilityExtratoToExcel = (liability: Liability) => {
+    const txs = getLiabilityLinkedTransactions(liability.id);
+    const rows = txs.map((t, idx) => ({
+      '#': idx + 1,
+      'Descrição': t.description,
+      'Valor (R$)': t.amount,
+      'Data': new Date(t.date).toLocaleDateString('pt-BR'),
+      'Categoria': t.category,
+      'Situação': t.is_paid ? 'Pago' : 'Pendente',
+      'Amortização': t.is_amortization ? 'Sim' : 'Não'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Extrato Passivo');
+
+    const info = getLiabilityFinancialHistory(liability);
+    XLSX.utils.sheet_add_aoa(ws, [
+      [`Extrato do Passivo: ${liability.name}`],
+      [`Tipo: ${liability.type}`],
+      [`Original Total: R$ ${liability.totalAmount.toLocaleString('pt-BR')}`],
+      [`Saldo Devedor Atual: R$ ${liability.remainingBalance.toLocaleString('pt-BR')}`],
+      [`Total Pago: R$ ${info.totalPaid.toLocaleString('pt-BR')}`],
+      []
+    ], { origin: 'A1' });
+
+    XLSX.writeFile(wb, `extrato_passivo_${liability.name.replace(/\s+/g, '_').toLowerCase()}.xlsx`);
+  };
+
   const handleArchiveAssetFromExtrato = (asset: PhysicalAsset) => {
     setShowExtratoModal(false);
     openEditAsset(asset);
@@ -3606,6 +3657,18 @@ const Assets: React.FC = () => {
       const installmentAmt = parseFloat(liabilityFormData.installmentAmount) || 0;
       const installmentsLeft = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
       const dueDay = parseInt(liabilityFormData.dueDay, 10) || 1;
+      const totalAmt = parseFloat(liabilityFormData.totalAmount) || 0;
+      const remainingBal = parseFloat(liabilityFormData.remainingBalance) || 0;
+
+      if (totalAmt < 0 || remainingBal < 0 || installmentAmt < 0 || installmentsLeft < 0) {
+        alert("Valores monetários e parcelas não podem ser negativos.");
+        return;
+      }
+
+      if (dueDay < 1 || dueDay > 31) {
+        alert("O dia de vencimento deve estar entre 1 e 31.");
+        return;
+      }
 
       if (editingLiability) {
         const { error } = await supabase.from('liabilities').update({
@@ -3757,13 +3820,161 @@ const Assets: React.FC = () => {
 
   const handleDeleteLiability = async (id: string) => {
     if (!supabase) return;
-    if (!window.confirm("Certeza que deseja excluir este passivo? Ele será removido do seu patrimônio físico.")) return;
+    if (!window.confirm("Certeza que deseja excluir permanentemente este passivo? ATENÇÃO: Isso apagará também todo o histórico de pagamentos e transações vinculadas a este passivo! Para manter o histórico, considere Arquivar o passivo em vez de excluí-lo.")) return;
     try {
       const { error } = await supabase.from('liabilities').delete().eq('id', id);
       if (error) throw error;
       fetchData();
     } catch (err: any) {
       alert(`Erro ao excluir passivo: ${err.message}`);
+    }
+  };
+
+  const handleArchiveLiability = async (liability: Liability) => {
+    if (!supabase) return;
+    const actionText = liability.remainingBalance === 0 ? "arquivar" : "quitar e arquivar";
+    if (!window.confirm(`Deseja realmente ${actionText} este passivo? Ele será removido da lista ativa, e todas as parcelas futuras PENDENTES (não pagas) associadas a ele serão excluídas para não afetar suas projeções. Os pagamentos históricos já realizados serão mantidos.`)) return;
+
+    try {
+      const { error: liabError } = await supabase
+        .from('liabilities')
+        .update({ is_archived: true })
+        .eq('id', liability.id);
+      if (liabError) throw liabError;
+
+      const { error: txError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('liability_id', liability.id)
+        .eq('is_paid', false);
+      if (txError) throw txError;
+
+      fetchData();
+    } catch (err: any) {
+      alert(`Erro ao arquivar passivo: ${err.message}`);
+    }
+  };
+
+  const handleSaveLiabilityTransaction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !selectedLiabilityForExtrato) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
+
+      const amt = parseFloat(newTxForm.amount) || 0;
+      if (amt <= 0) {
+        alert("Preencha um valor válido.");
+        return;
+      }
+
+      let catId = '';
+      const categoryName = newTxForm.category || 'Financiamento/Dívida';
+      const { data: catRes } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('name', categoryName)
+        .single();
+      if (catRes) {
+        catId = catRes.id;
+      } else {
+        const { data: newCat } = await supabase
+          .from('categories')
+          .insert({
+            user_id: user.id,
+            name: categoryName,
+            type: 'EXPENSE',
+            color: 'bg-rose-50 text-rose-600'
+          })
+          .select('id')
+          .single();
+        if (newCat) catId = newCat.id;
+      }
+
+      const newTx = {
+        user_id: user.id,
+        description: newTxForm.description,
+        amount: amt,
+        date: newTxForm.date,
+        type: 'EXPENSE',
+        category: categoryName,
+        category_id: catId || null,
+        is_paid: true,
+        is_installment: false,
+        liability_id: selectedLiabilityForExtrato.id,
+        is_amortization: true,
+        metadata: {
+          is_historical: newTxForm.isHistorical,
+          auto_generated: false,
+          linked_asset_id: selectedLiabilityForExtrato.linkedAssetId || undefined
+        }
+      };
+
+      const { error: txError } = await supabase.from('transactions').insert([newTx]);
+      if (txError) throw txError;
+
+      const currentRemaining = selectedLiabilityForExtrato.remainingBalance;
+      const newRemaining = Math.max(0, currentRemaining - amt);
+
+      const currentInstallments = selectedLiabilityForExtrato.installmentsRemaining;
+      const newInstallments = currentInstallments && currentInstallments > 0 ? currentInstallments - 1 : currentInstallments;
+
+      const { error: liabError } = await supabase
+        .from('liabilities')
+        .update({
+          remaining_balance: newRemaining,
+          installments_remaining: newInstallments
+        })
+        .eq('id', selectedLiabilityForExtrato.id);
+      if (liabError) throw liabError;
+
+      setIsAddingLiabilityTx(false);
+      
+      setSelectedLiabilityForExtrato(prev => prev ? {
+        ...prev,
+        remainingBalance: newRemaining,
+        installmentsRemaining: newInstallments
+      } : null);
+
+      fetchData();
+    } catch (err: any) {
+      alert(`Erro ao lançar pagamento: ${err.message}`);
+    }
+  };
+
+  const handleDeleteLiabilityTransaction = async (txId: string, amount: number) => {
+    if (!supabase || !selectedLiabilityForExtrato) return;
+    if (!window.confirm("Deseja realmente excluir este pagamento? O saldo devedor do passivo será reajustado (somado) com o valor deste pagamento.")) return;
+    try {
+      const { error: txError } = await supabase.from('transactions').delete().eq('id', txId);
+      if (txError) throw txError;
+
+      const currentRemaining = selectedLiabilityForExtrato.remainingBalance;
+      const newRemaining = currentRemaining + amount;
+
+      const currentInstallments = selectedLiabilityForExtrato.installmentsRemaining;
+      const newInstallments = currentInstallments !== null && currentInstallments !== undefined ? currentInstallments + 1 : currentInstallments;
+
+      const { error: liabError } = await supabase
+        .from('liabilities')
+        .update({
+          remaining_balance: newRemaining,
+          installments_remaining: newInstallments
+        })
+        .eq('id', selectedLiabilityForExtrato.id);
+      if (liabError) throw liabError;
+
+      setSelectedLiabilityForExtrato(prev => prev ? {
+        ...prev,
+        remainingBalance: newRemaining,
+        installmentsRemaining: newInstallments
+      } : null);
+
+      fetchData();
+    } catch (err: any) {
+      alert(`Erro ao excluir pagamento: ${err.message}`);
     }
   };
 
@@ -6190,14 +6401,18 @@ const Assets: React.FC = () => {
                         <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-100/50">
                           <Landmark size={22} />
                         </div>
-                        <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-100">Dívida Ativa</span>
+                        {liability.remainingBalance === 0 ? (
+                          <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Quitada</span>
+                        ) : (
+                          <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-100">Dívida Ativa</span>
+                        )}
                       </div>
 
                       <div>
                         <h4 className="font-black text-slate-900 text-lg tracking-tight leading-tight italic uppercase">{liability.name}</h4>
                         <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
                           <p className="text-xs text-slate-400 font-black uppercase tracking-widest">Saldo Devedor Atual:</p>
-                          <p className="text-sm font-black text-red-600">{formatCurrency(liability.remainingBalance)}</p>
+                          <p className={`text-sm font-black ${liability.remainingBalance === 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(liability.remainingBalance)}</p>
                         </div>
                       </div>
 
@@ -6225,7 +6440,7 @@ const Assets: React.FC = () => {
                         <div className="space-y-1.5 pt-3 border-t border-slate-50">
                           <div className="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
                             <span>Progresso da Dívida:</span>
-                            <span className="text-red-500 font-extrabold">{amortizationPercent}% quitado</span>
+                            <span className={`${liability.remainingBalance === 0 ? 'text-emerald-600' : 'text-red-500'} font-extrabold`}>{amortizationPercent}% quitado</span>
                           </div>
                           <div 
                             className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden"
@@ -6236,7 +6451,7 @@ const Assets: React.FC = () => {
                             aria-label={`Progresso de amortização da dívida ${liability.name}`}
                           >
                             <div 
-                              className="bg-red-500 h-full rounded-full transition-all duration-500" 
+                              className={`${liability.remainingBalance === 0 ? 'bg-emerald-500' : 'bg-red-500'} h-full rounded-full transition-all duration-500`} 
                               style={{ width: `${amortizationPercent}%` }}
                             />
                           </div>
@@ -6274,21 +6489,38 @@ const Assets: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center gap-3">
+                    <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-wrap justify-between items-center gap-3">
                       <button 
-                        onClick={() => openEditLiability(liability)} 
-                        className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 hover:text-brand-600 transition-colors"
+                        onClick={() => setSelectedLiabilityForExtrato(liability)} 
+                        className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-600 hover:text-brand-600 transition-colors"
+                        aria-label={`Ver extrato e lançamentos de ${liability.name}`}
                       >
-                        <Pencil size={12} />
-                        Ajustar
+                        <History size={12} />
+                        Extrato & Lançar
                       </button>
-                      <button 
-                        onClick={() => handleDeleteLiability(liability.id)} 
-                        className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 hover:text-rose-600 transition-colors"
-                      >
-                        <Trash2 size={12} />
-                        Excluir
-                      </button>
+                      <div className="flex gap-3 items-center">
+                        <button 
+                          onClick={() => openEditLiability(liability)} 
+                          className="text-xs font-black uppercase tracking-wider text-slate-500 hover:text-brand-600 transition-colors"
+                          aria-label={`Ajustar passivo ${liability.name}`}
+                        >
+                          Ajustar
+                        </button>
+                        <button 
+                          onClick={() => handleArchiveLiability(liability)} 
+                          className="text-xs font-black uppercase tracking-wider text-slate-500 hover:text-amber-600 transition-colors"
+                          aria-label={`Arquivar passivo ${liability.name}`}
+                        >
+                          Arquivar
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteLiability(liability.id)} 
+                          className="text-slate-400 hover:text-rose-600 transition-colors"
+                          aria-label={`Excluir passivo ${liability.name}`}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -8444,6 +8676,7 @@ const Assets: React.FC = () => {
                   <input
                     required
                     type="number"
+                    min="0"
                     step="0.01"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500"
                     value={liabilityFormData.totalAmount}
@@ -8451,12 +8684,13 @@ const Assets: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-red-500 uppercase tracking-widest mb-1.5">Saldo Devedor Atual</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Saldo Devedor Atual (R$)</label>
                   <input
                     required
                     type="number"
+                    min="0"
                     step="0.01"
-                    className="w-full bg-red-50/50 border border-red-200 rounded-xl px-4 py-3 text-sm font-bold text-red-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500"
                     value={liabilityFormData.remainingBalance}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, remainingBalance: e.target.value })}
                   />
@@ -8468,6 +8702,7 @@ const Assets: React.FC = () => {
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor Parcela</label>
                   <input
                     type="number"
+                    min="0"
                     step="0.01"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
                     value={liabilityFormData.installmentAmount}
@@ -8478,6 +8713,7 @@ const Assets: React.FC = () => {
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Parcelas Restantes</label>
                   <input
                     type="number"
+                    min="0"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
                     value={liabilityFormData.installmentsRemaining}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentsRemaining: e.target.value })}
@@ -8494,6 +8730,43 @@ const Assets: React.FC = () => {
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, dueDay: e.target.value })}
                   />
                 </div>
+              </div>
+
+              {/* Opções de Recálculo Dinâmico */}
+              <div className="flex gap-2 justify-end text-[10px] text-brand-600 font-black tracking-wide mt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const balance = parseFloat(liabilityFormData.remainingBalance) || 0;
+                    const amt = parseFloat(liabilityFormData.installmentAmount) || 0;
+                    if (balance > 0 && amt > 0) {
+                      const computed = Math.ceil(balance / amt);
+                      setLiabilityFormData(prev => ({ ...prev, installmentsRemaining: computed.toString() }));
+                    } else {
+                      alert("Preencha o Saldo Devedor e o Valor da Parcela para calcular.");
+                    }
+                  }}
+                  className="hover:underline flex items-center gap-1"
+                >
+                  ⚙️ Recalcular nº parcelas
+                </button>
+                <span className="text-slate-300">|</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const balance = parseFloat(liabilityFormData.remainingBalance) || 0;
+                    const remaining = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
+                    if (balance > 0 && remaining > 0) {
+                      const computed = Math.round((balance / remaining) * 100) / 100;
+                      setLiabilityFormData(prev => ({ ...prev, installmentAmount: computed.toString() }));
+                    } else {
+                      alert("Preencha o Saldo Devedor e a quantidade de Parcelas Restantes para calcular.");
+                    }
+                  }}
+                  className="hover:underline flex items-center gap-1"
+                >
+                  ⚙️ Recalcular valor parcela
+                </button>
               </div>
 
               {activePhysicalAssets.length > 0 && (
@@ -8517,6 +8790,254 @@ const Assets: React.FC = () => {
                 <button type="submit" className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg">Salvar Passivo</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: LIABILITY EXTRATO / LEDGER DETAILED VIEW WITH AMORTIZATION SYNC */}
+      {selectedLiabilityForExtrato && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 flex flex-col max-h-[85vh]">
+            {/* Header */}
+            <div className="px-8 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 print:hidden">
+              <div>
+                <h3 className="font-black text-slate-900 uppercase tracking-tight text-lg">
+                  Extrato e Amortização de Passivo
+                </h3>
+                <p className="text-xs text-slate-400 font-medium">{selectedLiabilityForExtrato.name}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => exportLiabilityExtratoToExcel(selectedLiabilityForExtrato)} 
+                  className="p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-brand-600 rounded-xl flex items-center justify-center transition-all shadow-sm" 
+                  title="Exportar Excel"
+                  aria-label="Exportar extrato para Excel"
+                >
+                  <FileSpreadsheet size={16} />
+                </button>
+                <button 
+                  onClick={() => window.print()} 
+                  className="p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-brand-600 rounded-xl flex items-center justify-center transition-all shadow-sm" 
+                  title="Imprimir PDF"
+                  aria-label="Imprimir extrato em PDF"
+                >
+                  <Printer size={16} />
+                </button>
+                <button 
+                  onClick={() => {
+                    handleArchiveLiability(selectedLiabilityForExtrato);
+                    setSelectedLiabilityForExtrato(null);
+                  }} 
+                  className="p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-rose-600 rounded-xl flex items-center justify-center transition-all shadow-sm" 
+                  title="Arquivar Passivo"
+                  aria-label="Arquivar este passivo"
+                >
+                  <Archive size={16} />
+                </button>
+                <button 
+                  onClick={() => {
+                    setSelectedLiabilityForExtrato(null);
+                    setIsAddingLiabilityTx(false);
+                  }} 
+                  className="w-10 h-10 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-xl flex items-center justify-center transition-all shadow-sm ml-1"
+                  aria-label="Fechar modal"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Print Header */}
+            <div className="hidden print:block p-8 border-b border-slate-200">
+              <h2 className="text-2xl font-black text-slate-900">FinVision – Extrato de Passivo / Dívida</h2>
+              <p className="text-sm text-slate-600 mt-1">Passivo: <strong>{selectedLiabilityForExtrato.name}</strong></p>
+              <p className="text-sm text-slate-600">Tipo: <strong>{selectedLiabilityForExtrato.type}</strong></p>
+              <p className="text-sm text-slate-600">Emitido em: {new Date().toLocaleDateString('pt-BR')}</p>
+            </div>
+
+            {/* Content */}
+            <div className="p-8 flex-1 overflow-y-auto custom-scrollbar space-y-6">
+              
+              {/* Financial info panels */}
+              {(() => {
+                const info = getLiabilityFinancialHistory(selectedLiabilityForExtrato);
+                const totalAmount = selectedLiabilityForExtrato.totalAmount || 0;
+                const remaining = selectedLiabilityForExtrato.remainingBalance;
+                const paidPct = totalAmount > 0 ? Math.min(100, Math.round(((totalAmount - remaining) / totalAmount) * 100)) : 0;
+
+                return (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Valor Original</p>
+                        <p className="text-sm font-black text-slate-700">{formatCurrency(totalAmount)}</p>
+                      </div>
+                      <div className="bg-red-50 border border-red-100 rounded-2xl p-4">
+                        <p className="text-[10px] font-black uppercase text-red-500 tracking-widest">Saldo Devedor</p>
+                        <p className="text-sm font-black text-red-700">{formatCurrency(remaining)}</p>
+                      </div>
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+                        <p className="text-[10px] font-black uppercase text-emerald-500 tracking-widest">Total Pago</p>
+                        <p className="text-sm font-black text-emerald-700">{formatCurrency(totalAmount - remaining)}</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-xs font-black uppercase text-slate-400">
+                        <span>Progresso de Quitação</span>
+                        <span>{paidPct}% quitado</span>
+                      </div>
+                      <div 
+                        className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden"
+                        role="progressbar"
+                        aria-valuenow={paidPct}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label="Progresso de quitação da dívida"
+                      >
+                        <div 
+                          className="bg-emerald-500 h-full rounded-full transition-all" 
+                          style={{ width: `${paidPct}%` }} 
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Transactions list */}
+              <div className="space-y-4">
+                <div className="flex justify-between items-center print:hidden">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    Histórico de Pagamentos
+                  </h4>
+                  {!isAddingLiabilityTx && (
+                    <button
+                      onClick={() => {
+                        setNewTxForm({
+                          description: `Pagamento Parcela - ${selectedLiabilityForExtrato.name}`,
+                          amount: selectedLiabilityForExtrato.installmentAmount ? String(selectedLiabilityForExtrato.installmentAmount) : '',
+                          type: 'EXPENSE',
+                          date: new Date().toISOString().split('T')[0],
+                          isHistorical: false,
+                          category: 'Financiamento/Dívida',
+                          subcategory: 'Amortização'
+                        });
+                        setIsAddingLiabilityTx(true);
+                      }}
+                      className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition-colors"
+                    >
+                      + Lançar Pagamento
+                    </button>
+                  )}
+                </div>
+
+                {/* Inline form for adding transaction */}
+                {isAddingLiabilityTx && (
+                  <form onSubmit={handleSaveLiabilityTransaction} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-in slide-in-from-top-2 print:hidden">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Descrição</label>
+                        <input
+                          required
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"
+                          placeholder="Ex: Pagamento Parcela"
+                          value={newTxForm.description}
+                          onChange={e => setNewTxForm({ ...newTxForm, description: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Valor do Pagamento (R$)</label>
+                        <input
+                          required
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"
+                          placeholder="0.00"
+                          value={newTxForm.amount}
+                          onChange={e => setNewTxForm({ ...newTxForm, amount: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Data</label>
+                        <input
+                          type="date"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
+                          value={newTxForm.date}
+                          onChange={e => setNewTxForm({ ...newTxForm, date: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Categoria</label>
+                        <input
+                          readOnly
+                          className="w-full bg-slate-100 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-500 outline-none"
+                          value={newTxForm.category}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-2">
+                      <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
+                        <input
+                          type="checkbox"
+                          checked={newTxForm.isHistorical}
+                          onChange={e => setNewTxForm({ ...newTxForm, isHistorical: e.target.checked })}
+                        />
+                        Lançamento Passado (Não conta no Dashboard Mensal)
+                      </label>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setIsAddingLiabilityTx(false)} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-black uppercase">Cancelar</button>
+                        <button type="submit" className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-xs font-black uppercase">Lançar</button>
+                      </div>
+                    </div>
+                  </form>
+                )}
+
+                {/* Ledger entries list */}
+                <div className="space-y-3">
+                  {getLiabilityLinkedTransactions(selectedLiabilityForExtrato.id).map(tx => (
+                    <div key={tx.id} className="flex justify-between items-center bg-slate-50 border border-slate-100 p-4 rounded-xl group hover:border-slate-200 transition-all">
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                          {tx.description}
+                          {tx.metadata?.is_historical && (
+                            <span className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-[7px] font-black uppercase tracking-wider">Histórico</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-slate-400 font-medium">
+                          {new Date(tx.date).toLocaleDateString('pt-BR')} • {tx.category}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-xs font-black text-rose-500">
+                          -{formatCurrency(tx.amount)}
+                        </span>
+                        <button
+                          onClick={() => handleDeleteLiabilityTransaction(tx.id, tx.amount)}
+                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-600 transition-all print:hidden"
+                          aria-label={`Excluir lançamento de ${tx.description}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {getLiabilityLinkedTransactions(selectedLiabilityForExtrato.id).length === 0 && (
+                    <div className="text-center py-10 border-2 border-dashed border-slate-100 rounded-2xl">
+                      <History size={36} className="mx-auto text-slate-300 mb-2" />
+                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Nenhum pagamento registrado</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Lançamentos de amortização aparecerão aqui.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
