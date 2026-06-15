@@ -295,6 +295,7 @@ const Assets: React.FC = () => {
     loanFixedValue: '',
     loanDueDate: '',
     loanDebtor: '',
+    loanInstallmentsCount: '',
     // Financing / Consortium details for edit transition
     deliveryPaymentMethod: 'A_VISTA' as 'A_VISTA' | 'FINANCIAMENTO' | 'CONSORCIO' | 'A_DEFINIR',
     deliveryBalance: '',
@@ -689,6 +690,11 @@ const Assets: React.FC = () => {
       }));
       setTransactions(mappedTxs);
 
+      // Proactively run automatic transaction creation check
+      setTimeout(() => {
+        runAutoTransactionSync(userId, mappedPhys, mappedLiabs, mappedTxs);
+      }, 100);
+
       // Atualizar cache local
       try {
         localStorage.setItem(`finvision_cached_physical_assets_${userId}`, JSON.stringify(mappedPhys));
@@ -944,10 +950,50 @@ const Assets: React.FC = () => {
     const totalInvestedBalance = activeFinancial.reduce((acc, curr) => acc + curr.balance, 0);
     const estimatedMonthlyYield = totalInvestedBalance * (estimatedYieldRate / 100);
 
+    // Off-plan construction installments
+    const plantaAssets = activePhysicalAssets.filter(p => p.category === 'REAL_ESTATE' && p.metadata?.propertyStage === 'PLANTA' && !excludedAssetIds.includes(p.id));
+    const plantaInstallments = plantaAssets.reduce((sum, p) => {
+      const meta = p.metadata || {};
+      const assetTxs = linkedTransactionsMap.get(p.id) || [];
+      const nextUnpaidInstallment = assetTxs
+        .filter(t => t.metadata?.property_tx_type === 'CONSTRUCTOR_INSTALLMENT' && !t.isPaid)
+        .sort((a, b) => a.date.localeCompare(b.date))[0];
+      
+      let constructorInstallment = 0;
+      if (nextUnpaidInstallment) {
+        constructorInstallment = nextUnpaidInstallment.amount;
+      } else {
+        const constrAmt = Number(meta.constructorAmount) || 0;
+        const constrN = Number(meta.constructorInstallmentsCount) || 1;
+        constructorInstallment = constrAmt > 0 && constrN > 0 ? (constrAmt / constrN) : 0;
+      }
+
+      const linkedLiab = activeLiabilities.find(l => l.linkedAssetId === p.id);
+      const allocationRatio = meta.consortiumAllocationRatio !== undefined ? (Number(meta.consortiumAllocationRatio) / 100) : 1;
+      const financingInstallment = linkedLiab 
+        ? (Number(linkedLiab.installmentAmount) * allocationRatio) 
+        : (Number(meta.financingInstallment) || 0);
+
+      return sum + constructorInstallment + financingInstallment;
+    }, 0);
+
+    const currentMonthStr = new Date().toISOString().substring(0, 7);
+    const realizedYield = transactions.filter(t => 
+      t.type === 'INCOME' && 
+      t.is_paid !== false && 
+      t.date.substring(0, 7) === currentMonthStr &&
+      t.subcategory !== 'Resgate' &&
+      t.metadata?.type !== 'investment_redemption_total' &&
+      t.metadata?.type !== 'investment_redemption_partial' &&
+      (t.category === 'Rendimentos' || t.category === 'Investimentos' || t.metadata?.type === 'investment_yield')
+    ).reduce((sum, t) => sum + t.amount, 0);
+
     const totalInflow = totalRents + estimatedMonthlyYield;
-    const totalOutflow = totalMortgageInstallments + totalOperatingCosts + totalConsortiumInstallments + totalOtherInstallments + vehicleRecurringExpenses;
+    const realizedInflow = totalRents + realizedYield;
+    const totalOutflow = totalMortgageInstallments + totalOperatingCosts + totalConsortiumInstallments + totalOtherInstallments + vehicleRecurringExpenses + plantaInstallments;
     const netFlow = totalInflow - totalOutflow;
     const selfSustainabilityPercent = totalOutflow > 0 ? Math.round((totalInflow / totalOutflow) * 100) : 100;
+    const realizedSelfSustainabilityPercent = totalOutflow > 0 ? Math.round((realizedInflow / totalOutflow) * 100) : 100;
 
     return {
       totalRents,
@@ -959,12 +1005,14 @@ const Assets: React.FC = () => {
       totalConsortiumInstallments,
       totalOtherInstallments,
       vehicleRecurringExpenses,
+      plantaInstallments,
       totalOutflow,
       netFlow,
       selfSustainabilityPercent,
+      realizedSelfSustainabilityPercent,
       totalInvestedBalance
     };
-  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, linkedTransactionsMap]);
+  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, linkedTransactionsMap, transactions]);
 
   // Asset helpers
   const getAssetLinkedTransactions = (assetId: string) => {
@@ -1157,6 +1205,190 @@ const Assets: React.FC = () => {
     const monthLabel = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date()).toUpperCase();
 
     return { list, total, monthLabel };
+  };
+
+  const getOrCreateCategory = async (userId: string, name: string, type: 'INCOME' | 'EXPENSE', color: string) => {
+    if (!supabase) return null;
+    const { data } = await supabase.from('categories')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', name)
+      .eq('type', type)
+      .maybeSingle();
+    if (data) return data.id;
+    const { data: newCat } = await supabase.from('categories').insert({
+      user_id: userId,
+      name,
+      type,
+      color
+    }).select('id').maybeSingle();
+    return newCat?.id || null;
+  };
+
+  const runAutoTransactionSync = async (userId: string, assets: any[], liabs: any[], txs: any[]) => {
+    if (!supabase) return;
+    
+    // 1. Asset Purchase Transactions
+    for (const asset of assets) {
+      if (asset.category === 'INVESTMENT' || asset.metadata?.isLoan || asset.is_archived) continue;
+      const amount = Number(asset.metadata?.purchaseValue) || asset.estimatedValue;
+      if (amount <= 0) continue;
+      
+      const hasPurchaseTx = txs.some(t => 
+        t.metadata?.linked_asset_id === asset.id && 
+        t.metadata?.type === 'asset_purchase'
+      );
+      
+      if (!hasPurchaseTx) {
+        let catName = 'Outros';
+        let catColor = 'bg-slate-50 text-slate-600';
+        if (asset.category === 'REAL_ESTATE') {
+          catName = 'Habitação';
+          catColor = 'bg-emerald-50 text-emerald-600';
+        } else if (asset.category === 'VEHICLE') {
+          catName = 'Transporte';
+          catColor = 'bg-blue-50 text-blue-600';
+        }
+        
+        const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
+        const dateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
+        
+        await supabase.from('transactions').insert([{
+          user_id: userId,
+          description: `Aquisição Ativo - ${asset.name}`,
+          amount,
+          date: dateStr,
+          type: 'EXPENSE',
+          category: catName,
+          category_id: catId,
+          is_paid: true,
+          paid_amount: amount,
+          paid_at: dateStr,
+          metadata: {
+            linked_asset_id: asset.id,
+            type: 'asset_purchase',
+            isCapitalized: true
+          }
+        }]);
+      }
+    }
+
+    // 2. Liability Inflow Transactions
+    for (const liab of liabs) {
+      if (liab.is_archived || liab.totalAmount <= 0) continue;
+      
+      const hasInflowTx = txs.some(t => 
+        t.liability_id === liab.id && 
+        t.metadata?.type === 'liability_inflow'
+      );
+      
+      if (!hasInflowTx) {
+        const catName = 'Empréstimos/Investimentos';
+        const catColor = 'bg-brand-50 text-brand-600';
+        const catId = await getOrCreateCategory(userId, catName, 'INCOME', catColor);
+        const dateStr = new Date().toISOString().split('T')[0];
+        
+        await supabase.from('transactions').insert([{
+          user_id: userId,
+          description: `Recebimento de Empréstimo/Financiamento - ${liab.name}`,
+          amount: liab.totalAmount,
+          date: dateStr,
+          type: 'INCOME',
+          category: catName,
+          category_id: catId,
+          is_paid: true,
+          paid_amount: liab.totalAmount,
+          paid_at: dateStr,
+          liability_id: liab.id,
+          metadata: {
+            liability_id: liab.id,
+            type: 'liability_inflow',
+            isCapitalized: true,
+            linked_asset_id: liab.linkedAssetId || undefined
+          }
+        }]);
+      }
+    }
+
+    // 3. Loan Asset Disbursements
+    for (const asset of assets) {
+      if (!asset.metadata?.isLoan || asset.is_archived) continue;
+      const principal = Number(asset.metadata?.loanPrincipal) || 0;
+      if (principal <= 0) continue;
+      
+      const hasDisbTx = txs.some(t => 
+        t.metadata?.linked_asset_id === asset.id && 
+        t.metadata?.type === 'loan_disbursement'
+      );
+      
+      if (!hasDisbTx) {
+        const catName = 'Empréstimos/Investimentos';
+        const catColor = 'bg-brand-50 text-brand-600';
+        const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
+        const dateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
+        
+        await supabase.from('transactions').insert([{
+          user_id: userId,
+          description: `Desembolso Empréstimo Concedido - ${asset.name}`,
+          amount: principal,
+          date: dateStr,
+          type: 'EXPENSE',
+          category_id: catId,
+          category: catName,
+          is_paid: true,
+          paid_amount: principal,
+          paid_at: dateStr,
+          metadata: {
+            linked_asset_id: asset.id,
+            type: 'loan_disbursement'
+          }
+        }]);
+      }
+      
+      // Also generate pending installments if loanInstallmentsCount exists in metadata
+      const installmentsCount = Number(asset.metadata?.loanInstallmentsCount) || 0;
+      const monthlyValue = Number(asset.metadata?.loanFixedValue) || 0;
+      const dueDate = Number(asset.metadata?.loanDueDate) || 10;
+      
+      if (installmentsCount > 0 && monthlyValue > 0) {
+        const hasInstallments = txs.some(t => 
+          t.metadata?.linked_asset_id === asset.id && 
+          t.metadata?.type === 'loan_installment_provision'
+        );
+        
+        if (!hasInstallments) {
+          const catName = 'Empréstimos/Investimentos';
+          const catColor = 'bg-brand-50 text-brand-600';
+          const catId = await getOrCreateCategory(userId, catName, 'INCOME', catColor);
+          const today = new Date();
+          const futureTxs = [];
+          
+          for (let i = 1; i <= installmentsCount; i++) {
+            const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDate);
+            futureTxs.push({
+              user_id: userId,
+              description: `Recebimento Parcela ${i}/${installmentsCount} - ${asset.name}`,
+              amount: monthlyValue,
+              date: txDate.toISOString().split('T')[0],
+              type: 'INCOME',
+              category: catName,
+              category_id: catId,
+              is_paid: false,
+              is_installment: true,
+              installment_number: i,
+              installment_total: installmentsCount,
+              metadata: {
+                auto_generated: true,
+                installment_number: i,
+                linked_asset_id: asset.id,
+                type: 'loan_installment_provision'
+              }
+            });
+          }
+          await supabase.from('transactions').insert(futureTxs);
+        }
+      }
+    }
   };
 
   // Sync Rental Income Transactions: Activates/Deactivates starting from today forward
@@ -2064,7 +2296,7 @@ const Assets: React.FC = () => {
         description: desc,
         amount: amountToRedeem,
         date: todayStr,
-        type: 'INCOME',
+        type: 'TRANSFER',
         category: 'Investimentos',
         subcategory: 'Resgate',
         category_id: catId,
@@ -2076,7 +2308,8 @@ const Assets: React.FC = () => {
         metadata: {
           linked_asset_id: asset.id,
           type: isTotal ? 'investment_redemption_total' : 'investment_redemption_partial',
-          redeemed_amount: amountToRedeem
+          redeemed_amount: amountToRedeem,
+          isCapitalized: true
         }
       }]);
 
@@ -2221,6 +2454,7 @@ const Assets: React.FC = () => {
         loanFixedValue: loanFixedValueVal,
         loanDueDate: formData.loanDueDate,
         loanDebtor: formData.loanDebtor,
+        loanInstallmentsCount: formData.isLoan ? (parseInt(formData.loanInstallmentsCount, 10) || 12) : undefined,
         // Financing / Consortium details
         deliveryPaymentMethod: isRealEstate ? formData.deliveryPaymentMethod : undefined,
         deliveryBalance: isRealEstate ? (parseFloat(formData.deliveryBalance) || 0) : undefined,
@@ -2364,7 +2598,7 @@ const Assets: React.FC = () => {
             description: `Resgate Total Investimento - ${formData.name}`,
             amount: value,
             date: todayStr,
-            type: 'INCOME',
+            type: 'TRANSFER',
             category: 'Investimentos',
             subcategory: 'Resgate',
             category_id: catId,
@@ -2376,7 +2610,8 @@ const Assets: React.FC = () => {
             metadata: {
               linked_asset_id: editingAsset.id,
               type: 'investment_redemption_total',
-              redeemed_amount: value
+              redeemed_amount: value,
+              isCapitalized: true
             }
           }]);
         }
@@ -2657,7 +2892,7 @@ const Assets: React.FC = () => {
             description: `Resgate Total Investimento - ${formData.name}`,
             amount: value,
             date: todayStr,
-            type: 'INCOME',
+            type: 'TRANSFER',
             category: 'Investimentos',
             subcategory: 'Resgate',
             category_id: catId,
@@ -2669,7 +2904,8 @@ const Assets: React.FC = () => {
             metadata: {
               linked_asset_id: newAsset.id,
               type: 'investment_redemption_total',
-              redeemed_amount: value
+              redeemed_amount: value,
+              isCapitalized: true
             }
           }]);
         }
@@ -3084,6 +3320,7 @@ const Assets: React.FC = () => {
       loanFixedValue: '',
       loanDueDate: '',
       loanDebtor: '',
+      loanInstallmentsCount: '',
       deliveryPaymentMethod: 'A_VISTA',
       deliveryBalance: '',
       selectedConsortiumId: '',
@@ -3263,6 +3500,7 @@ const Assets: React.FC = () => {
       loanFixedValue: meta.loanFixedValue ? String(meta.loanFixedValue) : '',
       loanDueDate: meta.loanDueDate || '',
       loanDebtor: meta.loanDebtor || '',
+      loanInstallmentsCount: meta.loanInstallmentsCount ? String(meta.loanInstallmentsCount) : '',
       deliveryPaymentMethod: devPayMethod,
       deliveryBalance: devBal,
       selectedConsortiumId: selConsortiumId,
@@ -3972,27 +4210,59 @@ const Assets: React.FC = () => {
         if (newCat) catId = newCat.id;
       }
 
-      const newTx = {
-        user_id: user.id,
-        description: newTxForm.description,
-        amount: amt,
-        date: newTxForm.date,
-        type: 'EXPENSE',
-        category: categoryName,
-        category_id: catId || null,
-        is_paid: true,
-        is_installment: false,
-        liability_id: selectedLiabilityForExtrato.id,
-        is_amortization: true,
-        metadata: {
-          is_historical: newTxForm.isHistorical,
-          auto_generated: false,
-          linked_asset_id: selectedLiabilityForExtrato.linkedAssetId || undefined
-        }
-      };
+      // Check if there is an unpaid pre-existing transaction for this liability
+      const { data: unpaidTx } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('liability_id', selectedLiabilityForExtrato.id)
+        .eq('is_paid', false)
+        .order('date', { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
-      const { error: txError } = await supabase.from('transactions').insert([newTx]);
-      if (txError) throw txError;
+      if (unpaidTx) {
+        // Update the pre-existing unpaid transaction to is_paid = true
+        const { error: txError } = await supabase
+          .from('transactions')
+          .update({
+            is_paid: true,
+            amount: amt,
+            paid_amount: amt,
+            paid_at: newTxForm.date,
+            date: newTxForm.date,
+            description: newTxForm.description,
+            metadata: {
+              ...(unpaidTx.metadata || {}),
+              is_historical: newTxForm.isHistorical,
+              auto_generated: false
+            }
+          })
+          .eq('id', unpaidTx.id);
+
+        if (txError) throw txError;
+      } else {
+        // Fallback: If no unpaid transaction exists, insert a new one
+        const newTx = {
+          user_id: user.id,
+          description: newTxForm.description,
+          amount: amt,
+          date: newTxForm.date,
+          type: 'EXPENSE',
+          category: categoryName,
+          category_id: catId || null,
+          is_paid: true,
+          is_installment: false,
+          liability_id: selectedLiabilityForExtrato.id,
+          is_amortization: true,
+          metadata: {
+            is_historical: newTxForm.isHistorical,
+            auto_generated: false,
+            linked_asset_id: selectedLiabilityForExtrato.linkedAssetId || undefined
+          }
+        };
+        const { error: txError } = await supabase.from('transactions').insert([newTx]);
+        if (txError) throw txError;
+      }
 
       const currentRemaining = selectedLiabilityForExtrato.remainingBalance;
       const newRemaining = Math.max(0, currentRemaining - amt);
@@ -4027,8 +4297,33 @@ const Assets: React.FC = () => {
     if (!supabase || !selectedLiabilityForExtrato) return;
     if (!window.confirm("Deseja realmente excluir este pagamento? O saldo devedor do passivo será reajustado (somado) com o valor deste pagamento.")) return;
     try {
-      const { error: txError } = await supabase.from('transactions').delete().eq('id', txId);
-      if (txError) throw txError;
+      // Fetch the transaction before deleting/updating
+      const { data: txToDelete } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', txId)
+        .single();
+
+      if (txToDelete && (txToDelete.is_installment || txToDelete.installment_number || txToDelete.metadata?.auto_generated)) {
+        // If it was part of a schedule, revert it to is_paid = false and clear paid fields
+        const { error: txError } = await supabase
+          .from('transactions')
+          .update({
+            is_paid: false,
+            paid_amount: null,
+            paid_at: null,
+            metadata: {
+              ...(txToDelete.metadata || {}),
+              auto_generated: true
+            }
+          })
+          .eq('id', txId);
+        if (txError) throw txError;
+      } else {
+        // Otherwise, completely delete the custom amortization transaction
+        const { error: txError } = await supabase.from('transactions').delete().eq('id', txId);
+        if (txError) throw txError;
+      }
 
       const currentRemaining = selectedLiabilityForExtrato.remainingBalance;
       const newRemaining = currentRemaining + amount;
@@ -4202,7 +4497,13 @@ const Assets: React.FC = () => {
   // Totals calculations
   const totalPhysical = enrichedPhysicalAssets
     .filter(p => p.category !== 'INVESTMENT' && !p.metadata?.isLoan)
-    .reduce((acc, curr) => acc + curr.estimatedValue, 0);
+    .reduce((acc, curr) => {
+      if (curr.category === 'REAL_ESTATE' && curr.metadata?.propertyStage === 'PLANTA') {
+        const meta = curr.metadata || {};
+        return acc + curr.estimatedValue - (Number(meta.deliveryBalance) || 0);
+      }
+      return acc + curr.estimatedValue;
+    }, 0);
   
   const totalFinancial = dynamicBrokers.reduce((acc, curr) => acc + curr.balance, 0);
   const totalLiabilities = activeLiabilities.reduce((acc, curr) => acc + curr.remainingBalance, 0);
@@ -4239,17 +4540,7 @@ const Assets: React.FC = () => {
 
     // Helper to dynamically link a liability to an asset with name substring fallback
     const isLiabilityLinkedToAsset = (l: Liability, p: PhysicalAsset) => {
-      if (l.linkedAssetId === p.id) return true;
-      const assetNameClean = p.name.toLowerCase()
-        .replace(/apartamento|casa|carro|veículo|jeep|honda|audi|toyota/g, '')
-        .trim();
-      const liabNameClean = l.name.toLowerCase()
-        .replace(/financiamento|consórcio|consorcio|dívida|divida/g, '')
-        .trim();
-      if (assetNameClean.length > 2 && liabNameClean.includes(assetNameClean)) return true;
-      const firstWord = assetNameClean.split(/\s+/)[0];
-      if (firstWord && firstWord.length > 3 && liabNameClean.includes(firstWord)) return true;
-      return false;
+      return l.linkedAssetId === p.id;
     };
 
     // 1. INVESTIMENTO IMOBILIÁRIO SUMS
@@ -4311,6 +4602,17 @@ const Assets: React.FC = () => {
     ).reduce((sum, t) => sum + t.amount, 0);
 
     const prontoValue = prontoAssets.reduce((sum, p) => sum + p.estimatedValue, 0);
+    const rentedProntoAssets = prontoAssets.filter(p => p.metadata?.isRented);
+    const totalRentedValue = rentedProntoAssets.reduce((sum, p) => sum + p.estimatedValue, 0);
+    const totalAnnualizedNetRent = rentedProntoAssets.reduce((sum, p) => {
+      const meta = p.metadata || {};
+      const monthlyNet = (Number(meta.rentalIncome) || 0) 
+        - (meta.inquilinoPaysCondo ? 0 : (Number(meta.condoFee) || 0)) 
+        - (meta.inquilinoPaysIPTU ? 0 : (Number(meta.iptuFee) || 0));
+      return sum + (monthlyNet * 12);
+    }, 0);
+    const prontoCapRate = totalRentedValue > 0 ? (totalAnnualizedNetRent / totalRentedValue) * 100 : 0;
+
     const prontoLiabs = activeLiab.filter(l => prontoAssets.some(p => isLiabilityLinkedToAsset(l, p)));
     const prontoInstallments = prontoLiabs.reduce((sum, l) => sum + (l.installmentAmount || 0), 0);
     const prontoContracted = prontoLiabs.reduce((sum, l) => sum + l.totalAmount, 0);
@@ -4442,9 +4744,12 @@ const Assets: React.FC = () => {
       percentage: totalFinancialFunds > 0 ? Math.round((allocationGrouped[type] / totalFinancialFunds) * 100) : 0
     })).sort((a,b) => b.balance - a.balance);
 
-    // Yield transactions (categories Rendimentos/Investimentos or metadata type)
+    // Yield transactions (categories Rendimentos/Investimentos or metadata type), excluding Resgates
     const yieldTxs = transactions.filter(t => 
       t.type === 'INCOME' && 
+      t.subcategory !== 'Resgate' &&
+      t.metadata?.type !== 'investment_redemption_total' &&
+      t.metadata?.type !== 'investment_redemption_partial' &&
       (t.category === 'Rendimentos' || t.category === 'Investimentos' || t.metadata?.type === 'investment_yield')
     );
 
@@ -4463,13 +4768,13 @@ const Assets: React.FC = () => {
       return sum + (value * monthlyRate);
     }, 0);
 
-    const currentMonthYield = transactionCurrentMonthYield + investmentsEstimatedMonthlyYield;
+    const currentMonthYield = transactionCurrentMonthYield;
 
     const uniqueMonths = Array.from(new Set(yieldTxs.map(t => t.date.substring(0, 7))));
     const transactionAverageYield = uniqueMonths.length > 0 
       ? yieldTxs.reduce((sum, t) => sum + t.amount, 0) / uniqueMonths.length 
       : 0;
-    const averageMonthlyYield = transactionAverageYield + investmentsEstimatedMonthlyYield;
+    const averageMonthlyYield = transactionAverageYield;
 
     // 4. PASSIVOS E DÍVIDAS (Consórcios vs Financiamentos)
     const consortiums = activeLiab.filter(l => l.type === 'CONSORTIUM');
@@ -4487,6 +4792,16 @@ const Assets: React.FC = () => {
     const finContracted = financings.reduce((sum, l) => sum + l.totalAmount, 0);
     const finPaid = financings.reduce((sum, l) => sum + (l.totalAmount - l.remainingBalance), 0);
     const finRemaining = financings.reduce((sum, l) => sum + l.remainingBalance, 0);
+
+    // 5. EMPRÉSTIMOS CONCEDIDOS
+    const activeLoans = activePhys.filter(p => p.metadata?.isLoan);
+    const loansPrincipal = activeLoans.reduce((sum, p) => sum + (Number(p.metadata?.loanPrincipal) || 0), 0);
+    const loansReceived = activeLoans.reduce((sum, p) => {
+      const txs = linkedTransactionsMap.get(p.id) || [];
+      return sum + txs.filter(t => t.type === 'INCOME').reduce((s, t) => s + Number(t.amount || 0), 0);
+    }, 0);
+    const loansOutstanding = Math.max(0, loansPrincipal - loansReceived);
+    const loansExpectedReceipts = activeLoans.reduce((sum, p) => sum + (Number(p.metadata?.loanFixedValue) || 0), 0);
 
     return {
       plantaValue,
@@ -4534,7 +4849,12 @@ const Assets: React.FC = () => {
       finPaid,
       finRemaining,
       veiculoValue,
-      outroFisicoValue
+      outroFisicoValue,
+      prontoCapRate,
+      loansPrincipal,
+      loansReceived,
+      loansOutstanding,
+      loansExpectedReceipts
     };
   }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, transactions, totalFinancial, linkedTransactionsMap, enrichedPhysicalAssets]);
 
@@ -4595,15 +4915,14 @@ const Assets: React.FC = () => {
         {activeView === 'overview' && (
           <div className="space-y-8 animate-in fade-in duration-500">
             {/* COMPACT TOTALS GRID (8 Cards) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4">
               {/* Fluxo Mensal */}
-              <button
-                onClick={() => setActiveView('overview')}
-                className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group hover:scale-[1.02] transition-all col-span-2 sm:col-span-1 text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
+              <div
+                className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group col-span-2 md:col-span-1 text-left w-full"
               >
                 <div className="absolute -right-4 -bottom-4 w-12 h-12 bg-white/5 rounded-full pointer-events-none" />
                 <div className="flex justify-between items-start">
-                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
                   <Zap size={14} className="text-brand-400" />
                 </div>
                 <div className="mt-1 space-y-0.5">
@@ -4616,7 +4935,7 @@ const Assets: React.FC = () => {
                     <span className="font-bold text-rose-400">{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
                   </div>
                   <div className="flex justify-between text-xs text-slate-400">
-                    <span>Sustentabilidade:</span>
+                    <span>Autossuficiência:</span>
                     <span className="font-bold text-brand-400">{sustainabilitySummary.selfSustainabilityPercent}%</span>
                   </div>
                   <div className="flex justify-between items-baseline border-t border-slate-800 pt-1 mt-0.5">
@@ -4626,34 +4945,33 @@ const Assets: React.FC = () => {
                     </span>
                   </div>
                 </div>
-              </button>
+              </div>
 
               {/* Patrimônio Líquido */}
-              <button
-                onClick={() => setActiveView('overview')}
-                className="bg-white border-2 border-brand-500 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500 relative overflow-hidden"
+              <div
+                className="bg-white border border-brand-200 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] text-left w-full relative overflow-hidden"
               >
                 <div className="absolute top-0 right-0 w-8 h-8 bg-brand-500/10 rounded-bl-full flex items-center justify-center pointer-events-none">
-                  <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest mr-1 mb-1">Mestre</span>
+                  <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest mr-1 mb-1">Consolidado</span>
                 </div>
                 <div className="flex justify-between items-start">
-                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Patrimônio Real</span>
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-500">Patrimônio Real</span>
                   <TrendingUp size={14} className="text-emerald-500" />
                 </div>
                 <div className="mt-2">
                   <h4 className="text-base font-black text-slate-900 tracking-tight italic">
                     {formatCurrency(totalNetWorth)}
                   </h4>
-                  <span className="text-xs sm:text-[11px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-0.5">
+                  <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-0.5">
                     Líquido <ArrowUpRight size={10} className="inline shrink-0" />
                   </span>
                 </div>
-              </button>
+              </div>
 
               {/* Investimento Imobiliário */}
               <button
                 onClick={() => setActiveView('realestate')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <div className="flex justify-between items-start">
                   <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Imobiliário</span>
@@ -4666,11 +4984,11 @@ const Assets: React.FC = () => {
                   <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Planta + Pronto</span>
                 </div>
               </button>
-
+              
               {/* Veículos */}
               <button
                 onClick={() => setActiveView('vehicles')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <div className="flex justify-between items-start">
                   <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Veículos</span>
@@ -4683,11 +5001,11 @@ const Assets: React.FC = () => {
                   <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">FIPE / Estimado</span>
                 </div>
               </button>
-
+              
               {/* Outros Bens Físicos */}
               <button
                 onClick={() => setActiveView('physical')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <div className="flex justify-between items-start">
                   <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Outros Bens</span>
@@ -4700,11 +5018,11 @@ const Assets: React.FC = () => {
                   <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Outros Físicos</span>
                 </div>
               </button>
-
+              
               {/* Investimentos Financeiros */}
               <button
                 onClick={() => setActiveView('investments')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <div className="flex justify-between items-start">
                   <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Financeiro</span>
@@ -4717,11 +5035,11 @@ const Assets: React.FC = () => {
                   <span className="text-xs sm:text-[11px] font-bold text-brand-500 uppercase tracking-widest">Corretoras</span>
                 </div>
               </button>
-
+              
               {/* Empréstimos Concedidos */}
               <button
                 onClick={() => setActiveView('loans')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-brand-500"
+                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <div className="flex justify-between items-start">
                   <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Empréstimos</span>
@@ -4734,11 +5052,11 @@ const Assets: React.FC = () => {
                   <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">A Receber</span>
                 </div>
               </button>
-
+              
               {/* Passivos e Dívidas */}
               <button
                 onClick={() => setActiveView('liabilities')}
-                className="bg-red-50/30 border border-red-100/50 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-2 focus:ring-red-500"
+                className="bg-red-50/30 border border-red-100/50 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-red-500"
               >
                 <div className="flex justify-between items-start">
                   <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-red-500">Dívidas</span>
@@ -4765,6 +5083,12 @@ const Assets: React.FC = () => {
                     </div>
                     Investimento Imobiliário (Planta vs Entregue)
                   </h3>
+                  <button
+                    onClick={() => setShowWizardModal(true)}
+                    className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                  >
+                    + Novo Imóvel
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -4838,13 +5162,20 @@ const Assets: React.FC = () => {
                         <span className="text-slate-500 font-medium">Aluguéis Recebidos:</span>
                         <span className="font-bold text-emerald-600">{formatCurrency(overviewData.prontoReceived)}</span>
                       </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium flex items-center">
+                          Cap Rate Estimado (Líquido)
+                          <InfoTooltip content="Média do retorno líquido anualizado sobre o valor total do imóvel (Aluguel líquido anual / Valor de mercado)." />
+                        </span>
+                        <span className="font-bold text-emerald-600">{(overviewData as any).prontoCapRate?.toFixed(2)}% a.a.</span>
+                      </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
                         <span className="text-slate-600 font-bold">Mensal Líquido (Mês Atual):</span>
                         <TrendValue value={overviewData.prontoMonthlyNetFlow} />
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
                         <span className="text-slate-600 font-bold flex items-center">
-                          Equity Imobiliária (Valor − Dívida)
+                          Valor Líquido Imobiliário (Valor − Dívida)
                           <InfoTooltip content="Equidade líquida estimada se vendesse os imóveis hoje pelo valor de mercado e liquidasse os financiamentos. Não desconta impostos ou taxas imobiliárias." />
                         </span>
                         <TrendValue value={overviewData.prontoNetFlow} />
@@ -4854,15 +5185,39 @@ const Assets: React.FC = () => {
                 </div>
               </div>
 
-              {/* Bloco B: Bens Físicos */}
+              {/* Bloco B: Bens Físicos e Veículos */}
               <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
                 <div className="flex justify-between items-center pb-4 border-b border-slate-100">
                   <h3 className="font-bold text-slate-900 flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
                       <Box size={18} />
                     </div>
-                    Bens Físicos (Uso vs Investimento)
+                    Bens Físicos e Veículos (Uso vs Investimento)
                   </h3>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        resetAssetForm();
+                        setEditingAsset(null);
+                        setFormData(prev => ({ ...prev, category: 'VEHICLE', purpose: 'uso' }));
+                        setShowModal(true);
+                      }}
+                      className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                    >
+                      + Novo Veículo
+                    </button>
+                    <button
+                      onClick={() => {
+                        resetAssetForm();
+                        setEditingAsset(null);
+                        setFormData(prev => ({ ...prev, category: 'OTHER', purpose: 'uso', isLoan: false }));
+                        setShowModal(true);
+                      }}
+                      className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                    >
+                      + Outro Bem
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -4871,7 +5226,7 @@ const Assets: React.FC = () => {
                     <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
                       <span><span aria-hidden="true" className="mr-1">🚗</span>Bens de Uso Pessoal</span>
                       <button
-                        onClick={() => setActiveView('physical')}
+                        onClick={() => setActiveView('vehicles')}
                         className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                       >
                         Ver Detalhes →
@@ -4948,6 +5303,17 @@ const Assets: React.FC = () => {
                     </div>
                     Investimentos Financeiros
                   </h3>
+                  <button
+                    onClick={() => {
+                      resetAssetForm();
+                      setEditingAsset(null);
+                      setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento' }));
+                      setShowModal(true);
+                    }}
+                    className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                  >
+                    + Novo Investimento
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -4969,7 +5335,7 @@ const Assets: React.FC = () => {
                         <>
                           <div className="space-y-3">
                             {overviewData.allocationList.slice(0, 5).map((item, idx) => (
-                              <div key={idx} className="space-y-1">
+                              <div key={item.type} className="space-y-1">
                                 <div className="flex justify-between text-xs">
                                   <span className="text-slate-600 font-medium truncate max-w-[140px]">{item.type}</span>
                                   <span className="font-bold text-slate-900">
@@ -5029,11 +5395,11 @@ const Assets: React.FC = () => {
                       </div>
                       <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
                         <span className="text-slate-600 font-bold flex items-center">
-                          Autossuficiência
+                          Autossuficiência (Projetada vs. Realizada)
                           <InfoTooltip content="Percentual de cobertura das despesas patrimoniais (parcelas de consórcios, financiamentos, condomínios, IPVA/IPTU) pelas receitas de aluguéis e investimentos." />
                         </span>
-                        <span className={`font-black ${sustainabilitySummary.selfSustainabilityPercent >= 100 ? 'text-emerald-600' : 'text-slate-900'}`}>
-                          {sustainabilitySummary.selfSustainabilityPercent}%
+                        <span className="font-black text-slate-900">
+                          {sustainabilitySummary.selfSustainabilityPercent}% <span className="text-slate-400 font-medium text-[10px]">({sustainabilitySummary.realizedSelfSustainabilityPercent}% Realiz.)</span>
                         </span>
                       </div>
                       <div className="p-3 bg-brand-50 rounded-xl mt-2">
@@ -5046,8 +5412,122 @@ const Assets: React.FC = () => {
                 </div>
               </div>
 
-              {/* Bloco D: Passivos e Dívidas */}
+              {/* Bloco D: Empréstimos Concedidos */}
               <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
+                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                  <h3 className="font-bold text-slate-900 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <HandCoins size={18} />
+                    </div>
+                    Empréstimos Concedidos (Crédito Privado)
+                  </h3>
+                  <button
+                    onClick={() => {
+                      resetAssetForm();
+                      setEditingAsset(null);
+                      setFormData(prev => ({ ...prev, isLoan: true, category: 'OTHER' }));
+                      setShowModal(true);
+                    }}
+                    className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                  >
+                    + Novo Empréstimo
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Lista de Empréstimos */}
+                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span><span aria-hidden="true" className="mr-1">🤝</span>Devedores / Contratos</span>
+                      <button
+                        onClick={() => setActiveView('loans')}
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        Ver Detalhes →
+                      </button>
+                    </p>
+                    <div className="space-y-3.5 pr-1">
+                      {activePhysicalAssets.filter(p => p.metadata?.isLoan).length === 0 ? (
+                        <p className="text-xs text-slate-400 italic">Sem empréstimos ativos.</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {activePhysicalAssets.filter(p => p.metadata?.isLoan).slice(0, 4).map((loan) => {
+                            const meta = loan.metadata || {};
+                            const principal = Number(meta.loanPrincipal) || 0;
+                            const txs = getAssetTransactions(loan);
+                            const returned = txs.filter(t => t.type === 'INCOME').reduce((s, t) => s + Number(t.amount || 0), 0);
+                            const outstanding = Math.max(0, principal - returned);
+                            const progressPercent = principal > 0 ? Math.round((returned / principal) * 100) : 0;
+                            return (
+                              <div key={loan.id} className="space-y-1">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-slate-600 font-medium truncate max-w-[135px]">{loan.name}</span>
+                                  <span className="font-bold text-slate-900">
+                                    {formatCurrency(outstanding)} <span className="text-xs font-medium text-slate-400">({progressPercent}%)</span>
+                                  </span>
+                                </div>
+                                <div 
+                                  className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"
+                                  role="progressbar"
+                                  aria-valuenow={Math.min(progressPercent, 100)}
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-label={`Progresso do empréstimo ${loan.name}`}
+                                >
+                                  <div 
+                                    className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
+                                    style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Resumo consolidado */}
+                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span><span aria-hidden="true" className="mr-1">💰</span>Resumo Consolidado</span>
+                      <button
+                        onClick={() => setActiveView('loans')}
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        Ver Detalhes →
+                      </button>
+                    </p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Total Concedido:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.loansPrincipal)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Amortizado / Recebido:</span>
+                        <span className="font-bold text-emerald-600">{formatCurrency(overviewData.loansReceived)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                        <span className="text-slate-600 font-bold flex items-center">
+                          Saldo Devedor Restante
+                          <InfoTooltip content="Valor total pendente a ser recebido dos devedores." />
+                        </span>
+                        <span className="font-black text-slate-900">{formatCurrency(overviewData.loansOutstanding)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 font-medium flex items-center">
+                          Parcela Mensal Estimada
+                          <InfoTooltip content="Soma das parcelas mensais que se espera receber dos empréstimos ativos." />
+                        </span>
+                        <span className="font-bold text-emerald-600">{formatCurrency(overviewData.loansExpectedReceipts)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bloco E: Passivos e Dívidas */}
+              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6 lg:col-span-2">
                 <div className="flex justify-between items-center pb-4 border-b border-slate-100">
                   <h3 className="font-bold text-slate-900 flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
@@ -5055,6 +5535,16 @@ const Assets: React.FC = () => {
                     </div>
                     Passivos e Dívidas (Financiamentos vs Consórcios)
                   </h3>
+                  <button
+                    onClick={() => {
+                      setLiabilityFormData({ name: '', type: 'PERSONAL_LOAN', totalAmount: '', remainingBalance: '', interestRate: '', installmentAmount: '', installmentsRemaining: '', dueDay: '', linkedAssetId: '', indexationRate: '', balloonMonth: '', balloonYear: '', balloonAmount: '', balloons: [], propertyType: 'PLANTA' });
+                      setEditingLiability(null);
+                      setShowLiabilityModal(true);
+                    }}
+                    className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                  >
+                    + Nova Dívida
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -7934,25 +8424,42 @@ const Assets: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="flex gap-4 pt-1">
-                          <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Quantidade de Parcelas a Receber</label>
                             <input
-                              type="radio"
-                              name="loanInterestType"
-                              checked={formData.loanInterestType === 'SIMPLE'}
-                              onChange={() => setFormData({ ...formData, loanInterestType: 'SIMPLE' })}
+                              required
+                              type="number"
+                              min="1"
+                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
+                              value={formData.loanInstallmentsCount}
+                              onChange={(e) => setFormData({ ...formData, loanInstallmentsCount: e.target.value })}
+                              placeholder="Ex: 12"
                             />
-                            Juros Simples
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
-                            <input
-                              type="radio"
-                              name="loanInterestType"
-                              checked={formData.loanInterestType === 'COMPOUND'}
-                              onChange={() => setFormData({ ...formData, loanInterestType: 'COMPOUND' })}
-                            />
-                            Juros Compostos
-                          </label>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left mb-1">Tipo de Juros</label>
+                            <div className="flex gap-4 pt-1.5">
+                              <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
+                                <input
+                                  type="radio"
+                                  name="loanInterestType"
+                                  checked={formData.loanInterestType === 'SIMPLE'}
+                                  onChange={() => setFormData({ ...formData, loanInterestType: 'SIMPLE' })}
+                                />
+                                Juros Simples
+                              </label>
+                              <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
+                                <input
+                                  type="radio"
+                                  name="loanInterestType"
+                                  checked={formData.loanInterestType === 'COMPOUND'}
+                                  onChange={() => setFormData({ ...formData, loanInterestType: 'COMPOUND' })}
+                                />
+                                Juros Compostos
+                              </label>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}
