@@ -226,6 +226,7 @@ const Assets: React.FC = () => {
   const [showExtratoModal, setShowExtratoModal] = useState(false);
   const [isAddingExtratoTx, setIsAddingExtratoTx] = useState(false);
   const [isAddingLiabilityTx, setIsAddingLiabilityTx] = useState(false);
+  const [showArchivedPhysical, setShowArchivedPhysical] = useState(false);
   const [expandedAssetIR, setExpandedAssetIR] = useState<Record<string, boolean>>({});
   const toggleExpandIR = (assetId: string) => {
     setExpandedAssetIR(prev => ({ ...prev, [assetId]: !prev[assetId] }));
@@ -344,6 +345,14 @@ const Assets: React.FC = () => {
     investmentLiquidity: 'No Vencimento',
     status: 'ATIVO' as 'ATIVO' | 'RESGATADO',
     isTaxExempt: false,
+    iconKey: '',
+    brandModel: '',
+    serialNumber: '',
+    custodyLocation: '',
+    insurancePolicy: '',
+    certificateLink: '',
+    depreciationRate: '',
+    isDepreciable: false,
   });
 
   const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
@@ -398,7 +407,8 @@ const Assets: React.FC = () => {
     date: new Date().toISOString().split('T')[0],
     isHistorical: false,
     category: 'Outros',
-    subcategory: ''
+    subcategory: '',
+    isCapitalized: false
   });
 
   // INCC Fetcher
@@ -701,6 +711,13 @@ const Assets: React.FC = () => {
 
   // Filter out archived
   const activePhysicalAssets = useMemo(() => physicalAssets.filter(p => !p.is_archived), [physicalAssets]);
+  const displayOtherPhysicalAssets = useMemo(() => {
+    return physicalAssets.filter(p => {
+      const isOther = p.category === 'OTHER' && !p.metadata?.isLoan;
+      if (!isOther) return false;
+      return showArchivedPhysical ? true : !p.is_archived;
+    });
+  }, [physicalAssets, showArchivedPhysical]);
   const activeLiabilities = useMemo(() => liabilities.filter(l => !l.is_archived), [liabilities]);
 
   const enrichedPhysicalAssets = useMemo(() => {
@@ -2123,6 +2140,29 @@ const Assets: React.FC = () => {
     if (!user) return;
 
     try {
+      if (formData.isSold) {
+        const soldVal = parseFloat(formData.soldValue) || 0;
+        if (soldVal <= 0) {
+          alert('Por favor, informe um valor de venda maior que zero.');
+          return;
+        }
+
+        if (formData.salePaymentMethod === 'HIBRIDO') {
+          const cashVal = parseFloat(formData.saleCashAmount) || 0;
+          const permutaTotal = (formData.permutaItems || []).reduce((sum, item) => sum + (parseFloat(item.value) || 0), 0);
+          if (Math.abs(soldVal - (cashVal + permutaTotal)) > 0.01) {
+            alert(`Inconsistência de valores na venda: O valor de venda (R$ ${soldVal.toLocaleString('pt-BR')}) deve ser igual à soma do valor em dinheiro (R$ ${cashVal.toLocaleString('pt-BR')}) + permutas (R$ ${permutaTotal.toLocaleString('pt-BR')}).`);
+            return;
+          }
+        } else if (formData.salePaymentMethod === 'PERMUTA') {
+          const permutaTotal = (formData.permutaItems || []).reduce((sum, item) => sum + (parseFloat(item.value) || 0), 0);
+          if (Math.abs(soldVal - permutaTotal) > 0.01) {
+            alert(`Inconsistência de valores na venda: O valor de venda (R$ ${soldVal.toLocaleString('pt-BR')}) deve ser igual à soma dos bens em permuta (R$ ${permutaTotal.toLocaleString('pt-BR')}).`);
+            return;
+          }
+        }
+      }
+
       const isRealEstate = formData.category === 'REAL_ESTATE';
       
       const value = isRealEstate && editingAsset 
@@ -2222,6 +2262,15 @@ const Assets: React.FC = () => {
         permutaItems: formData.isSold ? formData.permutaItems : undefined,
         saleDate: formData.isSold ? formData.saleDate : undefined,
         saleCashAmount: formData.isSold ? (parseFloat(formData.saleCashAmount) || 0) : undefined,
+        // Advanced OTHER technical and custody fields
+        brandModel: formData.category === 'OTHER' ? formData.brandModel : undefined,
+        serialNumber: formData.category === 'OTHER' ? formData.serialNumber : undefined,
+        custodyLocation: formData.category === 'OTHER' ? formData.custodyLocation : undefined,
+        insurancePolicy: formData.category === 'OTHER' ? formData.insurancePolicy : undefined,
+        certificateLink: formData.category === 'OTHER' ? formData.certificateLink : undefined,
+        depreciationRate: formData.category === 'OTHER' && formData.purpose === 'uso' ? (parseFloat(formData.depreciationRate) || 0) : undefined,
+        isDepreciable: formData.category === 'OTHER' && formData.purpose === 'uso' ? !!formData.isDepreciable : undefined,
+        iconKey: formData.category === 'OTHER' ? formData.iconKey : undefined,
         // Investment-specific fields
         investmentType: formData.category === 'INVESTMENT' ? formData.investmentType : undefined,
         interestType: formData.category === 'INVESTMENT' ? formData.interestType : undefined,
@@ -3084,6 +3133,14 @@ const Assets: React.FC = () => {
       investmentLiquidity: 'No Vencimento',
       status: 'ATIVO',
       isTaxExempt: false,
+      iconKey: '',
+      brandModel: '',
+      serialNumber: '',
+      custodyLocation: '',
+      insurancePolicy: '',
+      certificateLink: '',
+      depreciationRate: '',
+      isDepreciable: false,
     });
   };
 
@@ -3261,13 +3318,20 @@ const Assets: React.FC = () => {
       investmentLiquidity: meta.investmentLiquidity || 'No Vencimento',
       status: meta.status || 'ATIVO',
       isTaxExempt: !!meta.isTaxExempt,
+      iconKey: meta.iconKey || '',
+      brandModel: meta.brandModel || '',
+      serialNumber: meta.serialNumber || '',
+      custodyLocation: meta.custodyLocation || '',
+      insurancePolicy: meta.insurancePolicy || '',
+      certificateLink: meta.certificateLink || '',
+      depreciationRate: meta.depreciationRate ? String(meta.depreciationRate) : '',
+      isDepreciable: !!meta.isDepreciable,
     });
     setShowModal(true);
   };
 
   const handleArchiveAsset = async (asset: PhysicalAsset) => {
     if (!supabase) return;
-    if (!window.confirm(`Tem certeza que deseja arquivar o bem "${asset.name}"?`)) return;
     try {
       const { error } = await supabase
         .from('physical_assets')
@@ -3278,6 +3342,21 @@ const Assets: React.FC = () => {
       fetchData();
     } catch (err: any) {
       alert(`Erro ao arquivar: ${err.message}`);
+    }
+  };
+
+  const handleUnarchiveAsset = async (asset: PhysicalAsset) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase
+        .from('physical_assets')
+        .update({ is_archived: false })
+        .eq('id', asset.id);
+
+      if (error) throw error;
+      fetchData();
+    } catch (err: any) {
+      alert(`Erro ao restaurar: ${err.message}`);
     }
   };
 
@@ -4055,7 +4134,8 @@ const Assets: React.FC = () => {
         date: new Date().toISOString().split('T')[0],
         isHistorical: false,
         category: 'Outros',
-        subcategory: ''
+        subcategory: '',
+        isCapitalized: false
       });
       
       // Update selected asset representation locally to reflect the new transaction
@@ -5703,49 +5783,87 @@ const Assets: React.FC = () => {
         {/* OTHER PHYSICAL ASSETS VIEW */}
         {activeView === 'physical' && (
           <div className="space-y-6">
-            <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
-              <Box size={20} className="text-slate-500" />
-              Outros Ativos Físicos
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <h3 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <Box size={20} className="text-slate-500" />
+                Outros Ativos Físicos
+              </h3>
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-slate-600">
+                <input
+                  type="checkbox"
+                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500/20"
+                  checked={showArchivedPhysical}
+                  onChange={(e) => setShowArchivedPhysical(e.target.checked)}
+                />
+                Exibir bens arquivados e vendidos
+              </label>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {activePhysicalAssets.filter(p => p.category === 'OTHER' && !p.metadata?.isLoan).map(asset => {
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
+              {displayOtherPhysicalAssets.map(asset => {
                 const meta = asset.metadata || {};
-                const value = asset.estimatedValue;
-                const purchase = Number(meta.purchaseValue) || value;
+                const purchase = Number(meta.purchaseValue) || asset.estimatedValue;
+
+                // Calcular depreciação linear automática se configurado
+                let value = asset.estimatedValue;
+                if (meta.purpose === 'uso' && meta.isDepreciable && Number(meta.depreciationRate) > 0 && asset.acquisitionDate) {
+                  try {
+                    const acqDate = new Date(asset.acquisitionDate);
+                    const now = new Date();
+                    const elapsedMonths = Math.max(0, (now.getFullYear() - acqDate.getFullYear()) * 12 + now.getMonth() - acqDate.getMonth());
+                    const yearlyRate = parseFloat(meta.depreciationRate) / 100;
+                    const monthlyRate = yearlyRate / 12;
+                    const totalDepreciationPercent = Math.min(1, elapsedMonths * monthlyRate);
+                    value = Math.max(0, purchase * (1 - totalDepreciationPercent));
+                  } catch (e) {
+                    console.warn('Error calculating depreciation:', e);
+                  }
+                }
 
                 // Margem de ágio / deságio
                 const diffVal = value - purchase;
                 const percentVal = purchase > 0 ? (diffVal / purchase) * 100 : 0;
 
-                // Dynamic icon based on name
-                const getOtherAssetIcon = (name: string) => {
-                  const nameLower = name.toLowerCase();
-                  if (nameLower.includes('joia') || nameLower.includes('ouro') || nameLower.includes('prata') || nameLower.includes('diamante') || nameLower.includes('gema') || nameLower.includes('esmeralda')) {
-                    return <Gem size={22} />;
+                // Dynamic icon based on iconKey or name fallback
+                const getOtherAssetIcon = (iconKey?: string, name?: string) => {
+                  if (iconKey === 'Gem') return <Gem size={20} />;
+                  if (iconKey === 'Watch') return <Watch size={20} />;
+                  if (iconKey === 'Palette') return <Palette size={20} />;
+                  if (iconKey === 'Award') return <Award size={20} />;
+                  if (iconKey === 'Box') return <Box size={20} />;
+
+                  const normalizedName = (name || '').toLowerCase()
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "");
+
+                  if (normalizedName.includes('joia') || normalizedName.includes('ouro') || normalizedName.includes('prata') || normalizedName.includes('diamante') || normalizedName.includes('gema') || normalizedName.includes('esmeralda') || normalizedName.includes('anel') || normalizedName.includes('colar') || normalizedName.includes('brinco')) {
+                    return <Gem size={20} />;
                   }
-                  if (nameLower.includes('relógio') || nameLower.includes('rolex') || nameLower.includes('omega') || nameLower.includes('patek') || nameLower.includes('tissot')) {
-                    return <Watch size={22} />;
+                  if (normalizedName.includes('relogio') || normalizedName.includes('rolex') || normalizedName.includes('omega') || normalizedName.includes('patek') || normalizedName.includes('tissot') || normalizedName.includes('tag heuer')) {
+                    return <Watch size={20} />;
                   }
-                  if (nameLower.includes('arte') || nameLower.includes('quadro') || nameLower.includes('pintura') || nameLower.includes('escultura') || nameLower.includes('tela')) {
-                    return <Palette size={22} />;
+                  if (normalizedName.includes('arte') || normalizedName.includes('quadro') || normalizedName.includes('pintura') || normalizedName.includes('escultura') || normalizedName.includes('tela') || normalizedName.includes('obra')) {
+                    return <Palette size={20} />;
                   }
-                  if (nameLower.includes('consórcio') || nameLower.includes('consorcio')) {
-                    return <Award size={22} />;
+                  if (normalizedName.includes('consorcio')) {
+                    return <Award size={20} />;
                   }
-                  return <Box size={22} />;
+                  return <Box size={20} />;
                 };
 
                 return (
-                  <div key={asset.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
-                    <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
+                  <div key={asset.id} className={`bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between ${asset.is_archived || meta.isSold ? 'opacity-65' : ''}`}>
+                    <div className="p-5 sm:p-6 lg:p-8 space-y-5 sm:space-y-6">
                       <div className="flex justify-between items-start">
-                        <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
-                          {getOtherAssetIcon(asset.name)}
+                        <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center shadow-lg shadow-slate-900/10">
+                          {getOtherAssetIcon(meta.iconKey, asset.name)}
                         </div>
                         <div className="flex flex-wrap gap-1.5 justify-end">
                           {meta.isSold && (
                             <span className="px-3 py-1 bg-rose-50 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-rose-100">Vendido</span>
+                          )}
+                          {asset.is_archived && !meta.isSold && (
+                            <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-amber-100">Arquivado</span>
                           )}
                           {meta.purpose === 'investimento' ? (
                             <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
@@ -5756,48 +5874,139 @@ const Assets: React.FC = () => {
                       </div>
 
                       <div>
-                        <h4 className="font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-tight italic break-words">{asset.name}</h4>
+                        <h4 className="font-bold text-slate-900 text-lg sm:text-xl tracking-tight leading-tight break-words">{asset.name}</h4>
                         <div className="flex justify-between items-center mt-3 border-b border-slate-50 pb-2">
-                          <p className="text-xs text-slate-400 font-black uppercase tracking-widest">{meta.isSold ? 'Valor de Venda:' : 'Avaliação Atual:'}</p>
+                          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">{meta.isSold ? 'Valor de Venda:' : 'Avaliação Atual:'}</p>
                           <p className="text-sm font-black text-slate-900">{formatCurrency(meta.isSold ? Number(meta.soldValue) || value : value)}</p>
                         </div>
                       </div>
 
                       {/* Calculations specs */}
-                      <div className="space-y-2.5 text-xs sm:text-[11px] text-slate-500">
+                      <div className="space-y-2.5 text-xs sm:text-[11px] text-slate-600">
                         <div className="flex justify-between">
                           <span>Valor Aquisição:</span>
                           <span className="font-bold text-slate-800">{formatCurrency(purchase)}</span>
                         </div>
+                        {meta.brandModel && (
+                          <div className="flex justify-between">
+                            <span>Marca / Modelo:</span>
+                            <span className="font-semibold text-slate-700">{meta.brandModel}</span>
+                          </div>
+                        )}
+                        {meta.serialNumber && (
+                          <div className="flex justify-between">
+                            <span>Nº Série / Registro:</span>
+                            <span className="font-medium text-slate-700">{meta.serialNumber}</span>
+                          </div>
+                        )}
+                        {meta.custodyLocation && (
+                          <div className="flex justify-between">
+                            <span>Custódia:</span>
+                            <span className="font-medium text-slate-700">{meta.custodyLocation}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between">
-                          <span>Margem Ágio/Deságio:</span>
-                          <span className={`font-bold ${diffVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                          <span>{meta.purpose === 'investimento' ? 'Margem Ágio/Deságio:' : (diffVal < 0 ? 'Depreciação Acumulada:' : 'Variação de Valor:')}</span>
+                          <span className={`font-bold ${diffVal >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
                             {diffVal >= 0 ? '+' : ''}{formatCurrency(diffVal)} ({percentVal.toFixed(1)}%)
                           </span>
                         </div>
-                        {meta.purpose === 'investimento' && meta.isRented && (
-                          <div className="flex justify-between border-t border-slate-100 pt-2 text-emerald-600 font-semibold">
-                            <span>Rendimento Mensal:</span>
-                            <span>{formatCurrency(Number(meta.rentalIncome) || 0)}</span>
+
+                        {meta.purpose === 'investimento' && meta.vehiclePurposeType === 'RENTAL' && meta.isRented && (
+                          <div className="border-t border-slate-100 pt-2.5 space-y-1">
+                            <div className="flex justify-between text-emerald-700 font-bold">
+                              <span>Rend. Líquido Mensal:</span>
+                              <span>{formatCurrency(Number(meta.rentalIncome || 0) - Number(meta.rentalPlatformFee || 0) - Number(meta.maintenanceMonthlyEstimated || 0))}</span>
+                            </div>
+                            <div className="flex justify-between text-[11px] text-slate-500">
+                              <span>Rendimento Bruto:</span>
+                              <span>{formatCurrency(Number(meta.rentalIncome || 0))}</span>
+                            </div>
+                            {(Number(meta.rentalPlatformFee || 0) > 0 || Number(meta.maintenanceMonthlyEstimated || 0) > 0) && (
+                              <div className="flex justify-between text-[10px] text-slate-400">
+                                <span>Custos (Plat. + Guarda):</span>
+                                <span>-{formatCurrency(Number(meta.rentalPlatformFee || 0) + Number(meta.maintenanceMonthlyEstimated || 0))}</span>
+                              </div>
+                            )}
+                            {value > 0 && (
+                              <div className="flex justify-between text-[11px] text-brand-600 font-semibold pt-0.5">
+                                <span>Cap Rate Estimado:</span>
+                                <span>{(((Number(meta.rentalIncome || 0) - Number(meta.rentalPlatformFee || 0) - Number(meta.maintenanceMonthlyEstimated || 0)) * 12) / value * 100).toFixed(2)}% a.a.</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {meta.purpose === 'investimento' && meta.vehiclePurposeType === 'FLIP' && (
+                          <div className="border-t border-slate-100 pt-2.5 space-y-1">
+                            <div className="flex justify-between text-indigo-700 font-bold">
+                              <span>Preço Venda Alvo:</span>
+                              <span>{formatCurrency(Number(meta.targetSaleValue || 0))}</span>
+                            </div>
+                            <div className="flex justify-between text-[11px] text-slate-500">
+                              <span>Orçamento Preparação:</span>
+                              <span>{formatCurrency(Number(meta.preparationBudget || 0))}</span>
+                            </div>
+                            {Number(meta.targetSaleValue || 0) > 0 && (
+                              <div className="flex justify-between text-[11px] text-brand-600 font-semibold pt-0.5">
+                                <span>ROI Líquido Projetado:</span>
+                                <span>
+                                  {(() => {
+                                    const targetSale = Number(meta.targetSaleValue) || 0;
+                                    const prepBudget = Number(meta.preparationBudget) || 0;
+                                    const totalInvested = purchase + prepBudget;
+                                    const commVal = Number(meta.saleCommission) || 0;
+                                    const grossProfit = targetSale - totalInvested;
+                                    const taxCapitalGain = grossProfit > 0 ? grossProfit * 0.15 : 0;
+                                    const netProfit = grossProfit - commVal - taxCapitalGain;
+                                    const roiNet = totalInvested > 0 ? (netProfit / totalInvested) * 100 : 0;
+                                    return `${roiNet.toFixed(1)}%`;
+                                  })()}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
                     </div>
 
                     {/* Actions bar */}
-                    <div className="px-6 sm:px-8 py-4 sm:py-5 bg-slate-50 border-t border-slate-100 flex flex-wrap justify-between items-center gap-2 sm:gap-4">
+                    <div className="px-4 sm:px-6 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap justify-between items-center gap-2">
                       <button
                         onClick={() => {
                           setSelectedAssetForExtrato(asset);
                           setShowExtratoModal(true);
                         }}
-                        className="flex items-center gap-1 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-all min-h-[36px]"
+                        aria-label={`Visualizar extrato e lançamentos de ${asset.name}`}
                       >
-                        <History size={12} /> Extrato & Ajustes
+                        <History size={14} /> Extrato & Ajustes
                       </button>
-                      <div className="flex gap-2">
-                        <button onClick={() => openEditAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Editar</button>
-                        <button onClick={() => handleArchiveAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-amber-600">Arquivar</button>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => openEditAsset(asset)}
+                          className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-all min-h-[36px] flex items-center justify-center"
+                          aria-label={`Editar ativo ${asset.name}`}
+                        >
+                          Editar
+                        </button>
+                        {asset.is_archived ? (
+                          <button
+                            onClick={() => handleUnarchiveAsset(asset)}
+                            className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-all min-h-[36px] flex items-center justify-center"
+                            aria-label={`Desarquivar ativo ${asset.name}`}
+                          >
+                            Desarquivar
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleArchiveAsset(asset)}
+                            className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-amber-600 hover:bg-slate-100 rounded-lg transition-all min-h-[36px] flex items-center justify-center"
+                            aria-label={`Arquivar ativo ${asset.name}`}
+                          >
+                            Arquivar
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -6573,62 +6782,85 @@ const Assets: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveAsset} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">
-                  {formData.isLoan ? 'Identificação do Empréstimo (ex: Empréstimo João)' : 'Identificação do Bem'}
-                </label>
-                <input
-                  required
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-                  placeholder={formData.isLoan ? 'Ex: Empréstimo João' : 'Ex: Jeep Compass'}
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                />
-              </div>
+            <form onSubmit={handleSaveAsset} className="flex flex-col max-h-[80vh] overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+                <div>
+                  <label htmlFor="asset-name-field" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    {formData.isLoan ? 'Identificação do Empréstimo (ex: Empréstimo João)' : 'Identificação do Bem'}
+                  </label>
+                  <input
+                    id="asset-name-field"
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                    placeholder={formData.isLoan ? 'Ex: Empréstimo João' : 'Ex: Jeep Compass'}
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  />
+                </div>
 
-              {formData.category === 'OTHER' && (
-                <div className="space-y-2 pt-1 animate-in fade-in">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Sugestões de Nome (Clique para selecionar, 'X' para remover)</label>
-                  <div className="flex flex-wrap gap-2 items-center">
-                    {suggestedNames.map((sugName, index) => (
-                      <span
-                        key={index}
-                        onClick={() => setFormData({ ...formData, name: sugName })}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-all active:scale-95"
+                {formData.category === 'OTHER' && (
+                  <div className="space-y-4 pt-1 animate-in fade-in">
+                    <div>
+                      <label htmlFor="other-icon-selector" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Ícone do Ativo</label>
+                      <select
+                        id="other-icon-selector"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                        value={formData.iconKey || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, iconKey: e.target.value }))}
                       >
-                        {sugName}
+                        <option value="">Detecção Automática (baseada no nome)</option>
+                        <option value="Box">📦 Geral (Caixa)</option>
+                        <option value="Gem">💎 Joias, Metais & Pedras Preciosas</option>
+                        <option value="Watch">⌚ Relógios & Acessórios de Luxo</option>
+                        <option value="Palette">🎨 Obras de Arte, Quadros & Esculturas</option>
+                        <option value="Award">🏆 Consórcios & Prêmios</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Sugestões de Nome (Clique para selecionar, 'X' para remover)</label>
+                      <div className="flex flex-wrap gap-2 items-center">
+                        {suggestedNames.map((sugName, index) => (
+                          <span
+                            key={index}
+                            onClick={() => setFormData(prev => ({ ...prev, name: sugName }))}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-all active:scale-95"
+                          >
+                            {sugName}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newSuggestions = suggestedNames.filter((_, i) => i !== index);
+                                setSuggestedNames(newSuggestions);
+                                localStorage.setItem('finvision_other_asset_suggestions', JSON.stringify(newSuggestions));
+                              }}
+                              className="text-slate-400 hover:text-rose-500 rounded-full hover:bg-slate-200 p-1 transition-colors"
+                              aria-label={`Remover sugestão ${sugName}`}
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ))}
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const newSuggestions = suggestedNames.filter((_, i) => i !== index);
-                            setSuggestedNames(newSuggestions);
-                            localStorage.setItem('finvision_other_asset_suggestions', JSON.stringify(newSuggestions));
+                          onClick={() => {
+                            const newName = prompt('Digite a nova sugestão de ativo físico:');
+                            if (newName && newName.trim()) {
+                              const updated = [...suggestedNames, newName.trim()];
+                              setSuggestedNames(updated);
+                              localStorage.setItem('finvision_other_asset_suggestions', JSON.stringify(updated));
+                            }
                           }}
-                          className="text-slate-400 hover:text-rose-500 rounded-full hover:bg-slate-200 p-0.5 transition-colors"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 border border-dashed border-slate-300 text-slate-400 hover:text-brand-600 hover:border-brand-500 text-xs font-bold rounded-xl transition-all"
+                          aria-label="Nova sugestão de nome de ativo"
                         >
-                          <X size={10} />
+                          <Plus size={12} /> Novo
                         </button>
-                      </span>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newName = prompt('Digite a nova sugestão de ativo físico:');
-                        if (newName && newName.trim()) {
-                          const updated = [...suggestedNames, newName.trim()];
-                          setSuggestedNames(updated);
-                          localStorage.setItem('finvision_other_asset_suggestions', JSON.stringify(updated));
-                        }
-                      }}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 border border-dashed border-slate-300 text-slate-400 hover:text-brand-600 hover:border-brand-500 text-xs font-bold rounded-xl transition-all"
-                    >
-                      <Plus size={12} /> Novo
-                    </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {/* Category & Value - Hide for Real Estate edit, edit in Evolution card instead */}
               {(!editingAsset || editingAsset.category !== 'REAL_ESTATE') && !formData.isLoan && (
@@ -7863,8 +8095,9 @@ const Assets: React.FC = () => {
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
               </div>
+            </div>
 
-              <div className="pt-4 flex gap-3">
+            <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancelar</button>
                 <button type="submit" className="flex-1 px-4 py-3 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-[1.02] transition-transform active:scale-95">Salvar Bem</button>
               </div>
@@ -8495,7 +8728,8 @@ const Assets: React.FC = () => {
                             date: new Date().toISOString().split('T')[0],
                             isHistorical: false,
                             category: 'Empréstimos/Investimentos',
-                            subcategory: 'Amortização'
+                            subcategory: 'Amortização',
+                            isCapitalized: false
                           });
                         } else {
                           setNewTxForm({
@@ -8505,7 +8739,8 @@ const Assets: React.FC = () => {
                             date: new Date().toISOString().split('T')[0],
                             isHistorical: false,
                             category: 'Outros',
-                            subcategory: ''
+                            subcategory: '',
+                            isCapitalized: false
                           });
                         }
                         setIsAddingExtratoTx(true);
@@ -8921,7 +9156,8 @@ const Assets: React.FC = () => {
                           date: new Date().toISOString().split('T')[0],
                           isHistorical: false,
                           category: 'Financiamento/Dívida',
-                          subcategory: 'Amortização'
+                          subcategory: 'Amortização',
+                          isCapitalized: false
                         });
                         setIsAddingLiabilityTx(true);
                       }}
