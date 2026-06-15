@@ -22,10 +22,8 @@ import AIModule from './pages/AIModule';
 import Assets from './pages/Assets';
 import Reconcile from './pages/Reconcile';
 import SettingsPage from './pages/Settings';
-import Goals from './pages/Goals';
-import Budget from './pages/Budget';
+import Planning from './pages/Planning';
 import Reports from './pages/Reports';
-import Studies from './pages/Studies';
 import { TourProvider } from './contexts/TourContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -166,10 +164,10 @@ const App: React.FC = () => {
                         <Route path="/accounts" element={<Accounts />} />
                         <Route path="/cards" element={<CreditCardsPage />} />
                         <Route path="/assets" element={<Assets />} />
-                        <Route path="/goals" element={<Goals user={profile} />} />
-                        <Route path="/budget" element={<Budget user={profile} />} />
+                        <Route path="/planning" element={<Planning user={profile} />} />
+                        <Route path="/goals" element={<Navigate to="/planning?tab=goals" replace />} />
+                        <Route path="/budget" element={<Navigate to="/planning?tab=budget" replace />} />
                         <Route path="/reconcile" element={<Reconcile />} />
-                        <Route path="/studies" element={<Studies />} />
                         <Route path="/history" element={<HistoryPage />} />
                         <Route path="/ai" element={<AIModule user={profile} />} />
                         <Route path="/settings" element={<SettingsPage />} />

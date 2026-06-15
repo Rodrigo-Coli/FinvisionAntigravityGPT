@@ -226,6 +226,8 @@ const Assets: React.FC = () => {
   const [showExtratoModal, setShowExtratoModal] = useState(false);
   const [isAddingExtratoTx, setIsAddingExtratoTx] = useState(false);
   const [isAddingLiabilityTx, setIsAddingLiabilityTx] = useState(false);
+  const [budgets, setBudgets] = useState<any[]>([]);
+  const [goals, setGoals] = useState<any[]>([]);
   const [showArchivedPhysical, setShowArchivedPhysical] = useState(false);
   const [expandedAssetIR, setExpandedAssetIR] = useState<Record<string, boolean>>({});
   const toggleExpandIR = (assetId: string) => {
@@ -525,7 +527,7 @@ const Assets: React.FC = () => {
 
     // --- 2. BUSCA ONLINE ATUALIZADA EM PARALELO (SILENT REFRESH) ---
     try {
-      const [physRes, accsRes, liabsRes] = await Promise.all([
+      const [physRes, accsRes, liabsRes, budgetsRes, goalsRes] = await Promise.all([
         supabase
           .from('physical_assets')
           .select('*')
@@ -541,12 +543,24 @@ const Assets: React.FC = () => {
           .from('liabilities')
           .select('*')
           .eq('user_id', userId)
-          .eq('is_archived', false)
+          .eq('is_archived', false),
+        supabase
+          .from('budgets')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('is_active', true),
+        supabase
+          .from('goals')
+          .select('*')
+          .eq('user_id', userId)
       ]);
 
       if (physRes.error) throw physRes.error;
       if (accsRes.error) throw accsRes.error;
       if (liabsRes.error) throw liabsRes.error;
+
+      if (budgetsRes.data) setBudgets(budgetsRes.data);
+      if (goalsRes.data) setGoals(goalsRes.data);
 
       const phys = physRes.data || [];
       const accs = accsRes.data || [];
@@ -4803,6 +4817,27 @@ const Assets: React.FC = () => {
     const loansOutstanding = Math.max(0, loansPrincipal - loansReceived);
     const loansExpectedReceipts = activeLoans.reduce((sum, p) => sum + (Number(p.metadata?.loanFixedValue) || 0), 0);
 
+    // 6. ORÇAMENTOS E METAS (PLANEJAMENTO)
+    const totalBudgeted = budgets.reduce((sum, b) => sum + Number(b.monthly_limit || 0), 0);
+    const planningMonthStr = DateUtils.formatToISODate(new Date()).substring(0, 7);
+    const budgetSpentMap: Record<string, number> = {};
+    transactions.filter(t => 
+      t.type === 'EXPENSE' && 
+      !t.metadata?.is_amortization && 
+      t.date.substring(0, 7) === planningMonthStr
+    ).forEach(t => {
+      const cat = t.category || 'Outros';
+      const matchingBudget = budgets.find(b => b.category === cat);
+      if (matchingBudget) {
+        budgetSpentMap[cat] = (budgetSpentMap[cat] || 0) + t.amount;
+      }
+    });
+    const totalSpentInBudgets = Object.values(budgetSpentMap).reduce((sum, v) => sum + v, 0);
+
+    const completedGoalsCount = goals.filter(g => g.is_completed).length;
+    const goalsSavedAmount = goals.reduce((sum, g) => sum + Number(g.current_amount || 0), 0);
+    const goalsTargetAmount = goals.reduce((sum, g) => sum + Number(g.target_amount || 0), 0);
+
     return {
       plantaValue,
       plantaInstallments,
@@ -4854,9 +4889,15 @@ const Assets: React.FC = () => {
       loansPrincipal,
       loansReceived,
       loansOutstanding,
-      loansExpectedReceipts
+      loansExpectedReceipts,
+      totalBudgeted,
+      totalSpentInBudgets,
+      goalsCount: goals.length,
+      completedGoalsCount,
+      goalsSavedAmount,
+      goalsTargetAmount
     };
-  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, transactions, totalFinancial, linkedTransactionsMap, enrichedPhysicalAssets]);
+  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, transactions, totalFinancial, linkedTransactionsMap, enrichedPhysicalAssets, budgets, goals]);
 
   if (isLoading) {
     return (
@@ -5645,6 +5686,155 @@ const Assets: React.FC = () => {
                           <InfoTooltip content="Saldo restante para quitação dos contratos de financiamento." />
                         </span>
                         <span className="font-black text-red-600">{formatCurrency(overviewData.finRemaining)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bloco F: Planejamento Financeiro */}
+              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6 lg:col-span-2">
+                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                  <h3 className="font-bold text-slate-900 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
+                      <Target size={18} />
+                    </div>
+                    Planejamento Financeiro (Orçamentos vs Metas)
+                  </h3>
+                  <button
+                    onClick={() => navigate('/planning')}
+                    className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                  >
+                    Ver Planejamento
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Orçamentos Mensais */}
+                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span><span aria-hidden="true" className="mr-1">📊</span>Controle de Orçamento</span>
+                      <button
+                        onClick={() => navigate('/planning?tab=budget')}
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        Ver Orçamentos →
+                      </button>
+                    </p>
+                    <div className="space-y-3">
+                      {overviewData.totalBudgeted > 0 ? (
+                        (() => {
+                          const percent = Math.min(100, Math.round((overviewData.totalSpentInBudgets / overviewData.totalBudgeted) * 100));
+                          let barColor = 'bg-brand-500';
+                          let textColor = 'text-brand-600';
+                          if (percent >= 100) {
+                            barColor = 'bg-rose-500';
+                            textColor = 'text-rose-600';
+                          } else if (percent >= 80) {
+                            barColor = 'bg-amber-500';
+                            textColor = 'text-amber-600';
+                          }
+                          return (
+                            <div className="space-y-1.5">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-600 font-medium">Consumo do Limite</span>
+                                <span className={`font-black ${textColor}`}>{percent}%</span>
+                              </div>
+                              <div 
+                                className="w-full bg-slate-200 h-2 rounded-full overflow-hidden"
+                                role="progressbar"
+                                aria-valuenow={percent}
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                aria-label="Progresso do consumo do orçamento mensal"
+                              >
+                                <div 
+                                  className={`${barColor} h-full rounded-full transition-all duration-500`}
+                                  style={{ width: `${percent}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <p className="text-xs text-slate-400 font-medium italic">Nenhum orçamento mensal configurado.</p>
+                      )}
+                      
+                      <div className="space-y-2 pt-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Total Orçado:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.totalBudgeted)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Gasto no Mês:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.totalSpentInBudgets)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                          <span className="text-slate-600 font-bold">Saldo Disponível:</span>
+                          <span className={`font-black ${overviewData.totalBudgeted - overviewData.totalSpentInBudgets >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {formatCurrency(overviewData.totalBudgeted - overviewData.totalSpentInBudgets)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Metas Financeiras */}
+                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <span><span aria-hidden="true" className="mr-1">🎯</span>Metas e Sonhos</span>
+                      <button
+                        onClick={() => navigate('/planning?tab=goals')}
+                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      >
+                        Ver Metas →
+                      </button>
+                    </p>
+                    <div className="space-y-3">
+                      {overviewData.goalsTargetAmount > 0 ? (
+                        (() => {
+                          const percent = Math.min(100, Math.round((overviewData.goalsSavedAmount / overviewData.goalsTargetAmount) * 100));
+                          return (
+                            <div className="space-y-1.5">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-600 font-medium">Progresso de Poupança</span>
+                                <span className="font-black text-brand-600">{percent}%</span>
+                              </div>
+                              <div 
+                                className="w-full bg-slate-200 h-2 rounded-full overflow-hidden"
+                                role="progressbar"
+                                aria-valuenow={percent}
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                aria-label="Progresso geral de poupança para metas"
+                              >
+                                <div 
+                                  className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                                  style={{ width: `${percent}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <p className="text-xs text-slate-400 font-medium italic">Nenhuma meta financeira cadastrada.</p>
+                      )}
+
+                      <div className="space-y-2 pt-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Total Guardado:</span>
+                          <span className="font-bold text-emerald-600">{formatCurrency(overviewData.goalsSavedAmount)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Valor Alvo Total:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.goalsTargetAmount)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                          <span className="text-slate-600 font-bold">Metas Concluídas:</span>
+                          <span className="font-black text-slate-900">
+                            {overviewData.completedGoalsCount} de {overviewData.goalsCount}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>

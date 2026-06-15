@@ -14,7 +14,9 @@ const BottomNav: React.FC<BottomNavProps> = ({ user }) => {
 
   const isAdmin = user.role === UserRole.ADMIN || user.email === 'rodrigocolicg@gmail.com';
   const prefs = user.preferences || {};
-  const visibleItems = prefs.bottom_nav_items || ['home', 'accounts', 'cards', 'history', 'reconcile'];
+  const rawVisibleItems = prefs.bottom_nav_items || ['home', 'accounts', 'cards', 'history', 'reconcile'];
+  const mappedVisibleItems = rawVisibleItems.map((i: string) => (i === 'goals' || i === 'budgets' || i === 'planning') ? 'planning' : i);
+  const visibleItems = Array.from(new Set(mappedVisibleItems));
   const showNav = prefs.show_bottom_nav !== false;
 
   if (!showNav) return null;
@@ -25,8 +27,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ user }) => {
     { id: 'cards', label: 'Cartões', path: '/cards', icon: <CreditCard size={20} /> },
     { id: 'history', label: 'Transações', path: '/history', icon: <History size={20} /> },
     { id: 'assets', label: 'Patrimônio', path: '/assets', icon: <Building2 size={20} /> },
-    { id: 'goals', label: 'Metas', path: '/goals', icon: <Target size={20} /> },
-    { id: 'budgets', label: 'Orçamentos', path: '/budgets', icon: <PieChart size={20} /> },
+    { id: 'planning', label: 'Planejamento', path: '/planning', icon: <Target size={20} /> },
     { id: 'reconcile', label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },
     { id: 'saas', label: 'Vip Plan', path: '/admin/planos', icon: <Gem size={20} /> },
   ];
