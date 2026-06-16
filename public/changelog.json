@@ -1,8 +1,13 @@
 {
-  "version": "2026.06.15.2315",
-  "title": "Ajuste de Rótulos de Faturas",
+  "version": "2026.06.15.2320",
+  "title": "Ajuste de Visualização de Datas de Lançamentos",
   "date": "15/06/2026",
   "benefits": [
+    {
+      "title": "Data sem Cortes em Transações",
+      "desc": "A data dos lançamentos de cartões de crédito agora aparece completa (dia/mês/ano) sem truncar nas bordas.",
+      "type": "ux"
+    },
     {
       "title": "Rótulos Completos no Mobile",
       "desc": "Os títulos de faturamento 'Total Lançado' e 'Total Pago' agora se adaptam para 'Lançado' e 'Pago' no mobile, evitando qualquer corte visual.",
@@ -12,16 +17,11 @@
       "title": "Faturas Compactas no Celular",
       "desc": "Os valores de Total Lançado, Pago e Pendente agora ficam em uma linha horizontal super organizada e menor.",
       "type": "ux"
-    },
-    {
-      "title": "Cards sem Estouro de Conteúdo",
-      "desc": "Correção de margens e aplicação de paddings padrão que garantem que limites e nomes fiquem 100% legíveis e bem posicionados.",
-      "type": "usabilidade"
     }
   ],
   "changes": [
+    "**Visualização de Datas:** Redesenhamos a grid da tabela de transações (TransactionList.tsx) expandindo a coluna de data para col-span-2 e aplicando estilos CSS para ocultar ícones redundantes que espremiam o texto.",
     "**Rótulos Responsivos:** Adaptamos os rótulos de Total Lançado/Pago para Lançado/Pago na tela do mobile e removemos a classe truncate, prevenindo cortes visuais (como TOTAL LAN... ou TOTAL PAG...).",
-    "**Resumo Compacto:** Modificamos a visualização de faturas (StatementSummary.tsx) para renderizar os cards em uma grid horizontal compacta no celular.",
-    "**Ajuste de Spacing:** Ajustamos paddings inválidos no CardList.tsx para valores standard, garantindo perfeito recuo interno dos dados do cartão."
+    "**Resumo Compacto:** Modificamos a visualização de faturas (StatementSummary.tsx) para renderizar os cards em uma grid horizontal compacta no celular."
   ]
 }

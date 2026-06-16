@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, Plus, Loader2, Tags, Trash2, Eye, Paperclip, X } from 'lucide-react';
+import { Clock, Plus, Loader2, Tags, Trash2, Paperclip } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 
 interface TransactionListProps {
@@ -37,6 +37,17 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 }) => {
     return (
         <div className="mt-8">
+            {/* Inline CSS style to hide mobile browser native date picker icons inside the narrow column */}
+            <style dangerouslySetInnerHTML={{__html: `
+                .compact-date-input::-webkit-calendar-picker-indicator,
+                .compact-date-input::-webkit-inner-spin-button {
+                    display: none !important;
+                    -webkit-appearance: none !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                }
+            `}} />
+
             <div className="flex items-center justify-between mb-6">
                 <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
                     <Clock size={14} className="text-slate-300" />
@@ -73,11 +84,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                 ) : (
                     <div className="overflow-x-auto">
                         <div className="min-w-[900px]">
+                            {/* Adjusted column spans: Data col-span-2, Subcategoria col-span-1 */}
                             <div className="grid grid-cols-12 gap-2 px-6 py-4 bg-slate-50/50 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 italic">
-                                <div className="col-span-1 text-[8px]">Data</div>
+                                <div className="col-span-2 text-[8px]">Data</div>
                                 <div className="col-span-2 text-[8px]">Descrição</div>
                                 <div className="col-span-2 text-[8px]">Categoria</div>
-                                <div className="col-span-2 text-[8px]">Subcategoria</div>
+                                <div className="col-span-1 text-[8px]">Subcategoria</div>
                                 <div className="col-span-1 text-[8px]">Perfil</div>
                                 <div className="col-span-2 text-[8px]">Fatura / Mês</div>
                                 <div className="col-span-1 text-right text-[8px]">Valor</div>
@@ -90,14 +102,14 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                         key={tx.id}
                                         className="grid grid-cols-12 gap-2 px-6 py-4 items-center hover:bg-slate-50/30 transition-colors"
                                     >
-                                        {/* Date */}
-                                        <div className="col-span-1">
+                                        {/* Date (col-span-2 with hidden calendar icon indicator) */}
+                                        <div className="col-span-2">
                                             <input
                                                 type="date"
                                                 value={String(tx.date).slice(0, 10)}
                                                 onChange={(e) => onUpdateTxLocal(tx.id, { date: e.target.value })}
                                                 onBlur={(e) => onSaveTxPatch(tx.id, { date: e.target.value })}
-                                                className="w-full text-[10px] font-bold bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                                className="compact-date-input w-full text-[10px] font-mono font-bold bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                             />
                                         </div>
 
@@ -135,8 +147,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                             </div>
                                         </div>
 
-                                        {/* Subcategory */}
-                                        <div className="col-span-2">
+                                        {/* Subcategory (col-span-1) */}
+                                        <div className="col-span-1">
                                             <input
                                                 type="text"
                                                 value={tx.subcategory || ''}
