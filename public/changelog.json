@@ -1,8 +1,18 @@
 {
-  "version": "2026.06.15.2251",
-  "title": "Unificação de Finanças & Planejamento",
+  "version": "2026.06.15.2301",
+  "title": "Novo Design de Cartões & Usabilidade",
   "date": "15/06/2026",
   "benefits": [
+    {
+      "title": "Design de Cartões Premium",
+      "desc": "Novo visual 'Black/Centurion' e proporções ultra-premium mais leves e compactas no celular.",
+      "type": "ux"
+    },
+    {
+      "title": "Rolagem Inteligente",
+      "desc": "Carrossel compacto no mobile separando cartões titulares e adicionais para evitar toques acidentais.",
+      "type": "usabilidade"
+    },
     {
       "title": "Contas & Cartões Unificados",
       "desc": "Acesse saldo de contas e faturas de cartões em um só lugar através da nova aba 'Contas & Cartões'.",
@@ -12,23 +22,13 @@
       "title": "Planejamento Centralizado",
       "desc": "Orçamentos e Metas agora estão consolidados em um painel único para facilitar o controle de limites.",
       "type": "usabilidade"
-    },
-    {
-      "title": "Acessibilidade nos Botões",
-      "desc": "Todos os cards de finanças e cartões agora contam com descrições de áudio aprimoradas para leitores de tela.",
-      "type": "seguranca"
-    },
-    {
-      "title": "Navegação mais Limpa",
-      "desc": "Remoção de seções inativas como 'Estudos' e simplificação de menus para carregamento veloz.",
-      "type": "feature"
     }
   ],
   "changes": [
+    "**Visual Premium:** Redesenhamos os cards de cartões de crédito com proporção física real, cantos curvados elegantes (20px) e tema escuro Centurion quando selecionados.",
+    "**Ergonomia Mobile:** Cartões adicionais foram movidos para uma lista vertical limpa abaixo do carrossel no celular, evitando cliques acidentais e facilitando o scroll.",
+    "**Tipografia Mono:** Número do cartão (last4) agora utiliza fonte mono, simulando a gravação de cartões reais de metal.",
     "**Contas & Cartões:** Consolidação das telas de Contas e Cartões em um único painel de abas integradas.",
-    "**Planejamento Financeiro:** Fusão das páginas de Orçamentos e Metas em um componente unificado com otimização de cálculos.",
-    "**UX de Pagamentos:** Redirecionamento inteligente para criação de contas a partir do modal de liquidação de fatura.",
-    "**Acessibilidade:** Inclusão de tags aria-labels nos botões de ação e melhorias de contraste nos cards do módulo de finanças.",
-    "**Limpeza de Código:** Exclusão da página Studies.tsx obsoleta e simplificação nos menus lateral e inferior."
+    "**Planejamento:** Fusão das páginas de Orçamentos e Metas em um componente unificado com otimização de cálculos."
   ]
 }
