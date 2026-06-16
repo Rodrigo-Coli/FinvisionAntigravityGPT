@@ -15,7 +15,11 @@ const BottomNav: React.FC<BottomNavProps> = ({ user }) => {
   const isAdmin = user.role === UserRole.ADMIN || user.email === 'rodrigocolicg@gmail.com';
   const prefs = user.preferences || {};
   const rawVisibleItems = prefs.bottom_nav_items || ['home', 'accounts', 'cards', 'history', 'reconcile'];
-  const mappedVisibleItems = rawVisibleItems.map((i: string) => (i === 'goals' || i === 'budgets' || i === 'planning') ? 'planning' : i);
+  const mappedVisibleItems = rawVisibleItems.map((i: string) => {
+    if (i === 'goals' || i === 'budgets' || i === 'planning') return 'planning';
+    if (i === 'accounts' || i === 'cards' || i === 'banking') return 'banking';
+    return i;
+  });
   const visibleItems = Array.from(new Set(mappedVisibleItems));
   const showNav = prefs.show_bottom_nav !== false;
 
@@ -23,8 +27,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ user }) => {
 
   const allItems = [
     { id: 'home', label: 'Início', path: '/', icon: <Home size={20} /> },
-    { id: 'accounts', label: 'Contas', path: '/accounts', icon: <Landmark size={20} /> },
-    { id: 'cards', label: 'Cartões', path: '/cards', icon: <CreditCard size={20} /> },
+    { id: 'banking', label: 'Finanças', path: '/banking', icon: <Landmark size={20} /> },
     { id: 'history', label: 'Transações', path: '/history', icon: <History size={20} /> },
     { id: 'assets', label: 'Patrimônio', path: '/assets', icon: <Building2 size={20} /> },
     { id: 'planning', label: 'Planejamento', path: '/planning', icon: <Target size={20} /> },
@@ -60,7 +63,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ user }) => {
                 <span className="text-[11px] font-bold text-brand-700 uppercase tracking-wider">Transação</span>
               </button>
               <button
-                onClick={() => { navigate('/cards?add=true'); setIsQuickOpen(false); }}
+                onClick={() => { navigate('/banking?tab=cards&add=true'); setIsQuickOpen(false); }}
                 className="flex flex-col items-center gap-3 p-6 bg-indigo-50 border border-indigo-100 rounded-[24px] hover:bg-indigo-100 transition-all group"
               >
                 <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-110 transition-transform">

@@ -12,8 +12,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
 
   const items = [
     { label: 'Início', path: '/', icon: <Home size={20} /> },
-    { label: 'Contas', path: '/accounts', icon: <Landmark size={20} /> },
-    { label: 'Cartões', path: '/cards', icon: <CreditCard size={20} /> },
+    { label: 'Contas & Cartões', path: '/banking', icon: <Landmark size={20} /> },
     { label: 'Transações', path: '/history', icon: <History size={20} /> },
     { label: 'Insights AI', path: '/ai', icon: <Sparkles size={20} /> },
     { label: 'Patrimônio', path: '/assets', icon: <Gem size={20} /> },

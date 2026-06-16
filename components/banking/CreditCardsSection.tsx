@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Loader2, Edit2, Archive, Trash2, Info } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
-import { FinanceService } from '../services/finance.service';
-import { DateUtils } from '../lib/dateUtils';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
+import { FinanceService } from '../../services/finance.service';
+import { DateUtils } from '../../lib/dateUtils';
 
 function getLevenshteinDistance(a: string, b: string): number {
   const matrix = Array.from({ length: a.length + 1 }, () => 
@@ -56,13 +56,13 @@ function findCloseMatch(input: string, list: string[]): string | null {
 }
 
 // Modular Components
-import { CardList } from '../components/cards/CardList';
-import { StatementSummary } from '../components/cards/StatementSummary';
-import { TransactionList } from '../components/cards/TransactionList';
-import { AddCardModal } from '../components/cards/AddCardModal';
-import { ManualTransactionModal } from '../components/cards/ManualTransactionModal';
-import { PayStatementModal } from '../components/cards/PayStatementModal';
-import { SeriesScopeModal, SeriesScope } from '../components/SeriesScopeModal';
+import { CardList } from '../cards/CardList';
+import { StatementSummary } from '../cards/StatementSummary';
+import { TransactionList } from '../cards/TransactionList';
+import { AddCardModal } from '../cards/AddCardModal';
+import { ManualTransactionModal } from '../cards/ManualTransactionModal';
+import { PayStatementModal } from '../cards/PayStatementModal';
+import { SeriesScopeModal, SeriesScope } from '../SeriesScopeModal';
 
 type Account = {
   id: string;
@@ -71,7 +71,7 @@ type Account = {
   bank_name?: string | null;
 };
 
-const CreditCardsPage: React.FC = () => {
+const CreditCardsSection: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -985,7 +985,7 @@ const CreditCardsPage: React.FC = () => {
       } else {
         // Fluxo Série (Parcelado ou Recorrente)
         const type = isInstallment ? 'INSTALLMENT' : 'RECURRING';
-        const { TransactionSeriesUtils } = await import('../lib/transactionSeriesUtils');
+        const { TransactionSeriesUtils } = await import('../../lib/transactionSeriesUtils');
 
         const series = TransactionSeriesUtils.generateSeries(
           {
@@ -1762,4 +1762,4 @@ const CreditCardsPage: React.FC = () => {
   );
 };
 
-export default CreditCardsPage;
+export default CreditCardsSection;

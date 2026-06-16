@@ -15,9 +15,8 @@ import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import AdminDashboard from './pages/AdminDashboard';
-import Accounts from './pages/Accounts';
+import Banking from './pages/Banking';
 import HistoryPage from './pages/History';
-import CreditCardsPage from './pages/CreditCards';
 import AIModule from './pages/AIModule';
 import Assets from './pages/Assets';
 import Reconcile from './pages/Reconcile';
@@ -161,8 +160,9 @@ const App: React.FC = () => {
                     ) : (
                       <>
                         <Route path="/" element={<Home user={profile} />} />
-                        <Route path="/accounts" element={<Accounts />} />
-                        <Route path="/cards" element={<CreditCardsPage />} />
+                        <Route path="/banking" element={<Banking />} />
+                        <Route path="/accounts" element={<Navigate to="/banking?tab=accounts" replace />} />
+                        <Route path="/cards" element={<Navigate to="/banking?tab=cards" replace />} />
                         <Route path="/assets" element={<Assets />} />
                         <Route path="/planning" element={<Planning user={profile} />} />
                         <Route path="/goals" element={<Navigate to="/planning?tab=goals" replace />} />

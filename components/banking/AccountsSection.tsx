@@ -23,9 +23,9 @@ import {
   RefreshCw,
   Zap
 } from 'lucide-react';
-import { BankAccount, AccountType } from '../types';
-import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
-import { DateUtils } from '../lib/dateUtils';
+import { BankAccount, AccountType } from '../../types';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
+import { DateUtils } from '../../lib/dateUtils';
 
 function getLevenshteinDistance(a: string, b: string): number {
   const matrix = Array.from({ length: a.length + 1 }, () => 
@@ -87,7 +87,7 @@ const COLORS = [
   { name: 'Zinc', hex: '#18181b' },
 ];
 
-const Accounts: React.FC = () => {
+const AccountsSection: React.FC = () => {
   const [accounts, setAccounts] = useState<BankAccount[]>(() => {
     const cached = localStorage.getItem('finvision_cached_accounts_full');
     return cached ? JSON.parse(cached) : [];
@@ -493,7 +493,7 @@ const Accounts: React.FC = () => {
     : 0;
 
   return (
-    <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 pb-36 space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-8 animate-in fade-in duration-500">
       {/* HEADER ROW */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
         <div>
@@ -891,4 +891,4 @@ const Accounts: React.FC = () => {
   );
 };
 
-export default Accounts;
+export default AccountsSection;
