@@ -618,12 +618,14 @@ const AccountsSection: React.FC = () => {
                     <button
                       onClick={() => handleEditAccount(acc)}
                       className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
+                      aria-label={`Editar conta do ${acc.institution}`}
                     >
                       <Edit2 size={14} />
                     </button>
                     <button
                       onClick={() => handleArchiveAccount(acc.id, acc.isArchived)}
                       className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                      aria-label={`${acc.isArchived ? 'Desarquivar' : 'Arquivar'} conta do ${acc.institution}`}
                     >
                       <Archive size={14} />
                     </button>
@@ -649,12 +651,14 @@ const AccountsSection: React.FC = () => {
                       onClick={() => navigate(`/history?account=${acc.id}`)}
                       className="flex items-center justify-center p-2 bg-brand-50 hover:bg-brand-600 text-brand-600 hover:text-white rounded-lg transition-all shadow-sm"
                       title="Ver Extrato"
+                      aria-label={`Ver extrato da conta do ${acc.institution}`}
                     >
                       <HistoryIcon size={12} />
                     </button>
                     <button
                       onClick={() => { setAdjustAccount(acc); setAdjustValue(acc.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-brand-900 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
+                      aria-label={`Ajustar saldo da conta do ${acc.institution}`}
                     >
                       <RefreshCw size={10} /> Ajustar Saldo
                     </button>

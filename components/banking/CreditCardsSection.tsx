@@ -1245,6 +1245,11 @@ const CreditCardsSection: React.FC = () => {
     setDefaultOwner('Pessoal');
   };
 
+  const handleRedirectToAccounts = () => {
+    setShowPayModal(false);
+    navigate('/banking?tab=accounts', { state: { openModal: true } });
+  };
+
   const handlePayStatement = async () => {
     if (!supabase || !selectedCard?.id) return;
     
@@ -1493,6 +1498,7 @@ const CreditCardsSection: React.FC = () => {
                       onClick={handleEditClick}
                       className="p-2.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-xl transition-all"
                       title="Editar Cartão"
+                      aria-label={`Editar cartão ${selectedCard.name}`}
                     >
                       <Edit2 size={18} />
                     </button>
@@ -1500,6 +1506,7 @@ const CreditCardsSection: React.FC = () => {
                       onClick={handleArchiveCard}
                       className="p-2.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-xl transition-all"
                       title="Arquivar Cartão"
+                      aria-label={`${selectedCard.is_archived ? 'Desarquivar' : 'Arquivar'} cartão ${selectedCard.name}`}
                     >
                       <Archive size={18} />
                     </button>
@@ -1507,6 +1514,7 @@ const CreditCardsSection: React.FC = () => {
                       onClick={handleDeleteCard}
                       className="p-2.5 text-rose-400 hover:bg-rose-50 hover:text-rose-600 rounded-xl transition-all"
                       title="Excluir Cartão"
+                      aria-label={`Excluir cartão ${selectedCard.name}`}
                     >
                       <Trash2 size={18} />
                     </button>
@@ -1742,6 +1750,7 @@ const CreditCardsSection: React.FC = () => {
         payAmount={payAmount}
         setPayAmount={(v) => setPayAmount(v === '' ? '' : v)}
         getAccountLabel={getAccountLabel}
+        onRedirectToAccounts={handleRedirectToAccounts}
       />
 
       <SeriesScopeModal

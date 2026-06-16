@@ -17,6 +17,7 @@ interface PayStatementModalProps {
     payAmount: number | string;
     setPayAmount: (v: number | string) => void;
     getAccountLabel: (a: any) => string;
+    onRedirectToAccounts?: () => void;
 }
 
 export const PayStatementModal: React.FC<PayStatementModalProps> = ({
@@ -34,7 +35,8 @@ export const PayStatementModal: React.FC<PayStatementModalProps> = ({
     setPayDate,
     payAmount,
     setPayAmount,
-    getAccountLabel
+    getAccountLabel,
+    onRedirectToAccounts
 }) => {
     if (!show) return null;
 
@@ -76,8 +78,17 @@ export const PayStatementModal: React.FC<PayStatementModalProps> = ({
                                 ))}
                             </select>
                             {accounts.length === 0 && (
-                                <div className="mt-3 p-3 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold border border-amber-100">
-                                    ⚠️ Nenhuma conta ativa encontrada. Cadastre uma conta bancária primeiro.
+                                <div className="mt-3 p-4 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold border border-amber-100 space-y-2.5">
+                                    <p>⚠️ Nenhuma conta ativa encontrada. Cadastre uma conta bancária primeiro.</p>
+                                    {onRedirectToAccounts && (
+                                        <button
+                                            type="button"
+                                            onClick={onRedirectToAccounts}
+                                            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors font-bold uppercase tracking-wider text-[10px]"
+                                        >
+                                            Cadastrar Conta Bancária
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </div>
