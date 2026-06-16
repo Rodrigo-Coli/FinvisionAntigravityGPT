@@ -1,12 +1,34 @@
 {
-  "version": "2026.06.09.1723",
-  "title": "Melhorias de Patrimônio e Contas",
-  "date": "09/06/2026",
+  "version": "2026.06.15.2251",
+  "title": "Unificação de Finanças & Planejamento",
+  "date": "15/06/2026",
+  "benefits": [
+    {
+      "title": "Contas & Cartões Unificados",
+      "desc": "Acesse saldo de contas e faturas de cartões em um só lugar através da nova aba 'Contas & Cartões'.",
+      "type": "ux"
+    },
+    {
+      "title": "Planejamento Centralizado",
+      "desc": "Orçamentos e Metas agora estão consolidados em um painel único para facilitar o controle de limites.",
+      "type": "usabilidade"
+    },
+    {
+      "title": "Acessibilidade nos Botões",
+      "desc": "Todos os cards de finanças e cartões agora contam com descrições de áudio aprimoradas para leitores de tela.",
+      "type": "seguranca"
+    },
+    {
+      "title": "Navegação mais Limpa",
+      "desc": "Remoção de seções inativas como 'Estudos' e simplificação de menus para carregamento veloz.",
+      "type": "feature"
+    }
+  ],
   "changes": [
-    "**Contas e Carteiras:** Cards de contas 30% mais compactos, reduzindo rolagem, e novo painel de métricas consolidadas (Saldo Consolidado, Contas Ativas e Investimentos).",
-    "**Aba de Patrimônio:** Agora você pode lançar a venda de imóveis de forma completa, com taxas de corretagem, formas de recebimento e permutas vinculadas.",
-    "**Veículos Independentes:** Veículos agora tem uma aba exclusiva e limpa para gerenciamento separado.",
-    "**Outros Ativos Físicos:** Nova seção dedicada para joias, relógios, artes e consórcios, incluindo ícones inteligentes de identificação baseados no nome.",
-    "**Botões Flutuantes Speed Dial:** Atalho global rápido para lançar transações ou gastos no cartão de crédito a partir de qualquer tela do FinVision."
+    "**Contas & Cartões:** Consolidação das telas de Contas e Cartões em um único painel de abas integradas.",
+    "**Planejamento Financeiro:** Fusão das páginas de Orçamentos e Metas em um componente unificado com otimização de cálculos.",
+    "**UX de Pagamentos:** Redirecionamento inteligente para criação de contas a partir do modal de liquidação de fatura.",
+    "**Acessibilidade:** Inclusão de tags aria-labels nos botões de ação e melhorias de contraste nos cards do módulo de finanças.",
+    "**Limpeza de Código:** Exclusão da página Studies.tsx obsoleta e simplificação nos menus lateral e inferior."
   ]
 }

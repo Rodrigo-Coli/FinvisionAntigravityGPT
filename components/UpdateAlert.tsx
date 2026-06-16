@@ -2,10 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { RefreshCw, X, Sparkles, Shield, Zap, TrendingUp, Cpu, Check } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
+interface ChangelogBenefit {
+  title: string;
+  desc: string;
+  type?: string;
+}
+
 interface ChangelogData {
   version: string;
   title: string;
   date: string;
+  benefits?: ChangelogBenefit[];
   changes: string[];
 }
 
@@ -84,29 +91,61 @@ export const UpdateAlert: React.FC = () => {
 
   // 1. Modal Centralizado de Atualização Disponível
   if (needRefresh) {
-    // Lista de benefícios essenciais explicados em linguagem simples
-    const benefits = [
-      {
-        icon: <Shield size={16} className="text-emerald-500" />,
-        title: "Mais Segurança para Você",
-        desc: "Proteção atualizada para a sincronização das suas contas, investimentos e chaves seguras."
-      },
-      {
-        icon: <Zap size={16} className="text-amber-500" />,
-        title: "Carregamento Super Rápido",
-        desc: "Código otimizado para que as telas, gráficos e filtros abram instantaneamente."
-      },
-      {
-        icon: <TrendingUp size={16} className="text-brand-500" />,
-        title: "Cálculos e Saldos Precisos",
-        desc: "Correções e novos motores de rentabilidade que garantem que seu patrimônio seja recalculado de forma impecável."
-      },
-      {
-        icon: <Cpu size={16} className="text-indigo-500" />,
-        title: "Novos Recursos Ativos",
-        desc: "Acesso direto às novas telas de patrimônio, consórcios, e sincronizadores automatizados."
+    const getBenefitIcon = (type?: string) => {
+      switch (type) {
+        case 'security':
+        case 'seguranca':
+          return <Shield size={16} className="text-emerald-500" />;
+        case 'speed':
+        case 'performance':
+        case 'rapidez':
+          return <Zap size={16} className="text-amber-500" />;
+        case 'precision':
+        case 'math':
+        case 'precisao':
+          return <TrendingUp size={16} className="text-brand-500" />;
+        case 'feature':
+        case 'new':
+        case 'recurso':
+          return <Cpu size={16} className="text-indigo-500" />;
+        case 'ux':
+        case 'usability':
+        case 'usabilidade':
+          return <Sparkles size={16} className="text-purple-500" />;
+        default:
+          return <Check size={16} className="text-emerald-500" />;
       }
-    ];
+    };
+
+    // Lista de benefícios dinâmicos carregados do changelog se existirem, caso contrário usa o fallback estático
+    const benefits = changelog?.benefits && changelog.benefits.length > 0
+      ? changelog.benefits.map(b => ({
+          icon: getBenefitIcon(b.type),
+          title: b.title,
+          desc: b.desc
+        }))
+      : [
+          {
+            icon: <Shield size={16} className="text-emerald-500" />,
+            title: "Mais Segurança para Você",
+            desc: "Proteção atualizada para a sincronização das suas contas, investimentos e chaves seguras."
+          },
+          {
+            icon: <Zap size={16} className="text-amber-500" />,
+            title: "Carregamento Super Rápido",
+            desc: "Código otimizado para que as telas, gráficos e filtros abram instantaneamente."
+          },
+          {
+            icon: <TrendingUp size={16} className="text-brand-500" />,
+            title: "Cálculos e Saldos Precisos",
+            desc: "Correções e novos motores de rentabilidade que garantem que seu patrimônio seja recalculado de forma impecável."
+          },
+          {
+            icon: <Cpu size={16} className="text-indigo-500" />,
+            title: "Novos Recursos Ativos",
+            desc: "Acesso direto às novas telas de patrimônio, consórcios, e sincronizadores automatizados."
+          }
+        ];
 
     const displayVersion = serverVersion || changelog?.version || 'Nova Versão';
 
