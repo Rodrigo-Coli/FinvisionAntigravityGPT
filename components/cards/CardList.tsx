@@ -44,9 +44,9 @@ export const CardList: React.FC<CardListProps> = ({
         const b = brand.toLowerCase();
         const fallback = <CreditCard size={15} className={isSelected ? "text-white/60" : "text-slate-400"} />;
 
-        if (b.includes('visa')) return <img src="https://www.vectorlogo.zone/logos/visa/visa-ar21.svg" className="h-2.5 object-contain" alt="Visa" onError={(e) => (e.currentTarget.style.display = 'none')} />;
-        if (b.includes('master')) return <img src="https://www.vectorlogo.zone/logos/mastercard/mastercard-ar21.svg" className="h-4 object-contain" alt="Mastercard" onError={(e) => (e.currentTarget.style.display = 'none')} />;
-        if (b.includes('amex')) return <img src="https://www.vectorlogo.zone/logos/amex/amex-ar21.svg" className="h-2.5 object-contain" alt="Amex" onError={(e) => (e.currentTarget.style.display = 'none')} />;
+        if (b.includes('visa')) return <img src="https://www.vectorlogo.zone/logos/visa/visa-ar21.svg" className="h-3.5 object-contain" alt="Visa" onError={(e) => (e.currentTarget.style.display = 'none')} />;
+        if (b.includes('master')) return <img src="https://www.vectorlogo.zone/logos/mastercard/mastercard-ar21.svg" className="h-5 object-contain" alt="Mastercard" onError={(e) => (e.currentTarget.style.display = 'none')} />;
+        if (b.includes('amex')) return <img src="https://www.vectorlogo.zone/logos/amex/amex-ar21.svg" className="h-3.5 object-contain" alt="Amex" onError={(e) => (e.currentTarget.style.display = 'none')} />;
 
         return fallback;
     };
@@ -71,20 +71,20 @@ export const CardList: React.FC<CardListProps> = ({
                             <button
                                 key={card.id}
                                 onClick={() => onSelectCard(card)}
-                                className={`min-w-[250px] text-left p-4.5 rounded-[20px] transition-all duration-300 shrink-0 relative flex flex-col justify-between h-[135px] snap-center border ${
+                                className={`min-w-[250px] text-left p-4 rounded-[20px] transition-all duration-300 shrink-0 relative flex flex-col justify-between h-[135px] snap-center border ${
                                     isSelected
                                         ? 'border-slate-900 bg-slate-900 text-white shadow-xl shadow-slate-950/20 scale-[1.01]'
                                         : 'border-slate-100 bg-white text-slate-900 hover:border-slate-200'
                                 }`}
                             >
-                                <div className="flex justify-between items-start w-full">
+                                <div className="flex justify-between items-center w-full">
                                     <div className="flex items-center gap-2">
-                                        <div className={`p-1 px-1.5 rounded-md flex items-center justify-center min-w-[36px] h-[22px] ${isSelected ? 'bg-white' : 'bg-slate-50'}`}>
+                                        <div className={`p-1 px-1.5 rounded-md flex items-center justify-center min-w-[38px] h-[22px] ${isSelected ? 'bg-white' : 'bg-slate-50'}`}>
                                             {getCardLogo(card.brand, isSelected)}
                                         </div>
-                                        <p className={`text-[10px] font-mono tracking-widest leading-none ${isSelected ? 'text-white/60' : 'text-slate-400'}`}>
+                                        <span className={`text-[10px] font-mono tracking-widest leading-none ${isSelected ? 'text-white/60' : 'text-slate-400'}`}>
                                             •••• {card.last4}
-                                        </p>
+                                        </span>
                                     </div>
                                     
                                     {additionalCount > 0 && (
@@ -94,8 +94,8 @@ export const CardList: React.FC<CardListProps> = ({
                                     )}
                                 </div>
 
-                                <div className="space-y-1">
-                                    <h4 className="font-bold text-sm truncate leading-tight">
+                                <div className="space-y-1.5">
+                                    <h4 className="font-bold text-xs truncate leading-tight">
                                         {card.name}
                                     </h4>
                                     <div className="pt-2 border-t flex justify-between items-end border-slate-100/10">
@@ -103,7 +103,7 @@ export const CardList: React.FC<CardListProps> = ({
                                             <p className={`text-[7px] font-black uppercase tracking-wider mb-0.5 ${isSelected ? 'text-white/40' : 'text-slate-300'}`}>
                                                 Limite Total
                                             </p>
-                                            <p className="text-base font-extrabold tracking-tight">
+                                            <p className="text-sm font-extrabold tracking-tight">
                                                 {formatCurrency(card.limit_total)}
                                             </p>
                                         </div>
@@ -119,7 +119,7 @@ export const CardList: React.FC<CardListProps> = ({
 
                 {/* Additional Cards List for the Selected Main Card */}
                 {activeAdditionalCards.length > 0 && (
-                    <div className="bg-slate-50/50 border border-slate-100/70 rounded-2xl p-4.5 space-y-2.5 animate-in fade-in duration-300">
+                    <div className="bg-slate-50/50 border border-slate-100/70 rounded-2xl p-4 space-y-2.5 animate-in fade-in duration-300">
                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest px-0.5">
                             Cartões Adicionais Vinculados
                         </p>
@@ -130,7 +130,7 @@ export const CardList: React.FC<CardListProps> = ({
                                     <button
                                         key={child.id}
                                         onClick={() => onSelectCard(child)}
-                                        className={`w-full flex items-center justify-between p-3.5 rounded-xl border transition-all text-left ${
+                                        className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all text-left ${
                                             isChildSelected
                                                 ? 'bg-slate-900 border-slate-900 text-white shadow-md shadow-slate-950/20'
                                                 : 'bg-white border-slate-100 hover:bg-slate-50 text-slate-900'

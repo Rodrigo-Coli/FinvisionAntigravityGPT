@@ -1,8 +1,18 @@
 {
-  "version": "2026.06.15.2301",
-  "title": "Novo Design de Cartões & Usabilidade",
+  "version": "2026.06.15.2310",
+  "title": "Ajuste de Design de Faturas & Cartões",
   "date": "15/06/2026",
   "benefits": [
+    {
+      "title": "Faturas Compactas no Celular",
+      "desc": "Os valores de Total Lançado, Pago e Pendente agora ficam em uma linha horizontal super organizada e menor.",
+      "type": "ux"
+    },
+    {
+      "title": "Cards sem Estouro de Conteúdo",
+      "desc": "Correção de margens e aplicação de paddings padrão que garantem que limites e nomes fiquem 100% legíveis e bem posicionados.",
+      "type": "usabilidade"
+    },
     {
       "title": "Design de Cartões Premium",
       "desc": "Novo visual 'Black/Centurion' e proporções ultra-premium mais leves e compactas no celular.",
@@ -12,23 +22,12 @@
       "title": "Rolagem Inteligente",
       "desc": "Carrossel compacto no mobile separando cartões titulares e adicionais para evitar toques acidentais.",
       "type": "usabilidade"
-    },
-    {
-      "title": "Contas & Cartões Unificados",
-      "desc": "Acesse saldo de contas e faturas de cartões em um só lugar através da nova aba 'Contas & Cartões'.",
-      "type": "ux"
-    },
-    {
-      "title": "Planejamento Centralizado",
-      "desc": "Orçamentos e Metas agora estão consolidados em um painel único para facilitar o controle de limites.",
-      "type": "usabilidade"
     }
   ],
   "changes": [
-    "**Visual Premium:** Redesenhamos os cards de cartões de crédito com proporção física real, cantos curvados elegantes (20px) e tema escuro Centurion quando selecionados.",
-    "**Ergonomia Mobile:** Cartões adicionais foram movidos para uma lista vertical limpa abaixo do carrossel no celular, evitando cliques acidentais e facilitando o scroll.",
-    "**Tipografia Mono:** Número do cartão (last4) agora utiliza fonte mono, simulando a gravação de cartões reais de metal.",
-    "**Contas & Cartões:** Consolidação das telas de Contas e Cartões em um único painel de abas integradas.",
-    "**Planejamento:** Fusão das páginas de Orçamentos e Metas em um componente unificado com otimização de cálculos."
+    "**Resumo Compacto:** Modificamos a visualização de faturas (StatementSummary.tsx) para renderizar os cards horizontais em uma grid de 3 colunas compacta no mobile, diminuindo fontes e economizando espaço vertical.",
+    "**Correção de Paddings:** Ajustamos classes de padding inválidas (p-4.5 e p-3.5) no CardList.tsx para valores Tailwind compatíveis (p-4 e p-3), trazendo o conteúdo de volta para dentro dos cartões.",
+    "**Escalonamento de Logos:** Aumentamos o tamanho relativo dos logotipos das bandeiras (Visa/Mastercard/Amex) para melhor legibilidade no topo do cartão.",
+    "**Ajuste de Margens e Fontes:** Reduzimos as fontes de nome do cartão e limite total nos cards compactos, garantindo 25px de respiro no meio do cartão."
   ]
 }
