@@ -81,17 +81,25 @@ export const StatementSummary: React.FC<StatementSummaryProps> = ({
             {/* AMOUNTS GRID (ZEN STYLE COMPACT) */}
             <div className="grid grid-cols-3 gap-2 sm:gap-6">
                 <div className="bg-slate-50 border border-slate-100 rounded-xl sm:rounded-[24px] p-3 sm:p-6 min-w-0">
-                    <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 sm:mb-3 leading-none truncate">Total Lançado</p>
+                    <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1 sm:mb-3 leading-none">
+                        <span className="inline sm:hidden">Lançado</span>
+                        <span className="hidden sm:inline">Total Lançado</span>
+                    </p>
                     <p className="text-xs sm:text-3xl font-extrabold text-slate-900 tracking-tighter truncate">{formatCurrency(statementTotal)}</p>
                 </div>
 
                 <div className="bg-white border border-slate-100 rounded-xl sm:rounded-[24px] p-3 sm:p-6 min-w-0">
-                    <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-1 sm:mb-3 leading-none opacity-70 truncate">Total Pago</p>
+                    <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-wider text-emerald-600 mb-1 sm:mb-3 leading-none opacity-70">
+                        <span className="inline sm:hidden">Pago</span>
+                        <span className="hidden sm:inline">Total Pago</span>
+                    </p>
                     <p className="text-xs sm:text-3xl font-extrabold text-emerald-600 tracking-tighter truncate">{formatCurrency(statementPaid)}</p>
                 </div>
 
                 <div className="bg-rose-50 border border-rose-100 rounded-xl sm:rounded-[24px] p-3 sm:p-6 min-w-0">
-                    <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest text-rose-600 mb-1 sm:mb-3 leading-none opacity-70 truncate">Pendente</p>
+                    <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-wider text-rose-600 mb-1 sm:mb-3 leading-none opacity-70">
+                        Pendente
+                    </p>
                     <p className="text-xs sm:text-3xl font-extrabold text-rose-600 tracking-tighter truncate">{formatCurrency(statementOpen)}</p>
                 </div>
             </div>

@@ -1,8 +1,13 @@
 {
-  "version": "2026.06.15.2310",
-  "title": "Ajuste de Design de Faturas & Cartões",
+  "version": "2026.06.15.2315",
+  "title": "Ajuste de Rótulos de Faturas",
   "date": "15/06/2026",
   "benefits": [
+    {
+      "title": "Rótulos Completos no Mobile",
+      "desc": "Os títulos de faturamento 'Total Lançado' e 'Total Pago' agora se adaptam para 'Lançado' e 'Pago' no mobile, evitando qualquer corte visual.",
+      "type": "ux"
+    },
     {
       "title": "Faturas Compactas no Celular",
       "desc": "Os valores de Total Lançado, Pago e Pendente agora ficam em uma linha horizontal super organizada e menor.",
@@ -12,22 +17,11 @@
       "title": "Cards sem Estouro de Conteúdo",
       "desc": "Correção de margens e aplicação de paddings padrão que garantem que limites e nomes fiquem 100% legíveis e bem posicionados.",
       "type": "usabilidade"
-    },
-    {
-      "title": "Design de Cartões Premium",
-      "desc": "Novo visual 'Black/Centurion' e proporções ultra-premium mais leves e compactas no celular.",
-      "type": "ux"
-    },
-    {
-      "title": "Rolagem Inteligente",
-      "desc": "Carrossel compacto no mobile separando cartões titulares e adicionais para evitar toques acidentais.",
-      "type": "usabilidade"
     }
   ],
   "changes": [
-    "**Resumo Compacto:** Modificamos a visualização de faturas (StatementSummary.tsx) para renderizar os cards horizontais em uma grid de 3 colunas compacta no mobile, diminuindo fontes e economizando espaço vertical.",
-    "**Correção de Paddings:** Ajustamos classes de padding inválidas (p-4.5 e p-3.5) no CardList.tsx para valores Tailwind compatíveis (p-4 e p-3), trazendo o conteúdo de volta para dentro dos cartões.",
-    "**Escalonamento de Logos:** Aumentamos o tamanho relativo dos logotipos das bandeiras (Visa/Mastercard/Amex) para melhor legibilidade no topo do cartão.",
-    "**Ajuste de Margens e Fontes:** Reduzimos as fontes de nome do cartão e limite total nos cards compactos, garantindo 25px de respiro no meio do cartão."
+    "**Rótulos Responsivos:** Adaptamos os rótulos de Total Lançado/Pago para Lançado/Pago na tela do mobile e removemos a classe truncate, prevenindo cortes visuais (como TOTAL LAN... ou TOTAL PAG...).",
+    "**Resumo Compacto:** Modificamos a visualização de faturas (StatementSummary.tsx) para renderizar os cards em uma grid horizontal compacta no celular.",
+    "**Ajuste de Spacing:** Ajustamos paddings inválidos no CardList.tsx para valores standard, garantindo perfeito recuo interno dos dados do cartão."
   ]
 }
