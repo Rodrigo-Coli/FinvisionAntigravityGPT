@@ -140,6 +140,7 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Limite Total</label>
                                 <input
                                     type="number"
+                                    inputMode="decimal"
                                     required
                                     value={newLimit}
                                     onChange={(e) => {
@@ -154,6 +155,7 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Fechamento</label>
                                     <input
                                         type="number"
+                                        inputMode="numeric"
                                         min={1}
                                         max={31}
                                         required
@@ -166,6 +168,7 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Vencimento</label>
                                     <input
                                         type="number"
+                                        inputMode="numeric"
                                         min={1}
                                         max={31}
                                         required

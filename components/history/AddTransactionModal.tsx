@@ -332,7 +332,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                     </button>
                                     <input
                                         type="text"
-                                        inputMode="text"
+                                        inputMode="decimal"
                                         value={form.amount}
                                         onChange={(e) => {
                                             let val = e.target.value;

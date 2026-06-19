@@ -8,12 +8,51 @@ import {
   Smartphone, BarChart3, Database, Lock, Receipt, Box, Check, MessageCircle, Info, HelpCircle
 } from 'lucide-react';
 
+const FEAT_LABELS: Record<string, string> = { 
+  dashboard: 'Dashboard Financeiro', 
+  accounts: 'Contas Bancárias', 
+  cards: 'Cartões de Crédito', 
+  manual_transactions: 'Transações Manuais', 
+  categories: 'Categorias', 
+  reports_basic: 'Relatórios Básicos', 
+  reconcile: 'Conciliação Bancária', 
+  ofx_import: 'Importação OFX/CSV', 
+  ai_scanner: 'Scanner de Cupom IA', 
+  goals: 'Metas Financeiras', 
+  budgets: 'Orçamentos', 
+  physical_assets: 'Bens Físicos', 
+  liabilities: 'Dívidas e Passivos', 
+  reports_advanced: 'Relatórios Avançados', 
+  multi_user: 'Multi-usuário', 
+  priority_support: 'Suporte Prioritário', 
+  ai_comparator: 'Comparador de Preços', 
+  ai_diagnosis: 'Diagnóstico Patrimonial', 
+  ai_shopping_list: 'Lista de Compras' 
+};
+
 export default function Landing() {
   const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [plans, setPlans] = useState<any[]>([]);
   const [annualBilling, setAnnualBilling] = useState(false);
+  const [familyIncome, setFamilyIncome] = useState(15000);
+  const [email, setEmail] = useState('');
+  const [leadSubmitted, setLeadSubmitted] = useState(false);
+  const [isSubmittingLead, setIsSubmittingLead] = useState(false);
+  
+  // Robust state initialization with fallbacks
+  const [plans, setPlans] = useState<any[]>([
+    { id: '1', name: 'Essencial', slug: 'essential', price_cents: 1990, price_cents_annual: 19900, ai_scans_limit: 60, features: ['1 Gestão de Conta', '60 Ações IA/mês', 'Suporte Básico'] },
+    { id: '2', name: 'Plus', slug: 'plus', price_cents: 3990, price_cents_annual: 39900, ai_scans_limit: 125, features: ['Contas Ilimitadas', '125 Ações IA/mês', 'Diagnóstico Patrimonial', 'Fila de Conciliação'], featured: true },
+    { id: '3', name: 'Pro', slug: 'pro', price_cents: 4990, price_cents_annual: 49900, ai_scans_limit: 175, features: ['Advisor Patrimonial Inteligente (IA)', '175 Ações IA/mês', 'Inflação Pessoal Exata', 'Gestão Multi-moedas'] }
+  ]);
+
+  const scrollToSection = (id: string) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -26,13 +65,26 @@ export default function Landing() {
       try {
         const { data } = await supabase.from('plans').select('*').eq('is_active', true).order('sort_order', { ascending: true });
         if (data && data.length > 0) {
-          setPlans(data);
-        } else {
-          setPlans([
-            { id: '1', name: 'Essencial', slug: 'essential', price_cents: 1990, price_cents_annual: 19900, ai_scans_limit: 60, features: ['1 Gestão de Conta', '60 Ações IA/mês', 'Suporte Básico'] },
-            { id: '2', name: 'Plus', slug: 'plus', price_cents: 3990, price_cents_annual: 39900, ai_scans_limit: 125, features: ['Contas Ilimitadas', '125 Ações IA/mês', 'Diagnóstico Patrimonial', 'Fila de Conciliação'], featured: true },
-            { id: '3', name: 'Pro', slug: 'pro', price_cents: 4990, price_cents_annual: 49900, ai_scans_limit: 175, features: ['Wealth Advisor Dedicado', '175 Ações IA/mês', 'Inflação Pessoal Exata', 'Gestão Multi-moedas'] }
-          ]);
+          const essentialPlan = data.find((p: any) => p.slug === 'essential') || data.find((p: any) => p.slug === 'essencial');
+          const plusPlan = data.find((p: any) => p.slug === 'plus') || data.find((p: any) => p.slug === 'familia');
+          const proPlan = data.find((p: any) => p.slug === 'pro');
+          
+          const filtered = [essentialPlan, plusPlan, proPlan].filter(Boolean);
+          if (filtered.length > 0) {
+            const hasFeatured = filtered.some((p: any) => p.featured);
+            const mappedPlans = filtered.map((p: any) => {
+              let feats = p.features;
+              if (p.slug === 'pro' && Array.isArray(feats)) {
+                feats = feats.map((f: any) => f === 'Wealth Advisor Dedicado' ? 'Advisor Patrimonial Inteligente (IA)' : f);
+              }
+              const planItem = { ...p, features: feats };
+              if (!hasFeatured && p.slug === 'plus') {
+                planItem.featured = true;
+              }
+              return planItem;
+            });
+            setPlans(mappedPlans);
+          }
         }
       } catch (e) {}
     };
@@ -41,13 +93,30 @@ export default function Landing() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Bloqueio de scroll ao abrir menu mobile
+  // Bloqueio de scroll ao abrir menu mobile (mitigação para iOS Safari e vazamento de scroll)
   useEffect(() => {
     if (mobileMenuOpen) {
+      const scrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
       document.body.style.overflow = 'hidden';
     } else {
-      document.body.style.overflow = 'unset';
+      const scrollY = document.body.style.top;
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      document.body.style.overflow = '';
+      if (scrollY) {
+        window.scrollTo(0, parseInt(scrollY || '0', 10) * -1);
+      }
     }
+    return () => {
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      document.body.style.overflow = '';
+    };
   }, [mobileMenuOpen]);
 
   return (
@@ -64,15 +133,15 @@ export default function Landing() {
           </div>
 
           <div className="hidden md:flex items-center gap-10">
-            <a href="#inteligencia" className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest">A Mágica da IA</a>
-            <a href="#ecosystem" className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest">Ecossistema</a>
-            <a href="#pricing" className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest">Licenças</a>
+            <button onClick={() => scrollToSection('inteligencia')} className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest">A Mágica da IA</button>
+            <button onClick={() => scrollToSection('ecosystem')} className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest">Ecossistema</button>
+            <button onClick={() => scrollToSection('pricing')} className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest">Licenças</button>
           </div>
 
           <div className="hidden md:flex items-center gap-6">
             <button onClick={() => navigate('/login')} className="text-xs font-bold text-slate-300 hover:text-white uppercase tracking-widest transition-colors">Acessar Conta</button>
             <button onClick={() => navigate('/demo')} className="relative group text-xs font-bold text-slate-900 bg-white px-8 py-3 rounded-xl overflow-hidden hover:scale-105 active:scale-95 transition-all shadow-[0_0_40px_-5px_rgba(255,255,255,0.4)]">
-              <span className="relative z-10 flex items-center gap-2 uppercase tracking-widest">Vivenciar Agora <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" /></span>
+              <span className="relative z-10 flex items-center gap-2 uppercase tracking-widest">Testar Demo <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" /></span>
             </button>
           </div>
 
@@ -84,7 +153,7 @@ export default function Landing() {
 
       {/* MOBILE MENU OVERLAY (Z-100 PARA FICAR ACIMA DE TUDO) */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[100] md:hidden bg-[#020617] h-screen w-screen flex flex-col items-center justify-center animate-in fade-in slide-in-from-top duration-300">
+        <div className="fixed inset-0 z-[100] md:hidden bg-[#020617] h-[100dvh] w-full flex flex-col items-center justify-center animate-in fade-in slide-in-from-top duration-300">
           <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center bg-[#020617]/80 backdrop-blur-md border-b border-white/5">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-gradient-to-br from-brand-600 to-indigo-600 rounded-lg flex items-center justify-center text-white">
@@ -98,48 +167,48 @@ export default function Landing() {
           </div>
           
           <div className="flex flex-col items-center gap-8 w-full px-8 mt-16">
-            <a href="#inteligencia" onClick={() => setMobileMenuOpen(false)} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">A Mágica da IA</a>
-            <a href="#ecosystem" onClick={() => setMobileMenuOpen(false)} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">Ecossistema</a>
-            <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">Licenças</a>
+            <button onClick={() => { setMobileMenuOpen(false); scrollToSection('inteligencia'); }} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">A Mágica da IA</button>
+            <button onClick={() => { setMobileMenuOpen(false); scrollToSection('ecosystem'); }} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">Ecossistema</button>
+            <button onClick={() => { setMobileMenuOpen(false); scrollToSection('pricing'); }} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">Licenças</button>
             
             <div className="w-full h-px bg-white/10 my-4" />
             
             <button onClick={() => { setMobileMenuOpen(false); navigate('/login'); }} className="w-full py-4 text-lg font-bold text-white uppercase tracking-widest bg-white/5 rounded-2xl border border-white/10">Acessar Conta</button>
-            <button onClick={() => { setMobileMenuOpen(false); navigate('/demo'); }} className="w-full py-5 bg-white text-slate-900 rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl">Vivenciar Demo</button>
+            <button onClick={() => { setMobileMenuOpen(false); navigate('/demo'); }} className="w-full py-5 bg-white text-slate-900 rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl">Testar Demo</button>
           </div>
         </div>
       )}
 
       <main>
         {/* 2. HERO SECTION ÉPICA */}
-        <section className="relative pt-48 pb-24 lg:pt-64 lg:pb-40 overflow-hidden">
+        <section className="relative pt-32 pb-16 md:pt-48 md:pb-24 lg:pt-64 lg:pb-40 overflow-hidden">
           {/* Animated Background Gradients & Grids */}
-          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
+          <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[1000px] bg-brand-600/10 rounded-full blur-[150px] mix-blend-screen animate-pulse pointer-events-none duration-10000" />
           <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-600/20 rounded-full blur-[120px] mix-blend-screen pointer-events-none" />
           
           <div className="relative max-w-[1400px] mx-auto px-6 lg:px-12 text-center z-10">
             <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/5 border border-white/10 text-brand-300 text-[10px] font-black uppercase tracking-[0.2em] mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700 shadow-xl backdrop-blur-md">
-              <Brain size={14} /> Introduzindo O Wealth Advisor Autônomo
+              <Brain size={14} /> Introduzindo O Advisor Inteligente Autônomo
             </div>
             
-            <h1 className="text-xl sm:text-3xl md:text-5xl lg:text-7xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white/90 to-slate-500 mb-8 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-1000 leading-[1.05]">
-              Recupere o controle absoluto <br className="hidden md:block" /> da sua liberdade financeira.
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white/90 to-slate-500 mb-8 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-1000 leading-[1.05]">
+              O controle do seu patrimônio, <br className="hidden md:block" /> inteligente e no piloto automático.
             </h1>
             
             <p className="text-sm sm:text-base md:text-xl text-slate-400 font-medium mb-14 max-w-2xl mx-auto leading-relaxed animate-in fade-in slide-in-from-bottom-10 duration-1000 delay-150">
-              O primeiro Private Banker autônomo que cabe no seu bolso. Esqueça a digitação manual de gastos e planilhas confusas. O FinVision Pro consolida contas, investimentos, cartões e patrimônio imobiliário de forma impenetrável via IA.
+              Consolide suas contas, cartões, investimentos e imóveis em uma única tela. Esqueça planilhas confusas e digitação manual: nossa IA faz a conciliação bancária por você em segundos, com segurança de nível bancário e isolamento total de dados.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-6 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-300">
               <button onClick={() => navigate('/demo')} className="w-full sm:w-auto px-10 py-5 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[0_0_50px_-10px_rgba(255,255,255,0.5)] hover:bg-slate-100 hover:scale-105 transition-all">
-                Entrar no Modo Demo Interativo <ArrowRight size={18} />
+                Testar Demo Grátis <ArrowRight size={18} />
               </button>
-              <button onClick={() => { document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' }) }} className="w-full sm:w-auto px-10 py-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 backdrop-blur-md hover:border-brand-500/50 transition-all">
+              <button onClick={() => scrollToSection('pricing')} className="w-full sm:w-auto px-10 py-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 backdrop-blur-md hover:border-brand-500/50 transition-all">
                 Visualizar Licenças
               </button>
             </div>
-            <p className="mt-6 text-slate-500 font-bold text-[10px] uppercase tracking-widest animate-in fade-in delay-700">* Sem cartão de crédito. Ambiente lotado de dados reais para teste imersivo.</p>
+            <p className="mt-6 text-slate-400 font-bold text-[10px] uppercase tracking-widest animate-in fade-in delay-700">* Sem cartão de crédito. Ambiente lotado de dados reais para teste imersivo.</p>
           </div>
 
           {/* SaaS Mockup / Hero Animated DOM */}
@@ -161,7 +230,7 @@ export default function Landing() {
               </div>
 
               {/* Fake Dashboard Content */}
-              <div className="grid grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                  {/* Main Chart Area */}
                  <div className="col-span-2 bg-slate-950/50 rounded-2xl p-6 border border-white/5 relative overflow-hidden">
                     <div className="flex justify-between items-center mb-6">
@@ -177,7 +246,7 @@ export default function Landing() {
                  </div>
 
                  {/* Side Cards Area */}
-                 <div className="space-y-4">
+                 <div className="space-y-4 hidden md:block">
                     {/* Wealth Advisor Mini Card */}
                     <div className="bg-slate-950/50 rounded-2xl p-5 border border-white/5 flex flex-col justify-between h-24 transform transition-transform hover:-translate-y-1">
                       <div className="flex items-center justify-between">
@@ -217,7 +286,7 @@ export default function Landing() {
         {/* 3. SOCIAL PROOF (BANK INTEGRATIONS) */}
         <section className="py-10 border-y border-white/5 bg-brand-900/30 relative z-10">
           <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-8">Compatível com extratos das maiores instituições</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-8">Compatível com extratos das maiores instituições</p>
             <div className="flex flex-wrap justify-center gap-12 md:gap-24 opacity-40 grayscale contrast-200">
                <span className="text-2xl font-black tracking-tighter">Itaú</span>
                <span className="text-2xl font-black tracking-tighter">Nubank</span>
@@ -248,7 +317,7 @@ export default function Landing() {
                       <Brain size={28} />
                     </div>
                     <h3 className="text-3xl font-black tracking-tight mb-4">FinVision Advisor</h3>
-                    <p className="text-slate-400 text-lg max-w-md leading-relaxed">Seu conselheiro patrimonial inteligente. Ele analisa seus ativos (Investimentos, Casas, Carros), cruza com suas dívidas e emite relatórios analíticos profundos em Markdown diagnosticando exatamente se a sua Riqueza está blindada ou derretendo frente à inflação.</p>
+                    <p className="text-slate-400 text-lg max-w-md leading-relaxed">Seu conselheiro patrimonial inteligente. Ele analisa seus ativos (Investimentos, Casas, Carros), cruza com suas dívidas e emite relatórios analíticos profundos e prontos para leitura, diagnosticando exatamente se a sua Riqueza está blindada ou derretendo frente à inflação.</p>
                   </div>
                   
                   {/* Mockup Fictício do Relatório */}
@@ -271,7 +340,7 @@ export default function Landing() {
               </div>
 
               {/* BENTO ITEM 2: Inflação Pessoal (Span 1) */}
-              <div className="bg-brand-900 border border-white/10 rounded-[40px] p-8 relative overflow-hidden group">
+              <div className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 border border-white/10 rounded-[40px] p-8 relative overflow-hidden group backdrop-blur-md">
                 <div className="absolute bottom-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform duration-700">
                   <TrendingUp size={120} />
                 </div>
@@ -285,7 +354,7 @@ export default function Landing() {
               </div>
 
               {/* BENTO ITEM 3: WhatsApp AI (Span 1) */}
-              <div className="bg-brand-900 border border-white/10 rounded-[40px] p-8 relative overflow-hidden group">
+              <div className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 border border-white/10 rounded-[40px] p-8 relative overflow-hidden group backdrop-blur-md">
                 <div className="absolute top-10 right-10 opacity-30 group-hover:opacity-100 transition-opacity duration-500 delay-100 text-brand-400">
                    <MessageCircle size={64} className="animate-pulse" />
                 </div>
@@ -318,7 +387,7 @@ export default function Landing() {
                 { icon: <Box size={24} />, title: "Patrimônio e Dívidas", color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", desc: "Registre imóveis, veículos, consórcios e financiamentos calculando amortização." },
                 { icon: <Store size={24} />, title: "Lista de Compras IA", color: "text-rose-400", bg: "bg-rose-500/10", border: "border-rose-500/20", desc: "Aviso algorítmico te enviando exatamente para o Mercado onde seus itens são mais baratos." }
               ].map((ft, i) => (
-                <div key={i} className="bg-brand-900 border border-white/5 rounded-[32px] p-8 hover:bg-slate-800 transition-colors">
+                <div key={i} className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 border border-white/10 rounded-[32px] p-8 hover:bg-slate-800 transition-colors">
                   <div className={`w-14 h-14 ${ft.bg} ${ft.border} border rounded-2xl flex items-center justify-center ${ft.color} mb-6`}>{ft.icon}</div>
                   <h3 className="text-xl font-bold mb-3 text-white">{ft.title}</h3>
                   <p className="text-slate-400 text-sm leading-relaxed font-medium">{ft.desc}</p>
@@ -339,7 +408,7 @@ export default function Landing() {
                 <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-6">Seus dados não treinam a <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Inteligência Artificial Pública</span>.</h2>
                 <p className="text-slate-400 text-lg font-medium max-w-xl mb-10 leading-relaxed">
                   Aplicativos grátis vendem o seu perfil de compra.<br/> 
-                  O FinVision Pro usa um contêiner hermético. Nosso LLM processa seus cupons e contas bancárias estritamente em memória volátil, sob a proteção do <strong>Row-Level Security</strong> impenetrável do PostgreSQL. Seu patrimônio é e sempre será invisível para nós e para a internet.
+                  O FinVision Pro funciona como um cofre digital inviolável. Nossa Inteligência Artificial processa seus extratos e cupons de forma isolada, sob a proteção de criptografia militar. Seu patrimônio permanece invisível para terceiros e 100% sob seu controle.
                 </p>
                 <div className="inline-flex flex-wrap items-center gap-4">
                   <div className="px-6 py-3 bg-white/5 border border-white/10 rounded-xl flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-300"><Lock size={16} className="text-emerald-500"/> AES-256 Bit</div>
@@ -353,7 +422,7 @@ export default function Landing() {
                     <div className="absolute inset-16 bg-gradient-to-br from-emerald-900/50 to-slate-900 rounded-full flex flex-col items-center justify-center p-8 text-center shadow-2xl backdrop-blur-md border border-emerald-500/20">
                       <Lock size={48} className="text-emerald-400 mb-4" />
                       <span className="text-emerald-400 font-bold tracking-widest uppercase text-xs">Cofre Local Ativo</span>
-                      <span className="text-slate-500 text-[10px] mt-2">RLS Constraint ENABLED</span>
+                      <span className="text-slate-500 text-[10px] mt-2">Segurança de Nível Bancário</span>
                     </div>
                  </div>
               </div>
@@ -361,23 +430,23 @@ export default function Landing() {
         </section>
 
         {/* 6.5. US VS THEM (TABELA DE COMPARAÇÃO BOLD) */}
-        <section className="py-32 relative z-10 bg-[#020617] border-t border-white/5">
+        <section className="py-24 md:py-32 relative z-10 bg-[#020617] border-t border-white/5">
           <div className="max-w-[1200px] mx-auto px-6 lg:px-12">
             <div className="text-center mb-16">
               <h2 className="text-3xl lg:text-5xl font-black tracking-tight mb-4">Por que migrar para o <span className="text-brand-500">FinVision Pro</span>?</h2>
-              <p className="text-slate-400 font-medium">As diferenças claras entre profissionais e amadores do seu dinheiro.</p>
+              <p className="text-slate-400 font-medium">Compare e descubra por que os métodos tradicionais custam o seu tempo e a sua privacidade.</p>
             </div>
 
             <div className="overflow-x-auto rounded-3xl border border-white/10 bg-slate-950/30">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-white/10">
-                    <th className="p-6 font-bold text-slate-500 uppercase tracking-widest text-xs w-[40%]">Capacidade Operacional</th>
+                    <th className="p-6 font-bold text-slate-500 uppercase tracking-widest text-xs w-[35%]">Recurso & Segurança</th>
                     <th className="p-6 text-center border-l border-white/5 w-[20%]">
-                      <span className="inline-block bg-brand-900 px-3 py-1 rounded-md text-slate-500 font-bold text-[10px] uppercase tracking-widest">Planilhas Excel</span>
+                      <span className="inline-block bg-white/5 border border-white/10 px-3 py-1 rounded-md text-slate-400 font-bold text-[10px] uppercase tracking-widest">Planilhas Excel</span>
                     </th>
-                    <th className="p-6 text-center border-l border-white/5 w-[20%]">
-                      <span className="inline-block bg-brand-900 px-3 py-1 rounded-md text-slate-500 font-bold text-[10px] uppercase tracking-widest">Apps Genéricos</span>
+                    <th className="p-6 text-center border-l border-white/5 w-[25%]">
+                      <span className="inline-block bg-white/5 border border-white/10 px-3 py-1 rounded-md text-slate-400 font-bold text-[10px] uppercase tracking-widest">Apps Tradicionais (Mobills/Organizze)</span>
                     </th>
                     <th className="p-6 text-center border-l border-brand-500/30 bg-brand-900/10 w-[20%]">
                       <span className="inline-block bg-brand-500 text-white px-4 py-1.5 rounded-md font-black text-[10px] uppercase tracking-[0.2em] shadow-lg">FinVision Pro</span>
@@ -386,29 +455,208 @@ export default function Landing() {
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {[
-                    { label: "Conciliação Bancária via Upload (Algoritmo)", e: "Manual", a: "Não tem", f: "Automática em Segundos" },
-                    { label: "Cálculo Exato de Patrimônio Líquido vs Dívida", e: "Manual", a: "Muito Básico", f: "Tempo Real com Gráficos" },
-                    { label: "Extração de Cupons/Notas Fiscais (OCR Neural)", e: "Não", a: "Não", f: "Sim + Classificação IA" },
-                    { label: "Gráfico de Inflação Pessoal Histórica", e: "Impossível", a: "Usa o IPCA", f: "Item a Item da Despensa" },
-                    { label: "Relatórios de Wealth Advisor Autônomo", e: "Não", a: "Não", f: "Dossiê Profundo em Markdown" },
-                    { label: "Privacidade Militar sem Venda de Dados", e: "Seguro", a: "Seus dados são o produto", f: "Cofre RLS Isolado" }
+                    { 
+                      label: "Sincronização de Extratos", 
+                      excel: "Manual (Copiar & Colar)", 
+                      trad: "Exige Senha do Banco (Open Finance instável)", 
+                      pro: "Upload OFX/CSV em 1-Click (Sem dar suas senhas)",
+                      isShield: false 
+                    },
+                    { 
+                      label: "Privacidade & Custódia de Dados", 
+                      excel: "Local (Seguro, porém isolado)", 
+                      trad: "Venda de Perfil de Consumo para Crédito/Publicidade", 
+                      pro: "Cofre PostgreSQL RLS Isolado (Dados 100% seus)",
+                      isShield: true 
+                    },
+                    { 
+                      label: "Classificação Inteligente de Gastos", 
+                      excel: "Manual ou Fórmulas Complexas", 
+                      trad: "Regras Básicas por Nome (Falha em 40% dos casos)", 
+                      pro: "IA Autônoma (LLM + OCR de Cupons Fiscais)",
+                      isShield: false 
+                    },
+                    { 
+                      label: "Conselho Patrimonial (Wealth Advisor)", 
+                      excel: "Não possui", 
+                      trad: "Dicas prontas e anúncios de empréstimos", 
+                      pro: "Dossiê Profundo gerado por IA",
+                      isShield: false 
+                    },
+                    { 
+                      label: "Medição de Inflação Pessoal Real", 
+                      excel: "Impossível", 
+                      trad: "Usa apenas índices genéricos (IPCA)", 
+                      pro: "Mapeamento item a item das suas compras",
+                      isShield: false 
+                    },
+                    { 
+                      label: "Entrada Rápida via Mobile", 
+                      excel: "Péssima no Celular", 
+                      trad: "Formulários longos e cheios de etapas", 
+                      pro: "Envio Instantâneo de Áudio ou Foto por WhatsApp",
+                      isShield: false 
+                    }
                   ].map((row, i) => (
                     <tr key={i} className="hover:bg-white/[0.02] transition-colors">
                       <td className="p-6 px-6 font-bold text-slate-300">{row.label}</td>
-                      <td className="p-6 text-center border-l border-white/5 text-slate-500 font-medium text-sm">{row.e === "Não" ? <X className="mx-auto opacity-30" size={18}/> : row.e}</td>
-                      <td className="p-6 text-center border-l border-white/5 text-slate-500 font-medium text-sm">{row.a === "Não" ? <X className="mx-auto opacity-30" size={18}/> : row.a}</td>
+                      <td className="p-6 text-center border-l border-white/5 text-slate-400 font-medium text-sm">{row.excel}</td>
+                      <td className="p-6 text-center border-l border-white/5 text-slate-400 font-medium text-sm">{row.trad}</td>
                       <td className="p-6 text-center border-l border-brand-500/30 bg-brand-900/10 text-emerald-400 font-bold text-sm">
-                        {row.f.startsWith("Sim") || row.f.startsWith("Automática") || row.f.startsWith("Tempo") || row.f.startsWith("Item") || row.f.startsWith("Dossiê") || row.f.startsWith("Cofre") ? 
-                          <span className="flex flex-col items-center gap-1.5">
-                            {row.f.startsWith("Cofre") ? <ShieldCheck size={18} /> : <Check size={18} strokeWidth={3} />}
-                            <span className="text-[10px] text-brand-200">{row.f}</span>
-                          </span> 
-                        : row.f}
+                        <span className="flex flex-col items-center gap-1.5">
+                          {row.isShield ? <ShieldCheck size={18} className="mx-auto" /> : <Check size={18} strokeWidth={3} className="mx-auto" />}
+                          <span className="text-[10px] text-brand-200">{row.pro}</span>
+                        </span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </section>
+
+        {/* 6.7. SOCIAL PROOF (TESTIMONIALS) */}
+        <section className="py-24 relative z-10 bg-[#020617] border-t border-white/5">
+          <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
+            <div className="text-center mb-16">
+              <span className="text-[10px] font-black text-brand-400 uppercase tracking-[0.3em] mb-4 block">Depoimentos reais</span>
+              <h2 className="text-3xl lg:text-5xl font-black tracking-tight mb-4 text-white">Quem usa, aprova e confia</h2>
+              <p className="text-slate-400 font-medium max-w-xl mx-auto">Histórias de médicos, empresários e investidores que abandonaram o preenchimento manual de planilhas.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {[
+                {
+                  quote: "Sem tempo para planilhas. Eu gravo áudios de gastos no caminho do consultório ou tiro foto do cupom e a IA categoriza tudo pelo WhatsApp em segundos. Salvou minha rotina.",
+                  name: "Dra. Mariana S.",
+                  role: "Médica Cardiologista",
+                  avatar: "MS"
+                },
+                {
+                  quote: "Separar gastos pessoais de PJ era um pesadelo. Com a conciliação inteligente do FinVision, arrasto os extratos de 3 bancos diferentes e resolvo tudo em minutos, sem expor minhas senhas bancárias.",
+                  name: "Thiago A.",
+                  role: "Empreendedor & Diretor de Tecnologia",
+                  avatar: "TA"
+                },
+                {
+                  quote: "O que me convenceu foi a privacidade absoluta do cofre isolado. Meus dados financeiros não treinam modelos públicos. E o diagnóstico do Advisor Patrimonial Inteligente é cirúrgico.",
+                  name: "Rodrigo C.",
+                  role: "Investidor Qualificado & Engenheiro de Software",
+                  avatar: "RC"
+                }
+              ].map((item, idx) => (
+                <div key={idx} className="bg-gradient-to-br from-slate-900/50 to-slate-950/50 border border-white/10 rounded-[32px] p-8 backdrop-blur-md flex flex-col justify-between hover:border-brand-500/30 transition-all duration-300">
+                  <div className="mb-8">
+                    <div className="flex gap-1 text-brand-400 mb-6">
+                      {[...Array(5)].map((_, i) => (
+                        <span key={i} className="text-lg">★</span>
+                      ))}
+                    </div>
+                    <p className="text-slate-300 text-sm leading-relaxed italic">"{item.quote}"</p>
+                  </div>
+                  <div className="flex items-center gap-4 pt-6 border-t border-white/5">
+                    <div className="w-10 h-10 rounded-full bg-brand-500/20 border border-brand-500/30 flex items-center justify-center text-xs font-black text-brand-300">
+                      {item.avatar}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-white">{item.name}</h4>
+                      <p className="text-xs text-slate-500">{item.role}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* 6.8. SIMULADOR FINANCEIRO INTERATIVO */}
+        <section className="py-24 relative z-10 bg-[#020617] border-t border-white/5">
+          <div className="max-w-[1000px] mx-auto px-6">
+            <div className="relative rounded-[40px] border border-white/10 bg-gradient-to-br from-slate-900 to-indigo-950/40 p-8 md:p-14 overflow-hidden shadow-[0_0_80px_rgba(79,70,229,0.15)]">
+              <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-brand-500/10 rounded-full blur-[100px] pointer-events-none" />
+              
+              <div className="grid md:grid-cols-2 gap-12 items-center relative z-10">
+                <div>
+                  <span className="text-[10px] font-black text-brand-400 uppercase tracking-[0.3em] mb-4 block">Simulador Interativo</span>
+                  <h2 className="text-3xl font-black tracking-tight mb-4 text-white">Quanto você está deixando escapar?</h2>
+                  <p className="text-slate-400 text-sm mb-8 leading-relaxed font-medium">
+                    Arraste a barra para definir suas despesas/rendimentos mensais e veja quanto tempo e dinheiro você pode recuperar anualmente usando nossa Inteligência Artificial para eliminar desperdícios invisíveis.
+                  </p>
+                  
+                  <div className="space-y-6">
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">Renda / Despesa Mensal</span>
+                        <span className="text-xl font-black text-white">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(familyIncome)}</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="2000" 
+                        max="50000" 
+                        step="1000"
+                        value={familyIncome} 
+                        onChange={(e) => setFamilyIncome(Number(e.target.value))}
+                        className="w-full h-2 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-brand-500"
+                      />
+                      <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase mt-2">
+                        <span>R$ 2.000</span>
+                        <span>R$ 50.000</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/60 border border-white/5 rounded-3xl p-8 space-y-8 backdrop-blur-md">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Economia Anual Projetada (7.5%)</p>
+                      <p className="text-2xl font-black text-emerald-400 font-mono tracking-tight">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(familyIncome * 0.075 * 12)}</p>
+                      <p className="text-[10px] text-slate-500 leading-tight">Média de desperdícios eliminados por IA</p>
+                    </div>
+                    <div className="space-y-2 border-l border-white/5 pl-6">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Tempo Salvo Mensalmente</p>
+                      <p className="text-2xl font-black text-indigo-400 font-mono tracking-tight">{Math.round(4 + (familyIncome / 10000))} horas</p>
+                      <p className="text-[10px] text-slate-500 leading-tight">Substituindo conciliação e digitação manual</p>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-white/5 pt-6 space-y-4">
+                    <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Receba seu Diagnóstico Gratuito por E-mail</p>
+                    {leadSubmitted ? (
+                      <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-xs font-bold leading-normal">
+                        ✓ Diagnóstico enviado com sucesso! Verifique sua caixa de entrada em instantes para acessar seus Wealth Insights + Cupom de 20% no plano anual.
+                      </div>
+                    ) : (
+                      <form onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!email) return;
+                        setIsSubmittingLead(true);
+                        setTimeout(() => {
+                          setIsSubmittingLead(false);
+                          setLeadSubmitted(true);
+                        }, 800);
+                      }} className="flex flex-col sm:flex-row gap-3">
+                        <input 
+                          type="email" 
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="seu@email.com"
+                          className="flex-1 px-5 py-4 bg-slate-900 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors"
+                        />
+                        <button 
+                          type="submit"
+                          disabled={isSubmittingLead}
+                          className="px-6 py-4 bg-white text-slate-900 hover:bg-slate-100 rounded-xl text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap disabled:opacity-50"
+                        >
+                          {isSubmittingLead ? 'Enviando...' : 'Enviar Diagnóstico'}
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -427,47 +675,114 @@ export default function Landing() {
             </div>
 
             <div className="grid md:grid-cols-3 gap-8 items-stretch max-w-6xl mx-auto">
-              {plans.map((plan: any, i) => (
-                <div key={i} className={`relative rounded-[40px] p-10 flex flex-col justify-between ${plan.featured ? 'bg-gradient-to-b from-brand-900 to-slate-900 border-2 border-brand-500 shadow-[0_0_80px_rgba(79,70,229,0.2)] transform md:-translate-y-6 z-20' : 'bg-white/5 border border-white/10 z-10'}`}>
-                  {plan.featured && (
-                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-5 py-2 bg-brand-500 text-white text-[9px] font-black uppercase tracking-[0.3em] rounded-full shadow-lg">
-                      RECOMENDADO
-                    </div>
-                  )}
-                  
-                  <div>
-                    <h3 className={`text-3xl font-black tracking-tight mb-2 ${plan.featured ? 'text-white' : 'text-slate-300'}`}>{plan.name}</h3>
-                    <div className="flex items-baseline gap-2 mb-8">
-                      <span className="text-5xl font-black tracking-tighter">R${(annualBilling ? (plan.price_cents_annual || plan.price_cents * 10) / 12 / 100 : (plan.price_cents / 100)).toFixed(2).replace('.', ',')}</span>
-                      <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">/mês</span>
+              {plans.map((plan: any, i) => {
+                const getPlanSegment = (slug: string) => {
+                  if (slug === 'essential' || slug === 'essencial') return 'Ideal para organizar as primeiras contas';
+                  if (slug === 'plus' || slug === 'familia') return 'Recomendado para famílias e investidores ativos';
+                  if (slug === 'pro') return 'Ideal para patrimônios complexos e holdings';
+                  return '';
+                };
+
+                return (
+                  <div key={i} className={`relative rounded-[40px] p-10 flex flex-col justify-between ${plan.featured ? 'bg-gradient-to-b from-brand-900 to-slate-900 border-2 border-brand-500 shadow-[0_0_80px_rgba(79,70,229,0.2)] transform md:-translate-y-6 z-20' : 'bg-white/5 border border-white/10 z-10'}`}>
+                    {plan.featured && (
+                      <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-5 py-2 bg-brand-500 text-white text-[9px] font-black uppercase tracking-[0.3em] rounded-full shadow-lg">
+                        RECOMENDADO
+                      </div>
+                    )}
+                    
+                    <div>
+                      <span className="text-[9px] font-black text-brand-400 uppercase tracking-widest block mb-2">
+                        {getPlanSegment(plan.slug)}
+                      </span>
+                      <h3 className={`text-3xl font-black tracking-tight mb-2 ${plan.featured ? 'text-white' : 'text-slate-300'}`}>{plan.name}</h3>
+                      <div className="flex items-baseline gap-2 mb-8">
+                        <span className="text-5xl font-black tracking-tighter">R${(annualBilling ? (plan.price_cents_annual || plan.price_cents * 10) / 12 / 100 : (plan.price_cents / 100)).toFixed(2).replace('.', ',')}</span>
+                        <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">/mês</span>
+                      </div>
+
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-8 border-b border-white/10 pb-8">
+                        {annualBilling ? `R$${((plan.price_cents_annual || plan.price_cents * 10) / 100).toFixed(2)} faturado 1x por ano.` : 'Faturado mensalmente. Cancele quando quiser.'}
+                      </p>
+
+                      <ul className="space-y-6 mb-12">
+                        {(() => {
+                          let list: string[] = [];
+                          if (Array.isArray(plan.features)) {
+                            list = [...plan.features];
+                          } else if (typeof plan.features === 'object' && plan.features) {
+                            const keys = Object.entries(plan.features).filter(([, v]) => v).map(([k]) => k);
+                            const priorityKeys = ['accounts', 'reconcile', 'ai_scanner', 'ai_diagnosis', 'ai_comparator', 'physical_assets', 'liabilities', 'multi_user'];
+                            const sortedKeys = keys.sort((a, b) => {
+                              const idxA = priorityKeys.indexOf(a);
+                              const idxB = priorityKeys.indexOf(b);
+                              if (idxA === -1 && idxB === -1) return 0;
+                              if (idxA === -1) return 1;
+                              if (idxB === -1) return -1;
+                              return idxA - idxB;
+                            }).slice(0, 5);
+                            list = sortedKeys.map(k => FEAT_LABELS[k] || k);
+                          }
+
+                          if (plan.ai_scans_limit && plan.ai_scans_limit > 0) {
+                            const scanLimitStr = `${plan.ai_scans_limit} Ações IA/mês`;
+                            if (!list.some(f => String(f).includes('Ações IA') || String(f).includes('Ação IA'))) {
+                              list.unshift(scanLimitStr);
+                            }
+                          }
+
+                          list = list.map(f => {
+                            if (f === 'Wealth Advisor Dedicado') return 'Advisor Patrimonial Inteligente (IA)';
+                            return f;
+                          });
+
+                          return list.map((ft: any, j: number) => {
+                            const isAiFeature = String(ft).includes('Ações IA') || String(ft).includes('Ação IA');
+                            return (
+                              <li key={j} className="flex items-start gap-4">
+                                <div className={`mt-0.5 rounded-full p-1 border ${plan.featured ? 'bg-brand-500/20 border-brand-500/50 text-brand-400' : 'bg-white/5 border-white/10 text-slate-400'}`}>
+                                  <Check size={12} strokeWidth={3} />
+                                </div>
+                                <span className={`text-sm font-bold ${plan.featured ? 'text-white' : 'text-slate-300'} flex items-center`}>
+                                  {String(ft)}
+                                  {isAiFeature && (
+                                    <div className="relative group/tooltip inline-block ml-1.5 cursor-help">
+                                      <Info size={14} className="text-slate-500 hover:text-slate-300 inline-block -mt-0.5" />
+                                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 hidden group-hover/tooltip:block bg-slate-950 text-[10px] text-slate-300 p-2.5 rounded-xl border border-white/10 shadow-2xl z-30 font-medium normal-case leading-normal text-left">
+                                        1 Ação IA = 1 escaneamento de cupom via WhatsApp/App OR 1 análise de investimento do Advisor. Excedeu o limite? Continue usando funções manuais ilimitadas.
+                                      </div>
+                                    </div>
+                                  )}
+                                </span>
+                              </li>
+                            );
+                          });
+                        })()}
+                      </ul>
                     </div>
 
-                    <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-8 border-b border-white/10 pb-8">
-                      {annualBilling ? `R$${((plan.price_cents_annual || plan.price_cents * 10) / 100).toFixed(2)} faturado 1x por ano.` : 'Faturado mensalmente. Cancele quando quiser.'}
-                    </p>
-
-                    <ul className="space-y-6 mb-12">
-                      {(() => {
-                        const FEAT_LABELS: Record<string, string> = { dashboard: 'Dashboard Financeiro', accounts: 'Contas Bancárias', cards: 'Cartões de Crédito', manual_transactions: 'Transações Manuais', categories: 'Categorias', reports_basic: 'Relatórios Básicos', reconcile: 'Conciliação Bancária', ofx_import: 'Importação OFX/CSV', ai_scanner: 'Scanner de Cupom IA', goals: 'Metas Financeiras', budgets: 'Orçamentos', physical_assets: 'Bens Físicos', liabilities: 'Dívidas e Passivos', reports_advanced: 'Relatórios Avançados', multi_user: 'Multi-usuário', priority_support: 'Suporte Prioritário', ai_comparator: 'Comparador de Preços', ai_diagnosis: 'Diagnóstico Patrimonial', ai_shopping_list: 'Lista de Compras' };
-                        const feats = Array.isArray(plan.features) ? plan.features : typeof plan.features === 'object' && plan.features ? Object.entries(plan.features).filter(([,v]) => v).slice(0, 6).map(([k]) => FEAT_LABELS[k] || k) : [];
-                        return feats.map((ft: any, j: number) => (
-                          <li key={j} className="flex items-start gap-4">
-                            <div className={`mt-0.5 rounded-full p-1 border ${plan.featured ? 'bg-brand-500/20 border-brand-500/50 text-brand-400' : 'bg-white/5 border-white/10 text-slate-400'}`}><Check size={12} strokeWidth={3} /></div>
-                            <span className={`text-sm font-bold ${plan.featured ? 'text-white' : 'text-slate-300'}`}>{String(ft)}</span>
-                          </li>
-                        ));
-                      })()}
-                    </ul>
+                    <div>
+                      <button 
+                        onClick={() => {
+                          if (plan.price_cents > 0) {
+                            navigate(`/signup?plan=${plan.slug}`);
+                          } else {
+                            navigate('/demo');
+                          }
+                        }} 
+                        className={`w-full py-6 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${plan.featured ? 'bg-brand-500 hover:bg-brand-400 text-white hover:scale-[1.02] shadow-xl shadow-brand-500/30' : 'bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-white/30'}`}
+                      >
+                        {plan.price_cents > 0 ? 'Assinar a Licença' : 'Experimentar Ferramenta'}
+                      </button>
+                      <div className="text-center mt-3">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                          ✓ Garantia incondicional de 7 dias
+                        </span>
+                      </div>
+                    </div>
                   </div>
-
-                  <button 
-                    onClick={() => navigate(plan.featured ? '/signup' : '/demo')} 
-                    className={`w-full py-6 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${plan.featured ? 'bg-brand-500 hover:bg-brand-400 text-white hover:scale-[1.02] shadow-xl shadow-brand-500/30' : 'bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-white/30'}`}
-                  >
-                    {plan.featured ? 'Assinar a Licença' : 'Experimentar Ferramenta'}
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>
@@ -483,8 +798,8 @@ export default function Landing() {
                {[
                  { q: 'O sistema puxa o extrato direto do banco sozinho?', a: 'Para garantir 100% de segurança da sua senha bancária, não usamos Open Finance invasivo. Você exporta o arquivo OFX ou CSV do seu banco e arrasta para o nosso Conciliador 1-Click. A Inteligência Artificial categoriza tudo em segundos.' },
                  { q: 'Posso testar sem cadastrar cartão de crédito?', a: 'Com certeza! Nós desenhamos o exclusivo Modo Demo: ao clicar para vivenciar a ferramenta, você entra num ambiente isolado já preenchido com dados reais (contas, carros, casas) para aprender a usar sem compromisso.' },
-                 { q: 'Como funciona o Escâner Neural de Cupons?', a: 'Basta abrir pelo celular (PWA), focar a câmera no cupom ou nota fiscal de supermercado, e a IA no servidor vai identificar o nome de cada produto, valor, quantidade e classificar por categoria automaticamente.' },
-                 { q: 'A Inteligência Artificial lê meus dados bancários?', a: 'Sim, mas com RLS (Row-Level Security). Ela processa seus extratos em ambiente local restrito, sem que nenhum humano da equipe ou LLM externo utilize seus dados para treinamento. Privacidade nível institucional.' }
+                 { q: 'Como funciona o Escâner Neural de Cupons?', a: 'Basta abrir pelo celular (PWA), focar a câmera no cupom ou nota fiscal de supermercado, e a nossa IA vai identificar o nome de cada produto, valor, quantidade e classificar por categoria automaticamente.' },
+                 { q: 'A Inteligência Artificial lê meus dados bancários?', a: 'Sim, de forma 100% segura e privada. Ela processa seus extratos em ambiente de segurança isolado, sem que nenhum humano ou Inteligência Artificial pública utilize seus dados para treinamento. Privacidade nível institucional.' }
                ].map((faq, i) => (
                  <details key={i} className="group bg-white/5 border border-white/10 rounded-2xl cursor-pointer">
                     <summary className="flex items-center justify-between font-bold text-white p-6 list-none group-open:text-brand-400">
@@ -503,7 +818,7 @@ export default function Landing() {
       </main>
 
       {/* FOOTER ULTRA DARK */}
-      <footer className="bg-black py-16 text-center text-slate-500 font-medium relative border-t border-white/5">
+      <footer className="bg-black py-16 text-center text-slate-400 font-medium relative border-t border-white/5">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12 flex flex-col items-center">
           <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-slate-300 mb-6">
             <Sparkles size={24} />

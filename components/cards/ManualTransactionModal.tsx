@@ -133,6 +133,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Valor do Gasto</label>
                                 <input
                                     type="number"
+                                    inputMode="decimal"
                                     value={txAmount}
                                     onChange={(e) => {
                                         const val = e.target.value;
@@ -187,6 +188,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                     <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Número de Parcelas</label>
                                     <input
                                         type="number"
+                                        inputMode="numeric"
                                         min="2"
                                         value={installmentsCount}
                                         onChange={(e) => {
@@ -220,6 +222,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                             <label className="text-[8px] font-black text-slate-400 uppercase mb-1 block">A cada X dias</label>
                                             <input
                                                 type="number"
+                                                inputMode="numeric"
                                                 min="1"
                                                 value={recurrenceDaysInterval}
                                                 onChange={(e) => setRecurrenceDaysInterval?.(Number(e.target.value))}

@@ -107,6 +107,7 @@ export const PayStatementModal: React.FC<PayStatementModalProps> = ({
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Valor do Pagamento</label>
                                 <input
                                     type="number"
+                                    inputMode="decimal"
                                     value={payAmount}
                                     onChange={(e) => {
                                         const val = e.target.value;
