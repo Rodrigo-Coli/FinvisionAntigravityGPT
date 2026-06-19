@@ -518,8 +518,8 @@ const Reconcile: React.FC = () => {
       setSelectedTargetName(name);
       if (foundId) {
         setSelectedTargetId(foundId);
-        // Se mudou o tipo globalmente, atualizamos o importSource para refletir no datalist
-        if (foundType !== importSource) setImportSource(foundType);
+        // Se mudou o tipo globalmente, atualizamos o importSource para refletir no datalist (apenas se não estivermos na aba smart/diversos)
+        if (importSource !== 'smart' && foundType !== importSource) setImportSource(foundType);
       }
     }
   };
@@ -690,7 +690,8 @@ const Reconcile: React.FC = () => {
           type: isTransfer ? 'TRANSFER' : (thisSideIsSource ? 'EXPENSE' : 'INCOME'),
           account_id: targetId, account_name: acc?.institution || 'Conta',
           category: categoryName, subcategory: subcategoryName || null,
-          owner_name: owner, is_paid: true, paid_at: finalDate,
+          owner_name: owner === 'Pessoal' ? null : owner,
+          is_paid: true, paid_amount: absoluteAmount, paid_at: finalDate,
           metadata: {
             category_id: finalCategoryId,
             is_transfer: isTransfer,
@@ -712,7 +713,8 @@ const Reconcile: React.FC = () => {
             account_id: counterId,
             account_name: counterAcc?.institution || 'Conta Destino',
             category: categoryName, subcategory: subcategoryName || null,
-            owner_name: owner, is_paid: true, paid_at: finalDate,
+            owner_name: owner === 'Pessoal' ? null : owner,
+            is_paid: true, paid_amount: absoluteAmount, paid_at: finalDate,
             metadata: {
               category_id: finalCategoryId,
               is_transfer: true,
@@ -734,12 +736,20 @@ const Reconcile: React.FC = () => {
         const { error: insertCardErr } = await supabase.from('card_transactions').insert({
           user_id: user.id, card_id: targetId, used_card_id: targetId, statement_id: stmtId,
           date: finalDate, description: finalDescription, amount: Math.abs(parsedCardAmt),
-          source: 'IMPORT', status: 'POSTED', owner_name: owner,
+          source: 'IMPORT', status: 'POSTED', owner_name: owner === 'Pessoal' ? null : owner,
           category_id: finalCategoryId || null,
           category: categoryName,
           subcategory: subcategoryName || null
         });
         if (insertCardErr) throw insertCardErr;
+      }
+
+      // Invalidate local storage cache keys so new history loads fresh data
+      try {
+        localStorage.removeItem(`finvision_cached_raw_txs_${user.id}`);
+        localStorage.removeItem(`finvision_cached_raw_card_txs_${user.id}`);
+      } catch (cacheErr) {
+        console.warn("Erro ao invalidar caches locais na conciliação:", cacheErr);
       }
       await ReconciliationService.updateTransactionStatus(item.id, 'OK');
 
@@ -833,11 +843,12 @@ const Reconcile: React.FC = () => {
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
+                  aria-label="Selecionar todas as transações pendentes"
                   className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
                   checked={imported.length > 0 && selectedIds.size === imported.length}
                   onChange={(e) => handleSelectAll(e.target.checked)}
                 />
-                <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.3em]">Operações Pendentes ({imported.length})</h3>
+                <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.3em]">Operações Pendentes ({imported.length})</h3>
               </div>
 
               <div className="hidden md:block w-64">
@@ -993,6 +1004,7 @@ const Reconcile: React.FC = () => {
                         <div className="flex items-center">
                           <input
                             type="checkbox"
+                            aria-label={`Selecionar transação ${item.description}`}
                             className="w-5 h-5 rounded-lg border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
                             checked={selectedIds.has(item.id)}
                             onChange={() => handleToggleSelect(item.id)}
@@ -1020,7 +1032,7 @@ const Reconcile: React.FC = () => {
                                 className="w-full bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-2 focus:ring-brand-500 mb-1"
                               />
                             ) : (
-                              <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{DateUtils.formatDisplayDate(item.date)}</p>
+                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{DateUtils.formatDisplayDate(item.date)}</p>
                             )}
 
                             {isEditing ? (
@@ -1271,7 +1283,7 @@ const Reconcile: React.FC = () => {
 
                           {/* Col 6: Value */}
                           <div className="text-right flex flex-col justify-center">
-                            <span className={`text-lg font-bold tracking-tighter ${item.amount < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                            <span className={`text-lg font-bold font-mono tabular-nums tracking-tighter ${item.amount < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                               {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.amount)}
                             </span>
                           </div>
@@ -1298,7 +1310,7 @@ const Reconcile: React.FC = () => {
                                 <button onClick={() => handleIgnore(item.id)} className="h-9 px-3 bg-amber-500 text-white text-[8px] font-bold uppercase rounded-lg hover:bg-amber-600 transition-all">Ignorar</button>
                               )}
 
-                              <button onClick={() => handleIgnore(item.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors">
+                              <button onClick={() => handleIgnore(item.id)} aria-label={`Ignorar transação ${item.description}`} className="p-2 text-slate-300 hover:text-rose-500 transition-colors">
                                 <XCircle size={18} />
                               </button>
                             </div>
