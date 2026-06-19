@@ -1,6 +1,6 @@
 import { supabase } from './supabase/client';
 
-export type OfflineActionType = 'CREATE_TRANSACTION' | 'UPDATE_TRANSACTION' | 'DELETE_TRANSACTION';
+export type OfflineActionType = 'CREATE_TRANSACTION' | 'UPDATE_TRANSACTION' | 'DELETE_TRANSACTION' | 'UPDATE_CARD_TRANSACTION' | 'DELETE_CARD_TRANSACTION';
 
 export interface OfflineAction {
     id: string; // unique ID for the queue item
@@ -82,6 +82,16 @@ class OfflineQueueService {
                 } else if (action.type === 'DELETE_TRANSACTION') {
                     const { error: e } = await supabase.from('transactions')
                         .update({ is_deleted: true })
+                        .eq('id', action.payload.id);
+                    error = e;
+                } else if (action.type === 'UPDATE_CARD_TRANSACTION') {
+                    const { error: e } = await supabase.from('card_transactions')
+                        .update(action.payload.updates)
+                        .eq('id', action.payload.id);
+                    error = e;
+                } else if (action.type === 'DELETE_CARD_TRANSACTION') {
+                    const { error: e } = await supabase.from('card_transactions')
+                        .delete()
                         .eq('id', action.payload.id);
                     error = e;
                 }

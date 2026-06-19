@@ -978,6 +978,10 @@ const HistoryPage: React.FC = () => {
         return;
       }
 
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
+
       if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
         // Otimização de UI: atualiza a tela instantaneamente para não dar reload na tabela toda
         setTransactions(prev => prev.map(t => {
@@ -1001,13 +1005,128 @@ const HistoryPage: React.FC = () => {
         }));
 
         if (!navigator.onLine) {
-          await FinanceService.updateTransaction(id, patch);
+          if (tx?.metadata?.is_card) {
+            const { offlineQueue } = await import('../lib/offlineQueue.service');
+            offlineQueue.addAction('UPDATE_CARD_TRANSACTION', { id, updates: patch });
+          } else {
+            await FinanceService.updateTransaction(id, patch);
+          }
           setSavingId(null);
           setEditingRow(null);
           return;
         }
 
-        await FinanceService.updateTransaction(id, patch);
+        if (tx?.metadata?.is_card) {
+          let cardPatch = { ...patch };
+          if (field === 'category') {
+            const { data: catRecord } = await supabase
+              .from('categories')
+              .select('id')
+              .eq('user_id', user.id)
+              .ilike('name', cleanValue)
+              .maybeSingle();
+            if (catRecord) {
+              cardPatch.category_id = catRecord.id;
+              cardPatch.category = cleanValue;
+            }
+          }
+          const { error } = await supabase.from('card_transactions').update(cardPatch).eq('id', id).eq('user_id', user.id);
+          if (error) throw error;
+
+          if (tx.metadata?.statement_id) {
+            await FinanceService.syncStatementToHistory(tx.metadata.statement_id);
+          }
+        } else {
+          await FinanceService.updateTransaction(id, patch);
+
+          // Sync counterparts of transfer
+          if (tx && tx.type === 'TRANSFER' && tx.metadata?.is_transfer) {
+            const otherSide = tx.metadata.transfer_side === 'SOURCE' ? 'DESTINATION' : 'SOURCE';
+            const { data: counterparts } = await supabase
+              .from('transactions')
+              .select('id, account_id')
+              .eq('date', tx.date)
+              .eq('amount', tx.amount)
+              .eq('type', 'TRANSFER')
+              .eq('description', tx.description)
+              .eq('metadata->>is_transfer', 'true')
+              .eq('metadata->>transfer_side', otherSide)
+              .eq('account_id', tx.metadata.counter_account_id)
+              .eq('is_deleted', false)
+              .limit(1);
+
+            if (counterparts && counterparts.length > 0) {
+              const counterpartId = counterparts[0].id;
+              let counterpartPatch: any = {};
+              if (field === 'amount') {
+                let parsedAmt = typeof value === 'string'
+                  ? Number(value.replace(/\./g, '').replace(',', '.'))
+                  : Number(value);
+                const absAmt = isNaN(parsedAmt) ? 0 : Math.abs(parsedAmt);
+                counterpartPatch = { amount: absAmt, paid_amount: absAmt };
+              } else if (field === 'date') {
+                counterpartPatch = { date: cleanValue };
+              } else if (field === 'description') {
+                counterpartPatch = { description: cleanValue };
+              }
+
+              if (Object.keys(counterpartPatch).length > 0) {
+                await supabase.from('transactions').update(counterpartPatch).eq('id', counterpartId);
+                if (field === 'amount') {
+                  await supabase.rpc('recalculate_account_balance', { p_account_id: counterparts[0].account_id });
+                }
+                setTransactions(prev => prev.map(t => {
+                  if (t.id === counterpartId) {
+                    let updated = { ...t, ...counterpartPatch };
+                    if (field === 'amount') {
+                      updated.amount = counterpartPatch.amount;
+                      updated.paidAmount = counterpartPatch.paid_amount;
+                    }
+                    return updated;
+                  }
+                  return t;
+                }));
+              }
+            }
+          }
+        }
+
+        // Update Local Cache in localStorage
+        try {
+          if (tx?.metadata?.is_card) {
+            const cacheKey = `finvision_cached_raw_card_txs_${user.id}`;
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+              const list = JSON.parse(cached);
+              const updatedList = list.map((item: any) => {
+                if (item.id === id) {
+                  let updatedItem = { ...item, ...patch };
+                  if (field === 'category') {
+                    updatedItem.category = cleanValue;
+                  }
+                  return updatedItem;
+                }
+                return item;
+              });
+              localStorage.setItem(cacheKey, JSON.stringify(updatedList));
+            }
+          } else {
+            const cacheKey = `finvision_cached_raw_txs_${user.id}`;
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+              const list = JSON.parse(cached);
+              const updatedList = list.map((item: any) => {
+                if (item.id === id) {
+                  return { ...item, ...patch };
+                }
+                return item;
+              });
+              localStorage.setItem(cacheKey, JSON.stringify(updatedList));
+            }
+          }
+        } catch (cacheErr) {
+          console.warn("Error updating local storage cache on update:", cacheErr);
+        }
       } else {
         if (field === 'date') {
           // Fetch the transactions to update first
@@ -1147,44 +1266,103 @@ const HistoryPage: React.FC = () => {
     }
 
     try {
-      if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
+
+      if (tx?.metadata?.is_card) {
         if (!navigator.onLine) {
-          await FinanceService.deleteTransaction(id);
+          const { offlineQueue } = await import('../lib/offlineQueue.service');
+          offlineQueue.addAction('DELETE_CARD_TRANSACTION', { id });
           setTransactions(prev => prev.filter(t => t.id !== id));
           setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' });
           return;
         }
 
-        await FinanceService.deleteTransaction(id);
+        if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
+          const { error } = await supabase.from('card_transactions').delete().eq('id', id).eq('user_id', user.id);
+          if (error) throw error;
+        } else {
+          const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
+          let query = supabase.from('card_transactions').delete().eq('user_id', user.id);
 
-        // Deletar também a contraparte se for transferência
-        if (tx?.metadata?.is_transfer && tx.metadata?.counter_account_id) {
-          const { data: counterTxs } = await supabase.from('transactions')
-            .select('id, account_id')
-            .eq('date', tx.date)
-            .eq('amount', tx.amount)
-            .eq('description', tx.description)
-            .eq('account_id', tx.metadata.counter_account_id)
-            .eq('is_deleted', false)
-            .limit(1);
+          if (tx?.metadata?.installment_group_id) query = query.eq('installment_group_id', groupId);
+          else query = query.eq('recurrence_group_id', groupId);
 
-          if (counterTxs && counterTxs.length > 0) {
-            await supabase.from('transactions').update({ is_deleted: true }).eq('id', counterTxs[0].id);
-            if (HistoryUtils.getStatus(tx) !== 'PENDING') {
-              await supabase.rpc('recalculate_account_balance', { p_account_id: counterTxs[0].account_id });
-            }
+          if (confirmedScope === 'THIS_AND_FUTURE') {
+            query = query.gte('date', tx?.date);
           }
+
+          const { error } = await query;
+          if (error) throw error;
+        }
+
+        if (tx.metadata?.statement_id) {
+          await FinanceService.syncStatementToHistory(tx.metadata.statement_id);
         }
       } else {
-        let query = supabase.from('transactions').update({ is_deleted: true });
-        query = buildSeriesFilter(query, tx);
-        if (confirmedScope === 'THIS_AND_FUTURE') query = query.gte('date', tx?.date);
-        const { error } = await query;
-        if (error) throw error;
+        if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
+          if (!navigator.onLine) {
+            await FinanceService.deleteTransaction(id);
+            setTransactions(prev => prev.filter(t => t.id !== id));
+            setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' });
+            return;
+          }
+
+          await FinanceService.deleteTransaction(id);
+
+          // Deletar também a contraparte se for transferência
+          if (tx?.metadata?.is_transfer && tx.metadata?.counter_account_id) {
+            const { data: counterTxs } = await supabase.from('transactions')
+              .select('id, account_id')
+              .eq('date', tx.date)
+              .eq('amount', tx.amount)
+              .eq('description', tx.description)
+              .eq('account_id', tx.metadata.counter_account_id)
+              .eq('is_deleted', false)
+              .limit(1);
+
+            if (counterTxs && counterTxs.length > 0) {
+              await supabase.from('transactions').update({ is_deleted: true }).eq('id', counterTxs[0].id);
+              if (HistoryUtils.getStatus(tx) !== 'PENDING') {
+                await supabase.rpc('recalculate_account_balance', { p_account_id: counterTxs[0].account_id });
+              }
+            }
+          }
+        } else {
+          let query = supabase.from('transactions').update({ is_deleted: true });
+          query = buildSeriesFilter(query, tx);
+          if (confirmedScope === 'THIS_AND_FUTURE') query = query.gte('date', tx?.date);
+          const { error } = await query;
+          if (error) throw error;
+        }
+
+        if (tx && HistoryUtils.getStatus(tx) !== 'PENDING') {
+          await supabase.rpc('recalculate_account_balance', { p_account_id: tx.accountId });
+        }
       }
 
-      if (tx && HistoryUtils.getStatus(tx) !== 'PENDING') {
-        await supabase.rpc('recalculate_account_balance', { p_account_id: tx.accountId });
+      // Update Local Cache in localStorage
+      try {
+        if (tx?.metadata?.is_card) {
+          const cacheKey = `finvision_cached_raw_card_txs_${user.id}`;
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) {
+            const list = JSON.parse(cached);
+            const updatedList = list.filter((item: any) => item.id !== id);
+            localStorage.setItem(cacheKey, JSON.stringify(updatedList));
+          }
+        } else {
+          const cacheKey = `finvision_cached_raw_txs_${user.id}`;
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) {
+            const list = JSON.parse(cached);
+            const updatedList = list.filter((item: any) => item.id !== id);
+            localStorage.setItem(cacheKey, JSON.stringify(updatedList));
+          }
+        }
+      } catch (cacheErr) {
+        console.warn("Error updating local storage cache on delete:", cacheErr);
       }
 
       await fetchData();

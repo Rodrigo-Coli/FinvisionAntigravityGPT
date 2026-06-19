@@ -609,7 +609,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                         ) : (
                                             <button
                                                 onClick={() => { setEditingRow({ id: t.id, field: 'date' }); setEditValue(t.date.split('T')[0]); }}
-                                                className="text-xs font-bold text-slate-400 active:text-brand-600 transition-colors"
+                                                className="text-xs font-bold text-slate-400 active:text-brand-600 hover:bg-slate-100 px-2 py-1.5 -mx-2 -my-1.5 rounded-lg transition-colors outline-none bg-transparent border-none cursor-pointer"
                                             >
                                                 <div className="flex items-center gap-1.5">
                                                     {DateUtils.formatDisplayDate(t.date)}
@@ -668,7 +668,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     const isExpense = t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT' || (t.type === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE');
                                                     setEditValue((isExpense ? '-' : '') + Math.abs(t.amount).toString().replace('.', ','));
                                                 }}
-                                                className={`text-base font-bold bg-transparent border-none p-0 cursor-pointer active:text-brand-600 truncate max-w-[120px] ${t.type?.toUpperCase() === 'INCOME' ? 'text-emerald-600' : (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE') ? 'text-emerald-600' : 'text-slate-900'}`}
+                                                className={`text-base font-bold font-mono tabular-nums bg-transparent border-none p-0 cursor-pointer active:text-brand-600 truncate max-w-[120px] ${t.type?.toUpperCase() === 'INCOME' ? 'text-emerald-600' : (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE') ? 'text-emerald-600' : 'text-slate-900'}`}
                                             >
                                                 {(t.type?.toUpperCase() === 'EXPENSE' || t.type?.toUpperCase() === 'BILL_PAYMENT' || (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '-' : ''}{formatCurrency(amount)}
                                             </button>
@@ -885,7 +885,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     <button
                                                         onClick={() => openPayModal(t)}
                                                         disabled={!canPay}
-                                                        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${canPay
+                                                        className={`flex-1 flex items-center justify-center gap-1.5 h-11 rounded-xl text-xs font-bold transition-all ${canPay
                                                             ? 'bg-emerald-50 text-emerald-600 active:bg-emerald-100'
                                                             : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
                                                     >
@@ -895,14 +895,14 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                 {showReopen && (
                                                     <button
                                                         onClick={() => reopenTransaction(t)}
-                                                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-slate-50 text-slate-500 active:bg-slate-100 text-xs font-bold transition-all"
+                                                        className="flex-1 flex items-center justify-center gap-1.5 h-11 rounded-xl bg-slate-50 text-slate-500 active:bg-slate-100 text-xs font-bold transition-all"
                                                     >
                                                         <RotateCcw size={14} /> Reabrir
                                                     </button>
                                                 )}
                                                 <button
                                                     onClick={() => handleDelete(t.id)}
-                                                    className="px-4 py-2.5 rounded-xl bg-rose-50 text-rose-500 active:bg-rose-100 transition-all"
+                                                    className="h-11 w-11 flex items-center justify-center rounded-xl bg-rose-50 text-rose-500 active:bg-rose-100 transition-all shrink-0"
                                                     title="Excluir"
                                                 >
                                                     <Trash2 size={14} />
@@ -982,7 +982,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                             />
                                         ) : (
                                             <button onClick={() => { setEditingRow({ id: t.id, field: 'date' }); setEditValue(t.date.split('T')[0]); }}
-                                                className="text-xs font-bold text-slate-400 hover:text-brand-600 transition-colors outline-none bg-transparent p-0 border-none cursor-pointer">
+                                                className="text-xs font-bold text-slate-400 hover:text-brand-600 hover:bg-slate-100 px-2.5 py-1.5 -mx-2.5 -my-1.5 rounded-lg transition-colors outline-none bg-transparent border-none cursor-pointer">
                                                 {DateUtils.formatDisplayDate(t.date)}
                                             </button>
                                         )}
@@ -1206,7 +1206,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     const isExpense = t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT' || (t.type === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE');
                                                     setEditValue((isExpense ? '-' : '') + Math.abs(t.amount).toString().replace('.', ','));
                                                 }}
-                                                className={`text-sm font-bold hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer 
+                                                className={`text-sm font-bold font-mono tabular-nums hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer 
                                                     ${(t.type?.toUpperCase() === 'INCOME' || (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side !== 'SOURCE')) ? 'text-emerald-600' : 'text-rose-600'}`}
                                             >
                                                 {(t.type?.toUpperCase() === 'EXPENSE' || t.type?.toUpperCase() === 'BILL_PAYMENT' || (t.type?.toUpperCase() === 'TRANSFER' && t.metadata?.transfer_side === 'SOURCE')) ? '-' : ''}{formatCurrency(amount)}
@@ -1251,19 +1251,19 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                             onClick={() => openPayModal(t)}
                                                             disabled={!canPay}
                                                             title="Pagar"
-                                                            className={`p-2 rounded-lg transition-all ${canPay ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-200 cursor-not-allowed'}`}
+                                                            className={`p-2.5 rounded-lg transition-all ${canPay ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-200 cursor-not-allowed'}`}
                                                         >
                                                             <Check size={16} />
                                                         </button>
                                                     )}
                                                     {showReopen && (
                                                         <button onClick={() => reopenTransaction(t)} title="Reabrir"
-                                                            className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all">
+                                                            className="p-2.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all">
                                                             <RotateCcw size={16} />
                                                         </button>
                                                     )}
                                                     <button onClick={() => handleDelete(t.id)} title="Excluir"
-                                                        className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all">
+                                                        className="p-2.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all">
                                                         <Trash2 size={16} />
                                                     </button>
                                                 </>

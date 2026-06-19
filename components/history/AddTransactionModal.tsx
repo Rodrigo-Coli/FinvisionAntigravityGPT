@@ -57,6 +57,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const [recentTxs, setRecentTxs] = useState<any[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
 
+    const parsedAmount = Number(form.amount.replace(/\./g, '').replace(',', '.'));
+    const isAmountInvalid = !form.amount.trim() || isNaN(parsedAmount) || parsedAmount === 0;
+
     // Buscar as transações recentes quando o modal for aberto
     useEffect(() => {
         if (show) {
@@ -321,6 +324,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                         className="flex-1 h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                                     />
                                 </div>
+                                {isAmountInvalid && (
+                                    <p className="text-[10px] text-rose-500 font-bold mt-1 ml-1 flex items-center gap-1">
+                                        <AlertCircle size={10} /> {form.amount.trim() === '' ? 'Por favor, insira o valor da transação.' : 'O valor não pode ser zero ou inválido.'}
+                                    </p>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Conta Bancária</label>
@@ -662,9 +670,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             </button>
                             <button
                                 type="button"
-                                onClick={() => onSubmit(form)}
-                                disabled={isSubmitting}
-                                className="w-full h-14 bg-brand-600 text-white font-black rounded-2xl hover:bg-brand-700 shadow-xl shadow-brand-500/30 transition-all active:scale-95 uppercase text-xs tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
+                                onClick={() => !isAmountInvalid && onSubmit(form)}
+                                disabled={isSubmitting || isAmountInvalid}
+                                className="w-full h-14 bg-brand-600 text-white font-black rounded-2xl hover:bg-brand-700 shadow-xl shadow-brand-500/30 transition-all active:scale-95 uppercase text-xs tracking-widest flex items-center justify-center gap-2 disabled:opacity-50 disabled:bg-slate-300 disabled:shadow-none"
                             >
                                 {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
                                 Criar Transação
