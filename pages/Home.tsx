@@ -85,7 +85,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
     if (!supabase || !navigator.onLine || !user?.id) return;
     try {
       const [accRes, catRes, subRes, entitiesRes] = await Promise.all([
-        supabase.from('accounts').select('*').eq('is_archived', false),
+        supabase.from('accounts').select('*').eq('user_id', user.id).eq('is_archived', false),
         supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name'),
         supabase.from('subcategories').select('*').eq('user_id', user.id).order('name'),
         FinanceService.getEntities()
@@ -315,14 +315,14 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
               description="Aqui você monitora seu Patrimônio Líquido e o Fluxo de Caixa projetado. Use o Assistente AI para tirar dúvidas."
             />
           </div>
-          <p className="text-sm text-slate-400 font-medium">Monitorando sua saúde financeira com excelência.</p>
+          <p className="text-sm text-slate-500 font-medium">Monitorando sua saúde financeira com excelência.</p>
         </div>
-        <div className="hidden sm:flex items-center gap-3">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/history?add=true')}
-            className="flex items-center gap-2 px-5 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
+            className="flex items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 bg-brand-600 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
           >
-            <Plus size={18} />
+            <Plus size={16} className="sm:w-[18px] sm:h-[18px]" />
             <span>Novo Lançamento</span>
           </button>
         </div>
@@ -342,16 +342,24 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
               <button
                 onClick={toggleBalance}
                 className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
+                aria-label={showBalance ? "Ocultar saldos do painel" : "Exibir saldos do painel"}
               >
                 {showBalance ? <Eye size={18} /> : <EyeOff size={18} />}
               </button>
             </div>
 
             <div className="space-y-4">
-              <div className={`h-2 w-full rounded-full overflow-hidden flex shadow-inner ${(data.totalAssets || 0) === 0 && (data.totalLiabilities || 0) === 0 ? 'bg-white/20' : 'bg-rose-500'}`}>
+              <div 
+                className={`h-2 w-full rounded-full overflow-hidden flex shadow-inner ${(data.totalAssets || 0) === 0 && (data.totalLiabilities || 0) === 0 ? 'bg-white/20' : 'bg-rose-500'}`}
+                role="progressbar"
+                aria-valuenow={showBalance ? Math.min(100, Math.max(0, (data.totalAssets || 0) / ((data.totalAssets || 0) + (data.totalLiabilities || 0) || 1) * 100)) : 0}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Proporção de Ativos versus Passivos"
+              >
                 <div
-                  className={`h-full transition-all duration-1000 ${(data.totalAssets || 0) === 0 && (data.totalLiabilities || 0) === 0 ? 'bg-transparent' : 'bg-emerald-400'}`}
-                  style={{ width: `${Math.min(100, Math.max(0, (data.totalAssets || 0) / ((data.totalAssets || 0) + (data.totalLiabilities || 0) || 1) * 100))}%` }}
+                  className={`h-full transition-all duration-1000 ${(data.totalAssets || 0) === 0 && (data.totalLiabilities || 0) === 0 ? 'bg-transparent' : 'bg-emerald-400'} ${!showBalance && 'blur-[2px] bg-white/20'}`}
+                  style={{ width: showBalance ? `${Math.min(100, Math.max(0, (data.totalAssets || 0) / ((data.totalAssets || 0) + (data.totalLiabilities || 0) || 1) * 100))}%` : '0%' }}
                 />
               </div>
               <div className="flex justify-between items-end text-white text-xs">
@@ -396,39 +404,55 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         <div className="lg:col-span-8 space-y-6 min-w-0">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-slate-900">Cartões de Crédito</h3>
-            <button onClick={() => navigate('/cards')} className="text-xs font-bold text-brand-600 hover:underline">Ver Mais</button>
+            <button onClick={() => navigate('/banking?tab=cards')} className="text-xs font-bold text-brand-600 hover:underline">Ver Mais</button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            {data?.creditCards?.map((card, i) => (
-              <div key={i} onClick={() => navigate('/cards')} className="bg-white border border-slate-100/80 rounded-[20px] p-4 shadow-sm hover:border-brand-100 transition-all cursor-pointer">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="bg-slate-50 p-2 rounded-lg flex items-center justify-center w-10 h-10">
-                      {getCardLogo(card.brand)}
+          {data?.creditCards && data.creditCards.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              {data.creditCards.map((card, i) => (
+                <div key={i} onClick={() => navigate('/banking?tab=cards')} className="bg-white border border-slate-100/80 rounded-[20px] p-4 shadow-sm hover:border-brand-100 hover:shadow-md transition-all cursor-pointer">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="bg-slate-50 p-2 rounded-lg flex items-center justify-center w-10 h-10">
+                        {getCardLogo(card.brand)}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900 leading-tight">{card.brand}</p>
+                        <p className="text-[10px] text-slate-500">****{card.last4 || '0000'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-900 leading-tight">{card.brand}</p>
-                      <p className="text-[10px] text-slate-400">****{card.last4 || '0000'}</p>
+                    <div className="text-right">
+                      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">limite</p>
+                      <p className="text-[10px] font-bold text-slate-600">{showBalance ? format(card.limit || 0) : '---'}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[9px] text-slate-400">limite</p>
-                    <p className="text-[10px] font-bold text-slate-500">{showBalance ? format(card.limit || 0) : '---'}</p>
+                  <h4 className={`text-lg font-bold text-slate-900 mb-2 ${!showBalance && 'blur-md'}`}>
+                    {showBalance ? format(card.current) : 'R$ ••••'}
+                  </h4>
+                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden" role="progressbar" aria-valuenow={showBalance ? Math.min((card.current / (card.limit || 1)) * 100, 100) : 0} aria-valuemin={0} aria-valuemax={100} aria-label={`Limite utilizado do cartão ${card.brand}`}>
+                    <div
+                      className={`h-full ${card.color.includes('brand') ? 'bg-brand-500' : 'bg-slate-950'} rounded-full opacity-60 transition-all duration-1000 ${!showBalance && 'blur-[2px] bg-slate-300'}`}
+                      style={{ width: showBalance ? `${Math.min((card.current / (card.limit || 1)) * 100, 100)}%` : '0%' }}
+                    />
                   </div>
                 </div>
-                <h4 className={`text-lg font-bold text-slate-900 mb-2 ${!showBalance && 'blur-md'}`}>
-                  {showBalance ? format(card.current) : 'R$ ••••'}
-                </h4>
-                <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${card.color.includes('brand') ? 'bg-brand-500' : 'bg-slate-950'} rounded-full opacity-60 transition-all duration-1000`}
-                    style={{ width: `${Math.min((card.current / (card.limit || 1)) * 100, 100)}%` }}
-                  />
-                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-100 rounded-[24px] p-6 text-center space-y-4 shadow-sm">
+              <CreditCardIcon size={32} className="text-slate-400 mx-auto" />
+              <div>
+                <p className="text-sm font-bold text-slate-800">Nenhum Cartão Cadastrado</p>
+                <p className="text-xs text-slate-500 mt-1">Cadastre seus cartões de crédito para acompanhar faturas e limites diretamente no dashboard.</p>
               </div>
-            ))}
-          </div>
+              <button
+                onClick={() => navigate('/banking?tab=cards')}
+                className="px-5 py-2.5 bg-brand-50 text-brand-700 hover:bg-brand-100 text-xs font-bold rounded-xl transition-colors inline-block"
+              >
+                Cadastrar Primeiro Cartão
+              </button>
+            </div>
+          )}
 
           {/* HISTÓRICO DE DESPESAS */}
           <div className="mt-4 sm:mt-8 space-y-3">
@@ -442,12 +466,12 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
                 </div>
                 <div className="hidden sm:block flex-1" />
                 <div className="flex bg-slate-100 p-1 rounded-xl gap-1 w-full sm:w-auto">
-                  <button onClick={() => setViewMode('ALL')} className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Todos</button>
-                  <button onClick={() => setViewMode('SETTLED')} className={`flex-1 sm:flex-none flex items-center justify-center gap-1 px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'SETTLED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}><Check size={10} /> Pagos</button>
+                  <button onClick={() => setViewMode('ALL')} className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Todos</button>
+                  <button onClick={() => setViewMode('SETTLED')} className={`flex-1 sm:flex-none flex items-center justify-center gap-1 px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${viewMode === 'SETTLED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}><Check size={10} /> Pagos</button>
                 </div>
               </div>
               <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl border border-slate-100">
-                <Calendar size={13} className="text-slate-400 shrink-0" />
+                <Calendar size={13} className="text-slate-500 shrink-0" />
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
                 <span className="text-slate-300 shrink-0">–</span>
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />

@@ -47,6 +47,8 @@ export const projectionService = {
     (pendingTx || []).forEach((t: any) => {
         if (t.owner_name && excludedSet.has(t.owner_name)) return;
         if (t.metadata?.is_historical === true || t.metadata?.is_historical === 'true') return;
+        // Prevenir dupla contagem de faturas de cartões de crédito
+        if (t.category === 'Cartão de Crédito') return;
         let key = t.date.substring(0, 7);
         // If overdue, move to current month for projection purposes
         if (key < currentKey) key = currentKey;
@@ -63,6 +65,8 @@ export const projectionService = {
         recurringTx.forEach((t: any) => {
             if (t.owner_name && excludedSet.has(t.owner_name)) return;
             if (t.metadata?.is_historical === true || t.metadata?.is_historical === 'true') return;
+            // Prevenir dupla contagem de faturas de cartões de crédito
+            if (t.category === 'Cartão de Crédito') return;
             if (!latestByGroup[t.recurrence_group_id] || new Date(t.date) > new Date(latestByGroup[t.recurrence_group_id].date)) {
                 latestByGroup[t.recurrence_group_id] = t;
             }
