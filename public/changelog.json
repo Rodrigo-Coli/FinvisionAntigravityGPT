@@ -1,27 +1,27 @@
 {
-  "version": "2026.06.15.2320",
-  "title": "Ajuste de Visualização de Datas de Lançamentos",
-  "date": "15/06/2026",
+  "version": "2026.06.19.1915",
+  "title": "Correção de Transações e Atalhos Rápidos",
+  "date": "19/06/2026",
   "benefits": [
     {
-      "title": "Data sem Cortes em Transações",
-      "desc": "A data dos lançamentos de cartões de crédito agora aparece completa (dia/mês/ano) sem truncar nas bordas.",
+      "title": "Acesso Sem Falhas a Transações",
+      "desc": "Corrigido o crash inesperado na inicialização da página de Histórico de Transações, restabelecendo a usabilidade imediata.",
       "type": "ux"
     },
     {
-      "title": "Rótulos Completos no Mobile",
-      "desc": "Os títulos de faturamento 'Total Lançado' e 'Total Pago' agora se adaptam para 'Lançado' e 'Pago' no mobile, evitando qualquer corte visual.",
+      "title": "Atalhos Rápidos Corrigidos",
+      "desc": "O botão flutuante de gasto no cartão agora abre diretamente o formulário na aba de cartões do painel financeiro.",
       "type": "ux"
     },
     {
-      "title": "Faturas Compactas no Celular",
-      "desc": "Os valores de Total Lançado, Pago e Pendente agora ficam em uma linha horizontal super organizada e menor.",
-      "type": "ux"
+      "title": "Estabilidade de Formulários",
+      "desc": "Garantida a inicialização limpa de campos de valor nos formulários de cadastro, evitando qualquer erro de preenchimento.",
+      "type": "precision"
     }
   ],
   "changes": [
-    "**Visualização de Datas:** Redesenhamos a grid da tabela de transações (TransactionList.tsx) expandindo a coluna de data para col-span-2 e aplicando estilos CSS para ocultar ícones redundantes que espremiam o texto.",
-    "**Rótulos Responsivos:** Adaptamos os rótulos de Total Lançado/Pago para Lançado/Pago na tela do mobile e removemos a classe truncate, prevenindo cortes visuais (como TOTAL LAN... ou TOTAL PAG...).",
-    "**Resumo Compacto:** Modificamos a visualização de faturas (StatementSummary.tsx) para renderizar os cards em uma grid horizontal compacta no celular."
+    "**Resolução de Erros de Leitura:** Implementados fallbacks robustos para propriedades padrão no componente AddTransactionModal para impedir falhas de leitura (como `.trim()` ou `.replace()`) no render inicial.",
+    "**Alinhamento de Rota de Cartões:** Ajustada a navegação do botão de 'Gasto no Cartão' no menu flutuante para a rota definitiva `/banking?tab=cards&add=true` para reter parâmetros.",
+    "**Otimização de Redirecionamentos:** Ajustado o redirecionamento pós-abertura do modal de cartões para evitar rotas legadas e poupar requisições adicionais de navegação."
   ]
 }

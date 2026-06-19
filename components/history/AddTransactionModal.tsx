@@ -50,7 +50,23 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     subcategories,
     onCreateCategory
 }) => {
-    const [form, setForm] = useState(initialForm || {});
+    const [form, setForm] = useState(() => Object.assign({
+        date: '',
+        description: '',
+        type: 'EXPENSE' as 'EXPENSE' | 'INCOME',
+        amount: '',
+        accountId: '',
+        category: '',
+        subcategory: '',
+        isInstallment: false,
+        installmentsCount: 2,
+        isRecurring: false,
+        recurrencePeriod: 'monthly' as 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom',
+        recurrenceDaysInterval: 30,
+        ownerName: '',
+        destinationAccountId: '',
+        files: [] as File[]
+    }, initialForm));
     const [isCreatingCategory, setIsCreatingCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [isSavingCategory, setIsSavingCategory] = useState(false);
@@ -140,11 +156,27 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     // Sync local state when initialForm changes (e.g. when modal opens)
     useEffect(() => {
         if (show) {
-            setForm(initialForm);
+            setForm(Object.assign({
+                date: '',
+                description: '',
+                type: 'EXPENSE' as 'EXPENSE' | 'INCOME',
+                amount: '',
+                accountId: '',
+                category: '',
+                subcategory: '',
+                isInstallment: false,
+                installmentsCount: 2,
+                isRecurring: false,
+                recurrencePeriod: 'monthly' as 'weekly' | 'monthly' | 'yearly' | 'biweekly' | 'custom',
+                recurrenceDaysInterval: 30,
+                ownerName: '',
+                destinationAccountId: '',
+                files: [] as File[]
+            }, initialForm));
         }
     }, [show, initialForm]);
 
-    if (!show) return null;
+    if (!show || !form.date) return null;
 
     const setAddField = (field: string, value: any) => {
         setForm(prev => ({ ...prev, [field]: value }));
