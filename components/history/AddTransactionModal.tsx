@@ -50,15 +50,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     subcategories,
     onCreateCategory
 }) => {
-    const [form, setForm] = useState(initialForm);
+    const [form, setForm] = useState(initialForm || {});
     const [isCreatingCategory, setIsCreatingCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [isSavingCategory, setIsSavingCategory] = useState(false);
     const [recentTxs, setRecentTxs] = useState<any[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
 
-    const parsedAmount = Number(form.amount.replace(/\./g, '').replace(',', '.'));
-    const isAmountInvalid = !form.amount.trim() || isNaN(parsedAmount) || parsedAmount === 0;
+    const formAmount = form?.amount || '';
+    const parsedAmount = Number(formAmount.replace(/\./g, '').replace(',', '.'));
+    const isAmountInvalid = !formAmount.trim() || isNaN(parsedAmount) || parsedAmount === 0;
 
     // Buscar as transações recentes quando o modal for aberto
     useEffect(() => {

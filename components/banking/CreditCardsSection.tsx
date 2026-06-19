@@ -223,7 +223,7 @@ const CreditCardsSection: React.FC = () => {
     const params = new URLSearchParams(location.search);
     if (params.get('add') === 'true') {
       setShowAddTxModal(true);
-      navigate('/cards', { replace: true });
+      navigate('/banking?tab=cards', { replace: true });
     }
   }, [location.search]);
 

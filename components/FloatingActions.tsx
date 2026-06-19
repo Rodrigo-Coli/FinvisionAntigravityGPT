@@ -43,7 +43,7 @@ const FloatingActions: React.FC<FloatingActionsProps> = ({ user }) => {
                 Gasto no Cartão
               </span>
               <button
-                onClick={() => { navigate('/cards?add=true'); setIsOpen(false); }}
+                onClick={() => { navigate('/banking?tab=cards&add=true'); setIsOpen(false); }}
                 className="w-12 h-12 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-500/30 hover:scale-110 active:scale-95 transition-all"
               >
                 <CreditCardIcon size={20} />
