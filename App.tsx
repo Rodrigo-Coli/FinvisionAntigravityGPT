@@ -61,10 +61,13 @@ const App: React.FC = () => {
 
   // Initialize and listen to system preference dark mode changes
   useEffect(() => {
+    const cachedForceDark = localStorage.getItem('finvision_dark_mode_force') === 'true';
     const cachedAutoDark = localStorage.getItem('finvision_auto_dark_mode') === 'true';
     
-    const applyDarkMode = (autoDark: boolean) => {
-      if (autoDark) {
+    const applyDarkMode = (forceDark: boolean, autoDark: boolean) => {
+      if (forceDark) {
+        document.documentElement.classList.add('dark');
+      } else if (autoDark) {
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         if (prefersDark) {
           document.documentElement.classList.add('dark');
@@ -76,12 +79,13 @@ const App: React.FC = () => {
       }
     };
 
-    applyDarkMode(cachedAutoDark);
+    applyDarkMode(cachedForceDark, cachedAutoDark);
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = () => {
+      const currentForceDark = localStorage.getItem('finvision_dark_mode_force') === 'true';
       const currentAutoDark = localStorage.getItem('finvision_auto_dark_mode') === 'true';
-      applyDarkMode(currentAutoDark);
+      applyDarkMode(currentForceDark, currentAutoDark);
     };
 
     mediaQuery.addEventListener('change', handleChange);
@@ -127,11 +131,15 @@ const App: React.FC = () => {
       }
 
       // Fetch user settings to sync and apply dark mode preference
-      const { data: userSettings } = await supabase.from('user_settings').select('auto_dark_mode').eq('user_id', uid).maybeSingle();
+      const { data: userSettings } = await supabase.from('user_settings').select('auto_dark_mode, dark_mode_force').eq('user_id', uid).maybeSingle();
       if (userSettings) {
+        const forceDark = userSettings.dark_mode_force || false;
         const autoDark = userSettings.auto_dark_mode || false;
+        localStorage.setItem('finvision_dark_mode_force', String(forceDark));
         localStorage.setItem('finvision_auto_dark_mode', String(autoDark));
-        if (autoDark) {
+        if (forceDark) {
+          document.documentElement.classList.add('dark');
+        } else if (autoDark) {
           const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
           if (prefersDark) {
             document.documentElement.classList.add('dark');

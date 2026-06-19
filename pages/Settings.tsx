@@ -143,6 +143,7 @@ const SettingsPage: React.FC = () => {
   const { subscription, loadingSub } = useSubscription();
   const [settings, setSettings] = useState({
     email_notifications: true,
+    dark_mode_force: false,
     auto_dark_mode: false,
     iof_rate: 2.38,
     spread_rate: 4.00,
@@ -200,6 +201,7 @@ const SettingsPage: React.FC = () => {
         if (data) {
           setSettings({
             email_notifications: data.email_notifications,
+            dark_mode_force: data.dark_mode_force || false,
             auto_dark_mode: data.auto_dark_mode,
             iof_rate: data.iof_rate || 2.38,
             spread_rate: data.spread_rate || 4.00,
@@ -208,9 +210,13 @@ const SettingsPage: React.FC = () => {
             push_enabled: data.push_enabled || false
           });
           // Cache and apply theme on load
+          const forceMode = data.dark_mode_force || false;
           const autoDark = data.auto_dark_mode || false;
+          localStorage.setItem('finvision_dark_mode_force', String(forceMode));
           localStorage.setItem('finvision_auto_dark_mode', String(autoDark));
-          if (autoDark) {
+          if (forceMode) {
+            document.documentElement.classList.add('dark');
+          } else if (autoDark) {
             const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             if (prefersDark) {
               document.documentElement.classList.add('dark');
@@ -494,9 +500,41 @@ const SettingsPage: React.FC = () => {
       value = formatted;
     }
 
+    if (key === 'dark_mode_force') {
+      localStorage.setItem('finvision_dark_mode_force', String(value));
+      if (value) {
+        document.documentElement.classList.add('dark');
+        // When forcing dark mode, turn off auto mode to avoid conflicts
+        if (settings.auto_dark_mode) {
+          setSettings(prev => ({ ...prev, auto_dark_mode: false }));
+          localStorage.setItem('finvision_auto_dark_mode', 'false');
+          await supabase!.from('user_settings').upsert({ user_id: (await supabase!.auth.getSession()).data.session?.user?.id, auto_dark_mode: false, updated_at: DateUtils.getNow().toISOString() });
+        }
+      } else {
+        // Recheck auto mode when force is disabled
+        const autoDark = settings.auto_dark_mode;
+        if (autoDark) {
+          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (prefersDark) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+    }
+
     if (key === 'auto_dark_mode') {
       localStorage.setItem('finvision_auto_dark_mode', String(value));
       if (value) {
+        // Turn off force mode when enabling auto
+        if (settings.dark_mode_force) {
+          setSettings(prev => ({ ...prev, dark_mode_force: false }));
+          localStorage.setItem('finvision_dark_mode_force', 'false');
+          await supabase!.from('user_settings').upsert({ user_id: (await supabase!.auth.getSession()).data.session?.user?.id, dark_mode_force: false, updated_at: DateUtils.getNow().toISOString() });
+        }
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         if (prefersDark) {
           document.documentElement.classList.add('dark');
@@ -840,7 +878,17 @@ const SettingsPage: React.FC = () => {
 
                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">
                   <div>
-                    <p className="font-bold text-slate-900">Modo Dark Automático</p>
+                    <p className="font-bold text-slate-900">🌙 Modo Dark Manual</p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Força o tema escuro independente do sistema.</p>
+                  </div>
+                  <button onClick={() => updateSetting('dark_mode_force', !settings.dark_mode_force)} className={`w-14 h-8 rounded-full p-1 transition-all ${settings.dark_mode_force ? 'bg-brand-600' : 'bg-slate-200'}`}>
+                    <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${settings.dark_mode_force ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">
+                  <div>
+                    <p className="font-bold text-slate-900">☀️ Modo Dark Automático</p>
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Acompanha o sistema operacional.</p>
                   </div>
                   <button onClick={() => updateSetting('auto_dark_mode', !settings.auto_dark_mode)} className={`w-14 h-8 rounded-full p-1 transition-all ${settings.auto_dark_mode ? 'bg-brand-600' : 'bg-slate-200'}`}>
