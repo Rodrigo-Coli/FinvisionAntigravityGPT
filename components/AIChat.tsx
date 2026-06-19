@@ -199,6 +199,7 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
                         type="submit"
                         disabled={!input.trim() || isLoading}
                         className="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center disabled:opacity-50 disabled:bg-slate-300 transition-colors hover:bg-brand-700"
+                        aria-label="Enviar mensagem"
                     >
                         <Send size={16} className={input.trim() ? "translate-x-0.5 -translate-y-0.5" : ""} />
                     </button>

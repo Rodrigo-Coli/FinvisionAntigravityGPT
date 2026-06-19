@@ -131,10 +131,10 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({ value, transactionType,
                                     onChange={e => setNewName(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleCreate()}
                                 />
-                                <button type="button" onClick={handleCreate} disabled={saving || !newName.trim()} className="w-8 h-8 bg-brand-600 text-white rounded-lg flex items-center justify-center hover:bg-brand-700 disabled:opacity-50">
+                                <button type="button" onClick={handleCreate} disabled={saving || !newName.trim()} className="w-8 h-8 bg-brand-600 text-white rounded-lg flex items-center justify-center hover:bg-brand-700 disabled:opacity-50" aria-label="Confirmar criação">
                                     {saving ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
                                 </button>
-                                <button type="button" onClick={() => { setCreating(false); setNewName(''); }} className="w-8 h-8 bg-slate-100 text-slate-500 rounded-lg flex items-center justify-center hover:bg-slate-200">
+                                <button type="button" onClick={() => { setCreating(false); setNewName(''); }} className="w-8 h-8 bg-slate-100 text-slate-500 rounded-lg flex items-center justify-center hover:bg-slate-200" aria-label="Cancelar criação">
                                     <X size={11} />
                                 </button>
                             </div>
@@ -462,8 +462,8 @@ const OwnerPicker: React.FC<OwnerPickerProps> = ({ value, allOwners, onSelect, c
                                     onChange={e => setNewName(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleCreate()}
                                 />
-                                <button type="button" onClick={handleCreate} disabled={!newName.trim()} className="w-8 h-8 bg-brand-600 text-white rounded-lg flex items-center justify-center hover:bg-brand-700 disabled:opacity-50"><Check size={11} /></button>
-                                <button type="button" onClick={() => { setCreating(false); setNewName(''); }} className="w-8 h-8 bg-slate-100 text-slate-500 rounded-lg flex items-center justify-center hover:bg-slate-200"><X size={11} /></button>
+                                <button type="button" onClick={handleCreate} disabled={!newName.trim()} className="w-8 h-8 bg-brand-600 text-white rounded-lg flex items-center justify-center hover:bg-brand-700 disabled:opacity-50" aria-label="Confirmar criação de perfil"><Check size={11} /></button>
+                                <button type="button" onClick={() => { setCreating(false); setNewName(''); }} className="w-8 h-8 bg-slate-100 text-slate-500 rounded-lg flex items-center justify-center hover:bg-slate-200" aria-label="Cancelar criação de perfil"><X size={11} /></button>
                             </div>
                         ) : (
                             <button type="button" onClick={() => setCreating(true)} className="w-full flex items-center gap-1.5 px-2.5 h-8 text-[10px] font-bold text-brand-600 hover:bg-brand-50 rounded-lg transition-colors uppercase tracking-wider">

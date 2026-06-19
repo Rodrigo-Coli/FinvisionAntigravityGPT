@@ -100,7 +100,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
         </Link>
 
         <div className="flex items-center gap-2">
-          <button className="p-2 text-slate-400">
+          <button className="p-2 text-slate-400" aria-label="Notificações" title="Notificações">
             <Bell size={20} />
           </button>
         </div>

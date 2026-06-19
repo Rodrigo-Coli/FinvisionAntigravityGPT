@@ -877,6 +877,7 @@ const SettingsPage: React.FC = () => {
                     {settings.whatsapp_enabled && (
                       <input 
                         type="text" 
+                        inputMode="tel"
                         placeholder="+55 11 99999-9999" 
                         value={settings.whatsapp_number} 
                         onChange={e => updateSetting('whatsapp_number', e.target.value)}
@@ -1091,8 +1092,8 @@ const SettingsPage: React.FC = () => {
                 {isAddingCat && (
                   <div className="p-6 md:p-10 flex gap-4 bg-brand-50/30">
                     <input autoFocus className="flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm" placeholder={`Nome da categoria de ${categoryTab === 'INCOME' ? 'receita' : 'despesa'}...`} value={newCatName} onChange={e => setNewCatName(e.target.value)} />
-                    <button onClick={addCategory} className="w-16 h-16 bg-brand-600 text-white rounded-2xl flex items-center justify-center shadow-lg transition-transform hover:scale-105"><Check size={24} /></button>
-                    <button onClick={() => setIsAddingCat(false)} className="w-16 h-16 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200"><XCircle size={24} /></button>
+                    <button onClick={addCategory} className="w-16 h-16 bg-brand-600 text-white rounded-2xl flex items-center justify-center shadow-lg transition-transform hover:scale-105" aria-label="Confirmar nova categoria"><Check size={24} /></button>
+                    <button onClick={() => setIsAddingCat(false)} className="w-16 h-16 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200" aria-label="Cancelar nova categoria"><XCircle size={24} /></button>
                   </div>
                 )}
                 {categories
@@ -1112,8 +1113,8 @@ const SettingsPage: React.FC = () => {
                                 onChange={e => setEditCatName(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && saveEditCat()}
                               />
-                              <button onClick={saveEditCat} className="p-2 bg-emerald-500 text-white rounded-xl"><Check size={16} /></button>
-                              <button onClick={() => setEditingCatId(null)} className="p-2 bg-slate-100 text-slate-500 rounded-xl"><XCircle size={16} /></button>
+                              <button onClick={saveEditCat} className="p-2 bg-emerald-500 text-white rounded-xl" aria-label="Salvar nome da categoria"><Check size={16} /></button>
+                              <button onClick={() => setEditingCatId(null)} className="p-2 bg-slate-100 text-slate-500 rounded-xl" aria-label="Cancelar edição de categoria"><XCircle size={16} /></button>
                             </div>
                           ) : (
                             <span className="font-bold text-slate-900 uppercase tracking-widest text-sm flex items-center gap-2">
@@ -1148,8 +1149,8 @@ const SettingsPage: React.FC = () => {
                                       onChange={e => setEditSubcatName(e.target.value)}
                                       onKeyDown={e => e.key === 'Enter' && saveEditSubcat()}
                                     />
-                                    <button onClick={saveEditSubcat} className="p-1.5 bg-emerald-500 text-white rounded-lg"><Check size={14} /></button>
-                                    <button onClick={() => setEditingSubcatId(null)} className="p-1.5 bg-slate-100 text-slate-500 rounded-lg"><XCircle size={14} /></button>
+                                    <button onClick={saveEditSubcat} className="p-1.5 bg-emerald-500 text-white rounded-lg" aria-label="Salvar subcategoria"><Check size={14} /></button>
+                                    <button onClick={() => setEditingSubcatId(null)} className="p-1.5 bg-slate-100 text-slate-500 rounded-lg" aria-label="Cancelar edição de subcategoria"><XCircle size={14} /></button>
                                   </div>
                                 ) : (
                                   <span className="text-xs font-bold text-slate-600 tracking-wide">{sub.name}</span>
@@ -1241,14 +1242,14 @@ const SettingsPage: React.FC = () => {
                   <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-50">
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 block">IOF em Compras Externas</label>
                     <div className="flex items-center gap-2">
-                      <input type="number" step="0.01" className="bg-transparent font-bold text-4xl text-slate-900 w-32 outline-none" value={editingIof} onChange={e => setEditingIof(parseFloat(e.target.value) || 0)} />
+                      <input type="number" inputMode="decimal" step="0.01" className="bg-transparent font-bold text-4xl text-slate-900 w-32 outline-none" value={editingIof} onChange={e => setEditingIof(parseFloat(e.target.value) || 0)} />
                       <span className="text-2xl font-bold text-slate-500">%</span>
                     </div>
                   </div>
                   <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-50">
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 block">Spread Bancário (Média)</label>
                     <div className="flex items-center gap-2">
-                      <input type="number" step="0.01" className="bg-transparent font-bold text-4xl text-slate-900 w-32 outline-none" value={editingSpread} onChange={e => setEditingSpread(parseFloat(e.target.value) || 0)} />
+                      <input type="number" inputMode="decimal" step="0.01" className="bg-transparent font-bold text-4xl text-slate-900 w-32 outline-none" value={editingSpread} onChange={e => setEditingSpread(parseFloat(e.target.value) || 0)} />
                       <span className="text-2xl font-bold text-slate-500">%</span>
                     </div>
                   </div>
@@ -1306,8 +1307,8 @@ const SettingsPage: React.FC = () => {
                 {isAddingEntity && (
                   <div className="p-10 flex gap-4 bg-brand-50/30">
                     <input autoFocus className="flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm" placeholder="Nome do perfil (Ex: Família, Empresa, Pessoal)..." value={newEntityName} onChange={e => setNewEntityName(e.target.value)} />
-                    <button onClick={addEntity} className="w-16 h-16 bg-brand-600 text-white rounded-2xl flex items-center justify-center shadow-lg transition-transform hover:scale-105"><Check size={24} /></button>
-                    <button onClick={() => setIsAddingEntity(false)} className="w-16 h-16 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200"><XCircle size={24} /></button>
+                    <button onClick={addEntity} className="w-16 h-16 bg-brand-600 text-white rounded-2xl flex items-center justify-center shadow-lg transition-transform hover:scale-105" aria-label="Confirmar novo perfil"><Check size={24} /></button>
+                    <button onClick={() => setIsAddingEntity(false)} className="w-16 h-16 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200" aria-label="Cancelar novo perfil"><XCircle size={24} /></button>
                   </div>
                 )}
                 {entities.map((ent) => (

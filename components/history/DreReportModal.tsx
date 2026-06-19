@@ -79,7 +79,7 @@ export const DreReportModal: React.FC<DreReportModalProps> = ({ report, onClose 
                             <Printer size={18} />
                             <span className="hidden sm:inline">Imprimir / PDF</span>
                         </button>
-                        <button onClick={onClose} className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors ml-2">
+                        <button onClick={onClose} className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors ml-2" aria-label="Fechar">
                             <X size={20} />
                         </button>
                     </div>

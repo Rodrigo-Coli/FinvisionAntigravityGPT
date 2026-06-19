@@ -789,7 +789,7 @@ const Reconcile: React.FC = () => {
               <CheckCircle2 size={18} /> Sincronizar Tudo
             </button>
           )}
-          <button onClick={fetchData} className="p-3 bg-white border border-slate-100 text-slate-400 rounded-xl hover:text-slate-900 hover:rotate-180 transition-all duration-500 shadow-sm">
+          <button onClick={fetchData} className="p-3 bg-white border border-slate-100 text-slate-400 rounded-xl hover:text-slate-900 hover:rotate-180 transition-all duration-500 shadow-sm" aria-label="Atualizar dados" title="Atualizar dados">
             <RefreshCw size={20} className={isLoadingQueue ? 'animate-spin' : ''} />
           </button>
         </div>

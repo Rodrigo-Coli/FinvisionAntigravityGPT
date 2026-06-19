@@ -109,6 +109,7 @@ export const PWAInstallPrompt: React.FC = () => {
           <button
             onClick={handleDismiss}
             className="w-12 h-12 flex items-center justify-center bg-slate-100 text-slate-400 rounded-2xl hover:bg-slate-200 transition-colors"
+            aria-label="Dispensar"
           >
             <X size={18} />
           </button>

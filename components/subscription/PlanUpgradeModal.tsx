@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Check, Zap, TrendingUp, Star, ArrowUpRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
 
@@ -79,7 +79,7 @@ const PlanUpgradeModal: React.FC<PlanUpgradeModalProps> = ({ currentPlanId, curr
             <h2 className="text-2xl font-black text-slate-900 dark:text-white italic">Planos Disponiveis</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">Escolha o plano ideal para voce</p>
           </div>
-          <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all">
+          <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all" aria-label="Fechar">
             <X size={18} />
           </button>
         </div>

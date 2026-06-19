@@ -40,6 +40,7 @@ export const IOSInstallPrompt: React.FC = () => {
           onClick={handleClose}
           onTouchStart={handleClose}
           className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+          aria-label="Fechar"
         >
           <X size={20} />
         </button>

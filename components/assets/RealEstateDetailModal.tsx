@@ -1349,7 +1349,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
             <button onClick={exportToPdf} className="p-3 bg-white border border-slate-200 text-slate-500 hover:text-brand-600 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Imprimir PDF"><Printer size={18} /></button>
             <button onClick={handleArchiveAsset} className="p-3 bg-white border border-slate-200 text-slate-500 hover:text-rose-600 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Arquivar / Marcar como Vendido"><Archive size={18} /></button>
             <button onClick={handleDeleteAsset} className="p-3 bg-white border border-slate-200 text-rose-500 hover:bg-rose-50 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Excluir Lançamento do Imóvel"><Trash2 size={18} /></button>
-            <button onClick={onClose} className="w-12 h-12 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-2xl flex items-center justify-center transition-all shadow-sm ml-2"><X size={20} /></button>
+            <button onClick={onClose} className="w-12 h-12 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-2xl flex items-center justify-center transition-all shadow-sm ml-2" aria-label="Fechar"><X size={20} /></button>
           </div>
         </div>
 
@@ -2108,9 +2108,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
               </form>
             )}
 
-            {/* List of transactions */}
             <div className="border border-slate-100 rounded-3xl overflow-hidden shadow-sm bg-slate-50/50">
-              <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+              <div className="max-h-[300px] overflow-y-auto overflow-x-auto custom-scrollbar">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-200 text-[9px] font-black uppercase text-slate-500 tracking-wider">

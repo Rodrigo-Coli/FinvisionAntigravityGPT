@@ -546,7 +546,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
               <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-0.5 sm:mt-1">Lançamento de Imóveis & Cronogramas Financeiros</p>
             </div>
           </div>
-          <button onClick={onClose} className="w-10 h-10 sm:w-12 sm:h-12 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all shadow-sm"><X size={20} className="sm:w-[24px] sm:h-[24px]" /></button>
+          <button onClick={onClose} className="w-10 h-10 sm:w-12 sm:h-12 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all shadow-sm" aria-label="Fechar"><X size={20} className="sm:w-[24px] sm:h-[24px]" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">

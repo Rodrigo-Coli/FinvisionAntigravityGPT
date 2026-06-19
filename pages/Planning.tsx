@@ -662,6 +662,7 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
                 <input
                   required
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min="0"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
@@ -739,6 +740,7 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
                   <input
                     required
                     type="number"
+                    inputMode="decimal"
                     step="0.01"
                     min="0.01"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
@@ -751,6 +753,7 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
                   <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Já Guardado (R$)</label>
                   <input
                     type="number"
+                    inputMode="decimal"
                     step="0.01"
                     min="0"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
