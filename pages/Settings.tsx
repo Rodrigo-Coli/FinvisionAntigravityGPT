@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Settings as SettingsIcon,
   Tags,
@@ -44,6 +45,8 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { DateUtils } from '../lib/dateUtils';
 import { requestNotificationPermission, showLocalNotification, subscribeUserToPush } from '../lib/pushUtils';
+import UsageMeter from '../components/subscription/UsageMeter';
+import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 import { useToast } from '../contexts/ToastContext';
 
 export const ensureInvestmentCategoriesAndSubcategories = async (userId: string) => {
@@ -141,6 +144,15 @@ const SettingsPage: React.FC = () => {
   const { toast } = useToast();
   const [activeSection, setActiveSection] = useState<'general' | 'navigation' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription'>('general');
   const { subscription, loadingSub } = useSubscription();
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const section = searchParams.get('section');
+    if (section && ['general', 'navigation', 'categories', 'establishments', 'products', 'backup', 'currencies', 'rates', 'entities', 'subscription'].includes(section)) {
+      setActiveSection(section as any);
+    }
+  }, [searchParams]);
   const [settings, setSettings] = useState({
     email_notifications: true,
     dark_mode_force: false,
@@ -697,71 +709,144 @@ const SettingsPage: React.FC = () => {
         <main className="flex-1 space-y-8 min-w-0">
           {activeSection === 'subscription' && (
             <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-              <div className="bg-brand-900 rounded-[40px] p-12 text-white relative overflow-hidden shadow-2xl">
+              {/* HERO DO PLANO */}
+              <div className="bg-brand-900 rounded-[40px] p-10 text-white relative overflow-hidden shadow-2xl">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl opacity-50" />
                 <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center border border-white/20">
                         <Gem size={28} />
                       </div>
-                      <span className="text-[10px] font-black uppercase tracking-[0.3em] bg-white/20 px-4 py-2 rounded-full border border-white/10">Plano Oficial Produtor</span>
+                      <span className="text-[10px] font-black uppercase tracking-[0.3em] bg-white/20 px-4 py-2 rounded-full border border-white/10">
+                        {loadingSub ? 'Carregando...' : (subscription?.status === 'trialing' ? 'Periodo Trial' : 'Plano Ativo')}
+                      </span>
                     </div>
-                    <h2 className="text-4xl font-black tracking-tight">{subscription?.plans?.name || 'Carregando...'}</h2>
-                    <div className="flex items-center gap-4 text-brand-200 font-bold text-sm">
+                    <h2 className="text-4xl font-black tracking-tight">{subscription?.plans?.name || 'Gratuito'}</h2>
+                    <div className="flex flex-wrap items-center gap-4 text-brand-200 font-bold text-sm">
                       <div className="flex items-center gap-2">
                         <Shield size={16} />
-                        Status: <span className="text-white uppercase tracking-widest text-xs">{subscription?.status || 'Active'}</span>
+                        Status: <span className="text-white uppercase tracking-widest text-xs">{subscription?.status || 'ativo'}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Clock size={16} />
-                        Expira: <span className="text-white">{subscription?.current_period_end ? DateUtils.formatDisplayDate(subscription.current_period_end) : 'N/A'}</span>
-                      </div>
+                      {subscription?.current_period_end && (
+                        <div className="flex items-center gap-2">
+                          <Clock size={16} />
+                          Renova: <span className="text-white">{DateUtils.formatDisplayDate(subscription.current_period_end)}</span>
+                        </div>
+                      )}
+                      {subscription?.plans?.price_cents != null && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-black text-lg">R$ {((subscription.plans.price_cents as number) / 100).toFixed(2).replace('.', ',')}/mes</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  
-                  <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20 min-w-[240px]">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-300 mb-4 text-center">Limites Disponíveis</p>
-                    <div className="space-y-4">
+
+                  {/* METER DE CONSUMO */}
+                  <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20 min-w-[260px] space-y-4">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-300 text-center">Consumo do Mes</p>
+                    <div className="space-y-3">
                       <div className="space-y-2">
                         <div className="flex justify-between text-xs font-bold">
                           <span>Escaneamentos IA</span>
-                          <span>94 / {subscription?.plans?.ai_scans_limit || 100}</span>
+                          <span>
+                            {(subscription as any)?.ai_scans_used ?? 0} / {subscription?.plans?.ai_scans_limit === -1 ? '∞' : (subscription?.plans?.ai_scans_limit ?? '—')}
+                          </span>
                         </div>
-                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                          <div className="h-full bg-white w-[94%]" />
-                        </div>
+                        {(subscription?.plans?.ai_scans_limit ?? 0) !== -1 && (
+                          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-700"
+                              style={{
+                                width: `${Math.min(100, Math.round(((subscription as any)?.ai_scans_used ?? 0) / (subscription?.plans?.ai_scans_limit ?? 1) * 100))}%`,
+                                background: (() => {
+                                  const pct = Math.round(((subscription as any)?.ai_scans_used ?? 0) / (subscription?.plans?.ai_scans_limit ?? 1) * 100);
+                                  return pct >= 90 ? '#f43f5e' : pct >= 70 ? '#f59e0b' : '#10b981';
+                                })()
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
+                      {(subscription as any)?.ai_scans_reset_at && (
+                        <p className="text-[10px] text-brand-300 font-bold text-center">
+                          Resetado em {DateUtils.formatDisplayDate((subscription as any).ai_scans_reset_at)}
+                        </p>
+                      )}
                     </div>
+                    <button
+                      onClick={() => setShowUpgradeModal(true)}
+                      className="w-full py-2.5 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border border-white/20 flex items-center justify-center gap-2"
+                    >
+                      Ver Planos Disponiveis
+                    </button>
                   </div>
                 </div>
               </div>
 
+              {/* DETALHES + UPGRADE */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="bg-white rounded-[40px] border border-slate-100 p-10 shadow-sm">
-                  <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-3 italic">
-                    <Check className="text-brand-600" /> Benefícios Ativos
+                {/* FUNCIONALIDADES ATIVAS */}
+                <div className="bg-white dark:bg-slate-900 rounded-[40px] border border-slate-100 dark:border-slate-800 p-10 shadow-sm">
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white mb-6 flex items-center gap-3 italic">
+                    <Check className="text-brand-600" /> Funcionalidades do Plano
                   </h3>
-                  <ul className="space-y-4">
-                    {['Relatórios Financeiros Ilimitados', 'Conciliação Bancária com IA', 'Insights de Patrimônio Consolidado', 'Multi-Moedas e Taxas em Tempo Real', 'Suporte Prioritário Via WhatsApp'].map((feat, i) => (
-                      <li key={i} className="flex items-center gap-3 text-sm font-medium text-slate-500">
-                        <div className="w-1.5 h-1.5 bg-brand-400 rounded-full" />
-                        {feat}
-                      </li>
-                    ))}
+                  <ul className="space-y-3">
+                    {Object.entries(subscription?.plans?.features || {}).filter(([, v]) => v).slice(0, 8).map(([k], i) => {
+                      const labels: Record<string, string> = {
+                        dashboard: 'Dashboard Financeiro', accounts: 'Contas Bancarias', cards: 'Cartoes de Credito',
+                        reconcile: 'Conciliacao Bancaria', ai_scanner: 'Scanner de Cupom IA', ai_comparator: 'Comparador de Precos',
+                        ai_diagnosis: 'Diagnostico Patrimonial', goals: 'Metas Financeiras', reports_advanced: 'Relatorios Avancados',
+                        multi_user: 'Multi-usuario (Familia)', priority_support: 'Suporte Prioritario',
+                        whatsapp_notifications: 'Notificacoes WhatsApp', liabilities: 'Dividas e Passivos',
+                        physical_assets: 'Bens Fisicos', budgets: 'Orcamentos', ofx_import: 'Importacao OFX/CSV',
+                      };
+                      return (
+                        <li key={i} className="flex items-center gap-3 text-sm font-bold text-slate-600 dark:text-slate-300">
+                          <div className="w-5 h-5 rounded-full bg-brand-50 dark:bg-brand-950/30 flex items-center justify-center flex-shrink-0">
+                            <Check size={10} className="text-brand-600" />
+                          </div>
+                          {labels[k] || k}
+                        </li>
+                      );
+                    })}
+                    {!subscription?.plans?.features && (
+                      <li className="text-sm text-slate-400 italic">Funcionalidades basicas do plano gratuito.</li>
+                    )}
                   </ul>
                 </div>
 
-                <div className="bg-white rounded-[40px] border border-slate-100 p-10 shadow-sm flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-lg font-black text-slate-900 mb-4 italic">Precisa de mais?</h3>
-                    <p className="text-sm text-slate-500 font-medium">Sua conta atual permite gerenciar até 10 perfis simultâneos. Para limites corporativos ou white-label, entre em contato.</p>
+                {/* CONSUMO DETALHADO + CTA UPGRADE */}
+                <div className="bg-white dark:bg-slate-900 rounded-[40px] border border-slate-100 dark:border-slate-800 p-10 shadow-sm flex flex-col justify-between gap-8">
+                  <div className="space-y-6">
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white italic">Meu Consumo</h3>
+                    <UsageMeter
+                      used={(subscription as any)?.ai_scans_used ?? 0}
+                      limit={subscription?.plans?.ai_scans_limit ?? 5}
+                      resetAt={(subscription as any)?.ai_scans_reset_at}
+                      onUpgradeClick={() => setShowUpgradeModal(true)}
+                    />
                   </div>
-                  <button className="mt-8 w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-black transition-all">
-                    Upgrade para Business
-                  </button>
+                  <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Precisa de mais capacidade? Faca upgrade para um plano maior e desbloqueie mais funcionalidades.</p>
+                    <button
+                      onClick={() => setShowUpgradeModal(true)}
+                      className="w-full py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-brand-600 dark:hover:bg-brand-50 transition-all flex items-center justify-center gap-2 shadow-lg"
+                    >
+                      Ver Opcoes de Upgrade
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {/* MODAL DE UPGRADE */}
+              {showUpgradeModal && (
+                <PlanUpgradeModal
+                  currentPlanId={subscription?.plan_id}
+                  currentPlanSlug={subscription?.plans?.name?.toLowerCase()}
+                  onClose={() => setShowUpgradeModal(false)}
+                />
+              )}
             </div>
           )}
 

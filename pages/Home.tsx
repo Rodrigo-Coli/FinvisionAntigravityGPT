@@ -29,6 +29,8 @@ import ContextualHelp from '../components/ContextualHelp';
 import { supabase } from '../lib/supabase/client';
 import { projectionService } from '../services/projection.service';
 import { FinanceService } from '../services/finance.service';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import UsageMeter from '../components/subscription/UsageMeter';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
   const [data, setData] = useState<DashboardData | null>(() => DashboardService.getCachedSummary());
@@ -61,6 +63,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
     return localStorage.getItem('finvision_privacy') !== 'hidden';
   });
   const navigate = useNavigate();
+  const { subscription } = useSubscription();
 
   const toggleBalance = () => {
     setShowBalance(prev => {
@@ -393,6 +396,19 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           </div>
         </div>
       </div>
+
+      {/* USAGE WIDGET */}
+      {subscription && (
+        <div className="w-full">
+          <UsageMeter
+            compact
+            used={(subscription as any)?.ai_scans_used ?? 0}
+            limit={subscription?.plans?.ai_scans_limit ?? 5}
+            resetAt={(subscription as any)?.ai_scans_reset_at}
+            onUpgradeClick={() => navigate('/settings?section=subscription')}
+          />
+        </div>
+      )}
 
       {/* CASH FLOW PROJECTION (CONSOLIDATED GRAPHS) */}
       <div id="tour-cash-flow">

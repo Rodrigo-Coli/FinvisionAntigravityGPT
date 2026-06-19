@@ -1,0 +1,1 @@
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS include_in_totals BOOLEAN DEFAULT true;
