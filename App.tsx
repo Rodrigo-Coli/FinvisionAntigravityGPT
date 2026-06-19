@@ -59,6 +59,35 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
 
+  // Initialize and listen to system preference dark mode changes
+  useEffect(() => {
+    const cachedAutoDark = localStorage.getItem('finvision_auto_dark_mode') === 'true';
+    
+    const applyDarkMode = (autoDark: boolean) => {
+      if (autoDark) {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (prefersDark) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+
+    applyDarkMode(cachedAutoDark);
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = () => {
+      const currentAutoDark = localStorage.getItem('finvision_auto_dark_mode') === 'true';
+      applyDarkMode(currentAutoDark);
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
   useEffect(() => {
     if (!supabase) {
       setLoading(false);
@@ -96,8 +125,25 @@ const App: React.FC = () => {
         setProfile(data);
         localStorage.setItem('finvision_cached_profile', JSON.stringify(data));
       }
+
+      // Fetch user settings to sync and apply dark mode preference
+      const { data: userSettings } = await supabase.from('user_settings').select('auto_dark_mode').eq('user_id', uid).maybeSingle();
+      if (userSettings) {
+        const autoDark = userSettings.auto_dark_mode || false;
+        localStorage.setItem('finvision_auto_dark_mode', String(autoDark));
+        if (autoDark) {
+          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (prefersDark) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }
     } catch (e) {
-      console.warn('Failed to fetch profile (likely offline), using cached if available', e);
+      console.warn('Failed to fetch profile/settings (likely offline), using cached if available', e);
     } finally {
       setLoading(false);
     }

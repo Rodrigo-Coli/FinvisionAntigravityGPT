@@ -207,6 +207,19 @@ const SettingsPage: React.FC = () => {
             whatsapp_number: data.whatsapp_number || '',
             push_enabled: data.push_enabled || false
           });
+          // Cache and apply theme on load
+          const autoDark = data.auto_dark_mode || false;
+          localStorage.setItem('finvision_auto_dark_mode', String(autoDark));
+          if (autoDark) {
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (prefersDark) {
+              document.documentElement.classList.add('dark');
+            } else {
+              document.documentElement.classList.remove('dark');
+            }
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
         }
         
         const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
@@ -479,6 +492,20 @@ const SettingsPage: React.FC = () => {
         formatted = '55' + formatted;
       }
       value = formatted;
+    }
+
+    if (key === 'auto_dark_mode') {
+      localStorage.setItem('finvision_auto_dark_mode', String(value));
+      if (value) {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (prefersDark) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
     }
 
     const previousSettings = { ...settings };
