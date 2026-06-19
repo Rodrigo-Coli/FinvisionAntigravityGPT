@@ -155,7 +155,7 @@ const SettingsPage: React.FC = () => {
   const [settings, setSettings] = useState({
     email_notifications: true,
     auto_dark_mode: false,
-    iof_rate: 6.38,
+    iof_rate: 2.38,
     spread_rate: 4.00,
     whatsapp_enabled: false,
     whatsapp_number: '',
@@ -204,7 +204,7 @@ const SettingsPage: React.FC = () => {
           setSettings({
             email_notifications: data.email_notifications,
             auto_dark_mode: data.auto_dark_mode,
-            iof_rate: data.iof_rate || 6.38,
+            iof_rate: data.iof_rate || 2.38,
             spread_rate: data.spread_rate || 4.00,
             whatsapp_enabled: data.whatsapp_enabled || false,
             whatsapp_number: data.whatsapp_number || '',

@@ -5,6 +5,63 @@ import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
 import { DateUtils } from '../lib/dateUtils';
 
+// Helper to parse markdown into semantically correct HTML (protects lists and bolds)
+const parseMarkdownToReact = (text: string) => {
+  const lines = text.split('\n');
+  const blocks: React.ReactNode[] = [];
+  let currentListItems: React.ReactNode[] = [];
+  
+  const flushList = (key: number) => {
+    if (currentListItems.length > 0) {
+      blocks.push(
+        <ul key={`ul-${key}`} className="list-disc pl-6 my-3 space-y-1.5">
+          {[...currentListItems]}
+        </ul>
+      );
+      currentListItems = [];
+    }
+  };
+
+  const parseTextWithBold = (txt: string) => {
+    const parts = txt.split(/\*\*(.*?)\*\*/g);
+    return parts.map((part, index) => {
+      if (index % 2 === 1) {
+        return <strong key={index} className="font-extrabold text-slate-900">{part}</strong>;
+      }
+      return part;
+    });
+  };
+  
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      const content = trimmed.substring(2);
+      currentListItems.push(
+        <li key={i} className="text-slate-600 font-medium text-sm leading-relaxed">
+          {parseTextWithBold(content)}
+        </li>
+      );
+    } else {
+      flushList(i);
+      if (trimmed.startsWith('# ')) {
+        blocks.push(<h1 key={i} className="text-2xl font-bold text-slate-900 mt-6 mb-3">{trimmed.replace('# ', '')}</h1>);
+      } else if (trimmed.startsWith('## ')) {
+        blocks.push(<h2 key={i} className="text-xl font-bold text-slate-900 mt-6 mb-3 border-b border-slate-100 pb-2">{trimmed.replace('## ', '')}</h2>);
+      } else if (trimmed.startsWith('### ')) {
+        blocks.push(<h3 key={i} className="text-base font-bold text-brand-700 mt-4 mb-2">{trimmed.replace('### ', '')}</h3>);
+      } else if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+        blocks.push(<p key={i} className="font-bold text-slate-900 mt-2">{parseTextWithBold(trimmed.slice(2, -2))}</p>);
+      } else if (trimmed === '') {
+        blocks.push(<div key={i} className="h-3" />);
+      } else {
+        blocks.push(<p key={i} className="text-slate-600 mb-2 leading-relaxed text-sm">{parseTextWithBold(trimmed)}</p>);
+      }
+    }
+  });
+  flushList(lines.length);
+  return blocks;
+};
+
 const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [activeTab, setActiveTab] = useState<'upload' | 'history' | 'comparative' | 'shopping' | 'wealth'>('upload');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -15,13 +72,26 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [targetId, setTargetId] = useState('');
   const [targetType, setTargetType] = useState<'account' | 'card'>('account');
   const [allTargets, setAllTargets] = useState<{ id: string; name: string; type: 'account' | 'card' }[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [confirmCategory, setConfirmCategory] = useState<string>('');
 
   // States para Dados de Inteligência
   const [comparisonData, setComparisonData] = useState<any[]>([]);
   const [isLoadingIntelligence, setIsLoadingIntelligence] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [targetSegment, setTargetSegment] = useState<string>('Mercado');
-  const [shoppingList, setShoppingList] = useState<any[]>([]);
+  const [shoppingList, setShoppingList] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('finvision_shopping_list');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('finvision_shopping_list', JSON.stringify(shoppingList));
+  }, [shoppingList]);
 
   // Wealth Advisor states
   const [wealthAnalysis, setWealthAnalysis] = useState<string>('');
@@ -45,9 +115,10 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const fetchAccounts = async () => {
     if (!supabase || !user) return;
 
-    const [accRes, cardRes] = await Promise.all([
+    const [accRes, cardRes, catRes] = await Promise.all([
       supabase.from('accounts').select('id, institution').eq('user_id', user.id).eq('is_archived', false),
-      supabase.from('cards').select('id, name').eq('user_id', user.id).eq('is_archived', false)
+      supabase.from('cards').select('id, name').eq('user_id', user.id).eq('is_archived', false),
+      supabase.from('categories').select('id, name').eq('user_id', user.id).eq('is_archived', false).eq('type', 'EXPENSE')
     ]);
 
     const combined: { id: string; name: string; type: 'account' | 'card' }[] = [];
@@ -63,10 +134,27 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       setTargetId(combined[0].id);
       setTargetType(combined[0].type);
     }
+
+    if (catRes.data) {
+      setCategories(catRes.data.sort((a: any, b: any) => a.name.localeCompare(b.name)));
+    }
   };
 
   const fetchIntelligenceData = async () => {
     setIsLoadingIntelligence(true);
+    if (!navigator.onLine) {
+      try {
+        const cached = localStorage.getItem('finvision_cached_price_comparison');
+        if (cached) {
+          setComparisonData(JSON.parse(cached));
+        }
+      } catch (err) {
+        console.warn('Erro ao carregar inteligência do cache:', err);
+      }
+      setIsLoadingIntelligence(false);
+      return;
+    }
+
     try {
       const data = await AIReconcileService.getPriceComparison();
       const processed = data.map((prod: any) => {
@@ -74,15 +162,24 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         if (prices.length === 0) return null;
         const validPrices = prices.filter((p: any) => !p.exclude_from_stats);
         if (validPrices.length === 0) return null;
-        const avgPrice = validPrices.reduce((sum: number, p: any) => sum + p.unit_price, 0) / (validPrices.length || 1);
-        const minPriceObj = validPrices.reduce((min: any, p: any) => p.unit_price < min.unit_price ? p : min, validPrices[0]);
-        const lastPrice = validPrices[validPrices.length - 1];
+
+        // Ordenando cronologicamente para garantir que o lastPrice seja de fato o mais recente
+        const sortedPrices = [...validPrices].sort((a: any, b: any) => new Date(a.document_date).getTime() - new Date(b.document_date).getTime());
+
+        const avgPrice = sortedPrices.reduce((sum: number, p: any) => sum + p.unit_price, 0) / (sortedPrices.length || 1);
+        const minPriceObj = sortedPrices.reduce((min: any, p: any) => p.unit_price < min.unit_price ? p : min, sortedPrices[0]);
+        const lastPrice = sortedPrices[sortedPrices.length - 1];
         return {
           id: prod.id, name: prod.name, category: prod.category || 'Geral', merchantCategory: minPriceObj.ai_documents?.ocr_structured?.merchant_category || 'Mercado',
           avgPrice, minPrice: minPriceObj.unit_price, bestMerchant: minPriceObj.ai_documents?.merchant_raw || 'N/A', lastPrice: lastPrice.unit_price, trend: lastPrice.unit_price > avgPrice ? 'up' : 'down'
         };
       }).filter(Boolean);
       setComparisonData(processed);
+      try {
+        localStorage.setItem('finvision_cached_price_comparison', JSON.stringify(processed));
+      } catch (err) {
+        console.warn('Erro ao salvar cache de comparador:', err);
+      }
     } catch (err) {
       console.error('Erro ao carregar inteligência:', err);
     } finally {
@@ -128,7 +225,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       setExchangeQuote(data.currency === 'USD' ? 5.20 : data.currency === 'EUR' ? 5.60 : 1);
       if (!userSettings && supabase) {
         const { data: settings } = await supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle();
-        setUserSettings(settings || { iof_rate: 6.38, spread_rate: 4.00 });
+        setUserSettings(settings || { iof_rate: 2.38, spread_rate: 4.00 });
       }
       setIsApplyingTax(data.currency && data.currency !== 'BRL');
     } catch (err: any) { alert(err.message || 'Erro ao processar cupons.'); } finally { setIsProcessing(false); }
@@ -147,7 +244,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     if (!receipt) return 0;
     let baseAmount = reconcileMode === 'total' ? receipt.total : reconcileMode === 'partial' ? partialValue : receipt.items.filter((it: any) => it.selected).reduce((sum: number, it: any) => sum + it.total_price, 0);
     if (isApplyingTax && receipt.currency && receipt.currency !== 'BRL') {
-      const iof = userSettings?.iof_rate || 6.38;
+      const iof = userSettings?.iof_rate || 2.38;
       const spread = userSettings?.spread_rate || 4.00;
       return (baseAmount * exchangeQuote * (1 + spread / 100)) * (1 + iof / 100);
     }
@@ -171,6 +268,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           date: receipt.date || new Date().toISOString().split('T')[0],
           description,
           amount: finalAmount,
+          categoryId: confirmCategory || undefined
         });
       } else {
         // Fluxo padrão: fila de conciliação
@@ -222,7 +320,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-1 min-w-[calc(50%-0.25rem)] sm:flex-none sm:min-w-0 justify-center sm:justify-start ${activeTab === tab.id ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            className={`flex items-center gap-2 px-4 py-3 sm:py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-1 min-w-[calc(50%-0.25rem)] sm:flex-none sm:min-w-0 justify-center sm:justify-start ${activeTab === tab.id ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
           >
             {tab.icon}
             <span>{tab.label}</span>
@@ -334,6 +432,24 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                     ))}
                   </div>
 
+                  {reconcileMode === 'partial' && (
+                    <div className="space-y-1.5 animate-in slide-in-from-top-1 duration-200">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Parcial a Conciliar</label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="Ex: 50,00"
+                        value={partialValue === 0 ? '' : partialValue.toString().replace('.', ',')}
+                        onChange={(e) => {
+                          let val = e.target.value.replace(/[^0-9,.]/g, '').replace(',', '.');
+                          const num = parseFloat(val);
+                          setPartialValue(isNaN(num) ? 0 : num);
+                        }}
+                        className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-4 font-bold text-slate-900 focus:ring-2 focus:ring-brand-500"
+                      />
+                    </div>
+                  )}
+
                   <div className="p-6 bg-brand-900 rounded-[32px] text-white space-y-2">
                     <div className="flex justify-between items-center opacity-40">
                       <span className="text-[10px] font-bold uppercase tracking-widest">Valor Conciliado</span>
@@ -364,6 +480,22 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                         </optgroup>
                       </select>
                     </div>
+
+                    {targetType === 'card' && (
+                      <div className="space-y-1 animate-in slide-in-from-top-1 duration-200">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Categoria (Opcional)</label>
+                        <select
+                          value={confirmCategory}
+                          onChange={(e) => setConfirmCategory(e.target.value)}
+                          className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500"
+                        >
+                          <option value="">Selecione...</option>
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
                     <button
                       onClick={handleFinalize}
@@ -464,12 +596,25 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                           <h3 className="font-bold uppercase text-[10px] tracking-[0.2em]">{merchant}</h3>
                         </div>
                         <div className="space-y-3">
-                          {shoppingList.filter(i => i.bestMerchant === merchant).map((item: any) => (
-                            <div key={item.id} className="flex justify-between items-center text-sm">
-                              <span className="text-slate-400">{item.name}</span>
-                              <span className="font-bold">{formatCurrency(item.minPrice)}</span>
-                            </div>
-                          ))}
+                          {shoppingList.filter(i => i.bestMerchant === merchant).map((item: any) => {
+                            const toggleShoppingItem = (itemId: string) => {
+                              setShoppingList(prev => prev.map(it => it.id === itemId ? { ...it, checked: !it.checked } : it));
+                            };
+                            return (
+                              <div key={item.id} className="flex justify-between items-center text-sm gap-2">
+                                <label className="flex items-center gap-2.5 cursor-pointer text-slate-400 select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!item.checked}
+                                    onChange={() => toggleShoppingItem(item.id)}
+                                    className="w-4 h-4 rounded border-white/10 text-brand-600 bg-white/5 focus:ring-offset-slate-900 focus:ring-brand-500 cursor-pointer"
+                                  />
+                                  <span className={item.checked ? "line-through text-slate-600 font-medium" : "font-semibold"}>{item.name}</span>
+                                </label>
+                                <span className={`font-bold ${item.checked ? "text-slate-600" : ""}`}>{formatCurrency(item.minPrice)}</span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -484,7 +629,43 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   <h3 className="text-3xl font-bold text-slate-900 italic">Economia Total</h3>
                   <p className="text-2xl font-bold text-brand-600">{formatCurrency(shoppingList.reduce((acc, i) => acc + (i.avgPrice - i.minPrice), 0))}</p>
                 </div>
-                <button onClick={() => setShoppingList([])} className="w-full h-14 bg-rose-50 text-rose-500 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all">Limpar Tudo</button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => {
+                      if (shoppingList.length === 0) return;
+                      let text = `🛒 *Lista de Compras Otimizada - FinVision*\n\n`;
+                      const merchants = Array.from(new Set(shoppingList.map(i => i.bestMerchant)));
+                      merchants.forEach(m => {
+                        text += `🏬 *${m}*:\n`;
+                        const items = shoppingList.filter(i => i.bestMerchant === m);
+                        items.forEach(it => {
+                          text += `  [${it.checked ? 'x' : ' '}] ${it.name} - ${formatCurrency(it.minPrice)}\n`;
+                        });
+                        text += `\n`;
+                      });
+                      const total = shoppingList.reduce((sum, it) => sum + it.minPrice, 0);
+                      const savings = shoppingList.reduce((sum, it) => sum + (it.avgPrice - it.minPrice), 0);
+                      text += `*Valor Estimado Total:* ${formatCurrency(total)}\n`;
+                      text += `*Economia Esperada:* ${formatCurrency(savings)}`;
+                      
+                      const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+                      window.open(url, '_blank');
+                    }}
+                    className="w-full h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+                  >
+                    Compartilhar WhatsApp
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm("Deseja realmente limpar toda a lista de compras?")) {
+                        setShoppingList([]);
+                      }
+                    }}
+                    className="w-full h-14 bg-rose-50 text-rose-500 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all"
+                  >
+                    Limpar Tudo
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -507,9 +688,43 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
               <div className="bg-white border border-slate-100 rounded-[40px] p-12 flex items-center justify-between">
                 <div className="space-y-1">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Variabilidade Média</p>
-                  <h3 className="text-4xl font-bold text-slate-900 tracking-tighter">+4.8% <span className="text-sm font-bold text-rose-500 uppercase ml-2 tracking-widest">Alta</span></h3>
+                  {(() => {
+                    if (comparisonData.length === 0) {
+                      return (
+                        <h3 className="text-4xl font-bold text-slate-900 tracking-tighter">
+                          0.0% <span className="text-sm font-bold text-slate-400 uppercase ml-2 tracking-widest">Estável</span>
+                        </h3>
+                      );
+                    }
+                    let sumPct = 0;
+                    comparisonData.forEach((product: any) => {
+                      const variation = (product.lastPrice - product.avgPrice) / product.avgPrice;
+                      sumPct += variation;
+                    });
+                    const avgPct = (sumPct / comparisonData.length) * 100;
+                    const sign = avgPct >= 0 ? '+' : '';
+                    const label = avgPct > 2 ? 'Alta' : avgPct < -2 ? 'Queda' : 'Estável';
+                    const color = avgPct > 2 ? 'text-rose-500' : avgPct < -2 ? 'text-emerald-500' : 'text-slate-400';
+                    return (
+                      <>
+                        <h3 className="text-4xl font-bold text-slate-900 tracking-tighter">
+                          {sign}{avgPct.toFixed(1)}% <span className={`text-sm font-bold uppercase ml-2 tracking-widest ${color}`}>{label}</span>
+                        </h3>
+                      </>
+                    );
+                  })()}
                 </div>
-                <TrendingUp size={48} className="text-rose-500 opacity-20" />
+                {(() => {
+                  let sumPct = 0;
+                  comparisonData.forEach((product: any) => {
+                    sumPct += (product.lastPrice - product.avgPrice) / product.avgPrice;
+                  });
+                  return sumPct >= 0 ? (
+                    <TrendingUp size={48} className="text-rose-500 opacity-20" />
+                  ) : (
+                    <TrendingDown size={48} className="text-emerald-500 opacity-20" />
+                  );
+                })()}
               </div>
             </div>
 
@@ -680,15 +895,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 </div>
 
                 <div className="p-10 prose prose-slate max-w-none">
-                  {wealthAnalysis.split('\n').map((line, i) => {
-                    if (line.startsWith('# ')) return <h1 key={i} className="text-2xl font-bold text-slate-900 mt-6 mb-3">{line.replace('# ', '')}</h1>;
-                    if (line.startsWith('## ')) return <h2 key={i} className="text-xl font-bold text-slate-900 mt-6 mb-3 border-b border-slate-100 pb-2">{line.replace('## ', '')}</h2>;
-                    if (line.startsWith('### ')) return <h3 key={i} className="text-base font-bold text-brand-700 mt-4 mb-2">{line.replace('### ', '')}</h3>;
-                    if (line.startsWith('- ') || line.startsWith('* ')) return <li key={i} className="ml-4 text-slate-600 mb-1 font-medium">{line.replace(/^[-*] /, '').replace(/\*\*(.*?)\*\*/g, '$1')}</li>;
-                    if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-bold text-slate-900 mt-2">{line.replace(/\*\*(.*?)\*\*/g, '$1')}</p>;
-                    if (line.trim() === '') return <div key={i} className="h-3" />;
-                    return <p key={i} className="text-slate-600 mb-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />;
-                  })}
+                  {parseMarkdownToReact(wealthAnalysis)}
                 </div>
               </div>
             )}
