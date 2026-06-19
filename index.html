@@ -18,6 +18,16 @@
   <meta name="application-name" content="FinVision Pro">
   <meta name="msapplication-TileColor" content="#4f46e5">
   <meta name="msapplication-TileImage" content="/logo.png">
+  <!-- Meta Tags Essenciais para Indexação SEO -->
+  <meta name="description" content="FinVision Pro - O primeiro Private Banker e Wealth Advisor autônomo baseado em Inteligência Artificial. Controle investimentos, concilie extratos bancários e rastreie notas fiscais via OCR com total privacidade (Postgres RLS)." />
+  <meta name="keywords" content="gerenciador financeiro, controle de gastos inteligente, inteligência artificial finanças, wealth advisor automatizado, conciliação bancária OFX, privacidade de dados financeiros" />
+  <meta name="robots" content="index, follow" />
+  <!-- Open Graph / Facebook (Visualização de Link) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://finvision.pro/" />
+  <meta property="og:title" content="FinVision Pro | Wealth Advisor & Gerenciamento Financeiro com IA" />
+  <meta property="og:description" content="Substitua planilhas do Excel pelo primeiro Private Banker autônomo do Brasil. Consolidação de extratos, escâner neural de cupons e privacidade militar baseada em PostgreSQL RLS." />
+  <meta property="og:image" content="/dashboard_pt_br.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -52,6 +62,7 @@
             'scan': 'scan 2s linear infinite',
             'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
             'float': 'float 6s ease-in-out infinite',
+            'spin-slow': 'spin 15s linear infinite',
           },
           keyframes: {
             scan: {
@@ -184,6 +195,34 @@
 
     .card-premium {
       @apply transition-all duration-300 hover:shadow-2xl hover:shadow-brand-500/10 hover:-translate-y-1;
+    }
+
+    /* Classes para o Efeito 3D do Mockup */
+    .perspective-1000 {
+      perspective: 1000px;
+    }
+    .rotate-x-12 {
+      transform: rotateX(12deg);
+    }
+
+    /* Fallback Nativo para Classes do Tailwind Animate */
+    .animate-in {
+      animation-fill-mode: both;
+    }
+    .fade-in {
+      animation: fadeIn 1s ease-out forwards;
+    }
+    .slide-in-from-bottom-8 {
+      animation: slideInUp 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideInUp {
+      from { transform: translateY(2rem); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
     }
 
     /* ========================================================
