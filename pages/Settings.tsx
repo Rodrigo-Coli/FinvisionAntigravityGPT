@@ -44,23 +44,26 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { DateUtils } from '../lib/dateUtils';
 import { requestNotificationPermission, showLocalNotification, subscribeUserToPush } from '../lib/pushUtils';
+import { useToast } from '../contexts/ToastContext';
 
 export const ensureInvestmentCategoriesAndSubcategories = async (userId: string) => {
   if (!supabase) return;
   try {
-    // 1. Handle EXPENSE category
-    const { data: expCat } = await supabase
+    // 1. Get existing 'Investimento' categories
+    const { data: existingCats } = await supabase
       .from('categories')
-      .select('id')
+      .select('id, name, type')
       .eq('user_id', userId)
       .eq('name', 'Investimento')
-      .eq('type', 'EXPENSE')
-      .eq('is_archived', false)
-      .maybeSingle();
+      .eq('is_archived', false);
 
-    let expCatId = expCat?.id;
-    if (!expCatId) {
-      const { data: newExpCat, error } = await supabase
+    const cats = existingCats || [];
+    let expCat = cats.find((c: any) => c.type === 'EXPENSE');
+    let incCat = cats.find((c: any) => c.type === 'INCOME');
+
+    // Create Expense category if missing
+    if (!expCat) {
+      const { data: newExp, error } = await supabase
         .from('categories')
         .insert({
           user_id: userId,
@@ -71,43 +74,12 @@ export const ensureInvestmentCategoriesAndSubcategories = async (userId: string)
         })
         .select('id')
         .single();
-      if (!error && newExpCat) {
-        expCatId = newExpCat.id;
-      }
+      if (!error && newExp) expCat = { id: newExp.id, name: 'Investimento', type: 'EXPENSE' };
     }
 
-    if (expCatId) {
-      // Ensure "Aplicações" subcategory exists under EXPENSE Investimento
-      const { data: sub1 } = await supabase
-        .from('subcategories')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('category_id', expCatId)
-        .eq('name', 'Aplicações')
-        .maybeSingle();
-
-      if (!sub1?.id) {
-        await supabase.from('subcategories').insert({
-          user_id: userId,
-          category_id: expCatId,
-          name: 'Aplicações'
-        });
-      }
-    }
-
-    // 2. Handle INCOME category
-    const { data: incCat } = await supabase
-      .from('categories')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('name', 'Investimento')
-      .eq('type', 'INCOME')
-      .eq('is_archived', false)
-      .maybeSingle();
-
-    let incCatId = incCat?.id;
-    if (!incCatId) {
-      const { data: newIncCat, error } = await supabase
+    // Create Income category if missing
+    if (!incCat) {
+      const { data: newInc, error } = await supabase
         .from('categories')
         .insert({
           user_id: userId,
@@ -118,31 +90,47 @@ export const ensureInvestmentCategoriesAndSubcategories = async (userId: string)
         })
         .select('id')
         .single();
-      if (!error && newIncCat) {
-        incCatId = newIncCat.id;
+      if (!error && newInc) incCat = { id: newInc.id, name: 'Investimento', type: 'INCOME' };
+    }
+
+    // 2. Fetch existing subcategories under both categories
+    const activeCatIds = [];
+    if (expCat) activeCatIds.push(expCat.id);
+    if (incCat) activeCatIds.push(incCat.id);
+
+    if (activeCatIds.length === 0) return;
+
+    const { data: existingSubs } = await supabase
+      .from('subcategories')
+      .select('id, name, category_id')
+      .eq('user_id', userId)
+      .in('category_id', activeCatIds);
+
+    const subs = existingSubs || [];
+    const inserts = [];
+
+    // Check expense subcategories
+    if (expCat) {
+      const hasApp = subs.some((s: any) => s.category_id === expCat.id && s.name === 'Aplicações');
+      if (!hasApp) {
+        inserts.push({ user_id: userId, category_id: expCat.id, name: 'Aplicações' });
       }
     }
 
-    if (incCatId) {
-      // Ensure "Resgate de Capital", "Juros Recebidos", "Juros Acumulados" exist
-      const subcategoriesToEnsure = ['Resgate de Capital', 'Juros Recebidos', 'Juros Acumulados'];
-      for (const subName of subcategoriesToEnsure) {
-        const { data: sub } = await supabase
-          .from('subcategories')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('category_id', incCatId)
-          .eq('name', subName)
-          .maybeSingle();
-
-        if (!sub?.id) {
-          await supabase.from('subcategories').insert({
-            user_id: userId,
-            category_id: incCatId,
-            name: subName
-          });
+    // Check income subcategories
+    if (incCat) {
+      const requiredIncomeSubs = ['Resgate de Capital', 'Juros Recebidos', 'Juros Acumulados'];
+      for (const subName of requiredIncomeSubs) {
+        const hasSub = subs.some((s: any) => s.category_id === incCat.id && s.name === subName);
+        if (!hasSub) {
+          inserts.push({ user_id: userId, category_id: incCat.id, name: subName });
         }
       }
+    }
+
+    // Bulk insert subcategories if any is missing
+    if (inserts.length > 0) {
+      await supabase.from('subcategories').insert(inserts);
     }
   } catch (err) {
     console.error('Error ensuring investment categories/subcategories:', err);
@@ -150,6 +138,7 @@ export const ensureInvestmentCategoriesAndSubcategories = async (userId: string)
 };
 
 const SettingsPage: React.FC = () => {
+  const { toast } = useToast();
   const [activeSection, setActiveSection] = useState<'general' | 'navigation' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription'>('general');
   const { subscription, loadingSub } = useSubscription();
   const [settings, setSettings] = useState({
@@ -161,6 +150,14 @@ const SettingsPage: React.FC = () => {
     whatsapp_number: '',
     push_enabled: false
   });
+  const [editingIof, setEditingIof] = useState(2.38);
+  const [editingSpread, setEditingSpread] = useState(4.00);
+
+  useEffect(() => {
+    setEditingIof(settings.iof_rate);
+    setEditingSpread(settings.spread_rate);
+  }, [settings.iof_rate, settings.spread_rate]);
+
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
@@ -302,14 +299,32 @@ const SettingsPage: React.FC = () => {
   };
 
   const addCategory = async () => {
-    if (!newCatName || !supabase) return;
+    const trimmed = newCatName.trim();
+    if (!trimmed) {
+      toast('O nome da categoria não pode ser vazio.', 'warning');
+      return;
+    }
+    if (!supabase) return;
+
+    // Check duplicate
+    const exists = categories.some(c => c.name.trim().toLowerCase() === trimmed.toLowerCase() && c.type === categoryTab);
+    if (exists) {
+      toast('Esta categoria já existe.', 'warning');
+      return;
+    }
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user) return;
-      await supabase.from('categories').insert({ user_id: user.id, name: newCatName, type: categoryTab, color: 'bg-brand-50 text-brand-600' });
-      setNewCatName(''); setIsAddingCat(false); fetchData();
-    } catch (err) { alert('Erro ao adicionar'); }
+      await supabase.from('categories').insert({ user_id: user.id, name: trimmed, type: categoryTab, color: 'bg-brand-50 text-brand-600' });
+      setNewCatName(''); 
+      setIsAddingCat(false); 
+      fetchData();
+      toast('Categoria adicionada com sucesso!', 'success');
+    } catch (err) { 
+      toast('Erro ao adicionar categoria.', 'error');
+    }
   };
 
   const archiveCategory = async (id: string, archive: boolean = true) => {
@@ -317,17 +332,26 @@ const SettingsPage: React.FC = () => {
     try {
       await supabase.from('categories').update({ is_archived: archive }).eq('id', id);
       fetchData();
-    } catch (err) { alert(`Erro ao ${archive ? 'arquivar' : 'desarquivar'}`); }
+      toast(archive ? 'Categoria arquivada com sucesso!' : 'Categoria reativada com sucesso!', 'success');
+    } catch (err) { 
+      toast(`Erro ao ${archive ? 'arquivar' : 'desarquivar'} categoria.`, 'error');
+    }
   };
 
   const deleteCategory = async (id: string) => {
     const cat = categories.find(c => c.id === id);
     if (cat && cat.name.toLowerCase() === 'investimento') {
-      alert("A categoria 'Investimento' é essencial para as análises de alavancagem e estudos patrimoniais do FinVision e não pode ser excluída.");
+      toast("A categoria 'Investimento' é essencial para as análises e não pode ser excluída.", 'warning');
       return;
     }
     if (!supabase || !confirm('Deseja excluir permanentemente? (Transações existentes manterão o nome da categoria mas perderão o vínculo de ID)')) return;
-    try { await supabase.from('categories').delete().eq('id', id); fetchData(); } catch (err) { alert('Erro ao excluir'); }
+    try { 
+      await supabase.from('categories').delete().eq('id', id); 
+      fetchData(); 
+      toast('Categoria excluída com sucesso!', 'success');
+    } catch (err) { 
+      toast('Erro ao excluir categoria. Ela pode estar vinculada a lançamentos ativos.', 'error');
+    }
   };
 
   const startEditingCat = (cat: any) => {
@@ -335,63 +359,128 @@ const SettingsPage: React.FC = () => {
     setEditCatName(cat.name);
   };
 
-
   const saveEditCat = async () => {
-    if (!editingCatId || !editCatName || !supabase) return;
+    const trimmed = editCatName.trim();
+    if (!editingCatId || !supabase) return;
+    if (!trimmed) {
+      toast('O nome da categoria não pode ser vazio.', 'warning');
+      return;
+    }
+
     const cat = categories.find(c => c.id === editingCatId);
     if (cat && cat.name.toLowerCase() === 'investimento') {
-      alert("A categoria 'Investimento' é essencial para as análises do FinVision e não pode ser renomeada.");
+      toast("A categoria 'Investimento' é essencial para as análises do FinVision e não pode ser renomeada.", 'warning');
       setEditingCatId(null);
       return;
     }
+
+    // Check duplicate
+    const exists = categories.some(c => c.id !== editingCatId && c.name.trim().toLowerCase() === trimmed.toLowerCase() && c.type === cat?.type);
+    if (exists) {
+      toast('Esta categoria já existe.', 'warning');
+      return;
+    }
+
     try {
-      await supabase.from('categories').update({ name: editCatName }).eq('id', editingCatId);
+      await supabase.from('categories').update({ name: trimmed }).eq('id', editingCatId);
       setEditingCatId(null);
       fetchData();
-    } catch (err) { alert('Erro ao salvar'); }
+      toast('Categoria atualizada com sucesso!', 'success');
+    } catch (err) { 
+      toast('Erro ao salvar categoria.', 'error');
+    }
   };
 
   // SUBCATEGORIES CRUD
   const addSubcategory = async (categoryId: string) => {
-    if (!newSubcatName || !supabase) return;
+    const trimmed = newSubcatName.trim();
+    if (!trimmed) {
+      toast('O nome da subcategoria não pode ser vazio.', 'warning');
+      return;
+    }
+    if (!supabase) return;
+
+    // Check duplicate
+    const exists = subcategories.some(s => s.category_id === categoryId && s.name.trim().toLowerCase() === trimmed.toLowerCase());
+    if (exists) {
+      toast('Esta subcategoria já existe nesta categoria.', 'warning');
+      return;
+    }
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user) return;
-      await supabase.from('subcategories').insert({ user_id: user.id, category_id: categoryId, name: newSubcatName });
+      await supabase.from('subcategories').insert({ user_id: user.id, category_id: categoryId, name: trimmed });
       setNewSubcatName('');
       fetchData();
-    } catch (err) { alert('Erro ao adicionar subcategoria'); }
+      toast('Subcategoria adicionada com sucesso!', 'success');
+    } catch (err) { 
+      toast('Erro ao adicionar subcategoria.', 'error');
+    }
   };
-
 
   const deleteSubcategory = async (id: string) => {
     const sub = subcategories.find(s => s.id === id);
     if (sub && ['juros recebidos', 'juros acumulados', 'aplicações', 'aplicacoes', 'resgate de capital'].includes(sub.name.toLowerCase())) {
-      alert(`A subcategoria '${sub.name}' é essencial para os estudos de fluxo de caixa e acompanhamento de investimentos e não pode ser excluída.`);
+      toast(`A subcategoria '${sub.name}' é essencial para o sistema e não pode ser excluída.`, 'warning');
       return;
     }
     if (!supabase || !confirm('Deseja excluir permanentemente a subcategoria?')) return;
-    try { await supabase.from('subcategories').delete().eq('id', id); fetchData(); } catch (err) { alert('Erro ao excluir subcategoria'); }
+    try { 
+      await supabase.from('subcategories').delete().eq('id', id); 
+      fetchData(); 
+      toast('Subcategoria excluída com sucesso!', 'success');
+    } catch (err) { 
+      toast('Erro ao excluir subcategoria.', 'error');
+    }
   };
 
   const saveEditSubcat = async () => {
-    if (!editingSubcatId || !editSubcatName || !supabase) return;
+    const trimmed = editSubcatName.trim();
+    if (!editingSubcatId || !supabase) return;
+    if (!trimmed) {
+      toast('O nome da subcategoria não pode ser vazio.', 'warning');
+      return;
+    }
+
     const sub = subcategories.find(s => s.id === editingSubcatId);
     if (sub && ['juros recebidos', 'juros acumulados', 'aplicações', 'aplicacoes', 'resgate de capital'].includes(sub.name.toLowerCase())) {
-      alert(`A subcategoria '${sub.name}' é essencial para o sistema e não pode ser renomeada.`);
+      toast(`A subcategoria '${sub.name}' é essencial para o sistema e não pode ser renomeada.`, 'warning');
       setEditingSubcatId(null);
       return;
     }
+
+    // Check duplicate
+    const exists = subcategories.some(s => s.id !== editingSubcatId && s.category_id === sub?.category_id && s.name.trim().toLowerCase() === trimmed.toLowerCase());
+    if (exists) {
+      toast('Esta subcategoria já existe nesta categoria.', 'warning');
+      return;
+    }
+
     try {
-      await supabase.from('subcategories').update({ name: editSubcatName }).eq('id', editingSubcatId);
+      await supabase.from('subcategories').update({ name: trimmed }).eq('id', editingSubcatId);
       setEditingSubcatId(null);
       fetchData();
-    } catch (err) { alert('Erro ao salvar subcategoria'); }
+      toast('Subcategoria atualizada com sucesso!', 'success');
+    } catch (err) { 
+      toast('Erro ao salvar subcategoria.', 'error');
+    }
   };
 
   const updateSetting = async (key: string, value: any) => {
     if (!supabase) return;
+    
+    // Sanitizar número do WhatsApp
+    if (key === 'whatsapp_number') {
+      const digitsOnly = value.replace(/\D/g, '');
+      let formatted = digitsOnly;
+      if (formatted.length >= 10 && formatted.length <= 11 && !formatted.startsWith('55')) {
+        formatted = '55' + formatted;
+      }
+      value = formatted;
+    }
+
     const previousSettings = { ...settings };
     setSettings(prev => ({ ...prev, [key]: value }));
     try {
@@ -400,30 +489,57 @@ const SettingsPage: React.FC = () => {
       if (!user) return;
       const { error } = await supabase.from('user_settings').upsert({ user_id: user.id, [key]: value, updated_at: DateUtils.getNow().toISOString() });
       if (error) throw error;
+      toast('Configuração salva com sucesso!', 'success');
     } catch (err) { 
       setSettings(previousSettings); 
       console.error(`Erro ao atualizar configuração [${key}]:`, err);
-      alert('Não foi possível salvar a alteração no banco de dados. Por favor, verifique sua conexão.');
+      toast('Não foi possível salvar a alteração. Verifique sua conexão.', 'error');
     }
   };
 
   const addEntity = async () => {
-    if (!newEntityName || !supabase) return;
+    const trimmed = newEntityName.trim();
+    if (!trimmed) {
+      toast('O nome do perfil não pode ser vazio.', 'warning');
+      return;
+    }
+    if (!supabase) return;
+
+    // Check duplicate
+    const exists = entities.some(e => e.name.trim().toLowerCase() === trimmed.toLowerCase());
+    if (exists) {
+      toast('Este perfil já existe.', 'warning');
+      return;
+    }
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user) return;
-      await supabase.from('entities').upsert({ user_id: user.id, name: newEntityName }, { onConflict: 'user_id, name' });
-      setNewEntityName(''); setIsAddingEntity(false); fetchData();
-    } catch (err) { alert('Erro ao adicionar'); }
+      await supabase.from('entities').upsert({ user_id: user.id, name: trimmed }, { onConflict: 'user_id, name' });
+      setNewEntityName(''); 
+      setIsAddingEntity(false); 
+      fetchData();
+      toast('Perfil adicionado com sucesso!', 'success');
+    } catch (err) { 
+      toast('Erro ao adicionar perfil.', 'error');
+    }
   };
 
   const deleteEntity = async (id: string, name: string) => {
+    if (name === 'Pessoal') {
+      toast('O perfil padrão "Pessoal" é essencial para o sistema e não pode ser excluído.', 'warning');
+      return;
+    }
     if (!supabase || !confirm(`Deseja excluir o perfil "${name}"? Registros existentes não serão alterados.`)) return;
     try {
-      await supabase.from('entities').delete().eq('id', id);
+      const { error } = await supabase.from('entities').delete().eq('id', id);
+      if (error) throw error;
       fetchData();
-    } catch (err) { alert('Erro ao excluir'); }
+      toast('Perfil excluído com sucesso!', 'success');
+    } catch (err) { 
+      toast('Erro ao excluir perfil. Ele pode estar vinculado a contas ou transações ativas. Considere arquivá-lo.', 'error');
+    }
   };
 
   const archiveEntity = async (id: string, archive: boolean = true) => {
@@ -431,7 +547,10 @@ const SettingsPage: React.FC = () => {
     try {
       await supabase.from('entities').update({ is_archived: archive }).eq('id', id);
       fetchData();
-    } catch (err) { alert(`Erro ao ${archive ? 'arquivar' : 'desarquivar'}`); }
+      toast(archive ? 'Perfil arquivado com sucesso!' : 'Perfil reativado com sucesso!', 'success');
+    } catch (err) { 
+      toast(`Erro ao ${archive ? 'arquivar' : 'desarquivar'} perfil.`, 'error');
+    }
   };
 
   const toggleEntityTotals = async (id: string, currentStatus: boolean) => {
@@ -439,7 +558,10 @@ const SettingsPage: React.FC = () => {
     try {
       await supabase.from('entities').update({ include_in_totals: !currentStatus }).eq('id', id);
       fetchData();
-    } catch (err) { alert('Erro ao atualizar configuração do perfil'); }
+      toast('Configuração de perfil atualizada!', 'success');
+    } catch (err) { 
+      toast('Erro ao atualizar configuração do perfil.', 'error');
+    }
   };
 
   const menuItems = [
@@ -459,25 +581,31 @@ const SettingsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Ajustes do Sistema</h1>
-          <p className="text-sm text-slate-400 font-medium">Configurações globais, metadados e infraestrutura.</p>
+          <p className="text-sm text-slate-500 font-medium">Configurações globais, metadados e infraestrutura.</p>
         </div>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-10">
-        {/* SIDEBAR NAVIGATION — Dropdown on mobile, buttons on desktop */}
+        {/* SIDEBAR NAVIGATION — Horizontal pills on mobile, buttons on desktop */}
         <aside className="w-full lg:w-72 shrink-0">
-          {/* Mobile: Dropdown select */}
-          <div className="block lg:hidden">
-            <select
-              value={activeSection}
-              onChange={e => setActiveSection(e.target.value as any)}
-              className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 outline-none shadow-sm appearance-none cursor-pointer"
-              style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 16px center' }}
-            >
+          {/* Mobile: Horizontal scrollable Pill Tabs */}
+          <div className="block lg:hidden overflow-x-auto scrollbar-none py-2 border-b border-slate-100 -mx-4 px-4">
+            <div className="flex gap-2.5 whitespace-nowrap">
               {menuItems.map(item => (
-                <option key={item.id} value={item.id}>{item.label}</option>
+                <button
+                  key={item.id}
+                  onClick={() => setActiveSection(item.id as any)}
+                  className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all border ${
+                    activeSection === item.id
+                      ? 'bg-brand-50 text-brand-700 border-brand-100 shadow-sm font-black'
+                      : 'bg-white text-slate-500 hover:bg-slate-50 border-slate-100'
+                  }`}
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
           {/* Desktop: Full sidebar buttons */}
           <div className="hidden lg:flex flex-col gap-2">
@@ -486,10 +614,11 @@ const SettingsPage: React.FC = () => {
                 {item.divider && <div className="h-px bg-slate-100 my-4 mx-4"></div>}
                 <button
                   onClick={() => setActiveSection(item.id as any)}
-                  className={`flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-bold uppercase tracking-widest transition-all whitespace-nowrap ${activeSection === item.id
-                    ? 'bg-brand-900 text-white shadow-xl shadow-slate-200'
-                    : 'bg-white text-slate-400 hover:bg-slate-50 border border-slate-100'
-                    }`}
+                  className={`flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-bold uppercase tracking-widest transition-all border whitespace-nowrap ${
+                    activeSection === item.id
+                      ? 'bg-brand-50 text-brand-700 font-black border-brand-100 shadow-sm'
+                      : 'bg-white text-slate-500 hover:bg-slate-50 border-slate-100'
+                  }`}
                 >
                   {item.icon}
                   {item.label}
@@ -575,14 +704,14 @@ const SettingsPage: React.FC = () => {
             <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm p-10 space-y-10">
               <div className="space-y-2">
                 <h2 className="text-xl font-bold text-slate-900 italic">Interface e Alertas</h2>
-                <p className="text-sm text-slate-400 font-medium">Ajuste como o FinVision interage com você.</p>
+                <p className="text-sm text-slate-500 font-medium">Ajuste como o FinVision interage com você.</p>
               </div>
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">
                   <div>
                     <p className="font-bold text-slate-900">Notificações por Email</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Vencimentos e alertas críticos.</p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Vencimentos e alertas críticos.</p>
                   </div>
                   <button onClick={() => updateSetting('email_notifications', !settings.email_notifications)} className={`w-14 h-8 rounded-full p-1 transition-all ${settings.email_notifications ? 'bg-brand-600' : 'bg-slate-200'}`}>
                     <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${settings.email_notifications ? 'translate-x-6' : 'translate-x-0'}`} />
@@ -592,7 +721,7 @@ const SettingsPage: React.FC = () => {
                   <div className="flex flex-col md:flex-row md:items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all gap-4">
                   <div>
                     <p className="font-bold text-slate-900 flex items-center gap-2"><Smartphone size={16} /> Notificações via WhatsApp</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Lembretes de faturas e vencimentos financeiros automáticos.</p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Lembretes de faturas e vencimentos financeiros automáticos.</p>
                   </div>
                   <div className="flex items-center gap-4">
                     {settings.whatsapp_enabled && (
@@ -614,7 +743,7 @@ const SettingsPage: React.FC = () => {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-bold text-slate-900 flex items-center gap-2"><BellRing size={16} /> Notificações do Dispositivo</p>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Alertas de vencimentos, faturas e recebimentos.</p>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Alertas de vencimentos, faturas e recebimentos.</p>
                     </div>
                     <button onClick={async () => {
                       const newStatus = !settings.push_enabled;
@@ -685,7 +814,7 @@ const SettingsPage: React.FC = () => {
                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">
                   <div>
                     <p className="font-bold text-slate-900">Modo Dark Automático</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Acompanha o sistema operacional.</p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Acompanha o sistema operacional.</p>
                   </div>
                   <button onClick={() => updateSetting('auto_dark_mode', !settings.auto_dark_mode)} className={`w-14 h-8 rounded-full p-1 transition-all ${settings.auto_dark_mode ? 'bg-brand-600' : 'bg-slate-200'}`}>
                     <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${settings.auto_dark_mode ? 'translate-x-6' : 'translate-x-0'}`} />
@@ -699,14 +828,14 @@ const SettingsPage: React.FC = () => {
             <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm p-10 space-y-10 animate-in slide-in-from-bottom-4 duration-500">
               <div className="space-y-2">
                 <h2 className="text-xl font-bold text-slate-900 italic">Barra de Navegação</h2>
-                <p className="text-sm text-slate-400 font-medium">Escolha o que aparece na sua barra inferior (Mobile).</p>
+                <p className="text-sm text-slate-500 font-medium">Escolha o que aparece na sua barra inferior (Mobile).</p>
               </div>
 
               <div className="space-y-6">
                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">
                   <div>
                     <p className="font-bold text-slate-900">Exibir Barra Inferior</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Ativa ou oculta totalmente a barra flutuante.</p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Ativa ou oculta totalmente a barra flutuante.</p>
                   </div>
                   <button 
                     onClick={async () => {
@@ -722,7 +851,7 @@ const SettingsPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-4">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Atalhos Visíveis</p>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-2">Atalhos Visíveis</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[
                       { id: 'home', label: 'Início', icon: <Home size={18} /> },
@@ -748,7 +877,7 @@ const SettingsPage: React.FC = () => {
                             setProfile({ ...profile, preferences: newPrefs });
                             await supabase!.from('profiles').update({ preferences: newPrefs }).eq('id', profile.id);
                           }}
-                          className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${isSelected ? 'bg-brand-50 border-brand-100 text-brand-900' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}
+                          className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${isSelected ? 'bg-brand-50 border-brand-100 text-brand-900' : 'bg-white border-slate-100 text-slate-500 hover:border-slate-200'}`}
                         >
                           <div className="flex items-center gap-3">
                             {item.icon}
@@ -771,12 +900,12 @@ const SettingsPage: React.FC = () => {
               <div className="p-6 md:p-10 border-b border-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-slate-50/20">
                 <div className="space-y-1">
                   <h2 className="text-xl font-bold text-slate-900">Categorias</h2>
-                  <p className="text-sm text-slate-400 font-medium">Lançamentos do histórico.</p>
+                  <p className="text-sm text-slate-500 font-medium">Lançamentos do histórico.</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
                   <div className="relative flex-1 md:w-64">
-                    <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
+                    <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
                       placeholder="Buscar categoria..."
@@ -787,13 +916,13 @@ const SettingsPage: React.FC = () => {
                   </div>
                   <button
                     onClick={() => setShowArchived(prev => !prev)}
-                    className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${showArchived ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${showArchived ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}
                   >
                     {showArchived ? 'Ocultar Arquivadas' : 'Ver Arquivadas'}
                   </button>
                   <div className="flex bg-slate-100 p-1 rounded-xl flex-1 md:flex-none">
-                    <button onClick={() => setCategoryTab('INCOME')} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-xs font-bold transition-all ${categoryTab === 'INCOME' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Receitas</button>
-                    <button onClick={() => setCategoryTab('EXPENSE')} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-xs font-bold transition-all ${categoryTab === 'EXPENSE' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Despesas</button>
+                    <button onClick={() => setCategoryTab('INCOME')} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-xs font-bold transition-all ${categoryTab === 'INCOME' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-600'}`}>Receitas</button>
+                    <button onClick={() => setCategoryTab('EXPENSE')} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-xs font-bold transition-all ${categoryTab === 'EXPENSE' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-600'}`}>Despesas</button>
                   </div>
                   <button onClick={() => setIsAddingCat(true)} className="px-6 py-3 bg-brand-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-xl hover:bg-brand-600 transition-all flex items-center gap-2"><Plus size={16} /> Novo</button>
                 </div>
@@ -803,7 +932,7 @@ const SettingsPage: React.FC = () => {
                   <div className="p-6 md:p-10 flex gap-4 bg-brand-50/30">
                     <input autoFocus className="flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm" placeholder={`Nome da categoria de ${categoryTab === 'INCOME' ? 'receita' : 'despesa'}...`} value={newCatName} onChange={e => setNewCatName(e.target.value)} />
                     <button onClick={addCategory} className="w-16 h-16 bg-brand-600 text-white rounded-2xl flex items-center justify-center shadow-lg transition-transform hover:scale-105"><Check size={24} /></button>
-                    <button onClick={() => setIsAddingCat(false)} className="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-slate-200"><XCircle size={24} /></button>
+                    <button onClick={() => setIsAddingCat(false)} className="w-16 h-16 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200"><XCircle size={24} /></button>
                   </div>
                 )}
                 {categories
@@ -824,12 +953,12 @@ const SettingsPage: React.FC = () => {
                                 onKeyDown={e => e.key === 'Enter' && saveEditCat()}
                               />
                               <button onClick={saveEditCat} className="p-2 bg-emerald-500 text-white rounded-xl"><Check size={16} /></button>
-                              <button onClick={() => setEditingCatId(null)} className="p-2 bg-slate-100 text-slate-400 rounded-xl"><XCircle size={16} /></button>
+                              <button onClick={() => setEditingCatId(null)} className="p-2 bg-slate-100 text-slate-500 rounded-xl"><XCircle size={16} /></button>
                             </div>
                           ) : (
                             <span className="font-bold text-slate-900 uppercase tracking-widest text-sm flex items-center gap-2">
                               {cat.name}
-                              <ChevronRight size={16} className={`text-slate-300 transition-transform ${expandedCat === cat.id ? 'rotate-90' : ''}`} />
+                              <ChevronRight size={16} className={`text-slate-400 transition-transform ${expandedCat === cat.id ? 'rotate-90' : ''}`} />
                             </span>
                           )}
                         </div>
@@ -860,21 +989,21 @@ const SettingsPage: React.FC = () => {
                                       onKeyDown={e => e.key === 'Enter' && saveEditSubcat()}
                                     />
                                     <button onClick={saveEditSubcat} className="p-1.5 bg-emerald-500 text-white rounded-lg"><Check size={14} /></button>
-                                    <button onClick={() => setEditingSubcatId(null)} className="p-1.5 bg-slate-100 text-slate-400 rounded-lg"><XCircle size={14} /></button>
+                                    <button onClick={() => setEditingSubcatId(null)} className="p-1.5 bg-slate-100 text-slate-500 rounded-lg"><XCircle size={14} /></button>
                                   </div>
                                 ) : (
                                   <span className="text-xs font-bold text-slate-600 tracking-wide">{sub.name}</span>
                                 )}
                                 <div className="flex items-center gap-1">
-                                  <button onClick={() => { setEditingSubcatId(sub.id); setEditSubcatName(sub.name); }} className="p-2 text-slate-300 hover:text-brand-500 transition-colors opacity-0 group-hover/sub:opacity-100" title="Editar"><Edit3 size={14} /></button>
-                                  <button onClick={() => deleteSubcategory(sub.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover/sub:opacity-100" title="Excluir"><Trash2 size={14} /></button>
+                                  <button onClick={() => { setEditingSubcatId(sub.id); setEditSubcatName(sub.name); }} className="p-2 text-slate-400 hover:text-brand-500 transition-colors opacity-0 group-hover/sub:opacity-100" title="Editar"><Edit3 size={14} /></button>
+                                  <button onClick={() => deleteSubcategory(sub.id)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors opacity-0 group-hover/sub:opacity-100" title="Excluir"><Trash2 size={14} /></button>
                                 </div>
                               </div>
                             ))}
 
                             <div className="flex gap-2 mt-2 px-4 max-w-sm">
                               <input
-                                className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none placeholder:text-slate-300 focus:border-brand-500/30 transition-colors"
+                                className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none placeholder:text-slate-400 focus:border-brand-500/30 transition-colors"
                                 placeholder="Nova subcategoria..."
                                 value={newSubcatName}
                                 onChange={e => setNewSubcatName(e.target.value)}
@@ -888,7 +1017,7 @@ const SettingsPage: React.FC = () => {
                     </div>
                   ))}
                 {categories.filter(c => (c.type === categoryTab || (!c.type && categoryTab === 'EXPENSE'))).filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase())).length === 0 && !isAddingCat && (
-                  <div className="p-10 text-center text-slate-400 text-sm font-medium">Nenhuma categoria encontrada.</div>
+                  <div className="p-10 text-center text-slate-500 text-sm font-medium">Nenhuma categoria encontrada.</div>
                 )}
               </div>
             </div>
@@ -898,11 +1027,11 @@ const SettingsPage: React.FC = () => {
             <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden border-b-4 border-b-slate-100">
               <div className="p-10 border-b border-slate-50 space-y-1 bg-slate-50/20">
                 <h2 className="text-xl font-bold text-slate-900 italic">Estabelecimentos</h2>
-                <p className="text-sm text-slate-400 font-medium">Mapeamento automático de lojas extraídas via IA.</p>
+                <p className="text-sm text-slate-500 font-medium">Mapeamento automático de lojas extraídas via IA.</p>
               </div>
               <div className="w-full overflow-x-auto">
                 <table className="w-full min-w-[700px]">
-                  <thead className="bg-slate-50 text-[10px] font-bold uppercase text-slate-300 tracking-[0.2em] border-b border-slate-50">
+                  <thead className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] border-b border-slate-50">
                     <tr>
                       <th className="px-10 py-6 text-left">Marca / Loja</th>
                       <th className="px-10 py-6 text-left">Segmento</th>
@@ -924,10 +1053,10 @@ const SettingsPage: React.FC = () => {
                           </select>
                         </td>
                         <td className="px-10 py-8">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{DateUtils.formatDisplayDate(est.lastActive)}</span>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{DateUtils.formatDisplayDate(est.lastActive)}</span>
                         </td>
                         <td className="px-10 py-8 text-right">
-                          <span className="text-xs font-bold text-slate-400">{est.count} TX</span>
+                          <span className="text-xs font-bold text-slate-500">{est.count} TX</span>
                         </td>
                       </tr>
                     ))}
@@ -944,25 +1073,37 @@ const SettingsPage: React.FC = () => {
                   <div className="w-16 h-16 bg-brand-900 text-white rounded-[24px] flex items-center justify-center shadow-xl"><Percent size={32} /></div>
                   <div>
                     <h2 className="text-2xl font-bold text-slate-900 italic">Conversão</h2>
-                    <p className="text-sm text-slate-400 font-medium">Parâmetros para câmbio internacional.</p>
+                    <p className="text-sm text-slate-500 font-medium">Parâmetros para câmbio internacional.</p>
                   </div>
                 </div>
 
                 <div className="space-y-6">
                   <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-50">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 block">IOF em Compras Externas</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 block">IOF em Compras Externas</label>
                     <div className="flex items-center gap-2">
-                      <input type="number" step="0.01" className="bg-transparent font-bold text-4xl text-slate-900 w-32 outline-none" value={settings.iof_rate} onChange={e => updateSetting('iof_rate', parseFloat(e.target.value))} />
-                      <span className="text-2xl font-bold text-slate-300">%</span>
+                      <input type="number" step="0.01" className="bg-transparent font-bold text-4xl text-slate-900 w-32 outline-none" value={editingIof} onChange={e => setEditingIof(parseFloat(e.target.value) || 0)} />
+                      <span className="text-2xl font-bold text-slate-500">%</span>
                     </div>
                   </div>
                   <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-50">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 block">Spread Bancário (Média)</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 block">Spread Bancário (Média)</label>
                     <div className="flex items-center gap-2">
-                      <input type="number" step="0.01" className="bg-transparent font-bold text-4xl text-slate-900 w-32 outline-none" value={settings.spread_rate} onChange={e => updateSetting('spread_rate', parseFloat(e.target.value))} />
-                      <span className="text-2xl font-bold text-slate-300">%</span>
+                      <input type="number" step="0.01" className="bg-transparent font-bold text-4xl text-slate-900 w-32 outline-none" value={editingSpread} onChange={e => setEditingSpread(parseFloat(e.target.value) || 0)} />
+                      <span className="text-2xl font-bold text-slate-500">%</span>
                     </div>
                   </div>
+
+                  {(editingIof !== settings.iof_rate || editingSpread !== settings.spread_rate) && (
+                    <button
+                      onClick={async () => {
+                        await updateSetting('iof_rate', editingIof);
+                        await updateSetting('spread_rate', editingSpread);
+                      }}
+                      className="w-full py-4 bg-brand-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-brand-700 transition-all shadow-lg shadow-brand-500/20"
+                    >
+                      Salvar Taxas
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -987,12 +1128,12 @@ const SettingsPage: React.FC = () => {
               <div className="p-6 md:p-10 border-b border-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-slate-50/20">
                 <div className="space-y-1">
                   <h2 className="text-xl font-bold text-slate-900 italic">Perfis e Donos</h2>
-                  <p className="text-sm text-slate-400 font-medium">Gestão global de perfis de gastos.</p>
+                  <p className="text-sm text-slate-500 font-medium">Gestão global de perfis de gastos.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
                   <button
                     onClick={() => setShowArchived(prev => !prev)}
-                    className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${showArchived ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${showArchived ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}
                   >
                     {showArchived ? 'Ocultar Arquivadas' : 'Ver Arquivadas'}
                   </button>
@@ -1006,20 +1147,20 @@ const SettingsPage: React.FC = () => {
                   <div className="p-10 flex gap-4 bg-brand-50/30">
                     <input autoFocus className="flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm" placeholder="Nome do perfil (Ex: Família, Empresa, Pessoal)..." value={newEntityName} onChange={e => setNewEntityName(e.target.value)} />
                     <button onClick={addEntity} className="w-16 h-16 bg-brand-600 text-white rounded-2xl flex items-center justify-center shadow-lg transition-transform hover:scale-105"><Check size={24} /></button>
-                    <button onClick={() => setIsAddingEntity(false)} className="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-slate-200"><XCircle size={24} /></button>
+                    <button onClick={() => setIsAddingEntity(false)} className="w-16 h-16 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200"><XCircle size={24} /></button>
                   </div>
                 )}
                 {entities.map((ent) => (
                   <div key={ent.id} className={`p-8 flex items-center justify-between group hover:bg-slate-50/50 transition-all ${ent.is_archived ? 'opacity-50 grayscale' : ''}`}>
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-slate-100 text-slate-400 rounded-xl flex items-center justify-center group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors">
+                      <div className="w-10 h-10 bg-slate-100 text-slate-500 rounded-xl flex items-center justify-center group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors">
                         <Building2 size={20} />
                       </div>
                       <span className="font-bold text-slate-900 uppercase tracking-widest text-sm">{ent.name}</span>
                     </div>
                     <div className="flex items-center gap-6">
                       <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-2xl border border-slate-100/50 shadow-sm">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contar nos Totais</span>
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Contar nos Totais</span>
                         <button
                           onClick={() => toggleEntityTotals(ent.id, ent.include_in_totals !== false)}
                           className={`w-11 h-6 rounded-full p-0.5 transition-all flex items-center ${ent.include_in_totals !== false ? 'bg-brand-600' : 'bg-slate-200'}`}
@@ -1046,7 +1187,7 @@ const SettingsPage: React.FC = () => {
                   </div>
                 ))}
                 {entities.length === 0 && !isAddingEntity && (
-                  <div className="p-10 text-center text-slate-400 text-sm font-medium">Nenhum perfil cadastrado.</div>
+                  <div className="p-10 text-center text-slate-500 text-sm font-medium">Nenhum perfil cadastrado.</div>
                 )}
               </div>
             </div>
@@ -1060,9 +1201,9 @@ const SettingsPage: React.FC = () => {
                     <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center border border-indigo-100"><Database size={24} /></div>
                     <h3 className="font-bold text-slate-900 text-xl tracking-tight">Infraestrutura</h3>
                   </div>
-                  <p className="text-slate-400 font-medium leading-relaxed italic">Seus dados estão sincronizados via <span className="font-bold text-slate-600 uppercase text-xs tracking-widest">FinVision Vault™</span> com tecnologia de banco de dados inteligente.</p>
+                  <p className="text-slate-500 font-medium leading-relaxed italic">Seus dados estão sincronizados via <span className="font-bold text-slate-600 uppercase text-xs tracking-widest">FinVision Vault™</span> com tecnologia de banco de dados inteligente.</p>
 
-                  <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border ${isSupabaseConfigured ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
+                  <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border ${isSupabaseConfigured ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
                     {isSupabaseConfigured ? <Check size={14} /> : <XCircle size={14} />}
                     {isSupabaseConfigured ? 'Vault Conectado' : 'Acesso Local'}
                   </div>
@@ -1070,11 +1211,11 @@ const SettingsPage: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-4 w-full md:w-auto">
                   <div className="p-8 bg-slate-50 rounded-[32px] text-center space-y-2">
-                    <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Cache</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cache</p>
                     <p className="text-2xl font-bold text-slate-900">2.4MB</p>
                   </div>
                   <div className="p-8 bg-slate-50 rounded-[32px] text-center space-y-2">
-                    <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Sinc</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Sinc</p>
                     <p className="text-2xl font-bold text-emerald-600">OK</p>
                   </div>
                 </div>
@@ -1085,7 +1226,7 @@ const SettingsPage: React.FC = () => {
                 <div className="relative z-10 space-y-8">
                   <div className="space-y-2">
                     <h2 className="text-4xl font-bold tracking-tighter italic">Exportação Universal</h2>
-                    <p className="text-slate-400 text-lg max-w-md">Baixe todo seu histórico financeiro e configurações em um arquivo portátil.</p>
+                    <p className="text-slate-500 text-lg max-w-md">Baixe todo seu histórico financeiro e configurações em um arquivo portátil.</p>
                   </div>
                   <button className="flex items-center gap-3 px-10 py-5 bg-white text-slate-900 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl hover:bg-brand-400 hover:text-white transition-all">
                     <Download size={20} /> Iniciar Backup Completo
