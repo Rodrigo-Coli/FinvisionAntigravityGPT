@@ -12,7 +12,12 @@ export default function DemoBanner() {
   const exitDemo = async () => {
     if (!supabase) return;
     localStorage.removeItem('is_finvision_demo');
-    await supabase.auth.signOut();
+    localStorage.removeItem('finvision_cached_profile');
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn('Erro ao deslogar demo do servidor, prosseguindo localmente:', e);
+    }
     window.location.href = '/#/signup';
   };
 
