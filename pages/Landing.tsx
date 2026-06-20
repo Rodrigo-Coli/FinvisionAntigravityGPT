@@ -133,16 +133,16 @@ export default function Landing() {
           </div>
 
           <div className="hidden md:flex items-center gap-10">
-            <button onClick={() => scrollToSection('inteligencia')} className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest">A Mágica da IA</button>
-            <button onClick={() => scrollToSection('ecosystem')} className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest">Ecossistema</button>
-            <button onClick={() => scrollToSection('pricing')} className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest">Licenças</button>
+            <a href="#inteligencia" onClick={(e) => { e.preventDefault(); scrollToSection('inteligencia'); }} className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest">A Mágica da IA</a>
+            <a href="#ecosystem" onClick={(e) => { e.preventDefault(); scrollToSection('ecosystem'); }} className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest">Ecossistema</a>
+            <a href="#pricing" onClick={(e) => { e.preventDefault(); scrollToSection('pricing'); }} className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest">Licenças</a>
           </div>
 
           <div className="hidden md:flex items-center gap-6">
-            <button onClick={() => navigate('/login')} className="text-xs font-bold text-slate-300 hover:text-white uppercase tracking-widest transition-colors">Acessar Conta</button>
-            <button onClick={() => navigate('/demo')} className="relative group text-xs font-bold text-slate-900 bg-white px-8 py-3 rounded-xl overflow-hidden hover:scale-105 active:scale-95 transition-all shadow-[0_0_40px_-5px_rgba(255,255,255,0.4)]">
+            <Link to="/login" className="text-xs font-bold text-slate-300 hover:text-white uppercase tracking-widest transition-colors">Acessar Conta</Link>
+            <Link to="/demo" className="relative group text-xs font-bold text-slate-900 bg-white px-8 py-3 rounded-xl overflow-hidden hover:scale-105 active:scale-95 transition-all shadow-[0_0_40px_-5px_rgba(255,255,255,0.4)] flex items-center justify-center">
               <span className="relative z-10 flex items-center gap-2 uppercase tracking-widest">Testar Demo <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" /></span>
-            </button>
+            </Link>
           </div>
 
           <button className="md:hidden text-white p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
@@ -167,14 +167,14 @@ export default function Landing() {
           </div>
           
           <div className="flex flex-col items-center gap-8 w-full px-8 mt-16">
-            <button onClick={() => { setMobileMenuOpen(false); scrollToSection('inteligencia'); }} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">A Mágica da IA</button>
-            <button onClick={() => { setMobileMenuOpen(false); scrollToSection('ecosystem'); }} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">Ecossistema</button>
-            <button onClick={() => { setMobileMenuOpen(false); scrollToSection('pricing'); }} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">Licenças</button>
+            <a href="#inteligencia" onClick={(e) => { e.preventDefault(); setMobileMenuOpen(false); scrollToSection('inteligencia'); }} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">A Mágica da IA</a>
+            <a href="#ecosystem" onClick={(e) => { e.preventDefault(); setMobileMenuOpen(false); scrollToSection('ecosystem'); }} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">Ecossistema</a>
+            <a href="#pricing" onClick={(e) => { e.preventDefault(); setMobileMenuOpen(false); scrollToSection('pricing'); }} className="text-xl font-bold text-slate-300 hover:text-white uppercase tracking-widest text-center">Licenças</a>
             
             <div className="w-full h-px bg-white/10 my-4" />
             
-            <button onClick={() => { setMobileMenuOpen(false); navigate('/login'); }} className="w-full py-4 text-lg font-bold text-white uppercase tracking-widest bg-white/5 rounded-2xl border border-white/10">Acessar Conta</button>
-            <button onClick={() => { setMobileMenuOpen(false); navigate('/demo'); }} className="w-full py-5 bg-white text-slate-900 rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl">Testar Demo</button>
+            <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="w-full py-4 text-lg font-bold text-white uppercase tracking-widest bg-white/5 rounded-2xl border border-white/10 flex items-center justify-center">Acessar Conta</Link>
+            <Link to="/demo" onClick={() => setMobileMenuOpen(false)} className="w-full py-5 bg-white text-slate-900 rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl flex items-center justify-center">Testar Demo</Link>
           </div>
         </div>
       )}
@@ -201,12 +201,12 @@ export default function Landing() {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-6 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-300">
-              <button onClick={() => navigate('/demo')} className="w-full sm:w-auto px-10 py-5 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[0_0_50px_-10px_rgba(255,255,255,0.5)] hover:bg-slate-100 hover:scale-105 transition-all">
+              <Link to="/demo" className="w-full sm:w-auto px-10 py-5 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[0_0_50px_-10px_rgba(255,255,255,0.5)] hover:bg-slate-100 hover:scale-105 transition-all">
                 Testar Demo Grátis <ArrowRight size={18} />
-              </button>
-              <button onClick={() => scrollToSection('pricing')} className="w-full sm:w-auto px-10 py-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 backdrop-blur-md hover:border-brand-500/50 transition-all">
+              </Link>
+              <a href="#pricing" onClick={(e) => { e.preventDefault(); scrollToSection('pricing'); }} className="w-full sm:w-auto px-10 py-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 backdrop-blur-md hover:border-brand-500/50 transition-all">
                 Visualizar Licenças
-              </button>
+              </a>
             </div>
             <p className="mt-6 text-slate-400 font-bold text-[10px] uppercase tracking-widest animate-in fade-in delay-700">* Sem cartão de crédito. Ambiente lotado de dados reais para teste imersivo.</p>
           </div>
@@ -762,18 +762,12 @@ export default function Landing() {
                     </div>
 
                     <div>
-                      <button 
-                        onClick={() => {
-                          if (plan.price_cents > 0) {
-                            navigate(`/signup?plan=${plan.slug}`);
-                          } else {
-                            navigate('/demo');
-                          }
-                        }} 
+                      <Link 
+                        to={plan.price_cents > 0 ? `/signup?plan=${plan.slug}` : '/demo'}
                         className={`w-full py-6 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${plan.featured ? 'bg-brand-500 hover:bg-brand-400 text-white hover:scale-[1.02] shadow-xl shadow-brand-500/30' : 'bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-white/30'}`}
                       >
                         {plan.price_cents > 0 ? 'Assinar a Licença' : 'Experimentar Ferramenta'}
-                      </button>
+                      </Link>
                       <div className="text-center mt-3">
                         <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
                           ✓ Garantia incondicional de 7 dias
