@@ -897,6 +897,12 @@ ${formattedTransactions || 'Nenhuma transação registrada neste período.'}
     parts: [{ text: h.content }]
   }));
 
+  // Adicionar a pergunta atual do usuário ao final do histórico enviado à API do Gemini
+  contents.push({
+    role: 'user',
+    parts: [{ text: queryText }]
+  });
+
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: contents,
@@ -909,7 +915,8 @@ ${formattedTransactions || 'Nenhuma transação registrada neste período.'}
   const rawReply = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || 'Desculpe, não consegui obter resposta da análise agora.';
   await sendWhatsApp(phone, rawReply);
 
-  // Salvar a resposta no histórico de chat
+  // Salvar a pergunta do usuário e a resposta no histórico de chat
+  history.push({ role: 'user', content: queryText });
   history.push({ role: 'model', content: rawReply });
   await supabase.from('whatsapp_chat_sessions').upsert({
     phone: phone,
@@ -2434,6 +2441,12 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             parts: [{ text: h.content }]
           }));
 
+          // Adicionar a mensagem de chat atual do usuário
+          chatContents.push({
+            role: 'user',
+            parts: [{ text: text }]
+          });
+
           const chatResponse = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: chatContents,
@@ -2446,7 +2459,8 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           const chatReply = (chatResponse as any).text || (chatResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || op.chatReply || 'Olá! Sou a FinVision AI. Como posso te ajudar com suas finanças hoje?';
           await sendWhatsApp(phone, chatReply);
 
-          // Salvar a resposta no histórico de chat
+          // Salvar a pergunta do usuário e a resposta no histórico de chat
+          history.push({ role: 'user', content: text });
           history.push({ role: 'model', content: chatReply });
           await supabase.from('whatsapp_chat_sessions').upsert({
             phone: phone,
