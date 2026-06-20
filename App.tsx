@@ -98,10 +98,33 @@ const App: React.FC = () => {
       return;
     }
 
+    const clearSessionData = () => {
+      const keysToClear = [
+        'is_finvision_demo',
+        'is_finvision_demo_promoted',
+        'finvision_demo_tasks',
+        'finvision_demo_asked_ai',
+        'finvision_cached_profile',
+        'finvision_cached_home_txs',
+        'finvision_cached_accounts',
+        'finvision_cached_categories',
+        'finvision_cached_subcategories',
+        'finvision_cached_owners',
+        'finvision_cached_budgets',
+        'finvision_cached_goals',
+        'finvision_cached_avg_monthly_savings',
+        'finvision_cached_budget_spending'
+      ];
+      keysToClear.forEach(key => localStorage.removeItem(key));
+    };
+
     supabase.auth.getSession().then(({ data: { session } }: any) => {
       setSession(session);
       if (session?.user) fetchProfile(session.user.id, session.user.email);
-      else setLoading(false);
+      else {
+        clearSessionData();
+        setLoading(false);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
@@ -109,6 +132,7 @@ const App: React.FC = () => {
       if (session?.user) fetchProfile(session.user.id, session.user.email);
       else {
         setProfile(null);
+        clearSessionData();
         setLoading(false);
       }
     });

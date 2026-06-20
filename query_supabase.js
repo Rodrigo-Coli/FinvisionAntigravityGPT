@@ -38,7 +38,7 @@ async function query() {
         process.exit(1);
     }
 
-    const { data, error } = await supabase.from(table).select('*').limit(5);
+    const { data, error } = await supabase.from(table).select('*').limit(50);
     if (error) {
         console.error('Erro:', error.message);
         process.exit(1);

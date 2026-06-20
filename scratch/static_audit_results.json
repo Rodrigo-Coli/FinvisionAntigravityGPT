@@ -1,0 +1,879 @@
+{
+  "viewport": {
+    "ok": true,
+    "message": "Viewport is fully optimized for safe-areas and scale: \"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover\""
+  },
+  "inputs": [
+    {
+      "file": "components\\admin\\TokenCalculator.tsx",
+      "tag": "<input type=\"range\" min=\"1\" max=\"1000\" step=\"10\" value={inputs.avgScansPerMonth} \n                  onChange={(e) =>",
+      "name": "",
+      "type": "range",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\AIChat.tsx",
+      "tag": "<input\r\n                        type=\"text\"\r\n                        value={input}\r\n                        onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\assets\\RealEstateDetailModal.tsx",
+      "tag": "<input className=\"w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs\" value={name} onChange={e =>",
+      "name": "w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\assets\\RealEstateDetailModal.tsx",
+      "tag": "<input\n                                className=\"w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs\"\n                                value={item.name}\n                                onChange={(e) =>",
+      "name": "w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\assets\\RealEstateDetailModal.tsx",
+      "tag": "<input \n                                className=\"w-full h-8 px-2 bg-white border rounded-lg text-xs font-bold\" \n                                type=\"text\" \n                                value={newBookingDesc} \n                                onChange={e =>",
+      "name": "w-full h-8 px-2 bg-white border rounded-lg text-xs font-bold",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\assets\\RealEstateDetailModal.tsx",
+      "tag": "<input className=\"w-full h-9 px-3 bg-white border rounded-lg text-xs\" type=\"month\" value={filterMonth} onChange={e =>",
+      "name": "w-full h-9 px-3 bg-white border rounded-lg text-xs",
+      "type": "month",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\assets\\RealEstateDetailModal.tsx",
+      "tag": "<input required className=\"w-full h-10 px-3 bg-white border rounded-xl text-xs\" value={quickTxDescription} onChange={e =>",
+      "name": "w-full h-10 px-3 bg-white border rounded-xl text-xs",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\assets\\RealEstateWizardModal.tsx",
+      "tag": "<input className=\"w-full h-12 px-6 bg-slate-50 border rounded-2xl font-bold text-slate-900 outline-none text-sm\" value={name} onChange={e =>",
+      "name": "w-full h-12 px-6 bg-slate-50 border rounded-2xl font-bold text-slate-900 outline-none text-sm",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\banking\\AccountsSection.tsx",
+      "tag": "<input\r\n            type=\"text\"\r\n            placeholder=\"Pesquisar instituição...\"\r\n            className=\"w-full pl-11 pr-4 h-12 bg-white border border-slate-100 rounded-xl outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 text-sm font-medium transition-all\"\r\n            value={searchQuery}\r\n            onChange={(e) =>",
+      "name": "pesquisar instituição...",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\banking\\AccountsSection.tsx",
+      "tag": "<input value={institution} onChange={e =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\banking\\AccountsSection.tsx",
+      "tag": "<input type=\"color\" value={color} onChange={e =>",
+      "name": "",
+      "type": "color",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\banking\\CreditCardsSection.tsx",
+      "tag": "<input\r\n                                type=\"text\"\r\n                                placeholder=\"O que procura?\"\r\n                                value={searchQuery}\r\n                                onChange={(e) =>",
+      "name": "o que procura?",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\cards\\AddCardModal.tsx",
+      "tag": "<input\r\n                                    type=\"text\"\r\n                                    required\r\n                                    value={newName}\r\n                                    onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\cards\\AddCardModal.tsx",
+      "tag": "<input\r\n                                    type=\"text\"\r\n                                    maxLength={4}\r\n                                    required\r\n                                    value={newLast4}\r\n                                    onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\cards\\AddCardModal.tsx",
+      "tag": "<input\r\n                                        list=\"card-categories-list\"\r\n                                        value={defaultCategory}\r\n                                        onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\cards\\AddCardModal.tsx",
+      "tag": "<input\r\n                                        list=\"card-subcategories-list\"\r\n                                        value={defaultSubcategory}\r\n                                        onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\cards\\AddCardModal.tsx",
+      "tag": "<input\r\n                                    list=\"card-entities-list\"\r\n                                    value={defaultOwner}\r\n                                    onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\cards\\AddCardModal.tsx",
+      "tag": "<input\r\n                                            type=\"text\"\r\n                                            required={isAdditional}\r\n                                            value={additionalLabel}\r\n                                            onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\cards\\ManualTransactionModal.tsx",
+      "tag": "<input\r\n                                type=\"text\"\r\n                                value={txDescription}\r\n                                onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\cards\\ManualTransactionModal.tsx",
+      "tag": "<input\r\n                                        list=\"card-subcategories-list\"\r\n                                        value={txSubcategory}\r\n                                        onFocus={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\cards\\ManualTransactionModal.tsx",
+      "tag": "<input\r\n                                    type=\"text\"\r\n                                    value={txTags?.join(', ') || ''}\r\n                                    onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\cards\\TransactionList.tsx",
+      "tag": "<input\n                                                type=\"text\"\n                                                value={tx.description || ''}\n                                                onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\cards\\TransactionList.tsx",
+      "tag": "<input\n                                                type=\"text\"\n                                                value={tx.subcategory || ''}\n                                                placeholder=\"...\"\n                                                onChange={(e) =>",
+      "name": "...",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\AddTransactionModal.tsx",
+      "tag": "<input\n                                type=\"text\"\n                                value={form.description}\n                                onFocus={() =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\AddTransactionModal.tsx",
+      "tag": "<input\n                                list=\"owners-list\"\n                                value={form.ownerName}\n                                onFocus={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\AddTransactionModal.tsx",
+      "tag": "<input\n                                            type=\"text\"\n                                            autoFocus\n                                            value={newCategoryName}\n                                            onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\AddTransactionModal.tsx",
+      "tag": "<input\n                                            list=\"add-categories-list\"\n                                            value={form.category}\n                                            onFocus={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\AddTransactionModal.tsx",
+      "tag": "<input\n                                            list=\"add-subcategories-list\"\n                                            value={form.subcategory}\n                                            onFocus={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\AddTransactionModal.tsx",
+      "tag": "<input\n                                    type=\"text\"\n                                    value={form.tags?.join(', ') || ''}\n                                    onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\HistoryCharts.tsx",
+      "tag": "<input\r\n                                type=\"text\"\r\n                                value={slot.label}\r\n                                onChange={e =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\HistoryFilters.tsx",
+      "tag": "<input\r\n                                    autoFocus\r\n                                    className=\"w-full pl-8 pr-3 h-9 bg-slate-50 rounded-xl text-xs font-medium outline-none placeholder:text-slate-300 focus:ring-2 focus:ring-brand-500/10\"\r\n                                    placeholder={searchPlaceholder}\r\n                                    value={search}\r\n                                    onChange={e =>",
+      "name": "w-full pl-8 pr-3 h-9 bg-slate-50 rounded-xl text-xs font-medium outline-none placeholder:text-slate-300 focus:ring-2 focus:ring-brand-500/10",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\HistoryFilters.tsx",
+      "tag": "<input\r\n                        type=\"text\"\r\n                        placeholder=\"Buscar por descrição ou detalhe...\"\r\n                        className=\"w-full pl-11 pr-4 h-12 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 text-sm font-medium transition-all\"\r\n                        value={search}\r\n                        onChange={(e) =>",
+      "name": "buscar por descrição ou detalhe...",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\PaymentModal.tsx",
+      "tag": "<input\r\n                                type=\"text\"\r\n                                value={payAmount}\r\n                                onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\TransactionTable.tsx",
+      "tag": "<input\n                                autoFocus\n                                className=\"w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300\"\n                                placeholder={`Buscar ${txType === 'INCOME' ? 'receita' : 'despesa'}...`}\n                                value={search}\n                                onChange={e =>",
+      "name": "w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\TransactionTable.tsx",
+      "tag": "<input\n                                    autoFocus\n                                    className=\"flex-1 h-8 px-2.5 bg-brand-50 border border-brand-200 rounded-lg text-xs font-bold outline-none\"\n                                    placeholder={`Nova ${txType === 'INCOME' ? 'receita' : 'despesa'}...`}\n                                    value={newName}\n                                    onChange={e =>",
+      "name": "flex-1 h-8 px-2.5 bg-brand-50 border border-brand-200 rounded-lg text-xs font-bold outline-none",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\TransactionTable.tsx",
+      "tag": "<input\n                                autoFocus\n                                className=\"w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300\"\n                                placeholder=\"Buscar subcategoria...\"\n                                value={search}\n                                onChange={e =>",
+      "name": "w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\TransactionTable.tsx",
+      "tag": "<input\n                                autoFocus\n                                className=\"w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300\"\n                                placeholder={`Buscar ${placeholder.toLowerCase()}...`}\n                                value={search}\n                                onChange={e =>",
+      "name": "w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\TransactionTable.tsx",
+      "tag": "<input\n                                autoFocus\n                                className=\"w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300\"\n                                placeholder=\"Buscar perfil...\"\n                                value={search}\n                                onChange={e =>",
+      "name": "w-full pl-7 pr-2 h-8 bg-slate-50 rounded-lg text-xs font-medium outline-none placeholder:text-slate-300",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\TransactionTable.tsx",
+      "tag": "<input autoFocus\n                                    className=\"flex-1 h-8 px-2.5 bg-brand-50 border border-brand-200 rounded-lg text-xs font-bold outline-none\"\n                                    placeholder=\"Novo perfil...\" value={newName}\n                                    onChange={e =>",
+      "name": "flex-1 h-8 px-2.5 bg-brand-50 border border-brand-200 rounded-lg text-xs font-bold outline-none",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\TransactionTable.tsx",
+      "tag": "<input\n                                            autoFocus\n                                            className=\"w-full h-10 px-3 text-sm font-bold bg-white border border-brand-500 rounded-xl outline-none\"\n                                            value={editValue}\n                                            onChange={e =>",
+      "name": "w-full h-10 px-3 text-sm font-bold bg-white border border-brand-500 rounded-xl outline-none",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\TransactionTable.tsx",
+      "tag": "<input\n                                                type=\"text\"\n                                                autoFocus\n                                                value={editValue}\n                                                onChange={e =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\TransactionTable.tsx",
+      "tag": "<input autoFocus\n                                                className=\"w-full h-9 px-3 text-sm font-bold bg-white border border-brand-500 rounded-lg outline-none\"\n                                                value={editValue}\n                                                onChange={e =>",
+      "name": "w-full h-9 px-3 text-sm font-bold bg-white border border-brand-500 rounded-lg outline-none",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "components\\history\\TransactionTable.tsx",
+      "tag": "<input\n                                                    type=\"text\"\n                                                    autoFocus\n                                                    value={editValue}\n                                                    onChange={e =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\AdminDashboard.backup.tsx",
+      "tag": "<input \n                 type=\"text\" \n                 placeholder=\"Pesquisar por email...\"\n                 value={searchTerm}\n                 onChange={e =>",
+      "name": "pesquisar por email...",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\AdminDashboard.tsx",
+      "tag": "<input\n                        type={f.type}\n                        placeholder={f.placeholder}\n                        value={(newPlanData as any)[f.field]}\n                        onChange={e =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\AdminDashboard.tsx",
+      "tag": "<input \n                 type=\"text\" \n                 placeholder=\"Pesquisar por email...\"\n                 value={searchTerm}\n                 onChange={e =>",
+      "name": "pesquisar por email...",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                  required\n                  className=\"w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20\"\n                  placeholder=\"Ex: Jeep Compass\"\n                  value={formData.name}\n                  onChange={(e) =>",
+      "name": "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                          type=\"text\"\n                          className=\"w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-brand-500/20\"\n                          value={formData.licensePlate || ''}\n                          onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-brand-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                          type=\"text\"\n                          className=\"w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20\"\n                          value={formData.renavam || ''}\n                          onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                          type=\"text\"\n                          className=\"w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20\"\n                          value={formData.yearModel || ''}\n                          onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                                        className=\"w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs\"\n                                        value={item.name}\n                                        onChange={(e) =>",
+      "name": "w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                                className=\"w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20\"\n                                value={formData.financingName}\n                                onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                              className=\"w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold\"\n                              value={formData.loanDebtor}\n                              onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                          type=\"text\"\n                          className=\"w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold\"\n                          placeholder=\"Ex: 102% CDI ou 12.5% a.a.\"\n                          value={formData.yieldRate}\n                          onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                            type=\"text\"\n                            className=\"w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20\"\n                            placeholder=\"Ex: Financiamento Piazza do Bosque\"\n                            value={realEstateManageForm.financingName}\n                            onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                      type=\"month\"\n                      className=\"w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold\"\n                      value={realEstateManageForm.deliveryDate}\n                      onChange={(e) =>",
+      "name": "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold",
+      "type": "month",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                          required\n                          className=\"w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold\"\n                          placeholder=\"Ex: Reforma da Cozinha\"\n                          value={newTxForm.description}\n                          onChange={e =>",
+      "name": "w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                          className=\"w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold\"\n                          value={newTxForm.category}\n                          onChange={e =>",
+      "name": "w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.backup.tsx",
+      "tag": "<input\n                  required\n                  className=\"w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500 focus:ring-2 focus:ring-red-500/20\"\n                  placeholder=\"Ex: Financiamento Jeep\"\n                  value={liabilityFormData.name}\n                  onChange={(e) =>",
+      "name": "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500 focus:ring-2 focus:ring-red-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                    id=\"asset-name-field\"\n                    required\n                    className=\"w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all\"\n                    placeholder={formData.isLoan ? 'Ex: Empréstimo João' : 'Ex: Jeep Compass'}\n                    value={formData.name}\n                    onChange={(e) =>",
+      "name": "asset-name-field",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                          type=\"text\"\n                          className=\"w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-brand-500/20\"\n                          value={formData.licensePlate || ''}\n                          onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-brand-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                          type=\"text\"\n                          className=\"w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20\"\n                          value={formData.renavam || ''}\n                          onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                          type=\"text\"\n                          className=\"w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20\"\n                          value={formData.yearModel || ''}\n                          onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                                        className=\"w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs\"\n                                        value={item.name}\n                                        onChange={(e) =>",
+      "name": "w-full h-8 px-2 bg-slate-50 border rounded-lg text-xs",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                                className=\"w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20\"\n                                value={formData.financingName}\n                                onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                              required\n                              className=\"w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none\"\n                              value={formData.loanDebtor}\n                              onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                            type=\"text\"\n                            className=\"w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold\"\n                            placeholder=\"Ex: 102% CDI ou 12.5% a.a.\"\n                            value={formData.yieldRate}\n                            onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                            type=\"text\"\n                            className=\"w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20\"\n                            placeholder=\"Ex: Financiamento Piazza do Bosque\"\n                            value={realEstateManageForm.financingName}\n                            onChange={(e) =>",
+      "name": "w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                      type=\"month\"\n                      className=\"w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold\"\n                      value={realEstateManageForm.deliveryDate}\n                      onChange={(e) =>",
+      "name": "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold",
+      "type": "month",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                          required\n                          className=\"w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold\"\n                          placeholder=\"Ex: Reforma da Cozinha\"\n                          value={newTxForm.description}\n                          onChange={e =>",
+      "name": "w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                          className=\"w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold\"\n                          value={newTxForm.category}\n                          onChange={e =>",
+      "name": "w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                  required\n                  className=\"w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500 focus:ring-2 focus:ring-red-500/20\"\n                  placeholder=\"Ex: Financiamento Jeep\"\n                  value={liabilityFormData.name}\n                  onChange={(e) =>",
+      "name": "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500 focus:ring-2 focus:ring-red-500/20",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                          required\n                          className=\"w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold\"\n                          placeholder=\"Ex: Pagamento Parcela\"\n                          value={newTxForm.description}\n                          onChange={e =>",
+      "name": "w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Assets.tsx",
+      "tag": "<input\n                          readOnly\n                          className=\"w-full bg-slate-100 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-500 outline-none\"\n                          value={newTxForm.category}\n                        />",
+      "name": "w-full bg-slate-100 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-500 outline-none",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\ForgotPassword.tsx",
+      "tag": "<input\r\n                      type=\"email\"\r\n                      required\r\n                      value={email}\r\n                      onChange={(e) =>",
+      "name": "",
+      "type": "email",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\History.tsx",
+      "tag": "<input\r\n              type=\"text\"\r\n              value={bulkDescription}\r\n              onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\History.tsx",
+      "tag": "<input\r\n                list=\"bulk-accounts-list\"\r\n                value={bulkAccount}\r\n                onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\History.tsx",
+      "tag": "<input\r\n                list=\"bulk-categories-list\"\r\n                value={bulkCategory}\r\n                onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\History.tsx",
+      "tag": "<input\r\n                  list=\"bulk-subcategories-list\"\r\n                  value={bulkSubcategory}\r\n                  onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\History.tsx",
+      "tag": "<input\r\n                list=\"bulk-owners-list\"\r\n                value={bulkOwner}\r\n                onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\History.tsx",
+      "tag": "<input\r\n                    list=\"bulk-counteraccounts-list\"\r\n                    value={bulkCounterAccount}\r\n                    onChange={(e) =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Landing.tsx",
+      "tag": "<input \n                        type=\"range\" \n                        min=\"2000\" \n                        max=\"50000\" \n                        step=\"1000\"\n                        value={familyIncome} \n                        onChange={(e) =>",
+      "name": "",
+      "type": "range",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Landing.tsx",
+      "tag": "<input \n                          type=\"email\" \n                          required\n                          value={email}\n                          onChange={(e) =>",
+      "name": "",
+      "type": "email",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Login.tsx",
+      "tag": "<input\r\n                  type=\"email\"\r\n                  required\r\n                  disabled={!isSupabaseConfigured || loading}\r\n                  value={email}\r\n                  onChange={(e) =>",
+      "name": "",
+      "type": "email",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Login.tsx",
+      "tag": "<input\r\n                  type=\"password\"\r\n                  required\r\n                  disabled={!isSupabaseConfigured || loading}\r\n                  value={password}\r\n                  onChange={(e) =>",
+      "name": "",
+      "type": "password",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Planning.tsx",
+      "tag": "<input\n                  required\n                  className=\"w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500\"\n                  placeholder=\"Ex: Reserva de Emergência\"\n                  value={goalFormData.name}\n                  onChange={e =>",
+      "name": "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Reconcile.tsx",
+      "tag": "<input\r\n                    list=\"targets-list\"\r\n                    value={selectedTargetName}\r\n                    onFocus={e =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Reconcile.tsx",
+      "tag": "<input\r\n                  type=\"text\"\r\n                  placeholder=\"Buscar por nome...\"\r\n                  value={searchTerm}\r\n                  onChange={(e) =>",
+      "name": "buscar por nome...",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Reconcile.tsx",
+      "tag": "<input\r\n                    list=\"categories-list\"\r\n                    value={bulkCategory}\r\n                    className=\"bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500\"\r\n                    onChange={(e) =>",
+      "name": "bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Reconcile.tsx",
+      "tag": "<input\r\n                      list=\"subcategories-bulk-list\"\r\n                      value={bulkSubcategory}\r\n                      className=\"bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500\"\r\n                      onChange={(e) =>",
+      "name": "bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Reconcile.tsx",
+      "tag": "<input\r\n                    list=\"targets-list\"\r\n                    value={bulkTarget}\r\n                    className=\"bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[150px] placeholder:text-slate-500\"\r\n                    onChange={(e) =>",
+      "name": "bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[150px] placeholder:text-slate-500",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Reconcile.tsx",
+      "tag": "<input\r\n                    list=\"entities-list\"\r\n                    value={bulkOwner}\r\n                    className=\"bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500\"\r\n                    onChange={(e) =>",
+      "name": "bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Reconcile.tsx",
+      "tag": "<input\r\n                                  type=\"text\"\r\n                                  value={editForm.description}\r\n                                  onFocus={() =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Reconcile.tsx",
+      "tag": "<input\r\n                                list={isEditing ? (editForm.targetType === 'bank' ? 'accounts-list-full' : 'cards-list-full') : 'targets-list'}\r\n                                value={isEditing ? editForm.targetName : (selectedTargetName || '')}\r\n                                onFocus={e =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Reconcile.tsx",
+      "tag": "<input\r\n                                list=\"categories-list\"\r\n                                value={categoryValue}\r\n                                onFocus={e =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Reconcile.tsx",
+      "tag": "<input\r\n                                list={`subcategories-list-${item.id}`}\r\n                                value={isEditing ? editForm.subcategory : ((item as any).subcategory || '')}\r\n                                onFocus={e =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Reconcile.tsx",
+      "tag": "<input\r\n                                list=\"entities-list\"\r\n                                value={isEditing ? editForm.owner_name : (item.owner_name || 'Pessoal')}\r\n                                onFocus={e =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Reconcile.tsx",
+      "tag": "<input\r\n                                list=\"counterparts-list\"\r\n                                value={isEditing ? editForm.counterAccountName : getCounterpartName(counterAccountId)}\r\n                                onFocus={e =>",
+      "name": "",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\ResetPassword.tsx",
+      "tag": "<input\r\n                      type=\"password\"\r\n                      required\r\n                      minLength={6}\r\n                      value={password}\r\n                      onChange={(e) =>",
+      "name": "",
+      "type": "password",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Settings.tsx",
+      "tag": "<input\r\n                      type=\"text\"\r\n                      placeholder=\"Buscar categoria...\"\r\n                      value={catSearch}\r\n                      onChange={e =>",
+      "name": "buscar categoria...",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Settings.tsx",
+      "tag": "<input autoFocus className=\"flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm\" placeholder={`Nome da categoria de ${categoryTab === 'INCOME' ? 'receita' : 'despesa'}...`} value={newCatName} onChange={e =>",
+      "name": "flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Settings.tsx",
+      "tag": "<input\r\n                                autoFocus\r\n                                className=\"flex-1 bg-white border border-brand-200 rounded-xl px-4 py-2 font-bold text-slate-900 outline-none text-sm\"\r\n                                value={editCatName}\r\n                                onChange={e =>",
+      "name": "flex-1 bg-white border border-brand-200 rounded-xl px-4 py-2 font-bold text-slate-900 outline-none text-sm",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Settings.tsx",
+      "tag": "<input\r\n                                      autoFocus\r\n                                      className=\"flex-1 bg-white border border-brand-200 rounded-xl px-3 py-1 font-bold text-slate-700 outline-none text-xs\"\r\n                                      value={editSubcatName}\r\n                                      onChange={e =>",
+      "name": "flex-1 bg-white border border-brand-200 rounded-xl px-3 py-1 font-bold text-slate-700 outline-none text-xs",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Settings.tsx",
+      "tag": "<input\r\n                                className=\"flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none placeholder:text-slate-400 focus:border-brand-500/30 transition-colors\"\r\n                                placeholder=\"Nova subcategoria...\"\r\n                                value={newSubcatName}\r\n                                onChange={e =>",
+      "name": "flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold outline-none placeholder:text-slate-400 focus:border-brand-500/30 transition-colors",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Settings.tsx",
+      "tag": "<input autoFocus className=\"flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm\" placeholder=\"Nome do perfil (Ex: Família, Empresa, Pessoal)...\" value={newEntityName} onChange={e =>",
+      "name": "flex-1 bg-white border border-brand-200 rounded-2xl px-6 py-4 font-bold text-slate-900 outline-none shadow-sm",
+      "type": "text",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Signup.tsx",
+      "tag": "<input\r\n                  type=\"email\"\r\n                  required\r\n                  disabled={!isSupabaseConfigured || loading}\r\n                  value={email}\r\n                  onChange={(e) =>",
+      "name": "",
+      "type": "email",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    },
+    {
+      "file": "pages\\Signup.tsx",
+      "tag": "<input\r\n                  type=\"password\"\r\n                  required\r\n                  minLength={6}\r\n                  disabled={!isSupabaseConfigured || loading}\r\n                  value={password}\r\n                  onChange={(e) =>",
+      "name": "",
+      "type": "password",
+      "inputMode": "",
+      "recommendation": "Add inputMode=\"decimal\" or inputMode=\"numeric\" for mobile touch keyboard."
+    }
+  ],
+  "buttonsWithoutLabel": [],
+  "scrollWrappers": [
+    {
+      "file": "pages\\Reports.tsx",
+      "type": "table",
+      "recommendation": "Wrap <table> inside a container with class=\"overflow-x-auto scrollbar-hide\" to prevent horizontal layout breaks on mobile."
+    }
+  ],
+  "summary": {
+    "totalFilesAudited": 61,
+    "inputsAudited": 396,
+    "inputsOk": 289,
+    "buttonsAudited": 570,
+    "buttonsOk": 570
+  }
+}

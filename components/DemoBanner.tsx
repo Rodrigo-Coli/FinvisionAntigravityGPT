@@ -26,7 +26,7 @@ export default function DemoBanner() {
   });
 
   useEffect(() => {
-    const demoFlag = localStorage.getItem('is_finvision_demo') === 'true' || localStorage.getItem('is_finvision_demo_promoted') !== 'true';
+    const demoFlag = localStorage.getItem('is_finvision_demo') === 'true';
     const hasSession = localStorage.getItem('finvision_cached_profile') !== null;
     setIsDemo(demoFlag && hasSession);
 

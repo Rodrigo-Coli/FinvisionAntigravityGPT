@@ -15,7 +15,7 @@ try {
         "pages/Home.tsx", "pages/AIModule.tsx", "pages/History.tsx", 
         "pages/Assets.tsx", "pages/Reconcile.tsx", "pages/AdminUsers.tsx", "pages/Settings.tsx", "pages/Login.tsx", 
         "pages/Signup.tsx", "pages/ForgotPassword.tsx", "pages/ResetPassword.tsx", "pages/PendingApproval.tsx",
-        "pages/Banking.tsx", "pages/Planning.tsx", "pages/Reports.tsx",
+        "pages/Banking.tsx", "pages/Planning.tsx", "pages/Reports.tsx", "pages/Landing.tsx",
         "services/aiReconcile.service.ts", "services/dashboard.service.ts", "services/reconciliation.service.ts", "services/projection.service.ts", 
         "services/finance.service.ts", "services/ai.service.ts", "services/geminiLive.service.ts",
         "contexts/TourContext.tsx", "contexts/AuthContext.tsx", "contexts/ToastContext.tsx",
@@ -26,16 +26,25 @@ try {
         "components/cards/AddCardModal.tsx", "components/cards/CardList.tsx", "components/cards/ManualTransactionModal.tsx", 
         "components/cards/PayStatementModal.tsx", "components/history/AddTransactionModal.tsx", "components/history/HistoryFilters.tsx", 
         "components/history/PaymentModal.tsx", "components/history/TransactionTable.tsx", "components/history/HistoryCharts.tsx",
+        "components/history/DreReportModal.tsx", "components/IOSInstallPrompt.tsx", "components/PWAInstallPrompt.tsx",
+        "components/subscription/PlanUpgradeModal.tsx",
         "components/assets/RealEstateWizardModal.tsx", "components/assets/RealEstateDetailModal.tsx",
-        "components/CashFlowProjection.tsx", "components/OfflineBanner.tsx", "components/AIChat.tsx", "components/ErrorBoundary.tsx",
+        "components/CashFlowProjection.tsx", "components/OfflineBanner.tsx", "components/AIChat.tsx", "components/ErrorBoundary.tsx", "components/DemoBanner.tsx",
         "lib/offlineQueue.ts",
         "api/handle-receipt-items.ts", "api/handle-bank-reconcile.ts", "api/handle-card-reconcile.ts", 
         "api/process-import.ts", "api/handle-financial-parse.ts", "api/handle-import-worker.ts", 
         "api/handle-wealth-analysis.ts", "api/parse-card-statement.ts", "api/parse-financial-document.ts", 
         "api/parse-statement.ts", "api/finvision-chat.ts", "api/categorize-transactions.ts", 
         "supabase/functions/parse-import/index.ts",
-        "supabase/master_migration.sql", "supabase/clear_data.sql"
+        "supabase/master_migration.sql", "supabase/clear_data.sql",
+        "public/changelog.json", "public/version.json"
     )
+
+    # Auto-bump version.json
+    $now = Get-Date -Format "yyyy.MM.dd.HHmm"
+    $versionContent = "{ `"version`": `"$now`" }`n"
+    Set-Content -Path "public\version.json" -Value $versionContent -Encoding UTF8
+    Write-Host "Versao auto-bumped para: $now"
 
     Write-Host "INICIANDO DEPLOY ATOMICO"
 
@@ -71,7 +80,7 @@ try {
 
     Write-Host "Commit..."
     $commitBody = @{
-        message = "fix(settings): menu mobile horizontal, toasts, iof/spread com salvamento manual e acessibilidade wcag aa"
+        message = "fix(responsiveness): optimize mobile numeric keypads and audit multi-OS responsive layout items"
         tree    = $newTreeResponse.sha
         parents = @($parentCommitSha)
     } | ConvertTo-Json
