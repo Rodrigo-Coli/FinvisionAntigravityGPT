@@ -8,6 +8,73 @@ interface ChatMessage {
     timestamp: Date;
 }
 
+const renderMarkdown = (text: string) => {
+    // 1. WhatsApp-style bold (*text*) or standard markdown (**text**)
+    let html = text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<strong>$1</strong>');
+
+    // 2. Headers
+    html = html
+        .replace(/^### (.*?)$/gm, '<h5 class="text-sm font-bold text-slate-800 mt-2 mb-1">$1</h5>')
+        .replace(/^## (.*?)$/gm, '<h4 class="text-base font-bold text-slate-800 mt-3 mb-1">$1</h4>')
+        .replace(/^# (.*?)$/gm, '<h3 class="text-lg font-black text-slate-800 mt-4 mb-2">$1</h3>');
+
+    // 3. Line-by-line parsing to group lists correctly
+    const lines = html.split('\n');
+    const resultElements: React.ReactNode[] = [];
+    let insideList = false;
+    let listItems: string[] = [];
+
+    lines.forEach((line, index) => {
+        const trimmed = line.trim();
+        const isHeader = trimmed.startsWith('<h3') || trimmed.startsWith('<h4') || trimmed.startsWith('<h5');
+        const listMatch = trimmed.match(/^[-*•]\s+(.*)$/);
+
+        if (listMatch) {
+            if (!insideList) {
+                insideList = true;
+                listItems = [];
+            }
+            listItems.push(listMatch[1]);
+        } else {
+            if (insideList) {
+                resultElements.push(
+                    <ul key={`list-${index}`} className="list-disc pl-5 mb-2 space-y-1">
+                        {listItems.map((item, idx) => (
+                            <li key={idx} dangerouslySetInnerHTML={{ __html: item }} />
+                        ))}
+                    </ul>
+                );
+                insideList = false;
+                listItems = [];
+            }
+
+            if (trimmed === '') {
+                resultElements.push(<div key={`space-${index}`} className="h-2" />);
+            } else if (isHeader) {
+                resultElements.push(<div key={`header-${index}`} dangerouslySetInnerHTML={{ __html: trimmed }} />);
+            } else {
+                resultElements.push(
+                    <p key={`p-${index}`} className="mb-2 last:mb-0 leading-relaxed text-xs sm:text-sm" dangerouslySetInnerHTML={{ __html: trimmed }} />
+                );
+            }
+        }
+    });
+
+    if (insideList) {
+        resultElements.push(
+            <ul key={`list-end`} className="list-disc pl-5 mb-2 space-y-1">
+                {listItems.map((item, idx) => (
+                    <li key={idx} dangerouslySetInnerHTML={{ __html: item }} />
+                ))}
+            </ul>
+        );
+    }
+
+    return resultElements;
+};
+
 const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }> = ({ userId, startDate, endDate }) => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
@@ -27,16 +94,19 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
         }
     }, [messages.length]);
 
-    // Scroll only the chat container, NOT the whole page
+    // Scroll only the chat container, NOT the whole page, using smooth behavior
     const scrollToBottom = () => {
         if (chatContainerRef.current) {
-            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+            chatContainerRef.current.scrollTo({
+                top: chatContainerRef.current.scrollHeight,
+                behavior: 'smooth'
+            });
         }
     };
 
     useEffect(() => {
         scrollToBottom();
-    }, [messages]);
+    }, [messages, isLoading]);
 
     const handleSend = async (text: string) => {
         const query = text.trim();
@@ -50,6 +120,7 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
         };
 
         setMessages(prev => [...prev, userMsg]);
+        localStorage.setItem('finvision_demo_asked_ai', 'true');
         setInput('');
         setIsLoading(true);
 
@@ -141,10 +212,8 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
                             ? 'bg-brand-600 text-white rounded-br-none shadow-brand-500/20 shadow-lg'
                             : 'bg-white border border-slate-100 text-slate-700 shadow-sm rounded-bl-none'
                             }`}>
-                            <div className="text-xs sm:text-sm leading-relaxed break-words overflow-wrap-anywhere">
-                                {msg.content.split('\n').map((line, i) => (
-                                    <p key={i} className="mb-1 last:mb-0" dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
-                                ))}
+                            <div className="text-xs sm:text-sm leading-relaxed break-words overflow-wrap-anywhere space-y-1">
+                                {renderMarkdown(msg.content)}
                             </div>
                             <span className={`text-[7px] sm:text-[8px] font-bold uppercase tracking-widest mt-2 block opacity-50 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
                                 {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

@@ -123,7 +123,10 @@ export default function Landing() {
     <div className="min-h-screen bg-[#020617] text-white font-sans selection:bg-brand-500/30 selection:text-brand-300 overflow-x-hidden">
       
       {/* 1. HEADER / NAVBAR (GLASSMORPHISM) */}
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${isScrolled ? 'bg-[#020617]/80 backdrop-blur-xl border-b border-white/5 shadow-2xl py-4' : 'bg-transparent py-6'}`}>
+      <nav 
+        style={{ transform: 'translate3d(0, 0, 50px)', WebkitTransform: 'translate3d(0, 0, 50px)' }}
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${isScrolled ? 'bg-[#020617]/80 backdrop-blur-xl border-b border-white/5 shadow-2xl py-4' : 'bg-transparent py-6'}`}
+      >
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12 flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo(0,0)}>
             <div className="w-10 h-10 bg-gradient-to-br from-brand-600 to-indigo-600 rounded-[14px] flex items-center justify-center text-white shadow-[0_0_20px_rgba(79,70,229,0.3)]">
@@ -187,7 +190,10 @@ export default function Landing() {
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[1000px] bg-brand-600/10 rounded-full blur-[150px] mix-blend-screen animate-pulse pointer-events-none duration-10000" />
           <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-600/20 rounded-full blur-[120px] mix-blend-screen pointer-events-none" />
           
-          <div className="relative max-w-[1400px] mx-auto px-6 lg:px-12 text-center z-10">
+          <div 
+            style={{ transform: 'translate3d(0, 0, 30px)', WebkitTransform: 'translate3d(0, 0, 30px)' }}
+            className="relative max-w-[1400px] mx-auto px-6 lg:px-12 text-center z-30"
+          >
             <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/5 border border-white/10 text-brand-300 text-[10px] font-black uppercase tracking-[0.2em] mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700 shadow-xl backdrop-blur-md">
               <Brain size={14} /> Introduzindo O Advisor Inteligente Autônomo
             </div>

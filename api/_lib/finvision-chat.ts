@@ -38,7 +38,7 @@ export async function handleFinvisionChat(req: any, res: any) {
             });
         }
 
-        const [accountsRes, txRes, cardsRes, assetsRes, liabilitiesRes, historyRes] = await Promise.all([
+        const [accountsRes, txRes, cardsRes, assetsRes, liabilitiesRes, historyRes, budgetsRes, goalsRes] = await Promise.all([
             supabase.from('accounts').select('institution, type, current_balance').eq('user_id', userId).eq('is_archived', false),
             supabase.from('transactions')
                 .select('amount, type, category, date, description')
@@ -60,7 +60,9 @@ export async function handleFinvisionChat(req: any, res: any) {
                 .is('is_amortization', false)
                 .neq('type', 'ADJUSTMENT')
                 .gte('date', historyStart)
-                .lt('date', filterStart)
+                .lt('date', filterStart),
+            supabase.from('budgets').select('*').eq('user_id', userId).eq('is_active', true),
+            supabase.from('goals').select('*').eq('user_id', userId).order('created_at', { ascending: false })
         ]);
 
         const accounts = accountsRes.data || [];
@@ -69,6 +71,8 @@ export async function handleFinvisionChat(req: any, res: any) {
         const assetsData = assetsRes.data || [];
         const liabilitiesData = liabilitiesRes.data || [];
         const historicalData = historyRes?.data || [];
+        const budgets = budgetsRes.data || [];
+        const goals = goalsRes.data || [];
 
         const totalBalance = accounts.reduce((s: number, a: any) => s + Number(a.current_balance || 0), 0);
         const totalPhysicalAssets = assetsData.reduce((s: number, l: any) => s + Number(l.estimated_value || 0), 0);
@@ -162,7 +166,30 @@ Hoje é ${dataHoje}.
 • Cartões Cadastrados: ${creditCards.map((c: any) => `${c.brand}(Lim:R$${c.limit})`).join(', ') || 'Nenhum'}
 
 # ÚLTIMAS 50 TRANSAÇÕES
-${transactions.slice(0, 50).map((t: any) => `- ${t.date.split('T')[0]}|${t.category}|R$${t.amount}|${t.type}`).join('\n')}`;
+${transactions.slice(0, 50).map((t: any) => `- ${t.date.split('T')[0]}|${t.category}|R$${t.amount}|${t.type}`).join('\n')}
+
+# ORÇAMENTOS ATIVOS (BUDGETS)
+${budgets.length > 0 ? budgets.map((b: any) => `- Categoria: ${b.category} | Limite: R$ ${Number(b.amount).toFixed(2)} | Período: ${b.period || 'mensal'}`).join('\n') : 'Nenhum orçamento ativo configurado.'}
+
+# METAS FINANCEIRAS (GOALS)
+${goals.length > 0 ? goals.map((g: any) => `- Meta: "${g.name}" | Alvo: R$ ${Number(g.target_amount).toFixed(2)} | Atual: R$ ${Number(g.current_amount).toFixed(2)} | Prazo: ${g.deadline || 'sem prazo'} | Status: ${g.is_completed ? 'Concluída' : 'Em andamento'}`).join('\n') : 'Nenhuma meta financeira configurada.'}
+
+# DIRETRIZES DE INTELIGÊNCIA FINANCEIRA AVANÇADA (PLANEJAMENTO, ALAVANCAGEM E PESQUISA)
+1. **Consulta à Internet (Google Search Grounding)**:
+   - Você tem acesso à pesquisa na internet em tempo real.
+   - Use esta ferramenta sempre que o usuário pedir cotações atuais, taxas de juros macroeconômicas (taxa Selic, CDI, inflação/IPCA), notícias financeiras brasileiras recentes ou regras fiscais/tributárias vigentes.
+   - Restrinja o uso de buscas na web a assuntos puramente macroeconômicos e de mercado financeiro relevante (Selic, CDI, IPCA, cotação do dólar/euro/ações, inflação, regras fiscais). Não faça buscas sobre assuntos gerais irrelevantes.
+2. **Planejamento de Longo Prazo e Crescimento**:
+   - Ajude o usuário a pensar em como poupar, investir e crescer seu patrimônio de forma consistente.
+   - Recomende e explique estratégias clássicas de organização como a regra 50/30/20 (50% necessidades, 30% desejos, 20% poupança/investimentos).
+3. **Amortização e Quitação de Dívidas (Passivos)**:
+   - Se o usuário tiver passivos (liabilities) ou dívidas relatadas, oriente-o em estratégias de quitação acelerada.
+   - Explique os métodos:
+     - **Método Bola de Neve (Snowball)**: Pagar primeiro as menores dívidas para obter vitórias psicológicas rápidas.
+     - **Método Avalanche**: Pagar primeiro as dívidas com as maiores taxas de juros para economizar dinheiro no longo prazo.
+4. **Alavancagem de Passivos e Estratégia**:
+   - Ajude o usuário a analisar de forma crítica se as suas dívidas e financiamentos são passivos saudáveis ou se estão drenando sua liquidez.
+   - Forneça simulações, cenários de alavancagem inteligente (usar capital de terceiros a taxas baixas para gerar retornos maiores), e explique como renegociar contratos ou amortizar saldos devedores usando FGTS ou aportes extraordinários.`;
 
         const contents: any[] = [];
         if (history && history.length > 0) {
@@ -181,7 +208,8 @@ ${transactions.slice(0, 50).map((t: any) => `- ${t.date.split('T')[0]}|${t.categ
             contents,
             config: {
                 systemInstruction: systemPrompt,
-                temperature: 0.7,
+                temperature: 0.4,
+                tools: [{ googleSearch: {} }] // Ativação nativa da pesquisa Google
             }
         });
 
