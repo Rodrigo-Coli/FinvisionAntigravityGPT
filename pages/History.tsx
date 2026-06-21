@@ -212,6 +212,11 @@ const buildSeriesFilter = (query: any, tx: any) => {
 
 const HistoryPage: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [showComparison, setShowComparison] = useState(false);
+  const [comparisonSlots, setComparisonSlots] = useState<{ id: string; name: string; startDate: string; endDate: string }[]>([]);
+  const [comparisonResults, setComparisonResults] = useState<Record<string, { income: number; expense: number; balance: number }>>({});
+  const [isComparing, setIsComparing] = useState(false);
   const [chartTransactions, setChartTransactions] = useState<Transaction[]>([]); // full set for charts (no pagination)
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [availableCategories, setAvailableCategories] = useState<string[]>(DEFAULT_CATEGORIES);
@@ -297,6 +302,8 @@ const HistoryPage: React.FC = () => {
     const addParam = params.get('add');
     const startParam = params.get('startDate');
     const endParam = params.get('endDate');
+    const statusParam = params.get('status');
+    const typeParam = params.get('type');
 
     let hasChanged = false;
     if (cat) {
@@ -320,6 +327,26 @@ const HistoryPage: React.FC = () => {
 
     if (endParam) {
       setEndDate(endParam);
+      hasChanged = true;
+    }
+
+    if (statusParam) {
+      if (statusParam === 'PENDING' || statusParam === 'ABERTOS') {
+        setViewMode('PENDING');
+      } else if (statusParam === 'SETTLED' || statusParam === 'PAGOS') {
+        setViewMode('SETTLED');
+      } else if (statusParam === 'ALL' || statusParam === 'TODOS') {
+        setViewMode('ALL');
+      }
+      hasChanged = true;
+    }
+
+    if (typeParam) {
+      if (typeParam === 'INCOME' || typeParam === 'EXPENSE') {
+        setFilterType(typeParam);
+      } else if (typeParam === 'ALL' || typeParam === 'TODOS') {
+        setFilterType('ALL');
+      }
       hasChanged = true;
     }
 
@@ -439,6 +466,7 @@ const HistoryPage: React.FC = () => {
         setIsLoading(false);
         return;
       }
+      setUserId(user.id);
 
       let accData: any[] = [];
       let catData: any[] = [];
@@ -2065,6 +2093,193 @@ const HistoryPage: React.FC = () => {
     } catch (err) { alert('Erro ao criar categoria inline'); }
   };
 
+  const fetchSlotTotals = async (start: string, end: string) => {
+    let rawTxs: any[] = [];
+    let rawCardTxs: any[] = [];
+    if (navigator.onLine && supabase && userId) {
+      try {
+        const { data: txs } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('is_deleted', false)
+          .gte('date', start)
+          .lte('date', end);
+        rawTxs = txs || [];
+
+        const { data: cardTxs } = await supabase
+          .from('card_transactions')
+          .select('*, categories(name), cards(account_id, name)')
+          .eq('user_id', userId)
+          .gte('date', start)
+          .lte('date', end);
+        rawCardTxs = cardTxs || [];
+      } catch (err) {
+        console.error("Online fetch failed for comparison slot, falling back to cache:", err);
+      }
+    }
+
+    // Fallback/offline logic: read from local cached full sets and filter by dates
+    if (rawTxs.length === 0 && userId) {
+      try {
+        const cachedRawTxs = localStorage.getItem(`finvision_cached_raw_txs_${userId}`);
+        if (cachedRawTxs) {
+          const parsed = JSON.parse(cachedRawTxs);
+          rawTxs = parsed.filter((t: any) => t.date >= start && t.date <= end && !t.is_deleted);
+        }
+      } catch (e) {}
+    }
+    if (rawCardTxs.length === 0 && userId) {
+      try {
+        const cachedCardTxs = localStorage.getItem(`finvision_cached_raw_card_txs_${userId}`);
+        if (cachedCardTxs) {
+          const parsed = JSON.parse(cachedCardTxs);
+          rawCardTxs = parsed.filter((t: any) => t.date >= start && t.date <= end);
+        }
+      } catch (e) {}
+    }
+
+    const accs = accounts;
+    const normalizedCardTxs = rawCardTxs.map((ct: any) => ({
+      id: ct.id,
+      date: ct.date,
+      type: 'EXPENSE',
+      amount: Number(ct.amount),
+      category: ct.categories?.name || ct.category || 'Cartão de Crédito',
+      subcategory: ct.subcategory || undefined,
+      description: ct.description,
+      account_id: ct.account_id || ct.cards?.account_id || undefined,
+      account_name: ct.account_name || ct.cards?.name || accs.find(a => a.id === (ct.account_id || ct.cards?.account_id))?.institution || 'Cartão de Crédito',
+      owner_name: ct.owner_name || 'Pessoal',
+      notes: ct.notes || '',
+      tags: ct.tags || [],
+      is_paid: true,
+      paid_amount: Number(ct.amount)
+    }));
+
+    let combined = [...rawTxs, ...normalizedCardTxs];
+
+    // Apply JS Filters
+    if (filterType !== 'ALL') {
+      combined = combined.filter((t: any) => t.type === filterType);
+    }
+    if (filterAccount.length > 0) {
+      combined = combined.filter((t: any) => filterAccount.includes(t.account_id));
+    }
+    if (filterCategory.length > 0) {
+      combined = combined.filter((t: any) => filterCategory.includes(t.category));
+    }
+    if (filterSubcategory.length > 0) {
+      combined = combined.filter((t: any) => filterSubcategory.includes(t.subcategory));
+    }
+    if (filterOwner.length > 0) {
+      combined = combined.filter((t: any) => filterOwner.includes(t.owner_name));
+    }
+    if (minPrice !== '') {
+      combined = combined.filter((t: any) => Math.abs(Number(t.amount || 0)) >= Number(minPrice));
+    }
+    if (maxPrice !== '') {
+      combined = combined.filter((t: any) => Math.abs(Number(t.amount || 0)) <= Number(maxPrice));
+    }
+    if (debouncedSearch) {
+      const searchNormalized = debouncedSearch.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+      combined = combined.filter((t: any) => 
+        (t.description || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(searchNormalized) ||
+        (t.category || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(searchNormalized) ||
+        (t.subcategory || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(searchNormalized) ||
+        (t.account_name || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(searchNormalized) ||
+        (t.owner_name || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(searchNormalized) ||
+        (t.notes || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(searchNormalized)
+      );
+    }
+
+    if (viewMode === 'SETTLED') {
+      combined = combined.filter(t => t.is_paid || t.isPaid);
+    } else if (viewMode === 'PENDING') {
+      combined = combined.filter(t => !t.is_paid && !t.isPaid);
+    }
+
+    let income = 0;
+    let expense = 0;
+    combined.forEach((t: any) => {
+      if (t.type === 'TRANSFER') return;
+      if (t.type === 'INCOME') income += Number(t.amount || 0);
+      else if (t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT') expense += Math.abs(Number(t.amount || 0));
+    });
+
+    return {
+      income,
+      expense,
+      balance: income - expense
+    };
+  };
+
+  const addComparisonSlot = () => {
+    const nextLetter = String.fromCharCode(65 + comparisonSlots.length);
+    const d = new Date();
+    const start = DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth(), 1));
+    const end = DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth() + 1, 0));
+    setComparisonSlots(prev => [
+      ...prev,
+      { id: nextLetter, name: `Período ${nextLetter}`, startDate: start, endDate: end }
+    ]);
+  };
+
+  const removeComparisonSlot = (id: string) => {
+    setComparisonSlots(prev => prev.filter(s => s.id !== id));
+    setComparisonResults(prev => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+  };
+
+  const updateComparisonSlot = (id: string, field: 'name' | 'startDate' | 'endDate', value: string) => {
+    setComparisonSlots(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
+  };
+
+  // Pre-initialize default slots on open
+  useEffect(() => {
+    if (showComparison && comparisonSlots.length === 0) {
+      const d = new Date();
+      const thisMonthStart = DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth(), 1));
+      const thisMonthEnd = DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth() + 1, 0));
+      const prevMonthStart = DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth() - 1, 1));
+      const prevMonthEnd = DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth(), 0));
+
+      setComparisonSlots([
+        { id: 'A', name: 'Período A (Este Mês)', startDate: thisMonthStart, endDate: thisMonthEnd },
+        { id: 'B', name: 'Período B (Mês Anterior)', startDate: prevMonthStart, endDate: prevMonthEnd }
+      ]);
+    }
+  }, [showComparison]);
+
+  useEffect(() => {
+    if (!showComparison || comparisonSlots.length === 0) return;
+
+    let active = true;
+    const runCalculation = async () => {
+      setIsComparing(true);
+      const results: Record<string, { income: number; expense: number; balance: number }> = {};
+      for (const slot of comparisonSlots) {
+        if (!slot.startDate || !slot.endDate) continue;
+        const res = await fetchSlotTotals(slot.startDate, slot.endDate);
+        if (active) {
+          results[slot.id] = res;
+        }
+      }
+      if (active) {
+        setComparisonResults(results);
+        setIsComparing(false);
+      }
+    };
+
+    runCalculation();
+    return () => {
+      active = false;
+    };
+  }, [showComparison, comparisonSlots, filterType, filterAccount, filterCategory, filterSubcategory, filterOwner, minPrice, maxPrice, debouncedSearch, viewMode, accounts, userId]);
+
   // Summary Calculations based on chartViewFiltered (respects 'Pagos & Recebidos' toggle)
   const summary = chartViewFiltered.reduce((acc, t) => {
     if (t.type === 'TRANSFER') return acc;
@@ -2074,14 +2289,17 @@ const HistoryPage: React.FC = () => {
   }, { income: 0, expense: 0 });
   const balance = summary.income - summary.expense;
 
-  const setDatePreset = (days: number | 'MONTH' | 'ALL') => {
+  const setDatePreset = (days: number | 'MONTH' | 'PREV_MONTH' | 'ALL') => {
     const d = new Date();
     if (days === 'ALL') {
-      setStartDate('');
-      setEndDate('');
+      setStartDate('0001-01-01');
+      setEndDate('9999-12-31');
     } else if (days === 'MONTH') {
       setStartDate(DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth(), 1)));
       setEndDate(DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth() + 1, 0)));
+    } else if (days === 'PREV_MONTH') {
+      setStartDate(DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth() - 1, 1)));
+      setEndDate(DateUtils.formatToISODate(new Date(d.getFullYear(), d.getMonth(), 0)));
     } else {
       const start = new Date(d);
       start.setDate(d.getDate() - days);
@@ -2321,10 +2539,12 @@ const HistoryPage: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2">
           {/* Date presets */}
           <div className="flex gap-1.5 flex-wrap">
-            <button onClick={() => setDatePreset('MONTH')} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Este Mês</button>
+            <button onClick={() => setDatePreset('MONTH')} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) && endDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Este Mês</button>
+            <button onClick={() => setDatePreset('PREV_MONTH')} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1)) && endDate === DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 0)) ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Mês Anterior</button>
             <button onClick={() => setDatePreset(30)} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>30 Dias</button>
             <button onClick={() => setDatePreset(90)} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>3 Meses</button>
-            <button onClick={() => setDatePreset('ALL')} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${!startDate && !endDate ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Tudo</button>
+            <button onClick={() => setDatePreset('ALL')} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === '0001-01-01' && endDate === '9999-12-31' ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Tudo</button>
+            <button onClick={() => setShowComparison(prev => !prev)} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${showComparison ? 'bg-indigo-650 text-white shadow-sm' : 'bg-slate-100 text-indigo-600 hover:bg-indigo-50 border border-indigo-100'}`}>Comparar Períodos</button>
           </div>
 
           {/* Spacer */}
@@ -2363,6 +2583,126 @@ const HistoryPage: React.FC = () => {
           <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
         </div>
       </div>
+
+      {/* COMPARADOR DE PERÍODOS */}
+      {showComparison && (
+        <div className="bg-white p-6 rounded-[24px] sm:rounded-[32px] border border-indigo-100 shadow-sm space-y-6 animate-in slide-in-from-top-4 duration-300">
+          <div className="flex flex-wrap justify-between items-center gap-3">
+            <div>
+              <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                Comparador de Períodos Múltiplos
+              </h4>
+              <p className="text-[10px] text-slate-500 mt-1">Defina quantos períodos desejar para comparar receitas, despesas e saldos consolidando com os filtros ativos.</p>
+            </div>
+            <button 
+              onClick={addComparisonSlot} 
+              className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+            >
+              <Plus size={14} />
+              Adicionar Período
+            </button>
+          </div>
+
+          {/* List of slots */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {comparisonSlots.map(slot => (
+              <div key={slot.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 relative space-y-3 group/slot">
+                <div className="flex justify-between items-center">
+                  <input 
+                    type="text" 
+                    value={slot.name} 
+                    onChange={e => updateComparisonSlot(slot.id, 'name', e.target.value)} 
+                    className="bg-transparent font-bold text-xs text-slate-900 border-b border-transparent focus:border-slate-300 outline-none w-2/3"
+                  />
+                  {comparisonSlots.length > 1 && (
+                    <button 
+                      onClick={() => removeComparisonSlot(slot.id)} 
+                      className="text-slate-400 hover:text-rose-500 transition-colors p-1"
+                      title="Remover Período"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <input 
+                    type="date" 
+                    value={slot.startDate} 
+                    onChange={e => updateComparisonSlot(slot.id, 'startDate', e.target.value)} 
+                    className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-medium outline-none focus:border-indigo-400"
+                  />
+                  <span className="text-slate-400">–</span>
+                  <input 
+                    type="date" 
+                    value={slot.endDate} 
+                    onChange={e => updateComparisonSlot(slot.id, 'endDate', e.target.value)} 
+                    className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-medium outline-none focus:border-indigo-400"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Table Results */}
+          <div className="w-full overflow-x-auto border border-slate-100 rounded-2xl">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500 tracking-wider border-b border-slate-100">
+                <tr>
+                  <th className="px-4 py-3 text-left">Período / Slot</th>
+                  <th className="px-4 py-3 text-right">Receitas</th>
+                  <th className="px-4 py-3 text-right">Despesas</th>
+                  <th className="px-4 py-3 text-right font-black">Saldo</th>
+                  <th className="px-4 py-3 text-left pl-6">Comparativo Visual (Saldo)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {comparisonSlots.map(slot => {
+                  const res = comparisonResults[slot.id] || { income: 0, expense: 0, balance: 0 };
+                  
+                  // Calculate a visual progress bar based on balance relative to maximum balance in slots
+                  const maxBalance = Math.max(1, ...comparisonSlots.map(s => Math.abs(comparisonResults[s.id]?.balance || 0)));
+                  const pct = Math.min(100, Math.round((Math.abs(res.balance) / maxBalance) * 100));
+                  const isPos = res.balance >= 0;
+
+                  return (
+                    <tr key={slot.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-4 py-3 font-bold text-slate-800">
+                        {slot.name}
+                        <div className="text-[10px] text-slate-400 font-medium">{DateUtils.formatDisplayDate(slot.startDate)} a {DateUtils.formatDisplayDate(slot.endDate)}</div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-emerald-600">
+                        {isComparing ? '...' : HistoryUtils.formatCurrency(res.income)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-rose-500">
+                        {isComparing ? '...' : HistoryUtils.formatCurrency(-res.expense)}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-bold ${isPos ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {isComparing ? '...' : HistoryUtils.formatCurrency(res.balance)}
+                      </td>
+                      <td className="px-4 py-3 pl-6 w-1/3">
+                        {isComparing ? (
+                          <div className="h-2 bg-slate-100 rounded-full animate-pulse w-24"></div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden flex justify-end">
+                              <div 
+                                className={`h-full rounded-full ${isPos ? 'bg-emerald-500' : 'bg-rose-500'}`} 
+                                style={{ width: `${pct}%`, marginLeft: isPos ? '0' : 'auto', marginRight: isPos ? 'auto' : '0' }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-bold text-slate-500">{pct}%</span>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* SUMMARY CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

@@ -172,6 +172,15 @@ const SettingsPage: React.FC = () => {
   }, [settings.iof_rate, settings.spread_rate]);
 
   const [profile, setProfile] = useState<any>(null);
+  const [startHiddenByDefault, setStartHiddenByDefault] = useState(
+    localStorage.getItem('finvision_start_hidden_by_default') === 'true'
+  );
+
+  const toggleStartHiddenByDefault = (val: boolean) => {
+    localStorage.setItem('finvision_start_hidden_by_default', String(val));
+    setStartHiddenByDefault(val);
+    toast('Configuração de privacidade salva!', 'success');
+  };
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [establishments, setEstablishments] = useState<any[]>([]);
@@ -979,6 +988,16 @@ const SettingsPage: React.FC = () => {
                   </div>
                   <button onClick={() => updateSetting('auto_dark_mode', !settings.auto_dark_mode)} className={`w-14 h-8 rounded-full p-1 transition-all ${settings.auto_dark_mode ? 'bg-brand-600' : 'bg-slate-200'}`}>
                     <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${settings.auto_dark_mode ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">
+                  <div>
+                    <p className="font-bold text-slate-900">🔒 Ocultar Números ao Iniciar</p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Valores e saldos iniciarão ocultos por padrão na Home.</p>
+                  </div>
+                  <button onClick={() => toggleStartHiddenByDefault(!startHiddenByDefault)} className={`w-14 h-8 rounded-full p-1 transition-all ${startHiddenByDefault ? 'bg-brand-600' : 'bg-slate-200'}`}>
+                    <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${startHiddenByDefault ? 'translate-x-6' : 'translate-x-0'}`} />
                   </button>
                 </div>
               </div>

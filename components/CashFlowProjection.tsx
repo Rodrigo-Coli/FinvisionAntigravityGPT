@@ -1,15 +1,25 @@
 import React, { useMemo, useState } from 'react';
 import { CashFlowProjectionItem } from '../types';
-import { Activity, ChevronDown, ChevronUp, Info, TrendingUp, TrendingDown } from 'lucide-react';
+import { Activity, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { formatCurrency } from '../lib/historyUtils';
 
 interface CashFlowProjectionProps {
   data: CashFlowProjectionItem[];
   isLoading?: boolean;
   onMonthClick?: (month: string, year: number) => void;
+  showBalance?: boolean;
+  months?: number;
+  onMonthsChange?: (months: number) => void;
 }
 
-export default function CashFlowProjection({ data, isLoading, onMonthClick }: CashFlowProjectionProps) {
+export default function CashFlowProjection({
+  data,
+  isLoading,
+  onMonthClick,
+  showBalance = true,
+  months = 12,
+  onMonthsChange
+}: CashFlowProjectionProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const { maxBar, negMonths, firstNegIdx } = useMemo(() => {
@@ -35,6 +45,7 @@ export default function CashFlowProjection({ data, isLoading, onMonthClick }: Ca
   }, [data]);
 
   const fmt = (v: number) => {
+    if (!showBalance) return 'R$ ••••';
     const abs = Math.abs(v);
     if (abs >= 1000000) return `${v < 0 ? '-' : ''}R$${(abs / 1000000).toFixed(1)}M`;
     if (abs >= 1000) return `${v < 0 ? '-' : ''}R$${(abs / 1000).toFixed(1)}k`;
@@ -64,10 +75,25 @@ export default function CashFlowProjection({ data, isLoading, onMonthClick }: Ca
           </div>
           <div>
             <h3 className="font-bold text-slate-900 text-sm">Projeção Avançada de Fluxo</h3>
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Baseado no Saldo + Pendências + Crédito (12 meses)</p>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Baseado no Saldo + Pendências + Crédito ({months} meses)</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+        <div className="flex items-center gap-3 sm:gap-5 flex-wrap">
+          {/* Months Filter Selector */}
+          <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Período:</span>
+            <select
+              value={months}
+              onChange={e => onMonthsChange?.(Number(e.target.value))}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-indigo-400 cursor-pointer"
+            >
+              <option value={3}>3 meses</option>
+              <option value={6}>6 meses</option>
+              <option value={12}>12 meses</option>
+              <option value={24}>24 meses</option>
+            </select>
+          </div>
+
           {negMonths > 0 && (
             <span className="px-2 sm:px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[8px] sm:text-[9px] font-bold uppercase tracking-widest">
               {negMonths} {negMonths === 1 ? 'mês negativo' : 'meses no vermelho'}
@@ -88,7 +114,7 @@ export default function CashFlowProjection({ data, isLoading, onMonthClick }: Ca
             </div>
           )}
 
-          {/* Chart Container - com scroll horizontal se necessário no mobile */}
+          {/* Chart Container */}
           <div className="w-full overflow-x-auto pb-4 scrollbar-hide">
             <div className="flex gap-2 sm:gap-4 items-end justify-between min-w-[500px] sm:min-w-[600px] h-64 pt-10 px-2">
               {data.map((item, i) => {
@@ -116,15 +142,15 @@ export default function CashFlowProjection({ data, isLoading, onMonthClick }: Ca
                       <div className="font-bold border-b border-white/10 pb-1.5 mb-1.5 text-center">{item.label}</div>
                       <div className="flex justify-between text-emerald-400 mb-1">
                         <span>Receitas:</span>
-                        <span>{formatCurrency(totalInc)}</span>
+                        <span>{showBalance ? formatCurrency(totalInc) : 'R$ ••••'}</span>
                       </div>
                       <div className="flex justify-between text-rose-400 mb-1">
                         <span>Despesas*:</span>
-                        <span>-{formatCurrency(totalExp)}</span>
+                        <span>{showBalance ? `-${formatCurrency(totalExp)}` : 'R$ ••••'}</span>
                       </div>
                       <div className={`flex justify-between font-bold mt-2 pt-2 border-t border-white/10 ${isNegative ? 'text-rose-400' : 'text-white'}`}>
                         <span>Saldo Final:</span>
-                        <span>{formatCurrency(item.endingBalance)}</span>
+                        <span>{showBalance ? formatCurrency(item.endingBalance) : 'R$ ••••'}</span>
                       </div>
                       <p className="text-[8px] text-white/40 mt-2 text-center">*Inclui crédito e passivos</p>
                       {/* Tooltip Arrow */}
@@ -137,17 +163,17 @@ export default function CashFlowProjection({ data, isLoading, onMonthClick }: Ca
                     </span>
 
                     <div className="w-full flex gap-0.5 sm:gap-1.5 items-end h-32 justify-center">
-                      {/* Income Bar (Consolidada) */}
+                      {/* Income Bar */}
                       <div 
                         className="w-3 sm:w-5 rounded-t-md transition-all bg-emerald-400 hover:bg-emerald-500 shadow-sm" 
                         style={{ height: `${incH}%` }} 
-                        title={`Receita: ${formatCurrency(totalInc)}`}
+                        title={`Receita: ${showBalance ? formatCurrency(totalInc) : '••••'}`}
                       />
-                      {/* Expense Bar (Consolidada com Passivos/Balões/Cartões) */}
+                      {/* Expense Bar */}
                       <div 
                         className="w-3 sm:w-5 rounded-t-md transition-all bg-rose-400 hover:bg-rose-500 shadow-sm" 
                         style={{ height: `${expH}%` }} 
-                        title={`Despesa: ${formatCurrency(totalExp)}`}
+                        title={`Despesa: ${showBalance ? formatCurrency(totalExp) : '••••'}`}
                       >
                         {(item.balloonPayments > 0 || item.liabilityPayments > 0) && (
                            <div className="w-full h-1 bg-amber-400/50 mt-auto" title="Contém Balões/Parcelas Extras" />
@@ -165,8 +191,56 @@ export default function CashFlowProjection({ data, isLoading, onMonthClick }: Ca
             </div>
           </div>
 
-          <div className="mt-8 pt-4 border-t border-slate-50 flex items-center text-[10px] text-slate-400 gap-2 font-medium">
-            <Info className="w-4 h-4 text-brand-400 shrink-0" />
+          {/* Detailed Monthly Comparison Table */}
+          <div className="mt-6 overflow-x-auto border border-slate-100 rounded-2xl">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500 tracking-wider border-b border-slate-100">
+                <tr>
+                  <th className="px-4 py-3 text-left">Mês</th>
+                  <th className="px-4 py-3 text-right">Receitas</th>
+                  <th className="px-4 py-3 text-right">Despesas</th>
+                  <th className="px-4 py-3 text-right font-black">Saldo Projetado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {data.map((item, idx) => {
+                  const totalInc = item.projectedIncome + item.recurringIncome;
+                  const totalExp = item.projectedExpense + item.recurringExpense + item.liabilityPayments + item.balloonPayments;
+                  const isNegative = item.endingBalance < 0;
+
+                  return (
+                    <tr 
+                      key={idx} 
+                      className="hover:bg-slate-50/50 transition-colors cursor-pointer"
+                      onClick={() => {
+                        const [mName, yShort] = item.label.split('/');
+                        const monthMap: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
+                        const m = monthMap[mName] || '01';
+                        const y = 2000 + parseInt(yShort);
+                        onMonthClick?.(m, y);
+                      }}
+                    >
+                      <td className="px-4 py-3 font-bold text-slate-700">
+                        {item.label}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-emerald-600">
+                        {showBalance ? formatCurrency(totalInc) : 'R$ ••••'}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-rose-500">
+                        {showBalance ? `-${formatCurrency(totalExp)}` : 'R$ ••••'}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-black ${isNegative ? 'text-rose-600' : 'text-slate-900'}`}>
+                        {showBalance ? formatCurrency(item.endingBalance) : 'R$ ••••'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-slate-50 flex items-center text-[10px] text-slate-400 gap-2 font-medium">
+            <Info className="w-4.5 h-4.5 text-brand-400 shrink-0" />
             <p>A projeção avançada consolida faturas de cartão e parcelas extras de imóveis nas barras de despesa.</p>
           </div>
         </div>

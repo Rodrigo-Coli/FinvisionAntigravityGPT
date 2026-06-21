@@ -46,7 +46,7 @@ try {
     # 4. Criar o commit unificado
     Write-Host "Criando commit..."
     $commitBody = @{ 
-        message = "feat: unified deploy v6.2.2 - full mirror sync with TS fixes and vercelignore fix"
+        message = "feat: home improvements, visibility defaults, and transactions period comparison"
         tree = $newTree.sha
         parents = @($parentSha) 
     } | ConvertTo-Json
