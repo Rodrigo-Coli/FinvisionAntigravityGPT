@@ -2102,6 +2102,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       IMPORTANTE sobre Cartão de Crédito:
       Se o comprovante ou contexto for de uma compra ou transação no cartão de crédito (ex: contém texto como 'compra aprovada no cartão', 'Bradesco Cartões', 'fatura', 'final XXXX', ou comprova pagamento feito com cartão), defina 'is_card': true e preencha 'card_name' com o nome do cartão de crédito correspondente (ex: 'Bradesco').
 
+      IMPORTANTE sobre a Data:
+      O ano atual do sistema é 2026. Se o ano extraído do comprovante for muito no passado (ex: 2020) ou parecer conter um erro de leitura/digitação do ano, use o ano atual (2026) na data ("YYYY-MM-DD"), a menos que seja explicitamente um comprovante antigo de outro período.
+
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
         "operations": [
@@ -2128,6 +2131,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
       IMPORTANTE sobre Cartão de Crédito:
       Se a imagem ou contexto for de uma compra ou transação no cartão de crédito (ex: contém texto como 'compra aprovada no cartão', 'Bradesco Cartões', 'fatura', 'final XXXX', ou comprova pagamento feito com cartão), defina 'is_card': true e preencha 'card_name' com o nome do cartão de crédito correspondente (ex: 'Bradesco').
+
+      IMPORTANTE sobre a Data:
+      O ano atual do sistema é 2026. Se o ano extraído do comprovante for muito no passado (ex: 2020) ou parecer conter um erro de leitura/digitação do ano, use o ano atual (2026) na data ("YYYY-MM-DD"), a menos que seja explicitamente um comprovante antigo de outro período.
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
