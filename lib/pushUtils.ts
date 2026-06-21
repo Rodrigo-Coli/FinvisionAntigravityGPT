@@ -115,7 +115,7 @@ export async function checkAndNotifyBillsDue(transactions: Array<{
     await showLocalNotification(
       `⚠️ ${tx.description}`,
       `${amount} — ${label}`,
-      { url: '/#/history', tag: `bill-${tx.id}` }
+      { url: '/#/history?status=PENDING', tag: `bill-${tx.id}` }
     );
   }
 }

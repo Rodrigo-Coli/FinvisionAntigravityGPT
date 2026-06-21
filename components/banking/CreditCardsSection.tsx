@@ -61,6 +61,8 @@ import { StatementSummary } from '../cards/StatementSummary';
 import { TransactionList } from '../cards/TransactionList';
 import { AddCardModal } from '../cards/AddCardModal';
 import { ManualTransactionModal } from '../cards/ManualTransactionModal';
+import { useSubscription } from '../../contexts/SubscriptionContext';
+import PlanUpgradeModal from '../subscription/PlanUpgradeModal';
 import { PayStatementModal } from '../cards/PayStatementModal';
 import { SeriesScopeModal, SeriesScope } from '../SeriesScopeModal';
 
@@ -98,6 +100,10 @@ const CreditCardsSection: React.FC = () => {
   });
   const [loadingTxs, setLoadingTxs] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const { subscription } = useSubscription();
+  const maxCards = subscription?.plans?.max_cards !== undefined ? subscription.plans.max_cards : -1;
+  const isCardsLocked = maxCards !== -1 && cards.length >= maxCards;
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -1425,7 +1431,13 @@ const CreditCardsSection: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={() => {
+              if (isCardsLocked) {
+                setShowUpgradeModal(true);
+              } else {
+                setShowAddModal(true);
+              }
+            }}
             className="hidden sm:flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 transition-all active:scale-95"
           >
             <Plus size={18} />
@@ -1456,7 +1468,13 @@ const CreditCardsSection: React.FC = () => {
             <p className="text-slate-400 font-medium">Cadastre seu primeiro cartão para começar o controle.</p>
           </div>
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={() => {
+              if (isCardsLocked) {
+                setShowUpgradeModal(true);
+              } else {
+                setShowAddModal(true);
+              }
+            }}
             className="px-8 py-4 bg-brand-900 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-black transition-all"
           >
             Cadastrar Cartão
@@ -1767,6 +1785,12 @@ const CreditCardsSection: React.FC = () => {
         actionLabel={seriesModal.pendingAction === 'DELETE' ? 'Excluir' : 'Salvar'}
         type={seriesModal.tx?.recurrence_group_id ? 'RECURRING' : 'INSTALLMENT'}
       />
+      {showUpgradeModal && (
+        <PlanUpgradeModal
+          currentPlanId={subscription?.plan_id}
+          onClose={() => setShowUpgradeModal(false)}
+        />
+      )}
     </div>
   );
 };

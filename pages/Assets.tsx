@@ -613,7 +613,8 @@ const Assets: React.FC = () => {
         installmentsRemaining: l.installments_remaining ? Number(l.installments_remaining) : undefined,
         dueDay: l.due_day ? Number(l.due_day) : undefined,
         metadata: l.metadata || {},
-        is_archived: !!l.is_archived
+        is_archived: !!l.is_archived,
+        createdAt: l.created_at
       }));
       setLiabilities(mappedLiabs);
 
@@ -1242,13 +1243,25 @@ const Assets: React.FC = () => {
   const runAutoTransactionSync = async (userId: string, assets: any[], liabs: any[], txs: any[]) => {
     if (!supabase) return;
     
+    // Busca todas as transações (incluindo deletadas) para auditar corretamente e evitar duplicar/recriar deletadas
+    const { data: allLinkedTxs, error: linkedErr } = await supabase
+      .from('transactions')
+      .select('id, metadata, liability_id, is_deleted')
+      .eq('user_id', userId);
+
+    if (linkedErr) {
+      console.error('Assets: Erro ao buscar transações vinculadas para sincronização', linkedErr);
+      return;
+    }
+    const linkedTxs = allLinkedTxs || [];
+
     // 1. Asset Purchase Transactions
     for (const asset of assets) {
       if (asset.category === 'INVESTMENT' || asset.metadata?.isLoan || asset.is_archived) continue;
       const amount = Number(asset.metadata?.purchaseValue) || asset.estimatedValue;
       if (amount <= 0) continue;
       
-      const hasPurchaseTx = txs.some(t => 
+      const hasPurchaseTx = linkedTxs.some((t: any) => 
         t.metadata?.linked_asset_id === asset.id && 
         t.metadata?.type === 'asset_purchase'
       );
@@ -1291,7 +1304,7 @@ const Assets: React.FC = () => {
     for (const liab of liabs) {
       if (liab.is_archived || liab.totalAmount <= 0) continue;
       
-      const hasInflowTx = txs.some(t => 
+      const hasInflowTx = linkedTxs.some((t: any) => 
         t.liability_id === liab.id && 
         t.metadata?.type === 'liability_inflow'
       );
@@ -1300,7 +1313,12 @@ const Assets: React.FC = () => {
         const catName = 'Empréstimos/Investimentos';
         const catColor = 'bg-brand-50 text-brand-600';
         const catId = await getOrCreateCategory(userId, catName, 'INCOME', catColor);
-        const dateStr = new Date().toISOString().split('T')[0];
+        
+        let dateStr = new Date().toISOString().split('T')[0];
+        if (liab.createdAt) {
+          const sep = liab.createdAt.includes('T') ? 'T' : ' ';
+          dateStr = liab.createdAt.split(sep)[0];
+        }
         
         await supabase.from('transactions').insert([{
           user_id: userId,
@@ -1330,7 +1348,7 @@ const Assets: React.FC = () => {
       const principal = Number(asset.metadata?.loanPrincipal) || 0;
       if (principal <= 0) continue;
       
-      const hasDisbTx = txs.some(t => 
+      const hasDisbTx = linkedTxs.some((t: any) => 
         t.metadata?.linked_asset_id === asset.id && 
         t.metadata?.type === 'loan_disbursement'
       );
@@ -1365,7 +1383,7 @@ const Assets: React.FC = () => {
       const dueDate = Number(asset.metadata?.loanDueDate) || 10;
       
       if (installmentsCount > 0 && monthlyValue > 0) {
-        const hasInstallments = txs.some(t => 
+        const hasInstallments = linkedTxs.some((t: any) => 
           t.metadata?.linked_asset_id === asset.id && 
           t.metadata?.type === 'loan_installment_provision'
         );

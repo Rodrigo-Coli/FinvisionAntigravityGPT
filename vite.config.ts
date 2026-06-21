@@ -15,7 +15,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
-      includeAssets: ['favicon.ico', 'logo.png', 'logo.svg'],
+      includeAssets: ['favicon.ico', 'logo.png', 'logo.svg', 'badge.png'],
       manifest: {
         name: 'FinVision Pro',
         short_name: 'FinVision',

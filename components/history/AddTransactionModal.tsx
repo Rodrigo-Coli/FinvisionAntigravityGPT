@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Loader2, CheckCircle2, AlertCircle, Plus, Camera, Check } from 'lucide-react';
 import { BankAccount } from '../../types';
 import { supabase } from '../../lib/supabase/client';
+import { useSubscription } from '../../contexts/SubscriptionContext';
 
 interface AddTransactionModalProps {
     show: boolean;
@@ -175,6 +176,17 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             }, initialForm));
         }
     }, [show, initialForm]);
+
+    const { subscription } = useSubscription();
+    const isTrialExpired = subscription?.status === 'trialing' && subscription.trial_ends_at && new Date(subscription.trial_ends_at) < new Date();
+    const isDowngraded = subscription?.status === 'past_due' || subscription?.status === 'canceled' || isTrialExpired;
+    const activeAccountId = subscription?.metadata?.active_account_id;
+
+    useEffect(() => {
+        if (show && isDowngraded && activeAccountId) {
+            setForm(prev => ({ ...prev, accountId: activeAccountId }));
+        }
+    }, [show, isDowngraded, activeAccountId]);
 
     if (!show || !form.date) return null;
 
@@ -371,9 +383,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                     className="w-full h-14 px-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
                                 >
                                     <option value="">Selecione...</option>
-                                    {accounts.map((acc: any) => (
-                                        <option key={acc.id} value={acc.id}>{acc.institution}</option>
-                                    ))}
+                                    {accounts.map((acc: any) => {
+                                        const disabled = isDowngraded && activeAccountId && acc.id !== activeAccountId;
+                                        return (
+                                            <option key={acc.id} value={acc.id} disabled={disabled}>
+                                                {acc.institution || acc.name} {disabled ? ' (Bloqueada - Plano Gratuito)' : ''}
+                                            </option>
+                                        );
+                                    })}
                                 </select>
                             </div>
 

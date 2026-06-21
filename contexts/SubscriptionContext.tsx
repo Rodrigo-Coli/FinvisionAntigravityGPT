@@ -8,11 +8,14 @@ export interface SubscriptionData {
   status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'admin_granted';
   trial_ends_at: string | null;
   current_period_end: string | null;
+  metadata?: any;
   plans?: {
     name: string;
     features: any;
     price_cents: number;
     ai_scans_limit: number;
+    max_cards?: number;
+    max_accounts?: number;
   };
 }
 
@@ -42,13 +45,35 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       return;
     }
     setLoadingSub(true);
-    const { data } = await supabase
+    const { data: subData } = await supabase
       .from('subscriptions')
       .select('*, plans(*)')
       .eq('user_id', user.id)
       .maybeSingle();
     
-    setSubscription(data || null);
+    if (subData) {
+      const isTrialExpired = subData.status === 'trialing' && subData.trial_ends_at && new Date(subData.trial_ends_at) < new Date();
+      if (subData.status === 'past_due' || subData.status === 'canceled' || isTrialExpired) {
+        // Fetch Starter plan limits
+        const { data: starterPlan } = await supabase
+          .from('plans')
+          .select('*')
+          .eq('slug', 'starter')
+          .maybeSingle();
+        
+        if (starterPlan) {
+          subData.plans = {
+            name: starterPlan.name,
+            features: starterPlan.features,
+            price_cents: starterPlan.price_cents,
+            ai_scans_limit: starterPlan.ai_scans_limit,
+          };
+        }
+      }
+      setSubscription(subData);
+    } else {
+      setSubscription(null);
+    }
     setLoadingSub(false);
   };
 

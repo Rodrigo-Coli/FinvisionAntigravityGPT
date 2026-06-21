@@ -30,6 +30,8 @@ import { SubscriptionProvider } from './contexts/SubscriptionContext';
 import OfflineBanner from './components/OfflineBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import TrialBanner from './components/TrialBanner';
+import GracefulDowngradeBanner from './components/subscription/GracefulDowngradeBanner';
+import AccountSelectionModal from './components/subscription/AccountSelectionModal';
 import UpgradeModal from './components/UpgradeModal';
 import DemoMode from './pages/DemoMode';
 import DemoBanner from './components/DemoBanner';
@@ -199,6 +201,8 @@ const App: React.FC = () => {
             <ScrollToTop />
             <OfflineBanner />
             <TrialBanner />
+            <GracefulDowngradeBanner />
+            <AccountSelectionModal />
             <UpgradeModal />
             <PushManager />
             <PWAInstallPrompt />

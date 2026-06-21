@@ -433,6 +433,72 @@ async function getLastLaunchedTransaction(userId: string): Promise<{ id: string;
   return null;
 }
 
+interface QuotedTransaction {
+  description: string | null;
+  amount: number | null;
+  date: string | null;
+}
+
+function parseQuotedTransaction(message: any): QuotedTransaction | null {
+  const contextInfo = message?.message?.extendedTextMessage?.contextInfo;
+  if (!contextInfo?.quotedMessage) return null;
+
+  const extractedQuoted = extractMessageContent({ message: contextInfo.quotedMessage });
+  const text = extractedQuoted.text;
+  if (!text) return null;
+
+  const isConfirmation = text.includes('Cadastrado com Sucesso') || 
+                          text.includes('Confirmado') || 
+                          text.includes('Marcada como Paga') || 
+                          text.includes('Excluído com Sucesso') ||
+                          text.includes('Valor: R$') ||
+                          text.includes('Descrição:');
+  
+  if (!isConfirmation) return null;
+
+  const descMatch = text.match(/(?:Descrição|\*Descrição\*|\*Descrição:\*)\s*:\s*(.+)/i) || 
+                    text.match(/(?:Descrição|\*Descrição\*|\*Descrição:\*)\s*(.+)/i);
+  
+  const amountMatch = text.match(/(?:Valor|\*Valor\*|\*Valor:\*)\s*:\s*(?:R\$\s*)?([\d,.]+)/i) || 
+                      text.match(/(?:Valor|\*Valor\*|\*Valor:\*)\s*(?:R\$\s*)?([\d,.]+)/i);
+  
+  const dateMatch = text.match(/(?:Data|\*Data\*|\*Data:\*)\s*:\s*([\d/]+)/i) || 
+                    text.match(/(?:Data|\*Data\*|\*Data:\*)\s*([\d/]+)/i);
+
+  const description = descMatch ? descMatch[1].trim() : null;
+  let amount = null;
+  if (amountMatch) {
+    const cleanAmountStr = amountMatch[1].replace(/\./g, '').replace(',', '.');
+    amount = parseFloat(cleanAmountStr);
+  }
+  let date = null;
+  if (dateMatch) {
+    const parts = dateMatch[1].trim().split('/');
+    if (parts.length === 3) {
+      date = `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+  }
+
+  if (!description && !amount) return null;
+
+  return { description, amount, date };
+}
+
+async function getLastLaunchedPendingTransaction(userId: string): Promise<{ id: string; description: string; amount: number; date: string; isCard: boolean } | null> {
+  const { data } = await supabase.from('transactions')
+    .select('id, description, amount, date, created_at')
+    .eq('user_id', userId)
+    .is('is_deleted', false)
+    .eq('is_paid', false)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return null;
+  return { id: data.id, description: data.description, amount: Number(data.amount), date: data.date.split('T')[0], isCard: false };
+}
+
+
 function formatDirectLaunchSummary(tx: any, accountName: string, isCard: boolean): string {
   const dateFmt = tx.date ? tx.date.split('-').reverse().join('/') : '';
   const isTransfer = tx.category?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || tx.type === 'TRANSFER';
@@ -1210,6 +1276,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
     // Processamento especial de mensagens de voz (Áudio) ou texto
     let text = (extracted.text || '').trim();
+
+    // Extração de informações da transação citada na resposta do usuário (se houver)
+    const quotedTx = parseQuotedTransaction(message);
 
     if (isAudio) {
       await sendWhatsApp(phone, `🤖 *Ouvindo sua mensagem de voz...*`);
@@ -2283,6 +2352,13 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       - Se o usuário estiver editando o rascunho ativo (tentando complementar informações ou corrigir algo nele), defina "isEdit": true e retorne o rascunho atualizado no campo "updatedDraft", aplicando as alterações.
       - Se o usuário NÃO estiver editando (seja um novo lançamento independente, uma consulta, exclusão ou se ele quiser alterar uma transação já cadastrada no banco), defina "isEdit": false.
 
+      # TRANSAÇÃO DA MENSAGEM CITADA/RESPONDIDA PELO USUÁRIO (Se houver)
+      ${quotedTx ? `O usuário está respondendo diretamente (marcando/citando) a uma mensagem de confirmação para esta transação:
+      - Descrição: "${quotedTx.description}"
+      - Valor: R$ ${quotedTx.amount}
+      - Data: ${quotedTx.date}
+      Se o usuário pedir para alterar (UPDATE), marcar como paga (PAY) ou excluir (DELETE) e tiver respondido a essa mensagem, use estes dados para preencher os respectivos filtros (updateFilters, payFilters ou deleteFilters) com estes valores exatos!` : 'Nenhuma transação citada.'}
+
       # CONTAS PENDENTES EM ABERTO NO SISTEMA (Aguardando Pagamento/Baixa)
       Use esta lista para cruzar o pedido do usuário. Se ele pedir para pagar/quitar uma conta que combine com alguma destas descrições (por exemplo "pague a conta mensal mãe" ou "mensal mãe" combina com a conta "Mensal Mãe"), classifique a intenção como "PAY" (e não TRANSACTION) e preencha o "payFilters" correspondente:
       ${formattedPendingBills}
@@ -2310,6 +2386,8 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
          Sempre que o usuário informar uma transferência entre contas (ex: "transferi 500 do Itaú para o Bradesco" ou "transferência para Bradesco"), defina a "category" como "transferência". Mapeie a conta de débito (origem) no campo "account_name" (ex: "Itaú") e a conta de crédito (destino) no campo "destination_account_name" (ex: "Bradesco"), respeitando estritamente os nomes da lista de bancos do usuário. Se o usuário disser apenas "transferência para Bradesco", entenda que a origem é a conta padrão e o destino é Bradesco.
       7. REGRA DE RESPOSTA DE CONVERSA (CHAT):
          Se a intenção do usuário for CHAT (conversa casual, saudações, perguntas sobre quem você é ou como funciona, etc.), você DEVE gerar uma resposta completa, amigável, prestativa e sucinta no campo "chatReply" em português, usando o histórico recente para dar continuidade natural à conversa. Respeite sempre a BLINDAGEM CONTRA CONCORRENTES.
+      8. REGRA DE FALTA DE FILTROS:
+         Se o usuário pedir para alterar, corrigir ou excluir um lançamento, mas não descrever qual (ex: "deleta esse gasto", "altere o perfil para pessoal", "marca como paga"), classifique a intenção correspondente ("UPDATE", "PAY" ou "DELETE") e deixe os filtros em branco (valores nulos ou vazios no objeto de filtro), pois o sistema aplicará a alteração automaticamente na última transação lançada por ele.
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
@@ -2627,7 +2705,24 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
         if (op.intent === 'DELETE') {
           const filters = op.deleteFilters || {};
-          const matches = await findMatchingTransactions(userId, filters, false);
+          let matchedTx: any = null;
+
+          if (quotedTx && quotedTx.description) {
+            const matches = await findMatchingTransactions(userId, {
+              description: quotedTx.description,
+              amount: quotedTx.amount || undefined,
+              date: quotedTx.date || undefined
+            }, false);
+            if (matches.length > 0) {
+              matchedTx = matches[0];
+            }
+          }
+
+          if (!matchedTx && !filters.description && !filters.amount && !filters.date) {
+            matchedTx = await getLastLaunchedTransaction(userId);
+          }
+
+          const matches = matchedTx ? [matchedTx] : await findMatchingTransactions(userId, filters, false);
 
           if (matches.length === 0) {
             await sendWhatsApp(phone, `❌ *Não encontrei nenhum lançamento recente correspondente* para exclusão.`);
@@ -2686,7 +2781,24 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
         if (op.intent === 'PAY') {
           const filters = op.payFilters || {};
-          const matches = await findMatchingTransactions(userId, filters, true);
+          let matchedTx: any = null;
+
+          if (quotedTx && quotedTx.description) {
+            const matches = await findMatchingTransactions(userId, {
+              description: quotedTx.description,
+              amount: quotedTx.amount || undefined,
+              date: quotedTx.date || undefined
+            }, true);
+            if (matches.length > 0) {
+              matchedTx = matches[0];
+            }
+          }
+
+          if (!matchedTx && !filters.description && !filters.amount && !filters.date) {
+            matchedTx = await getLastLaunchedPendingTransaction(userId);
+          }
+
+          const matches = matchedTx ? [matchedTx] : await findMatchingTransactions(userId, filters, true);
 
           if (matches.length === 0) {
             await sendWhatsApp(phone, `❌ *Não encontrei nenhuma conta pendente correspondente* para marcar como paga.`);
@@ -2746,13 +2858,25 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           const filters = op.updateFilters || {};
           let matchedTx: any = null;
 
-          if (!filters.description && !filters.amount && !filters.date) {
-            matchedTx = await getLastLaunchedTransaction(userId);
-          } else {
-            const matches = await findMatchingTransactions(userId, filters, false);
-            if (matches.length === 1) {
+          if (quotedTx && quotedTx.description) {
+            const matches = await findMatchingTransactions(userId, {
+              description: quotedTx.description,
+              amount: quotedTx.amount || undefined,
+              date: quotedTx.date || undefined
+            }, false);
+            if (matches.length > 0) {
               matchedTx = matches[0];
-            } else if (matches.length > 1) {
+            }
+          }
+
+          if (!matchedTx) {
+            if (!filters.description && !filters.amount && !filters.date) {
+              matchedTx = await getLastLaunchedTransaction(userId);
+            } else {
+              const matches = await findMatchingTransactions(userId, filters, false);
+              if (matches.length === 1) {
+                matchedTx = matches[0];
+              } else if (matches.length > 1) {
               await supabase
                 .from('whatsapp_drafts')
                 .update({
@@ -2777,6 +2901,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               await sendWhatsApp(phone, listMsg);
               return res.status(200).json({ status: 'update_disambiguation' });
             }
+          }
           }
 
           if (!matchedTx) {
@@ -2836,7 +2961,19 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             });
           } else if (op.intent === 'DELETE') {
             const filters = op.deleteFilters || {};
-            const matches = await findMatchingTransactions(userId, filters, false);
+            let matchedTx: any = null;
+            if (quotedTx && quotedTx.description) {
+              const qMatches = await findMatchingTransactions(userId, {
+                description: quotedTx.description,
+                amount: quotedTx.amount || undefined,
+                date: quotedTx.date || undefined
+              }, false);
+              if (qMatches.length > 0) matchedTx = qMatches[0];
+            }
+            if (!matchedTx && !filters.description && !filters.amount && !filters.date) {
+              matchedTx = await getLastLaunchedTransaction(userId);
+            }
+            const matches = matchedTx ? [matchedTx] : await findMatchingTransactions(userId, filters, false);
             if (matches.length === 0) {
               await sendWhatsApp(phone, `⚠️ *Não encontrei correspondência para excluir:* "${filters.description || ''}"`);
             } else if (matches.length === 1) {
@@ -2852,7 +2989,19 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             }
           } else if (op.intent === 'PAY') {
             const filters = op.payFilters || {};
-            const matches = await findMatchingTransactions(userId, filters, true);
+            let matchedTx: any = null;
+            if (quotedTx && quotedTx.description) {
+              const qMatches = await findMatchingTransactions(userId, {
+                description: quotedTx.description,
+                amount: quotedTx.amount || undefined,
+                date: quotedTx.date || undefined
+              }, true);
+              if (qMatches.length > 0) matchedTx = qMatches[0];
+            }
+            if (!matchedTx && !filters.description && !filters.amount && !filters.date) {
+              matchedTx = await getLastLaunchedPendingTransaction(userId);
+            }
+            const matches = matchedTx ? [matchedTx] : await findMatchingTransactions(userId, filters, true);
             if (matches.length === 0) {
               await sendWhatsApp(phone, `⚠️ *Não encontrei conta pendente correspondente para pagar:* "${filters.description || ''}"`);
             } else if (matches.length === 1) {
@@ -2869,15 +3018,24 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           } else if (op.intent === 'UPDATE') {
             const filters = op.updateFilters || {};
             let matchedTx: any = null;
-
-            if (!filters.description && !filters.amount && !filters.date) {
-              matchedTx = await getLastLaunchedTransaction(userId);
-            } else {
-              const matches = await findMatchingTransactions(userId, filters, false);
-              if (matches.length === 1) {
-                matchedTx = matches[0];
-              } else if (matches.length > 1) {
-                disambigOps.push({ op, matches });
+            if (quotedTx && quotedTx.description) {
+              const qMatches = await findMatchingTransactions(userId, {
+                description: quotedTx.description,
+                amount: quotedTx.amount || undefined,
+                date: quotedTx.date || undefined
+              }, false);
+              if (qMatches.length > 0) matchedTx = qMatches[0];
+            }
+            if (!matchedTx) {
+              if (!filters.description && !filters.amount && !filters.date) {
+                matchedTx = await getLastLaunchedTransaction(userId);
+              } else {
+                const matches = await findMatchingTransactions(userId, filters, false);
+                if (matches.length === 1) {
+                  matchedTx = matches[0];
+                } else if (matches.length > 1) {
+                  disambigOps.push({ op, matches });
+                }
               }
             }
 

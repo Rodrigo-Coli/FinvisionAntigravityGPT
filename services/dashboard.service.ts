@@ -101,6 +101,7 @@ export const DashboardService = {
       const grouped = txs.reduce((acc: any, tx: any) => {
         if (tx.owner_name && excludedSet.has(tx.owner_name)) return acc;
         if (tx.metadata?.is_historical === true || tx.metadata?.is_historical === 'true') return acc;
+        if (tx.metadata?.isCapitalized === true || tx.metadata?.type === 'asset_purchase') return acc;
  
         // tx.date is usually YYYY-MM-DD
         const datePart = tx.date.split('T')[0];

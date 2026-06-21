@@ -34,7 +34,16 @@ async function asaasRequest(path: string, method = 'GET', body?: any) {
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { userId, planSlug, period = 'monthly', paymentMethod = 'PIX', couponCode } = req.body;
+  const { 
+    userId, 
+    planSlug, 
+    period = 'monthly', 
+    paymentMethod = 'PIX', 
+    couponCode,
+    creditCard,
+    creditCardHolderInfo
+  } = req.body;
+  
   if (!userId || !planSlug) return res.status(400).json({ error: 'userId and planSlug required' });
 
   try {
@@ -55,7 +64,26 @@ export default async function handler(req: any, res: any) {
     else if (p === 'annual') totalPrice = plan.price_cents_annual || plan.price_cents * 12;
     else totalPrice = plan.price_cents;
 
-    // 4. Validate coupon
+    // 4. Check existing subscription and trial
+    const { data: existingSub } = await supabase
+      .from('subscriptions')
+      .select('trial_ends_at, status')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const now = new Date();
+    let nextDue: string;
+    let trialEndsAt: string | null = null;
+
+    if (existingSub && existingSub.status === 'trialing' && existingSub.trial_ends_at && new Date(existingSub.trial_ends_at) > now) {
+      trialEndsAt = existingSub.trial_ends_at;
+      nextDue = new Date(existingSub.trial_ends_at).toISOString().split('T')[0];
+    } else {
+      // If trial has expired, charge immediately (due date is today)
+      nextDue = now.toISOString().split('T')[0];
+    }
+
+    // 5. Validate coupon
     let discountPercent = 0;
     if (couponCode) {
       const { data: coupon } = await supabase
@@ -72,7 +100,7 @@ export default async function handler(req: any, res: any) {
         if (!used) {
           // Free plan override via coupon
           if (coupon.plan_override_id && coupon.plans?.price_cents === 0) {
-            await upsertSubscription(userId, coupon.plans.id, 'admin_granted', null, p);
+            await upsertSubscription(userId, coupon.plans.id, 'admin_granted', null, p, null);
             await supabase.from('coupon_uses').insert({ coupon_id: coupon.id, user_id: userId });
             await supabase.from('coupons').update({ uses_count: (coupon.uses_count || 0) + 1 }).eq('id', coupon.id);
             return res.status(200).json({ success: true, message: 'Plan granted via coupon', plan: coupon.plans.name, period });
@@ -84,7 +112,7 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 5. Create/find Asaas customer
+    // 6. Create/find Asaas customer
     const existingCustomers = await asaasRequest(`/customers?email=${encodeURIComponent(user.email)}`);
     let asaasCustomerId: string;
     if (existingCustomers.data?.length > 0) {
@@ -99,14 +127,11 @@ export default async function handler(req: any, res: any) {
       asaasCustomerId = customer.id;
     }
 
-    // 6. Apply discount to total price
+    // 7. Apply discount to total price
     const priceInReais = (totalPrice / 100) * (1 - discountPercent / 100);
 
-    // 7. Next due: after trial (14 days from now)
-    const nextDue = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-    // 8. Create Asaas subscription
-    const subscription = await asaasRequest('/subscriptions', 'POST', {
+    // 8. Create Asaas subscription payload
+    const subPayload: any = {
       customer: asaasCustomerId,
       billingType: paymentMethod === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX',
       value: priceInReais,
@@ -114,12 +139,55 @@ export default async function handler(req: any, res: any) {
       cycle: ASAAS_CYCLE[p],
       description: `FinVision ${plan.name} (${PERIOD_MONTHS[p]} mês${PERIOD_MONTHS[p] > 1 ? 'es' : ''})`,
       externalReference: `${userId}:${planSlug}:${p}`,
-    });
+    };
 
+    if (paymentMethod === 'CREDIT_CARD' && creditCard && creditCardHolderInfo) {
+      subPayload.creditCard = {
+        holderName: creditCard.holderName,
+        number: creditCard.number,
+        expiryMonth: creditCard.expiryMonth,
+        expiryYear: creditCard.expiryYear,
+        ccv: creditCard.ccv
+      };
+      subPayload.creditCardHolderInfo = {
+        name: creditCardHolderInfo.name,
+        email: creditCardHolderInfo.email || user.email,
+        cpfCnpj: creditCardHolderInfo.cpfCnpj,
+        postalCode: creditCardHolderInfo.postalCode,
+        addressNumber: creditCardHolderInfo.addressNumber,
+        phone: creditCardHolderInfo.phone,
+        mobilePhone: creditCardHolderInfo.phone
+      };
+      subPayload.remoteIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
+    }
+
+    // Create Asaas subscription
+    const subscription = await asaasRequest('/subscriptions', 'POST', subPayload);
     if (!subscription.id) throw new Error('Failed to create Asaas subscription: ' + JSON.stringify(subscription));
 
-    // 9. Upsert in our DB
-    await upsertSubscription(userId, plan.id, 'trialing', subscription.id, p);
+    // 9. Fetch Pix details if payment method is PIX
+    let pixData: any = null;
+    if (paymentMethod === 'PIX') {
+      // Small delay to ensure Asaas generates the first payment invoice
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const paymentsResponse = await asaasRequest(`/payments?subscription=${subscription.id}`);
+      if (paymentsResponse.data && paymentsResponse.data.length > 0) {
+        const firstPayment = paymentsResponse.data[0];
+        const qrCodeResponse = await asaasRequest(`/payments/${firstPayment.id}/pixQrCode`);
+        if (qrCodeResponse.success) {
+          pixData = {
+            paymentId: firstPayment.id,
+            qrCode: qrCodeResponse.encodedImage,
+            copiaECola: qrCodeResponse.payload,
+            expirationDate: qrCodeResponse.expirationDate
+          };
+        }
+      }
+    }
+
+    // 10. Upsert in our DB
+    const initialStatus = paymentMethod === 'CREDIT_CARD' ? 'active' : (trialEndsAt ? 'trialing' : 'past_due');
+    await upsertSubscription(userId, plan.id, initialStatus, subscription.id, p, trialEndsAt);
 
     return res.status(200).json({
       success: true,
@@ -128,6 +196,7 @@ export default async function handler(req: any, res: any) {
       period,
       totalPrice: priceInReais,
       nextDueDate: subscription.nextDueDate,
+      pix: pixData
     });
 
   } catch (err: any) {
@@ -136,7 +205,7 @@ export default async function handler(req: any, res: any) {
   }
 }
 
-async function upsertSubscription(userId: string, planId: string, status: string, asaasId: string | null, period: Period) {
+async function upsertSubscription(userId: string, planId: string, status: string, asaasId: string | null, period: Period, trialEndsAt: string | null) {
   const now = new Date();
   const months = PERIOD_MONTHS[period];
   const periodEnd = new Date(now);
@@ -148,7 +217,7 @@ async function upsertSubscription(userId: string, planId: string, status: string
     status,
     current_period_start: now.toISOString(),
     current_period_end: periodEnd.toISOString(),
-    trial_ends_at: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    trial_ends_at: trialEndsAt,
     updated_at: now.toISOString(),
   };
   if (asaasId) payload.asaas_subscription_id = asaasId;

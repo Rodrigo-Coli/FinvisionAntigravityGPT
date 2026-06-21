@@ -11,7 +11,7 @@ export default function UpgradeModal() {
   const isTrialExpired = subscription.status === 'trialing' && subscription.trial_ends_at && new Date(subscription.trial_ends_at) < new Date();
   const isPastDue = subscription.status === 'past_due' || subscription.status === 'canceled';
 
-  if (!isTrialExpired && !isPastDue) return null;
+  return null; // Não bloqueia mais a tela (inadimplentes usam plano Starter com banner)
 
   const handleLogout = async () => {
     if (supabase) {

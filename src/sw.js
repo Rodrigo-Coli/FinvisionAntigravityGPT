@@ -13,7 +13,7 @@ self.addEventListener('message', (event) => {
     self.registration.showNotification(title || 'FinVision Pro', {
       body: body || '',
       icon: icon || '/logo.png',
-      badge: '/logo.png',
+      badge: '/badge.png',
       tag: tag || 'finvision',
       data: { url: url || '/' },
       vibrate: [200, 100, 200],
@@ -26,7 +26,7 @@ self.addEventListener('message', (event) => {
       self.registration.showNotification(title || 'FinVision Pro', {
         body: body || '',
         icon: icon || '/logo.png',
-        badge: '/logo.png',
+        badge: '/badge.png',
         tag: tag || 'finvision-scheduled',
         data: { url: url || '/' },
         vibrate: [200, 100, 200],
@@ -107,7 +107,7 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(payload.title, {
       body: payload.body,
       icon: '/logo.png',
-      badge: '/logo.png',
+      badge: '/badge.png',
       data: { url: payload.url || '/' },
       vibrate: [200, 100, 200, 100, 200],
     })
@@ -117,7 +117,8 @@ self.addEventListener('push', (event) => {
 // ── Notification click ────────────────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  const rawUrl = (event.notification.data && event.notification.data.url) || '/';
+  const targetUrl = new URL(rawUrl, self.location.origin).href;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {

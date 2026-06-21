@@ -114,7 +114,11 @@ export async function handleNotifyBillsDue(req: any, res: any) {
       if (u.whatsapp_enabled && u.whatsapp_number) await sendWhatsApp(u.whatsapp_number, msg);
       if (u.push_enabled && u.push_subscription) {
         try { 
-          await webpush.sendNotification(u.push_subscription, JSON.stringify({ title: 'FinVision Pro 🔔', body: `Você tem ${bills.length} contas pendentes.` })); 
+          await webpush.sendNotification(u.push_subscription, JSON.stringify({ 
+            title: 'FinVision Pro 🔔', 
+            body: `Você tem ${bills.length} contas pendentes.`,
+            url: '/#/history?status=PENDING'
+          })); 
         } catch (pushErr: any) {
           console.error(`[WebPush Error] Falha ao enviar para o usuário ${u.user_id}:`, pushErr.message || pushErr);
         }

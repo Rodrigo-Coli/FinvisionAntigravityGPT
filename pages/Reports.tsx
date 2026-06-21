@@ -87,7 +87,7 @@ const Reports: React.FC = () => {
       if (!selectedAccountId || isBank) {
         let q = supabase
           .from('transactions')
-          .select('date, description, category, type, amount, is_paid, account_id')
+          .select('date, description, category, type, amount, is_paid, account_id, metadata')
           .eq('user_id', user.id)
           .eq('is_deleted', false)
           .gte('date', dateRange.start)
@@ -124,11 +124,14 @@ const Reports: React.FC = () => {
       const txs = txsRes.data || [];
       const cardTxs = cardRes.data || [];
 
+      // Filtra transações capitalizadas de aquisição de bens imobilizados para evitar inflar o fluxo de caixa
+      const filteredTxs = txs.filter((t: any) => !(t.metadata?.isCapitalized === true || t.metadata?.type === 'asset_purchase'));
+
       let income = 0;
       let expense = 0;
       let pending = 0;
 
-      txs.forEach((t: any) => {
+      filteredTxs.forEach((t: any) => {
         // Exclui transferências (movimentação interna neutra) dos totalizadores principais
         if (t.type === 'INCOME') income += t.amount;
         else if (t.type === 'EXPENSE') expense += t.amount;
@@ -143,7 +146,7 @@ const Reports: React.FC = () => {
       setStats({
         totalIncome: income,
         totalExpense: expense,
-        transactionCount: txs.length + cardTxs.length,
+        transactionCount: filteredTxs.length + cardTxs.length,
         pendingCount: pending
       });
 
@@ -151,7 +154,7 @@ const Reports: React.FC = () => {
       const accountsMap = new Map(accounts.map((a: any) => [a.id, a.institution]));
       const cardsMap = new Map(cards.map((c: any) => [c.id, c.name]));
 
-      const formattedTxs = txs.map((t: any) => ({
+      const formattedTxs = filteredTxs.map((t: any) => ({
         date: t.date,
         description: t.description,
         category: t.category || 'Geral',

@@ -46,7 +46,7 @@ try {
     # 4. Criar o commit unificado
     Write-Host "Criando commit..."
     $commitBody = @{ 
-        message = "feat: home improvements, visibility defaults, and transactions period comparison"
+        message = "fix(notification): implement redirection filters, status bar badge icon, and whatsapp webhook transaction resolution"
         tree = $newTree.sha
         parents = @($parentSha) 
     } | ConvertTo-Json
