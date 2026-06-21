@@ -77,7 +77,10 @@ export async function handleProcessImport(req: any, res: any) {
           status: 'READY_TO_RECONCILE',
           fingerprint,
           potential_duplicate: t.potential_duplicate || false,
-          duplicate_reason: t.duplicate_reason || null
+          duplicate_reason: t.duplicate_reason || null,
+          metadata: {
+            duplicate_tx: t.duplicate_tx || null
+          }
         };
       });
 

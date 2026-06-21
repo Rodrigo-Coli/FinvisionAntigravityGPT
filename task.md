@@ -168,3 +168,14 @@
 - [x] Aplicar classes `font-mono tabular-nums text-right` nos preços (`pages/Reconcile.tsx`)
 - [x] Validar build da aplicação com typecheck (`npx tsc --noEmit`)
 - [x] Realizar deploy atômico para o repositório GitHub via `deploy_now.ps1`
+
+## Fase 15: Melhoria na Detecção de Duplicidades no Conciliar
+- [x] Modificar `checkDuplicates` em `statement-template-helper.ts` com normalização de nomes e suporte a `duplicate_tx`
+- [x] Atualizar `handle-bank-reconcile.ts` para salvar `duplicate_tx` na coluna `metadata`
+- [x] Atualizar `handle-card-reconcile.ts` para salvar `duplicate_tx` na coluna `metadata`
+- [x] Atualizar `handle-import-worker.ts` para salvar `duplicate_tx` na coluna `metadata`
+- [x] Atualizar `process-import.ts` para salvar `duplicate_tx` na coluna `metadata`
+- [x] Modificar o card de transações no Conciliar em `pages/Reconcile.tsx` para mostrar o lançamento correspondente encontrado
+- [/] Executar testes unitários locais (`npm run test`)
+- [/] Validar compilação do TypeScript (`npx tsc --noEmit`)
+- [ ] Sincronizar as alterações locais com o repositório de produção no GitHub via `sync_deploy.ps1`

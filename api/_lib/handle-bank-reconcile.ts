@@ -201,7 +201,10 @@ RETORNE APENAS JSON NO FORMATO:
             fingerprint,
             potential_duplicate: t.potential_duplicate || false,
             duplicate_reason: t.duplicate_reason || null,
-            metadata: { category_suggested: t.category }
+            metadata: { 
+              category_suggested: t.category,
+              duplicate_tx: t.duplicate_tx || null
+            }
           };
         });
         

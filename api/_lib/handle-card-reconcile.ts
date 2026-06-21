@@ -203,7 +203,8 @@ RETORNE APENAS JSON NO FORMATO:
             metadata: {
               is_card: true,
               merchant_normalized: t.merchant_normalized || t.description,
-              installment_info: { number: t.installment_number || null, total: t.installment_total || null }
+              installment_info: { number: t.installment_number || null, total: t.installment_total || null },
+              duplicate_tx: t.duplicate_tx || null
             }
           };
         });

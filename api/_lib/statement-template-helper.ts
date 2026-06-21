@@ -165,6 +165,17 @@ export const StatementTemplateHelper = {
     
     const minDate = dates.reduce((a, b) => a < b ? a : b);
     const maxDate = dates.reduce((a, b) => a > b ? a : b);
+
+    // Função de normalização para comparação de locais (estabelecimentos)
+    const normalizeDesc = (d: string): string => {
+      return String(d || '')
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // remove acentos
+        .replace(/[^a-z0-9]/g, "")       // remove caracteres especiais e espaços
+        .replace(/^(pag|compra|tarifa|ted|doc|pix|cartao|saque|mensalidade|iof|juros)/g, "") // remove prefixos comuns
+        .replace(/(sp|rj|mg|df|br|brasil|online|app|internet)$/g, ""); // remove sufixos comuns
+    };
     
     if (isCard) {
       const { data: existingTxs } = await supabase
@@ -174,17 +185,40 @@ export const StatementTemplateHelper = {
         .gte('date', minDate)
         .lte('date', maxDate);
         
-      const existingSet = new Set(
-        (existingTxs || []).map((e: any) => `${e.date}|${Math.abs(Number(e.amount)).toFixed(2)}`)
-      );
+      const existingList = existingTxs || [];
       
       return transactions.map(t => {
-        const key = `${t.date}|${Math.abs(Number(t.amount)).toFixed(2)}`;
-        if (existingSet.has(key)) {
+        const tAmountStr = Math.abs(Number(t.amount)).toFixed(2);
+        
+        // Encontrar transações existentes de mesma data e valor
+        const matches = existingList.filter((e: any) => 
+          e.date === t.date && 
+          Math.abs(Number(e.amount)).toFixed(2) === tAmountStr
+        );
+        
+        if (matches.length > 0) {
+          const normT = normalizeDesc(t.description);
+          
+          // Tentar encontrar uma que tenha local similar
+          const similarMatch = matches.find((e: any) => {
+            const normE = normalizeDesc(e.description);
+            return normE === normT || normE.includes(normT) || normT.includes(normE);
+          });
+          
+          const chosenMatch = similarMatch || matches[0];
+          const isSimilar = !!similarMatch;
+          
           return {
             ...t,
             potential_duplicate: true,
-            duplicate_reason: 'Transação com mesma data e valor já existe no extrato do cartão'
+            duplicate_reason: isSimilar 
+              ? 'Transação com mesma data, valor e local similar já lançada'
+              : 'Atenção: Transação com mesmo valor e data em local diferente',
+            duplicate_tx: { 
+              description: chosenMatch.description, 
+              date: chosenMatch.date, 
+              amount: chosenMatch.amount 
+            }
           };
         }
         return t;
@@ -198,18 +232,40 @@ export const StatementTemplateHelper = {
         .gte('date', minDate)
         .lte('date', maxDate);
         
-      const existingSet = new Set(
-        (existingTxs || []).map((e: any) => `${e.date}|${Math.abs(Number(e.amount)).toFixed(2)}|${e.type}`)
-      );
+      const existingList = existingTxs || [];
       
       return transactions.map(t => {
-        const type = t.amount < 0 ? 'EXPENSE' : 'INCOME';
-        const key = `${t.date}|${Math.abs(Number(t.amount)).toFixed(2)}|${type}`;
-        if (existingSet.has(key)) {
+        const tAmountStr = Math.abs(Number(t.amount)).toFixed(2);
+        const tType = t.amount < 0 ? 'EXPENSE' : 'INCOME';
+        
+        const matches = existingList.filter((e: any) => 
+          e.date === t.date && 
+          Math.abs(Number(e.amount)).toFixed(2) === tAmountStr &&
+          e.type === tType
+        );
+        
+        if (matches.length > 0) {
+          const normT = normalizeDesc(t.description);
+          
+          const similarMatch = matches.find((e: any) => {
+            const normE = normalizeDesc(e.description);
+            return normE === normT || normE.includes(normT) || normT.includes(normE);
+          });
+          
+          const chosenMatch = similarMatch || matches[0];
+          const isSimilar = !!similarMatch;
+          
           return {
             ...t,
             potential_duplicate: true,
-            duplicate_reason: 'Transação com mesma data e valor já lançada no sistema'
+            duplicate_reason: isSimilar 
+              ? 'Transação com mesma data, valor e local similar já lançada'
+              : 'Atenção: Transação com mesmo valor e data em local diferente',
+            duplicate_tx: { 
+              description: chosenMatch.description, 
+              date: chosenMatch.date, 
+              amount: chosenMatch.amount 
+            }
           };
         }
         return t;

@@ -1107,9 +1107,19 @@ const Reconcile: React.FC = () => {
                                   </div>
                                 </button>
                                 {item.potential_duplicate && (
-                                  <div className="flex items-start gap-1 p-1.5 bg-amber-50 rounded-lg border border-amber-100">
-                                    <AlertCircle size={10} className="text-amber-500 mt-0.5 shrink-0" />
-                                    <p className="text-[8px] font-bold text-amber-600 uppercase leading-[1.2]">{item.duplicate_reason || "Possível Duplicidade"}</p>
+                                  <div className="flex flex-col gap-1.5 p-2 bg-amber-50 rounded-lg border border-amber-100">
+                                    <div className="flex items-start gap-1">
+                                      <AlertCircle size={10} className="text-amber-500 mt-0.5 shrink-0" />
+                                      <p className="text-[8px] font-bold text-amber-600 uppercase leading-[1.2]">{item.duplicate_reason || "Possível Duplicidade"}</p>
+                                    </div>
+                                    {item.metadata?.duplicate_tx && (
+                                      <div className="text-[8px] text-slate-500 border-t border-amber-100/50 pt-1 mt-0.5 leading-[1.3]">
+                                        <strong>Existente no sistema:</strong>
+                                        <div className="italic font-medium">
+                                          {item.metadata.duplicate_tx.date.split('-').reverse().join('/')} - {item.metadata.duplicate_tx.description} (R$ {Math.abs(item.metadata.duplicate_tx.amount).toFixed(2)})
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
