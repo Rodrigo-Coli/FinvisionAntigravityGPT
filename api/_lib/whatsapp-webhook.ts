@@ -15,6 +15,8 @@ interface CachedUserLists {
   cardsPromptList: string;
   categoriesPromptList: string;
   subcategoriesPromptList: string;
+  entitiesPromptList: string;
+  rawEntities: string[];
 }
 const userListsCache = new Map<string, CachedUserLists>();
 
@@ -23,6 +25,84 @@ interface CachedPendingBills {
   formattedPendingBills: string;
 }
 const pendingBillsCache = new Map<string, CachedPendingBills>();
+
+async function getUserLists(userId: string): Promise<CachedUserLists> {
+  const nowTime = Date.now();
+  const cached = userListsCache.get(userId);
+  if (cached && (nowTime - cached.timestamp < 300000)) {
+    return cached;
+  }
+
+  const [accountsRes, cardsRes, categoriesRes, subcategoriesRes, entitiesRes] = await Promise.all([
+    supabase.from('accounts').select('institution').eq('user_id', userId).eq('is_archived', false),
+    supabase.from('cards').select('name').eq('user_id', userId).eq('is_archived', false),
+    supabase.from('categories').select('id, name').eq('user_id', userId),
+    supabase.from('subcategories').select('name, category_id').eq('user_id', userId),
+    supabase.from('entities').select('name').eq('user_id', userId).eq('is_archived', false)
+  ]);
+
+  const availableAccounts = (accountsRes.data || []).map(a => a.institution);
+  const availableCards = (cardsRes.data || []).map(c => c.name);
+  const availableCategories = (categoriesRes.data || []).map(c => c.name);
+  const availableSubcategories = (subcategoriesRes.data || []).map(s => {
+    const cat = (categoriesRes.data || []).find(c => c.id === s.category_id);
+    return cat ? `${cat.name} > ${s.name}` : s.name;
+  });
+  const availableEntities = (entitiesRes.data || []).map(e => e.name);
+
+  const accountsPromptList = availableAccounts.length > 0 ? availableAccounts.join(', ') : 'Nenhuma cadastrada';
+  const cardsPromptList = availableCards.length > 0 ? availableCards.join(', ') : 'Nenhum cadastrado';
+  const categoriesPromptList = availableCategories.length > 0 ? availableCategories.join(', ') : 'Alimentação, Transporte, Lazer, Moradia, Saúde, Outros';
+  const subcategoriesPromptList = availableSubcategories.length > 0 ? availableSubcategories.join(', ') : 'Nenhuma cadastrada';
+  const entitiesPromptList = availableEntities.length > 0 ? availableEntities.join(', ') : 'Pessoal';
+
+  const data: CachedUserLists = {
+    timestamp: nowTime,
+    accountsPromptList,
+    cardsPromptList,
+    categoriesPromptList,
+    subcategoriesPromptList,
+    entitiesPromptList,
+    rawEntities: availableEntities
+  };
+
+  userListsCache.set(userId, data);
+  return data;
+}
+
+async function resolveOwnerName(userId: string, parsedOwner: string | null | undefined): Promise<string> {
+  if (!parsedOwner) return 'Pessoal';
+  
+  const cleanParsed = parsedOwner.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (cleanParsed === 'pessoal' || cleanParsed === 'default') return 'Pessoal';
+
+  const userLists = await getUserLists(userId);
+  const entities = userLists.rawEntities;
+
+  // 1. Exact match (case insensitive and normalized)
+  const exactMatch = entities.find(e => 
+    e.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === cleanParsed
+  );
+  if (exactMatch) return exactMatch;
+
+  // 2. Substring match
+  const substringMatch = entities.find(e => {
+    const cleanE = e.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return cleanParsed.includes(cleanE) || cleanE.includes(cleanParsed);
+  });
+  if (substringMatch) return substringMatch;
+
+  // 3. Word intersection match
+  const parsedWords = cleanParsed.split(/\s+/).filter(w => w.length > 1);
+  for (const entity of entities) {
+    const cleanE = entity.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const entityWords = cleanE.split(/\s+/).filter(w => w.length > 1);
+    const hasOverlap = parsedWords.some(pw => entityWords.includes(pw));
+    if (hasOverlap) return entity;
+  }
+
+  return 'Pessoal';
+}
 
 const COMPETITOR_RESTRICTION_PROMPT = `Você é a FinVision AI, exclusiva do FinVision Pro. Você está expressamente proibida de responder perguntas sobre concorrentes do mercado financeiro (ex: Mobills, Organizze, Olivia, Minhas Economias, Guiabolso) ou qualquer assunto não relacionado diretamente ao sistema FinVision. Se o usuário perguntar sobre concorrentes ou fizer comparações, recuse educadamente, explicando que seu foco é exclusivamente ajudar a gerenciar as finanças e analisar os dados dentro do FinVision Pro.`;
 
@@ -357,7 +437,7 @@ function formatDraftConfirmation(tx: any, isUpdate: boolean = false): string {
   if (tx.subcategory) {
     text += `*Subcategoria:* ${tx.subcategory}\n`;
   } else {
-    text += `⚠️ *Subcategoria:* _[Não informada - Diga a subcategoria para adicionar (ex: Combustível)]_\n`;
+    text += `*Subcategoria:* _[Não informada (opcional)]_\n`;
   }
   
   text += `*Data:* ${dateFmt || '⚠️ _[Não informada]_'}\n`;
@@ -386,7 +466,7 @@ function formatDraftConfirmation(tx: any, isUpdate: boolean = false): string {
   }
 
   text += `\nConfirma o lançamento? Digite *SIM* ou *NÃO*.\n\n`;
-  text += `💡 *Dica:* Se faltar alguma informação ou quiser mudar algo, basta me dizer (ex: *"é no Itaú"*, *"subcategoria alimentação"*, *"mudar valor para 40"*) antes de confirmar!`;
+  text += `💡 *Dica:* Se faltar alguma informação ou quiser mudar algo, basta me dizer (ex: *"é no Itaú"*, *"sub restaurante"*, *"mudar valor para 40"*) antes de confirmar!`;
 
   return text;
 }
@@ -556,7 +636,8 @@ function formatDirectLaunchSummary(tx: any, accountName: string, isCard: boolean
 
 async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: boolean; accountName: string; isCard: boolean; cardName?: string }> {
   const dateVal = tx.date || new Date().toISOString().split('T')[0];
-  const ownerVal = tx.owner_name === 'Pessoal' || !tx.owner_name ? 'Pessoal' : tx.owner_name;
+  const resolvedOwner = await resolveOwnerName(userId, tx.owner_name);
+  const ownerVal = resolvedOwner === 'Pessoal' ? null : resolvedOwner;
 
   // Smart Category Resolution
   let finalCategory = tx.category || 'Outros';
@@ -681,7 +762,7 @@ async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: 
       category: 'Transferência',
       subcategory: tx.subcategory || null,
       is_paid: true,
-      owner_name: ownerVal === 'Pessoal' ? null : ownerVal,
+      owner_name: ownerVal,
       notes: tx.notes || '',
       tags: tx.tags || [],
       metadata: { is_transfer: true, transfer_side: 'SOURCE', counter_account_id: finalDestAccountId }
@@ -699,7 +780,7 @@ async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: 
         category: 'Transferência',
         subcategory: tx.subcategory || null,
         is_paid: true,
-        owner_name: ownerVal === 'Pessoal' ? null : ownerVal,
+        owner_name: ownerVal,
         notes: tx.notes || '',
         tags: tx.tags || [],
         metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: finalAccountId }
@@ -730,6 +811,7 @@ async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: 
         is_manual: true,
         category_id: finalCategoryId,
         category: finalCategory,
+        subcategory: tx.subcategory || null,
         owner_name: ownerVal,
         is_recurring: tx.is_recurring || false,
         recurrence_period: tx.recurrence_period || null,
@@ -769,7 +851,9 @@ async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: 
     type: tx.type || 'EXPENSE',
     category: finalCategory,
     category_id: finalCategoryId,
+    subcategory: tx.subcategory || null,
     is_paid: tx.is_paid !== undefined ? tx.is_paid : true,
+    owner_name: ownerVal,
     is_recurring: tx.is_recurring || false,
     recurrence_period: tx.recurrence_period || null,
     is_installment: tx.is_installment || false,
@@ -1439,7 +1523,8 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                   if (destTx) updatePayloadDest.tags = patch.tags;
                 }
                 if (patch.owner_name) {
-                  const oVal = patch.owner_name === 'Pessoal' ? null : patch.owner_name;
+                  const resolvedOwner = await resolveOwnerName(userId, patch.owner_name);
+                  const oVal = resolvedOwner === 'Pessoal' ? null : resolvedOwner;
                   updatePayloadSource.owner_name = oVal;
                   if (destTx) updatePayloadDest.owner_name = oVal;
                 }
@@ -1489,7 +1574,10 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                 if (patch.date) updatePayload.date = patch.date;
                 if (patch.notes) updatePayload.notes = patch.notes;
                 if (patch.tags) updatePayload.tags = patch.tags;
-                if (patch.owner_name) updatePayload.owner_name = patch.owner_name === 'Pessoal' ? null : patch.owner_name;
+                if (patch.owner_name) {
+                  const resolvedOwner = await resolveOwnerName(userId, patch.owner_name);
+                  updatePayload.owner_name = resolvedOwner === 'Pessoal' ? null : resolvedOwner;
+                }
 
                 if (patch.account_name) {
                   const { data: userAccounts } = await supabase.from('accounts').select('id, institution').eq('user_id', userId).eq('is_archived', false);
@@ -1513,7 +1601,10 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                 if (patch.date) updatePayload.date = patch.date;
                 if (patch.notes) updatePayload.notes = patch.notes;
                 if (patch.tags) updatePayload.tags = patch.tags;
-                if (patch.owner_name) updatePayload.owner_name = patch.owner_name || 'Pessoal';
+                if (patch.owner_name) {
+                  const resolvedOwner = await resolveOwnerName(userId, patch.owner_name);
+                  updatePayload.owner_name = resolvedOwner === 'Pessoal' ? null : resolvedOwner;
+                }
 
                 if (patch.category) {
                   const { data: catData } = await supabase.from('categories').select('id').eq('user_id', userId).ilike('name', patch.category).maybeSingle();
@@ -1588,7 +1679,11 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           if (tx.is_card) {
             await supabase.from('card_transactions').delete().eq('id', tx.transactionId).eq('user_id', userId);
           } else {
+            const { data: dbTx } = await supabase.from('transactions').select('account_id').eq('id', tx.transactionId).eq('user_id', userId).maybeSingle();
             await supabase.from('transactions').update({ is_deleted: true }).eq('id', tx.transactionId).eq('user_id', userId);
+            if (dbTx?.account_id) {
+              await supabase.rpc('recalculate_account_balance', { p_account_id: dbTx.account_id });
+            }
           }
           await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
           await sendWhatsApp(phone, `✅ *Lançamento Excluído com Sucesso!*\n\n"${tx.description}" de R$ ${Number(tx.amount).toFixed(2)} foi removido.`);
@@ -1647,7 +1742,8 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                 if (destTx) updatePayloadDest.tags = patch.tags;
               }
               if (patch.owner_name) {
-                const oVal = patch.owner_name === 'Pessoal' ? null : patch.owner_name;
+                const resolvedOwner = await resolveOwnerName(userId, patch.owner_name);
+                const oVal = resolvedOwner === 'Pessoal' ? null : resolvedOwner;
                 updatePayloadSource.owner_name = oVal;
                 if (destTx) updatePayloadDest.owner_name = oVal;
               }
@@ -1697,7 +1793,10 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               if (patch.date) updatePayload.date = patch.date;
               if (patch.notes) updatePayload.notes = patch.notes;
               if (patch.tags) updatePayload.tags = patch.tags;
-              if (patch.owner_name) updatePayload.owner_name = patch.owner_name === 'Pessoal' ? null : patch.owner_name;
+              if (patch.owner_name) {
+                const resolvedOwner = await resolveOwnerName(userId, patch.owner_name);
+                updatePayload.owner_name = resolvedOwner === 'Pessoal' ? null : resolvedOwner;
+              }
 
               if (patch.account_name) {
                 const { data: userAccounts } = await supabase.from('accounts').select('id, institution').eq('user_id', userId).eq('is_archived', false);
@@ -1721,7 +1820,10 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               if (patch.date) updatePayload.date = patch.date;
               if (patch.notes) updatePayload.notes = patch.notes;
               if (patch.tags) updatePayload.tags = patch.tags;
-              if (patch.owner_name) updatePayload.owner_name = patch.owner_name || 'Pessoal';
+              if (patch.owner_name) {
+                const resolvedOwner = await resolveOwnerName(userId, patch.owner_name);
+                updatePayload.owner_name = resolvedOwner === 'Pessoal' ? null : resolvedOwner;
+              }
 
               if (patch.category) {
                 const { data: catData } = await supabase.from('categories').select('id').eq('user_id', userId).ilike('name', patch.category).maybeSingle();
@@ -1756,6 +1858,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
           for (const op of tx.operations) {
             if (op.intent === 'TRANSACTION') {
+              const resolvedOwner = await resolveOwnerName(userId, op.transaction.owner_name);
+              const oVal = resolvedOwner === 'Pessoal' ? null : resolvedOwner;
+
               if (op.transaction.is_card || op.transaction.card_id || op.transaction.card_name) {
                 // Multi card insertion
                 const { data: cards } = await supabase.from('cards').select('*').eq('user_id', userId).eq('is_archived', false);
@@ -1778,7 +1883,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                     source: 'MANUAL',
                     is_manual: true,
                     category_id: categoryId,
-                    owner_name: op.transaction.owner_name || 'Pessoal',
+                    category: op.transaction.category || 'Outros',
+                    subcategory: op.transaction.subcategory || null,
+                    owner_name: oVal,
                     is_recurring: op.transaction.is_recurring || false,
                     recurrence_period: op.transaction.recurrence_period || null,
                     is_installment: op.transaction.is_installment || false,
@@ -1797,8 +1904,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                   date: op.transaction.date || new Date().toISOString().split('T')[0],
                   type: op.transaction.type || 'EXPENSE',
                   category: op.transaction.category || 'Outros',
+                  subcategory: op.transaction.subcategory || null,
                   is_paid: true,
-                  owner_name: op.transaction.owner_name || 'Pessoal',
+                  owner_name: oVal,
                   is_recurring: op.transaction.is_recurring || false,
                   recurrence_period: op.transaction.recurrence_period || null,
                   is_installment: op.transaction.is_installment || false,
@@ -1826,7 +1934,10 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                 if (patch.date) updatePayload.date = patch.date;
                 if (patch.notes) updatePayload.notes = patch.notes;
                 if (patch.tags) updatePayload.tags = patch.tags;
-                if (patch.owner_name) updatePayload.owner_name = patch.owner_name === 'Pessoal' ? null : patch.owner_name;
+                if (patch.owner_name) {
+                  const resolvedOwner = await resolveOwnerName(userId, patch.owner_name);
+                  updatePayload.owner_name = resolvedOwner === 'Pessoal' ? null : resolvedOwner;
+                }
 
                 if (patch.account_name) {
                   const { data: userAccounts } = await supabase.from('accounts').select('id, institution').eq('user_id', userId).eq('is_archived', false);
@@ -1849,7 +1960,10 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                   if (patch.date) updatePayload.date = patch.date;
                   if (patch.notes) updatePayload.notes = patch.notes;
                   if (patch.tags) updatePayload.tags = patch.tags;
-                  if (patch.owner_name) updatePayload.owner_name = patch.owner_name || 'Pessoal';
+                  if (patch.owner_name) {
+                    const resolvedOwner = await resolveOwnerName(userId, patch.owner_name);
+                    updatePayload.owner_name = resolvedOwner === 'Pessoal' ? null : resolvedOwner;
+                  }
 
                   if (patch.category) {
                     const { data: catData } = await supabase.from('categories').select('id').eq('user_id', userId).ilike('name', patch.category).maybeSingle();
@@ -1875,6 +1989,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
           return res.status(200).json({ status: 'confirmed_multi' });
         } else {
+          const resolvedOwner = await resolveOwnerName(userId, tx.owner_name);
+          const oVal = resolvedOwner === 'Pessoal' ? null : resolvedOwner;
+
           // If credit card transaction
           if (tx.is_card || tx.card_id || tx.card_name) {
             const { data: cards } = await supabase
@@ -1918,7 +2035,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                 source: 'MANUAL',
                 is_manual: true,
                 category_id: categoryId,
-                owner_name: tx.owner_name || 'Pessoal',
+                category: tx.category || 'Outros',
+                subcategory: tx.subcategory || null,
+                owner_name: oVal,
                 is_recurring: tx.is_recurring || false,
                 recurrence_period: tx.recurrence_period || null,
                 is_installment: tx.is_installment || false,
@@ -2002,7 +2121,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               category: 'Transferência',
               subcategory: tx.subcategory || null,
               is_paid: true,
-              owner_name: tx.owner_name === 'Pessoal' || !tx.owner_name ? null : tx.owner_name,
+              owner_name: oVal,
               notes: tx.notes || '',
               tags: tx.tags || [],
               metadata: { is_transfer: true, transfer_side: 'SOURCE', counter_account_id: finalDestAccountId }
@@ -2019,7 +2138,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               category: 'Transferência',
               subcategory: tx.subcategory || null,
               is_paid: true,
-              owner_name: tx.owner_name === 'Pessoal' || !tx.owner_name ? null : tx.owner_name,
+              owner_name: oVal,
               notes: tx.notes || '',
               tags: tx.tags || [],
               metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: finalAccountId }
@@ -2045,7 +2164,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             category: tx.category || 'Outros',
             subcategory: tx.subcategory || null,
             is_paid: tx.is_paid !== undefined ? tx.is_paid : true,
-            owner_name: tx.owner_name || 'Pessoal',
+            owner_name: oVal,
             is_recurring: tx.is_recurring || false,
             recurrence_period: tx.recurrence_period || null,
             is_installment: tx.is_installment || false,
@@ -2063,12 +2182,80 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       }
     }
 
-    // Cancel draft logic
+    // Cancel draft logic / Undo direct launch
     if (isCancel) {
-      await supabase.from('whatsapp_drafts').update({ status: 'canceled' }).eq('user_id', userId).eq('status', 'pending');
-      await sendWhatsApp(phone, `🚫 *Ação Cancelada.*`);
-      await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
-      return res.status(200).json({ status: 'canceled' });
+      // 1. Verificar se há algum rascunho pendente que não seja lock
+      const { data: draft } = await supabase
+        .from('whatsapp_drafts')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .neq('data->>type', 'lock')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (draft) {
+        const type = draft.data?.type;
+        if (type === 'delete' || type === 'pay' || type === 'update' || type === 'delete_disambiguation' || type === 'pay_disambiguation' || type === 'update_disambiguation' || type === 'multi') {
+          await supabase.from('whatsapp_drafts').update({ status: 'canceled' }).eq('id', draft.id);
+          await sendWhatsApp(phone, `🚫 *Ação Cancelada.*`);
+        } else {
+          await supabase.from('whatsapp_drafts').update({ status: 'canceled' }).eq('id', draft.id);
+          await sendWhatsApp(phone, `🚫 *Lançamento Cancelado.*`);
+        }
+        await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
+        return res.status(200).json({ status: 'canceled' });
+      } else {
+        // Se não há rascunho pendente de confirmação, o usuário pode estar respondendo "NÃO" ou "CANCELAR" para desfazer o último lançamento direto
+        let matchedTx: any = null;
+        if (quotedTx && quotedTx.description) {
+          const matches = await findMatchingTransactions(userId, {
+            description: quotedTx.description,
+            amount: quotedTx.amount || undefined,
+            date: quotedTx.date || undefined
+          }, false);
+          if (matches.length > 0) {
+            matchedTx = matches[0];
+          }
+        }
+
+        if (!matchedTx) {
+          const lastTx = await getLastLaunchedTransaction(userId);
+          if (lastTx) {
+            const { data: fullTx } = lastTx.isCard
+              ? await supabase.from('card_transactions').select('created_at').eq('id', lastTx.id).maybeSingle()
+              : await supabase.from('transactions').select('created_at').eq('id', lastTx.id).maybeSingle();
+            
+            if (fullTx && fullTx.created_at) {
+              const createdTime = new Date(fullTx.created_at).getTime();
+              const nowTime = new Date().getTime();
+              if (nowTime - createdTime < 300000) { // 5 minutos
+                matchedTx = lastTx;
+              }
+            }
+          }
+        }
+
+        if (matchedTx) {
+          if (matchedTx.isCard) {
+            await supabase.from('card_transactions').delete().eq('id', matchedTx.id).eq('user_id', userId);
+          } else {
+            const { data: dbTx } = await supabase.from('transactions').select('account_id').eq('id', matchedTx.id).eq('user_id', userId).maybeSingle();
+            await supabase.from('transactions').update({ is_deleted: true }).eq('id', matchedTx.id).eq('user_id', userId);
+            if (dbTx?.account_id) {
+              await supabase.rpc('recalculate_account_balance', { p_account_id: dbTx.account_id });
+            }
+          }
+          await sendWhatsApp(phone, `🗑️ *Lançamento Desfeito e Excluído com Sucesso!*\n\n"${matchedTx.description}" de R$ ${Number(matchedTx.amount).toFixed(2)} foi removido.`);
+          await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
+          return res.status(200).json({ status: 'canceled_and_deleted' });
+        } else {
+          await sendWhatsApp(phone, `🚫 *Ação Cancelada.*`);
+          await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
+          return res.status(200).json({ status: 'canceled' });
+        }
+      }
     }
 
     // Receipt OCR processing (Images & PDFs)
@@ -2086,6 +2273,8 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
       const ai = new GoogleGenAI({ apiKey: geminiKey });
 
+      const userLists = await getUserLists(userId);
+
       let userCaptionContext = "";
       if (text) {
         userCaptionContext = `
@@ -2102,8 +2291,19 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       IMPORTANTE sobre Cartão de Crédito:
       Se o comprovante ou contexto for de uma compra ou transação no cartão de crédito (ex: contém texto como 'compra aprovada no cartão', 'Bradesco Cartões', 'fatura', 'final XXXX', ou comprova pagamento feito com cartão), defina 'is_card': true e preencha 'card_name' com o nome do cartão de crédito correspondente (ex: 'Bradesco').
 
+      IMPORTANTE sobre o Perfil (owner_name):
+      O usuário possui os seguintes perfis (perfis adicionais/entidades) cadastrados: [${userLists.entitiesPromptList}].
+      Se o comprovante ou o contexto indicar que a compra ou receita pertence a um destes perfis (ex: nome do portador do cartão ou beneficiário corresponder a um deles), preencha 'owner_name' com o nome correspondente exato do perfil da lista. Caso contrário ou por padrão, use 'Pessoal'.
+
       IMPORTANTE sobre a Data:
       O ano atual do sistema é 2026. Se o ano extraído do comprovante for muito no passado (ex: 2020) ou parecer conter um erro de leitura/digitação do ano, use o ano atual (2026) na data ("YYYY-MM-DD"), a menos que seja explicitamente um comprovante antigo de outro período.
+
+      REGRA DE CORREÇÃO DE NOMES E CATEGORIAS:
+      Mapeie a conta (account_name), cartão (card_name), categoria (category) e subcategoria (subcategory) extraídos estritamente para um dos itens cadastrados no banco de dados do usuário:
+      - Contas (Bancos) Cadastradas: [${userLists.accountsPromptList}]
+      - Cartões de Crédito Cadastrados: [${userLists.cardsPromptList}]
+      - Categorias Cadastradas: [${userLists.categoriesPromptList}]
+      - Subcategorias Cadastradas: [${userLists.subcategoriesPromptList}]
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
@@ -2132,8 +2332,19 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       IMPORTANTE sobre Cartão de Crédito:
       Se a imagem ou contexto for de uma compra ou transação no cartão de crédito (ex: contém texto como 'compra aprovada no cartão', 'Bradesco Cartões', 'fatura', 'final XXXX', ou comprova pagamento feito com cartão), defina 'is_card': true e preencha 'card_name' com o nome do cartão de crédito correspondente (ex: 'Bradesco').
 
+      IMPORTANTE sobre o Perfil (owner_name):
+      O usuário possui os seguintes perfis (perfis adicionais/entidades) cadastrados: [${userLists.entitiesPromptList}].
+      Se o comprovante ou o contexto indicar que a compra ou receita pertence a um destes perfis (ex: nome do portador do cartão ou beneficiário corresponder a um deles), preencha 'owner_name' com o nome correspondente exato do perfil da lista. Caso contrário ou por padrão, use 'Pessoal'.
+
       IMPORTANTE sobre a Data:
       O ano atual do sistema é 2026. Se o ano extraído do comprovante for muito no passado (ex: 2020) ou parecer conter um erro de leitura/digitação do ano, use o ano atual (2026) na data ("YYYY-MM-DD"), a menos que seja explicitamente um comprovante antigo de outro período.
+
+      REGRA DE CORREÇÃO DE NOMES E CATEGORIAS:
+      Mapeie a conta (account_name), cartão (card_name), categoria (category) e subcategoria (subcategory) extraídos estritamente para um dos itens cadastrados no banco de dados do usuário:
+      - Contas (Bancos) Cadastradas: [${userLists.accountsPromptList}]
+      - Cartões de Crédito Cadastrados: [${userLists.cardsPromptList}]
+      - Categorias Cadastradas: [${userLists.categoriesPromptList}]
+      - Subcategorias Cadastradas: [${userLists.subcategoriesPromptList}]
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
@@ -2298,47 +2509,13 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         activeDraft.data.type !== 'delete' && 
         activeDraft.data.type !== 'pay';
 
-      // Buscar contas, cartões, categorias e subcategorias do usuário no Supabase para correção semântica de erros de digitação (typos) (com cache de 5 minutos)
-      let accountsPromptList = 'Nenhuma cadastrada';
-      let cardsPromptList = 'Nenhum cadastrado';
-      let categoriesPromptList = 'Alimentação, Transporte, Lazer, Moradia, Saúde, Outros';
-      let subcategoriesPromptList = 'Nenhuma cadastrada';
-
-      const cachedLists = userListsCache.get(userId);
-      if (cachedLists && (nowTime - cachedLists.timestamp < 300000)) {
-        accountsPromptList = cachedLists.accountsPromptList;
-        cardsPromptList = cachedLists.cardsPromptList;
-        categoriesPromptList = cachedLists.categoriesPromptList;
-        subcategoriesPromptList = cachedLists.subcategoriesPromptList;
-      } else {
-        const [accountsListRes, cardsListRes, categoriesListRes, subcategoriesListRes] = await Promise.all([
-          supabase.from('accounts').select('institution').eq('user_id', userId).eq('is_archived', false),
-          supabase.from('cards').select('name').eq('user_id', userId).eq('is_archived', false),
-          supabase.from('categories').select('id, name').eq('user_id', userId),
-          supabase.from('subcategories').select('name, category_id').eq('user_id', userId)
-        ]);
-
-        const availableAccounts = (accountsListRes.data || []).map(a => a.institution);
-        const availableCards = (cardsListRes.data || []).map(c => c.name);
-        const availableCategories = (categoriesListRes.data || []).map(c => c.name);
-        const availableSubcategories = (subcategoriesListRes.data || []).map(s => {
-          const cat = (categoriesListRes.data || []).find(c => c.id === s.category_id);
-          return cat ? `${cat.name} > ${s.name}` : s.name;
-        });
-
-        accountsPromptList = availableAccounts.length > 0 ? availableAccounts.join(', ') : 'Nenhuma cadastrada';
-        cardsPromptList = availableCards.length > 0 ? availableCards.join(', ') : 'Nenhum cadastrado';
-        categoriesPromptList = availableCategories.length > 0 ? availableCategories.join(', ') : 'Alimentação, Transporte, Lazer, Moradia, Saúde, Outros';
-        subcategoriesPromptList = availableSubcategories.length > 0 ? availableSubcategories.join(', ') : 'Nenhuma cadastrada';
-
-        userListsCache.set(userId, {
-          timestamp: nowTime,
-          accountsPromptList,
-          cardsPromptList,
-          categoriesPromptList,
-          subcategoriesPromptList
-        });
-      }
+      // Buscar contas, cartões, categorias, subcategorias e entidades do usuário do banco (com cache)
+      const userLists = await getUserLists(userId);
+      const accountsPromptList = userLists.accountsPromptList;
+      const cardsPromptList = userLists.cardsPromptList;
+      const categoriesPromptList = userLists.categoriesPromptList;
+      const subcategoriesPromptList = userLists.subcategoriesPromptList;
+      const entitiesPromptList = userLists.entitiesPromptList;
 
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
@@ -2376,7 +2553,9 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       Mensagem: "${text}"
 
       # REGRAS CRÍTICAS DE EXTRAÇÃO DE DADOS (WHATSAPP PREMIUM):
-      1. PERFIL PADRÃO (owner_name): O perfil (proprietário) do lançamento deve SEMPRE padrão para "Pessoal" (owner_name: "Pessoal"). NUNCA extraia nomes de empresas, CNPJs, nomes de bancos ou outras strings aleatórias como perfil (ex: se o comprovante for do banco ou de uma empresa como BOTMASTERS.TECH, NÃO coloque isso como owner_name). O perfil só deve ser diferente de "Pessoal" se o usuário disser explicitamente para usar outro perfil (ex: "lança no perfil Empresa").
+      1. PERFIL PADRÃO (owner_name): O perfil (proprietário) do lançamento deve padrão para "Pessoal" (owner_name: "Pessoal"). Mapeie o perfil informado pelo usuário estritamente para um dos perfis cadastrados no banco de dados dele descritos a seguir:
+         - Perfis Cadastrados: [${entitiesPromptList}]
+         O perfil só deve ser diferente de "Pessoal" se o usuário citar explicitamente um desses perfis cadastrados ou se o contexto (como o portador do cartão ou descrição) indicar fortemente um deles. Se não corresponder a nenhum, use "Pessoal". NUNCA extraia CNPJs, nomes de estabelecimentos ou nomes de bancos como perfil.
       2. OBSERVACÕES E TAGS: NÃO gere ou extraia tags ou observações contextuais a menos que o usuário peça explicitamente na mensagem (ex: se ele disse "gastei 50 no almoço com a equipe", coloque notes: "Almoço com a equipe" e tags: ["equipe"], mas se for apenas uma foto ou texto simples como "R$ 50 de combustível", retorne notes: null e tags: []).
       3. REGRA DE OURO PARA ATUALIZAÇÕES/EDIÇÕES (isEdit = true ou intent = UPDATE): No objeto "updatedDraft" (se isEdit for true) ou "updatePatch" (se intent for UPDATE), inclua APENAS as chaves dos campos que o usuário solicitou explicitamente alterar nesta mensagem atual (ex: se ele disse "muda o valor para 40", retorne apenas {"amount": 40} e deixe todos os outros campos como null ou omitidos). NUNCA envie valores padrões como "Outros" para a categoria ou "Pessoal" para o perfil se eles não foram alterados pelo usuário na mensagem atual, pois isso apagaria os dados já preenchidos no rascunho/lançamento anterior!
       4. BLINDAGEM CONTRA CONCORRENTES: \${COMPETITOR_RESTRICTION_PROMPT}
@@ -2387,7 +2566,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
          - Categorias Cadastradas: [${categoriesPromptList}]
          - Subcategorias Cadastradas: [${subcategoriesPromptList}]
          Se o usuário digitar com erro de ortografia, abreviação, capitalização diferente ou sinônimo (ex: 'Nubnk', 'roxinho' ou 'Nubanck' para 'Nubank'; 'alimentacao', 'Alimentacão' ou 'Comida' para 'Alimentação'; 'itauu' para 'Itaú'; 'Bradesc' para 'Bradesco'), você DEVE corrigir e retornar o nome EXATO correspondente cadastrado no sistema nos respectivos campos 'account_name', 'card_name', 'category', 'subcategory' ou em 'updatedDraft' / 'updatePatch'!
-         Você deve fazer o mesmo para subcategories! Se a subcategoria puder ser mapeada para uma das subcategorias cadastradas (ex: 'Supermercado' ou 'Mercado' se houver 'Alimentação > Supermercado'), retorne apenas o nome exato da subcategoria (ex: 'Supermercado') no campo 'subcategory' ou em 'updatedDraft' / 'updatePatch'. NUNCA crie ou retorne um nome com erros de digitação ou que não esteja nas listas pré-cadastradas acima se houver correspondência lógica.
+         Você deve fazer o mesmo para subcategories! Se a subcategoria puder ser mapeada para uma das subcategorias cadastradas (ex: 'Supermercado' ou 'Mercado' se houver 'Alimentação > Supermercado'), retorne apenas o nome exato da subcategoria (ex: 'Supermercado') no campo 'subcategory' ou em 'updatedDraft' / 'updatePatch'. Se o usuário solicitar uma subcategoria nova que não esteja na lista de subcategorias cadastradas (ex: "sub restaurante" ou "subcategoria almoço"), você DEVE retornar o nome da subcategoria solicitado pelo usuário (com a primeira letra maiúscula, ex: "Restaurante" ou "Almoço") no campo 'subcategory' ou em 'updatedDraft' / 'updatePatch', permitindo a criação de novas subcategorias.
       6. REGRA DE TRANSFERÊNCIAS:
          Sempre que o usuário informar uma transferência entre contas (ex: "transferi 500 do Itaú para o Bradesco" ou "transferência para Bradesco"), defina a "category" como "transferência". Mapeie a conta de débito (origem) no campo "account_name" (ex: "Itaú") e a conta de crédito (destino) no campo "destination_account_name" (ex: "Bradesco"), respeitando estritamente os nomes da lista de bancos do usuário. Se o usuário disser apenas "transferência para Bradesco", entenda que a origem é a conta padrão e o destino é Bradesco.
       7. REGRA DE RESPOSTA DE CONVERSA (CHAT):
