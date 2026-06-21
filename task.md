@@ -98,6 +98,14 @@
 - [x] Validar compilação com `npm run build`
 - [x] Realizar o deploy no repositório GitHub via `deploy_antigravity.ps1`
 
+## Tarefas: Otimização do Tempo de Resposta do WhatsApp
+- [x] Modificar o prompt do classificador em `whatsapp-webhook.ts` para gerar `chatReply` e regras de conversa.
+- [x] Atualizar `handleInteractiveFinancialQuery` para aceitar e utilizar datas pré-extraídas.
+- [x] Passar as datas pré-extraídas na chamada de `handleInteractiveFinancialQuery` em `handleWhatsAppWebhook`.
+- [x] Otimizar o fluxo do `CHAT` em `handleWhatsAppWebhook` para usar o `op.chatReply` pré-gerado.
+- [x] Executar testes unitários locais (`npm run test`).
+- [x] Sincronizar as alterações locais com o repositório de produção no GitHub. via `deploy_antigravity.ps1`
+
 ## Fase 9: Correção de Datas de Parcelas Recorrentes e Regra de Fevereiro
 - [x] Investigar e corrigir bug de timezone/formatação na edição de parcelas que alterava datas de vencimento em outros meses (ex: dia 30 em julho virando 29)
 - [x] Implementar regra de vencimento em Fevereiro: se o vencimento for dia 29, 30 ou 31, deve ser antecipado para dia 28 em todos os anos (incluindo bissextos)

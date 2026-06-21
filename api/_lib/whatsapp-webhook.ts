@@ -704,7 +704,6 @@ async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: 
     category: finalCategory,
     category_id: finalCategoryId,
     is_paid: tx.is_paid !== undefined ? tx.is_paid : true,
-    owner_name: ownerVal === 'Pessoal' ? null : ownerVal,
     is_recurring: tx.is_recurring || false,
     recurrence_period: tx.recurrence_period || null,
     is_installment: tx.is_installment || false,
@@ -717,13 +716,16 @@ async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: 
   return { success: true, accountName: finalAccountName, isCard: false };
 }
 
-async function handleInteractiveFinancialQuery(userId: string, queryText: string, phone: string, history: any[] = []) {
+async function handleInteractiveFinancialQuery(
+  userId: string,
+  queryText: string,
+  phone: string,
+  history: any[] = [],
+  preExtractedDates?: { startDate?: string; endDate?: string; periodLabel?: string }
+) {
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
-
-  // Períodos padrão de fallback
-  let filterStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-  let filterEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
 
   const threeMonthsAgo = new Date();
   threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
@@ -734,55 +736,62 @@ async function handleInteractiveFinancialQuery(userId: string, queryText: string
   let targetEndDate = todayStr;
   let customPeriodLabel = 'Últimos 90 dias';
 
-  // Chamada de extração de data inteligente usando Gemini
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-  if (geminiKey) {
-    try {
-      const ai = new GoogleGenAI({ apiKey: geminiKey });
-      
-      const dateExtractionPrompt = `
-      Você é a inteligência de processamento temporal do FinVision Pro.
-      Hoje é ${now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} (data do sistema: ${todayStr}).
+  // Usar datas pré-extraídas se fornecidas pelo classificador principal
+  if (preExtractedDates && preExtractedDates.startDate && preExtractedDates.endDate) {
+    targetStartDate = preExtractedDates.startDate;
+    targetEndDate = preExtractedDates.endDate;
+    customPeriodLabel = preExtractedDates.periodLabel || 'Período personalizado';
+    console.log(`[WhatsApp Query Period] Usando datas pré-extraídas pelo classificador: ${targetStartDate} a ${targetEndDate} (${customPeriodLabel})`);
+  } else {
+    // Chamada de extração de data inteligente usando Gemini
+    if (geminiKey) {
+      try {
+        const ai = new GoogleGenAI({ apiKey: geminiKey });
+        
+        const dateExtractionPrompt = `
+        Você é a inteligência de processamento temporal do FinVision Pro.
+        Hoje é ${now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} (data do sistema: ${todayStr}).
 
-      Analise a pergunta do usuário para identificar se ele está solicitando transações ou dados financeiros de um período temporal específico (ex: "lançamentos dos dois últimos meses", "gastos de janeiro", "ano passado", "mês passado", "últimos 6 meses", "desde março").
-      Com base na análise, determine a data de início (startDate) e fim (endDate) adequada no formato YYYY-MM-DD.
+        Analise a pergunta do usuário para identificar se ele está solicitando transações ou dados financeiros de um período temporal específico (ex: "lançamentos dos dois últimos meses", "gastos de janeiro", "ano passado", "mês passado", "últimos 6 meses", "desde março").
+        Com base na análise, determine a data de início (startDate) e fim (endDate) adequada no formato YYYY-MM-DD.
 
-      Regras importantes:
-      1. Se o usuário pedir "últimos dois meses" ou "dois últimos meses", partindo de hoje (${todayStr}), o início deve retroceder 2 meses (ex: de 01/03/2026 até hoje).
-      2. Se o usuário falar em "mês passado", calcule o início e fim exatos do mês anterior completo.
-      3. Se o usuário NÃO especificar período nenhum ou se for uma pergunta geral de saldo, use como padrão de busca os últimos 90 dias (início: ${historyStart}, fim: ${todayStr}).
-      4. Se o usuário pedir um período muito longo (ex: "histórico completo", "tudo", "desde o começo"), use os últimos 365 dias (1 ano).
+        Regras importantes:
+        1. Se o usuário pedir "últimos dois meses" ou "dois últimos meses", partindo de hoje (${todayStr}), o início deve retroceder 2 meses (ex: de 01/03/2026 até hoje).
+        2. Se o usuário falar em "mês passado", calcule o início e fim exatos do mês anterior completo.
+        3. Se o usuário NÃO especificar período nenhum ou se for uma pergunta geral de saldo, use como padrão de busca os últimos 90 dias (início: ${historyStart}, fim: ${todayStr}).
+        4. Se o usuário pedir um período muito longo (ex: "histórico completo", "tudo", "desde o começo"), use os últimos 365 dias (1 ano).
 
-      Mensagem do Usuário: "${queryText}"
+        Mensagem do Usuário: "${queryText}"
 
-      RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
-      {
-        "startDate": "YYYY-MM-DD",
-        "endDate": "YYYY-MM-DD",
-        "periodLabel": "Descrição do período em texto curto para o prompt (ex: 'Março a Maio de 2026' ou 'Janeiro de 2026')"
-      }
-      `;
-
-      const dateResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [{ role: 'user', parts: [{ text: dateExtractionPrompt }] }],
-        config: {
-          responseMimeType: "application/json"
+        RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
+        {
+          "startDate": "YYYY-MM-DD",
+          "endDate": "YYYY-MM-DD",
+          "periodLabel": "Descrição do período em texto curto para o prompt (ex: 'Março a Maio de 2026' ou 'Janeiro de 2026')"
         }
-      });
+        `;
 
-      const dateRaw = (dateResponse as any).text || (dateResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const dateClean = dateRaw.replace(/```json|```/g, "").trim();
-      const dateJson = JSON.parse(dateClean);
-      
-      if (dateJson.startDate && dateJson.endDate) {
-        targetStartDate = dateJson.startDate;
-        targetEndDate = dateJson.endDate;
-        customPeriodLabel = dateJson.periodLabel || 'Período personalizado';
-        console.log(`[WhatsApp Query Period] Período extraído dinamicamente: ${targetStartDate} a ${targetEndDate} (${customPeriodLabel})`);
+        const dateResponse = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [{ role: 'user', parts: [{ text: dateExtractionPrompt }] }],
+          config: {
+            responseMimeType: "application/json"
+          }
+        });
+
+        const dateRaw = (dateResponse as any).text || (dateResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const dateClean = dateRaw.replace(/```json|```/g, "").trim();
+        const dateJson = JSON.parse(dateClean);
+        
+        if (dateJson.startDate && dateJson.endDate) {
+          targetStartDate = dateJson.startDate;
+          targetEndDate = dateJson.endDate;
+          customPeriodLabel = dateJson.periodLabel || 'Período personalizado';
+          console.log(`[WhatsApp Query Period] Período extraído dinamicamente: ${targetStartDate} a ${targetEndDate} (${customPeriodLabel})`);
+        }
+      } catch (err) {
+        console.error('[WhatsApp Query Period] Erro ao extrair data inteligente, usando fallback:', err);
       }
-    } catch (err) {
-      console.error('[WhatsApp Query Period] Erro ao extrair data inteligente, usando fallback:', err);
     }
   }
 
@@ -2176,14 +2185,15 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
       const ai = new GoogleGenAI({ apiKey: geminiKey });
 
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
       // Buscar contas pendentes do usuário dos últimos 60 dias para dar contexto ao classificador (com cache de 2 minutos)
       let formattedPendingBills = '';
       const cachedBills = pendingBillsCache.get(userId);
       if (cachedBills && (nowTime - cachedBills.timestamp < 120000)) {
         formattedPendingBills = cachedBills.formattedPendingBills;
       } else {
-        const sixtyDaysAgo = new Date();
-        sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
         const { data: pendingBills } = await supabase
           .from('transactions')
           .select('id, description, amount, date, category')
@@ -2298,6 +2308,8 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
          Você deve fazer o mesmo para subcategories! Se a subcategoria puder ser mapeada para uma das subcategorias cadastradas (ex: 'Supermercado' ou 'Mercado' se houver 'Alimentação > Supermercado'), retorne apenas o nome exato da subcategoria (ex: 'Supermercado') no campo 'subcategory' ou em 'updatedDraft' / 'updatePatch'. NUNCA crie ou retorne um nome com erros de digitação ou que não esteja nas listas pré-cadastradas acima se houver correspondência lógica.
       6. REGRA DE TRANSFERÊNCIAS:
          Sempre que o usuário informar uma transferência entre contas (ex: "transferi 500 do Itaú para o Bradesco" ou "transferência para Bradesco"), defina a "category" como "transferência". Mapeie a conta de débito (origem) no campo "account_name" (ex: "Itaú") e a conta de crédito (destino) no campo "destination_account_name" (ex: "Bradesco"), respeitando estritamente os nomes da lista de bancos do usuário. Se o usuário disser apenas "transferência para Bradesco", entenda que a origem é a conta padrão e o destino é Bradesco.
+      7. REGRA DE RESPOSTA DE CONVERSA (CHAT):
+         Se a intenção do usuário for CHAT (conversa casual, saudações, perguntas sobre quem você é ou como funciona, etc.), você DEVE gerar uma resposta completa, amigável, prestativa e sucinta no campo "chatReply" em português, usando o histórico recente para dar continuidade natural à conversa. Respeite sempre a BLINDAGEM CONTRA CONCORRENTES.
 
       RETORNE ESTRITAMENTE UM OBJETO JSON COM O FORMATO:
       {
@@ -2484,38 +2496,47 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       for (const op of immediateOps) {
         if (op.intent === 'QUERY') {
           await sendWhatsApp(phone, `📊 *Analisando seus dados financeiros em tempo real...*`);
-          await handleInteractiveFinancialQuery(userId, text, phone, history);
+          await handleInteractiveFinancialQuery(userId, text, phone, history, {
+            startDate: op.startDate,
+            endDate: op.endDate,
+            periodLabel: op.periodLabel
+          });
         } else if (op.intent === 'CHAT') {
-          const systemPromptChat = `
-          Você é a FinVision AI, a Assistente Financeira Premium do software FinVision Pro.
-          Seu tom de voz deve ser de especialista, extremamente educado, curto e sucinto. Use emojis úteis.
-          Use formatações em negrito do WhatsApp (*texto*).
-          Seja amigável e utilize o histórico da conversa para responder de forma contínua e natural.
+          let chatReply = op.chatReply;
+          
+          if (!chatReply) {
+            const systemPromptChat = `
+            Você é a FinVision AI, a Assistente Financeira Premium do software FinVision Pro.
+            Seu tom de voz deve ser de especialista, extremamente educado, curto e sucinto. Use emojis úteis.
+            Use formatações em negrito do WhatsApp (*texto*).
+            Seja amigável e utilize o histórico da conversa para responder de forma contínua e natural.
 
-          RESTRIÇÃO IMPORTANTE DE CONCORRENTES: \${COMPETITOR_RESTRICTION_PROMPT}
-          `;
+            RESTRIÇÃO IMPORTANTE DE CONCORRENTES: \${COMPETITOR_RESTRICTION_PROMPT}
+            `;
 
-          const chatContents = history.map((h: any) => ({
-            role: h.role === 'user' ? 'user' : 'model',
-            parts: [{ text: h.content }]
-          }));
+            const chatContents = history.map((h: any) => ({
+              role: h.role === 'user' ? 'user' : 'model',
+              parts: [{ text: h.content }]
+            }));
 
-          // Adicionar a mensagem de chat atual do usuário
-          chatContents.push({
-            role: 'user',
-            parts: [{ text: text }]
-          });
+            // Adicionar a mensagem de chat atual do usuário
+            chatContents.push({
+              role: 'user',
+              parts: [{ text: text }]
+            });
 
-          const chatResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: chatContents,
-            config: {
-              systemInstruction: systemPromptChat,
-              temperature: 0.7,
-            }
-          });
+            const chatResponse = await ai.models.generateContent({
+              model: 'gemini-2.5-flash',
+              contents: chatContents,
+              config: {
+                systemInstruction: systemPromptChat,
+                temperature: 0.7,
+              }
+            });
 
-          const chatReply = (chatResponse as any).text || (chatResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || op.chatReply || 'Olá! Sou a FinVision AI. Como posso te ajudar com suas finanças hoje?';
+            chatReply = (chatResponse as any).text || (chatResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || 'Olá! Sou a FinVision AI. Como posso te ajudar com suas finanças hoje?';
+          }
+
           await sendWhatsApp(phone, chatReply);
 
           // Salvar a pergunta do usuário e a resposta no histórico de chat
