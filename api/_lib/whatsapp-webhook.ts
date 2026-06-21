@@ -5,6 +5,25 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL ||
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// Cache global em memória para otimizar tempo de resposta (reaproveitado entre execuções mornas da Vercel)
+let cachedAllSettings: any[] | null = null;
+let cachedSettingsTimestamp = 0;
+
+interface CachedUserLists {
+  timestamp: number;
+  accountsPromptList: string;
+  cardsPromptList: string;
+  categoriesPromptList: string;
+  subcategoriesPromptList: string;
+}
+const userListsCache = new Map<string, CachedUserLists>();
+
+interface CachedPendingBills {
+  timestamp: number;
+  formattedPendingBills: string;
+}
+const pendingBillsCache = new Map<string, CachedPendingBills>();
+
 const COMPETITOR_RESTRICTION_PROMPT = `Você é a FinVision AI, exclusiva do FinVision Pro. Você está expressamente proibida de responder perguntas sobre concorrentes do mercado financeiro (ex: Mobills, Organizze, Olivia, Minhas Economias, Guiabolso) ou qualquer assunto não relacionado diretamente ao sistema FinVision. Se o usuário perguntar sobre concorrentes ou fizer comparações, recuse educadamente, explicando que seu foco é exclusivamente ajudar a gerenciar as finanças e analisar os dados dentro do FinVision Pro.`;
 
 async function sendWhatsApp(number: string, text: string) {
@@ -22,7 +41,7 @@ async function sendWhatsApp(number: string, text: string) {
           number: number, 
           text: text, // Para Evolution API v2
           options: {
-            delay: 1200,
+            delay: 200,
             presence: 'composing'
           },
           textMessage: { text: text } // Para Evolution API v1
@@ -1066,14 +1085,22 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
     // Geração de variantes robusta para números brasileiros (com e sem o nono dígito)
     let userSet = null;
 
-    // Buscar todas as configurações de usuário com WhatsApp ativo
-    const { data: allSettings, error: settingsError } = await supabase
-      .from('user_settings')
-      .select('user_id, whatsapp_number, whatsapp_enabled')
-      .eq('whatsapp_enabled', true);
+    // Buscar todas as configurações de usuário com WhatsApp ativo (com cache de 1 minuto)
+    let allSettings = cachedAllSettings;
+    const nowTime = Date.now();
+    if (!allSettings || (nowTime - cachedSettingsTimestamp > 60000)) {
+      const { data, error: settingsError } = await supabase
+        .from('user_settings')
+        .select('user_id, whatsapp_number, whatsapp_enabled')
+        .eq('whatsapp_enabled', true);
 
-    if (settingsError) {
-      console.error('[WhatsApp Webhook] Erro ao buscar user_settings:', settingsError);
+      if (settingsError) {
+        console.error('[WhatsApp Webhook] Erro ao buscar user_settings:', settingsError);
+      } else {
+        allSettings = data;
+        cachedAllSettings = data;
+        cachedSettingsTimestamp = nowTime;
+      }
     }
 
     if (allSettings && allSettings.length > 0) {
@@ -2149,23 +2176,34 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
       const ai = new GoogleGenAI({ apiKey: geminiKey });
 
-      // Buscar contas pendentes do usuário dos últimos 60 dias para dar contexto ao classificador
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-      const { data: pendingBills } = await supabase
-        .from('transactions')
-        .select('id, description, amount, date, category')
-        .eq('user_id', userId)
-        .is('is_deleted', false)
-        .eq('is_paid', false)
-        .eq('type', 'EXPENSE')
-        .gte('date', sixtyDaysAgo.toISOString().split('T')[0])
-        .order('date', { ascending: true })
-        .limit(20);
+      // Buscar contas pendentes do usuário dos últimos 60 dias para dar contexto ao classificador (com cache de 2 minutos)
+      let formattedPendingBills = '';
+      const cachedBills = pendingBillsCache.get(userId);
+      if (cachedBills && (nowTime - cachedBills.timestamp < 120000)) {
+        formattedPendingBills = cachedBills.formattedPendingBills;
+      } else {
+        const sixtyDaysAgo = new Date();
+        sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+        const { data: pendingBills } = await supabase
+          .from('transactions')
+          .select('id, description, amount, date, category')
+          .eq('user_id', userId)
+          .is('is_deleted', false)
+          .eq('is_paid', false)
+          .eq('type', 'EXPENSE')
+          .gte('date', sixtyDaysAgo.toISOString().split('T')[0])
+          .order('date', { ascending: true })
+          .limit(20);
 
-      const formattedPendingBills = pendingBills && pendingBills.length > 0
-        ? pendingBills.map(b => `- "${b.description}" | R$ ${Math.abs(Number(b.amount)).toFixed(2)} | Vencimento: ${b.date.split('T')[0].split('-').reverse().join('/')}`).join('\n')
-        : 'Nenhuma conta pendente em aberto nos últimos 60 dias.';
+        formattedPendingBills = pendingBills && pendingBills.length > 0
+          ? pendingBills.map(b => `- "${b.description}" | R$ ${Math.abs(Number(b.amount)).toFixed(2)} | Vencimento: ${b.date.split('T')[0].split('-').reverse().join('/')}`).join('\n')
+          : 'Nenhuma conta pendente em aberto nos últimos 60 dias.';
+
+        pendingBillsCache.set(userId, {
+          timestamp: nowTime,
+          formattedPendingBills
+        });
+      }
 
       // Verificar se o rascunho ativo é editável
       const isDraftEditable = activeDraft && activeDraft.data && 
@@ -2175,26 +2213,47 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         activeDraft.data.type !== 'delete' && 
         activeDraft.data.type !== 'pay';
 
-      // Buscar contas, cartões, categorias e subcategorias do usuário no Supabase para correção semântica de erros de digitação (typos)
-      const [accountsListRes, cardsListRes, categoriesListRes, subcategoriesListRes] = await Promise.all([
-        supabase.from('accounts').select('institution').eq('user_id', userId).eq('is_archived', false),
-        supabase.from('cards').select('name').eq('user_id', userId).eq('is_archived', false),
-        supabase.from('categories').select('id, name').eq('user_id', userId),
-        supabase.from('subcategories').select('name, category_id').eq('user_id', userId)
-      ]);
+      // Buscar contas, cartões, categorias e subcategorias do usuário no Supabase para correção semântica de erros de digitação (typos) (com cache de 5 minutos)
+      let accountsPromptList = 'Nenhuma cadastrada';
+      let cardsPromptList = 'Nenhum cadastrado';
+      let categoriesPromptList = 'Alimentação, Transporte, Lazer, Moradia, Saúde, Outros';
+      let subcategoriesPromptList = 'Nenhuma cadastrada';
 
-      const availableAccounts = (accountsListRes.data || []).map(a => a.institution);
-      const availableCards = (cardsListRes.data || []).map(c => c.name);
-      const availableCategories = (categoriesListRes.data || []).map(c => c.name);
-      const availableSubcategories = (subcategoriesListRes.data || []).map(s => {
-        const cat = (categoriesListRes.data || []).find(c => c.id === s.category_id);
-        return cat ? `${cat.name} > ${s.name}` : s.name;
-      });
+      const cachedLists = userListsCache.get(userId);
+      if (cachedLists && (nowTime - cachedLists.timestamp < 300000)) {
+        accountsPromptList = cachedLists.accountsPromptList;
+        cardsPromptList = cachedLists.cardsPromptList;
+        categoriesPromptList = cachedLists.categoriesPromptList;
+        subcategoriesPromptList = cachedLists.subcategoriesPromptList;
+      } else {
+        const [accountsListRes, cardsListRes, categoriesListRes, subcategoriesListRes] = await Promise.all([
+          supabase.from('accounts').select('institution').eq('user_id', userId).eq('is_archived', false),
+          supabase.from('cards').select('name').eq('user_id', userId).eq('is_archived', false),
+          supabase.from('categories').select('id, name').eq('user_id', userId),
+          supabase.from('subcategories').select('name, category_id').eq('user_id', userId)
+        ]);
 
-      const accountsPromptList = availableAccounts.length > 0 ? availableAccounts.join(', ') : 'Nenhuma cadastrada';
-      const cardsPromptList = availableCards.length > 0 ? availableCards.join(', ') : 'Nenhum cadastrado';
-      const categoriesPromptList = availableCategories.length > 0 ? availableCategories.join(', ') : 'Alimentação, Transporte, Lazer, Moradia, Saúde, Outros';
-      const subcategoriesPromptList = availableSubcategories.length > 0 ? availableSubcategories.join(', ') : 'Nenhuma cadastrada';
+        const availableAccounts = (accountsListRes.data || []).map(a => a.institution);
+        const availableCards = (cardsListRes.data || []).map(c => c.name);
+        const availableCategories = (categoriesListRes.data || []).map(c => c.name);
+        const availableSubcategories = (subcategoriesListRes.data || []).map(s => {
+          const cat = (categoriesListRes.data || []).find(c => c.id === s.category_id);
+          return cat ? `${cat.name} > ${s.name}` : s.name;
+        });
+
+        accountsPromptList = availableAccounts.length > 0 ? availableAccounts.join(', ') : 'Nenhuma cadastrada';
+        cardsPromptList = availableCards.length > 0 ? availableCards.join(', ') : 'Nenhum cadastrado';
+        categoriesPromptList = availableCategories.length > 0 ? availableCategories.join(', ') : 'Alimentação, Transporte, Lazer, Moradia, Saúde, Outros';
+        subcategoriesPromptList = availableSubcategories.length > 0 ? availableSubcategories.join(', ') : 'Nenhuma cadastrada';
+
+        userListsCache.set(userId, {
+          timestamp: nowTime,
+          accountsPromptList,
+          cardsPromptList,
+          categoriesPromptList,
+          subcategoriesPromptList
+        });
+      }
 
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];

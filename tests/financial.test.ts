@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { FinancialEngine } from '../lib/financialEngine';
 
 /**
@@ -239,13 +239,13 @@ describe('Cálculos Financeiros', () => {
         });
 
         it('deve calcular rendimento composto e saldo líquido de Renda Fixa', () => {
+            vi.useFakeTimers();
+            // Define data atual fixa de teste: 12 de Junho de 2026 às 12:00 UTC
+            vi.setSystemTime(new Date('2026-06-12T12:00:00.000Z'));
+
             const initial = 10000;
             const annualRate = 12.0; // 12% a.a.
-            const acqDate = '2025-06-12'; // 1 ano atrás (12 meses, 365 dias)
-            // simulando data fixa comparando com hoje que é 2026-06-12 (12 meses exatos)
-            const today = new Date();
-            const yearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
-            const dateStr = yearAgo.toISOString().split('T')[0];
+            const dateStr = '2025-06-12'; // Exatamente 1 ano atrás (12 meses, 365 dias)
 
             const result = FinancialEngine.calculateFixedIncomeYield(
                 initial,
@@ -259,6 +259,8 @@ describe('Cálculos Financeiros', () => {
             expect(result.grossValue).toBeCloseTo(11200, 0); // Juros compostos de 12% a.a. = 11200 bruto
             expect(result.taxRate).toBe(0.175); // 365 dias = 17.5%
             expect(result.netValue).toBeCloseTo(11200 - (1200 * 0.175), 0);
+
+            vi.useRealTimers();
         });
 
         it('deve gerar amortização PRICE e SAC para empréstimos concedidos', () => {
