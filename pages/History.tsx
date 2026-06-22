@@ -210,6 +210,18 @@ const buildSeriesFilter = (query: any, tx: any) => {
   return query;
 };
 
+const getQueryParam = (name: string): string | null => {
+  let search = window.location.search;
+  if (!search && window.location.hash) {
+    const idx = window.location.hash.indexOf('?');
+    if (idx !== -1) {
+      search = window.location.hash.substring(idx);
+    }
+  }
+  const params = new URLSearchParams(search);
+  return params.get(name);
+};
+
 const HistoryPage: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
@@ -225,8 +237,7 @@ const HistoryPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'ALL' | 'SETTLED' | 'PENDING'>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const statusParam = params.get('status');
+    const statusParam = getQueryParam('status');
     if (statusParam === 'PENDING' || statusParam === 'ABERTOS') return 'PENDING';
     if (statusParam === 'SETTLED' || statusParam === 'PAGOS') return 'SETTLED';
     return 'ALL';
@@ -246,19 +257,16 @@ const HistoryPage: React.FC = () => {
   const [dreReport, setDreReport] = useState<DreReport | null>(null);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<string>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const typeParam = params.get('type');
+    const typeParam = getQueryParam('type');
     if (typeParam === 'INCOME' || typeParam === 'EXPENSE') return typeParam;
     return 'ALL';
   });
   const [filterAccount, setFilterAccount] = useState<string[]>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const acc = params.get('account');
+    const acc = getQueryParam('account');
     return acc ? [acc] : [];
   });
   const [filterCategory, setFilterCategory] = useState<string[]>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const cat = params.get('category');
+    const cat = getQueryParam('category');
     return cat ? [cat] : [];
   });
   const [filterSubcategory, setFilterSubcategory] = useState<string[]>([]);
@@ -274,14 +282,12 @@ const HistoryPage: React.FC = () => {
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
   const [startDate, setStartDate] = useState<string>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const startParam = params.get('startDate');
+    const startParam = getQueryParam('startDate');
     if (startParam) return startParam;
     return DateUtils.formatToISODate(firstDay);
   });
   const [endDate, setEndDate] = useState<string>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const endParam = params.get('endDate');
+    const endParam = getQueryParam('endDate');
     if (endParam) return endParam;
     return DateUtils.formatToISODate(lastDay);
   });
@@ -311,8 +317,7 @@ const HistoryPage: React.FC = () => {
   // Modals
   const [payModal, setPayModal] = useState<PayModalState>({ open: false });
   const [addModal, setAddModal] = useState<AddModalState>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const addParam = params.get('add');
+    const addParam = getQueryParam('add');
     if (addParam === 'true') {
       return {
         open: true,

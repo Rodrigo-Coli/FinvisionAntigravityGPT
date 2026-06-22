@@ -39,9 +39,15 @@ const SearchableMultiSelect: React.FC<MultiSelectProps> = ({ label, placeholder,
             const allIds = options.map(o => o.id);
             onChange(allIds.filter(x => x !== id));
         } else if (selected.includes(id)) {
-            onChange(selected.filter(x => x !== id));
+            const next = selected.filter(x => x !== id);
+            if (next.length === 0) {
+                onChange(['__NONE__']);
+            } else {
+                onChange(next);
+            }
         } else {
-            const next = [...selected, id];
+            const cleanSelected = selected.filter(x => x !== '__NONE__');
+            const next = [...cleanSelected, id];
             if (next.length === options.length) {
                 onChange([]);
             } else {
@@ -50,11 +56,16 @@ const SearchableMultiSelect: React.FC<MultiSelectProps> = ({ label, placeholder,
         }
     };
 
-    const displayText = selected.length === 0
-        ? placeholder
-        : selected.length === 1
-            ? options.find(o => o.id === selected[0])?.label || selected[0]
-            : `${selected.length} selecionados`;
+    const isNoneSelected = selected.length === 1 && selected[0] === '__NONE__';
+    const displayCount = isNoneSelected ? 0 : selected.length;
+
+    const displayText = isNoneSelected
+        ? "Nenhum selecionado"
+        : selected.length === 0
+            ? placeholder
+            : selected.length === 1
+                ? options.find(o => o.id === selected[0])?.label || selected[0]
+                : `${selected.length} selecionados`;
 
     return (
         <div ref={ref} className="space-y-2">
@@ -65,7 +76,7 @@ const SearchableMultiSelect: React.FC<MultiSelectProps> = ({ label, placeholder,
                 <button
                     type="button"
                     onClick={() => setOpen(o => !o)}
-                    className={`w-full h-11 px-3 bg-slate-50 border rounded-lg text-xs font-bold outline-none flex items-center justify-between gap-2 transition-all ${selected.length > 0 ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-100 text-slate-500'}`}
+                    className={`w-full h-11 px-3 bg-slate-50 border rounded-lg text-xs font-bold outline-none flex items-center justify-between gap-2 transition-all ${selected.length > 0 && !isNoneSelected ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-100 text-slate-500'}`}
                 >
                     <span className="truncate">{displayText}</span>
                     <ChevronDown size={14} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -90,7 +101,13 @@ const SearchableMultiSelect: React.FC<MultiSelectProps> = ({ label, placeholder,
                             <button
                                 type="button"
                                 className={`w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors ${selected.length === 0 ? 'text-brand-600' : 'text-slate-400'}`}
-                                onClick={() => { onChange([]); setOpen(false); }}
+                                onClick={() => {
+                                    if (selected.length === 0) {
+                                        onChange(['__NONE__']);
+                                    } else {
+                                        onChange([]);
+                                    }
+                                }}
                             >
                                 <div className={`w-4 h-4 rounded flex items-center justify-center border transition-all ${selected.length === 0 ? 'bg-brand-600 border-brand-600' : 'border-slate-200'}`}>
                                     {selected.length === 0 && <Check size={10} className="text-white" />}
@@ -120,9 +137,9 @@ const SearchableMultiSelect: React.FC<MultiSelectProps> = ({ label, placeholder,
                             )}
                         </div>
 
-                        {selected.length > 0 && (
+                        {displayCount > 0 && (
                             <div className="px-4 py-2 border-t border-slate-50 flex items-center justify-between">
-                                <span className="text-[10px] text-slate-400 font-bold">{selected.length} selecionado(s)</span>
+                                <span className="text-[10px] text-slate-400 font-bold">{displayCount} selecionado(s)</span>
                                 <button type="button" onClick={() => onChange([])} className="text-[10px] font-bold text-rose-500 hover:text-rose-700">Limpar</button>
                             </div>
                         )}
