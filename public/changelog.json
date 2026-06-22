@@ -1,27 +1,27 @@
 {
-  "version": "2026.06.19.1915",
-  "title": "Correção de Transações e Atalhos Rápidos",
-  "date": "19/06/2026",
+  "version": "2026.06.21.2100",
+  "title": "Gerenciamento Completo de Patrimônio",
+  "date": "21/06/2026",
   "benefits": [
     {
-      "title": "Acesso Sem Falhas a Transações",
-      "desc": "Corrigido o crash inesperado na inicialização da página de Histórico de Transações, restabelecendo a usabilidade imediata.",
+      "title": "Consultar Itens Arquivados",
+      "desc": "Adicionado toggle para exibir ou ocultar itens arquivados em todos os tipos de patrimônio.",
+      "type": "feature"
+    },
+    {
+      "title": "Desarquivar e Excluir Ativos",
+      "desc": "Agora é possível restaurar itens arquivados ou excluí-los permanentemente com confirmação de segurança.",
       "type": "ux"
     },
     {
-      "title": "Atalhos Rápidos Corrigidos",
-      "desc": "O botão flutuante de gasto no cartão agora abre diretamente o formulário na aba de cartões do painel financeiro.",
-      "type": "ux"
-    },
-    {
-      "title": "Estabilidade de Formulários",
-      "desc": "Garantida a inicialização limpa de campos de valor nos formulários de cadastro, evitando qualquer erro de preenchimento.",
+      "title": "Estabilidade e Ajustes Finais",
+      "desc": "Garantida a integridade dos cálculos de saldos e consistência de tipos na compilação do TypeScript.",
       "type": "precision"
     }
   ],
   "changes": [
-    "**Resolução de Erros de Leitura:** Implementados fallbacks robustos para propriedades padrão no componente AddTransactionModal para impedir falhas de leitura (como `.trim()` ou `.replace()`) no render inicial.",
-    "**Alinhamento de Rota de Cartões:** Ajustada a navegação do botão de 'Gasto no Cartão' no menu flutuante para a rota definitiva `/banking?tab=cards&add=true` para reter parâmetros.",
-    "**Otimização de Redirecionamentos:** Ajustado o redirecionamento pós-abertura do modal de cartões para evitar rotas legadas e poupar requisições adicionais de navegação."
+    "**Ativos Imobiliários e Veículos:** Implementada a visualização de arquivados e botões dinâmicos de 'Desarquivar' e 'Excluir'.",
+    "**Outros Ativos Físicos e Passivos:** Adicionado suporte para restaurar itens e exclusão segura permanente com diálogo de confirmação.",
+    "**TypeScript e Build:** Verificação completa de tipos e conformidade para assegurar deploy seguro sem erros em produção."
   ]
 }

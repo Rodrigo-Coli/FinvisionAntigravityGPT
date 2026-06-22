@@ -229,6 +229,9 @@ const Assets: React.FC = () => {
   const [budgets, setBudgets] = useState<any[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
   const [showArchivedPhysical, setShowArchivedPhysical] = useState(false);
+  const [showArchivedRealEstate, setShowArchivedRealEstate] = useState(false);
+  const [showArchivedVehicles, setShowArchivedVehicles] = useState(false);
+  const [showArchivedLiabilities, setShowArchivedLiabilities] = useState(false);
   const [expandedAssetIR, setExpandedAssetIR] = useState<Record<string, boolean>>({});
   const toggleExpandIR = (assetId: string) => {
     setExpandedAssetIR(prev => ({ ...prev, [assetId]: !prev[assetId] }));
@@ -4204,6 +4207,20 @@ const Assets: React.FC = () => {
     }
   };
 
+  const handleUnarchiveLiability = async (liability: Liability) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase
+        .from('liabilities')
+        .update({ is_archived: false })
+        .eq('id', liability.id);
+      if (error) throw error;
+      fetchData();
+    } catch (err: any) {
+      alert(`Erro ao desarquivar passivo: ${err.message}`);
+    }
+  };
+
   const handleSaveLiabilityTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase || !selectedLiabilityForExtrato) return;
@@ -5866,19 +5883,28 @@ const Assets: React.FC = () => {
         {/* REAL ESTATE VIEW */}
         {activeView === 'realestate' && (
           <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3 gap-4">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
-                  <Building2 size={20} className="text-slate-500" />
-                  Seus Ativos Imobiliários
-                </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
+              <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
+                <Building2 size={20} className="text-slate-500" />
+                Seus Ativos Imobiliários
+              </h3>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-slate-600">
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-300 text-brand-600 focus:ring-brand-500/20"
+                    checked={showArchivedRealEstate}
+                    onChange={(e) => setShowArchivedRealEstate(e.target.checked)}
+                  />
+                  Exibir arquivados
+                </label>
+                <button
+                  onClick={() => setShowWizardModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-brand-200 text-brand-600 rounded-xl text-xs font-bold shadow-sm hover:bg-brand-50 hover:scale-105 transition-transform active:scale-95"
+                >
+                  <Building2 size={16} /> Aquisição Imobiliária
+                </button>
               </div>
-              <button
-                onClick={() => setShowWizardModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-brand-200 text-brand-600 rounded-xl text-xs font-bold shadow-sm hover:bg-brand-50 hover:scale-105 transition-transform active:scale-95"
-              >
-                <Building2 size={16} /> Aquisição Imobiliária
-              </button>
             </div>
 
             <div className="space-y-8">
@@ -5904,9 +5930,9 @@ const Assets: React.FC = () => {
                 )}
               </div>
 
-              {/* Real Estate Active Grid */}
+              {/* Real Estate Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {activePhysicalAssets.filter(p => p.category === 'REAL_ESTATE').map(asset => {
+                {physicalAssets.filter(p => p.category === 'REAL_ESTATE' && (showArchivedRealEstate ? true : !p.is_archived)).map(asset => {
                   const meta = asset.metadata || {};
                   const linkedLiab = activeLiabilities.find(l => l.linkedAssetId === asset.id);
                   const propertyStage = meta.propertyStage || 'PRONTO';
@@ -6074,7 +6100,7 @@ const Assets: React.FC = () => {
                         setSelectedRealEstateForDetail(asset);
                         setShowRealEstateDetailModal(true);
                       }}
-                      className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between cursor-pointer text-left"
+                      className={`bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between cursor-pointer text-left ${asset.is_archived ? 'opacity-65' : ''}`}
                     >
                       <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
                         <div className="flex justify-between items-start">
@@ -6082,6 +6108,9 @@ const Assets: React.FC = () => {
                             <HomeIcon size={22} />
                           </div>
                           <div className="flex flex-wrap gap-1.5 justify-end">
+                            {asset.is_archived && (
+                              <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-amber-100">Arquivado</span>
+                            )}
                             {propertyStage === 'PLANTA' ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); togglePropertyTypeDirectly(asset); }}
@@ -6307,20 +6336,38 @@ const Assets: React.FC = () => {
                           }}
                           className="flex items-center gap-1 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
                         >
-                          <History size={12} /> Detalhes & Evolução
+                          <History size={12} /> Detalhes &amp; Evolução
                         </button>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 items-center">
+                          {!asset.is_archived && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openEditAsset(asset); }}
+                              className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-brand-600"
+                            >
+                              Editar
+                            </button>
+                          )}
+                          {asset.is_archived ? (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleUnarchiveAsset(asset); }}
+                              className="text-xs font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700"
+                            >
+                              Desarquivar
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleArchiveAsset(asset); }}
+                              className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-amber-600"
+                            >
+                              Arquivar
+                            </button>
+                          )}
                           <button
-                            onClick={(e) => { e.stopPropagation(); openEditAsset(asset); }}
-                            className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-brand-600"
+                            onClick={(e) => { e.stopPropagation(); handleDeleteAsset(asset); }}
+                            className="text-slate-300 hover:text-rose-600 transition-colors"
+                            aria-label={`Excluir ativo imobiliário ${asset.name}`}
                           >
-                            Editar
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleArchiveAsset(asset); }}
-                            className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-amber-600"
-                          >
-                            Arquivar
+                            <Trash2 size={12} />
                           </button>
                         </div>
                       </div>
@@ -6335,13 +6382,24 @@ const Assets: React.FC = () => {
         {/* VEHICLES VIEW */}
         {activeView === 'vehicles' && (
           <div className="space-y-6">
-            <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
-              <Car size={20} className="text-slate-500" />
-              Seus Veículos
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
+                <Car size={20} className="text-slate-500" />
+                Seus Veículos
+              </h3>
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-slate-600">
+                <input
+                  type="checkbox"
+                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500/20"
+                  checked={showArchivedVehicles}
+                  onChange={(e) => setShowArchivedVehicles(e.target.checked)}
+                />
+                Exibir arquivados e vendidos
+              </label>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {activePhysicalAssets.filter(p => p.category === 'VEHICLE').map(asset => {
+              {physicalAssets.filter(p => p.category === 'VEHICLE' && (showArchivedVehicles ? true : !p.is_archived)).map(asset => {
                 const meta = asset.metadata || {};
                 const value = asset.estimatedValue;
                 const purchase = Number(meta.purchaseValue) || value;
@@ -6361,7 +6419,7 @@ const Assets: React.FC = () => {
                 const depreciacaoValor = purchase - fipe;
 
                 return (
-                  <div key={asset.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+                  <div key={asset.id} className={`bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between ${asset.is_archived || meta.isSold ? 'opacity-65' : ''}`}>
                     <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
                       <div className="flex justify-between items-start">
                         <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-900/10">
@@ -6370,6 +6428,9 @@ const Assets: React.FC = () => {
                         <div className="flex flex-wrap gap-1.5 justify-end">
                           {meta.isSold && (
                             <span className="px-3 py-1 bg-rose-50 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-rose-100">Vendido</span>
+                          )}
+                          {asset.is_archived && !meta.isSold && (
+                            <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-amber-100">Arquivado</span>
                           )}
                           {meta.purpose === 'investimento' ? (
                             <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-100">Investimento</span>
@@ -6448,14 +6509,27 @@ const Assets: React.FC = () => {
                         }}
                         className="flex items-center gap-1 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-brand-600 transition-colors"
                       >
-                        <History size={12} /> Extrato & Ajustes
+                        <History size={12} /> Extrato &amp; Ajustes
                       </button>
-                      <div className="flex gap-3">
-                        <button onClick={() => openEditAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Editar</button>
-                        <button onClick={() => handleArchiveAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-amber-600">Arquivar</button>
-                        {!meta.isSold && (
+                      <div className="flex gap-3 items-center">
+                        {!asset.is_archived && (
+                          <button onClick={() => openEditAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-brand-600">Editar</button>
+                        )}
+                        {asset.is_archived ? (
+                          <button onClick={() => handleUnarchiveAsset(asset)} className="text-xs font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700">Desarquivar</button>
+                        ) : (
+                          <button onClick={() => handleArchiveAsset(asset)} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-amber-600">Arquivar</button>
+                        )}
+                        {!meta.isSold && !asset.is_archived && (
                           <button onClick={() => handleArchiveAssetFromExtrato(asset)} className="text-xs font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-2 py-1 rounded">Vender</button>
                         )}
+                        <button
+                          onClick={() => handleDeleteAsset(asset)}
+                          className="text-slate-300 hover:text-rose-600 transition-colors"
+                          aria-label={`Excluir veículo ${asset.name}`}
+                        >
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -6705,6 +6779,13 @@ const Assets: React.FC = () => {
                             Arquivar
                           </button>
                         )}
+                        <button
+                          onClick={() => handleDeleteAsset(asset)}
+                          className="px-2 py-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all min-h-[36px] flex items-center justify-center"
+                          aria-label={`Excluir ativo ${asset.name}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -7283,13 +7364,24 @@ const Assets: React.FC = () => {
         {/* LIABILITIES VIEW */}
         {activeView === 'liabilities' && (
           <div className="space-y-6">
-            <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
-              <Landmark size={20} className="text-slate-500" />
-              Sua Carteira de Passivos e Financiamentos
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <h3 className="text-xl font-bold text-slate-900 tracking-tight italic flex items-center gap-2">
+                <Landmark size={20} className="text-slate-500" />
+                Sua Carteira de Passivos e Financiamentos
+              </h3>
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-slate-600">
+                <input
+                  type="checkbox"
+                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500/20"
+                  checked={showArchivedLiabilities}
+                  onChange={(e) => setShowArchivedLiabilities(e.target.checked)}
+                />
+                Exibir passivos arquivados
+              </label>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {activeLiabilities.map(liability => {
+              {liabilities.filter(l => showArchivedLiabilities ? true : !l.is_archived).map(liability => {
                 const paidAmount = Math.max(0, liability.totalAmount - liability.remainingBalance);
                 const amortizationPercent = liability.totalAmount > 0 
                   ? Math.min(100, Math.max(0, Math.round((paidAmount / liability.totalAmount) * 100))) 
@@ -7302,17 +7394,22 @@ const Assets: React.FC = () => {
                   : null;
 
                 return (
-                  <div key={liability.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between">
+                  <div key={liability.id} className={`bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col justify-between ${liability.is_archived ? 'opacity-65' : ''}`}>
                     <div className="p-8 space-y-6">
                       <div className="flex justify-between items-start">
                         <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-100/50">
                           <Landmark size={22} />
                         </div>
-                        {liability.remainingBalance === 0 ? (
-                          <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Quitada</span>
-                        ) : (
-                          <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-100">Dívida Ativa</span>
-                        )}
+                        <div className="flex flex-wrap gap-1.5 justify-end">
+                          {liability.is_archived && (
+                            <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-amber-100">Arquivado</span>
+                          )}
+                          {liability.remainingBalance === 0 ? (
+                            <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Quitada</span>
+                          ) : (
+                            <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-100">Dívida Ativa</span>
+                          )}
+                        </div>
                       </div>
 
                       <div>
@@ -7403,23 +7500,35 @@ const Assets: React.FC = () => {
                         aria-label={`Ver extrato e lançamentos de ${liability.name}`}
                       >
                         <History size={12} />
-                        Extrato & Lançar
+                        Extrato &amp; Lançar
                       </button>
                       <div className="flex gap-3 items-center">
-                        <button 
-                          onClick={() => openEditLiability(liability)} 
-                          className="text-xs font-black uppercase tracking-wider text-slate-500 hover:text-brand-600 transition-colors"
-                          aria-label={`Ajustar passivo ${liability.name}`}
-                        >
-                          Ajustar
-                        </button>
-                        <button 
-                          onClick={() => handleArchiveLiability(liability)} 
-                          className="text-xs font-black uppercase tracking-wider text-slate-500 hover:text-amber-600 transition-colors"
-                          aria-label={`Arquivar passivo ${liability.name}`}
-                        >
-                          Arquivar
-                        </button>
+                        {!liability.is_archived && (
+                          <button 
+                            onClick={() => openEditLiability(liability)} 
+                            className="text-xs font-black uppercase tracking-wider text-slate-500 hover:text-brand-600 transition-colors"
+                            aria-label={`Ajustar passivo ${liability.name}`}
+                          >
+                            Ajustar
+                          </button>
+                        )}
+                        {liability.is_archived ? (
+                          <button 
+                            onClick={() => handleUnarchiveLiability(liability)} 
+                            className="text-xs font-black uppercase tracking-wider text-emerald-600 hover:text-emerald-700 transition-colors"
+                            aria-label={`Desarquivar passivo ${liability.name}`}
+                          >
+                            Desarquivar
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => handleArchiveLiability(liability)} 
+                            className="text-xs font-black uppercase tracking-wider text-slate-500 hover:text-amber-600 transition-colors"
+                            aria-label={`Arquivar passivo ${liability.name}`}
+                          >
+                            Arquivar
+                          </button>
+                        )}
                         <button 
                           onClick={() => handleDeleteLiability(liability.id)} 
                           className="text-slate-400 hover:text-rose-600 transition-colors"

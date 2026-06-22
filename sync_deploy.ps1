@@ -1,6 +1,6 @@
 
 $repo = "Rodrigo-Coli/FinvisionAntigravityGPT"
-$token = "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"
+$token = "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"
 $headers = @{ "Authorization" = "token $token" }
 
 Write-Host "--- INICIANDO DEPLOY UNIFICADO (MIRROR LOCAL -> GITHUB) ---" -ForegroundColor Cyan
