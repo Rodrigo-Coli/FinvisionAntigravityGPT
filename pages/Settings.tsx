@@ -181,6 +181,16 @@ const SettingsPage: React.FC = () => {
     setStartHiddenByDefault(val);
     toast('Configuração de privacidade salva!', 'success');
   };
+
+  const [defaultIncludeNonSumming, setDefaultIncludeNonSumming] = useState(
+    localStorage.getItem('finvision_default_include_non_summing') === 'true'
+  );
+
+  const toggleDefaultIncludeNonSumming = (val: boolean) => {
+    localStorage.setItem('finvision_default_include_non_summing', String(val));
+    setDefaultIncludeNonSumming(val);
+    toast('Configuração de filtro de contas salva!', 'success');
+  };
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [establishments, setEstablishments] = useState<any[]>([]);
@@ -998,6 +1008,16 @@ const SettingsPage: React.FC = () => {
                   </div>
                   <button onClick={() => toggleStartHiddenByDefault(!startHiddenByDefault)} className={`w-14 h-8 rounded-full p-1 transition-all ${startHiddenByDefault ? 'bg-brand-600' : 'bg-slate-200'}`}>
                     <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${startHiddenByDefault ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-50 hover:bg-white transition-all">
+                  <div>
+                    <p className="font-bold text-slate-900">💡 Incluir Contas Não Cumulativas nos Filtros</p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Por padrão, selecionar e somar todas as contas (incluindo as que não somam no saldo geral).</p>
+                  </div>
+                  <button onClick={() => toggleDefaultIncludeNonSumming(!defaultIncludeNonSumming)} className={`w-14 h-8 rounded-full p-1 transition-all ${defaultIncludeNonSumming ? 'bg-brand-600' : 'bg-slate-200'}`}>
+                    <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${defaultIncludeNonSumming ? 'translate-x-6' : 'translate-x-0'}`} />
                   </button>
                 </div>
               </div>

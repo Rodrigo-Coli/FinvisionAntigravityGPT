@@ -528,12 +528,37 @@ const HistoryPage: React.FC = () => {
         const deduplicatedOwners = Array.from(new Set((entities || []).map((o: string) => o.trim()))).filter(Boolean);
         setOwners(deduplicatedOwners.sort((a, b) => a.localeCompare(b)));
 
-        // Initialize filterOwner on first load if there are excluded profiles
-        if (isFirstLoad.current && filterOwner.length === 0) {
-          const excludedSet = new Set((entityObjs || []).filter((e: any) => e.include_in_totals === false).map((e: any) => e.name));
-          if (excludedSet.size > 0) {
-            const defaultOwners = deduplicatedOwners.filter((name: string) => !excludedSet.has(name));
-            setFilterOwner(defaultOwners);
+        // Initialize filters on first load (owner profiles and accounts)
+        if (isFirstLoad.current) {
+          let didInitializeFilters = false;
+
+          // 1. Initialize filterAccount if the default setting is NOT to include non-summing accounts
+          const defaultIncludeNonSumming = localStorage.getItem('finvision_default_include_non_summing') === 'true';
+          if (filterAccount.length === 0 && !defaultIncludeNonSumming) {
+            const summingAccountIds = uniqueAccData
+              .filter((a: any) => {
+                const inc = a.include_in_dashboard !== undefined ? !!a.include_in_dashboard : (a.includeDashboard !== undefined ? !!a.includeDashboard : (a.includeInDashboard !== undefined ? !!a.includeInDashboard : true));
+                return inc;
+              })
+              .map((a: any) => a.id);
+            
+            if (summingAccountIds.length > 0) {
+              setFilterAccount(summingAccountIds);
+              didInitializeFilters = true;
+            }
+          }
+
+          // 2. Initialize filterOwner if there are excluded profiles
+          if (filterOwner.length === 0) {
+            const excludedSet = new Set((entityObjs || []).filter((e: any) => e.include_in_totals === false).map((e: any) => e.name));
+            if (excludedSet.size > 0) {
+              const defaultOwners = deduplicatedOwners.filter((name: string) => !excludedSet.has(name));
+              setFilterOwner(defaultOwners);
+              didInitializeFilters = true;
+            }
+          }
+
+          if (didInitializeFilters) {
             isFirstLoad.current = false;
             setIsLoading(false);
             return;
@@ -1460,11 +1485,19 @@ const HistoryPage: React.FC = () => {
   };
 
   const resetFilters = () => {
-    setFilterType('ALL'); setFilterAccount([]); setFilterCategory([]);
+    setFilterType('ALL'); setFilterCategory([]);
     setStartDate(DateUtils.formatToISODate(firstDay));
     setEndDate(DateUtils.formatToISODate(lastDay));
     setMinPrice(''); setMaxPrice('');
     setSearch('');
+
+    const defaultIncludeNonSumming = localStorage.getItem('finvision_default_include_non_summing') === 'true';
+    if (!defaultIncludeNonSumming) {
+      const summingAccountIds = accounts.filter(a => a.includeInDashboard).map(a => a.id);
+      setFilterAccount(summingAccountIds);
+    } else {
+      setFilterAccount([]);
+    }
 
     const cachedObjs = localStorage.getItem('finvision_cached_owners_objs');
     if (cachedObjs) {

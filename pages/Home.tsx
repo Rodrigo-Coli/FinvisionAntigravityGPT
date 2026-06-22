@@ -160,24 +160,45 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           setIsProjecting(false);
         }
 
-        // Fetch pending transactions for current month
+        // Fetch pending transactions for current month and accounts
         const now = new Date();
         const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
-        const { data: pendingTxs, error: pendingError } = await supabase
-          .from('transactions')
-          .select('type, amount')
-          .eq('user_id', user.id)
-          .eq('is_deleted', false)
-          .eq('is_paid', false)
-          .gte('date', startOfMonth)
-          .lte('date', endOfMonth);
+        const [pendingRes, accountsRes] = await Promise.all([
+          supabase
+            .from('transactions')
+            .select('type, amount, account_id')
+            .eq('user_id', user.id)
+            .eq('is_deleted', false)
+            .eq('is_paid', false)
+            .gte('date', startOfMonth)
+            .lte('date', endOfMonth),
+          supabase
+            .from('accounts')
+            .select('id, include_in_dashboard')
+            .eq('user_id', user.id)
+            .eq('is_archived', false)
+        ]);
+
+        const pendingTxs = pendingRes.data;
+        const pendingError = pendingRes.error;
+        const accountsData = accountsRes.data || [];
 
         if (!pendingError && pendingTxs) {
+          const defaultIncludeNonSumming = localStorage.getItem('finvision_default_include_non_summing') === 'true';
+          const nonSummingAccountIds = new Set(
+            accountsData
+              .filter((a: any) => a.include_in_dashboard === false)
+              .map((a: any) => a.id)
+          );
+
           let incSum = 0;
           let expSum = 0;
           pendingTxs.forEach((t: any) => {
+            if (!defaultIncludeNonSumming && t.account_id && nonSummingAccountIds.has(t.account_id)) {
+              return;
+            }
             if (t.type === 'INCOME') incSum += Number(t.amount || 0);
             else if (t.type === 'EXPENSE') expSum += Number(t.amount || 0);
           });

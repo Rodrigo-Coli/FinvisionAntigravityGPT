@@ -35,8 +35,19 @@ const SearchableMultiSelect: React.FC<MultiSelectProps> = ({ label, placeholder,
     });
 
     const toggle = (id: string) => {
-        if (selected.includes(id)) onChange(selected.filter(x => x !== id));
-        else onChange([...selected, id]);
+        if (selected.length === 0) {
+            const allIds = options.map(o => o.id);
+            onChange(allIds.filter(x => x !== id));
+        } else if (selected.includes(id)) {
+            onChange(selected.filter(x => x !== id));
+        } else {
+            const next = [...selected, id];
+            if (next.length === options.length) {
+                onChange([]);
+            } else {
+                onChange(next);
+            }
+        }
     };
 
     const displayText = selected.length === 0
@@ -87,19 +98,22 @@ const SearchableMultiSelect: React.FC<MultiSelectProps> = ({ label, placeholder,
                                 SELECIONAR TODOS
                             </button>
 
-                            {filtered.map(o => (
-                                <button
-                                    key={o.id}
-                                    type="button"
-                                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium hover:bg-slate-50 transition-colors text-slate-700"
-                                    onClick={() => toggle(o.id)}
-                                >
-                                    <div className={`w-4 h-4 rounded flex items-center justify-center border transition-all shrink-0 ${selected.includes(o.id) ? 'bg-brand-600 border-brand-600' : 'border-slate-200'}`}>
-                                        {selected.includes(o.id) && <Check size={10} className="text-white" />}
-                                    </div>
-                                    {o.label}
-                                </button>
-                            ))}
+                            {filtered.map(o => {
+                                const isChecked = selected.length === 0 || selected.includes(o.id);
+                                return (
+                                    <button
+                                        key={o.id}
+                                        type="button"
+                                        className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium hover:bg-slate-50 transition-colors text-slate-700"
+                                        onClick={() => toggle(o.id)}
+                                    >
+                                        <div className={`w-4 h-4 rounded flex items-center justify-center border transition-all shrink-0 ${isChecked ? 'bg-brand-600 border-brand-600' : 'border-slate-200'}`}>
+                                            {isChecked && <Check size={10} className="text-white" />}
+                                        </div>
+                                        {o.label}
+                                    </button>
+                                );
+                            })}
 
                             {filtered.length === 0 && (
                                 <p className="px-4 py-4 text-xs text-slate-300 text-center">Nenhum resultado</p>
