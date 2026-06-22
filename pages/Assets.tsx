@@ -402,7 +402,12 @@ const Assets: React.FC = () => {
     balloonYear: '',
     balloonAmount: '',
     balloons: [] as { month: number; year: number; amount: number }[],
-    propertyType: 'PLANTA' as 'PLANTA' | 'PRONTO'
+    propertyType: 'PLANTA' as 'PLANTA' | 'PRONTO',
+    hasHistoricalPayments: false,
+    historicalCalculationType: 'calculated' as 'calculated' | 'direct',
+    historicalInstallmentsPaid: '',
+    historicalInstallmentValue: '',
+    historicalPaidAmount: ''
   });
 
   // Modal new transaction local form
@@ -3455,7 +3460,12 @@ const Assets: React.FC = () => {
         balloonYear: '',
         balloonAmount: '',
         balloons: [],
-        propertyType: 'PLANTA'
+        propertyType: 'PLANTA',
+        hasHistoricalPayments: false,
+        historicalCalculationType: 'calculated',
+        historicalInstallmentsPaid: '',
+        historicalInstallmentValue: '',
+        historicalPaidAmount: ''
       });
       setEditingLiability(null);
       setShowLiabilityModal(true);
@@ -3995,6 +4005,87 @@ const Assets: React.FC = () => {
     }
   };
 
+  const syncHistoricalTransaction = async (liabilityId: string, name: string, hasHistory: boolean, paidAmount: number, userId: string) => {
+    if (!supabase) return;
+
+    try {
+      const { data: existingTxs } = await supabase
+        .from('transactions')
+        .select('id')
+        .eq('liability_id', liabilityId)
+        .eq('metadata->>type', 'liability_historical_payment');
+
+      const existingTx = existingTxs && existingTxs.length > 0 ? existingTxs[0] : null;
+
+      if (hasHistory && paidAmount > 0) {
+        const categoryName = 'Financiamento/Dívida';
+        const { data: existingCat } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('name', categoryName)
+          .single();
+
+        let catId = existingCat?.id || null;
+        if (!existingCat) {
+          const { data: c } = await supabase
+            .from('categories')
+            .insert({
+              user_id: userId,
+              name: categoryName,
+              type: 'EXPENSE',
+              color: 'bg-rose-50 text-rose-600'
+            })
+            .select('id')
+            .single();
+          if (c) catId = c.id;
+        }
+
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const txDate = yesterday.toISOString().split('T')[0];
+
+        const txData = {
+          user_id: userId,
+          description: `Pagamentos Anteriores (Histórico) - ${name}`,
+          amount: paidAmount,
+          date: txDate,
+          type: 'EXPENSE',
+          category: categoryName,
+          category_id: catId,
+          is_paid: true,
+          paid_amount: paidAmount,
+          paid_at: txDate,
+          liability_id: liabilityId,
+          metadata: {
+            is_historical: true,
+            type: 'liability_historical_payment'
+          }
+        };
+
+        if (existingTx) {
+          await supabase
+            .from('transactions')
+            .update(txData)
+            .eq('id', existingTx.id);
+        } else {
+          await supabase
+            .from('transactions')
+            .insert([txData]);
+        }
+      } else {
+        if (existingTx) {
+          await supabase
+            .from('transactions')
+            .delete()
+            .eq('id', existingTx.id);
+        }
+      }
+    } catch (err) {
+      console.error("Error syncing historical transaction:", err);
+    }
+  };
+
   // Save regular liability form
   const handleSaveLiability = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -4036,10 +4127,19 @@ const Assets: React.FC = () => {
             indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
             balloons: liabilityFormData.balloons,
             propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
-            isRealEstate: liabilityFormData.type === 'MORTGAGE' ? true : undefined
+            isRealEstate: liabilityFormData.type === 'MORTGAGE' ? true : undefined,
+            historicalCalculationType: liabilityFormData.hasHistoricalPayments ? liabilityFormData.historicalCalculationType : undefined,
+            historicalInstallmentsPaid: liabilityFormData.hasHistoricalPayments && liabilityFormData.historicalCalculationType === 'calculated' ? (parseInt(liabilityFormData.historicalInstallmentsPaid, 10) || undefined) : undefined,
+            historicalInstallmentValue: liabilityFormData.hasHistoricalPayments && liabilityFormData.historicalCalculationType === 'calculated' ? (parseFloat(liabilityFormData.historicalInstallmentValue) || undefined) : undefined,
+            historicalPaidAmount: liabilityFormData.hasHistoricalPayments ? (parseFloat(liabilityFormData.historicalPaidAmount) || undefined) : undefined
           }
         }).eq('id', editingLiability.id);
         if (error) throw error;
+
+        // Sync historical transaction
+        const hasHistory = liabilityFormData.hasHistoricalPayments;
+        const paidAmount = parseFloat(liabilityFormData.historicalPaidAmount) || 0;
+        await syncHistoricalTransaction(editingLiability.id, liabilityFormData.name, hasHistory, paidAmount, user.id);
 
         // Auto-sync names in transactions
         if (editingLiability.name !== liabilityFormData.name) {
@@ -4077,69 +4177,100 @@ const Assets: React.FC = () => {
             indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
             balloons: liabilityFormData.balloons,
             propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
-            isRealEstate: liabilityFormData.type === 'MORTGAGE' ? true : undefined
+            isRealEstate: liabilityFormData.type === 'MORTGAGE' ? true : undefined,
+            historicalCalculationType: liabilityFormData.hasHistoricalPayments ? liabilityFormData.historicalCalculationType : undefined,
+            historicalInstallmentsPaid: liabilityFormData.hasHistoricalPayments && liabilityFormData.historicalCalculationType === 'calculated' ? (parseInt(liabilityFormData.historicalInstallmentsPaid, 10) || undefined) : undefined,
+            historicalInstallmentValue: liabilityFormData.hasHistoricalPayments && liabilityFormData.historicalCalculationType === 'calculated' ? (parseFloat(liabilityFormData.historicalInstallmentValue) || undefined) : undefined,
+            historicalPaidAmount: liabilityFormData.hasHistoricalPayments ? (parseFloat(liabilityFormData.historicalPaidAmount) || undefined) : undefined
           }
         }]).select();
 
         if (error) throw error;
 
-        // Auto-generate future pending cash flow transactions
-        if (newLiab && newLiab.length > 0 && installmentAmt > 0 && installmentsLeft > 0) {
+        if (newLiab && newLiab.length > 0) {
           const liabilityId = newLiab[0].id;
-          const today = new Date();
-          const categoryName = 'Financiamento/Dívida';
+          const hasHistory = liabilityFormData.hasHistoricalPayments;
+          const paidAmount = parseFloat(liabilityFormData.historicalPaidAmount) || 0;
+          await syncHistoricalTransaction(liabilityId, liabilityFormData.name, hasHistory, paidAmount, user.id);
 
-          const { data: existingCat } = await supabase.from('categories')
-            .select('id').eq('user_id', user.id).eq('name', categoryName).single();
+          // Auto-generate future pending cash flow transactions
+          if (installmentAmt > 0 && installmentsLeft > 0) {
+            const today = new Date();
+            const categoryName = 'Financiamento/Dívida';
 
-          let catId = '';
-          if (!existingCat) {
-            const { data: c } = await supabase.from('categories').insert({
-              user_id: user.id,
-              name: categoryName,
-              type: 'EXPENSE',
-              color: 'bg-rose-50 text-rose-600'
-            }).select('id').single();
-            if (c) catId = c.id;
-          } else {
-            catId = existingCat.id;
-          }
+            const { data: existingCat } = await supabase.from('categories')
+              .select('id').eq('user_id', user.id).eq('name', categoryName).single();
 
-          const futureTransactions = [];
-          const MAX_GENERATE = Math.min(installmentsLeft, 120); // Safety cap for bulk generation
-          for (let i = 1; i <= MAX_GENERATE; i++) {
-            const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
-            futureTransactions.push({
-              user_id: user.id,
-              description: `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
-              amount: installmentAmt,
-              date: txDate.toISOString().split('T')[0],
-              type: 'EXPENSE',
-              category: categoryName,
-              category_id: catId || null,
-              is_paid: false,
-              is_recurring: true,
-              is_installment: true,
-              installment_number: i,
-              installment_total: installmentsLeft,
-              installment_group_id: liabilityId,
-              liability_id: liabilityId,
-              metadata: {
-                auto_generated: true,
+            let catId = '';
+            if (!existingCat) {
+              const { data: c } = await supabase.from('categories').insert({
+                user_id: user.id,
+                name: categoryName,
+                type: 'EXPENSE',
+                color: 'bg-rose-50 text-rose-600'
+              }).select('id').single();
+              if (c) catId = c.id;
+            } else {
+              catId = existingCat.id;
+            }
+
+            const futureTransactions = [];
+            const MAX_GENERATE = Math.min(installmentsLeft, 120); // Safety cap for bulk generation
+            for (let i = 1; i <= MAX_GENERATE; i++) {
+              const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
+              futureTransactions.push({
+                user_id: user.id,
+                description: `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
+                amount: installmentAmt,
+                date: txDate.toISOString().split('T')[0],
+                type: 'EXPENSE',
+                category: categoryName,
+                category_id: catId || null,
+                is_paid: false,
+                is_recurring: true,
+                is_installment: true,
                 installment_number: i,
+                installment_total: installmentsLeft,
                 installment_group_id: liabilityId,
-                linked_asset_id: liabilityFormData.linkedAssetId || undefined
-              }
-            });
-          }
+                liability_id: liabilityId,
+                metadata: {
+                  auto_generated: true,
+                  installment_number: i,
+                  installment_group_id: liabilityId,
+                  linked_asset_id: liabilityFormData.linkedAssetId || undefined
+                }
+              });
+            }
 
-          await supabase.from('transactions').insert(futureTransactions);
+            await supabase.from('transactions').insert(futureTransactions);
+          }
         }
       }
 
       setShowLiabilityModal(false);
       setEditingLiability(null);
-      setLiabilityFormData({ name: '', type: 'PERSONAL_LOAN', totalAmount: '', remainingBalance: '', interestRate: '', installmentAmount: '', installmentsRemaining: '', dueDay: '', linkedAssetId: '', indexationRate: '', balloonMonth: '', balloonYear: '', balloonAmount: '', balloons: [], propertyType: 'PLANTA' });
+      setLiabilityFormData({
+        name: '',
+        type: 'PERSONAL_LOAN',
+        totalAmount: '',
+        remainingBalance: '',
+        interestRate: '',
+        installmentAmount: '',
+        installmentsRemaining: '',
+        dueDay: '',
+        linkedAssetId: '',
+        indexationRate: '',
+        balloonMonth: '',
+        balloonYear: '',
+        balloonAmount: '',
+        balloons: [],
+        propertyType: 'PLANTA',
+        hasHistoricalPayments: false,
+        historicalCalculationType: 'calculated',
+        historicalInstallmentsPaid: '',
+        historicalInstallmentValue: '',
+        historicalPaidAmount: ''
+      });
       fetchData();
     } catch (err: any) {
       alert(`Erro ao salvar passivo: ${err.message}`);
@@ -4148,6 +4279,7 @@ const Assets: React.FC = () => {
 
   const openEditLiability = (liability: any) => {
     setEditingLiability(liability);
+    const hasHistory = !!(liability.metadata?.historicalPaidAmount && parseFloat(liability.metadata.historicalPaidAmount) > 0);
     setLiabilityFormData({
       name: liability.name,
       type: liability.type,
@@ -4163,7 +4295,12 @@ const Assets: React.FC = () => {
       balloonYear: '',
       balloonAmount: '',
       balloons: liability.metadata?.balloons || [],
-      propertyType: liability.metadata?.propertyType || 'PLANTA'
+      propertyType: liability.metadata?.propertyType || 'PLANTA',
+      hasHistoricalPayments: hasHistory,
+      historicalCalculationType: liability.metadata?.historicalCalculationType || 'calculated',
+      historicalInstallmentsPaid: liability.metadata?.historicalInstallmentsPaid ? String(liability.metadata.historicalInstallmentsPaid) : '',
+      historicalInstallmentValue: liability.metadata?.historicalInstallmentValue ? String(liability.metadata.historicalInstallmentValue) : '',
+      historicalPaidAmount: liability.metadata?.historicalPaidAmount ? String(liability.metadata.historicalPaidAmount) : ''
     });
     setShowLiabilityModal(true);
   };
@@ -5611,7 +5748,28 @@ const Assets: React.FC = () => {
                   </h3>
                   <button
                     onClick={() => {
-                      setLiabilityFormData({ name: '', type: 'PERSONAL_LOAN', totalAmount: '', remainingBalance: '', interestRate: '', installmentAmount: '', installmentsRemaining: '', dueDay: '', linkedAssetId: '', indexationRate: '', balloonMonth: '', balloonYear: '', balloonAmount: '', balloons: [], propertyType: 'PLANTA' });
+                      setLiabilityFormData({
+                        name: '',
+                        type: 'PERSONAL_LOAN',
+                        totalAmount: '',
+                        remainingBalance: '',
+                        interestRate: '',
+                        installmentAmount: '',
+                        installmentsRemaining: '',
+                        dueDay: '',
+                        linkedAssetId: '',
+                        indexationRate: '',
+                        balloonMonth: '',
+                        balloonYear: '',
+                        balloonAmount: '',
+                        balloons: [],
+                        propertyType: 'PLANTA',
+                        hasHistoricalPayments: false,
+                        historicalCalculationType: 'calculated',
+                        historicalInstallmentsPaid: '',
+                        historicalInstallmentValue: '',
+                        historicalPaidAmount: ''
+                      });
                       setEditingLiability(null);
                       setShowLiabilityModal(true);
                     }}
@@ -7557,7 +7715,12 @@ const Assets: React.FC = () => {
                     balloonYear: '',
                     balloonAmount: '',
                     balloons: [],
-                    propertyType: 'PLANTA'
+                    propertyType: 'PLANTA',
+                    hasHistoricalPayments: false,
+                    historicalCalculationType: 'calculated',
+                    historicalInstallmentsPaid: '',
+                    historicalInstallmentValue: '',
+                    historicalPaidAmount: ''
                   });
                   setEditingLiability(null);
                   setShowLiabilityModal(true);
@@ -9727,6 +9890,161 @@ const Assets: React.FC = () => {
                 </select>
               </div>
 
+              {/* Opção de Pagamentos Históricos Anteriores */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider cursor-pointer select-none" htmlFor="hasHistoricalPayments">
+                    Possui pagamentos anteriores ao FinVision?
+                  </label>
+                  <input
+                    id="hasHistoricalPayments"
+                    type="checkbox"
+                    className="w-4 h-4 text-brand-600 border-slate-300 rounded focus:ring-brand-500"
+                    checked={liabilityFormData.hasHistoricalPayments}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setLiabilityFormData(prev => {
+                        const next = { ...prev, hasHistoricalPayments: checked };
+                        if (!checked) {
+                          next.historicalPaidAmount = '';
+                          next.historicalInstallmentsPaid = '';
+                          next.historicalInstallmentValue = '';
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                </div>
+
+                {liabilityFormData.hasHistoricalPayments && (
+                  <div className="space-y-3 pt-2 border-t border-slate-200 animate-in slide-in-from-top-2">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Entrada Histórica</label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                            liabilityFormData.historicalCalculationType === 'calculated'
+                              ? 'bg-brand-600 text-white shadow-sm'
+                              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                          onClick={() => setLiabilityFormData(prev => ({ ...prev, historicalCalculationType: 'calculated' }))}
+                        >
+                          Calcular por Parcelas
+                        </button>
+                        <button
+                          type="button"
+                          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                            liabilityFormData.historicalCalculationType === 'direct'
+                              ? 'bg-brand-600 text-white shadow-sm'
+                              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                          onClick={() => setLiabilityFormData(prev => ({ ...prev, historicalCalculationType: 'direct' }))}
+                        >
+                          Valor Direto
+                        </button>
+                      </div>
+                    </div>
+
+                    {liabilityFormData.historicalCalculationType === 'calculated' ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Parcelas Pagas</label>
+                          <input
+                            type="number"
+                            min="0"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
+                            placeholder="0"
+                            value={liabilityFormData.historicalInstallmentsPaid}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setLiabilityFormData(prev => {
+                                const installments = parseInt(val, 10) || 0;
+                                const instVal = parseFloat(prev.historicalInstallmentValue) || 0;
+                                const calculatedTotal = installments * instVal;
+                                const next = {
+                                  ...prev,
+                                  historicalInstallmentsPaid: val,
+                                  historicalPaidAmount: calculatedTotal > 0 ? calculatedTotal.toFixed(2) : ''
+                                };
+                                const totalContratado = parseFloat(prev.totalAmount) || 0;
+                                if (totalContratado > 0 && calculatedTotal > 0) {
+                                  next.remainingBalance = Math.max(0, totalContratado - calculatedTotal).toFixed(2);
+                                }
+                                return next;
+                              });
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor da Parcela (R$)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
+                            placeholder="0.00"
+                            value={liabilityFormData.historicalInstallmentValue}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setLiabilityFormData(prev => {
+                                const instVal = parseFloat(val) || 0;
+                                const installments = parseInt(prev.historicalInstallmentsPaid, 10) || 0;
+                                const calculatedTotal = installments * instVal;
+                                const next = {
+                                  ...prev,
+                                  historicalInstallmentValue: val,
+                                  historicalPaidAmount: calculatedTotal > 0 ? calculatedTotal.toFixed(2) : ''
+                                };
+                                const totalContratado = parseFloat(prev.totalAmount) || 0;
+                                if (totalContratado > 0 && calculatedTotal > 0) {
+                                  next.remainingBalance = Math.max(0, totalContratado - calculatedTotal).toFixed(2);
+                                }
+                                return next;
+                              });
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor Total Pago Anteriormente (R$)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
+                          placeholder="0.00"
+                          value={liabilityFormData.historicalPaidAmount}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setLiabilityFormData(prev => {
+                              const paidAmt = parseFloat(val) || 0;
+                              const next = {
+                                ...prev,
+                                historicalPaidAmount: val
+                              };
+                              const totalContratado = parseFloat(prev.totalAmount) || 0;
+                              if (totalContratado > 0 && paidAmt > 0) {
+                                next.remainingBalance = Math.max(0, totalContratado - paidAmt).toFixed(2);
+                              }
+                              return next;
+                            });
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {parseFloat(liabilityFormData.historicalPaidAmount) > 0 && (
+                      <div className="p-2 bg-brand-50 rounded-lg border border-brand-100/50 flex justify-between items-center text-[10px] font-black text-brand-700 tracking-wide">
+                        <span>Total Pago Histórico:</span>
+                        <span>{formatCurrency(parseFloat(liabilityFormData.historicalPaidAmount))}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Original Total (R$)</label>
@@ -9737,7 +10055,18 @@ const Assets: React.FC = () => {
                     step="0.01"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-red-500"
                     value={liabilityFormData.totalAmount}
-                    onChange={(e) => setLiabilityFormData({ ...liabilityFormData, totalAmount: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setLiabilityFormData(prev => {
+                        const total = parseFloat(val) || 0;
+                        const paid = parseFloat(prev.historicalPaidAmount) || 0;
+                        return {
+                          ...prev,
+                          totalAmount: val,
+                          remainingBalance: paid > 0 && total > 0 ? Math.max(0, total - paid).toFixed(2) : prev.remainingBalance
+                        };
+                      });
+                    }}
                   />
                 </div>
                 <div>
