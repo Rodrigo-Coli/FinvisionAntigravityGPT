@@ -122,7 +122,7 @@ const CreditCardsSection: React.FC = () => {
   const [txDate, setTxDate] = useState<string>(() => DateUtils.formatToISODate());
   const [txDescription, setTxDescription] = useState('');
   const [txAmount, setTxAmount] = useState<number | string>('');
-  const [txCategoryId, setTxCategoryId] = useState<string>('');
+  const [txCategory, setTxCategory] = useState<string>('');
   const [txSubcategory, setTxSubcategory] = useState<string>('');
   const [subcategories, setSubcategories] = useState<{ id: string, name: string, category_name?: string }[]>(() => {
     const cached = localStorage.getItem('finvision_cached_subcategories_cc') ||
@@ -390,6 +390,29 @@ const CreditCardsSection: React.FC = () => {
           setCategories([]);
         }
       }
+    }
+  };
+
+  const handleCreateCategory = async (name: string) => {
+    if (!supabase) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
+      
+      const { data, error } = await supabase
+        .from('categories')
+        .insert({ user_id: user.id, name, type: 'EXPENSE', color: 'bg-brand-50 text-brand-600' })
+        .select('id, name')
+        .single();
+      
+      if (error) throw error;
+      
+      await fetchCategories();
+      return data;
+    } catch (err) {
+      console.error('Erro ao criar categoria inline:', err);
+      alert('Erro ao criar categoria inline');
     }
   };
 
@@ -931,14 +954,35 @@ const CreditCardsSection: React.FC = () => {
       const cleanAmount = parseNumeric(txAmount);
       const cleanInstallments = parseNumeric(installmentsCount, 1);
 
-      let cleanSubcategory = txSubcategory || null;
-      if (cleanSubcategory && txCategoryId) {
-        const catObj = categories.find(c => c.id === txCategoryId);
+      // Resolve categoryName (txCategory) to category_id, auto-creating if it doesn't exist
+      let resolvedCategoryId: string | null = null;
+      if (txCategory.trim()) {
+        const catObj = categories.find(c => c.name.toLowerCase().trim() === txCategory.toLowerCase().trim());
         if (catObj) {
-          const subcatNames = subcategories.filter(s => s.category_name === catObj.name).map(s => s.name);
-          const matched = findCloseMatch(cleanSubcategory, subcatNames);
-          if (matched) cleanSubcategory = matched;
+          resolvedCategoryId = catObj.id;
+        } else {
+          try {
+            const { data: newCat, error: catError } = await supabase
+              .from('categories')
+              .insert({ user_id: user.id, name: txCategory.trim(), type: 'EXPENSE', color: 'bg-brand-50 text-brand-600' })
+              .select('id')
+              .single();
+            if (!catError && newCat) {
+              resolvedCategoryId = newCat.id;
+              // Refresh categories list in background
+              fetchCategories();
+            }
+          } catch (e) {
+            console.error("Erro ao criar categoria sob demanda:", e);
+          }
         }
+      }
+
+      let cleanSubcategory = txSubcategory || null;
+      if (cleanSubcategory && txCategory.trim()) {
+        const subcatNames = subcategories.filter(s => s.category_name?.toLowerCase().trim() === txCategory.toLowerCase().trim()).map(s => s.name);
+        const matched = findCloseMatch(cleanSubcategory, subcatNames);
+        if (matched) cleanSubcategory = matched;
       }
 
       const cardObj = cards.find(c => c.id === txCardId);
@@ -957,7 +1001,7 @@ const CreditCardsSection: React.FC = () => {
           status: 'POSTED',
           source: 'MANUAL',
           is_manual: true,
-          category_id: txCategoryId || null,
+          category_id: resolvedCategoryId || null,
           subcategory: cleanSubcategory,
           owner_name: defaultOwnerName,
           notes: txNotes || '',
@@ -999,7 +1043,7 @@ const CreditCardsSection: React.FC = () => {
             card_id: txCardId,
             description: txDescription,
             amount: cleanAmount,
-            category_id: txCategoryId || undefined,
+            category_id: resolvedCategoryId || undefined,
             is_manual: true,
             source: 'MANUAL',
           },
@@ -1025,7 +1069,7 @@ const CreditCardsSection: React.FC = () => {
             description: item.description,
             amount: item.amount,
             status: 'POSTED',
-            category_id: txCategoryId || null,
+            category_id: resolvedCategoryId || null,
             is_manual: true,
             source: 'MANUAL',
             is_installment: item.is_installment,
@@ -1082,6 +1126,7 @@ const CreditCardsSection: React.FC = () => {
     setTxDescription('');
     setTxAmount('');
     setTxDate(DateUtils.formatToISODate());
+    setTxCategory('');
     setTxSubcategory('');
     setIsInstallment(false);
     setIsRecurring(false);
@@ -1730,8 +1775,8 @@ const CreditCardsSection: React.FC = () => {
         setTxAmount={setTxAmount}
         txDescription={txDescription}
         setTxDescription={setTxDescription}
-        txCategoryId={txCategoryId}
-        setTxCategoryId={setTxCategoryId}
+        txCategory={txCategory}
+        setTxCategory={setTxCategory}
         txSubcategory={txSubcategory}
         setTxSubcategory={setTxSubcategory}
         isInstallment={isInstallment}
@@ -1750,6 +1795,7 @@ const CreditCardsSection: React.FC = () => {
         setTxNotes={setTxNotes}
         txTags={txTags}
         setTxTags={setTxTags}
+        onCreateCategory={handleCreateCategory}
       />
 
       <PayStatementModal

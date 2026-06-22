@@ -1,5 +1,5 @@
-import React from 'react';
-import { X, CheckCircle2, Camera, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, CheckCircle2, Camera, Loader2, Plus } from 'lucide-react';
 
 interface ManualTransactionModalProps {
     show: boolean;
@@ -17,11 +17,12 @@ interface ManualTransactionModalProps {
     setTxAmount: (v: number | string) => void;
     txDescription: string;
     setTxDescription: (v: string) => void;
-    txCategoryId: string;
-    setTxCategoryId: (v: string) => void;
+    txCategory: string;
+    setTxCategory: (v: string) => void;
     txSubcategory: string;
     setTxSubcategory: (v: string) => void;
     subcategories: { id: string, name: string, category_name?: string }[];
+    onCreateCategory?: (name: string) => Promise<any>;
 
     // --- NEW: RECURRENCE & INSTALLMENTS ---
     isInstallment?: boolean;
@@ -58,11 +59,12 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     setTxAmount,
     txDescription,
     setTxDescription,
-    txCategoryId,
-    setTxCategoryId,
+    txCategory,
+    setTxCategory,
     txSubcategory,
     setTxSubcategory,
     subcategories,
+    onCreateCategory,
     isInstallment = false,
     setIsInstallment,
     installmentsCount = 1,
@@ -80,6 +82,25 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     txTags,
     setTxTags
 }) => {
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [isSavingCategory, setIsSavingCategory] = useState(false);
+
+    const handleCreateCategorySubmit = async () => {
+        if (!newCategoryName.trim() || !onCreateCategory) return;
+        setIsSavingCategory(true);
+        try {
+            await onCreateCategory(newCategoryName.trim());
+            setTxCategory(newCategoryName.trim());
+            setIsCreatingCategory(false);
+            setNewCategoryName('');
+        } catch (e) {
+            console.error("Erro ao criar categoria inline:", e);
+        } finally {
+            setIsSavingCategory(false);
+        }
+    };
+
     if (!show) return null;
 
     return (
@@ -235,47 +256,93 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Categoria (Opcional)</label>
-                                <select
-                                    value={txCategoryId}
-                                    onChange={(e) => setTxCategoryId(e.target.value)}
-                                    className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
-                                >
-                                    <option value="">Sem categoria</option>
-                                    {categories.map((c) => (
-                                        <option key={c.id} value={c.id}>
-                                            {c.name}
-                                        </option>
-                                    ))}
-                                </select>
+                            <div className={`${isCreatingCategory ? 'col-span-1 sm:col-span-2' : ''} space-y-2 transition-all duration-300`}>
+                                <div className="flex items-center justify-between animate-in fade-in duration-300">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria (Opcional)</label>
+                                    {!isCreatingCategory && onCreateCategory && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsCreatingCategory(true)}
+                                            className="text-[10px] font-bold text-brand-600 hover:text-brand-700 uppercase tracking-widest block mr-1"
+                                        >
+                                            + Nova
+                                        </button>
+                                    )}
+                                </div>
+
+                                {isCreatingCategory ? (
+                                    <div className="flex items-center gap-2 animate-in slide-in-from-top-1 duration-300">
+                                        <input
+                                            type="text"
+                                            autoFocus
+                                            value={newCategoryName}
+                                            onChange={(e) => setNewCategoryName(e.target.value)}
+                                            placeholder="Nova categoria..."
+                                            className="flex-1 h-14 px-4 bg-brand-50 border border-brand-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-xs"
+                                            onKeyDown={(e) => e.key === 'Enter' && handleCreateCategorySubmit()}
+                                        />
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleCreateCategorySubmit}
+                                                disabled={isSavingCategory}
+                                                className="h-14 w-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center hover:bg-brand-700 transition-all disabled:opacity-50 shadow-lg shadow-brand-500/20"
+                                            >
+                                                {isSavingCategory ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsCreatingCategory(false)}
+                                                disabled={isSavingCategory}
+                                                className="h-14 w-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200 transition-all disabled:opacity-50"
+                                            >
+                                                <X size={20} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="relative">
+                                        <input
+                                            list="card-categories-list"
+                                            value={txCategory}
+                                            onFocus={(e) => e.target.select()}
+                                            onChange={(e) => setTxCategory(e.target.value)}
+                                            placeholder="Selecione ou digite..."
+                                            className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
+                                        />
+                                        <datalist id="card-categories-list">
+                                            {categories.sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
+                                                <option key={c.id} value={c.name} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+                                )}
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Subcategoria (Opcional)</label>
-                                <div className="relative">
-                                    <input
-                                        list="card-subcategories-list"
-                                        value={txSubcategory}
-                                        onFocus={(e) => e.target.select()}
-                                        onChange={(e) => setTxSubcategory(e.target.value)}
-                                        placeholder="Selecione ou digite..."
-                                        className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
-                                    />
-                                    <datalist id="card-subcategories-list">
-                                        {subcategories
-                                            .filter(s => {
-                                                const cat = categories.find(c => c.id === txCategoryId);
-                                                return !txCategoryId || s.category_name === cat?.name;
-                                            })
-                                            .sort((a, b) => a.name.localeCompare(b.name))
-                                            .map(s => (
-                                                <option key={s.id} value={s.name} />
-                                            ))
-                                        }
-                                    </datalist>
+                            {!isCreatingCategory && (
+                                <div className="space-y-2 animate-in fade-in duration-300">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Subcategoria (Opcional)</label>
+                                    <div className="relative">
+                                        <input
+                                            list="card-subcategories-list"
+                                            value={txSubcategory}
+                                            onFocus={(e) => e.target.select()}
+                                            onChange={(e) => setTxSubcategory(e.target.value)}
+                                            placeholder="Selecione ou digite..."
+                                            className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
+                                        />
+                                        <datalist id="card-subcategories-list">
+                                            {subcategories
+                                                .filter(s => !txCategory || s.category_name === txCategory)
+                                                .sort((a, b) => a.name.localeCompare(b.name))
+                                                .map(s => (
+                                                    <option key={s.id} value={s.name} />
+                                                ))
+                                            }
+                                        </datalist>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
 
                         {/* Observações e Tags */}
