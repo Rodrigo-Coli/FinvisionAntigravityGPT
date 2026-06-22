@@ -45,7 +45,8 @@ import {
   Sparkles,
   FileSpreadsheet,
   Printer,
-  HandCoins
+  HandCoins,
+  SlidersHorizontal
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { PhysicalAsset, InvestmentBroker, Liability, Transaction } from '../types';
@@ -70,6 +71,40 @@ const Assets: React.FC = () => {
   const [showAllDetails, setShowAllDetails] = useState(false);
   const [inccRate, setInccRate] = useState<number | null>(null);
   const [loadingIncc, setLoadingIncc] = useState<boolean>(false);
+
+  const [showCustomizeModal, setShowCustomizeModal] = useState(false);
+  const [visibleCards, setVisibleCards] = useState(() => {
+    const saved = localStorage.getItem('finvision_assets_visible_cards');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
+      fluxo: true,
+      patrimonio: true,
+      imobiliario: true,
+      veiculos: true,
+      outros: true,
+      financeiro: true,
+      emprestimos: true,
+      dividas: true,
+      detalheImobiliario: true,
+      detalheBensFisicos: true,
+      detalheFinanceiro: true,
+      detalheEmprestimos: true,
+      detalheDividas: true,
+      detalhePlanejamento: true,
+    };
+  });
+
+  const handleToggleCardVisibility = (key: string) => {
+    setVisibleCards((prev: any) => {
+      const updated = { ...prev, [key]: !prev[key] };
+      localStorage.setItem('finvision_assets_visible_cards', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // Category Selector and Real Estate detail states
   const [showCategorySelector, setShowCategorySelector] = useState(false);
@@ -5069,6 +5104,48 @@ const Assets: React.FC = () => {
     };
   }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, transactions, totalFinancial, linkedTransactionsMap, enrichedPhysicalAssets, budgets, goals]);
 
+  const visibleOverviewCount = [
+    visibleCards.fluxo,
+    visibleCards.patrimonio,
+    visibleCards.imobiliario,
+    visibleCards.veiculos,
+    visibleCards.outros,
+    visibleCards.financeiro,
+    visibleCards.emprestimos,
+    visibleCards.dividas
+  ].filter(Boolean).length;
+
+  const visibleDetailedCount = [
+    visibleCards.detalheImobiliario,
+    visibleCards.detalheBensFisicos,
+    visibleCards.detalheFinanceiro,
+    visibleCards.detalheEmprestimos,
+    visibleCards.detalheDividas,
+    visibleCards.detalhePlanejamento
+  ].filter(Boolean).length;
+
+  const getGridClass = (count: number) => {
+    switch (count) {
+      case 1:
+        return 'grid grid-cols-1 gap-4';
+      case 2:
+        return 'grid grid-cols-2 gap-4';
+      case 3:
+        return 'grid grid-cols-2 md:grid-cols-3 gap-4';
+      case 4:
+        return 'grid grid-cols-2 md:grid-cols-4 gap-4';
+      case 5:
+        return 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-4';
+      case 6:
+        return 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4';
+      case 7:
+        return 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4';
+      case 8:
+      default:
+        return 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4';
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen space-y-4">
@@ -5088,6 +5165,14 @@ const Assets: React.FC = () => {
           <p className="text-sm text-slate-400 font-medium">Bens físicos, investimentos inteligentes e passivos consolidados.</p>
         </div>
         <div className="flex gap-3">
+          {activeView === 'overview' && (
+            <button
+              onClick={() => setShowCustomizeModal(true)}
+              className="flex items-center gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95"
+            >
+              <SlidersHorizontal size={18} /> Personalizar Painel
+            </button>
+          )}
           <button
             onClick={handleNewAssetClick}
             className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
@@ -5126,913 +5211,945 @@ const Assets: React.FC = () => {
         {activeView === 'overview' && (
           <div className="space-y-8 animate-in fade-in duration-500">
             {/* COMPACT TOTALS GRID (8 Cards) */}
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4">
-              {/* Fluxo Mensal */}
-              <div
-                className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group col-span-2 md:col-span-1 text-left w-full"
-              >
-                <div className="absolute -right-4 -bottom-4 w-12 h-12 bg-white/5 rounded-full pointer-events-none" />
-                <div className="flex justify-between items-start">
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
-                  <Zap size={14} className="text-brand-400" />
-                </div>
-                <div className="mt-1 space-y-0.5">
-                  <div className="flex justify-between text-[10px] text-slate-400">
-                    <span>Rec.:</span>
-                    <span className="font-bold text-emerald-400 whitespace-nowrap">{formatCurrency(sustainabilitySummary.totalInflow)}</span>
+            {visibleOverviewCount > 0 && (
+              <div className={getGridClass(visibleOverviewCount)}>
+                {/* Fluxo Mensal */}
+                {visibleCards.fluxo && (
+                  <div
+                    className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group col-span-2 md:col-span-1 text-left w-full"
+                  >
+                    <div className="absolute -right-4 -bottom-4 w-12 h-12 bg-white/5 rounded-full pointer-events-none" />
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-400">Fluxo Mensal</span>
+                      <Zap size={14} className="text-brand-400" />
+                    </div>
+                    <div className="mt-1 space-y-0.5">
+                      <div className="flex justify-between text-[10px] text-slate-400">
+                        <span>Rec.:</span>
+                        <span className="font-bold text-emerald-400 whitespace-nowrap">{formatCurrency(sustainabilitySummary.totalInflow)}</span>
+                      </div>
+                      <div className="flex justify-between text-[10px] text-slate-400">
+                        <span>Desp.:</span>
+                        <span className="font-bold text-rose-400 whitespace-nowrap">{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
+                      </div>
+                      <div className="flex justify-between text-[10px] text-slate-400">
+                        <span>Auto:</span>
+                        <span className="font-bold text-brand-400 whitespace-nowrap">{sustainabilitySummary.selfSustainabilityPercent}%</span>
+                      </div>
+                      <div className="flex justify-between items-baseline border-t border-slate-800 pt-1 mt-0.5">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Saldo</span>
+                        <span className={`text-sm font-black tracking-tight italic whitespace-nowrap ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-[10px] text-slate-400">
-                    <span>Desp.:</span>
-                    <span className="font-bold text-rose-400 whitespace-nowrap">{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
-                  </div>
-                  <div className="flex justify-between text-[10px] text-slate-400">
-                    <span>Auto:</span>
-                    <span className="font-bold text-brand-400 whitespace-nowrap">{sustainabilitySummary.selfSustainabilityPercent}%</span>
-                  </div>
-                  <div className="flex justify-between items-baseline border-t border-slate-800 pt-1 mt-0.5">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Saldo</span>
-                    <span className={`text-sm font-black tracking-tight italic whitespace-nowrap ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
-                    </span>
-                  </div>
-                </div>
-              </div>
+                )}
 
-              {/* Patrimônio Líquido */}
-              <div
-                className="bg-white border border-brand-200 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] text-left w-full relative overflow-hidden"
-              >
-                <div className="flex justify-between items-start gap-1">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-black uppercase tracking-wider text-slate-500">Patrimônio Real</span>
-                    <span className="text-[8px] font-black text-brand-600 uppercase tracking-widest bg-brand-50 px-1.5 py-0.5 rounded w-max">Consolidado</span>
+                {/* Patrimônio Líquido */}
+                {visibleCards.patrimonio && (
+                  <div
+                    className="bg-white border border-brand-200 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] text-left w-full relative overflow-hidden"
+                  >
+                    <div className="flex justify-between items-start gap-1">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-500">Patrimônio Real</span>
+                        <span className="text-[8px] font-black text-brand-600 uppercase tracking-widest bg-brand-50 px-1.5 py-0.5 rounded w-max">Consolidado</span>
+                      </div>
+                      <TrendingUp size={14} className="text-emerald-500 shrink-0" />
+                    </div>
+                    <div className="mt-2">
+                      <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
+                        {formatCurrency(totalNetWorth)}
+                      </h4>
+                      <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-0.5">
+                        Líquido <ArrowUpRight size={10} className="inline shrink-0" />
+                      </span>
+                    </div>
                   </div>
-                  <TrendingUp size={14} className="text-emerald-500 shrink-0" />
-                </div>
-                <div className="mt-2">
-                  <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
-                    {formatCurrency(totalNetWorth)}
-                  </h4>
-                  <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-0.5">
-                    Líquido <ArrowUpRight size={10} className="inline shrink-0" />
-                  </span>
-                </div>
-              </div>
+                )}
 
-              {/* Investimento Imobiliário */}
-              <button
-                onClick={() => setActiveView('realestate')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <div className="flex justify-between items-start">
-                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Imobiliário</span>
-                  <Building2 size={14} className="text-brand-500" />
-                </div>
-                <div className="mt-2">
-                  <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
-                    {formatCurrency(overviewData.plantaValue + overviewData.prontoValue)}
-                  </h4>
-                  <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Planta + Pronto</span>
-                </div>
-              </button>
-              
-              {/* Veículos */}
-              <button
-                onClick={() => setActiveView('vehicles')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <div className="flex justify-between items-start">
-                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Veículos</span>
-                  <Car size={14} className="text-brand-500" />
-                </div>
-                <div className="mt-2">
-                  <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
-                    {formatCurrency(overviewData.veiculoValue)}
-                  </h4>
-                  <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">FIPE / Estimado</span>
-                </div>
-              </button>
-              
-              {/* Outros Bens Físicos */}
-              <button
-                onClick={() => setActiveView('physical')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <div className="flex justify-between items-start">
-                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Outros Bens</span>
-                  <Box size={14} className="text-brand-500" />
-                </div>
-                <div className="mt-2">
-                  <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
-                    {formatCurrency(overviewData.outroFisicoValue)}
-                  </h4>
-                  <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Outros Físicos</span>
-                </div>
-              </button>
-              
-              {/* Investimentos Financeiros */}
-              <button
-                onClick={() => setActiveView('investments')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <div className="flex justify-between items-start">
-                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Financeiro</span>
-                  <PieChart size={14} className="text-brand-500" />
-                </div>
-                <div className="mt-2">
-                  <h4 className="text-base font-black text-brand-600 tracking-tight italic whitespace-nowrap">
-                    {formatCurrency(overviewData.totalFinancialFunds)}
-                  </h4>
-                  <span className="text-xs sm:text-[11px] font-bold text-brand-500 uppercase tracking-widest">Corretoras</span>
-                </div>
-              </button>
-              
-              {/* Empréstimos Concedidos */}
-              <button
-                onClick={() => setActiveView('loans')}
-                className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <div className="flex justify-between items-start">
-                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Empréstimos</span>
-                  <HandCoins size={14} className="text-brand-500" />
-                </div>
-                <div className="mt-2">
-                  <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
-                    {formatCurrency(totalLoans)}
-                  </h4>
-                  <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">A Receber</span>
-                </div>
-              </button>
-              
-              {/* Passivos e Dívidas */}
-              <button
-                onClick={() => setActiveView('liabilities')}
-                className="bg-red-50/30 border border-red-100/50 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-red-500"
-              >
-                <div className="flex justify-between items-start">
-                  <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-red-500">Dívidas</span>
-                  <Landmark size={14} className="text-red-500" />
-                </div>
-                <div className="mt-2">
-                  <h4 className="text-base font-black text-red-600 tracking-tight italic whitespace-nowrap">
-                    {formatCurrency(totalLiabilities)}
-                  </h4>
-                  <span className="text-xs sm:text-[11px] font-bold text-red-400 uppercase tracking-widest">Saldo Devedor</span>
-                </div>
-              </button>
-            </div>
+                {/* Investimento Imobiliário */}
+                {visibleCards.imobiliario && (
+                  <button
+                    onClick={() => setActiveView('realestate')}
+                    className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Imobiliário</span>
+                      <Building2 size={14} className="text-brand-500" />
+                    </div>
+                    <div className="mt-2">
+                      <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
+                        {formatCurrency(overviewData.plantaValue + overviewData.prontoValue)}
+                      </h4>
+                      <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Planta + Pronto</span>
+                    </div>
+                  </button>
+                )}
+                
+                {/* Veículos */}
+                {visibleCards.veiculos && (
+                  <button
+                    onClick={() => setActiveView('vehicles')}
+                    className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Veículos</span>
+                      <Car size={14} className="text-brand-500" />
+                    </div>
+                    <div className="mt-2">
+                      <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
+                        {formatCurrency(overviewData.veiculoValue)}
+                      </h4>
+                      <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">FIPE / Estimado</span>
+                    </div>
+                  </button>
+                )}
+                
+                {/* Outros Bens Físicos */}
+                {visibleCards.outros && (
+                  <button
+                    onClick={() => setActiveView('physical')}
+                    className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Outros Bens</span>
+                      <Box size={14} className="text-brand-500" />
+                    </div>
+                    <div className="mt-2">
+                      <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
+                        {formatCurrency(overviewData.outroFisicoValue)}
+                      </h4>
+                      <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Outros Físicos</span>
+                    </div>
+                  </button>
+                )}
+                
+                {/* Investimentos Financeiros */}
+                {visibleCards.financeiro && (
+                  <button
+                    onClick={() => setActiveView('investments')}
+                    className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Financeiro</span>
+                      <PieChart size={14} className="text-brand-500" />
+                    </div>
+                    <div className="mt-2">
+                      <h4 className="text-base font-black text-brand-600 tracking-tight italic whitespace-nowrap">
+                        {formatCurrency(overviewData.totalFinancialFunds)}
+                      </h4>
+                      <span className="text-xs sm:text-[11px] font-bold text-brand-500 uppercase tracking-widest">Corretoras</span>
+                    </div>
+                  </button>
+                )}
+                
+                {/* Empréstimos Concedidos */}
+                {visibleCards.emprestimos && (
+                  <button
+                    onClick={() => setActiveView('loans')}
+                    className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Empréstimos</span>
+                      <HandCoins size={14} className="text-brand-500" />
+                    </div>
+                    <div className="mt-2">
+                      <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
+                        {formatCurrency(totalLoans)}
+                      </h4>
+                      <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">A Receber</span>
+                    </div>
+                  </button>
+                )}
+                
+                {/* Passivos e Dívidas */}
+                {visibleCards.dividas && (
+                  <button
+                    onClick={() => setActiveView('liabilities')}
+                    className="bg-red-50/30 border border-red-100/50 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] hover:scale-[1.02] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-red-500"
+                  >
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-red-500">Dívidas</span>
+                      <Landmark size={14} className="text-red-500" />
+                    </div>
+                    <div className="mt-2">
+                      <h4 className="text-base font-black text-red-600 tracking-tight italic whitespace-nowrap">
+                        {formatCurrency(totalLiabilities)}
+                      </h4>
+                      <span className="text-xs sm:text-[11px] font-bold text-red-400 uppercase tracking-widest">Saldo Devedor</span>
+                    </div>
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* 4 DETAILED ANALYTICS SECTIONS (2x2 Grid) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {visibleDetailedCount > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               
               {/* Bloco A: Investimento Imobiliário */}
-              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
-                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
-                  <h3 className="font-bold text-slate-900 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
-                      <Building2 size={18} />
-                    </div>
-                    Investimento Imobiliário (Planta vs Entregue)
-                  </h3>
-                  <button
-                    onClick={() => setShowWizardModal(true)}
-                    className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
-                  >
-                    + Novo Imóvel
-                  </button>
-                </div>
+              {visibleCards.detalheImobiliario && (
+                <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                    <h3 className="font-bold text-slate-900 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
+                        <Building2 size={18} />
+                      </div>
+                      Investimento Imobiliário (Planta vs Entregue)
+                    </h3>
+                    <button
+                      onClick={() => setShowWizardModal(true)}
+                      className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                    >
+                      + Novo Imóvel
+                    </button>
+                  </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* Planta Stage */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span><span aria-hidden="true" className="mr-1">🏗️</span>Na Planta / Em Obras</span>
-                      <button
-                        onClick={() => setActiveView('realestate')}
-                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        Ver Detalhes →
-                      </button>
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Valor Total dos Ativos:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaValue)}</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {/* Planta Stage */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                        <span><span aria-hidden="true" className="mr-1">🏗️</span>Na Planta / Em Obras</span>
+                        <button
+                          onClick={() => setActiveView('realestate')}
+                          className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          Ver Detalhes →
+                        </button>
+                      </p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Valor Total dos Ativos:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaValue)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Parcela Mensal:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaInstallments)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Amortizado/Pago:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaPaidTotal)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Restante a Pagar:</span>
+                          <span className="font-bold text-brand-600">{formatCurrency(overviewData.plantaRemainingToPay)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium flex items-center">
+                            Saldo Devedor na Entrega
+                            <InfoTooltip content="Valor estimado a ser quitado/financiado no momento da entrega das chaves do imóvel na planta." />
+                          </span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaDeliveryBalance)}</span>
+                        </div>
                       </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Parcela Mensal:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaInstallments)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Amortizado/Pago:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaPaidTotal)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Restante a Pagar:</span>
-                        <span className="font-bold text-brand-600">{formatCurrency(overviewData.plantaRemainingToPay)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium flex items-center">
-                          Saldo Devedor na Entrega
-                          <InfoTooltip content="Valor estimado a ser quitado/financiado no momento da entrega das chaves do imóvel na planta." />
-                        </span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.plantaDeliveryBalance)}</span>
+                    </div>
+
+                    {/* Pronto Stage */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                        <span><span aria-hidden="true" className="mr-1">🏢</span>Pronto / Entregue</span>
+                        <button
+                          onClick={() => setActiveView('realestate')}
+                          className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          Ver Detalhes →
+                        </button>
+                      </p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Valor Total dos Ativos:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoValue)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Prestação Financiamento:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoInstallments)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Saldo Devedor Restante:</span>
+                          <span className="font-bold text-red-500">{formatCurrency(overviewData.prontoRemainingToPay)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">IPTU e Condomínio Mensal:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoOperatingCosts)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Aluguéis Recebidos:</span>
+                          <span className="font-bold text-emerald-600">{formatCurrency(overviewData.prontoReceived)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium flex items-center">
+                            Cap Rate Estimado (Líquido)
+                            <InfoTooltip content="Média do retorno líquido anualizado sobre o valor total do imóvel (Aluguel líquido anual / Valor de mercado)." />
+                          </span>
+                          <span className="font-bold text-emerald-600">{(overviewData as any).prontoCapRate?.toFixed(2)}% a.a.</span>
+                        </div>
+                        <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                          <span className="text-slate-600 font-bold">Mensal Líquido (Mês Atual):</span>
+                          <TrendValue value={overviewData.prontoMonthlyNetFlow} />
+                        </div>
+                        <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                          <span className="text-slate-600 font-bold flex items-center">
+                            Valor Líquido Imobiliário (Valor − Dívida)
+                            <InfoTooltip content="Equidade líquida estimada se vendesse os imóveis hoje pelo valor de mercado e liquidasse os financiamentos. Não desconta impostos ou taxas imobiliárias." />
+                          </span>
+                          <TrendValue value={overviewData.prontoNetFlow} />
+                        </div>
                       </div>
                     </div>
                   </div>
-
-                  {/* Pronto Stage */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span><span aria-hidden="true" className="mr-1">🏢</span>Pronto / Entregue</span>
-                      <button
-                        onClick={() => setActiveView('realestate')}
-                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        Ver Detalhes →
-                      </button>
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Valor Total dos Ativos:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoValue)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Prestação Financiamento:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoInstallments)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Saldo Devedor Restante:</span>
-                        <span className="font-bold text-red-500">{formatCurrency(overviewData.prontoRemainingToPay)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">IPTU e Condomínio Mensal:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.prontoOperatingCosts)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Aluguéis Recebidos:</span>
-                        <span className="font-bold text-emerald-600">{formatCurrency(overviewData.prontoReceived)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium flex items-center">
-                          Cap Rate Estimado (Líquido)
-                          <InfoTooltip content="Média do retorno líquido anualizado sobre o valor total do imóvel (Aluguel líquido anual / Valor de mercado)." />
-                        </span>
-                        <span className="font-bold text-emerald-600">{(overviewData as any).prontoCapRate?.toFixed(2)}% a.a.</span>
-                      </div>
-                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold">Mensal Líquido (Mês Atual):</span>
-                        <TrendValue value={overviewData.prontoMonthlyNetFlow} />
-                      </div>
-                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold flex items-center">
-                          Valor Líquido Imobiliário (Valor − Dívida)
-                          <InfoTooltip content="Equidade líquida estimada se vendesse os imóveis hoje pelo valor de mercado e liquidasse os financiamentos. Não desconta impostos ou taxas imobiliárias." />
-                        </span>
-                        <TrendValue value={overviewData.prontoNetFlow} />
-                      </div>
-                    </div>
-                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Bloco B: Bens Físicos e Veículos */}
-              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
-                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
-                  <h3 className="font-bold text-slate-900 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
-                      <Box size={18} />
-                    </div>
-                    Bens Físicos e Veículos (Uso vs Investimento)
-                  </h3>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        resetAssetForm();
-                        setEditingAsset(null);
-                        setFormData(prev => ({ ...prev, category: 'VEHICLE', purpose: 'uso' }));
-                        setShowModal(true);
-                      }}
-                      className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
-                    >
-                      + Novo Veículo
-                    </button>
-                    <button
-                      onClick={() => {
-                        resetAssetForm();
-                        setEditingAsset(null);
-                        setFormData(prev => ({ ...prev, category: 'OTHER', purpose: 'uso', isLoan: false }));
-                        setShowModal(true);
-                      }}
-                      className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
-                    >
-                      + Outro Bem
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* Para Uso */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span><span aria-hidden="true" className="mr-1">🚗</span>Bens de Uso Pessoal</span>
+              {visibleCards.detalheBensFisicos && (
+                <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                    <h3 className="font-bold text-slate-900 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
+                        <Box size={18} />
+                      </div>
+                      Bens Físicos e Veículos (Uso vs Investimento)
+                    </h3>
+                    <div className="flex gap-2">
                       <button
-                        onClick={() => setActiveView('vehicles')}
-                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        onClick={() => {
+                          resetAssetForm();
+                          setEditingAsset(null);
+                          setFormData(prev => ({ ...prev, category: 'VEHICLE', purpose: 'uso' }));
+                          setShowModal(true);
+                        }}
+                        className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
                       >
-                        Ver Detalhes →
+                        + Novo Veículo
                       </button>
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Custo de Aquisição:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.usoAcquisitionTotal)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium flex items-center">
-                          Valor FIPE / Mercado
-                          <InfoTooltip content="Valor de mercado estimado para veículos (tabela FIPE) e outros bens pessoais de uso." />
-                        </span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.usoCurrentValueTotal)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold flex items-center">
-                          Ganho ou Perda vs. Compra
-                          <InfoTooltip content="Diferença entre o valor de mercado atual e o custo histórico de aquisição." />
-                        </span>
-                        <TrendValue value={overviewData.usoAgioDesagio} percent={overviewData.usoAgioDesagioPercent} />
-                      </div>
+                      <button
+                        onClick={() => {
+                          resetAssetForm();
+                          setEditingAsset(null);
+                          setFormData(prev => ({ ...prev, category: 'OTHER', purpose: 'uso', isLoan: false }));
+                          setShowModal(true);
+                        }}
+                        className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                      >
+                        + Outro Bem
+                      </button>
                     </div>
                   </div>
 
-                  {/* Para Investimento */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span><span aria-hidden="true" className="mr-1">📈</span>Bens de Investimento</span>
-                      <button
-                        onClick={() => setActiveView('physical')}
-                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        Ver Detalhes →
-                      </button>
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Custo de Aquisição:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.invAcquisitionTotal)}</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {/* Para Uso */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                        <span><span aria-hidden="true" className="mr-1">🚗</span>Bens de Uso Pessoal</span>
+                        <button
+                          onClick={() => setActiveView('vehicles')}
+                          className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          Ver Detalhes →
+                        </button>
+                      </p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Custo de Aquisição:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.usoAcquisitionTotal)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium flex items-center">
+                            Valor FIPE / Mercado
+                            <InfoTooltip content="Valor de mercado estimado para veículos (tabela FIPE) e outros bens pessoais de uso." />
+                          </span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.usoCurrentValueTotal)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                          <span className="text-slate-600 font-bold flex items-center">
+                            Ganho ou Perda vs. Compra
+                            <InfoTooltip content="Diferença entre o valor de mercado atual e o custo histórico de aquisição." />
+                          </span>
+                          <TrendValue value={overviewData.usoAgioDesagio} percent={overviewData.usoAgioDesagioPercent} />
+                        </div>
                       </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Custos e Reformas:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.invExtraExpenses)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Comissão Garagem/Corretor:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.invBrokerFees)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Valor Estimado Atual:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.invEstimatedValue)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold flex items-center">
-                          Lucro Líquido Est. (ROI)
-                          <InfoTooltip content="Retorno sobre o Investimento (ROI) estimado, considerando preço atual de mercado menos custos de aquisição, reformas e comissões." />
-                        </span>
-                        <TrendValue value={overviewData.invNetProfit} percent={overviewData.invProfitPercent} suffix=" ROI" />
+                    </div>
+
+                    {/* Para Investimento */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                        <span><span aria-hidden="true" className="mr-1">📈</span>Bens de Investimento</span>
+                        <button
+                          onClick={() => setActiveView('physical')}
+                          className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          Ver Detalhes →
+                        </button>
+                      </p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Custo de Aquisição:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.invAcquisitionTotal)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Custos e Reformas:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.invExtraExpenses)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Comissão Garagem/Corretor:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.invBrokerFees)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Valor Estimado Atual:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.invEstimatedValue)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                          <span className="text-slate-600 font-bold flex items-center">
+                            Lucro Líquido Est. (ROI)
+                            <InfoTooltip content="Retorno sobre o Investimento (ROI) estimado, considerando preço atual de mercado menos custos de aquisição, reformas e comissões." />
+                          </span>
+                          <TrendValue value={overviewData.invNetProfit} percent={overviewData.invProfitPercent} suffix=" ROI" />
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Bloco C: Investimentos Financeiros */}
-              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
-                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
-                  <h3 className="font-bold text-slate-900 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
-                      <TrendingUp size={18} />
-                    </div>
-                    Investimentos Financeiros
-                  </h3>
-                  <button
-                    onClick={() => {
-                      resetAssetForm();
-                      setEditingAsset(null);
-                      setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento' }));
-                      setShowModal(true);
-                    }}
-                    className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
-                  >
-                    + Novo Investimento
-                  </button>
-                </div>
+              {visibleCards.detalheFinanceiro && (
+                <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                    <h3 className="font-bold text-slate-900 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
+                        <TrendingUp size={18} />
+                      </div>
+                      Investimentos Financeiros
+                    </h3>
+                    <button
+                      onClick={() => {
+                        resetAssetForm();
+                        setEditingAsset(null);
+                        setFormData(prev => ({ ...prev, category: 'INVESTMENT', purpose: 'investimento' }));
+                        setShowModal(true);
+                      }}
+                      className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                    >
+                      + Novo Investimento
+                    </button>
+                  </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* Allocation */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
-                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span><span aria-hidden="true" className="mr-1">📊</span>Alocação por Classe</span>
-                      <button
-                        onClick={() => setActiveView('investments')}
-                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        Ver Detalhes →
-                      </button>
-                    </p>
-                    <div className="space-y-3.5 pr-1">
-                      {overviewData.allocationList.length === 0 ? (
-                        <p className="text-xs text-slate-400 italic">Sem investimentos cadastrados.</p>
-                      ) : (
-                        <>
-                          <div className="space-y-3">
-                            {overviewData.allocationList.slice(0, 5).map((item, idx) => (
-                              <div key={item.type} className="space-y-1">
-                                <div className="flex justify-between text-xs">
-                                  <span className="text-slate-600 font-medium truncate max-w-[140px]">{item.type}</span>
-                                  <span className="font-bold text-slate-900">
-                                    {formatCurrency(item.balance)} <span className="text-xs font-medium text-slate-400">({item.percentage}%)</span>
-                                  </span>
-                                </div>
-                                <div 
-                                  className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"
-                                  role="progressbar"
-                                  aria-valuenow={item.percentage}
-                                  aria-valuemin={0}
-                                  aria-valuemax={100}
-                                  aria-label={`Alocação da classe ${item.type}`}
-                                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {/* Allocation */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                        <span><span aria-hidden="true" className="mr-1">📊</span>Alocação por Classe</span>
+                        <button
+                          onClick={() => setActiveView('investments')}
+                          className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          Ver Detalhes →
+                        </button>
+                      </p>
+                      <div className="space-y-3.5 pr-1">
+                        {overviewData.allocationList.length === 0 ? (
+                          <p className="text-xs text-slate-400 italic">Sem investimentos cadastrados.</p>
+                        ) : (
+                          <>
+                            <div className="space-y-3">
+                              {overviewData.allocationList.slice(0, 5).map((item, idx) => (
+                                <div key={item.type} className="space-y-1">
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-slate-600 font-medium truncate max-w-[140px]">{item.type}</span>
+                                    <span className="font-bold text-slate-900">
+                                      {formatCurrency(item.balance)} <span className="text-xs font-medium text-slate-400">({item.percentage}%)</span>
+                                    </span>
+                                  </div>
                                   <div 
-                                    className="bg-brand-500 h-full rounded-full transition-all duration-500" 
-                                    style={{ width: `${item.percentage}%` }}
-                                  />
+                                    className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"
+                                    role="progressbar"
+                                    aria-valuenow={item.percentage}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
+                                    aria-label={`Alocação da classe ${item.type}`}
+                                  >
+                                    <div 
+                                      className="bg-brand-500 h-full rounded-full transition-all duration-500" 
+                                      style={{ width: `${item.percentage}%` }}
+                                    />
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
-                          </div>
-                          {overviewData.allocationList.length > 5 && (
-                            <div className="pt-1.5 text-center border-t border-slate-100 mt-2">
-                              <button
-                                onClick={() => setActiveView('investments')}
-                                className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                              >
-                                + {overviewData.allocationList.length - 5} outras classes (Ver Tudo →)
-                              </button>
+                              ))}
                             </div>
-                          )}
-                        </>
-                      )}
+                            {overviewData.allocationList.length > 5 && (
+                              <div className="pt-1.5 text-center border-t border-slate-100 mt-2">
+                                <button
+                                  onClick={() => setActiveView('investments')}
+                                  className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                                >
+                                  + {overviewData.allocationList.length - 5} outras classes (Ver Tudo →)
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Monthly Yield comparison */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
-                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span><span aria-hidden="true" className="mr-1">💵</span>Rendimentos da Carteira</span>
-                      <button
-                        onClick={() => setActiveView('investments')}
-                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        Ver Detalhes →
-                      </button>
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Recebido no Mês:</span>
-                        <span className="font-black text-emerald-600">{formatCurrency(overviewData.currentMonthYield)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Média Histórica Mensal:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.averageMonthlyYield)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold flex items-center">
-                          Autossuficiência (Projetada vs. Realizada)
-                          <InfoTooltip content="Percentual de cobertura das despesas patrimoniais (parcelas de consórcios, financiamentos, condomínios, IPVA/IPTU) pelas receitas de aluguéis e investimentos." />
-                        </span>
-                        <span className="font-black text-slate-900">
-                          {sustainabilitySummary.selfSustainabilityPercent}% <span className="text-slate-400 font-medium text-[10px]">({sustainabilitySummary.realizedSelfSustainabilityPercent}% Realiz.)</span>
-                        </span>
-                      </div>
-                      <div className="p-3 bg-brand-50 rounded-xl mt-2">
-                        <p className="text-xs text-brand-600 leading-relaxed font-medium">
-                          Sua carteira gera aproximadamente <span className="font-bold text-brand-700">{formatCurrency(sustainabilitySummary.estimatedMonthlyYield)}</span> de dividendos implícitos por mês baseado em taxa média mensal de {estimatedYieldRate}%.
-                        </p>
+                    {/* Monthly Yield comparison */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                        <span><span aria-hidden="true" className="mr-1">💵</span>Rendimentos da Carteira</span>
+                        <button
+                          onClick={() => setActiveView('investments')}
+                          className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          Ver Detalhes →
+                        </button>
+                      </p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Recebido no Mês:</span>
+                          <span className="font-black text-emerald-600">{formatCurrency(overviewData.currentMonthYield)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Média Histórica Mensal:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.averageMonthlyYield)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                          <span className="text-slate-600 font-bold flex items-center">
+                            Autossuficiência (Projetada vs. Realizada)
+                            <InfoTooltip content="Percentual de cobertura das despesas patrimoniais (parcelas de consórcios, financiamentos, condomínios, IPVA/IPTU) pelas receitas de aluguéis e investimentos." />
+                          </span>
+                          <span className="font-black text-slate-900">
+                            {sustainabilitySummary.selfSustainabilityPercent}% <span className="text-slate-400 font-medium text-[10px]">({sustainabilitySummary.realizedSelfSustainabilityPercent}% Realiz.)</span>
+                          </span>
+                        </div>
+                        <div className="p-3 bg-brand-50 rounded-xl mt-2">
+                          <p className="text-xs text-brand-600 leading-relaxed font-medium">
+                            Sua carteira gera aproximadamente <span className="font-bold text-brand-700">{formatCurrency(sustainabilitySummary.estimatedMonthlyYield)}</span> de dividendos implícitos por mês baseado em taxa média mensal de {estimatedYieldRate}%.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Bloco D: Empréstimos Concedidos */}
-              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
-                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
-                  <h3 className="font-bold text-slate-900 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                      <HandCoins size={18} />
-                    </div>
-                    Empréstimos Concedidos (Crédito Privado)
-                  </h3>
-                  <button
-                    onClick={() => {
-                      resetAssetForm();
-                      setEditingAsset(null);
-                      setFormData(prev => ({ ...prev, isLoan: true, category: 'OTHER' }));
-                      setShowModal(true);
-                    }}
-                    className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
-                  >
-                    + Novo Empréstimo
-                  </button>
-                </div>
+              {visibleCards.detalheEmprestimos && (
+                <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                    <h3 className="font-bold text-slate-900 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <HandCoins size={18} />
+                      </div>
+                      Empréstimos Concedidos (Crédito Privado)
+                    </h3>
+                    <button
+                      onClick={() => {
+                        resetAssetForm();
+                        setEditingAsset(null);
+                        setFormData(prev => ({ ...prev, isLoan: true, category: 'OTHER' }));
+                        setShowModal(true);
+                      }}
+                      className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                    >
+                      + Novo Empréstimo
+                    </button>
+                  </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* Lista de Empréstimos */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
-                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span><span aria-hidden="true" className="mr-1">🤝</span>Devedores / Contratos</span>
-                      <button
-                        onClick={() => setActiveView('loans')}
-                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        Ver Detalhes →
-                      </button>
-                    </p>
-                    <div className="space-y-3.5 pr-1">
-                      {activePhysicalAssets.filter(p => p.metadata?.isLoan).length === 0 ? (
-                        <p className="text-xs text-slate-400 italic">Sem empréstimos ativos.</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {activePhysicalAssets.filter(p => p.metadata?.isLoan).slice(0, 4).map((loan) => {
-                            const meta = loan.metadata || {};
-                            const principal = Number(meta.loanPrincipal) || 0;
-                            const txs = getAssetTransactions(loan);
-                            const returned = txs.filter(t => t.type === 'INCOME').reduce((s, t) => s + Number(t.amount || 0), 0);
-                            const outstanding = Math.max(0, principal - returned);
-                            const progressPercent = principal > 0 ? Math.round((returned / principal) * 100) : 0;
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {/* Lista de Empréstimos */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                        <span><span aria-hidden="true" className="mr-1">🤝</span>Devedores / Contratos</span>
+                        <button
+                          onClick={() => setActiveView('loans')}
+                          className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          Ver Detalhes →
+                        </button>
+                      </p>
+                      <div className="space-y-3.5 pr-1">
+                        {activePhysicalAssets.filter(p => p.metadata?.isLoan).length === 0 ? (
+                          <p className="text-xs text-slate-400 italic">Sem empréstimos ativos.</p>
+                        ) : (
+                          <div className="space-y-3">
+                            {activePhysicalAssets.filter(p => p.metadata?.isLoan).slice(0, 4).map((loan) => {
+                              const meta = loan.metadata || {};
+                              const principal = Number(meta.loanPrincipal) || 0;
+                              const txs = getAssetTransactions(loan);
+                              const returned = txs.filter(t => t.type === 'INCOME').reduce((s, t) => s + Number(t.amount || 0), 0);
+                              const outstanding = Math.max(0, principal - returned);
+                              const progressPercent = principal > 0 ? Math.round((returned / principal) * 100) : 0;
+                              return (
+                                <div key={loan.id} className="space-y-1">
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-slate-600 font-medium truncate max-w-[135px]">{loan.name}</span>
+                                    <span className="font-bold text-slate-900">
+                                      {formatCurrency(outstanding)} <span className="text-xs font-medium text-slate-400">({progressPercent}%)</span>
+                                    </span>
+                                  </div>
+                                  <div 
+                                    className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"
+                                    role="progressbar"
+                                    aria-valuenow={Math.min(progressPercent, 100)}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
+                                    aria-label={`Progresso do empréstimo ${loan.name}`}
+                                  >
+                                    <div 
+                                      className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
+                                      style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Resumo consolidado */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                        <span><span aria-hidden="true" className="mr-1">💰</span>Resumo Consolidado</span>
+                        <button
+                          onClick={() => setActiveView('loans')}
+                          className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          Ver Detalhes →
+                        </button>
+                      </p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Total Concedido:</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.loansPrincipal)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Amortizado / Recebido:</span>
+                          <span className="font-bold text-emerald-600">{formatCurrency(overviewData.loansReceived)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                          <span className="text-slate-600 font-bold flex items-center">
+                            Saldo Devedor Restante
+                            <InfoTooltip content="Valor total pendente a ser recebido dos devedores." />
+                          </span>
+                          <span className="font-black text-slate-900">{formatCurrency(overviewData.loansOutstanding)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium flex items-center">
+                            Parcela Mensal Estimada
+                            <InfoTooltip content="Soma das parcelas mensais que se espera receber dos empréstimos ativos." />
+                          </span>
+                          <span className="font-bold text-emerald-600">{formatCurrency(overviewData.loansExpectedReceipts)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Bloco E: Passivos e Dívidas */}
+              {visibleCards.detalheDividas && (
+                <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6 lg:col-span-2">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                    <h3 className="font-bold text-slate-900 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
+                        <Landmark size={18} />
+                      </div>
+                      Passivos e Dívidas (Financiamentos vs Consórcios)
+                    </h3>
+                    <button
+                      onClick={() => {
+                        setLiabilityFormData({
+                          name: '',
+                          type: 'PERSONAL_LOAN',
+                          totalAmount: '',
+                          remainingBalance: '',
+                          interestRate: '',
+                          installmentAmount: '',
+                          installmentsRemaining: '',
+                          dueDay: '',
+                          linkedAssetId: '',
+                          indexationRate: '',
+                          balloonMonth: '',
+                          balloonYear: '',
+                          balloonAmount: '',
+                          balloons: [],
+                          propertyType: 'PLANTA',
+                          hasHistoricalPayments: false,
+                          historicalCalculationType: 'calculated',
+                          historicalInstallmentsPaid: '',
+                          historicalInstallmentValue: '',
+                          historicalPaidAmount: ''
+                        });
+                        setEditingLiability(null);
+                        setShowLiabilityModal(true);
+                      }}
+                      className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                    >
+                      + Nova Dívida
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {/* Consórcios */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                        <span><span aria-hidden="true" className="mr-1">💳</span>Consórcios Ativos</span>
+                        <button
+                          onClick={() => setActiveView('liabilities')}
+                          className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          Ver Detalhes →
+                        </button>
+                      </p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-600 font-medium flex items-center">
+                            Parcelas Mensais
+                            <InfoTooltip content="Soma das parcelas mensais devidas para todos os consórcios ativos." />
+                          </span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.consInstallments)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-600 font-medium">Total Contratado (Cartas):</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.consContracted)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-600 font-medium flex items-center">
+                            Total Pago
+                            <InfoTooltip content="Valor total amortizado/pago das parcelas até o momento." />
+                          </span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.consPaid)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-600 font-medium flex items-center">
+                            Lances Dados (Tentativas)
+                            <InfoTooltip content="Total ofertado em lances nas assembleias para tentar a contemplação das cartas." />
+                          </span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.consLances)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-600 font-medium flex items-center">
+                            Créditos em Uso (Obras/Bens)
+                            <InfoTooltip content="Cartas de consórcio já contempladas que estão atreladas a algum bem físico ou projeto em andamento." />
+                          </span>
+                          <span className="font-bold text-slate-950">{formatCurrency(overviewData.consUtilized)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-600 font-medium flex items-center">
+                            Créditos Disponíveis
+                            <InfoTooltip content="Cartas de consórcio que já foram contempladas mas cujo saldo ainda não foi utilizado para aquisição de bens." />
+                          </span>
+                          <span className="font-bold text-brand-600">{formatCurrency(overviewData.consToContemplate)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                          <span className="text-slate-600 font-bold flex items-center">
+                            Saldo Devedor Restante
+                            <InfoTooltip content="Saldo que resta pagar das parcelas vincendas até a quitação dos grupos." />
+                          </span>
+                          <span className="font-black text-red-600">{formatCurrency(overviewData.consRemaining)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Financiamentos */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                        <span><span aria-hidden="true" className="mr-1">🏛️</span>Outros Financiamentos e Dívidas</span>
+                        <button
+                          onClick={() => setActiveView('liabilities')}
+                          className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          Ver Detalhes →
+                        </button>
+                      </p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-600 font-medium flex items-center">
+                            Prestações Mensais
+                            <InfoTooltip content="Soma das parcelas mensais de todos os financiamentos ativos (imobiliários, veículos, etc.)." />
+                          </span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.finInstallments)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-600 font-medium">Total Financiado (Contrato):</span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.finContracted)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-600 font-medium flex items-center">
+                            Total Amortizado (Pago)
+                            <InfoTooltip content="Valor principal do financiamento já pago até o momento." />
+                          </span>
+                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.finPaid)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                          <span className="text-slate-600 font-bold flex items-center">
+                            Saldo Devedor Restante
+                            <InfoTooltip content="Saldo restante para quitação dos contratos de financiamento." />
+                          </span>
+                          <span className="font-black text-red-600">{formatCurrency(overviewData.finRemaining)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Bloco F: Planejamento Financeiro */}
+              {visibleCards.detalhePlanejamento && (
+                <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6 lg:col-span-2">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                    <h3 className="font-bold text-slate-900 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
+                        <Target size={18} />
+                      </div>
+                      Planejamento Financeiro (Orçamentos vs Metas)
+                    </h3>
+                    <button
+                      onClick={() => navigate('/planning')}
+                      className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
+                    >
+                      Ver Planejamento
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {/* Orçamentos Mensais */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                        <span><span aria-hidden="true" className="mr-1">📊</span>Controle de Orçamento</span>
+                        <button
+                          onClick={() => navigate('/planning?tab=budget')}
+                          className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          Ver Orçamentos →
+                        </button>
+                      </p>
+                      <div className="space-y-3">
+                        {overviewData.totalBudgeted > 0 ? (
+                          (() => {
+                            const percent = Math.min(100, Math.round((overviewData.totalSpentInBudgets / overviewData.totalBudgeted) * 100));
+                            let barColor = 'bg-brand-500';
+                            let textColor = 'text-brand-600';
+                            if (percent >= 100) {
+                              barColor = 'bg-rose-500';
+                              textColor = 'text-rose-600';
+                            } else if (percent >= 80) {
+                              barColor = 'bg-amber-500';
+                              textColor = 'text-amber-600';
+                            }
                             return (
-                              <div key={loan.id} className="space-y-1">
+                              <div className="space-y-1.5">
                                 <div className="flex justify-between text-xs">
-                                  <span className="text-slate-600 font-medium truncate max-w-[135px]">{loan.name}</span>
-                                  <span className="font-bold text-slate-900">
-                                    {formatCurrency(outstanding)} <span className="text-xs font-medium text-slate-400">({progressPercent}%)</span>
-                                  </span>
+                                  <span className="text-slate-600 font-medium">Consumo do Limite</span>
+                                  <span className={`font-black ${textColor}`}>{percent}%</span>
                                 </div>
                                 <div 
-                                  className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"
+                                  className="w-full bg-slate-200 h-2 rounded-full overflow-hidden"
                                   role="progressbar"
-                                  aria-valuenow={Math.min(progressPercent, 100)}
+                                  aria-valuenow={percent}
                                   aria-valuemin={0}
                                   aria-valuemax={100}
-                                  aria-label={`Progresso do empréstimo ${loan.name}`}
+                                  aria-label="Progresso do consumo do orçamento mensal"
                                 >
                                   <div 
-                                    className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
-                                    style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                                    className={`${barColor} h-full rounded-full transition-all duration-500`}
+                                    style={{ width: `${percent}%` }}
                                   />
                                 </div>
                               </div>
                             );
-                          })}
+                          })()
+                        ) : (
+                          <p className="text-xs text-slate-400 font-medium italic">Nenhum orçamento mensal configurado.</p>
+                        )}
+                        
+                        <div className="space-y-2 pt-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-slate-500 font-medium">Total Orçado:</span>
+                            <span className="font-bold text-slate-900">{formatCurrency(overviewData.totalBudgeted)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-slate-500 font-medium">Gasto no Mês:</span>
+                            <span className="font-bold text-slate-900">{formatCurrency(overviewData.totalSpentInBudgets)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                            <span className="text-slate-600 font-bold">Saldo Disponível:</span>
+                            <span className={`font-black ${overviewData.totalBudgeted - overviewData.totalSpentInBudgets >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              {formatCurrency(overviewData.totalBudgeted - overviewData.totalSpentInBudgets)}
+                            </span>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Resumo consolidado */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span><span aria-hidden="true" className="mr-1">💰</span>Resumo Consolidado</span>
-                      <button
-                        onClick={() => setActiveView('loans')}
-                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        Ver Detalhes →
-                      </button>
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Total Concedido:</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.loansPrincipal)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium">Amortizado / Recebido:</span>
-                        <span className="font-bold text-emerald-600">{formatCurrency(overviewData.loansReceived)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold flex items-center">
-                          Saldo Devedor Restante
-                          <InfoTooltip content="Valor total pendente a ser recebido dos devedores." />
-                        </span>
-                        <span className="font-black text-slate-900">{formatCurrency(overviewData.loansOutstanding)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 font-medium flex items-center">
-                          Parcela Mensal Estimada
-                          <InfoTooltip content="Soma das parcelas mensais que se espera receber dos empréstimos ativos." />
-                        </span>
-                        <span className="font-bold text-emerald-600">{formatCurrency(overviewData.loansExpectedReceipts)}</span>
                       </div>
                     </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* Bloco E: Passivos e Dívidas */}
-              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6 lg:col-span-2">
-                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
-                  <h3 className="font-bold text-slate-900 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
-                      <Landmark size={18} />
-                    </div>
-                    Passivos e Dívidas (Financiamentos vs Consórcios)
-                  </h3>
-                  <button
-                    onClick={() => {
-                      setLiabilityFormData({
-                        name: '',
-                        type: 'PERSONAL_LOAN',
-                        totalAmount: '',
-                        remainingBalance: '',
-                        interestRate: '',
-                        installmentAmount: '',
-                        installmentsRemaining: '',
-                        dueDay: '',
-                        linkedAssetId: '',
-                        indexationRate: '',
-                        balloonMonth: '',
-                        balloonYear: '',
-                        balloonAmount: '',
-                        balloons: [],
-                        propertyType: 'PLANTA',
-                        hasHistoricalPayments: false,
-                        historicalCalculationType: 'calculated',
-                        historicalInstallmentsPaid: '',
-                        historicalInstallmentValue: '',
-                        historicalPaidAmount: ''
-                      });
-                      setEditingLiability(null);
-                      setShowLiabilityModal(true);
-                    }}
-                    className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
-                  >
-                    + Nova Dívida
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* Consórcios */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span><span aria-hidden="true" className="mr-1">💳</span>Consórcios Ativos</span>
-                      <button
-                        onClick={() => setActiveView('liabilities')}
-                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        Ver Detalhes →
-                      </button>
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-600 font-medium flex items-center">
-                          Parcelas Mensais
-                          <InfoTooltip content="Soma das parcelas mensais devidas para todos os consórcios ativos." />
-                        </span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.consInstallments)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-600 font-medium">Total Contratado (Cartas):</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.consContracted)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-600 font-medium flex items-center">
-                          Total Pago
-                          <InfoTooltip content="Valor total amortizado/pago das parcelas até o momento." />
-                        </span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.consPaid)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-600 font-medium flex items-center">
-                          Lances Dados (Tentativas)
-                          <InfoTooltip content="Total ofertado em lances nas assembleias para tentar a contemplação das cartas." />
-                        </span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.consLances)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-600 font-medium flex items-center">
-                          Créditos em Uso (Obras/Bens)
-                          <InfoTooltip content="Cartas de consórcio já contempladas que estão atreladas a algum bem físico ou projeto em andamento." />
-                        </span>
-                        <span className="font-bold text-slate-950">{formatCurrency(overviewData.consUtilized)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-600 font-medium flex items-center">
-                          Créditos Disponíveis
-                          <InfoTooltip content="Cartas de consórcio que já foram contempladas mas cujo saldo ainda não foi utilizado para aquisição de bens." />
-                        </span>
-                        <span className="font-bold text-brand-600">{formatCurrency(overviewData.consToContemplate)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold flex items-center">
-                          Saldo Devedor Restante
-                          <InfoTooltip content="Saldo que resta pagar das parcelas vincendas até a quitação dos grupos." />
-                        </span>
-                        <span className="font-black text-red-600">{formatCurrency(overviewData.consRemaining)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Financiamentos */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span><span aria-hidden="true" className="mr-1">🏛️</span>Outros Financiamentos e Dívidas</span>
-                      <button
-                        onClick={() => setActiveView('liabilities')}
-                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        Ver Detalhes →
-                      </button>
-                    </p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-600 font-medium flex items-center">
-                          Prestações Mensais
-                          <InfoTooltip content="Soma das parcelas mensais de todos os financiamentos ativos (imobiliários, veículos, etc.)." />
-                        </span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.finInstallments)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-600 font-medium">Total Financiado (Contrato):</span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.finContracted)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-600 font-medium flex items-center">
-                          Total Amortizado (Pago)
-                          <InfoTooltip content="Valor principal do financiamento já pago até o momento." />
-                        </span>
-                        <span className="font-bold text-slate-900">{formatCurrency(overviewData.finPaid)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                        <span className="text-slate-600 font-bold flex items-center">
-                          Saldo Devedor Restante
-                          <InfoTooltip content="Saldo restante para quitação dos contratos de financiamento." />
-                        </span>
-                        <span className="font-black text-red-600">{formatCurrency(overviewData.finRemaining)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bloco F: Planejamento Financeiro */}
-              <div className="bg-white p-6 sm:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6 lg:col-span-2">
-                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
-                  <h3 className="font-bold text-slate-900 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
-                      <Target size={18} />
-                    </div>
-                    Planejamento Financeiro (Orçamentos vs Metas)
-                  </h3>
-                  <button
-                    onClick={() => navigate('/planning')}
-                    className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg text-xs font-black uppercase tracking-wider transition-colors"
-                  >
-                    Ver Planejamento
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* Orçamentos Mensais */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span><span aria-hidden="true" className="mr-1">📊</span>Controle de Orçamento</span>
-                      <button
-                        onClick={() => navigate('/planning?tab=budget')}
-                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        Ver Orçamentos →
-                      </button>
-                    </p>
-                    <div className="space-y-3">
-                      {overviewData.totalBudgeted > 0 ? (
-                        (() => {
-                          const percent = Math.min(100, Math.round((overviewData.totalSpentInBudgets / overviewData.totalBudgeted) * 100));
-                          let barColor = 'bg-brand-500';
-                          let textColor = 'text-brand-600';
-                          if (percent >= 100) {
-                            barColor = 'bg-rose-500';
-                            textColor = 'text-rose-600';
-                          } else if (percent >= 80) {
-                            barColor = 'bg-amber-500';
-                            textColor = 'text-amber-600';
-                          }
-                          return (
-                            <div className="space-y-1.5">
-                              <div className="flex justify-between text-xs">
-                                <span className="text-slate-600 font-medium">Consumo do Limite</span>
-                                <span className={`font-black ${textColor}`}>{percent}%</span>
-                              </div>
-                              <div 
-                                className="w-full bg-slate-200 h-2 rounded-full overflow-hidden"
-                                role="progressbar"
-                                aria-valuenow={percent}
-                                aria-valuemin={0}
-                                aria-valuemax={100}
-                                aria-label="Progresso do consumo do orçamento mensal"
-                              >
+                    {/* Metas Financeiras */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                        <span><span aria-hidden="true" className="mr-1">🎯</span>Metas e Sonhos</span>
+                        <button
+                          onClick={() => navigate('/planning?tab=goals')}
+                          className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                          Ver Metas →
+                        </button>
+                      </p>
+                      <div className="space-y-3">
+                        {overviewData.goalsTargetAmount > 0 ? (
+                          (() => {
+                            const percent = Math.min(100, Math.round((overviewData.goalsSavedAmount / overviewData.goalsTargetAmount) * 100));
+                            return (
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-slate-600 font-medium">Progresso de Poupança</span>
+                                  <span className="font-black text-brand-600">{percent}%</span>
+                                </div>
                                 <div 
-                                  className={`${barColor} h-full rounded-full transition-all duration-500`}
-                                  style={{ width: `${percent}%` }}
-                                />
+                                  className="w-full bg-slate-200 h-2 rounded-full overflow-hidden"
+                                  role="progressbar"
+                                  aria-valuenow={percent}
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-label="Progresso geral de poupança para metas"
+                                >
+                                  <div 
+                                    className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                                    style={{ width: `${percent}%` }}
+                                  />
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <p className="text-xs text-slate-400 font-medium italic">Nenhum orçamento mensal configurado.</p>
-                      )}
-                      
-                      <div className="space-y-2 pt-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-500 font-medium">Total Orçado:</span>
-                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.totalBudgeted)}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-500 font-medium">Gasto no Mês:</span>
-                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.totalSpentInBudgets)}</span>
-                        </div>
-                        <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                          <span className="text-slate-600 font-bold">Saldo Disponível:</span>
-                          <span className={`font-black ${overviewData.totalBudgeted - overviewData.totalSpentInBudgets >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                            {formatCurrency(overviewData.totalBudgeted - overviewData.totalSpentInBudgets)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                            );
+                          })()
+                        ) : (
+                          <p className="text-xs text-slate-400 font-medium italic">Nenhuma meta financeira cadastrada.</p>
+                        )}
 
-                  {/* Metas Financeiras */}
-                  <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3.5">
-                    <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                      <span><span aria-hidden="true" className="mr-1">🎯</span>Metas e Sonhos</span>
-                      <button
-                        onClick={() => navigate('/planning?tab=goals')}
-                        className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                      >
-                        Ver Metas →
-                      </button>
-                    </p>
-                    <div className="space-y-3">
-                      {overviewData.goalsTargetAmount > 0 ? (
-                        (() => {
-                          const percent = Math.min(100, Math.round((overviewData.goalsSavedAmount / overviewData.goalsTargetAmount) * 100));
-                          return (
-                            <div className="space-y-1.5">
-                              <div className="flex justify-between text-xs">
-                                <span className="text-slate-600 font-medium">Progresso de Poupança</span>
-                                <span className="font-black text-brand-600">{percent}%</span>
-                              </div>
-                              <div 
-                                className="w-full bg-slate-200 h-2 rounded-full overflow-hidden"
-                                role="progressbar"
-                                aria-valuenow={percent}
-                                aria-valuemin={0}
-                                aria-valuemax={100}
-                                aria-label="Progresso geral de poupança para metas"
-                              >
-                                <div 
-                                  className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                                  style={{ width: `${percent}%` }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <p className="text-xs text-slate-400 font-medium italic">Nenhuma meta financeira cadastrada.</p>
-                      )}
-
-                      <div className="space-y-2 pt-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-500 font-medium">Total Guardado:</span>
-                          <span className="font-bold text-emerald-600">{formatCurrency(overviewData.goalsSavedAmount)}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-500 font-medium">Valor Alvo Total:</span>
-                          <span className="font-bold text-slate-900">{formatCurrency(overviewData.goalsTargetAmount)}</span>
-                        </div>
-                        <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
-                          <span className="text-slate-600 font-bold">Metas Concluídas:</span>
-                          <span className="font-black text-slate-900">
-                            {overviewData.completedGoalsCount} de {overviewData.goalsCount}
-                          </span>
+                        <div className="space-y-2 pt-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-slate-500 font-medium">Total Guardado:</span>
+                            <span className="font-bold text-emerald-600">{formatCurrency(overviewData.goalsSavedAmount)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-slate-500 font-medium">Valor Alvo Total:</span>
+                            <span className="font-bold text-slate-900">{formatCurrency(overviewData.goalsTargetAmount)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
+                            <span className="text-slate-600 font-bold">Metas Concluídas:</span>
+                            <span className="font-black text-slate-900">
+                              {overviewData.completedGoalsCount} de {overviewData.goalsCount}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
             </div>
+          )}
           </div>
         )}
 
@@ -10555,7 +10672,172 @@ const Assets: React.FC = () => {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
 
+      {showCustomizeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[40px] w-full max-w-4xl shadow-2xl overflow-hidden border border-white/20 animate-in slide-in-from-bottom-4">
+            <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 tracking-tight italic flex items-center gap-2">
+                  <SlidersHorizontal size={22} className="text-brand-600 animate-pulse" />
+                  Personalizar Visualização do Painel
+                </h3>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
+                  Ative ou desative os cartões da sua visão geral
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowCustomizeModal(false)} 
+                className="w-10 h-10 bg-white border border-slate-200 text-slate-400 hover:text-rose-500 rounded-xl flex items-center justify-center transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-200"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-8 max-h-[65vh] overflow-y-auto scrollbar-thin">
+              
+              {/* Seção 1: Cartões de Resumo */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                  <LayoutGrid size={16} className="text-slate-400" />
+                  <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">
+                    Cartões de Resumo (Topo)
+                  </h4>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  {[
+                    { key: 'fluxo', label: 'Fluxo Mensal', icon: <Zap size={14} className="text-brand-500" /> },
+                    { key: 'patrimonio', label: 'Patrimônio Real', icon: <Briefcase size={14} className="text-emerald-500" /> },
+                    { key: 'imobiliario', label: 'Imobiliário', icon: <Building2 size={14} className="text-blue-500" /> },
+                    { key: 'veiculos', label: 'Veículos', icon: <Car size={14} className="text-indigo-500" /> },
+                    { key: 'outros', label: 'Outros Bens', icon: <Box size={14} className="text-slate-500" /> },
+                    { key: 'financeiro', label: 'Financeiro', icon: <TrendingUp size={14} className="text-violet-500" /> },
+                    { key: 'emprestimos', label: 'Empréstimos', icon: <HandCoins size={14} className="text-amber-500" /> },
+                    { key: 'dividas', label: 'Dívidas', icon: <Landmark size={14} className="text-rose-500" /> },
+                  ].map((item) => (
+                    <div 
+                      key={item.key} 
+                      className={`p-4 rounded-2xl border transition-all duration-300 flex items-center justify-between group ${
+                        visibleCards[item.key] 
+                          ? 'bg-slate-50/50 border-slate-200/80 shadow-sm' 
+                          : 'bg-white border-slate-100 opacity-60 hover:opacity-80'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                          visibleCards[item.key] ? 'bg-white shadow-sm border border-slate-100' : 'bg-slate-50'
+                        }`}>
+                          {item.icon}
+                        </div>
+                        <span className="text-xs font-bold text-slate-700 tracking-tight">{item.label}</span>
+                      </div>
+                      <button
+                        onClick={() => handleToggleCardVisibility(item.key)}
+                        className={`w-9 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-brand-500/20 ${
+                          visibleCards[item.key] ? 'bg-brand-600' : 'bg-slate-200'
+                        }`}
+                        aria-label={`Toggle visibility of ${item.label}`}
+                      >
+                        <div
+                          className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform duration-300 ${
+                            visibleCards[item.key] ? 'translate-x-4' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Seção 2: Blocos de Análise */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                  <PieChart size={16} className="text-slate-400" />
+                  <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">
+                    Análises Detalhadas (Abaixo)
+                  </h4>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {[
+                    { key: 'detalheImobiliario', label: 'Investimento Imobiliário', icon: <Building2 size={14} className="text-blue-500" /> },
+                    { key: 'detalheBensFisicos', label: 'Bens Físicos e Veículos', icon: <Car size={14} className="text-indigo-500" /> },
+                    { key: 'detalheFinanceiro', label: 'Ativos Financeiros', icon: <TrendingUp size={14} className="text-violet-500" /> },
+                    { key: 'detalheEmprestimos', label: 'Empréstimos a Receber', icon: <HandCoins size={14} className="text-amber-500" /> },
+                    { key: 'detalheDividas', label: 'Financiamentos e Dívidas', icon: <Landmark size={14} className="text-rose-500" /> },
+                    { key: 'detalhePlanejamento', label: 'Planejamento Financeiro', icon: <Target size={14} className="text-emerald-500" /> },
+                  ].map((item) => (
+                    <div 
+                      key={item.key} 
+                      className={`p-4 rounded-2xl border transition-all duration-300 flex items-center justify-between group ${
+                        visibleCards[item.key] 
+                          ? 'bg-slate-50/50 border-slate-200/80 shadow-sm' 
+                          : 'bg-white border-slate-100 opacity-60 hover:opacity-80'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                          visibleCards[item.key] ? 'bg-white shadow-sm border border-slate-100' : 'bg-slate-50'
+                        }`}>
+                          {item.icon}
+                        </div>
+                        <span className="text-xs font-bold text-slate-700 tracking-tight">{item.label}</span>
+                      </div>
+                      <button
+                        onClick={() => handleToggleCardVisibility(item.key)}
+                        className={`w-9 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-brand-500/20 ${
+                          visibleCards[item.key] ? 'bg-brand-600' : 'bg-slate-200'
+                        }`}
+                        aria-label={`Toggle visibility of ${item.label}`}
+                      >
+                        <div
+                          className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform duration-300 ${
+                            visibleCards[item.key] ? 'translate-x-4' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+
+            <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-4">
+              <button
+                onClick={() => {
+                  const defaults = {
+                    fluxo: true,
+                    patrimonio: true,
+                    imobiliario: true,
+                    veiculos: true,
+                    outros: true,
+                    financeiro: true,
+                    emprestimos: true,
+                    dividas: true,
+                    detalheImobiliario: true,
+                    detalheBensFisicos: true,
+                    detalheFinanceiro: true,
+                    detalheEmprestimos: true,
+                    detalheDividas: true,
+                    detalhePlanejamento: true,
+                  };
+                  setVisibleCards(defaults);
+                  localStorage.setItem('finvision_assets_visible_cards', JSON.stringify(defaults));
+                }}
+                className="px-5 py-2.5 bg-white border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-xl text-xs font-black uppercase tracking-wider transition-all"
+              >
+                Restaurar Padrão
+              </button>
+              <button
+                onClick={() => setShowCustomizeModal(false)}
+                className="px-6 py-2.5 bg-brand-600 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md hover:scale-105 transition-transform active:scale-95"
+              >
+                Confirmar
+              </button>
             </div>
           </div>
         </div>
