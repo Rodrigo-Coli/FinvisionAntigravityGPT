@@ -1,27 +1,27 @@
 {
-  "version": "2026.06.21.2105",
-  "title": "Gerenciamento Completo de Patrimônio",
-  "date": "21/06/2026",
+  "version": "2026.06.22.1930",
+  "title": "Filtros de Contas e Lançamentos",
+  "date": "22/06/2026",
   "benefits": [
     {
-      "title": "Consultar Itens Arquivados",
-      "desc": "Adicionado toggle para exibir ou ocultar itens arquivados em todos os tipos de patrimônio.",
+      "title": "Filtros de Contas Customizáveis",
+      "desc": "Por padrão, apenas contas que somam no saldo consolidado vêm selecionadas. Há um novo controle em Ajustes para alterar essa preferência.",
       "type": "feature"
     },
     {
-      "title": "Desarquivar e Excluir Ativos",
-      "desc": "Agora é possível restaurar itens arquivados ou excluí-los permanentemente com confirmação de segurança.",
+      "title": "Lançamento de Cartão Facilitado",
+      "desc": "O campo categoria em lançamentos manuais de cartão agora é autocompletar e permite criar novas categorias inline (+ Nova).",
       "type": "ux"
     },
     {
-      "title": "Estabilidade e Ajustes Finais",
-      "desc": "Garantida a integridade dos cálculos de saldos e consistência de tipos na compilação do TypeScript.",
+      "title": "Histórico Direto por Conta",
+      "desc": "O ícone de histórico em Contas agora redireciona com o filtro da conta correta e selecionando o mês atual de forma precisa.",
       "type": "precision"
     }
   ],
   "changes": [
-    "**Ativos Imobiliários e Veículos:** Implementada a visualização de arquivados e botões dinâmicos de 'Desarquivar' e 'Excluir'.",
-    "**Outros Ativos Físicos e Passivos:** Adicionado suporte para restaurar itens e exclusão segura permanente com diálogo de confirmação.",
-    "**TypeScript e Build:** Verificação completa de tipos e conformidade para assegurar deploy seguro sem erros em produção."
+    "**Ajustes e Preferências:** Adicionado interruptor para incluir ou ignorar contas não-cumulativas por padrão nos filtros e relatórios.",
+    "**Categorias de Cartão:** Implementado autocompletar e resolução automática de strings para chaves UUID no lançamento manual de cartão.",
+    "**Filtros da URL:** Correção de condição de corrida na inicialização do histórico a partir da URL e remoção do intervalo forçado de 10 anos."
   ]
 }
