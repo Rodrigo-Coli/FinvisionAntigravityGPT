@@ -5137,21 +5137,21 @@ const Assets: React.FC = () => {
                   <Zap size={14} className="text-brand-400" />
                 </div>
                 <div className="mt-1 space-y-0.5">
-                  <div className="flex justify-between text-xs text-slate-400">
-                    <span>Recebidos:</span>
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Rec.:</span>
                     <span className="font-bold text-emerald-400 whitespace-nowrap">{formatCurrency(sustainabilitySummary.totalInflow)}</span>
                   </div>
-                  <div className="flex justify-between text-xs text-slate-400">
-                    <span>Despesas:</span>
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Desp.:</span>
                     <span className="font-bold text-rose-400 whitespace-nowrap">{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
                   </div>
-                  <div className="flex justify-between text-xs text-slate-400">
-                    <span>Autossuficiência:</span>
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Auto:</span>
                     <span className="font-bold text-brand-400 whitespace-nowrap">{sustainabilitySummary.selfSustainabilityPercent}%</span>
                   </div>
                   <div className="flex justify-between items-baseline border-t border-slate-800 pt-1 mt-0.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Saldo</span>
-                    <span className={`text-base font-black tracking-tight italic whitespace-nowrap ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Saldo</span>
+                    <span className={`text-sm font-black tracking-tight italic whitespace-nowrap ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
                     </span>
                   </div>
