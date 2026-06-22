@@ -5139,19 +5139,19 @@ const Assets: React.FC = () => {
                 <div className="mt-1 space-y-0.5">
                   <div className="flex justify-between text-xs text-slate-400">
                     <span>Recebidos:</span>
-                    <span className="font-bold text-emerald-400">{formatCurrency(sustainabilitySummary.totalInflow)}</span>
+                    <span className="font-bold text-emerald-400 whitespace-nowrap">{formatCurrency(sustainabilitySummary.totalInflow)}</span>
                   </div>
                   <div className="flex justify-between text-xs text-slate-400">
                     <span>Despesas:</span>
-                    <span className="font-bold text-rose-400">{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
+                    <span className="font-bold text-rose-400 whitespace-nowrap">{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
                   </div>
                   <div className="flex justify-between text-xs text-slate-400">
                     <span>Autossuficiência:</span>
-                    <span className="font-bold text-brand-400">{sustainabilitySummary.selfSustainabilityPercent}%</span>
+                    <span className="font-bold text-brand-400 whitespace-nowrap">{sustainabilitySummary.selfSustainabilityPercent}%</span>
                   </div>
                   <div className="flex justify-between items-baseline border-t border-slate-800 pt-1 mt-0.5">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Saldo</span>
-                    <span className={`text-base font-black tracking-tight italic ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    <span className={`text-base font-black tracking-tight italic whitespace-nowrap ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
                     </span>
                   </div>
@@ -5162,15 +5162,15 @@ const Assets: React.FC = () => {
               <div
                 className="bg-white border border-brand-200 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] text-left w-full relative overflow-hidden"
               >
-                <div className="absolute top-0 right-0 w-8 h-8 bg-brand-500/10 rounded-bl-full flex items-center justify-center pointer-events-none">
-                  <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest mr-1 mb-1">Consolidado</span>
-                </div>
-                <div className="flex justify-between items-start">
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-500">Patrimônio Real</span>
-                  <TrendingUp size={14} className="text-emerald-500" />
+                <div className="flex justify-between items-start gap-1">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-500">Patrimônio Real</span>
+                    <span className="text-[8px] font-black text-brand-600 uppercase tracking-widest bg-brand-50 px-1.5 py-0.5 rounded w-max">Consolidado</span>
+                  </div>
+                  <TrendingUp size={14} className="text-emerald-500 shrink-0" />
                 </div>
                 <div className="mt-2">
-                  <h4 className="text-base font-black text-slate-900 tracking-tight italic">
+                  <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
                     {formatCurrency(totalNetWorth)}
                   </h4>
                   <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-0.5">
@@ -5189,7 +5189,7 @@ const Assets: React.FC = () => {
                   <Building2 size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
-                  <h4 className="text-base font-black text-slate-900 tracking-tight italic">
+                  <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
                     {formatCurrency(overviewData.plantaValue + overviewData.prontoValue)}
                   </h4>
                   <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Planta + Pronto</span>
@@ -5206,7 +5206,7 @@ const Assets: React.FC = () => {
                   <Car size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
-                  <h4 className="text-base font-black text-slate-900 tracking-tight italic">
+                  <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
                     {formatCurrency(overviewData.veiculoValue)}
                   </h4>
                   <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">FIPE / Estimado</span>
@@ -5223,7 +5223,7 @@ const Assets: React.FC = () => {
                   <Box size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
-                  <h4 className="text-base font-black text-slate-900 tracking-tight italic">
+                  <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
                     {formatCurrency(overviewData.outroFisicoValue)}
                   </h4>
                   <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">Outros Físicos</span>
@@ -5240,7 +5240,7 @@ const Assets: React.FC = () => {
                   <PieChart size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
-                  <h4 className="text-base font-black text-brand-600 tracking-tight italic">
+                  <h4 className="text-base font-black text-brand-600 tracking-tight italic whitespace-nowrap">
                     {formatCurrency(overviewData.totalFinancialFunds)}
                   </h4>
                   <span className="text-xs sm:text-[11px] font-bold text-brand-500 uppercase tracking-widest">Corretoras</span>
@@ -5257,7 +5257,7 @@ const Assets: React.FC = () => {
                   <HandCoins size={14} className="text-brand-500" />
                 </div>
                 <div className="mt-2">
-                  <h4 className="text-base font-black text-slate-900 tracking-tight italic">
+                  <h4 className="text-base font-black text-slate-900 tracking-tight italic whitespace-nowrap">
                     {formatCurrency(totalLoans)}
                   </h4>
                   <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">A Receber</span>
@@ -5274,7 +5274,7 @@ const Assets: React.FC = () => {
                   <Landmark size={14} className="text-red-500" />
                 </div>
                 <div className="mt-2">
-                  <h4 className="text-base font-black text-red-600 tracking-tight italic">
+                  <h4 className="text-base font-black text-red-600 tracking-tight italic whitespace-nowrap">
                     {formatCurrency(totalLiabilities)}
                   </h4>
                   <span className="text-xs sm:text-[11px] font-bold text-red-400 uppercase tracking-widest">Saldo Devedor</span>
