@@ -535,7 +535,6 @@ const Assets: React.FC = () => {
           .from('physical_assets')
           .select('*')
           .eq('user_id', userId)
-          .eq('is_archived', false)
           .order('created_at', { ascending: true }),
         supabase
           .from('accounts')
@@ -545,8 +544,7 @@ const Assets: React.FC = () => {
         supabase
           .from('liabilities')
           .select('*')
-          .eq('user_id', userId)
-          .eq('is_archived', false),
+          .eq('user_id', userId),
         supabase
           .from('budgets')
           .select('*')
