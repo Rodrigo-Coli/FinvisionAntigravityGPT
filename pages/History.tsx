@@ -224,7 +224,13 @@ const HistoryPage: React.FC = () => {
   const [subcategories, setSubcategories] = useState<{ id: string; name: string; category_name?: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'ALL' | 'SETTLED' | 'PENDING'>('ALL');
+  const [viewMode, setViewMode] = useState<'ALL' | 'SETTLED' | 'PENDING'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const statusParam = params.get('status');
+    if (statusParam === 'PENDING' || statusParam === 'ABERTOS') return 'PENDING';
+    if (statusParam === 'SETTLED' || statusParam === 'PAGOS') return 'SETTLED';
+    return 'ALL';
+  });
 
   // Pagination & Sorting
   const [page, setPage] = useState(0);
@@ -239,9 +245,22 @@ const HistoryPage: React.FC = () => {
   const [showDreModal, setShowDreModal] = useState(false);
   const [dreReport, setDreReport] = useState<DreReport | null>(null);
   const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState<string>('ALL');
-  const [filterAccount, setFilterAccount] = useState<string[]>([]);
-  const [filterCategory, setFilterCategory] = useState<string[]>([]);
+  const [filterType, setFilterType] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const typeParam = params.get('type');
+    if (typeParam === 'INCOME' || typeParam === 'EXPENSE') return typeParam;
+    return 'ALL';
+  });
+  const [filterAccount, setFilterAccount] = useState<string[]>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const acc = params.get('account');
+    return acc ? [acc] : [];
+  });
+  const [filterCategory, setFilterCategory] = useState<string[]>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const cat = params.get('category');
+    return cat ? [cat] : [];
+  });
   const [filterSubcategory, setFilterSubcategory] = useState<string[]>([]);
   const [filterOwner, setFilterOwner] = useState<string[]>([]);
 
@@ -254,8 +273,18 @@ const HistoryPage: React.FC = () => {
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
-  const [startDate, setStartDate] = useState<string>(DateUtils.formatToISODate(firstDay));
-  const [endDate, setEndDate] = useState<string>(DateUtils.formatToISODate(lastDay));
+  const [startDate, setStartDate] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const startParam = params.get('startDate');
+    if (startParam) return startParam;
+    return DateUtils.formatToISODate(firstDay);
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const endParam = params.get('endDate');
+    if (endParam) return endParam;
+    return DateUtils.formatToISODate(lastDay);
+  });
 
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
@@ -281,7 +310,32 @@ const HistoryPage: React.FC = () => {
 
   // Modals
   const [payModal, setPayModal] = useState<PayModalState>({ open: false });
-  const [addModal, setAddModal] = useState<AddModalState>({ open: false });
+  const [addModal, setAddModal] = useState<AddModalState>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const addParam = params.get('add');
+    if (addParam === 'true') {
+      return {
+        open: true,
+        isSubmitting: false,
+        form: {
+          date: DateUtils.formatToISODate(new Date()),
+          description: '',
+          type: 'EXPENSE',
+          amount: '',
+          accountId: '',
+          category: '',
+          subcategory: '',
+          isInstallment: false,
+          installmentsCount: 2,
+          isRecurring: false,
+          recurrencePeriod: 'monthly',
+          recurrenceDaysInterval: 30,
+          ownerName: 'Pessoal'
+        }
+      };
+    }
+    return { open: false };
+  });
 
   // Series Scope Modal State
   const [seriesModal, setSeriesModal] = useState<{
@@ -313,10 +367,6 @@ const HistoryPage: React.FC = () => {
 
     if (acc) {
       setFilterAccount([acc]);
-      const tenYearsAgo = new Date();
-      tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
-      setStartDate(DateUtils.formatToISODate(tenYearsAgo));
-      setEndDate(DateUtils.formatToISODate(new Date()));
       hasChanged = true;
     }
 
