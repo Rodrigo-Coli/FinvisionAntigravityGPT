@@ -39,6 +39,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [propertyStage, setPropertyStage] = useState<'PLANTA' | 'PRONTO'>(asset.metadata?.propertyStage || 'PRONTO');
   const [purpose, setPurpose] = useState<'uso' | 'investimento'>(asset.metadata?.purpose || 'uso');
   const [purchaseValue, setPurchaseValue] = useState(String(asset.metadata?.purchaseValue || ''));
+  const [acquisitionDate, setAcquisitionDate] = useState(asset.acquisitionDate || new Date().toISOString().split('T')[0]);
   const [despesasCartorarias, setDespesasCartorarias] = useState(String(asset.metadata?.despesasCartorarias || ''));
   const [mobiliarios, setMobiliarios] = useState(String(asset.metadata?.mobiliarios || ''));
   const [historicalPaidAmount, setHistoricalPaidAmount] = useState(String(asset.metadata?.historicalPaidAmount || ''));
@@ -146,7 +147,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
 
   const paidTransactionsAmount = useMemo(() => {
     return assetTransactions
-      .filter(t => t.type === 'EXPENSE' && t.isPaid)
+      .filter(t => t.type === 'EXPENSE' && t.isPaid && t.metadata?.type !== 'asset_purchase')
       .reduce((sum, t) => {
         const isConsortiumTx = t.metadata?.type === 'consortium_installment' || t.liability_id || t.description.toLowerCase().includes('consórcio');
         const ratio = isConsortiumTx ? ((parseFloat(consortiumAllocationRatio) || 100) / 100) : 1;
@@ -171,7 +172,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
 
   const totalRentTransactions = useMemo(() => {
     return assetTransactions
-      .filter(t => t.type === 'INCOME' && t.isPaid)
+      .filter(t => t.type === 'INCOME' && t.isPaid && (t.metadata?.type === 'rental_income' || t.metadata?.type === 'short_stay_booking'))
       .reduce((sum, t) => sum + t.amount, 0);
   }, [assetTransactions]);
 
@@ -766,9 +767,11 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
 
       // Evolução de Histórico de Valor Atual
       let valuationHistory = [...(asset.metadata?.valuationHistory || [])];
-      if (valuationHistory.length === 0 && (buyVal || asset.estimatedValue)) {
+      if (valuationHistory.length > 0 && valuationHistory[0].label === 'Aquisição') {
+        valuationHistory[0].date = acquisitionDate;
+      } else if (valuationHistory.length === 0 && (buyVal || asset.estimatedValue)) {
         valuationHistory.push({
-          date: asset.acquisitionDate || new Date().toISOString().split('T')[0],
+          date: acquisitionDate,
           value: buyVal || asset.estimatedValue,
           label: 'Aquisição'
         });
@@ -1092,12 +1095,24 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         .update({
           name: name,
           estimated_value: estVal,
+          acquisition_date: acquisitionDate || null,
           metadata: updatedMetadata,
           is_archived: isSold
         })
         .eq('id', asset.id);
 
       if (error) throw error;
+
+      // Sincronizar datas de transações vinculadas de aquisição e financiamento
+      await supabase
+        .from('transactions')
+        .update({
+          date: acquisitionDate,
+          paid_at: acquisitionDate
+        })
+        .eq('user_id', user.id)
+        .eq('metadata->>linked_asset_id', asset.id)
+        .in('metadata->>type', ['asset_purchase', 'liability_inflow']);
 
       if (!isSold) {
         // Sync future rental incomes
@@ -1388,6 +1403,11 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                     <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor de Compra</label>
                     <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={purchaseValue} onChange={e => setPurchaseValue(e.target.value)} />
                   </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data de Aquisição / Compra</label>
+                  <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="date" value={acquisitionDate} onChange={e => setAcquisitionDate(e.target.value)} />
                 </div>
 
                 {/* Histórico de Evolução de Valor */}

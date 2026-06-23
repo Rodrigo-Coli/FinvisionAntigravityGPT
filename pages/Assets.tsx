@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -80,6 +80,7 @@ import { FinancialEngine } from '../lib/financialEngine';const calculateInstallm
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
+  const syncInProgress = useRef(false);
   const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities'>('overview');
   const [allAccounts, setAllAccounts] = useState<any[]>([]);
   const [collapsedBrokers, setCollapsedBrokers] = useState<Record<string, boolean>>({});
@@ -1330,184 +1331,189 @@ const Assets: React.FC = () => {
 
   const runAutoTransactionSync = async (userId: string, assets: any[], liabs: any[], txs: any[]) => {
     if (!supabase) return;
-    
-    // Busca todas as transações (incluindo deletadas) para auditar corretamente e evitar duplicar/recriar deletadas
-    const { data: allLinkedTxs, error: linkedErr } = await supabase
-      .from('transactions')
-      .select('id, metadata, liability_id, is_deleted')
-      .eq('user_id', userId);
+    if (syncInProgress.current) return;
+    syncInProgress.current = true;
+    try {
+      // Busca todas as transações (incluindo deletadas) para auditar corretamente e evitar duplicar/recriar deletadas
+      const { data: allLinkedTxs, error: linkedErr } = await supabase
+        .from('transactions')
+        .select('id, metadata, liability_id, is_deleted')
+        .eq('user_id', userId);
 
-    if (linkedErr) {
-      console.error('Assets: Erro ao buscar transações vinculadas para sincronização', linkedErr);
-      return;
-    }
-    const linkedTxs = allLinkedTxs || [];
-
-    // 1. Asset Purchase Transactions
-    for (const asset of assets) {
-      if (asset.category === 'INVESTMENT' || asset.metadata?.isLoan || asset.is_archived) continue;
-      const amount = Number(asset.metadata?.purchaseValue) || asset.estimatedValue;
-      if (amount <= 0) continue;
-      
-      const hasPurchaseTx = linkedTxs.some((t: any) => 
-        t.metadata?.linked_asset_id === asset.id && 
-        t.metadata?.type === 'asset_purchase'
-      );
-      
-      if (!hasPurchaseTx) {
-        let catName = 'Outros';
-        let catColor = 'bg-slate-50 text-slate-600';
-        if (asset.category === 'REAL_ESTATE') {
-          catName = 'Habitação';
-          catColor = 'bg-emerald-50 text-emerald-600';
-        } else if (asset.category === 'VEHICLE') {
-          catName = 'Transporte';
-          catColor = 'bg-blue-50 text-blue-600';
-        }
-        
-        const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
-        const dateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
-        
-        await supabase.from('transactions').insert([{
-          user_id: userId,
-          description: `Aquisição Ativo - ${asset.name}`,
-          amount,
-          date: dateStr,
-          type: 'EXPENSE',
-          category: catName,
-          category_id: catId,
-          is_paid: true,
-          paid_amount: amount,
-          paid_at: dateStr,
-          metadata: {
-            linked_asset_id: asset.id,
-            type: 'asset_purchase',
-            isCapitalized: true
-          }
-        }]);
+      if (linkedErr) {
+        console.error('Assets: Erro ao buscar transações vinculadas para sincronização', linkedErr);
+        return;
       }
-    }
+      const linkedTxs = allLinkedTxs || [];
 
-    // 2. Liability Inflow Transactions
-    for (const liab of liabs) {
-      if (liab.is_archived || liab.totalAmount <= 0) continue;
-      
-      const hasInflowTx = linkedTxs.some((t: any) => 
-        t.liability_id === liab.id && 
-        t.metadata?.type === 'liability_inflow'
-      );
-      
-      if (!hasInflowTx) {
-        const catName = 'Empréstimos/Investimentos';
-        const catColor = 'bg-brand-50 text-brand-600';
-        const catId = await getOrCreateCategory(userId, catName, 'INCOME', catColor);
+      // 1. Asset Purchase Transactions
+      for (const asset of assets) {
+        if (asset.category === 'INVESTMENT' || asset.metadata?.isLoan || asset.is_archived) continue;
+        const amount = Number(asset.metadata?.purchaseValue) || asset.estimatedValue;
+        if (amount <= 0) continue;
         
-        let dateStr = new Date().toISOString().split('T')[0];
-        if (liab.createdAt) {
-          const sep = liab.createdAt.includes('T') ? 'T' : ' ';
-          dateStr = liab.createdAt.split(sep)[0];
-        }
-        
-        await supabase.from('transactions').insert([{
-          user_id: userId,
-          description: `Recebimento de Empréstimo/Financiamento - ${liab.name}`,
-          amount: liab.totalAmount,
-          date: dateStr,
-          type: 'INCOME',
-          category: catName,
-          category_id: catId,
-          is_paid: true,
-          paid_amount: liab.totalAmount,
-          paid_at: dateStr,
-          liability_id: liab.id,
-          metadata: {
-            liability_id: liab.id,
-            type: 'liability_inflow',
-            isCapitalized: true,
-            linked_asset_id: liab.linkedAssetId || undefined
-          }
-        }]);
-      }
-    }
-
-    // 3. Loan Asset Disbursements
-    for (const asset of assets) {
-      if (!asset.metadata?.isLoan || asset.is_archived) continue;
-      const principal = Number(asset.metadata?.loanPrincipal) || 0;
-      if (principal <= 0) continue;
-      
-      const hasDisbTx = linkedTxs.some((t: any) => 
-        t.metadata?.linked_asset_id === asset.id && 
-        t.metadata?.type === 'loan_disbursement'
-      );
-      
-      if (!hasDisbTx) {
-        const catName = 'Empréstimos/Investimentos';
-        const catColor = 'bg-brand-50 text-brand-600';
-        const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
-        const dateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
-        
-        await supabase.from('transactions').insert([{
-          user_id: userId,
-          description: `Desembolso Empréstimo Concedido - ${asset.name}`,
-          amount: principal,
-          date: dateStr,
-          type: 'EXPENSE',
-          category_id: catId,
-          category: catName,
-          is_paid: true,
-          paid_amount: principal,
-          paid_at: dateStr,
-          metadata: {
-            linked_asset_id: asset.id,
-            type: 'loan_disbursement'
-          }
-        }]);
-      }
-      
-      // Also generate pending installments if loanInstallmentsCount exists in metadata
-      const installmentsCount = Number(asset.metadata?.loanInstallmentsCount) || 0;
-      const monthlyValue = Number(asset.metadata?.loanFixedValue) || 0;
-      const dueDate = Number(asset.metadata?.loanDueDate) || 10;
-      
-      if (installmentsCount > 0 && monthlyValue > 0) {
-        const hasInstallments = linkedTxs.some((t: any) => 
+        const hasPurchaseTx = linkedTxs.some((t: any) => 
           t.metadata?.linked_asset_id === asset.id && 
-          t.metadata?.type === 'loan_installment_provision'
+          t.metadata?.type === 'asset_purchase'
         );
         
-        if (!hasInstallments) {
+        if (!hasPurchaseTx) {
+          let catName = 'Outros';
+          let catColor = 'bg-slate-50 text-slate-600';
+          if (asset.category === 'REAL_ESTATE') {
+            catName = 'Habitação';
+            catColor = 'bg-emerald-50 text-emerald-600';
+          } else if (asset.category === 'VEHICLE') {
+            catName = 'Transporte';
+            catColor = 'bg-blue-50 text-blue-600';
+          }
+          
+          const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
+          const dateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
+          
+          await supabase.from('transactions').insert([{
+            user_id: userId,
+            description: `Aquisição Ativo - ${asset.name}`,
+            amount,
+            date: dateStr,
+            type: 'EXPENSE',
+            category: catName,
+            category_id: catId,
+            is_paid: true,
+            paid_amount: amount,
+            paid_at: dateStr,
+            metadata: {
+              linked_asset_id: asset.id,
+              type: 'asset_purchase',
+              isCapitalized: true
+            }
+          }]);
+        }
+      }
+
+      // 2. Liability Inflow Transactions
+      for (const liab of liabs) {
+        if (liab.is_archived || liab.totalAmount <= 0) continue;
+        
+        const hasInflowTx = linkedTxs.some((t: any) => 
+          t.liability_id === liab.id && 
+          t.metadata?.type === 'liability_inflow'
+        );
+        
+        if (!hasInflowTx) {
           const catName = 'Empréstimos/Investimentos';
           const catColor = 'bg-brand-50 text-brand-600';
           const catId = await getOrCreateCategory(userId, catName, 'INCOME', catColor);
-          const today = new Date();
-          const futureTxs = [];
           
-          for (let i = 1; i <= installmentsCount; i++) {
-            const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDate);
-            futureTxs.push({
-              user_id: userId,
-              description: `Recebimento Parcela ${i}/${installmentsCount} - ${asset.name}`,
-              amount: monthlyValue,
-              date: txDate.toISOString().split('T')[0],
-              type: 'INCOME',
-              category: catName,
-              category_id: catId,
-              is_paid: false,
-              is_installment: true,
-              installment_number: i,
-              installment_total: installmentsCount,
-              metadata: {
-                auto_generated: true,
-                installment_number: i,
-                linked_asset_id: asset.id,
-                type: 'loan_installment_provision'
-              }
-            });
+          let dateStr = new Date().toISOString().split('T')[0];
+          if (liab.createdAt) {
+            const sep = liab.createdAt.includes('T') ? 'T' : ' ';
+            dateStr = liab.createdAt.split(sep)[0];
           }
-          await supabase.from('transactions').insert(futureTxs);
+          
+          await supabase.from('transactions').insert([{
+            user_id: userId,
+            description: `Recebimento de Empréstimo/Financiamento - ${liab.name}`,
+            amount: liab.totalAmount,
+            date: dateStr,
+            type: 'INCOME',
+            category: catName,
+            category_id: catId,
+            is_paid: true,
+            paid_amount: liab.totalAmount,
+            paid_at: dateStr,
+            metadata: {
+              type: 'liability_inflow',
+              liability_id: liab.id,
+              isCapitalized: true
+            }
+          }]);
         }
       }
+
+      // 3. Private Loan Assets (Lending Outflow & Installments)
+      for (const asset of assets) {
+        if (asset.category !== 'INVESTMENT' || !asset.metadata?.isLoan || asset.is_archived) continue;
+        
+        const principal = Number(asset.metadata?.loanPrincipal) || asset.estimatedValue;
+        if (principal <= 0) continue;
+        
+        // Disbursement/Outflow Tx
+        const hasOutflowTx = linkedTxs.some((t: any) => 
+          t.metadata?.linked_asset_id === asset.id && 
+          t.metadata?.type === 'loan_disbursement'
+        );
+        
+        if (!hasOutflowTx) {
+          const catName = 'Empréstimos/Investimentos';
+          const catColor = 'bg-brand-50 text-brand-600';
+          const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
+          
+          const dateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
+          
+          await supabase.from('transactions').insert([{
+            user_id: userId,
+            description: `Desembolso Empréstimo Concedido - ${asset.name}`,
+            amount: principal,
+            date: dateStr,
+            type: 'EXPENSE',
+            category_id: catId,
+            category: catName,
+            is_paid: true,
+            paid_amount: principal,
+            paid_at: dateStr,
+            metadata: {
+              linked_asset_id: asset.id,
+              type: 'loan_disbursement'
+            }
+          }]);
+        }
+        
+        // Also generate pending installments if loanInstallmentsCount exists in metadata
+        const installmentsCount = Number(asset.metadata?.loanInstallmentsCount) || 0;
+        const monthlyValue = Number(asset.metadata?.loanFixedValue) || 0;
+        const dueDate = Number(asset.metadata?.loanDueDate) || 10;
+        
+        if (installmentsCount > 0 && monthlyValue > 0) {
+          const hasInstallments = linkedTxs.some((t: any) => 
+            t.metadata?.linked_asset_id === asset.id && 
+            t.metadata?.type === 'loan_installment_provision'
+          );
+          
+          if (!hasInstallments) {
+            const catName = 'Empréstimos/Investimentos';
+            const catColor = 'bg-brand-50 text-brand-600';
+            const catId = await getOrCreateCategory(userId, catName, 'INCOME', catColor);
+            const today = new Date();
+            const futureTxs = [];
+            
+            for (let i = 1; i <= installmentsCount; i++) {
+              const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDate);
+              futureTxs.push({
+                user_id: userId,
+                description: `Parcela Recebimento Empréstimo (${i}/${installmentsCount}) - ${asset.name}`,
+                amount: monthlyValue,
+                date: txDate.toISOString().split('T')[0],
+                type: 'INCOME',
+                category_id: catId,
+                is_paid: false,
+                is_installment: true,
+                installment_number: i,
+                installment_total: installmentsCount,
+                metadata: {
+                  auto_generated: true,
+                  installment_number: i,
+                  linked_asset_id: asset.id,
+                  type: 'loan_installment_provision'
+                }
+              });
+            }
+            await supabase.from('transactions').insert(futureTxs);
+          }
+        }
+      }
+    } finally {
+      syncInProgress.current = false;
     }
   };
 

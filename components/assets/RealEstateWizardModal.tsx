@@ -255,7 +255,12 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         financingInstallmentsCount: parseInt(financingInstallmentsCount, 10) || 0,
         financingOriginalTotal: fundingAmount,
         financingDueDay: financingStartDate ? new Date(financingStartDate + 'T00:00:00').getDate().toString() : '10',
-        financingName: `Financiamento: ${name}`
+        financingName: `Financiamento: ${name}`,
+        valuationHistory: [{
+          date: acquisitionDate || new Date().toISOString().split('T')[0],
+          value: estimatedAmt || 0,
+          label: 'Aquisição'
+        }]
       };
 
       if (propertyStage === 'PLANTA') {
@@ -587,7 +592,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                   </div>
                </div>
 
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div className="md:col-span-2 space-y-1.5">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Nome do Imóvel / Empreendimento</label>
                     <input className="w-full h-12 px-6 bg-slate-50 border rounded-2xl font-bold text-slate-900 outline-none text-sm" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Apartamento 304 - Residencial Mirante" />
@@ -595,6 +600,10 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                   <div className="space-y-1.5">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Valor Total do Imóvel (R$)</label>
                     <input type="number" className="w-full h-12 px-6 bg-slate-50 border rounded-2xl font-bold text-slate-900 outline-none text-sm" value={estimatedValue} onChange={e => setEstimatedValue(e.target.value)} placeholder="0,00" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Data de Compra / Aquisição</label>
+                    <input type="date" className="w-full h-12 px-6 bg-slate-50 border rounded-2xl font-bold text-slate-900 outline-none text-sm" value={acquisitionDate} onChange={e => setAcquisitionDate(e.target.value)} />
                   </div>
                </div>
             </div>
