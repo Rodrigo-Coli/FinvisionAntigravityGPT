@@ -54,7 +54,29 @@ import { supabase } from '../lib/supabase/client';
 import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModal';
 import { RealEstateDetailModal } from '../components/assets/RealEstateDetailModal';
 import { DateUtils } from '../lib/dateUtils';
-import { FinancialEngine } from '../lib/financialEngine';
+import { FinancialEngine } from '../lib/financialEngine';const calculateInstallmentAmount = (
+  balance: number,
+  remaining: number,
+  ratePercent: number,
+  amortType: 'FIXED' | 'SAC' | 'PRICE'
+): number => {
+  if (balance <= 0 || remaining <= 0) return 0;
+  if (amortType === 'FIXED') {
+    return balance / remaining;
+  }
+  const i = ratePercent / 100;
+  if (i === 0) return balance / remaining;
+
+  if (amortType === 'PRICE') {
+    return balance * (i * Math.pow(1 + i, remaining)) / (Math.pow(1 + i, remaining) - 1);
+  } else if (amortType === 'SAC') {
+    // SAC 1st installment
+    const amortization = balance / remaining;
+    const interest = balance * i;
+    return amortization + interest;
+  }
+  return balance / remaining;
+};
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
@@ -442,8 +464,33 @@ const Assets: React.FC = () => {
     historicalCalculationType: 'calculated' as 'calculated' | 'direct',
     historicalInstallmentsPaid: '',
     historicalInstallmentValue: '',
-    historicalPaidAmount: ''
+    historicalPaidAmount: '',
+    amortizationType: 'FIXED' as 'FIXED' | 'SAC' | 'PRICE',
+    indexationType: 'FIXED' as 'FIXED' | 'INCC' | 'IPCA' | 'IGP-M'
   });
+
+  // Automatically calculate installment amount if parameters change and table is not FIXED
+  useEffect(() => {
+    if (liabilityFormData.amortizationType !== 'FIXED') {
+      const balance = parseFloat(liabilityFormData.remainingBalance) || 0;
+      const remaining = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
+      const rate = parseFloat(liabilityFormData.interestRate) || 0;
+      if (balance > 0 && remaining > 0) {
+        const computed = calculateInstallmentAmount(balance, remaining, rate, liabilityFormData.amortizationType);
+        if (computed > 0) {
+          setLiabilityFormData(prev => ({
+            ...prev,
+            installmentAmount: (Math.round(computed * 100) / 100).toString()
+          }));
+        }
+      }
+    }
+  }, [
+    liabilityFormData.remainingBalance,
+    liabilityFormData.installmentsRemaining,
+    liabilityFormData.interestRate,
+    liabilityFormData.amortizationType
+  ]);
 
   // Modal new transaction local form
   const [newTxForm, setNewTxForm] = useState({
@@ -3500,7 +3547,9 @@ const Assets: React.FC = () => {
         historicalCalculationType: 'calculated',
         historicalInstallmentsPaid: '',
         historicalInstallmentValue: '',
-        historicalPaidAmount: ''
+        historicalPaidAmount: '',
+        amortizationType: 'FIXED',
+        indexationType: 'FIXED'
       });
       setEditingLiability(null);
       setShowLiabilityModal(true);
@@ -4121,6 +4170,110 @@ const Assets: React.FC = () => {
     }
   };
 
+  // Helper to generate future transactions based on amortization table
+  const generateFutureTransactions = async (
+    liabilityId: string,
+    name: string,
+    remainingBal: number,
+    installmentsLeft: number,
+    dueDay: number,
+    interestRateStr: string,
+    indexationRateStr: string,
+    amortizationType: 'FIXED' | 'SAC' | 'PRICE',
+    installmentAmt: number,
+    linkedAssetId: string,
+    userId: string
+  ) => {
+    if (installmentsLeft <= 0) return;
+
+    const today = new Date();
+    const categoryName = 'Financiamento/Dívida';
+
+    const { data: existingCat } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', categoryName)
+      .single();
+
+    let catId = '';
+    if (!existingCat) {
+      const { data: c } = await supabase
+        .from('categories')
+        .insert({
+          user_id: userId,
+          name: categoryName,
+          type: 'EXPENSE',
+          color: 'bg-rose-50 text-rose-600'
+        })
+        .select('id')
+        .single();
+      if (c) catId = c.id;
+    } else {
+      catId = existingCat.id;
+    }
+
+    const futureTransactions = [];
+    const MAX_GENERATE = Math.min(installmentsLeft, 120); // Safety cap for bulk generation
+
+    const monthlyRate = (parseFloat(interestRateStr) || 0) / 100;
+    const reajusteRate = (parseFloat(indexationRateStr) || 0) / 100;
+
+    let outstandingBalance = remainingBal;
+    const sacAmortization = remainingBal / installmentsLeft;
+
+    for (let i = 1; i <= MAX_GENERATE; i++) {
+      let installmentVal = 0;
+      if (amortizationType === 'SAC') {
+        const interest = outstandingBalance * monthlyRate;
+        installmentVal = sacAmortization + interest;
+        outstandingBalance -= sacAmortization;
+      } else if (amortizationType === 'PRICE') {
+        if (monthlyRate === 0) {
+          installmentVal = remainingBal / installmentsLeft;
+        } else {
+          installmentVal = remainingBal * (monthlyRate * Math.pow(1 + monthlyRate, installmentsLeft)) / (Math.pow(1 + monthlyRate, installmentsLeft) - 1);
+        }
+      } else {
+        // FIXED
+        installmentVal = installmentAmt;
+      }
+
+      // Apply cumulative correction rate
+      const adjustedVal = Math.round(installmentVal * Math.pow(1 + reajusteRate, i) * 100) / 100;
+
+      const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
+
+      futureTransactions.push({
+        user_id: userId,
+        description: `Parcela ${i}/${installmentsLeft} (${amortizationType}) - ${name}`,
+        amount: adjustedVal,
+        date: txDate.toISOString().split('T')[0],
+        type: 'EXPENSE',
+        category: categoryName,
+        category_id: catId || null,
+        is_paid: false,
+        is_recurring: true,
+        is_installment: true,
+        installment_number: i,
+        installment_total: installmentsLeft,
+        installment_group_id: liabilityId,
+        liability_id: liabilityId,
+        metadata: {
+          auto_generated: true,
+          installment_number: i,
+          installment_group_id: liabilityId,
+          linked_asset_id: linkedAssetId || undefined,
+          amortization_type: amortizationType
+        }
+      });
+    }
+
+    if (futureTransactions.length > 0) {
+      await supabase.from('transactions').insert(futureTransactions);
+    }
+  };
+
   // Save regular liability form
   const handleSaveLiability = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -4159,6 +4312,8 @@ const Assets: React.FC = () => {
           due_day: dueDay,
           metadata: {
             ...editingLiability.metadata,
+            amortizationType: liabilityFormData.amortizationType,
+            indexationType: liabilityFormData.indexationType,
             indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
             balloons: liabilityFormData.balloons,
             propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
@@ -4175,6 +4330,28 @@ const Assets: React.FC = () => {
         const hasHistory = liabilityFormData.hasHistoricalPayments;
         const paidAmount = parseFloat(liabilityFormData.historicalPaidAmount) || 0;
         await syncHistoricalTransaction(editingLiability.id, liabilityFormData.name, hasHistory, paidAmount, user.id);
+
+        // Delete any unpaid future transactions to allow recalculating
+        await supabase
+          .from('transactions')
+          .delete()
+          .eq('liability_id', editingLiability.id)
+          .eq('is_paid', false);
+
+        // Generate updated future transactions
+        await generateFutureTransactions(
+          editingLiability.id,
+          liabilityFormData.name,
+          remainingBal,
+          installmentsLeft,
+          dueDay,
+          liabilityFormData.interestRate,
+          liabilityFormData.indexationRate,
+          liabilityFormData.amortizationType,
+          installmentAmt,
+          liabilityFormData.linkedAssetId,
+          user.id
+        );
 
         // Auto-sync names in transactions
         if (editingLiability.name !== liabilityFormData.name) {
@@ -4209,6 +4386,8 @@ const Assets: React.FC = () => {
           due_day: dueDay,
           linked_asset_id: liabilityFormData.linkedAssetId || null,
           metadata: {
+            amortizationType: liabilityFormData.amortizationType,
+            indexationType: liabilityFormData.indexationType,
             indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
             balloons: liabilityFormData.balloons,
             propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
@@ -4229,56 +4408,19 @@ const Assets: React.FC = () => {
           await syncHistoricalTransaction(liabilityId, liabilityFormData.name, hasHistory, paidAmount, user.id);
 
           // Auto-generate future pending cash flow transactions
-          if (installmentAmt > 0 && installmentsLeft > 0) {
-            const today = new Date();
-            const categoryName = 'Financiamento/Dívida';
-
-            const { data: existingCat } = await supabase.from('categories')
-              .select('id').eq('user_id', user.id).eq('name', categoryName).single();
-
-            let catId = '';
-            if (!existingCat) {
-              const { data: c } = await supabase.from('categories').insert({
-                user_id: user.id,
-                name: categoryName,
-                type: 'EXPENSE',
-                color: 'bg-rose-50 text-rose-600'
-              }).select('id').single();
-              if (c) catId = c.id;
-            } else {
-              catId = existingCat.id;
-            }
-
-            const futureTransactions = [];
-            const MAX_GENERATE = Math.min(installmentsLeft, 120); // Safety cap for bulk generation
-            for (let i = 1; i <= MAX_GENERATE; i++) {
-              const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
-              futureTransactions.push({
-                user_id: user.id,
-                description: `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
-                amount: installmentAmt,
-                date: txDate.toISOString().split('T')[0],
-                type: 'EXPENSE',
-                category: categoryName,
-                category_id: catId || null,
-                is_paid: false,
-                is_recurring: true,
-                is_installment: true,
-                installment_number: i,
-                installment_total: installmentsLeft,
-                installment_group_id: liabilityId,
-                liability_id: liabilityId,
-                metadata: {
-                  auto_generated: true,
-                  installment_number: i,
-                  installment_group_id: liabilityId,
-                  linked_asset_id: liabilityFormData.linkedAssetId || undefined
-                }
-              });
-            }
-
-            await supabase.from('transactions').insert(futureTransactions);
-          }
+          await generateFutureTransactions(
+            liabilityId,
+            liabilityFormData.name,
+            remainingBal,
+            installmentsLeft,
+            dueDay,
+            liabilityFormData.interestRate,
+            liabilityFormData.indexationRate,
+            liabilityFormData.amortizationType,
+            installmentAmt,
+            liabilityFormData.linkedAssetId,
+            user.id
+          );
         }
       }
 
@@ -4304,7 +4446,9 @@ const Assets: React.FC = () => {
         historicalCalculationType: 'calculated',
         historicalInstallmentsPaid: '',
         historicalInstallmentValue: '',
-        historicalPaidAmount: ''
+        historicalPaidAmount: '',
+        amortizationType: 'FIXED',
+        indexationType: 'FIXED'
       });
       fetchData();
     } catch (err: any) {
@@ -4335,7 +4479,9 @@ const Assets: React.FC = () => {
       historicalCalculationType: liability.metadata?.historicalCalculationType || 'calculated',
       historicalInstallmentsPaid: liability.metadata?.historicalInstallmentsPaid ? String(liability.metadata.historicalInstallmentsPaid) : '',
       historicalInstallmentValue: liability.metadata?.historicalInstallmentValue ? String(liability.metadata.historicalInstallmentValue) : '',
-      historicalPaidAmount: liability.metadata?.historicalPaidAmount ? String(liability.metadata.historicalPaidAmount) : ''
+      historicalPaidAmount: liability.metadata?.historicalPaidAmount ? String(liability.metadata.historicalPaidAmount) : '',
+      amortizationType: liability.metadata?.amortizationType || 'FIXED',
+      indexationType: liability.metadata?.indexationType || 'FIXED'
     });
     setShowLiabilityModal(true);
   };
@@ -5881,7 +6027,9 @@ const Assets: React.FC = () => {
                           historicalCalculationType: 'calculated',
                           historicalInstallmentsPaid: '',
                           historicalInstallmentValue: '',
-                          historicalPaidAmount: ''
+                          historicalPaidAmount: '',
+                          amortizationType: 'FIXED',
+                          indexationType: 'FIXED'
                         });
                         setEditingLiability(null);
                         setShowLiabilityModal(true);
@@ -7837,7 +7985,9 @@ const Assets: React.FC = () => {
                     historicalCalculationType: 'calculated',
                     historicalInstallmentsPaid: '',
                     historicalInstallmentValue: '',
-                    historicalPaidAmount: ''
+                    historicalPaidAmount: '',
+                    amortizationType: 'FIXED',
+                    indexationType: 'FIXED'
                   });
                   setEditingLiability(null);
                   setShowLiabilityModal(true);
@@ -10007,6 +10157,72 @@ const Assets: React.FC = () => {
                 </select>
               </div>
 
+              {/* Amortização & Reajuste */}
+              <div className="border-t border-b border-slate-100 py-4 space-y-4">
+                <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider">Cálculo de Amortização & Reajuste</h4>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Tabela de Amortização</label>
+                    <select
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                      value={liabilityFormData.amortizationType}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, amortizationType: e.target.value as any })}
+                    >
+                      <option value="FIXED">Fixo (Sem amortização/juros)</option>
+                      <option value="SAC">SAC (Decrescente)</option>
+                      <option value="PRICE">Price (Parcelas iguais)</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Juros (% a.m.)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      disabled={liabilityFormData.amortizationType === 'FIXED'}
+                      className={`w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none ${
+                        liabilityFormData.amortizationType === 'FIXED' ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''
+                      }`}
+                      placeholder="0.00"
+                      value={liabilityFormData.interestRate}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, interestRate: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Correção / Índice</label>
+                    <select
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
+                      value={liabilityFormData.indexationType}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, indexationType: e.target.value as any })}
+                    >
+                      <option value="FIXED">Sem reajuste (Fixo)</option>
+                      <option value="INCC">INCC</option>
+                      <option value="IPCA">IPCA</option>
+                      <option value="IGP-M">IGP-M</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Taxa Projeção (% a.m.)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      disabled={liabilityFormData.indexationType === 'FIXED'}
+                      className={`w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none ${
+                        liabilityFormData.indexationType === 'FIXED' ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''
+                      }`}
+                      placeholder="0.00"
+                      value={liabilityFormData.indexationRate}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, indexationRate: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Opção de Pagamentos Históricos Anteriores */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-3">
                 <div className="flex items-center justify-between">
@@ -10143,7 +10359,7 @@ const Assets: React.FC = () => {
                               };
                               const totalContratado = parseFloat(prev.totalAmount) || 0;
                               if (totalContratado > 0 && paidAmt > 0) {
-                                next.remainingBalance = Math.max(0, totalContratado - paidAmt).toFixed(2);
+                                  next.remainingBalance = Math.max(0, totalContratado - paidAmt).toFixed(2);
                               }
                               return next;
                             });
@@ -10207,10 +10423,18 @@ const Assets: React.FC = () => {
                     type="number"
                     min="0"
                     step="0.01"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                    readOnly={liabilityFormData.amortizationType !== 'FIXED'}
+                    className={`w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20 ${
+                      liabilityFormData.amortizationType !== 'FIXED' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                    }`}
                     value={liabilityFormData.installmentAmount}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentAmount: e.target.value })}
                   />
+                  {liabilityFormData.amortizationType !== 'FIXED' && (
+                    <span className="text-[8px] text-brand-600 font-bold block mt-0.5 leading-tight">
+                      {liabilityFormData.amortizationType === 'SAC' ? '1ª parcela (SAC decrescente)' : 'Valor base (Price)'}
+                    </span>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Parcelas Restantes</label>
@@ -10259,9 +10483,10 @@ const Assets: React.FC = () => {
                   onClick={() => {
                     const balance = parseFloat(liabilityFormData.remainingBalance) || 0;
                     const remaining = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
+                    const rate = parseFloat(liabilityFormData.interestRate) || 0;
                     if (balance > 0 && remaining > 0) {
-                      const computed = Math.round((balance / remaining) * 100) / 100;
-                      setLiabilityFormData(prev => ({ ...prev, installmentAmount: computed.toString() }));
+                      const computed = calculateInstallmentAmount(balance, remaining, rate, liabilityFormData.amortizationType);
+                      setLiabilityFormData(prev => ({ ...prev, installmentAmount: (Math.round(computed * 100) / 100).toString() }));
                     } else {
                       alert("Preencha o Saldo Devedor e a quantidade de Parcelas Restantes para calcular.");
                     }
@@ -10308,6 +10533,23 @@ const Assets: React.FC = () => {
                   Extrato e Amortização de Passivo
                 </h3>
                 <p className="text-xs text-slate-400 font-medium">{selectedLiabilityForExtrato.name}</p>
+                {selectedLiabilityForExtrato.metadata?.amortizationType && selectedLiabilityForExtrato.metadata?.amortizationType !== 'FIXED' && (
+                  <div className="flex gap-2 mt-1.5 flex-wrap">
+                    <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-bold uppercase tracking-wider">
+                      Tabela: {selectedLiabilityForExtrato.metadata.amortizationType}
+                    </span>
+                    {selectedLiabilityForExtrato.interestRate && (
+                      <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-bold uppercase tracking-wider">
+                        Juros: {selectedLiabilityForExtrato.interestRate}% a.m.
+                      </span>
+                    )}
+                    {selectedLiabilityForExtrato.metadata?.indexationType && selectedLiabilityForExtrato.metadata?.indexationType !== 'FIXED' && (
+                      <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-bold uppercase tracking-wider">
+                        Correção: {selectedLiabilityForExtrato.metadata.indexationType} ({selectedLiabilityForExtrato.metadata.indexationRate || 0}% a.m.)
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <button 
