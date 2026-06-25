@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, HashRouter } from 'react-router-dom';
 import { supabase } from './lib/supabase/client';
 import { Profile, UserRole } from './types';
+import { isAdmin } from './lib/authUtils';
 import Nav from './components/Nav';
 import BottomNav from './components/BottomNav';
 import { PushManager } from './components/PushManager';
@@ -9,20 +10,6 @@ import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { IOSInstallPrompt } from './components/IOSInstallPrompt';
 import FloatingActions from './components/FloatingActions';
 import ScrollToTop from './components/common/ScrollToTop';
-import Home from './pages/Home';
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import AdminDashboard from './pages/AdminDashboard';
-import Banking from './pages/Banking';
-import HistoryPage from './pages/History';
-import AIModule from './pages/AIModule';
-import Assets from './pages/Assets';
-import Reconcile from './pages/Reconcile';
-import SettingsPage from './pages/Settings';
-import Planning from './pages/Planning';
-import Reports from './pages/Reports';
 import { TourProvider } from './contexts/TourContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -33,18 +20,58 @@ import TrialBanner from './components/TrialBanner';
 import GracefulDowngradeBanner from './components/subscription/GracefulDowngradeBanner';
 import AccountSelectionModal from './components/subscription/AccountSelectionModal';
 import UpgradeModal from './components/UpgradeModal';
-import DemoMode from './pages/DemoMode';
 import DemoBanner from './components/DemoBanner';
-import Landing from './pages/Landing';
-import Terms from './pages/Terms';
-import Privacy from './pages/Privacy';
 import UpdateAlert from './components/UpdateAlert';
+
+// Lazy-loaded pages — carregadas só quando o usuário navega até elas
+const Home          = lazy(() => import('./pages/Home'));
+const Login         = lazy(() => import('./pages/Login'));
+const Signup        = lazy(() => import('./pages/Signup'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const Banking       = lazy(() => import('./pages/Banking'));
+const HistoryPage   = lazy(() => import('./pages/History'));
+const AIModule      = lazy(() => import('./pages/AIModule'));
+const Assets        = lazy(() => import('./pages/Assets'));
+const Reconcile     = lazy(() => import('./pages/Reconcile'));
+const SettingsPage  = lazy(() => import('./pages/Settings'));
+const Planning      = lazy(() => import('./pages/Planning'));
+const Reports       = lazy(() => import('./pages/Reports'));
+const DemoMode      = lazy(() => import('./pages/DemoMode'));
+const Landing       = lazy(() => import('./pages/Landing'));
+const Terms         = lazy(() => import('./pages/Terms'));
+const Privacy       = lazy(() => import('./pages/Privacy'));
+const PendingApproval = lazy(() => import('./pages/PendingApproval'));
 
 if (window.location.pathname === '/demo' || window.location.pathname === '/demo/') {
   window.location.replace('/#/demo');
 }
 
 const APP_VERSION = '6.2.2';
+
+// Spinner reutilizado pelo Suspense e pelo carregamento de auth
+const PageSpinner: React.FC = () => (
+  <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900">
+    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+    <p className="mt-4 text-slate-500 font-bold uppercase tracking-widest text-[10px]">Carregando FinVision Pro</p>
+  </div>
+);
+
+// Centraliza a lógica de aplicar dark mode — evita duplicação
+function applyDarkMode(forceDark: boolean, autoDark: boolean) {
+  if (forceDark) {
+    document.documentElement.classList.add('dark');
+  } else if (autoDark) {
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+}
 
 const App: React.FC = () => {
   const [profile, setProfile] = useState<Profile | null>(() => {
@@ -61,35 +88,17 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
 
-  // Initialize and listen to system preference dark mode changes
+  // Inicializa dark mode a partir do localStorage e escuta mudanças de preferência do sistema
   useEffect(() => {
-    const cachedForceDark = localStorage.getItem('finvision_dark_mode_force') === 'true';
-    const cachedAutoDark = localStorage.getItem('finvision_auto_dark_mode') === 'true';
-    
-    const applyDarkMode = (forceDark: boolean, autoDark: boolean) => {
-      if (forceDark) {
-        document.documentElement.classList.add('dark');
-      } else if (autoDark) {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (prefersDark) {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    };
-
-    applyDarkMode(cachedForceDark, cachedAutoDark);
-
+    applyDarkMode(
+      localStorage.getItem('finvision_dark_mode_force') === 'true',
+      localStorage.getItem('finvision_auto_dark_mode') === 'true'
+    );
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = () => {
-      const currentForceDark = localStorage.getItem('finvision_dark_mode_force') === 'true';
-      const currentAutoDark = localStorage.getItem('finvision_auto_dark_mode') === 'true';
-      applyDarkMode(currentForceDark, currentAutoDark);
-    };
-
+    const handleChange = () => applyDarkMode(
+      localStorage.getItem('finvision_dark_mode_force') === 'true',
+      localStorage.getItem('finvision_auto_dark_mode') === 'true'
+    );
     mediaQuery.addEventListener('change', handleChange);
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
@@ -156,25 +165,14 @@ const App: React.FC = () => {
         localStorage.setItem('finvision_cached_profile', JSON.stringify(data));
       }
 
-      // Fetch user settings to sync and apply dark mode preference
+      // Sincroniza preferência de dark mode do banco e aplica
       const { data: userSettings } = await supabase.from('user_settings').select('auto_dark_mode, dark_mode_force').eq('user_id', uid).maybeSingle();
       if (userSettings) {
         const forceDark = userSettings.dark_mode_force || false;
         const autoDark = userSettings.auto_dark_mode || false;
         localStorage.setItem('finvision_dark_mode_force', String(forceDark));
         localStorage.setItem('finvision_auto_dark_mode', String(autoDark));
-        if (forceDark) {
-          document.documentElement.classList.add('dark');
-        } else if (autoDark) {
-          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          if (prefersDark) {
-            document.documentElement.classList.add('dark');
-          } else {
-            document.documentElement.classList.remove('dark');
-          }
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
+        applyDarkMode(forceDark, autoDark);
       }
     } catch (e) {
       console.warn('Failed to fetch profile/settings (likely offline), using cached if available', e);
@@ -183,14 +181,7 @@ const App: React.FC = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-4 text-slate-500 font-bold uppercase tracking-widest text-[10px]">Carregando FinVision Pro</p>
-      </div>
-    );
-  }
+  if (loading) return <PageSpinner />;
 
   return (
     <ErrorBoundary>
@@ -219,52 +210,52 @@ const App: React.FC = () => {
                 )}
                 <main className={`flex-grow overflow-x-hidden min-w-0 flex flex-col ${session && profile ? 'main-content-safe' : ''}`}>
                   {session && profile && <DemoBanner />}
-                  <Routes>
-                    <Route path="/demo" element={<DemoMode />} />
-                    <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
-                    <Route path="/signup" element={!session ? <Signup /> : <Navigate to="/" />} />
-                    <Route path="/forgot-password" element={<ForgotPassword />} />
-                    <Route path="/reset-password" element={<ResetPassword />} />
-                    <Route path="/terms" element={<Terms />} />
-                    <Route path="/privacy" element={<Privacy />} />
+                  <Suspense fallback={<PageSpinner />}>
+                    <Routes>
+                      <Route path="/demo" element={<DemoMode />} />
+                      <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
+                      <Route path="/signup" element={!session ? <Signup /> : <Navigate to="/" />} />
+                      <Route path="/forgot-password" element={<ForgotPassword />} />
+                      <Route path="/reset-password" element={<ResetPassword />} />
+                      <Route path="/terms" element={<Terms />} />
+                      <Route path="/privacy" element={<Privacy />} />
 
-                    {!session ? (
-                      <>
-                        <Route path="/" element={<Landing />} />
-                        <Route path="*" element={<Navigate to="/" replace />} />
-                      </>
-                    ) : !profile ? (
-                      <Route path="*" element={
-                        <div className="flex h-screen items-center justify-center">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                        </div>
-                      } />
-                    ) : (
-                      <>
-                        <Route path="/" element={<Home user={profile} />} />
-                        <Route path="/banking" element={<Banking />} />
-                        <Route path="/accounts" element={<Navigate to="/banking?tab=accounts" replace />} />
-                        <Route path="/cards" element={<Navigate to="/banking?tab=cards" replace />} />
-                        <Route path="/assets" element={<Assets />} />
-                        <Route path="/planning" element={<Planning user={profile} />} />
-                        <Route path="/goals" element={<Navigate to="/planning?tab=goals" replace />} />
-                        <Route path="/budget" element={<Navigate to="/planning?tab=budget" replace />} />
-                        <Route path="/reconcile" element={<Reconcile />} />
-                        <Route path="/history" element={<HistoryPage />} />
-                        <Route path="/ai" element={<AIModule user={profile} />} />
-                        <Route path="/settings" element={<SettingsPage />} />
-                        <Route path="/reports" element={<Reports />} />
-                        {(profile.role === UserRole.ADMIN || profile.email === 'rodrigocolicg@gmail.com') && (
-                          <>
-                            <Route path="/admin" element={<AdminDashboard />} />
-                            <Route path="/admin/usuarios" element={<AdminDashboard />} />
-                            <Route path="/admin/planos" element={<AdminDashboard />} />
-                          </>
-                        )}
-                        <Route path="*" element={<Navigate to="/" replace />} />
-                      </>
-                    )}
-                  </Routes>
+                      {!session ? (
+                        <>
+                          <Route path="/" element={<Landing />} />
+                          <Route path="*" element={<Navigate to="/" replace />} />
+                        </>
+                      ) : !profile ? (
+                        <Route path="*" element={<PageSpinner />} />
+                      ) : !profile.is_approved ? (
+                        <Route path="*" element={<PendingApproval user={profile} />} />
+                      ) : (
+                        <>
+                          <Route path="/" element={<Home user={profile} />} />
+                          <Route path="/banking" element={<Banking />} />
+                          <Route path="/accounts" element={<Navigate to="/banking?tab=accounts" replace />} />
+                          <Route path="/cards" element={<Navigate to="/banking?tab=cards" replace />} />
+                          <Route path="/assets" element={<Assets />} />
+                          <Route path="/planning" element={<Planning user={profile} />} />
+                          <Route path="/goals" element={<Navigate to="/planning?tab=goals" replace />} />
+                          <Route path="/budget" element={<Navigate to="/planning?tab=budget" replace />} />
+                          <Route path="/reconcile" element={<Reconcile />} />
+                          <Route path="/history" element={<HistoryPage />} />
+                          <Route path="/ai" element={<AIModule user={profile} />} />
+                          <Route path="/settings" element={<SettingsPage />} />
+                          <Route path="/reports" element={<Reports />} />
+                          {isAdmin(profile) && (
+                            <>
+                              <Route path="/admin" element={<AdminDashboard />} />
+                              <Route path="/admin/usuarios" element={<AdminDashboard />} />
+                              <Route path="/admin/planos" element={<AdminDashboard />} />
+                            </>
+                          )}
+                          <Route path="*" element={<Navigate to="/" replace />} />
+                        </>
+                      )}
+                    </Routes>
+                  </Suspense>
                 </main>
               </div>
             </ToastProvider>

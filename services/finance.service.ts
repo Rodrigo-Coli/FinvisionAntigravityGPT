@@ -1,55 +1,6 @@
-import { supabase } from '../lib/supabase/client';
+﻿import { supabase } from '../lib/supabase/client';
 import { BankAccount, Transaction, CreditCardDetailed, Entity } from '../types';
-
-function getLevenshteinDistance(a: string, b: string): number {
-  const matrix = Array.from({ length: a.length + 1 }, () => 
-    Array.from({ length: b.length + 1 }, (_, j) => j)
-  );
-  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
-  
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      matrix[i][j] = Math.min(
-        matrix[i - 1][j] + 1, // deletion
-        matrix[i][j - 1] + 1, // insertion
-        matrix[i - 1][j - 1] + cost // substitution
-      );
-    }
-  }
-  return matrix[a.length][b.length];
-}
-
-function normalize(s: string): string {
-  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-}
-
-function findCloseMatch(input: string, list: string[]): string | null {
-  const normInput = normalize(input);
-  if (!normInput) return null;
-
-  // 1. Tenta correspondência exata sem acentos/case
-  for (const item of list) {
-    if (normalize(item) === normInput) return item;
-  }
-
-  // 2. Tenta correspondência por Levenshtein (limiar <= 2 ou 30% do tamanho)
-  let bestMatch: string | null = null;
-  let minDistance = 999;
-  
-  for (const item of list) {
-    const normItem = normalize(item);
-    const dist = getLevenshteinDistance(normInput, normItem);
-    
-    const threshold = Math.max(1, Math.min(2, Math.floor(normItem.length * 0.3)));
-    if (dist <= threshold && dist < minDistance) {
-      minDistance = dist;
-      bestMatch = item;
-    }
-  }
-
-  return bestMatch;
-}
+import { findCloseMatch } from '../lib/stringUtils';
 
 export const FinanceService = {
   // Contas
@@ -637,3 +588,4 @@ export const FinanceService = {
     await FinanceService.syncStatementToHistory(statementId);
   }
 };
+

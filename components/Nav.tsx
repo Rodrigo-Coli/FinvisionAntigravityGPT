@@ -1,14 +1,20 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, BookOpen, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown, ShieldCheck } from 'lucide-react';
-import { Profile, UserRole } from '../types';
+import { Profile } from '../types';
+import { isAdmin } from '../lib/authUtils';
 import { supabase } from '../lib/supabase/client';
 import { useTour } from '../contexts/TourContext';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 const Nav: React.FC<{ user: Profile }> = ({ user }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { startTour } = useTour();
+  const { subscription } = useSubscription();
+
+  const planLabel = subscription?.plans?.name ?? (subscription ? 'Plano Ativo' : 'Plano Gratuito');
 
   const items = [
     { label: 'Início', path: '/', icon: <Home size={20} /> },
@@ -22,9 +28,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { label: 'Ajustes', path: '/settings', icon: <Settings size={20} /> },
   ];
 
-  const isAdmin = user.role === UserRole.ADMIN || user.email === 'rodrigocolicg@gmail.com';
-
-  const adminItems = isAdmin ? [
+  const adminItems = isAdmin(user) ? [
     { label: 'Gerir Usuários', path: '/admin/usuarios', icon: <ShieldCheck size={20} /> },
     { label: 'Gerir Planos', path: '/admin/planos', icon: <Gem size={20} /> },
   ] : [];
@@ -69,7 +73,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
             </div>
             <div className="flex flex-col truncate">
               <span className="text-sm font-bold text-slate-900 truncate">{user.email.split('@')[0]}</span>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Premium Plan</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{planLabel}</span>
             </div>
           </div>
 
@@ -100,7 +104,12 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
         </Link>
 
         <div className="flex items-center gap-2">
-          <button className="p-2 text-slate-400" aria-label="Notificações" title="Notificações">
+          <button
+            className="p-2 text-slate-400 hover:text-brand-600 transition-colors"
+            aria-label="Notificações"
+            title="Configurações de Notificações"
+            onClick={() => navigate('/settings?section=notifications')}
+          >
             <Bell size={20} />
           </button>
         </div>

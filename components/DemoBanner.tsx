@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { LogOut, Sparkles, X, Check, Gift, Key, Mail, Lock, CheckSquare, Square, ChevronDown, ChevronUp, Loader2, Trophy } from 'lucide-react';
+import { LogOut, Sparkles, X, Check, Gift, Key, Mail, Lock, CheckSquare, Square, ChevronDown, ChevronUp, Loader2, Trophy, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase/client';
+import { useToast } from '../contexts/ToastContext';
 
 export default function DemoBanner() {
   const location = useLocation();
+  const { toast } = useToast();
   const [isDemo, setIsDemo] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [showPromoteModal, setShowPromoteModal] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   
   // Form state
   const [email, setEmail] = useState('');
@@ -150,8 +153,8 @@ export default function DemoBanner() {
       setIsDemo(false);
       setShowPromoteModal(false);
       
-      alert('🎉 Parabéns! Sua conta demo foi convertida com sucesso para conta real com todos os seus dados preservados!');
-      window.location.reload();
+      toast('🎉 Conta criada! Seus dados do demo foram preservados. Bem-vindo ao FinVision!', 'success');
+      setTimeout(() => window.location.reload(), 1500);
     } catch (err: any) {
       console.error('Erro na promoção de conta:', err);
       setErrorMsg(err.message || 'Ocorreu um erro ao promover a conta.');
@@ -162,22 +165,50 @@ export default function DemoBanner() {
 
   const discardDemoData = async () => {
     if (!supabase) return;
-    if (confirm('Aviso: Isso irá deslogar você e descartar todo o seu progresso na demonstração. Continuar?')) {
-      localStorage.removeItem('is_finvision_demo');
-      localStorage.removeItem('finvision_cached_profile');
-      localStorage.removeItem('finvision_demo_tasks');
-      localStorage.removeItem('finvision_demo_asked_ai');
-      try {
-        await supabase.auth.signOut();
-      } catch (e) {}
-      window.location.href = '/#/signup';
-    }
+    localStorage.removeItem('is_finvision_demo');
+    localStorage.removeItem('finvision_cached_profile');
+    localStorage.removeItem('finvision_demo_tasks');
+    localStorage.removeItem('finvision_demo_asked_ai');
+    setShowDiscardConfirm(false);
+    try { await supabase.auth.signOut(); } catch (e) {}
+    window.location.href = '/#/signup';
   };
 
   if (!isDemo) return null;
 
   return (
     <>
+      {/* Modal de confirmação para descartar demo */}
+      {showDiscardConfirm && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-white/10 rounded-[28px] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 text-slate-100">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-rose-950/40 border border-rose-900/50 flex items-center justify-center">
+                <AlertTriangle size={18} className="text-rose-400" />
+              </div>
+              <h3 className="font-black text-base">Sair do Demo?</h3>
+            </div>
+            <p className="text-sm text-slate-400 mb-6 leading-relaxed">
+              Você vai ser desconectado e todo o progresso desta sessão de demonstração será descartado.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDiscardConfirm(false)}
+                className="flex-1 py-3 rounded-xl bg-white/5 border border-white/10 text-slate-300 font-bold text-xs uppercase tracking-widest hover:bg-white/10 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={discardDemoData}
+                className="flex-1 py-3 rounded-xl bg-rose-600 text-white font-bold text-xs uppercase tracking-widest hover:bg-rose-500 transition-all"
+              >
+                Sair mesmo assim
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 1. TOP BANNER (SLIM GLASSMORPHISM WITH DYNAMIC ISLAND CONCEPT) */}
       <div className="bg-[#020617]/95 border-b border-white/10 text-white px-6 py-3 flex flex-wrap items-center justify-between gap-4 shadow-xl z-45 sticky top-0 backdrop-blur-md">
         <div className="flex items-center gap-3">
@@ -198,9 +229,9 @@ export default function DemoBanner() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button 
-            onClick={discardDemoData}
-            title="Descartar progresso e sair"
+          <button
+            onClick={() => setShowDiscardConfirm(true)}
+            title="Sair do modo demo"
             className="flex items-center justify-center p-2 rounded-xl bg-white/5 border border-white/10 hover:bg-rose-950/20 hover:border-rose-900/50 hover:text-rose-400 text-slate-400 transition-all active:scale-95"
           >
             <LogOut size={16} />

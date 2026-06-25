@@ -333,11 +333,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
   const getCardLogo = (brand: string) => {
     const b = brand.toLowerCase();
-    const fallback = <CreditCardIcon size={18} className="text-slate-400" />;
-    if (b.includes('visa')) return <img src="https://www.vectorlogo.zone/logos/visa/visa-ar21.svg" className="h-3 object-contain" alt="Visa" />;
-    if (b.includes('master')) return <img src="https://www.vectorlogo.zone/logos/mastercard/mastercard-ar21.svg" className="h-5 object-contain" alt="Mastercard" />;
-    if (b.includes('amex')) return <img src="https://www.vectorlogo.zone/logos/amex/amex-ar21.svg" className="h-4 object-contain" alt="Amex" />;
-    return fallback;
+    if (b.includes('visa')) return <img src="/logos/visa.svg" className="h-3 object-contain" alt="Visa" />;
+    if (b.includes('master')) return <img src="/logos/mastercard.svg" className="h-5 object-contain" alt="Mastercard" />;
+    if (b.includes('amex')) return <img src="/logos/amex.svg" className="h-4 object-contain" alt="Amex" />;
+    return <CreditCardIcon size={18} className="text-slate-400" />;
   };
 
   if (isLoading) {

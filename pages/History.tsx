@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, FileDown, Loader2, AlertCircle, Check, RefreshCw, Calendar, Tag, Landmark, User, ArrowRight, Trash, X, Sparkles, Clock } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -10,56 +10,8 @@ import { HistoryUtils, EPS } from '../lib/historyUtils';
 import { DateUtils } from '../lib/dateUtils';
 import { FinanceService } from '../services/finance.service';
 import { ReconciliationService } from '../services/reconciliation.service';
-
-function getLevenshteinDistance(a: string, b: string): number {
-  const matrix = Array.from({ length: a.length + 1 }, () => 
-    Array.from({ length: b.length + 1 }, (_, j) => j)
-  );
-  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
-  
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      matrix[i][j] = Math.min(
-        matrix[i - 1][j] + 1, // deletion
-        matrix[i][j - 1] + 1, // insertion
-        matrix[i - 1][j - 1] + cost // substitution
-      );
-    }
-  }
-  return matrix[a.length][b.length];
-}
-
-function normalizeStr(s: string): string {
-  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-}
-
-function findCloseMatch(input: string, list: string[]): string | null {
-  const normInput = normalizeStr(input);
-  if (!normInput) return null;
-
-  // 1. Tenta correspondência exata sem acentos/case
-  for (const item of list) {
-    if (normalizeStr(item) === normInput) return item;
-  }
-
-  // 2. Tenta correspondência por Levenshtein (limiar <= 2 ou 30% do tamanho)
-  let bestMatch: string | null = null;
-  let minDistance = 999;
-  
-  for (const item of list) {
-    const normItem = normalizeStr(item);
-    const dist = getLevenshteinDistance(normInput, normItem);
-    
-    const threshold = Math.max(1, Math.min(2, Math.floor(normItem.length * 0.3)));
-    if (dist <= threshold && dist < minDistance) {
-      minDistance = dist;
-      bestMatch = item;
-    }
-  }
-
-  return bestMatch;
-}
+import { findCloseMatch } from '../lib/stringUtils';
+import { useToast } from '../contexts/ToastContext';
 
 // Modular Components
 import { HistoryFilters } from '../components/history/HistoryFilters';
@@ -223,6 +175,7 @@ const getQueryParam = (name: string): string | null => {
 };
 
 const HistoryPage: React.FC = () => {
+  const { toast } = useToast();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [showComparison, setShowComparison] = useState(false);
@@ -507,7 +460,9 @@ const HistoryPage: React.FC = () => {
 
   const fetchData = useCallback(async (isSilent: boolean = false) => {
     const requestId = ++lastRequestId.current;
-    if (!isSilent && !localStorage.getItem(`finvision_cached_raw_txs_${supabase.auth.session?.()?.user?.id || ''}`)) {
+    // Verifica se existe cache de transações para qualquer usuário (chave dinâmica por user ID)
+    const hasAnyCachedTxs = Object.keys(localStorage).some(k => k.startsWith('finvision_cached_raw_txs_'));
+    if (!isSilent && !hasAnyCachedTxs) {
       setIsLoading(true);
     }
     setError(null);
@@ -1082,7 +1037,7 @@ const HistoryPage: React.FC = () => {
       }
 
       if (!navigator.onLine && confirmedScope && confirmedScope !== 'ONLY_THIS') {
-        alert("Atenção: Edição de histórico em série (Múltiplos Lançamentos) está indisponível offline.");
+        toast("Edição em série indisponível offline.", 'warning');
         return;
       }
 
@@ -1347,7 +1302,7 @@ const HistoryPage: React.FC = () => {
         if (field === 'account_id' && tx.accountId !== value) await supabase.rpc('recalculate_account_balance', { p_account_id: tx.accountId });
       }
     } catch (err) {
-      alert('Erro ao salvar alteração');
+      toast('Erro ao salvar alteração. Tente novamente.', 'error');
     } finally {
       setSavingId(null);
       setEditingRow(null);
@@ -1369,7 +1324,7 @@ const HistoryPage: React.FC = () => {
     if (!confirmedScope && !window.confirm('Excluir transação?')) return;
 
     if (!navigator.onLine && confirmedScope && confirmedScope !== 'ONLY_THIS') {
-      alert("Atenção: Exclusão em série (Múltiplos Lançamentos) está indisponível offline.");
+      toast("Exclusão em série indisponível offline.", 'warning');
       return;
     }
 
@@ -1475,7 +1430,7 @@ const HistoryPage: React.FC = () => {
 
       await fetchData();
     } catch (err) {
-      alert('Erro ao excluir');
+      toast('Erro ao excluir. Tente novamente.', 'error');
     } finally {
       setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' });
     }
@@ -1499,7 +1454,7 @@ const HistoryPage: React.FC = () => {
         ));
       }
     } catch (err: any) {
-      alert(`Erro ao fazer upload: ${err.message}`);
+      toast(`Erro ao fazer upload: ${err.message}`, 'error');
     } finally {
       setSavingId(null);
     }
@@ -1520,7 +1475,7 @@ const HistoryPage: React.FC = () => {
           : t
       ));
     } catch (err: any) {
-      alert(`Erro ao excluir anexo: ${err.message}`);
+      toast(`Erro ao excluir anexo: ${err.message}`, 'error');
     } finally {
       setTimeout(() => setSavingId(null), 500);
     }
@@ -1532,10 +1487,10 @@ const HistoryPage: React.FC = () => {
       if (url) {
         window.open(url, '_blank');
       } else {
-        alert('Anexo não encontrado');
+        toast('Anexo não encontrado.', 'error');
       }
     } catch (err: any) {
-      alert(`Erro ao abrir anexo: ${err.message}`);
+      toast(`Erro ao abrir anexo: ${err.message}`, 'error');
     }
   };
 
@@ -1591,7 +1546,7 @@ const HistoryPage: React.FC = () => {
   const handleSmartCategorize = async () => {
     if (selectedIds.size === 0 || !supabase) return;
     if (!navigator.onLine) {
-      alert("Auto-Categorizar por IA exige conexão com a internet.");
+      toast("Categorização por IA requer conexão com a internet.", 'warning');
       return;
     }
 
@@ -1602,14 +1557,14 @@ const HistoryPage: React.FC = () => {
       const uniqueDescriptions = Array.from(new Set(needsCategory.map(t => t.description)));
 
       if (uniqueDescriptions.length === 0) {
-        alert("As transações selecionadas já possuem categorias específicas definidas. Selecione transações sem categoria.");
+        toast("Transações selecionadas já possuem categorias. Selecione outras.", 'info');
         return;
       }
 
       const res = await fetch('/api/categorize-transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descriptions: uniqueDescriptions, categories: subcategories })
+        body: JSON.stringify({ descriptions: uniqueDescriptions, categories: availableCategories })
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.message);
@@ -1628,10 +1583,10 @@ const HistoryPage: React.FC = () => {
 
       await fetchData();
       setSelectedIds(new Set());
-      alert(`IA categorizou ${updatedCount} transações aplicando seus padrões.`);
+      toast(`IA categorizou ${updatedCount} transação(ões) com sucesso.`, 'success');
     } catch (err: any) {
       console.error(err);
-      alert("Erro na IA: " + err.message);
+      toast("Erro na IA: " + err.message, 'error');
     } finally {
       setIsCategorizingAI(false);
     }
@@ -1641,12 +1596,12 @@ const HistoryPage: React.FC = () => {
     if (selectedIds.size === 0 || !supabase) return;
 
     if (!navigator.onLine) {
-      alert("A edição em lote está indisponível sem conexão com a internet.");
+      toast("Edição em lote indisponível sem conexão.", 'warning');
       return;
     }
 
     if (!bulkDescription && !bulkAccount && !bulkCategory && !bulkOwner) {
-      return alert("Preencha ao menos um campo para editar em lote.");
+      { toast("Preencha ao menos um campo para editar em lote.", 'warning'); return; };
     }
 
     if (!window.confirm(`Deseja atualizar ${selectedIds.size} lançamentos?`)) return;
@@ -1716,9 +1671,9 @@ const HistoryPage: React.FC = () => {
       await fetchData();
       setSelectedIds(new Set());
       setBulkDescription(''); setBulkAccount(''); setBulkCategory(''); setBulkSubcategory(''); setBulkOwner(''); setBulkCounterAccount('');
-      alert("Lote atualizado com sucesso!");
+      toast("Lote atualizado com sucesso!", 'success');
     } catch (err) {
-      alert("Erro ao atualizar lote");
+      toast("Erro ao atualizar lote. Tente novamente.", 'error');
     } finally {
       setIsBulkUpdating(false);
     }
@@ -1728,7 +1683,7 @@ const HistoryPage: React.FC = () => {
     if (selectedIds.size === 0 || !supabase) return;
 
     if (!navigator.onLine) {
-      alert("A exclusão em lote está indisponível sem conexão com a internet.");
+      toast('A exclusão em lote está indisponível sem conexão com a internet.', 'warning');
       return;
     }
 
@@ -1737,14 +1692,23 @@ const HistoryPage: React.FC = () => {
     setIsBulkUpdating(true);
     try {
       const ids = Array.from(selectedIds);
-      const { error: err } = await supabase.from('transactions').update({ is_deleted: true }).in('id', ids);
-      if (err) throw err;
+      const cardIds = ids.filter(id => transactions.find(t => t.id === id)?.metadata?.is_card);
+      const bankIds = ids.filter(id => !transactions.find(t => t.id === id)?.metadata?.is_card);
+
+      if (bankIds.length > 0) {
+        const { error: err } = await supabase.from('transactions').update({ is_deleted: true }).in('id', bankIds);
+        if (err) throw err;
+      }
+      if (cardIds.length > 0) {
+        const { error: errCard } = await supabase.from('card_transactions').delete().in('id', cardIds);
+        if (errCard) throw errCard;
+      }
 
       await fetchData();
       setSelectedIds(new Set());
-      alert("Lançamentos excluídos com sucesso!");
+      toast(`${ids.length} lançamento(s) excluído(s) com sucesso.`, 'success');
     } catch (err) {
-      alert("Erro ao excluir lote");
+      toast('Erro ao excluir lote. Tente novamente.', 'error');
     } finally {
       setIsBulkUpdating(false);
     }
@@ -2178,7 +2142,7 @@ const HistoryPage: React.FC = () => {
       if (!user) return;
       await supabase.from('categories').insert({ user_id: user.id, name, type, color: 'bg-brand-50 text-brand-600' });
       await fetchData(); // Refetch the list
-    } catch (err) { alert('Erro ao criar categoria inline'); }
+    } catch (err) { toast('Erro ao criar categoria inline.', 'error'); }
   };
 
   const fetchSlotTotals = async (start: string, end: string) => {
@@ -2876,7 +2840,7 @@ const HistoryPage: React.FC = () => {
             }
             await supabase.rpc('recalculate_account_balance', { p_account_id: t.accountId });
             await fetchData();
-          } catch (e) { console.error(e); alert('Erro ao reabrir'); }
+          } catch (e) { console.error(e); toast('Erro ao reabrir. Tente novamente.', 'error'); }
         }}
       />
 
@@ -2952,3 +2916,6 @@ const HistoryPage: React.FC = () => {
 };
 
 export default HistoryPage;
+
+
+

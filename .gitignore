@@ -1,0 +1,48 @@
+# Dependências
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+build/
+.output/
+
+# Variáveis de ambiente — NUNCA commitar
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel/
+
+# Claude Code
+.claude/settings.local.json
+
+# Logs
+*.log
+npm-debug.log*
+error.log
+error2.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Arquivos temporários de desenvolvimento
+keys.txt
+query_out.txt
+pdf_output.txt
+import_log.txt
+all_files.txt
+filenames_only.txt
+files_list.txt
+files_to_deploy.txt
+pages_list.txt
+
+# Imagens de teste
+test_5050.png

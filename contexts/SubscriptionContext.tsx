@@ -45,36 +45,40 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       return;
     }
     setLoadingSub(true);
-    const { data: subData } = await supabase
-      .from('subscriptions')
-      .select('*, plans(*)')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    
-    if (subData) {
-      const isTrialExpired = subData.status === 'trialing' && subData.trial_ends_at && new Date(subData.trial_ends_at) < new Date();
-      if (subData.status === 'past_due' || subData.status === 'canceled' || isTrialExpired) {
-        // Fetch Starter plan limits
-        const { data: starterPlan } = await supabase
-          .from('plans')
-          .select('*')
-          .eq('slug', 'starter')
-          .maybeSingle();
-        
-        if (starterPlan) {
-          subData.plans = {
-            name: starterPlan.name,
-            features: starterPlan.features,
-            price_cents: starterPlan.price_cents,
-            ai_scans_limit: starterPlan.ai_scans_limit,
-          };
+    try {
+      const { data: subData } = await supabase
+        .from('subscriptions')
+        .select('*, plans(*)')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (subData) {
+        const isTrialExpired = subData.status === 'trialing' && subData.trial_ends_at && new Date(subData.trial_ends_at) < new Date();
+        if (subData.status === 'past_due' || subData.status === 'canceled' || isTrialExpired) {
+          const { data: starterPlan } = await supabase
+            .from('plans')
+            .select('*')
+            .eq('slug', 'starter')
+            .maybeSingle();
+          if (starterPlan) {
+            subData.plans = {
+              name: starterPlan.name,
+              features: starterPlan.features,
+              price_cents: starterPlan.price_cents,
+              ai_scans_limit: starterPlan.ai_scans_limit,
+            };
+          }
         }
+        setSubscription(subData);
+      } else {
+        setSubscription(null);
       }
-      setSubscription(subData);
-    } else {
+    } catch (err) {
+      console.warn('Falha ao buscar assinatura, continuando sem dados de plano:', err);
       setSubscription(null);
+    } finally {
+      setLoadingSub(false);
     }
-    setLoadingSub(false);
   };
 
   useEffect(() => {

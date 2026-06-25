@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, Landmark, CreditCard, History, FileCheck, Plus, ShieldCheck, X, DollarSign, Building2, Target, PieChart, Gem } from 'lucide-react';
-import { Profile, UserRole } from '../types';
+import { Profile } from '../types';
+import { isAdmin } from '../lib/authUtils';
 
 interface BottomNavProps {
   user: Profile;
@@ -12,7 +13,6 @@ const BottomNav: React.FC<BottomNavProps> = ({ user }) => {
   const navigate = useNavigate();
   const [isQuickOpen, setIsQuickOpen] = useState(false);
 
-  const isAdmin = user.role === UserRole.ADMIN || user.email === 'rodrigocolicg@gmail.com';
   const prefs = user.preferences || {};
   const rawVisibleItems = prefs.bottom_nav_items || ['home', 'accounts', 'cards', 'history', 'reconcile'];
   const mappedVisibleItems = rawVisibleItems.map((i: string) => {
@@ -32,7 +32,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ user }) => {
     { id: 'assets', label: 'Patrimônio', path: '/assets', icon: <Building2 size={20} /> },
     { id: 'planning', label: 'Planejamento', path: '/planning', icon: <Target size={20} /> },
     { id: 'reconcile', label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },
-    { id: 'saas', label: 'Vip Plan', path: '/admin/planos', icon: <Gem size={20} /> },
+    ...(isAdmin(user) ? [{ id: 'saas', label: 'Admin', path: '/admin/planos', icon: <Gem size={20} /> }] : []),
   ];
 
   const filteredItems = allItems.filter(i => visibleItems.includes(i.id));

@@ -50,6 +50,28 @@ export default function DemoMode() {
         console.warn('Erro populando dados demo. Ambiente será carregado vazio:', rpcError);
       }
 
+      // Garante que o usuário demo tenha plano Starter para limites ficarem definidos
+      try {
+        const { data: starterPlan } = await supabase
+          .from('plans')
+          .select('id')
+          .eq('slug', 'starter')
+          .maybeSingle();
+
+        if (starterPlan) {
+          await supabase.from('subscriptions').upsert({
+            user_id: signUpData.user.id,
+            plan_id: starterPlan.id,
+            status: 'active',
+            billing_period: 'monthly',
+            current_period_start: new Date().toISOString(),
+            current_period_end: null
+          }, { onConflict: 'user_id' });
+        }
+      } catch (subErr) {
+        console.warn('Não foi possível criar assinatura demo:', subErr);
+      }
+
       localStorage.setItem('is_finvision_demo', 'true');
       
       // Dá tempo do banco finalizar os triggers de accounts/profiles de entrada
