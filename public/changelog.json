@@ -1,27 +1,40 @@
 {
-  "version": "2026.06.22.1930",
-  "title": "Filtros de Contas e Lançamentos",
-  "date": "22/06/2026",
+  "version": "2026.06.25.0100",
+  "title": "Acesso Livre, App Mais Rápido e Correções",
+  "date": "25/06/2026",
   "benefits": [
     {
-      "title": "Filtros de Contas Customizáveis",
-      "desc": "Por padrão, apenas contas que somam no saldo consolidado vêm selecionadas. Há um novo controle em Ajustes para alterar essa preferência.",
+      "title": "Cadastro Sem Burocracia",
+      "desc": "Quem se cadastra agora entra direto no FinVision, sem precisar esperar aprovação de ninguém. Simples como deveria ser desde o início.",
       "type": "feature"
     },
     {
-      "title": "Lançamento de Cartão Facilitado",
-      "desc": "O campo categoria em lançamentos manuais de cartão agora é autocompletar e permite criar novas categorias inline (+ Nova).",
+      "title": "App Abre Muito Mais Rápido",
+      "desc": "Cada tela agora só carrega quando você vai até ela — não tudo de uma vez. Você vai sentir a diferença, especialmente em celulares mais simples.",
+      "type": "performance"
+    },
+    {
+      "title": "Lançamentos Apagados de Verdade",
+      "desc": "Selecionar e excluir vários lançamentos ao mesmo tempo agora funciona certo — inclusive os do cartão de crédito, que antes ficavam esquecidos no banco.",
+      "type": "precisao"
+    },
+    {
+      "title": "Seu Plano Aparece Certinho",
+      "desc": "A barra lateral agora mostra o seu plano real — Gratuito, Essencial, Plus ou Pro. Antes aparecia 'Premium Plan' fixo para todo mundo, independente do plano.",
       "type": "ux"
     },
     {
-      "title": "Histórico Direto por Conta",
-      "desc": "O ícone de histórico em Contas agora redireciona com o filtro da conta correta e selecionando o mês atual de forma precisa.",
-      "type": "precision"
+      "title": "Notificações Elegantes, Sem Interrupção",
+      "desc": "Os avisos de sucesso e erro agora aparecem como uma notificação discreta no canto da tela e somem sozinhos. Sem mais popups que travam tudo.",
+      "type": "usabilidade"
     }
   ],
   "changes": [
-    "**Ajustes e Preferências:** Adicionado interruptor para incluir ou ignorar contas não-cumulativas por padrão nos filtros e relatórios.",
-    "**Categorias de Cartão:** Implementado autocompletar e resolução automática de strings para chaves UUID no lançamento manual de cartão.",
-    "**Filtros da URL:** Correção de condição de corrida na inicialização do histórico a partir da URL e remoção do intervalo forçado de 10 anos."
+    "**Cadastro Aberto:** Novos usuários entram direto — sem esperar aprovação de administrador. O plano Gratuito é criado automaticamente.",
+    "**Velocidade:** O app carrega cada tela separadamente, economizando memória e deixando tudo mais fluido.",
+    "**Exclusão em Lote:** Deletar vários lançamentos juntos agora apaga corretamente tanto os bancários quanto os de cartão.",
+    "**IA de Categorização:** Corrigido o envio de dados para a inteligência artificial — as sugestões de categoria agora são mais precisas.",
+    "**Logos dos Cartões:** Visa, Mastercard e Amex agora ficam guardados no próprio app, sem depender de sites externos que podiam falhar.",
+    "**Demo com Plano Definido:** Usuários do modo demonstração agora têm plano definido desde o início, sem inconsistências."
   ]
 }
