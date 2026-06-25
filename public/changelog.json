@@ -1,5 +1,5 @@
 {
-  "version": "2026.06.25.0100",
+  "version": "2026.06.25.0200",
   "title": "Acesso Livre, App Mais Rápido e Correções",
   "date": "25/06/2026",
   "benefits": [
@@ -20,7 +20,7 @@
     },
     {
       "title": "Seu Plano Aparece Certinho",
-      "desc": "A barra lateral agora mostra o seu plano real — Gratuito, Essencial, Plus ou Pro. Antes aparecia 'Premium Plan' fixo para todo mundo, independente do plano.",
+      "desc": "A barra lateral agora mostra o seu plano real — Gratuito, Essencial, Plus ou Pro. Antes aparecia 'Premium Plan' fixo para todo mundo.",
       "type": "ux"
     },
     {
@@ -34,7 +34,7 @@
     "**Velocidade:** O app carrega cada tela separadamente, economizando memória e deixando tudo mais fluido.",
     "**Exclusão em Lote:** Deletar vários lançamentos juntos agora apaga corretamente tanto os bancários quanto os de cartão.",
     "**IA de Categorização:** Corrigido o envio de dados para a inteligência artificial — as sugestões de categoria agora são mais precisas.",
-    "**Logos dos Cartões:** Visa, Mastercard e Amex agora ficam guardados no próprio app, sem depender de sites externos que podiam falhar.",
+    "**Logos dos Cartões:** Visa, Mastercard e Amex agora ficam guardados no próprio app, sem depender de sites externos.",
     "**Demo com Plano Definido:** Usuários do modo demonstração agora têm plano definido desde o início, sem inconsistências."
   ]
 }
