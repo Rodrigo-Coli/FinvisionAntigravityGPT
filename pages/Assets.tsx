@@ -7126,6 +7126,261 @@ const Assets: React.FC = () => {
                   const fixedVal = Number(meta.loanFixedValue) || 0;
                   const isOpenBalance = meta.loanType === 'OPEN_BALANCE';
 
+                  // ── Gera extrato completo em HTML e abre para impressão / PDF ──
+                  const handleGeneratePDF = () => {
+                    const payments = getAssetLinkedTransactions(loan.id)
+                      .filter((t: any) => t.type === 'INCOME')
+                      .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                    const monthlyRate = rate / 100;
+                    const dailyRate = meta.loanInterestType === 'COMPOUND'
+                      ? Math.pow(1 + monthlyRate, 1 / 30) - 1
+                      : monthlyRate / 30;
+
+                    const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+                    const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+
+                    // Constrói as linhas da tabela de evolução
+                    type Row = { date: string; days: number; interest: number; payment: number; balance: number; label: string };
+                    const rows: Row[] = [];
+                    const startDate = meta.acquisitionDate || loan.acquisitionDate || new Date().toISOString().split('T')[0];
+                    let balance = principal;
+                    let lastDate = startDate;
+                    rows.push({ date: startDate, days: 0, interest: 0, payment: 0, balance: principal, label: 'Concessão do empréstimo' });
+
+                    for (const pmt of payments) {
+                      const pmtDate = pmt.date?.split('T')[0] || pmt.date;
+                      const msA = new Date(lastDate + 'T12:00:00').getTime();
+                      const msB = new Date(pmtDate + 'T12:00:00').getTime();
+                      const days = Math.max(0, Math.round((msB - msA) / 86400000));
+                      const interest = meta.loanInterestType === 'COMPOUND'
+                        ? balance * (Math.pow(1 + dailyRate, days) - 1)
+                        : balance * dailyRate * days;
+                      balance = Math.max(0, balance + interest - Number(pmt.amount));
+                      rows.push({ date: pmtDate, days, interest, payment: Number(pmt.amount), balance, label: 'Pagamento recebido' });
+                      lastDate = pmtDate;
+                    }
+
+                    // Linha de hoje
+                    const today = new Date().toISOString().split('T')[0];
+                    if (today !== lastDate) {
+                      const msA = new Date(lastDate + 'T12:00:00').getTime();
+                      const msB = new Date(today + 'T12:00:00').getTime();
+                      const days = Math.max(0, Math.round((msB - msA) / 86400000));
+                      const interest = meta.loanInterestType === 'COMPOUND'
+                        ? balance * (Math.pow(1 + dailyRate, days) - 1)
+                        : balance * dailyRate * days;
+                      balance += interest;
+                      rows.push({ date: today, days, interest, payment: 0, balance: Math.max(0, balance), label: 'Saldo em aberto hoje' });
+                    }
+
+                    const totalPaid = payments.reduce((s: number, p: any) => s + Number(p.amount), 0);
+                    const totalInterest = rows.slice(1).reduce((s, r) => s + r.interest, 0);
+                    const currentBalance = rows[rows.length - 1]?.balance ?? 0;
+                    const pctPaid = principal > 0 ? Math.min(100, (totalPaid / (principal + totalInterest)) * 100) : 0;
+                    const refNum = `FV-${loan.id.slice(0, 8).toUpperCase()}`;
+
+                    const rowsHTML = rows.map((r, i) => {
+                      const isFirst = i === 0;
+                      const isLast = i === rows.length - 1;
+                      const bg = isLast ? '#fefce8' : isFirst ? '#f0fdf4' : i % 2 === 0 ? '#ffffff' : '#f8fafc';
+                      const balanceColor = isLast ? '#d97706' : '#1e293b';
+                      return `
+                        <tr style="background:${bg};">
+                          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:${isLast?700:400};color:${isLast?'#92400e':'#334155'}">${fmtDate(r.date)}</td>
+                          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b">${r.days > 0 ? r.days + 'd' : '—'}</td>
+                          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;color:${r.interest > 0 ? '#b45309' : '#94a3b8'}">${r.interest > 0 ? fmt(r.interest) : '—'}</td>
+                          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;color:${r.payment > 0 ? '#16a34a' : '#94a3b8'};font-weight:${r.payment > 0 ? 700 : 400}">${r.payment > 0 ? fmt(r.payment) : '—'}</td>
+                          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700;color:${balanceColor}">${fmt(r.balance)}</td>
+                          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#94a3b8;font-size:10px">${r.label}</td>
+                        </tr>
+                      `;
+                    }).join('');
+
+                    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Extrato de Empréstimo — ${loan.name}</title>
+<style>
+  @page { margin: 18mm 20mm; size: A4; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1e293b; font-size: 12px; line-height: 1.6; background: white; }
+  @media screen { body { max-width: 900px; margin: 0 auto; padding: 32px; } }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 20px; border-bottom: 3px solid #1e293b; margin-bottom: 28px; }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-box { width: 44px; height: 44px; background: #1e293b; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-style: italic; font-size: 18px; line-height:1; }
+  .logo-text { font-size: 20px; font-weight: 900; color: #1e293b; }
+  .logo-sub { font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+  .doc-info { text-align: right; }
+  .doc-title { font-size: 18px; font-weight: 900; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em; }
+  .doc-ref { font-size: 10px; color: #94a3b8; margin-top: 4px; }
+  .section { margin-bottom: 24px; }
+  .section-title { font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.15em; color: #94a3b8; margin-bottom: 10px; border-left: 3px solid #6366f1; padding-left: 8px; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .info-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; }
+  .info-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; color: #94a3b8; }
+  .info-value { font-size: 14px; font-weight: 700; color: #1e293b; margin-top: 2px; }
+  .balance-box { background: #fffbeb; border: 2px solid #fbbf24; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px; }
+  .balance-label { font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.15em; color: #92400e; }
+  .balance-value { font-size: 36px; font-weight: 900; color: #78350f; margin-top: 6px; }
+  .balance-date { font-size: 11px; color: #b45309; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  thead th { background: #1e293b; color: white; padding: 10px 12px; text-align: left; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; }
+  thead th:not(:first-child) { text-align: right; }
+  thead th:last-child { text-align: left; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .summary-item { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; }
+  .summary-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; }
+  .summary-value { font-size: 15px; font-weight: 900; margin-top: 4px; }
+  .progress-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+  .progress-fill { height: 100%; background: #22c55e; border-radius: 4px; }
+  .footer { border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: 24px; display: flex; justify-content: space-between; align-items: center; }
+  .footer-left { font-size: 10px; color: #94a3b8; }
+  .footer-right { font-size: 10px; color: #94a3b8; text-align: right; }
+  .badge { display: inline-block; background: #f0fdf4; border: 1px solid #86efac; color: #16a34a; border-radius: 20px; padding: 2px 10px; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; }
+  @media print { .no-print { display: none !important; } }
+</style>
+</head>
+<body>
+  <!-- BOTÃO IMPRIMIR (visível só na tela) -->
+  <div class="no-print" style="margin-bottom:24px;display:flex;gap:12px;align-items:center;">
+    <button onclick="window.print()" style="background:#1e293b;color:white;border:none;padding:12px 28px;border-radius:10px;font-weight:900;font-size:13px;cursor:pointer;text-transform:uppercase;letter-spacing:0.08em;">
+      ⬇ Salvar / Imprimir PDF
+    </button>
+    <span style="font-size:12px;color:#94a3b8;">Selecione "Salvar como PDF" na janela de impressão</span>
+  </div>
+
+  <!-- CABEÇALHO -->
+  <div class="header">
+    <div class="logo">
+      <div class="logo-box">FV</div>
+      <div>
+        <div class="logo-text">FinVision Pro</div>
+        <div class="logo-sub">Gestão Financeira Inteligente</div>
+      </div>
+    </div>
+    <div class="doc-info">
+      <div class="doc-title">Extrato de Empréstimo</div>
+      <div class="doc-ref">Ref.: ${refNum}</div>
+      <div class="doc-ref">Emitido em: ${fmtDate(today)}</div>
+    </div>
+  </div>
+
+  <!-- DADOS DO EMPRÉSTIMO -->
+  <div class="section">
+    <div class="section-title">Dados do Empréstimo</div>
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">Identificação</div>
+        <div class="info-value">${loan.name}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Devedor</div>
+        <div class="info-value">${meta.loanDebtor || 'Não informado'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Valor Principal</div>
+        <div class="info-value">${fmt(principal)}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Data de Concessão</div>
+        <div class="info-value">${fmtDate(startDate)}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Taxa de Juros</div>
+        <div class="info-value">${rate > 0 ? rate + '% a.m.' : fmt(fixedVal) + ' fixo/mês'} (${meta.loanInterestType === 'COMPOUND' ? 'Compostos' : 'Simples'})</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Modelo</div>
+        <div class="info-value">${isOpenBalance ? 'Conta Corrente — Amortizável' : 'Parcelado Fixo'}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SALDO ATUAL -->
+  <div class="balance-box">
+    <div class="balance-label">⚡ Valor em Aberto em ${fmtDate(today)}</div>
+    <div class="balance-value">${fmt(currentBalance)}</div>
+    <div class="balance-date">Juros calculados pro-rata até hoje (${meta.loanInterestType === 'COMPOUND' ? 'taxa diária composta' : 'taxa diária simples'})</div>
+  </div>
+
+  <!-- RESUMO FINANCEIRO -->
+  <div class="section">
+    <div class="section-title">Resumo Financeiro</div>
+    <div class="summary-grid">
+      <div class="summary-item">
+        <div class="summary-label">Principal</div>
+        <div class="summary-value" style="color:#1e293b">${fmt(principal)}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Juros Acumulados</div>
+        <div class="summary-value" style="color:#b45309">${fmt(totalInterest)}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Total Recebido</div>
+        <div class="summary-value" style="color:#16a34a">${fmt(totalPaid)}</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pctPaid.toFixed(1)}%"></div></div>
+        <div style="font-size:9px;color:#94a3b8;margin-top:4px">${pctPaid.toFixed(1)}% quitado</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Saldo Devedor</div>
+        <div class="summary-value" style="color:${currentBalance > 0 ? '#d97706' : '#16a34a'}">${fmt(currentBalance)}</div>
+        ${currentBalance < 0.01 ? '<div class="badge">Quitado</div>' : ''}
+      </div>
+    </div>
+  </div>
+
+  <!-- TABELA DE EVOLUÇÃO -->
+  <div class="section">
+    <div class="section-title">Evolução Detalhada — Período a Período</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th style="text-align:center">Dias</th>
+          <th style="text-align:right">Juros do período</th>
+          <th style="text-align:right">Pagamento</th>
+          <th style="text-align:right">Saldo</th>
+          <th>Evento</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHTML}
+      </tbody>
+    </table>
+    <div style="font-size:10px;color:#94a3b8;font-style:italic;">
+      * Os juros de cada período são calculados sobre o saldo devedor do início do período, pela taxa diária ${meta.loanInterestType === 'COMPOUND' ? 'composta' : 'simples'} equivalente a ${rate}% a.m.
+      ${isOpenBalance ? 'Os pagamentos reduzem diretamente o saldo devedor a partir da data em que foram realizados.' : ''}
+    </div>
+  </div>
+
+  <!-- RODAPÉ -->
+  <div class="footer">
+    <div class="footer-left">
+      <strong>FinVision Pro</strong> — Documento gerado automaticamente<br>
+      Este extrato é apenas informativo e não constitui título executivo.
+    </div>
+    <div class="footer-right">
+      Ref.: ${refNum}<br>
+      Emissão: ${fmtDate(today)}
+    </div>
+  </div>
+
+  <script>
+    // Auto-print ao abrir (comentar se quiser ver antes)
+    // window.onload = () => setTimeout(() => window.print(), 500);
+  </script>
+</body>
+</html>`;
+
+                    const win = window.open('', '_blank');
+                    if (win) {
+                      win.document.write(html);
+                      win.document.close();
+                    }
+                  };
+
                   // Pagamentos vinculados a este empréstimo (via linkedTransactionsMap)
                   const loanPayments = getAssetLinkedTransactions(loan.id)
                     .filter((t: any) => t.type === 'INCOME')
@@ -7302,6 +7557,44 @@ const Assets: React.FC = () => {
                             <Plus size={12} /> Registrar Pagamento
                           </button>
                         )}
+
+                        {/* PDF e WhatsApp — disponível para empréstimos Conta Corrente */}
+                        {isOpenBalance && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              onClick={handleGeneratePDF}
+                              className="py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                              title="Gerar extrato PDF completo com evolução de pagamentos"
+                            >
+                              <FileSpreadsheet size={12} /> Extrato PDF
+                            </button>
+                            <button
+                              onClick={() => {
+                                // Calcula saldo atual para a mensagem do WhatsApp
+                                const pmts = getAssetLinkedTransactions(loan.id).filter((t: any) => t.type === 'INCOME');
+                                const totalPaid = pmts.reduce((s: number, p: any) => s + Number(p.amount), 0);
+                                const fmtW = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+                                const msg = encodeURIComponent(
+                                  `🔔 *FinVision Pro — Extrato de Empréstimo*\n\n` +
+                                  `Olá, ${meta.loanDebtor || 'prezado(a)'}!\n\n` +
+                                  `Segue o resumo do seu empréstimo:\n` +
+                                  `📋 *${loan.name}*\n` +
+                                  `💰 Principal: ${fmtW(principal)}\n` +
+                                  `📈 Taxa: ${rate}% a.m. (${meta.loanInterestType === 'COMPOUND' ? 'Compostos' : 'Simples'})\n` +
+                                  `✅ Total pago: ${fmtW(totalPaid)}\n` +
+                                  `📅 Atualizado em: ${new Date().toLocaleDateString('pt-BR')}\n\n` +
+                                  `_Extrato gerado pelo FinVision Pro_`
+                                );
+                                window.open(`https://wa.me/?text=${msg}`, '_blank');
+                              }}
+                              className="py-2.5 bg-[#25D366] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#128C7E] transition-colors flex items-center justify-center gap-1.5"
+                              title="Enviar resumo por WhatsApp"
+                            >
+                              <HandCoins size={12} /> WhatsApp
+                            </button>
+                          </div>
+                        )}
+
                         <div className="flex justify-between items-center">
                           {!isOpenBalance && (
                             <button
