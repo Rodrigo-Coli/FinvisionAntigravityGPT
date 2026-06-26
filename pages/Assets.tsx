@@ -259,6 +259,8 @@ const Assets: React.FC = () => {
   const [showRealEstateManageModal, setShowRealEstateManageModal] = useState(false);
   const [selectedAssetForExtrato, setSelectedAssetForExtrato] = useState<PhysicalAsset | null>(null);
   const [selectedLiabilityForExtrato, setSelectedLiabilityForExtrato] = useState<Liability | null>(null);
+  const [liabilityExtratoTxs, setLiabilityExtratoTxs] = useState<any[]>([]);
+  const [liabilityExtratoLoading, setLiabilityExtratoLoading] = useState(false);
   const [showExtratoModal, setShowExtratoModal] = useState(false);
   const [isAddingExtratoTx, setIsAddingExtratoTx] = useState(false);
   const [isAddingLiabilityTx, setIsAddingLiabilityTx] = useState(false);
@@ -782,6 +784,15 @@ const Assets: React.FC = () => {
     fetchData();
   }, []);
 
+  // Busca extrato completo quando liability é selecionada (direto do banco, sem limitação de paginação)
+  useEffect(() => {
+    if (selectedLiabilityForExtrato?.id) {
+      fetchLiabilityExtratoTxs(selectedLiabilityForExtrato.id);
+    } else {
+      setLiabilityExtratoTxs([]);
+    }
+  }, [selectedLiabilityForExtrato?.id]);
+
   // Filter out archived
   const activePhysicalAssets = useMemo(() => physicalAssets.filter(p => !p.is_archived), [physicalAssets]);
   const displayOtherPhysicalAssets = useMemo(() => {
@@ -1104,6 +1115,25 @@ const Assets: React.FC = () => {
   // Liability helpers
   const getLiabilityLinkedTransactions = (liabilityId: string) => {
     return transactions.filter(t => t.liability_id === liabilityId);
+  };
+
+  // Busca TODAS as transações de uma liability direto do banco (sem limitação de paginação do state)
+  const fetchLiabilityExtratoTxs = async (liabilityId: string) => {
+    if (!supabase) return;
+    setLiabilityExtratoLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('liability_id', liabilityId)
+        .eq('is_deleted', false)
+        .order('date', { ascending: true });
+      if (!error && data) setLiabilityExtratoTxs(data);
+    } catch (e) {
+      console.warn('fetchLiabilityExtratoTxs error:', e);
+    } finally {
+      setLiabilityExtratoLoading(false);
+    }
   };
 
   const getLiabilityFinancialHistory = (liability: Liability) => {
@@ -11043,43 +11073,112 @@ const Assets: React.FC = () => {
                   </form>
                 )}
 
-                {/* Ledger entries list */}
+                {/* Ledger entries list — usa fetch direto do banco (sem limitação de paginação) */}
                 <div className="space-y-3">
-                  {getLiabilityLinkedTransactions(selectedLiabilityForExtrato.id).map(tx => (
-                    <div key={tx.id} className="flex justify-between items-center bg-slate-50 border border-slate-100 p-4 rounded-xl group hover:border-slate-200 transition-all">
-                      <div className="space-y-1">
-                        <p className="text-xs font-bold text-slate-800 flex items-center gap-2">
-                          {tx.description}
-                          {tx.metadata?.is_historical && (
-                            <span className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-[7px] font-black uppercase tracking-wider">Histórico</span>
-                          )}
-                        </p>
-                        <p className="text-xs text-slate-400 font-medium">
-                          {new Date(tx.date).toLocaleDateString('pt-BR')} • {tx.category}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-xs font-black text-rose-500">
-                          -{formatCurrency(tx.amount)}
-                        </span>
-                        <button
-                          onClick={() => handleDeleteLiabilityTransaction(tx.id, tx.amount)}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-600 transition-all print:hidden"
-                          aria-label={`Excluir lançamento de ${tx.description}`}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                  {liabilityExtratoLoading ? (
+                    <div className="flex justify-center py-8"><Loader2 className="animate-spin text-brand-500" size={24} /></div>
+                  ) : (() => {
+                    const allTxs = liabilityExtratoTxs.length > 0 ? liabilityExtratoTxs : getLiabilityLinkedTransactions(selectedLiabilityForExtrato.id);
 
-                  {getLiabilityLinkedTransactions(selectedLiabilityForExtrato.id).length === 0 && (
-                    <div className="text-center py-10 border-2 border-dashed border-slate-100 rounded-2xl">
-                      <History size={36} className="mx-auto text-slate-300 mb-2" />
-                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Nenhum pagamento registrado</p>
-                      <p className="text-[10px] text-slate-400 mt-1">Lançamentos de amortização aparecerão aqui.</p>
-                    </div>
-                  )}
+                    // Separa lançamentos históricos (contrato anterior) das parcelas do contrato atual
+                    const historicalTxs = allTxs.filter(tx =>
+                      tx.metadata?.is_historical ||
+                      tx.description?.includes('Histórico') ||
+                      tx.description?.includes('Recebimento de Empréstimo') ||
+                      (tx.is_paid && !tx.description?.includes('(SAC)') && !tx.description?.includes('Parcela'))
+                    );
+                    const installmentTxs = allTxs.filter(tx => !historicalTxs.includes(tx));
+                    const paidInstallments = installmentTxs.filter(tx => tx.is_paid);
+                    const pendingInstallments = installmentTxs.filter(tx => !tx.is_paid);
+
+                    if (allTxs.length === 0) return (
+                      <div className="text-center py-10 border-2 border-dashed border-slate-100 rounded-2xl">
+                        <History size={36} className="mx-auto text-slate-300 mb-2" />
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Nenhum pagamento registrado</p>
+                        <p className="text-[10px] text-slate-400 mt-1">Lançamentos de amortização aparecerão aqui.</p>
+                      </div>
+                    );
+
+                    return (
+                      <div className="space-y-4">
+                        {/* Bloco: Contrato Anterior (registros históricos) */}
+                        {historicalTxs.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="flex-1 h-px bg-slate-100" />
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2 py-1 bg-slate-50 rounded-lg border border-slate-100">
+                                Contrato Anterior — Amortização Histórica
+                              </span>
+                              <div className="flex-1 h-px bg-slate-100" />
+                            </div>
+                            {historicalTxs.map(tx => (
+                              <div key={tx.id} className="flex justify-between items-center bg-slate-50 border border-slate-100 p-3 rounded-xl group hover:border-slate-200 transition-all mb-2">
+                                <div className="space-y-0.5">
+                                  <p className="text-xs font-bold text-slate-600">{tx.description}</p>
+                                  <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('pt-BR')} • Contrato anterior</p>
+                                </div>
+                                <span className="text-xs font-black text-slate-500">{formatCurrency(tx.amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Bloco: Parcelas do Contrato Atual — pagas */}
+                        {paidInstallments.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="flex-1 h-px bg-emerald-100" />
+                              <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest px-2 py-1 bg-emerald-50 rounded-lg border border-emerald-100">
+                                Contrato Atual — Pagas ({paidInstallments.length})
+                              </span>
+                              <div className="flex-1 h-px bg-emerald-100" />
+                            </div>
+                            {paidInstallments.map(tx => (
+                              <div key={tx.id} className="flex justify-between items-center bg-emerald-50/50 border border-emerald-100 p-3 rounded-xl group hover:border-emerald-200 transition-all mb-2">
+                                <div className="space-y-0.5">
+                                  <p className="text-xs font-bold text-slate-800">{tx.description}</p>
+                                  <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('pt-BR')} • {tx.category}</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-xs font-black text-rose-500">-{formatCurrency(tx.amount)}</span>
+                                  <button onClick={() => handleDeleteLiabilityTransaction(tx.id, tx.amount)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-600 transition-all print:hidden" aria-label={`Excluir ${tx.description}`}>
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Bloco: Parcelas do Contrato Atual — pendentes */}
+                        {pendingInstallments.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="flex-1 h-px bg-slate-100" />
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2 py-1 bg-slate-50 rounded-lg border border-slate-100">
+                                Contrato Atual — Pendentes ({pendingInstallments.length} parcelas)
+                              </span>
+                              <div className="flex-1 h-px bg-slate-100" />
+                            </div>
+                            {pendingInstallments.map(tx => (
+                              <div key={tx.id} className="flex justify-between items-center bg-white border border-slate-100 p-3 rounded-xl group hover:border-slate-200 transition-all mb-2">
+                                <div className="space-y-0.5">
+                                  <p className="text-xs font-bold text-slate-800">{tx.description}</p>
+                                  <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('pt-BR')} • Vencimento</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-xs font-black text-slate-500">-{formatCurrency(tx.amount)}</span>
+                                  <button onClick={() => handleDeleteLiabilityTransaction(tx.id, tx.amount)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-600 transition-all print:hidden" aria-label={`Excluir ${tx.description}`}>
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
