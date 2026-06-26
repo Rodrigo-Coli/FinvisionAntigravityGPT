@@ -41,14 +41,7 @@ export const CardList: React.FC<CardListProps> = ({
     });
 
     const getCardLogo = (brand: string, isSelected: boolean) => {
-        const b = brand.toLowerCase();
-        const fallback = <CreditCard size={15} className={isSelected ? "text-white/60" : "text-slate-400"} />;
-
-        if (b.includes('visa')) return <img src="https://www.vectorlogo.zone/logos/visa/visa-ar21.svg" className="h-3.5 object-contain" alt="Visa" onError={(e) => (e.currentTarget.style.display = 'none')} />;
-        if (b.includes('master')) return <img src="https://www.vectorlogo.zone/logos/mastercard/mastercard-ar21.svg" className="h-5 object-contain" alt="Mastercard" onError={(e) => (e.currentTarget.style.display = 'none')} />;
-        if (b.includes('amex')) return <img src="https://www.vectorlogo.zone/logos/amex/amex-ar21.svg" className="h-3.5 object-contain" alt="Amex" onError={(e) => (e.currentTarget.style.display = 'none')} />;
-
-        return fallback;
+        return <CreditCard size={15} className={isSelected ? "text-white/60" : "text-slate-400"} />;
     };
 
     return (
