@@ -53,12 +53,13 @@ import { PhysicalAsset, InvestmentBroker, Liability, Transaction } from '../type
 import { supabase } from '../lib/supabase/client';
 import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModal';
 import { RealEstateDetailModal } from '../components/assets/RealEstateDetailModal';
+import ConsortiumSection from '../components/assets/ConsortiumSection';
 import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities'>('overview');
+  const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities' | 'consortiums'>('overview');
   const [allAccounts, setAllAccounts] = useState<any[]>([]);
   const [collapsedBrokers, setCollapsedBrokers] = useState<Record<string, boolean>>({});
   const [showResgateModal, setShowResgateModal] = useState(false);
@@ -5203,6 +5204,7 @@ const Assets: React.FC = () => {
           { id: 'vehicles', label: 'Veículos', icon: <Car size={16} /> },
           { id: 'investments', label: 'Investimentos', icon: <TrendingUp size={16} /> },
           { id: 'loans', label: 'Empréstimos Concedidos', icon: <HandCoins size={16} /> },
+          { id: 'consortiums', label: 'Consórcios', icon: <Layers size={16} /> },
           { id: 'liabilities', label: 'Passivos (Dívidas)', icon: <Landmark size={16} /> },
           { id: 'physical', label: 'Outros Ativos Físicos', icon: <Box size={16} /> }
         ].map((tab) => (
@@ -8046,6 +8048,11 @@ const Assets: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* CONSORTIUMS VIEW */}
+        {activeView === 'consortiums' && (
+          <ConsortiumSection />
         )}
 
         {/* LIABILITIES VIEW */}
