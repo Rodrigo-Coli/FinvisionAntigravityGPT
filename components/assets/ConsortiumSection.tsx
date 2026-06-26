@@ -36,6 +36,7 @@ interface Consortium {
   intended_asset_description: string | null;
   intended_asset_value: number | null;
   notes: string | null;
+  liability_id: string | null;
   metadata: Record<string, any>;
   created_at: string;
 }
@@ -164,23 +165,40 @@ const ConsortiumWizard: React.FC<{
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error('Sessão expirada.');
+      const uid = session.user.id;
 
+      // ── Cálculo dos valores mensais ──────────────────────────────────────
+      const carta     = parseFloat(form.credit_letter_value) || 0;
+      const n         = parseInt(form.total_months) || 1;
+      const paidN     = parseInt(form.months_paid) || 0;
+      const adminPct  = parseFloat(form.admin_fee_pct) || 0;
+      const frPct     = parseFloat(form.reserve_fund_pct) || 0;
+      const seguro    = parseFloat(form.insurance_monthly_amount) || 0;
+
+      const quotaM    = carta / n;
+      const adminM    = carta * (adminPct / 100) / n;
+      const frM       = carta * (frPct / 100) / n;
+      const totalM    = Math.round((quotaM + adminM + frM + seguro) * 100) / 100;
+
+      const remaining = Math.max(0, carta - paidN * quotaM);
+
+      // ── Payload do consórcio ─────────────────────────────────────────────
       const payload: any = {
-        user_id: session.user.id,
+        user_id: uid,
         name: form.name.trim(),
         administrator_name: form.administrator_name.trim() || '',
         group_number: form.group_number.trim() || '',
         quota_number: form.quota_number.trim() || '',
-        credit_letter_value: parseFloat(form.credit_letter_value) || 0,
+        credit_letter_value: carta,
         credit_letter_index: form.credit_letter_index,
         asset_category: form.asset_category || null,
-        total_months: parseInt(form.total_months) || 0,
-        months_paid: parseInt(form.months_paid) || 0,
+        total_months: n,
+        months_paid: paidN,
         start_date: form.start_date,
         assembly_day: form.assembly_day ? parseInt(form.assembly_day) : null,
-        admin_fee_pct: parseFloat(form.admin_fee_pct) || 0,
-        reserve_fund_pct: parseFloat(form.reserve_fund_pct) || 0,
-        insurance_monthly_amount: parseFloat(form.insurance_monthly_amount) || 0,
+        admin_fee_pct: adminPct,
+        reserve_fund_pct: frPct,
+        insurance_monthly_amount: seguro,
         status: form.status,
         contemplated_at: form.contemplated_at || null,
         contemplation_method: form.contemplation_method || 'UNKNOWN',
@@ -191,15 +209,109 @@ const ConsortiumWizard: React.FC<{
         updated_at: new Date().toISOString()
       };
 
+      let consortiumId = editing?.id || '';
+
       if (editing) {
-        const { error } = await supabase.from('consortiums').update(payload).eq('id', editing.id).eq('user_id', session.user.id);
+        // ── EDIÇÃO ──────────────────────────────────────────────────────────
+        const { error } = await supabase.from('consortiums').update(payload).eq('id', editing.id).eq('user_id', uid);
         if (error) throw error;
+
+        // Atualiza a liability vinculada se existir
+        if (editing.metadata?.liability_id) {
+          await supabase.from('liabilities').update({
+            total_amount: carta,
+            remaining_balance: remaining,
+            installment_amount: totalM,
+            installments_remaining: Math.max(0, n - paidN),
+            updated_at: new Date().toISOString()
+          }).eq('id', editing.metadata.liability_id).eq('user_id', uid);
+        }
+
         toast('Consórcio atualizado!', 'success');
       } else {
-        const { error } = await supabase.from('consortiums').insert({ ...payload, created_at: new Date().toISOString() });
-        if (error) throw error;
-        toast('Consórcio cadastrado com sucesso!', 'success');
+        // ── CRIAÇÃO ─────────────────────────────────────────────────────────
+        // 1. Cria a liability (aparece em Passivos e nos cálculos financeiros)
+        const liabPayload = {
+          user_id: uid,
+          name: form.name.trim(),
+          type: 'CONSORTIUM',
+          total_amount: carta,
+          remaining_balance: remaining,
+          installment_amount: totalM,
+          installments_remaining: Math.max(0, n - paidN),
+          interest_rate: 0,
+          due_day: form.assembly_day || null,
+          metadata: {
+            consortium_type: form.asset_category,
+            admin_fee_pct: adminPct,
+            reserve_fund_pct: frPct,
+            monthly_breakdown: { quota: quotaM, admin: adminM, fr: frM, insurance: seguro }
+          },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        const { data: liabData, error: liabErr } = await supabase
+          .from('liabilities').insert(liabPayload).select('id').single();
+        if (liabErr) throw liabErr;
+        const liabilityId = liabData.id;
+
+        // 2. Cria o consórcio com liability_id vinculado
+        const { data: consData, error: consErr } = await supabase
+          .from('consortiums')
+          .insert({ ...payload, liability_id: liabilityId, created_at: new Date().toISOString() })
+          .select('id').single();
+        if (consErr) throw consErr;
+        consortiumId = consData.id;
+
+        // 3. Gera todas as transações mensais (aparece no Histórico/Transações)
+        const startDate = new Date(form.start_date + 'T12:00:00');
+        const installments: any[] = [];
+
+        for (let i = 0; i < n; i++) {
+          const d = new Date(startDate);
+          d.setMonth(d.getMonth() + i);
+          const dateStr = d.toISOString().split('T')[0];
+          const isPaid  = i < paidN;
+
+          installments.push({
+            user_id: uid,
+            date: dateStr,
+            description: `Parcela ${i + 1}/${n} (Consórcio) - ${form.name.trim()}`,
+            amount: totalM,
+            type: 'EXPENSE',
+            category: 'Consórcio',
+            subcategory: form.asset_category === 'REAL_ESTATE' ? 'Consórcio Imóvel' : form.asset_category === 'VEHICLE' ? 'Consórcio Veículo' : 'Consórcio',
+            is_paid: isPaid,
+            paid_amount: isPaid ? totalM : 0,
+            paid_at: isPaid ? dateStr : null,
+            is_deleted: false,
+            is_installment: true,
+            installment_number: i + 1,
+            installment_total: n,
+            liability_id: liabilityId,
+            consortium_id: consortiumId,
+            metadata: {
+              consortium_id: consortiumId,
+              installment_number: i + 1,
+              installment_total: n,
+              components: { quota: quotaM, admin_fee: adminM, reserve_fund: frM, insurance: seguro },
+              is_consortium_installment: true,
+              auto_generated: true
+            }
+          });
+        }
+
+        // Insere em lotes de 50
+        for (let i = 0; i < installments.length; i += 50) {
+          const batch = installments.slice(i, i + 50);
+          const { error: txErr } = await supabase.from('transactions').insert(batch);
+          if (txErr) console.warn('Erro ao inserir lote de transações:', txErr.message);
+        }
+
+        toast(`Consórcio cadastrado! ${n} parcelas geradas no histórico.`, 'success');
       }
+
       onSaved();
     } catch (err: any) {
       toast(`Erro: ${err.message}`, 'error');
@@ -679,12 +791,33 @@ const ConsortiumSection: React.FC = () => {
 
   const handleDelete = async (c: Consortium) => {
     if (!supabase) return;
-    const { error } = await supabase.from('consortiums').delete().eq('id', c.id);
-    if (!error) {
-      toast(`Consórcio "${c.name}" removido.`, 'success');
-      fetchConsortiums();
-    } else {
-      toast(`Erro: ${error.message}`, 'error');
+    try {
+      // Remove transações geradas pelo consórcio (soft delete)
+      await supabase.from('transactions')
+        .update({ is_deleted: true })
+        .eq('consortium_id', c.id)
+        .eq('is_paid', false);
+
+      // Remove a liability vinculada (se existir e não tiver histórico de pagamentos reais)
+      const liabId = (c as any).liability_id;
+      if (liabId) {
+        const { data: paidTxs } = await supabase.from('transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('liability_id', liabId)
+          .eq('is_paid', true)
+          .eq('is_deleted', false);
+        if (!paidTxs || (paidTxs as any).length === 0) {
+          await supabase.from('liabilities').delete().eq('id', liabId);
+        }
+      }
+
+      const { error } = await supabase.from('consortiums').delete().eq('id', c.id);
+      if (!error) {
+        toast(`Consórcio "${c.name}" e suas parcelas removidos.`, 'success');
+        fetchConsortiums();
+      } else throw error;
+    } catch (err: any) {
+      toast(`Erro: ${err.message}`, 'error');
     }
     setConfirmDelete(null);
   };
