@@ -5943,10 +5943,10 @@ const Assets: React.FC = () => {
                       <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
                         <span><span aria-hidden="true" className="mr-1">💳</span>Consórcios Ativos</span>
                         <button
-                          onClick={() => setActiveView('liabilities')}
+                          onClick={() => setActiveView('consortiums')}
                           className="text-xs text-brand-600 hover:underline font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                         >
-                          Ver Detalhes →
+                          Gerenciar →
                         </button>
                       </p>
                       <div className="space-y-2">
