@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -54,33 +54,10 @@ import { supabase } from '../lib/supabase/client';
 import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModal';
 import { RealEstateDetailModal } from '../components/assets/RealEstateDetailModal';
 import { DateUtils } from '../lib/dateUtils';
-import { FinancialEngine } from '../lib/financialEngine';const calculateInstallmentAmount = (
-  balance: number,
-  remaining: number,
-  ratePercent: number,
-  amortType: 'FIXED' | 'SAC' | 'PRICE'
-): number => {
-  if (balance <= 0 || remaining <= 0) return 0;
-  if (amortType === 'FIXED') {
-    return balance / remaining;
-  }
-  const i = ratePercent / 100;
-  if (i === 0) return balance / remaining;
-
-  if (amortType === 'PRICE') {
-    return balance * (i * Math.pow(1 + i, remaining)) / (Math.pow(1 + i, remaining) - 1);
-  } else if (amortType === 'SAC') {
-    // SAC 1st installment
-    const amortization = balance / remaining;
-    const interest = balance * i;
-    return amortization + interest;
-  }
-  return balance / remaining;
-};
+import { FinancialEngine } from '../lib/financialEngine';
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
-  const syncInProgress = useRef(false);
   const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities'>('overview');
   const [allAccounts, setAllAccounts] = useState<any[]>([]);
   const [collapsedBrokers, setCollapsedBrokers] = useState<Record<string, boolean>>({});
@@ -306,6 +283,15 @@ const Assets: React.FC = () => {
     return ['Joias', 'Relógio de Luxo', 'Obra de Arte', 'Consórcio', 'Equipamento', 'Colecionável'];
   });
 
+  // Modal de registro de pagamento (modelo Conta Corrente)
+  const [loanPaymentModal, setLoanPaymentModal] = useState<{
+    loan: any;
+    amount: string;
+    date: string;
+    accountId: string;
+    isSubmitting: boolean;
+  } | null>(null);
+
   // Form States
   const [editingAsset, setEditingAsset] = useState<PhysicalAsset | null>(null);
   const [loanFormData, setLoanFormData] = useState({
@@ -352,6 +338,7 @@ const Assets: React.FC = () => {
     rentalDate: new Date().toISOString().split('T')[0],
     // Loan assets
     isLoan: false,
+    loanType: 'INSTALLMENTS' as 'INSTALLMENTS' | 'OPEN_BALANCE',
     loanPrincipal: '',
     loanInterestType: 'SIMPLE' as 'SIMPLE' | 'COMPOUND',
     loanInterestRate: '',
@@ -465,33 +452,8 @@ const Assets: React.FC = () => {
     historicalCalculationType: 'calculated' as 'calculated' | 'direct',
     historicalInstallmentsPaid: '',
     historicalInstallmentValue: '',
-    historicalPaidAmount: '',
-    amortizationType: 'FIXED' as 'FIXED' | 'SAC' | 'PRICE',
-    indexationType: 'FIXED' as 'FIXED' | 'INCC' | 'IPCA' | 'IGP-M'
+    historicalPaidAmount: ''
   });
-
-  // Automatically calculate installment amount if parameters change and table is not FIXED
-  useEffect(() => {
-    if (liabilityFormData.amortizationType !== 'FIXED') {
-      const balance = parseFloat(liabilityFormData.remainingBalance) || 0;
-      const remaining = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
-      const rate = parseFloat(liabilityFormData.interestRate) || 0;
-      if (balance > 0 && remaining > 0) {
-        const computed = calculateInstallmentAmount(balance, remaining, rate, liabilityFormData.amortizationType);
-        if (computed > 0) {
-          setLiabilityFormData(prev => ({
-            ...prev,
-            installmentAmount: (Math.round(computed * 100) / 100).toString()
-          }));
-        }
-      }
-    }
-  }, [
-    liabilityFormData.remainingBalance,
-    liabilityFormData.installmentsRemaining,
-    liabilityFormData.interestRate,
-    liabilityFormData.amortizationType
-  ]);
 
   // Modal new transaction local form
   const [newTxForm, setNewTxForm] = useState({
@@ -1331,189 +1293,184 @@ const Assets: React.FC = () => {
 
   const runAutoTransactionSync = async (userId: string, assets: any[], liabs: any[], txs: any[]) => {
     if (!supabase) return;
-    if (syncInProgress.current) return;
-    syncInProgress.current = true;
-    try {
-      // Busca todas as transações (incluindo deletadas) para auditar corretamente e evitar duplicar/recriar deletadas
-      const { data: allLinkedTxs, error: linkedErr } = await supabase
-        .from('transactions')
-        .select('id, metadata, liability_id, is_deleted')
-        .eq('user_id', userId);
+    
+    // Busca todas as transações (incluindo deletadas) para auditar corretamente e evitar duplicar/recriar deletadas
+    const { data: allLinkedTxs, error: linkedErr } = await supabase
+      .from('transactions')
+      .select('id, metadata, liability_id, is_deleted')
+      .eq('user_id', userId);
 
-      if (linkedErr) {
-        console.error('Assets: Erro ao buscar transações vinculadas para sincronização', linkedErr);
-        return;
-      }
-      const linkedTxs = allLinkedTxs || [];
+    if (linkedErr) {
+      console.error('Assets: Erro ao buscar transações vinculadas para sincronização', linkedErr);
+      return;
+    }
+    const linkedTxs = allLinkedTxs || [];
 
-      // 1. Asset Purchase Transactions
-      for (const asset of assets) {
-        if (asset.category === 'INVESTMENT' || asset.metadata?.isLoan || asset.is_archived) continue;
-        const amount = Number(asset.metadata?.purchaseValue) || asset.estimatedValue;
-        if (amount <= 0) continue;
-        
-        const hasPurchaseTx = linkedTxs.some((t: any) => 
-          t.metadata?.linked_asset_id === asset.id && 
-          t.metadata?.type === 'asset_purchase'
-        );
-        
-        if (!hasPurchaseTx) {
-          let catName = 'Outros';
-          let catColor = 'bg-slate-50 text-slate-600';
-          if (asset.category === 'REAL_ESTATE') {
-            catName = 'Habitação';
-            catColor = 'bg-emerald-50 text-emerald-600';
-          } else if (asset.category === 'VEHICLE') {
-            catName = 'Transporte';
-            catColor = 'bg-blue-50 text-blue-600';
-          }
-          
-          const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
-          const dateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
-          
-          await supabase.from('transactions').insert([{
-            user_id: userId,
-            description: `Aquisição Ativo - ${asset.name}`,
-            amount,
-            date: dateStr,
-            type: 'EXPENSE',
-            category: catName,
-            category_id: catId,
-            is_paid: true,
-            paid_amount: amount,
-            paid_at: dateStr,
-            metadata: {
-              linked_asset_id: asset.id,
-              type: 'asset_purchase',
-              isCapitalized: true
-            }
-          }]);
+    // 1. Asset Purchase Transactions
+    for (const asset of assets) {
+      if (asset.category === 'INVESTMENT' || asset.metadata?.isLoan || asset.is_archived) continue;
+      const amount = Number(asset.metadata?.purchaseValue) || asset.estimatedValue;
+      if (amount <= 0) continue;
+      
+      const hasPurchaseTx = linkedTxs.some((t: any) => 
+        t.metadata?.linked_asset_id === asset.id && 
+        t.metadata?.type === 'asset_purchase'
+      );
+      
+      if (!hasPurchaseTx) {
+        let catName = 'Outros';
+        let catColor = 'bg-slate-50 text-slate-600';
+        if (asset.category === 'REAL_ESTATE') {
+          catName = 'Habitação';
+          catColor = 'bg-emerald-50 text-emerald-600';
+        } else if (asset.category === 'VEHICLE') {
+          catName = 'Transporte';
+          catColor = 'bg-blue-50 text-blue-600';
         }
-      }
-
-      // 2. Liability Inflow Transactions
-      for (const liab of liabs) {
-        if (liab.is_archived || liab.totalAmount <= 0) continue;
         
-        const hasInflowTx = linkedTxs.some((t: any) => 
-          t.liability_id === liab.id && 
-          t.metadata?.type === 'liability_inflow'
+        const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
+        const dateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
+        
+        await supabase.from('transactions').insert([{
+          user_id: userId,
+          description: `Aquisição Ativo - ${asset.name}`,
+          amount,
+          date: dateStr,
+          type: 'EXPENSE',
+          category: catName,
+          category_id: catId,
+          is_paid: true,
+          paid_amount: amount,
+          paid_at: dateStr,
+          metadata: {
+            linked_asset_id: asset.id,
+            type: 'asset_purchase',
+            isCapitalized: true
+          }
+        }]);
+      }
+    }
+
+    // 2. Liability Inflow Transactions
+    for (const liab of liabs) {
+      if (liab.is_archived || liab.totalAmount <= 0) continue;
+      
+      const hasInflowTx = linkedTxs.some((t: any) => 
+        t.liability_id === liab.id && 
+        t.metadata?.type === 'liability_inflow'
+      );
+      
+      if (!hasInflowTx) {
+        const catName = 'Empréstimos/Investimentos';
+        const catColor = 'bg-brand-50 text-brand-600';
+        const catId = await getOrCreateCategory(userId, catName, 'INCOME', catColor);
+        
+        let dateStr = new Date().toISOString().split('T')[0];
+        if (liab.createdAt) {
+          const sep = liab.createdAt.includes('T') ? 'T' : ' ';
+          dateStr = liab.createdAt.split(sep)[0];
+        }
+        
+        await supabase.from('transactions').insert([{
+          user_id: userId,
+          description: `Recebimento de Empréstimo/Financiamento - ${liab.name}`,
+          amount: liab.totalAmount,
+          date: dateStr,
+          type: 'INCOME',
+          category: catName,
+          category_id: catId,
+          is_paid: true,
+          paid_amount: liab.totalAmount,
+          paid_at: dateStr,
+          liability_id: liab.id,
+          metadata: {
+            liability_id: liab.id,
+            type: 'liability_inflow',
+            isCapitalized: true,
+            linked_asset_id: liab.linkedAssetId || undefined
+          }
+        }]);
+      }
+    }
+
+    // 3. Loan Asset Disbursements
+    for (const asset of assets) {
+      if (!asset.metadata?.isLoan || asset.is_archived) continue;
+      const principal = Number(asset.metadata?.loanPrincipal) || 0;
+      if (principal <= 0) continue;
+      
+      const hasDisbTx = linkedTxs.some((t: any) => 
+        t.metadata?.linked_asset_id === asset.id && 
+        t.metadata?.type === 'loan_disbursement'
+      );
+      
+      if (!hasDisbTx) {
+        const catName = 'Empréstimos/Investimentos';
+        const catColor = 'bg-brand-50 text-brand-600';
+        const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
+        const dateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
+        
+        await supabase.from('transactions').insert([{
+          user_id: userId,
+          description: `Desembolso Empréstimo Concedido - ${asset.name}`,
+          amount: principal,
+          date: dateStr,
+          type: 'EXPENSE',
+          category_id: catId,
+          category: catName,
+          is_paid: true,
+          paid_amount: principal,
+          paid_at: dateStr,
+          metadata: {
+            linked_asset_id: asset.id,
+            type: 'loan_disbursement'
+          }
+        }]);
+      }
+      
+      // Also generate pending installments if loanInstallmentsCount exists in metadata
+      const installmentsCount = Number(asset.metadata?.loanInstallmentsCount) || 0;
+      const monthlyValue = Number(asset.metadata?.loanFixedValue) || 0;
+      const dueDate = Number(asset.metadata?.loanDueDate) || 10;
+      
+      if (installmentsCount > 0 && monthlyValue > 0) {
+        const hasInstallments = linkedTxs.some((t: any) => 
+          t.metadata?.linked_asset_id === asset.id && 
+          t.metadata?.type === 'loan_installment_provision'
         );
         
-        if (!hasInflowTx) {
+        if (!hasInstallments) {
           const catName = 'Empréstimos/Investimentos';
           const catColor = 'bg-brand-50 text-brand-600';
           const catId = await getOrCreateCategory(userId, catName, 'INCOME', catColor);
+          const today = new Date();
+          const futureTxs = [];
           
-          let dateStr = new Date().toISOString().split('T')[0];
-          if (liab.createdAt) {
-            const sep = liab.createdAt.includes('T') ? 'T' : ' ';
-            dateStr = liab.createdAt.split(sep)[0];
-          }
-          
-          await supabase.from('transactions').insert([{
-            user_id: userId,
-            description: `Recebimento de Empréstimo/Financiamento - ${liab.name}`,
-            amount: liab.totalAmount,
-            date: dateStr,
-            type: 'INCOME',
-            category: catName,
-            category_id: catId,
-            is_paid: true,
-            paid_amount: liab.totalAmount,
-            paid_at: dateStr,
-            metadata: {
-              type: 'liability_inflow',
-              liability_id: liab.id,
-              isCapitalized: true
-            }
-          }]);
-        }
-      }
-
-      // 3. Private Loan Assets (Lending Outflow & Installments)
-      for (const asset of assets) {
-        if (asset.category !== 'INVESTMENT' || !asset.metadata?.isLoan || asset.is_archived) continue;
-        
-        const principal = Number(asset.metadata?.loanPrincipal) || asset.estimatedValue;
-        if (principal <= 0) continue;
-        
-        // Disbursement/Outflow Tx
-        const hasOutflowTx = linkedTxs.some((t: any) => 
-          t.metadata?.linked_asset_id === asset.id && 
-          t.metadata?.type === 'loan_disbursement'
-        );
-        
-        if (!hasOutflowTx) {
-          const catName = 'Empréstimos/Investimentos';
-          const catColor = 'bg-brand-50 text-brand-600';
-          const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
-          
-          const dateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
-          
-          await supabase.from('transactions').insert([{
-            user_id: userId,
-            description: `Desembolso Empréstimo Concedido - ${asset.name}`,
-            amount: principal,
-            date: dateStr,
-            type: 'EXPENSE',
-            category_id: catId,
-            category: catName,
-            is_paid: true,
-            paid_amount: principal,
-            paid_at: dateStr,
-            metadata: {
-              linked_asset_id: asset.id,
-              type: 'loan_disbursement'
-            }
-          }]);
-        }
-        
-        // Also generate pending installments if loanInstallmentsCount exists in metadata
-        const installmentsCount = Number(asset.metadata?.loanInstallmentsCount) || 0;
-        const monthlyValue = Number(asset.metadata?.loanFixedValue) || 0;
-        const dueDate = Number(asset.metadata?.loanDueDate) || 10;
-        
-        if (installmentsCount > 0 && monthlyValue > 0) {
-          const hasInstallments = linkedTxs.some((t: any) => 
-            t.metadata?.linked_asset_id === asset.id && 
-            t.metadata?.type === 'loan_installment_provision'
-          );
-          
-          if (!hasInstallments) {
-            const catName = 'Empréstimos/Investimentos';
-            const catColor = 'bg-brand-50 text-brand-600';
-            const catId = await getOrCreateCategory(userId, catName, 'INCOME', catColor);
-            const today = new Date();
-            const futureTxs = [];
-            
-            for (let i = 1; i <= installmentsCount; i++) {
-              const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDate);
-              futureTxs.push({
-                user_id: userId,
-                description: `Parcela Recebimento Empréstimo (${i}/${installmentsCount}) - ${asset.name}`,
-                amount: monthlyValue,
-                date: txDate.toISOString().split('T')[0],
-                type: 'INCOME',
-                category_id: catId,
-                is_paid: false,
-                is_installment: true,
+          for (let i = 1; i <= installmentsCount; i++) {
+            const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDate);
+            futureTxs.push({
+              user_id: userId,
+              description: `Recebimento Parcela ${i}/${installmentsCount} - ${asset.name}`,
+              amount: monthlyValue,
+              date: txDate.toISOString().split('T')[0],
+              type: 'INCOME',
+              category: catName,
+              category_id: catId,
+              is_paid: false,
+              is_installment: true,
+              installment_number: i,
+              installment_total: installmentsCount,
+              metadata: {
+                auto_generated: true,
                 installment_number: i,
-                installment_total: installmentsCount,
-                metadata: {
-                  auto_generated: true,
-                  installment_number: i,
-                  linked_asset_id: asset.id,
-                  type: 'loan_installment_provision'
-                }
-              });
-            }
-            await supabase.from('transactions').insert(futureTxs);
+                linked_asset_id: asset.id,
+                type: 'loan_installment_provision'
+              }
+            });
           }
+          await supabase.from('transactions').insert(futureTxs);
         }
       }
-    } finally {
-      syncInProgress.current = false;
     }
   };
 
@@ -2574,13 +2531,14 @@ const Assets: React.FC = () => {
         rentalDate: formData.rentalDate,
         // Loan details
         isLoan: formData.isLoan,
+        loanType: formData.isLoan ? (formData.loanType || 'INSTALLMENTS') : undefined,
         loanPrincipal: loanPrincipalVal,
         loanInterestType: formData.loanInterestType,
         loanInterestRate: loanInterestRateVal,
         loanFixedValue: loanFixedValueVal,
         loanDueDate: formData.loanDueDate,
         loanDebtor: formData.loanDebtor,
-        loanInstallmentsCount: formData.isLoan ? (parseInt(formData.loanInstallmentsCount, 10) || 12) : undefined,
+        loanInstallmentsCount: (formData.isLoan && formData.loanType !== 'OPEN_BALANCE') ? (parseInt(formData.loanInstallmentsCount, 10) || 12) : undefined,
         // Financing / Consortium details
         deliveryPaymentMethod: isRealEstate ? formData.deliveryPaymentMethod : undefined,
         deliveryBalance: isRealEstate ? (parseFloat(formData.deliveryBalance) || 0) : undefined,
@@ -3440,6 +3398,7 @@ const Assets: React.FC = () => {
       rentalType: 'anual',
       rentalDate: new Date().toISOString().split('T')[0],
       isLoan: false,
+      loanType: 'INSTALLMENTS' as 'INSTALLMENTS' | 'OPEN_BALANCE',
       loanPrincipal: '',
       loanInterestType: 'SIMPLE',
       loanInterestRate: '',
@@ -3553,9 +3512,7 @@ const Assets: React.FC = () => {
         historicalCalculationType: 'calculated',
         historicalInstallmentsPaid: '',
         historicalInstallmentValue: '',
-        historicalPaidAmount: '',
-        amortizationType: 'FIXED',
-        indexationType: 'FIXED'
+        historicalPaidAmount: ''
       });
       setEditingLiability(null);
       setShowLiabilityModal(true);
@@ -3627,6 +3584,7 @@ const Assets: React.FC = () => {
       rentalType: meta.rentalType || 'anual',
       rentalDate: meta.rentalDate || new Date().toISOString().split('T')[0],
       isLoan: !!meta.isLoan,
+      loanType: (meta.loanType || 'INSTALLMENTS') as 'INSTALLMENTS' | 'OPEN_BALANCE',
       loanPrincipal: meta.loanPrincipal ? String(meta.loanPrincipal) : '',
       loanInterestType: meta.loanInterestType || 'SIMPLE',
       loanInterestRate: meta.loanInterestRate ? String(meta.loanInterestRate) : '',
@@ -4176,110 +4134,6 @@ const Assets: React.FC = () => {
     }
   };
 
-  // Helper to generate future transactions based on amortization table
-  const generateFutureTransactions = async (
-    liabilityId: string,
-    name: string,
-    remainingBal: number,
-    installmentsLeft: number,
-    dueDay: number,
-    interestRateStr: string,
-    indexationRateStr: string,
-    amortizationType: 'FIXED' | 'SAC' | 'PRICE',
-    installmentAmt: number,
-    linkedAssetId: string,
-    userId: string
-  ) => {
-    if (installmentsLeft <= 0) return;
-
-    const today = new Date();
-    const categoryName = 'Financiamento/Dívida';
-
-    const { data: existingCat } = await supabase
-      .from('categories')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('name', categoryName)
-      .single();
-
-    let catId = '';
-    if (!existingCat) {
-      const { data: c } = await supabase
-        .from('categories')
-        .insert({
-          user_id: userId,
-          name: categoryName,
-          type: 'EXPENSE',
-          color: 'bg-rose-50 text-rose-600'
-        })
-        .select('id')
-        .single();
-      if (c) catId = c.id;
-    } else {
-      catId = existingCat.id;
-    }
-
-    const futureTransactions = [];
-    const MAX_GENERATE = Math.min(installmentsLeft, 120); // Safety cap for bulk generation
-
-    const monthlyRate = (parseFloat(interestRateStr) || 0) / 100;
-    const reajusteRate = (parseFloat(indexationRateStr) || 0) / 100;
-
-    let outstandingBalance = remainingBal;
-    const sacAmortization = remainingBal / installmentsLeft;
-
-    for (let i = 1; i <= MAX_GENERATE; i++) {
-      let installmentVal = 0;
-      if (amortizationType === 'SAC') {
-        const interest = outstandingBalance * monthlyRate;
-        installmentVal = sacAmortization + interest;
-        outstandingBalance -= sacAmortization;
-      } else if (amortizationType === 'PRICE') {
-        if (monthlyRate === 0) {
-          installmentVal = remainingBal / installmentsLeft;
-        } else {
-          installmentVal = remainingBal * (monthlyRate * Math.pow(1 + monthlyRate, installmentsLeft)) / (Math.pow(1 + monthlyRate, installmentsLeft) - 1);
-        }
-      } else {
-        // FIXED
-        installmentVal = installmentAmt;
-      }
-
-      // Apply cumulative correction rate
-      const adjustedVal = Math.round(installmentVal * Math.pow(1 + reajusteRate, i) * 100) / 100;
-
-      const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
-
-      futureTransactions.push({
-        user_id: userId,
-        description: `Parcela ${i}/${installmentsLeft} (${amortizationType}) - ${name}`,
-        amount: adjustedVal,
-        date: txDate.toISOString().split('T')[0],
-        type: 'EXPENSE',
-        category: categoryName,
-        category_id: catId || null,
-        is_paid: false,
-        is_recurring: true,
-        is_installment: true,
-        installment_number: i,
-        installment_total: installmentsLeft,
-        installment_group_id: liabilityId,
-        liability_id: liabilityId,
-        metadata: {
-          auto_generated: true,
-          installment_number: i,
-          installment_group_id: liabilityId,
-          linked_asset_id: linkedAssetId || undefined,
-          amortization_type: amortizationType
-        }
-      });
-    }
-
-    if (futureTransactions.length > 0) {
-      await supabase.from('transactions').insert(futureTransactions);
-    }
-  };
-
   // Save regular liability form
   const handleSaveLiability = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -4318,8 +4172,6 @@ const Assets: React.FC = () => {
           due_day: dueDay,
           metadata: {
             ...editingLiability.metadata,
-            amortizationType: liabilityFormData.amortizationType,
-            indexationType: liabilityFormData.indexationType,
             indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
             balloons: liabilityFormData.balloons,
             propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
@@ -4336,28 +4188,6 @@ const Assets: React.FC = () => {
         const hasHistory = liabilityFormData.hasHistoricalPayments;
         const paidAmount = parseFloat(liabilityFormData.historicalPaidAmount) || 0;
         await syncHistoricalTransaction(editingLiability.id, liabilityFormData.name, hasHistory, paidAmount, user.id);
-
-        // Delete any unpaid future transactions to allow recalculating
-        await supabase
-          .from('transactions')
-          .delete()
-          .eq('liability_id', editingLiability.id)
-          .eq('is_paid', false);
-
-        // Generate updated future transactions
-        await generateFutureTransactions(
-          editingLiability.id,
-          liabilityFormData.name,
-          remainingBal,
-          installmentsLeft,
-          dueDay,
-          liabilityFormData.interestRate,
-          liabilityFormData.indexationRate,
-          liabilityFormData.amortizationType,
-          installmentAmt,
-          liabilityFormData.linkedAssetId,
-          user.id
-        );
 
         // Auto-sync names in transactions
         if (editingLiability.name !== liabilityFormData.name) {
@@ -4392,8 +4222,6 @@ const Assets: React.FC = () => {
           due_day: dueDay,
           linked_asset_id: liabilityFormData.linkedAssetId || null,
           metadata: {
-            amortizationType: liabilityFormData.amortizationType,
-            indexationType: liabilityFormData.indexationType,
             indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
             balloons: liabilityFormData.balloons,
             propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
@@ -4414,19 +4242,56 @@ const Assets: React.FC = () => {
           await syncHistoricalTransaction(liabilityId, liabilityFormData.name, hasHistory, paidAmount, user.id);
 
           // Auto-generate future pending cash flow transactions
-          await generateFutureTransactions(
-            liabilityId,
-            liabilityFormData.name,
-            remainingBal,
-            installmentsLeft,
-            dueDay,
-            liabilityFormData.interestRate,
-            liabilityFormData.indexationRate,
-            liabilityFormData.amortizationType,
-            installmentAmt,
-            liabilityFormData.linkedAssetId,
-            user.id
-          );
+          if (installmentAmt > 0 && installmentsLeft > 0) {
+            const today = new Date();
+            const categoryName = 'Financiamento/Dívida';
+
+            const { data: existingCat } = await supabase.from('categories')
+              .select('id').eq('user_id', user.id).eq('name', categoryName).single();
+
+            let catId = '';
+            if (!existingCat) {
+              const { data: c } = await supabase.from('categories').insert({
+                user_id: user.id,
+                name: categoryName,
+                type: 'EXPENSE',
+                color: 'bg-rose-50 text-rose-600'
+              }).select('id').single();
+              if (c) catId = c.id;
+            } else {
+              catId = existingCat.id;
+            }
+
+            const futureTransactions = [];
+            const MAX_GENERATE = Math.min(installmentsLeft, 120); // Safety cap for bulk generation
+            for (let i = 1; i <= MAX_GENERATE; i++) {
+              const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
+              futureTransactions.push({
+                user_id: user.id,
+                description: `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
+                amount: installmentAmt,
+                date: txDate.toISOString().split('T')[0],
+                type: 'EXPENSE',
+                category: categoryName,
+                category_id: catId || null,
+                is_paid: false,
+                is_recurring: true,
+                is_installment: true,
+                installment_number: i,
+                installment_total: installmentsLeft,
+                installment_group_id: liabilityId,
+                liability_id: liabilityId,
+                metadata: {
+                  auto_generated: true,
+                  installment_number: i,
+                  installment_group_id: liabilityId,
+                  linked_asset_id: liabilityFormData.linkedAssetId || undefined
+                }
+              });
+            }
+
+            await supabase.from('transactions').insert(futureTransactions);
+          }
         }
       }
 
@@ -4452,9 +4317,7 @@ const Assets: React.FC = () => {
         historicalCalculationType: 'calculated',
         historicalInstallmentsPaid: '',
         historicalInstallmentValue: '',
-        historicalPaidAmount: '',
-        amortizationType: 'FIXED',
-        indexationType: 'FIXED'
+        historicalPaidAmount: ''
       });
       fetchData();
     } catch (err: any) {
@@ -4485,9 +4348,7 @@ const Assets: React.FC = () => {
       historicalCalculationType: liability.metadata?.historicalCalculationType || 'calculated',
       historicalInstallmentsPaid: liability.metadata?.historicalInstallmentsPaid ? String(liability.metadata.historicalInstallmentsPaid) : '',
       historicalInstallmentValue: liability.metadata?.historicalInstallmentValue ? String(liability.metadata.historicalInstallmentValue) : '',
-      historicalPaidAmount: liability.metadata?.historicalPaidAmount ? String(liability.metadata.historicalPaidAmount) : '',
-      amortizationType: liability.metadata?.amortizationType || 'FIXED',
-      indexationType: liability.metadata?.indexationType || 'FIXED'
+      historicalPaidAmount: liability.metadata?.historicalPaidAmount ? String(liability.metadata.historicalPaidAmount) : ''
     });
     setShowLiabilityModal(true);
   };
@@ -6033,9 +5894,7 @@ const Assets: React.FC = () => {
                           historicalCalculationType: 'calculated',
                           historicalInstallmentsPaid: '',
                           historicalInstallmentValue: '',
-                          historicalPaidAmount: '',
-                          amortizationType: 'FIXED',
-                          indexationType: 'FIXED'
+                          historicalPaidAmount: ''
                         });
                         setEditingLiability(null);
                         setShowLiabilityModal(true);
@@ -7265,97 +7124,205 @@ const Assets: React.FC = () => {
                   const principal = Number(meta.loanPrincipal) || 0;
                   const rate = Number(meta.loanInterestRate) || 0;
                   const fixedVal = Number(meta.loanFixedValue) || 0;
+                  const isOpenBalance = meta.loanType === 'OPEN_BALANCE';
 
-                  // Get receipts linked to this loan
+                  // Pagamentos vinculados a este empréstimo (via linkedTransactionsMap)
+                  const loanPayments = getAssetLinkedTransactions(loan.id)
+                    .filter((t: any) => t.type === 'INCOME')
+                    .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                  // Cálculo de saldo para modelo Conta Corrente
+                  const calcOpenBalance = () => {
+                    if (!isOpenBalance || principal <= 0 || rate <= 0) return null;
+                    const monthlyRate = rate / 100;
+                    const dailyRate = meta.loanInterestType === 'COMPOUND'
+                      ? Math.pow(1 + monthlyRate, 1 / 30) - 1
+                      : monthlyRate / 30;
+
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    let balance = principal;
+                    let lastDate = new Date(meta.acquisitionDate || loan.acquisitionDate || new Date().toISOString().split('T')[0]);
+                    lastDate.setHours(0, 0, 0, 0);
+                    let totalInterest = 0;
+                    let totalPaid = 0;
+
+                    // Aplica juros + abate pagamentos cronologicamente
+                    for (const pmt of loanPayments) {
+                      const pmtDate = new Date(pmt.date);
+                      pmtDate.setHours(0, 0, 0, 0);
+                      if (pmtDate <= lastDate) continue;
+                      const days = Math.max(0, Math.round((pmtDate.getTime() - lastDate.getTime()) / 86400000));
+                      const interest = meta.loanInterestType === 'COMPOUND'
+                        ? balance * (Math.pow(1 + dailyRate, days) - 1)
+                        : balance * dailyRate * days;
+                      balance += interest;
+                      totalInterest += interest;
+                      const pmtAmt = Number(pmt.amount) || 0;
+                      balance = Math.max(0, balance - pmtAmt);
+                      totalPaid += pmtAmt;
+                      lastDate = pmtDate;
+                    }
+
+                    // Juros até hoje
+                    const daysToday = Math.max(0, Math.round((today.getTime() - lastDate.getTime()) / 86400000));
+                    const interestToday = meta.loanInterestType === 'COMPOUND'
+                      ? balance * (Math.pow(1 + dailyRate, daysToday) - 1)
+                      : balance * dailyRate * daysToday;
+                    balance += interestToday;
+                    totalInterest += interestToday;
+
+                    return { balance: Math.max(0, balance), totalInterest, totalPaid };
+                  };
+
+                  const openBalanceInfo = calcOpenBalance();
                   const txsInfo = getAssetFinancialHistory(loan);
                   const returned = txsInfo.totalIncome;
-                  const progressPercent = principal > 0 ? Math.round((returned / principal) * 100) : 0;
-                  
+                  const currentBalance = isOpenBalance && openBalanceInfo
+                    ? openBalanceInfo.balance
+                    : Math.max(0, principal - returned);
+                  const progressPercent = principal > 0 ? Math.min(100, Math.round((returned / principal) * 100)) : 0;
+                  const isQuitado = currentBalance < 0.01 && principal > 0;
+
                   return (
-                    <div key={loan.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 space-y-6 flex flex-col justify-between">
+                    <div key={loan.id} className={`bg-white rounded-3xl border shadow-sm p-6 space-y-5 flex flex-col justify-between ${isOpenBalance ? 'border-emerald-100' : 'border-slate-100'}`}>
                       <div className="space-y-4">
                         <div className="flex justify-between items-start">
-                          <div className="w-10 h-10 bg-slate-100 text-slate-900 rounded-xl flex items-center justify-center">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isOpenBalance ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-900'}`}>
                             <ArrowRightLeft size={20} />
                           </div>
-                          {Math.max(0, principal - returned) === 0 && principal > 0 ? (
-                            <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-blue-100">Quitado</span>
-                          ) : (
-                            <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Ativo</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {isOpenBalance && (
+                              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black uppercase tracking-widest border border-emerald-100">Conta Corrente</span>
+                            )}
+                            {isQuitado ? (
+                              <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-blue-100">Quitado</span>
+                            ) : (
+                              <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-100">Ativo</span>
+                            )}
+                          </div>
                         </div>
                         <div>
-                          <h4 className="font-bold text-slate-900 text-lg uppercase tracking-tight">{loan.name}</h4>
-                          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Devedor: {meta.loanDebtor || 'Não Informado'}</p>
+                          <h4 className="font-bold text-slate-900 text-base uppercase tracking-tight">{loan.name}</h4>
+                          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-0.5">Devedor: {meta.loanDebtor || 'Não Informado'}</p>
                         </div>
 
-                        {/* Progress and metrics */}
-                        <div className="space-y-2 pt-2">
-                          <div className="flex justify-between text-xs font-black uppercase text-slate-400">
-                            <span>Retorno do Principal</span>
-                            <span>{progressPercent}% ({formatCurrency(returned)})</span>
+                        {/* MODELO CONTA CORRENTE: saldo calculado com juros diários */}
+                        {isOpenBalance && openBalanceInfo ? (
+                          <div className="space-y-3">
+                            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 text-center">
+                              <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Valor em Aberto Hoje</p>
+                              <p className="text-2xl font-black text-emerald-700">{formatCurrency(openBalanceInfo.balance)}</p>
+                              <p className="text-[10px] text-emerald-400 mt-1">Atualizado com juros até {new Date().toLocaleDateString('pt-BR')}</p>
+                            </div>
+                            <div className="text-[11px] text-slate-500 space-y-1.5">
+                              <div className="flex justify-between">
+                                <span>Principal original:</span>
+                                <span className="font-bold text-slate-700">{formatCurrency(principal)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Total de juros acumulados:</span>
+                                <span className="font-bold text-amber-600">{formatCurrency(openBalanceInfo.totalInterest)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Total já recebido:</span>
+                                <span className="font-bold text-emerald-600">{formatCurrency(openBalanceInfo.totalPaid)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Taxa:</span>
+                                <span className="font-bold text-slate-700">{rate}% a.m. ({meta.loanInterestType === 'COMPOUND' ? 'Compostos' : 'Simples'})</span>
+                              </div>
+                            </div>
+                            {loanPayments.length > 0 && (
+                              <div className="border-t border-slate-50 pt-3">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Histórico de Pagamentos</p>
+                                <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                                  {loanPayments.map((p: any, i: number) => (
+                                    <div key={i} className="flex justify-between text-[10px]">
+                                      <span className="text-slate-400">{new Date(p.date).toLocaleDateString('pt-BR')}</span>
+                                      <span className="font-bold text-emerald-600">+{formatCurrency(Number(p.amount))}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <div 
-                            className="w-full bg-slate-100 h-2 rounded-full overflow-hidden"
-                            role="progressbar"
-                            aria-valuenow={Math.min(progressPercent, 100)}
-                            aria-valuemin={0}
-                            aria-valuemax={100}
-                            aria-label={`Retorno do principal do empréstimo ${loan.name}`}
-                          >
-                            <div className="bg-emerald-500 h-full transition-all" style={{ width: `${Math.min(progressPercent, 100)}%` }} />
-                          </div>
-                        </div>
-
-                        <div className="pt-2 text-[11px] text-slate-500 space-y-2">
-                          <div className="flex justify-between">
-                            <span>Valor Principal:</span>
-                            <span className="font-bold text-slate-800">{formatCurrency(principal)}</span>
-                          </div>
-                          <div className="flex justify-between font-semibold text-amber-600">
-                            <span>Saldo Devedor Atual:</span>
-                            <span>{formatCurrency(Math.max(0, principal - returned))}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Taxa de Juros:</span>
-                            <span className="font-bold text-slate-800">
-                              {meta.loanInterestType === 'COMPOUND' ? 'Compostos' : 'Simples'}: {rate > 0 ? `${rate}% a.m.` : formatCurrency(fixedVal)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Data Recebimento:</span>
-                            <span className="font-bold text-slate-800">Todo dia {meta.loanDueDate || '05'}</span>
-                          </div>
-                        </div>
+                        ) : (
+                          /* MODELO PARCELADO FIXO: exibição original */
+                          <>
+                            <div className="space-y-2 pt-2">
+                              <div className="flex justify-between text-xs font-black uppercase text-slate-400">
+                                <span>Retorno do Principal</span>
+                                <span>{progressPercent}% ({formatCurrency(returned)})</span>
+                              </div>
+                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden" role="progressbar" aria-valuenow={Math.min(progressPercent, 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Retorno do principal do empréstimo ${loan.name}`}>
+                                <div className="bg-emerald-500 h-full transition-all" style={{ width: `${Math.min(progressPercent, 100)}%` }} />
+                              </div>
+                            </div>
+                            <div className="pt-2 text-[11px] text-slate-500 space-y-2">
+                              <div className="flex justify-between">
+                                <span>Valor Principal:</span>
+                                <span className="font-bold text-slate-800">{formatCurrency(principal)}</span>
+                              </div>
+                              <div className="flex justify-between font-semibold text-amber-600">
+                                <span>Saldo Devedor Atual:</span>
+                                <span>{formatCurrency(currentBalance)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Taxa de Juros:</span>
+                                <span className="font-bold text-slate-800">
+                                  {meta.loanInterestType === 'COMPOUND' ? 'Compostos' : 'Simples'}: {rate > 0 ? `${rate}% a.m.` : formatCurrency(fixedVal)}
+                                </span>
+                              </div>
+                              {meta.loanDueDate && (
+                                <div className="flex justify-between">
+                                  <span>Data Recebimento:</span>
+                                  <span className="font-bold text-slate-800">Todo dia {meta.loanDueDate}</span>
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
                       </div>
 
-                      {/* Action buttons */}
-                      <div className="border-t border-slate-50 pt-4 flex justify-between items-center">
-                        <button
-                          onClick={() => {
-                            setSelectedAssetForExtrato(loan);
-                            setShowExtratoModal(true);
-                          }}
-                          className="text-xs font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-800 hover:underline"
-                          aria-label={`Lançar e ver recebimentos de ${loan.name}`}
-                        >
-                          Lançar Recebimentos
-                        </button>
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => openEditAsset(loan)} 
-                            className="text-xs font-bold text-slate-600 hover:text-brand-600 uppercase tracking-widest"
-                            aria-label={`Editar empréstimo ${loan.name}`}
+                      {/* Botões de ação */}
+                      <div className="border-t border-slate-50 pt-4 space-y-2">
+                        {isOpenBalance && !isQuitado && (
+                          <button
+                            onClick={() => setLoanPaymentModal({
+                              loan,
+                              amount: '',
+                              date: new Date().toISOString().split('T')[0],
+                              accountId: allAccounts[0]?.id || '',
+                              isSubmitting: false
+                            })}
+                            className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
                           >
-                            Editar
+                            <Plus size={12} /> Registrar Pagamento
                           </button>
-                          <button 
-                            onClick={() => handleDeleteAsset(loan)} 
-                            className="text-xs font-bold text-slate-600 hover:text-rose-600 uppercase tracking-widest"
-                            aria-label={`Remover empréstimo ${loan.name}`}
-                          >
-                            Remover
-                          </button>
+                        )}
+                        <div className="flex justify-between items-center">
+                          {!isOpenBalance && (
+                            <button
+                              onClick={() => { setSelectedAssetForExtrato(loan); setShowExtratoModal(true); }}
+                              className="text-xs font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-800 hover:underline"
+                            >
+                              Lançar Recebimentos
+                            </button>
+                          )}
+                          {isOpenBalance && (
+                            <button
+                              onClick={() => { setSelectedAssetForExtrato(loan); setShowExtratoModal(true); }}
+                              className="text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-indigo-600 hover:underline"
+                            >
+                              Ver Extrato
+                            </button>
+                          )}
+                          <div className="flex gap-2 ml-auto">
+                            <button onClick={() => openEditAsset(loan)} className="text-xs font-bold text-slate-600 hover:text-brand-600 uppercase tracking-widest">Editar</button>
+                            <button onClick={() => handleDeleteAsset(loan)} className="text-xs font-bold text-slate-600 hover:text-rose-600 uppercase tracking-widest">Remover</button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -7991,9 +7958,7 @@ const Assets: React.FC = () => {
                     historicalCalculationType: 'calculated',
                     historicalInstallmentsPaid: '',
                     historicalInstallmentValue: '',
-                    historicalPaidAmount: '',
-                    amortizationType: 'FIXED',
-                    indexationType: 'FIXED'
+                    historicalPaidAmount: ''
                   });
                   setEditingLiability(null);
                   setShowLiabilityModal(true);
@@ -9101,6 +9066,30 @@ const Assets: React.FC = () => {
 
                     {formData.isLoan && (
                       <div className="space-y-3 pt-2 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2">
+
+                        {/* Seletor de modelo */}
+                        <div>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Modelo de Cobrança</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, loanType: 'INSTALLMENTS' })}
+                              className={`p-3 rounded-xl border-2 text-left transition-all ${formData.loanType === 'INSTALLMENTS' ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                            >
+                              <p className={`text-xs font-black uppercase tracking-wider ${formData.loanType === 'INSTALLMENTS' ? 'text-brand-700' : 'text-slate-600'}`}>Parcelado Fixo</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">Número de parcelas definido. Valor igual todo mês.</p>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, loanType: 'OPEN_BALANCE' })}
+                              className={`p-3 rounded-xl border-2 text-left transition-all ${formData.loanType === 'OPEN_BALANCE' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                            >
+                              <p className={`text-xs font-black uppercase tracking-wider ${formData.loanType === 'OPEN_BALANCE' ? 'text-emerald-700' : 'text-slate-600'}`}>Conta Corrente</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">Juros diários sobre saldo. Pagamentos livres abatendo o principal.</p>
+                            </button>
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Devedor (Nome)</label>
@@ -9136,18 +9125,19 @@ const Assets: React.FC = () => {
                               onChange={(e) => setFormData({ ...formData, loanPrincipal: e.target.value })}
                             />
                           </div>
-                          <div>
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Dia de Vencimento (1 a 31)</label>
-                            <input
-                              required
-                              type="number"
-                              min="1"
-                              max="31"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
-                              value={formData.loanDueDate}
-                              onChange={(e) => setFormData({ ...formData, loanDueDate: e.target.value })}
-                            />
-                          </div>
+                          {formData.loanType !== 'OPEN_BALANCE' && (
+                            <div>
+                              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Dia de Vencimento (1 a 31)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="31"
+                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
+                                value={formData.loanDueDate}
+                                onChange={(e) => setFormData({ ...formData, loanDueDate: e.target.value })}
+                              />
+                            </div>
+                          )}
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
@@ -9176,18 +9166,19 @@ const Assets: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Quantidade de Parcelas a Receber</label>
-                            <input
-                              required
-                              type="number"
-                              min="1"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
-                              value={formData.loanInstallmentsCount}
-                              onChange={(e) => setFormData({ ...formData, loanInstallmentsCount: e.target.value })}
-                              placeholder="Ex: 12"
-                            />
-                          </div>
+                          {formData.loanType !== 'OPEN_BALANCE' && (
+                            <div>
+                              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Quantidade de Parcelas a Receber</label>
+                              <input
+                                type="number"
+                                min="1"
+                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
+                                value={formData.loanInstallmentsCount}
+                                onChange={(e) => setFormData({ ...formData, loanInstallmentsCount: e.target.value })}
+                                placeholder="Ex: 12"
+                              />
+                            </div>
+                          )}
                           <div>
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left mb-1">Tipo de Juros</label>
                             <div className="flex gap-4 pt-1.5">
@@ -9360,6 +9351,100 @@ const Assets: React.FC = () => {
                 <button type="submit" className="flex-1 px-4 py-3 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-[1.02] transition-transform active:scale-95">Salvar Bem</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REGISTRO DE PAGAMENTO (Conta Corrente) */}
+      {loanPaymentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-black text-slate-900 uppercase tracking-tight text-sm">Registrar Pagamento</h3>
+              <button onClick={() => setLoanPaymentModal(null)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-50"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-slate-50 rounded-2xl p-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Empréstimo</p>
+                <p className="font-black text-slate-900">{loanPaymentModal.loan.name}</p>
+                <p className="text-xs text-slate-500">Devedor: {loanPaymentModal.loan.metadata?.loanDebtor}</p>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Data do Pagamento</label>
+                <input
+                  type="date"
+                  value={loanPaymentModal.date}
+                  onChange={e => setLoanPaymentModal(p => p ? { ...p, date: e.target.value } : null)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Valor Recebido (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  placeholder="0,00"
+                  value={loanPaymentModal.amount}
+                  onChange={e => setLoanPaymentModal(p => p ? { ...p, amount: e.target.value } : null)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Conta que Recebe</label>
+                <select
+                  value={loanPaymentModal.accountId}
+                  onChange={e => setLoanPaymentModal(p => p ? { ...p, accountId: e.target.value } : null)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all"
+                >
+                  {allAccounts.map((acc: any) => (
+                    <option key={acc.id} value={acc.id}>{acc.institution || acc.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                disabled={!loanPaymentModal.amount || !loanPaymentModal.accountId || loanPaymentModal.isSubmitting}
+                onClick={async () => {
+                  if (!supabase || !loanPaymentModal.amount) return;
+                  setLoanPaymentModal(p => p ? { ...p, isSubmitting: true } : null);
+                  try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const userId = session?.user?.id;
+                    const acc = allAccounts.find((a: any) => a.id === loanPaymentModal.accountId);
+                    const { error } = await supabase.from('transactions').insert({
+                      user_id: userId,
+                      date: loanPaymentModal.date,
+                      description: `Pagamento - ${loanPaymentModal.loan.name} (${loanPaymentModal.loan.metadata?.loanDebtor || ''})`,
+                      amount: parseFloat(loanPaymentModal.amount),
+                      type: 'INCOME',
+                      category: 'Empréstimos/Investimentos',
+                      account_id: loanPaymentModal.accountId,
+                      account_name: acc?.institution || acc?.name || '',
+                      is_paid: true,
+                      paid_amount: parseFloat(loanPaymentModal.amount),
+                      paid_at: loanPaymentModal.date,
+                      metadata: { linked_asset_id: loanPaymentModal.loan.id, is_loan_payment: true }
+                    });
+                    if (error) throw error;
+                    await supabase.rpc('recalculate_account_balance', { p_account_id: loanPaymentModal.accountId });
+                    setLoanPaymentModal(null);
+                    // Recarrega os dados do asset
+                    const ev = new Event('offline-sync-completed');
+                    window.dispatchEvent(ev);
+                  } catch (err: any) {
+                    console.error('Erro ao registrar pagamento:', err);
+                    setLoanPaymentModal(p => p ? { ...p, isSubmitting: false } : null);
+                  }
+                }}
+                className="w-full py-3.5 bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest disabled:opacity-50 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+              >
+                {loanPaymentModal.isSubmitting ? (
+                  <><Loader2 size={14} className="animate-spin" /> Registrando...</>
+                ) : (
+                  <><Check size={14} /> Confirmar Pagamento</>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -10163,72 +10248,6 @@ const Assets: React.FC = () => {
                 </select>
               </div>
 
-              {/* Amortização & Reajuste */}
-              <div className="border-t border-b border-slate-100 py-4 space-y-4">
-                <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider">Cálculo de Amortização & Reajuste</h4>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Tabela de Amortização</label>
-                    <select
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
-                      value={liabilityFormData.amortizationType}
-                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, amortizationType: e.target.value as any })}
-                    >
-                      <option value="FIXED">Fixo (Sem amortização/juros)</option>
-                      <option value="SAC">SAC (Decrescente)</option>
-                      <option value="PRICE">Price (Parcelas iguais)</option>
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Juros (% a.m.)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      disabled={liabilityFormData.amortizationType === 'FIXED'}
-                      className={`w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none ${
-                        liabilityFormData.amortizationType === 'FIXED' ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''
-                      }`}
-                      placeholder="0.00"
-                      value={liabilityFormData.interestRate}
-                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, interestRate: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Correção / Índice</label>
-                    <select
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none"
-                      value={liabilityFormData.indexationType}
-                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, indexationType: e.target.value as any })}
-                    >
-                      <option value="FIXED">Sem reajuste (Fixo)</option>
-                      <option value="INCC">INCC</option>
-                      <option value="IPCA">IPCA</option>
-                      <option value="IGP-M">IGP-M</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Taxa Projeção (% a.m.)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      disabled={liabilityFormData.indexationType === 'FIXED'}
-                      className={`w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none ${
-                        liabilityFormData.indexationType === 'FIXED' ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''
-                      }`}
-                      placeholder="0.00"
-                      value={liabilityFormData.indexationRate}
-                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, indexationRate: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </div>
-
               {/* Opção de Pagamentos Históricos Anteriores */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-3">
                 <div className="flex items-center justify-between">
@@ -10365,7 +10384,7 @@ const Assets: React.FC = () => {
                               };
                               const totalContratado = parseFloat(prev.totalAmount) || 0;
                               if (totalContratado > 0 && paidAmt > 0) {
-                                  next.remainingBalance = Math.max(0, totalContratado - paidAmt).toFixed(2);
+                                next.remainingBalance = Math.max(0, totalContratado - paidAmt).toFixed(2);
                               }
                               return next;
                             });
@@ -10429,18 +10448,10 @@ const Assets: React.FC = () => {
                     type="number"
                     min="0"
                     step="0.01"
-                    readOnly={liabilityFormData.amortizationType !== 'FIXED'}
-                    className={`w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20 ${
-                      liabilityFormData.amortizationType !== 'FIXED' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
-                    }`}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
                     value={liabilityFormData.installmentAmount}
                     onChange={(e) => setLiabilityFormData({ ...liabilityFormData, installmentAmount: e.target.value })}
                   />
-                  {liabilityFormData.amortizationType !== 'FIXED' && (
-                    <span className="text-[8px] text-brand-600 font-bold block mt-0.5 leading-tight">
-                      {liabilityFormData.amortizationType === 'SAC' ? '1ª parcela (SAC decrescente)' : 'Valor base (Price)'}
-                    </span>
-                  )}
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Parcelas Restantes</label>
@@ -10489,10 +10500,9 @@ const Assets: React.FC = () => {
                   onClick={() => {
                     const balance = parseFloat(liabilityFormData.remainingBalance) || 0;
                     const remaining = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
-                    const rate = parseFloat(liabilityFormData.interestRate) || 0;
                     if (balance > 0 && remaining > 0) {
-                      const computed = calculateInstallmentAmount(balance, remaining, rate, liabilityFormData.amortizationType);
-                      setLiabilityFormData(prev => ({ ...prev, installmentAmount: (Math.round(computed * 100) / 100).toString() }));
+                      const computed = Math.round((balance / remaining) * 100) / 100;
+                      setLiabilityFormData(prev => ({ ...prev, installmentAmount: computed.toString() }));
                     } else {
                       alert("Preencha o Saldo Devedor e a quantidade de Parcelas Restantes para calcular.");
                     }
@@ -10539,23 +10549,6 @@ const Assets: React.FC = () => {
                   Extrato e Amortização de Passivo
                 </h3>
                 <p className="text-xs text-slate-400 font-medium">{selectedLiabilityForExtrato.name}</p>
-                {selectedLiabilityForExtrato.metadata?.amortizationType && selectedLiabilityForExtrato.metadata?.amortizationType !== 'FIXED' && (
-                  <div className="flex gap-2 mt-1.5 flex-wrap">
-                    <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-bold uppercase tracking-wider">
-                      Tabela: {selectedLiabilityForExtrato.metadata.amortizationType}
-                    </span>
-                    {selectedLiabilityForExtrato.interestRate && (
-                      <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-bold uppercase tracking-wider">
-                        Juros: {selectedLiabilityForExtrato.interestRate}% a.m.
-                      </span>
-                    )}
-                    {selectedLiabilityForExtrato.metadata?.indexationType && selectedLiabilityForExtrato.metadata?.indexationType !== 'FIXED' && (
-                      <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-bold uppercase tracking-wider">
-                        Correção: {selectedLiabilityForExtrato.metadata.indexationType} ({selectedLiabilityForExtrato.metadata.indexationRate || 0}% a.m.)
-                      </span>
-                    )}
-                  </div>
-                )}
               </div>
               <div className="flex items-center gap-2">
                 <button 
