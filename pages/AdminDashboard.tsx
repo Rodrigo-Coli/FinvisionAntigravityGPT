@@ -587,6 +587,15 @@ export default function AdminDashboard() {
       {/* ════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'overview' && (
         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+          {/* Badge dados reais */}
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dados em tempo real do Supabase</span>
+            <button onClick={fetchMetrics} className="p-1 text-slate-300 hover:text-brand-500 transition-colors" title="Atualizar métricas">
+              <RefreshCw size={12} />
+            </button>
+          </div>
+
           {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
@@ -784,7 +793,19 @@ export default function AdminDashboard() {
                             <div key={f.field} className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl">
                               <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">{f.label}</label>
                               <div className="flex items-center gap-2">
-                                <input type="number" value={plan[f.field] || 0} min={0} onChange={e => setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, [f.field]: Number(e.target.value), _dirty: true } : p))} className="flex-1 bg-transparent font-black text-slate-900 dark:text-white text-lg outline-none w-full" />
+                                <input
+                                  type="number"
+                                  value={plan[f.field] === 0 ? '' : plan[f.field] || ''}
+                                  placeholder="0"
+                                  min={0}
+                                  onFocus={e => e.target.select()}
+                                  onChange={e => {
+                                    const raw = e.target.value;
+                                    const num = raw === '' ? 0 : parseInt(raw.replace(/^0+(?=\d)/, ''), 10);
+                                    setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, [f.field]: isNaN(num) ? 0 : num, _dirty: true } : p));
+                                  }}
+                                  className="flex-1 bg-transparent font-black text-slate-900 dark:text-white text-lg outline-none w-full"
+                                />
                                 <span className="text-xs text-slate-400 font-bold">{fmt((plan[f.field] || 0) / 100)}</span>
                               </div>
                             </div>
@@ -794,7 +815,10 @@ export default function AdminDashboard() {
 
                       {/* Limites */}
                       <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Limites (-1 = ilimitado)</p>
+                        <div className="flex items-center gap-3 mb-3">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Limites</p>
+                          <span className="text-[9px] font-bold text-brand-500 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-100">-1 = ∞ Ilimitado · 0 = Sem acesso</span>
+                        </div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                           {[
                             { label: 'Scans IA', field: 'ai_scans_limit' },
@@ -803,13 +827,83 @@ export default function AdminDashboard() {
                             { label: 'Usuários', field: 'max_multi_users' },
                             { label: 'Categorias', field: 'max_categories' },
                             { label: 'Dias Trial', field: 'trial_days' },
-                          ].map(f => (
-                            <div key={f.field} className="bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl text-center">
-                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">{f.label}</label>
-                              <input type="number" value={plan[f.field] ?? 0} onChange={e => setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, [f.field]: Number(e.target.value), _dirty: true } : p))} className="bg-transparent font-black text-slate-900 dark:text-white text-xl outline-none w-full text-center" />
-                            </div>
-                          ))}
+                          ].map(f => {
+                            const rawVal = plan[f.field] ?? 0;
+                            const isUnlimited = rawVal === -1;
+                            return (
+                              <div key={f.field} className={`p-3 rounded-2xl text-center border-2 transition-all ${isUnlimited ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 dark:bg-slate-800 border-transparent'}`}>
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">{f.label}</label>
+                                {isUnlimited ? (
+                                  <div>
+                                    <p className="text-2xl font-black text-emerald-600">∞</p>
+                                    <button
+                                      type="button"
+                                      onClick={() => setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, [f.field]: 0, _dirty: true } : p))}
+                                      className="text-[8px] text-slate-400 hover:text-rose-500 underline mt-0.5"
+                                    >remover</button>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <input
+                                      type="number"
+                                      value={rawVal === 0 ? '' : rawVal}
+                                      placeholder="0"
+                                      onFocus={e => e.target.select()}
+                                      onChange={e => {
+                                        const raw = e.target.value;
+                                        const num = raw === '' ? 0 : parseInt(raw.replace(/^0+(?=\d)/, ''), 10);
+                                        setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, [f.field]: isNaN(num) ? 0 : num, _dirty: true } : p));
+                                      }}
+                                      className="bg-transparent font-black text-slate-900 dark:text-white text-xl outline-none w-full text-center"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, [f.field]: -1, _dirty: true } : p))}
+                                      className="text-[8px] text-brand-400 hover:text-brand-600 underline mt-0.5"
+                                    >∞ ilimitado</button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
+
+                        {/* Estimativa de Custo IA */}
+                        {aiCostConfig && (plan.ai_scans_limit !== 0) && (
+                          <div className="mt-4 p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+                            <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-2">Estimativa de Custo IA por Usuário/Mês</p>
+                            {(() => {
+                              const scans = plan.ai_scans_limit === -1 ? 500 : (plan.ai_scans_limit || 0);
+                              const inp1m = parseFloat(aiCostConfig.input_1m_tokens_usd) || 0.30;
+                              const out1m = parseFloat(aiCostConfig.output_1m_tokens_usd) || 2.50;
+                              const aud1m = parseFloat(aiCostConfig.audio_1m_tokens_usd) || 1.00;
+                              const rate  = parseFloat(aiCostConfig.usd_to_brl_rate) || 5.85;
+                              const costPerScanUsd = (1258/1_000_000)*inp1m + (320/1_000_000)*aud1m + (800/1_000_000)*out1m;
+                              const costBrl = costPerScanUsd * rate * scans;
+                              const price  = (plan.price_cents || 0) / 100;
+                              const margin = price - costBrl;
+                              return (
+                                <div className="space-y-1 text-xs">
+                                  <div className="flex justify-between">
+                                    <span className="text-amber-700">{plan.ai_scans_limit === -1 ? 'Estimativa (500 scans)' : `${scans} scans × R$${(costPerScanUsd*rate).toFixed(4)}`}:</span>
+                                    <span className="font-black text-amber-800">{fmt(costBrl)}/usuário</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-500">Preço do plano:</span>
+                                    <span className="font-black text-slate-700">{fmt(price)}/mês</span>
+                                  </div>
+                                  <div className={`flex justify-between border-t border-amber-200 pt-1 mt-1 font-black ${margin >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    <span>Margem por usuário:</span>
+                                    <span>{margin >= 0 ? '+' : ''}{fmt(margin)} {margin < 0 ? '⚠️ PREJUÍZO' : '✓'}</span>
+                                  </div>
+                                  {plan.ai_scans_limit === -1 && (
+                                    <p className="text-[9px] text-amber-500 italic">* Estimativa baseada em 500 scans. Ilimitado sem preço adequado = risco alto.</p>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
                       </div>
 
                       {/* Visual e Landing */}
@@ -845,7 +939,31 @@ export default function AdminDashboard() {
                                   <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{feat.label}</p>
                                 </div>
                                 {isLimit ? (
-                                  <input type="number" value={typeof val === 'number' ? val : (val === true ? -1 : 0)} onChange={e => setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, features: { ...p.features, [feat.key]: Number(e.target.value) }, _dirty: true } : p))} className="w-16 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg py-1 text-xs font-black text-slate-900 dark:text-white outline-none" />
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    {(typeof val === 'number' && val === -1) ? (
+                                      <div className="flex flex-col items-center">
+                                        <span className="text-emerald-600 font-black text-base">∞</span>
+                                        <input type="hidden" value={-1} />
+                                        <button type="button" onClick={() => setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, features: { ...p.features, [feat.key]: 0 }, _dirty: true } : p))} className="text-[7px] text-slate-300 hover:text-rose-400 underline">remover</button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex flex-col items-center gap-0.5">
+                                        <input
+                                          type="number"
+                                          value={typeof val === 'number' && val === 0 ? '' : (typeof val === 'number' ? val : (val === true ? -1 : 0))}
+                                          placeholder="0"
+                                          onFocus={e => e.target.select()}
+                                          onChange={e => {
+                                            const raw = e.target.value;
+                                            const num = raw === '' ? 0 : parseInt(raw.replace(/^0+(?=\d)/, ''), 10);
+                                            setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, features: { ...p.features, [feat.key]: isNaN(num) ? 0 : num }, _dirty: true } : p));
+                                          }}
+                                          className="w-14 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg py-1 text-xs font-black text-slate-900 dark:text-white outline-none"
+                                        />
+                                        <button type="button" onClick={() => setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, features: { ...p.features, [feat.key]: -1 }, _dirty: true } : p))} className="text-[7px] text-brand-400 hover:text-brand-600 underline">∞</button>
+                                      </div>
+                                    )}
+                                  </div>
                                 ) : (
                                   <button onClick={() => setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, features: { ...p.features, [feat.key]: !isOn }, _dirty: true } : p))} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isOn ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-400'}`}>
                                     {isOn ? <Check size={14} /> : <X size={14} />}

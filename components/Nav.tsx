@@ -29,8 +29,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
   ];
 
   const adminItems = isAdmin(user) ? [
-    { label: 'Gerir Usuários', path: '/admin/usuarios', icon: <ShieldCheck size={20} /> },
-    { label: 'Gerir Planos', path: '/admin/planos', icon: <Gem size={20} /> },
+    { label: 'Master Console', path: '/admin', icon: <ShieldCheck size={20} /> },
   ] : [];
 
   const allItems = [...items, ...adminItems];
