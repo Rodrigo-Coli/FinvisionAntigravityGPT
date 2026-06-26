@@ -126,38 +126,34 @@ export default function DemoBanner() {
 
     setLoading(true);
     try {
-      const { data: { user }, error: userErr } = await supabase.auth.getUser();
-      if (userErr || !user) {
-        throw new Error('Não foi possível obter a sessão do usuário demo.');
-      }
+      // Obtém o token de sessão para autenticar a requisição no servidor
+      const { data: { session }, error: sessErr } = await supabase.auth.getSession();
+      if (sessErr || !session) throw new Error('Sessão expirada. Recarregue o app e tente novamente.');
 
-      // 1. Promover e-mail e senha no Supabase Auth
-      const { error: updateErr } = await supabase.auth.updateUser({
-        email,
-        password
+      // Chama o endpoint do servidor — ele usa permissão de admin para trocar o e-mail
+      // sem rejeitar o e-mail temporário do demo
+      const res = await fetch('/api/promote-demo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ email, password })
       });
 
-      if (updateErr) throw updateErr;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao criar conta.');
 
-      // 2. Atualizar perfil correspondente
-      const { error: profileErr } = await supabase
-        .from('profiles')
-        .update({ email })
-        .eq('id', user.id);
-
-      if (profileErr) throw profileErr;
-
-      // 3. Atualizar configurações de usuário local
       localStorage.removeItem('is_finvision_demo');
       localStorage.setItem('is_finvision_demo_promoted', 'true');
       setIsDemo(false);
       setShowPromoteModal(false);
-      
+
       toast('🎉 Conta criada! Seus dados do demo foram preservados. Bem-vindo ao FinVision!', 'success');
       setTimeout(() => window.location.reload(), 1500);
     } catch (err: any) {
       console.error('Erro na promoção de conta:', err);
-      setErrorMsg(err.message || 'Ocorreu um erro ao promover a conta.');
+      setErrorMsg(err.message || 'Ocorreu um erro ao criar a conta. Tente novamente.');
     } finally {
       setLoading(false);
     }

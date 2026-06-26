@@ -21,6 +21,7 @@ import { handleHealth } from './_lib/health.js';
 import { handleReceiptItems } from './_lib/handle-receipt-items.js';
 import { handleAsaasBillingHistory } from './_lib/asaas-billing-history.js';
 import handleAsaasCreateSubscription from './_lib/asaas-create-subscription.js';
+import { handlePromoteDemo } from './_lib/promote-demo.js';
 
 function setCorsHeaders(res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -57,6 +58,9 @@ export default async function handler(req: any, res: any) {
 
     // --- Cron ---
     if (url.includes('/notify-bills-due'))         return handleNotifyBillsDue(req, res);
+
+    // --- Demo ---
+    if (url.includes('/promote-demo'))             return handlePromoteDemo(req, res);
 
     // --- Utilitários ---
     if (url.includes('/vapid-public-key'))         return handleVapidPublicKey(req, res);
