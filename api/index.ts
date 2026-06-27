@@ -15,7 +15,7 @@ import { handleParseStatement } from './_lib/parse-statement.js';
 import { handleProcessImport } from './_lib/process-import.js';
 import { handleAsaasWebhook } from './_lib/asaas-webhook.js';
 import { handleWhatsAppWebhook } from './_lib/whatsapp-webhook.js';
-import { handleNotifyBillsDue } from './_lib/notify-bills-due.js';
+import { handleNotifyBillsDue, handleWeeklySummary } from './_lib/notify-bills-due.js';
 import { handleVapidPublicKey } from './_lib/vapid-public-key.js';
 import { handleHealth } from './_lib/health.js';
 import { handleReceiptItems } from './_lib/handle-receipt-items.js';
@@ -58,6 +58,7 @@ export default async function handler(req: any, res: any) {
 
     // --- Cron ---
     if (url.includes('/notify-bills-due'))         return handleNotifyBillsDue(req, res);
+    if (url.includes('/weekly-summary'))            return handleWeeklySummary(req, res);
 
     // --- Demo ---
     if (url.includes('/promote-demo'))             return handlePromoteDemo(req, res);
