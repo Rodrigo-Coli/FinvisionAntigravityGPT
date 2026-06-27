@@ -1,39 +1,28 @@
 {
-  "version": "2026.06.26.1200",
-  "title": "Acesso Livre, Admin Completo e Consorcio",
+  "version": "2026.06.26.1630",
+  "title": "Limpeza de Dados e Exclusoes Corretas",
   "date": "26/06/2026",
   "benefits": [
     {
-      "title": "Cadastro Sem Burocracia",
-      "desc": "Quem se cadastra agora entra direto no FinVision, sem precisar esperar aprovacao de ninguem. O plano gratuito e criado automaticamente.",
-      "type": "feature"
+      "title": "Adeus Dados Fantasma",
+      "desc": "Ao excluir um bem ou um financiamento, agora todas as parcelas e lancamentos automaticos vinculados sao removidos junto. Nada mais reaparece depois de atualizar.",
+      "type": "precisao"
     },
     {
-      "title": "App Abre Muito Mais Rapido",
-      "desc": "Cada tela agora so carrega quando voce vai ate ela. Voce vai sentir a diferenca, especialmente em celulares mais simples.",
-      "type": "performance"
-    },
-    {
-      "title": "Admin Completo e Preciso",
-      "desc": "Painel administrativo com calculo de custo de IA por plano, campos sem zeros indesejados e simbolo de infinito para limites ilimitados.",
+      "title": "Painel Admin com Numeros Reais",
+      "desc": "O painel administrativo agora mostra apenas usuarios reais. Contas de demonstracao ficam ocultas e nao poluem mais as metricas de assinaturas e receita.",
       "type": "ux"
     },
     {
-      "title": "Consorcio Integrado",
-      "desc": "Consorcios agora aparecem no historico de transacoes, nos passivos e nos calculos de patrimonio. Tudo conectado como os outros lancamentos.",
+      "title": "Exclusao Mais Limpa",
+      "desc": "Quando voce remove um patrimonio, os alugueis, condominio, IPTU e parcelas gerados automaticamente sao apagados. Pagamentos feitos manualmente sao mantidos para historico.",
       "type": "feature"
-    },
-    {
-      "title": "Extrato Completo do Financiamento",
-      "desc": "O extrato do financiamento agora mostra todas as 166 parcelas do contrato atual, separadas do historico do contrato anterior.",
-      "type": "precisao"
     }
   ],
   "changes": [
-    "**Cadastro Aberto:** Novos usuarios entram direto sem aprovacao manual.",
-    "**Admin:** Menu unificado, calculo de custo IA por plano, zeros e infinito corrigidos.",
-    "**Consorcio:** Wizard de cadastro, cards com 3 estados, integrado a transacoes e passivos.",
-    "**Financiamento:** Extrato mostra todas as parcelas do contrato atual (1 a 166).",
-    "**Seguranca:** isAdmin() centralizado, sem email fixo no codigo."
+    "**Exclusao de Bens:** Remove tambem os lancamentos automaticos vinculados e limpa o cache para evitar dados fantasma.",
+    "**Exclusao de Passivos:** Agora apaga de verdade todas as parcelas vinculadas ao financiamento ou consorcio.",
+    "**Admin:** Metricas e lista de usuarios excluem contas demo por padrao (botao para mostrar/ocultar).",
+    "**Banco:** Limpeza de contas demo acumuladas e registros orfaos."
   ]
 }

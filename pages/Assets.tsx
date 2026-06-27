@@ -3722,17 +3722,37 @@ const Assets: React.FC = () => {
 
   const handleDeleteAsset = async (asset: PhysicalAsset) => {
     if (!supabase) return;
-    if (!window.confirm(`Atenção: Excluir o bem "${asset.name}" removerá permanentemente o ativo. Suas transações vinculadas serão mantidas para integridade histórica. Deseja continuar?`)) return;
+    if (!window.confirm(`Atenção: Excluir o bem "${asset.name}" removerá o ativo e TODOS os lançamentos automáticos vinculados a ele (aluguéis, condomínio, IPTU, parcelas etc.). Lançamentos pagos manualmente serão mantidos para histórico. Deseja continuar?`)) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
 
+      // 1. Remove transações AUTO-GERADAS e não pagas vinculadas a este ativo (evita dados fantasma)
+      //    Mantém apenas as que foram pagas manualmente (histórico real de fluxo de caixa)
+      const { error: txErr } = await supabase
+        .from('transactions')
+        .update({ is_deleted: true })
+        .eq('metadata->>linked_asset_id', asset.id)
+        .or('metadata->>auto_generated.eq.true,is_paid.eq.false');
+      if (txErr) console.warn('[Assets] Falha ao limpar transações vinculadas:', txErr.message);
+
+      // 2. Remove o ativo físico
       const { error } = await supabase
         .from('physical_assets')
         .delete()
         .eq('id', asset.id);
 
       if (error) throw error;
+
+      // 3. Limpa caches locais para o item não reaparecer como fantasma
+      try {
+        if (userId) {
+          localStorage.removeItem(`finvision_cached_raw_txs_${userId}`);
+          localStorage.removeItem(`finvision_cached_projections_${userId}`);
+        }
+        localStorage.removeItem('finvision_cached_home_txs');
+        localStorage.removeItem('finvision_cached_summary');
+      } catch (e) {}
 
       // Sync broker balance if this was an investment linked to a broker
       // current_balance = initial_balance (caixa livre) + soma restante de investimentos
@@ -4388,8 +4408,27 @@ const Assets: React.FC = () => {
     if (!supabase) return;
     if (!window.confirm("Certeza que deseja excluir permanentemente este passivo? ATENÇÃO: Isso apagará também todo o histórico de pagamentos e transações vinculadas a este passivo! Para manter o histórico, considere Arquivar o passivo em vez de excluí-lo.")) return;
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+
+      // 1. Apaga TODAS as transações vinculadas a este passivo (parcelas, pagamentos)
+      const { error: txErr } = await supabase.from('transactions').delete().eq('liability_id', id);
+      if (txErr) console.warn('[Assets] Falha ao apagar transações do passivo:', txErr.message);
+
+      // 2. Se houver consórcio vinculado, apaga também
+      await supabase.from('consortiums').delete().eq('liability_id', id);
+
+      // 3. Apaga o passivo
       const { error } = await supabase.from('liabilities').delete().eq('id', id);
       if (error) throw error;
+
+      // 4. Limpa caches locais (evita dados fantasma)
+      try {
+        if (userId) localStorage.removeItem(`finvision_cached_raw_txs_${userId}`);
+        localStorage.removeItem('finvision_cached_home_txs');
+        localStorage.removeItem('finvision_cached_summary');
+      } catch (e) {}
+
       fetchData();
     } catch (err: any) {
       alert(`Erro ao excluir passivo: ${err.message}`);

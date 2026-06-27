@@ -98,6 +98,7 @@ export default function AdminDashboard() {
   // Users
   const [users, setUsers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showDemoUsers, setShowDemoUsers] = useState(false);
   const [updatingUser, setUpdatingUser] = useState<string | null>(null);
   const [grantPlanModal, setGrantPlanModal] = useState<{ user: any } | null>(null);
   const [grantPlanId, setGrantPlanId] = useState('');
@@ -159,7 +160,8 @@ export default function AdminDashboard() {
     if (activeTab === 'prompts') fetchPrompts();
     if (activeTab === 'audit') fetchAuditLogs();
     if (activeTab === 'campaigns') fetchCampaigns();
-  }, [activeTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, showDemoUsers]);
 
   // ─── Data fetchers ────────────────────────────────────────────────────────
 
@@ -169,14 +171,20 @@ export default function AdminDashboard() {
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 
+    // Exclui contas demo (demo+...@finvision.app) de todas as métricas
+    const DEMO = '%finvision.app';
     const [totalRes, todayRes, weekRes, subRes] = await Promise.all([
-      supabase.from('profiles').select('id', { count: 'exact', head: true }),
-      supabase.from('profiles').select('id', { count: 'exact', head: true }).gte('created_at', today),
-      supabase.from('profiles').select('id', { count: 'exact', head: true }).gte('created_at', weekAgo),
-      supabase.from('subscriptions').select('status, plans(name, price_cents)').in('status', ['active', 'trialing', 'admin_granted', 'canceled']),
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).not('email', 'like', DEMO),
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).not('email', 'like', DEMO).gte('created_at', today),
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).not('email', 'like', DEMO).gte('created_at', weekAgo),
+      // Subscriptions com join em profiles para excluir demos e órfãs
+      supabase.from('subscriptions').select('status, plans(name, price_cents), profiles!inner(email)').in('status', ['active', 'trialing', 'admin_granted', 'canceled']),
     ]);
 
-    const subs: any[] = subRes.data || [];
+    const subs: any[] = (subRes.data || []).filter((s: any) => {
+      const email = (s.profiles as any)?.email || '';
+      return !email.endsWith('finvision.app'); // exclui demos
+    });
     const active = subs.filter((s: any) => ['active', 'admin_granted'].includes(s.status));
     const trialing = subs.filter((s: any) => s.status === 'trialing');
     const churned = subs.filter((s: any) => s.status === 'canceled').length;
@@ -222,10 +230,13 @@ export default function AdminDashboard() {
 
   const fetchUsers = async () => {
     if (!supabase) return;
-    const { data } = await supabase
+    let query = supabase
       .from('profiles')
       .select('*, subscription:subscriptions(id, status, trial_ends_at, current_period_end, asaas_subscription_id, plan:plans(name, price_cents))')
       .order('created_at', { ascending: false });
+    // Por padrão esconde contas demo (demo+...@finvision.app)
+    if (!showDemoUsers) query = query.not('email', 'like', '%finvision.app');
+    const { data } = await query;
     if (data) setUsers(data);
   };
 
@@ -1000,9 +1011,18 @@ export default function AdminDashboard() {
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
             <h2 className="font-black text-slate-900 dark:text-white text-lg">Usuários ({users.length})</h2>
-            <div className="relative w-full sm:w-80">
-              <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input type="text" placeholder="Buscar por e-mail..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:border-brand-500" />
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <button
+                onClick={() => setShowDemoUsers(p => !p)}
+                className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border ${showDemoUsers ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-white dark:bg-slate-900 text-slate-400 border-slate-200 dark:border-slate-700'}`}
+                title="Contas demo (demo+...@finvision.app) ficam ocultas por padrão"
+              >
+                {showDemoUsers ? '👁 Mostrando demos' : '🚫 Ocultar demos'}
+              </button>
+              <div className="relative flex-1 sm:w-64">
+                <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input type="text" placeholder="Buscar por e-mail..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:border-brand-500" />
+              </div>
             </div>
           </div>
 
