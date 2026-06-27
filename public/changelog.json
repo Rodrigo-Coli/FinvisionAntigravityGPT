@@ -1,28 +1,27 @@
 {
-  "version": "2026.06.26.1730",
-  "title": "Cartoes Adicionais e Limpeza Total",
+  "version": "2026.06.26.1830",
+  "title": "Cartoes Adicionais 100% Integrados",
   "date": "26/06/2026",
   "benefits": [
     {
-      "title": "Cartao Adicional Completo",
-      "desc": "Agora voce escolhe se o cartao adicional soma na fatura do titular ou tem fatura separada. Os gastos aparecem corretamente em todas as telas de cartao.",
-      "type": "feature"
+      "title": "Fatura do Adicional no Lugar Certo",
+      "desc": "Quando o cartao adicional soma na fatura do titular, os gastos entram de verdade na fatura do principal. Pagou a fatura, pagou tudo junto.",
+      "type": "precisao"
     },
     {
-      "title": "Botao de Adicionar Cartao Liberado",
-      "desc": "O botao para cadastrar novos cartoes voltou a funcionar sem travas de plano.",
+      "title": "Dashboard Sem Duplicar",
+      "desc": "O painel inicial mostra so os cartoes principais. Adicionais que somam na fatura nao aparecem duplicados.",
       "type": "ux"
     },
     {
-      "title": "Sem Mais Dados Fantasma",
-      "desc": "Limpamos todos os lancamentos orfaos que sobravam de bens e financiamentos ja excluidos. O que voce apaga, some de verdade.",
-      "type": "precisao"
+      "title": "Cartoes Funcionando em Todas as Telas",
+      "desc": "Adicionais aparecem corretamente ao lancar gasto, conciliar, escanear cupom com IA e nos relatorios.",
+      "type": "feature"
     }
   ],
   "changes": [
-    "**Cartao Adicional:** Nova opcao soma na fatura do titular ou fatura separada, refletida no calculo da fatura.",
-    "**Cartoes:** Identificacao visual de adicionais ao lancar transacoes manuais.",
-    "**Limpeza:** Removidos 758 lancamentos orfaos/deletados do banco. Exclusao de bem ou passivo agora remove os lancamentos vinculados.",
-    "**Admin:** Plano dono liberado, metricas sem contas demo."
+    "**Fatura:** Transacoes de adicional que soma na fatura vao para a fatura do titular (getOrCreateStatement usa o cartao principal).",
+    "**Dashboard:** So exibe titulares e adicionais com fatura separada, evitando dupla contagem.",
+    "**Auditoria:** Verificadas todas as telas que usam cartao (lancamento, conciliacao, IA, relatorios) - todas direcionam corretamente."
   ]
 }

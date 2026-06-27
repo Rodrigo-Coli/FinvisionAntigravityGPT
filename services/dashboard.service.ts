@@ -22,7 +22,7 @@ export const DashboardService = {
       futureTxsRes
     ] = await Promise.all([
       sb.from('accounts').select('current_balance, type, include_in_dashboard').eq('user_id', user.id).eq('is_archived', false),
-      sb.from('cards').select('id, brand, name, limit_total, last4').eq('user_id', user.id).eq('is_archived', false),
+      sb.from('cards').select('id, brand, name, limit_total, last4, is_additional, parent_card_id, sums_into_invoice').eq('user_id', user.id).eq('is_archived', false),
       sb.from('physical_assets').select('estimated_value, category').eq('user_id', user.id),
       sb.from('entities').select('name').eq('user_id', user.id).eq('include_in_totals', false),
       sb.from('transactions').select('date, amount, type, owner_name, metadata').eq('user_id', user.id).eq('is_deleted', false).gte('date', new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString()),
@@ -55,8 +55,11 @@ export const DashboardService = {
       }
     });
 
-    // 2. Credit Cards Summary (using parallel fetches for statements if cards are available)
-    const creditCardsSummary = cards.length > 0 ? await Promise.all(cards.map(async (card: any) => {
+    // 2. Credit Cards Summary
+    // Mostra apenas cartões titulares + adicionais com fatura separada.
+    // Adicionais que somam na fatura do titular já estão contabilizados no principal.
+    const displayCards = cards.filter((c: any) => !c.is_additional || c.sums_into_invoice === false);
+    const creditCardsSummary = displayCards.length > 0 ? await Promise.all(displayCards.map(async (card: any) => {
       const { data: stmt } = await sb
         .from('card_statements')
         .select('total_amount, paid_amount')

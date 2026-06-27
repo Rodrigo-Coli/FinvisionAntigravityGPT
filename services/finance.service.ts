@@ -106,12 +106,23 @@ export const FinanceService = {
     if (!user) throw new Error("Usuário não autenticado");
 
     // 1. Buscar detalhes do cartão
-    const { data: card, error: cardErr } = await supabase
+    let { data: card, error: cardErr } = await supabase
       .from('cards')
       .select('*')
       .eq('id', cardId)
       .single();
     if (cardErr) throw cardErr;
+
+    // Se for cartão ADICIONAL que SOMA na fatura do titular, a fatura é a do titular.
+    // A transação mantém o card_id do adicional (rastreia quem gastou), mas entra na fatura do principal.
+    let effectiveCardId = cardId;
+    if (card.is_additional && card.sums_into_invoice !== false && card.parent_card_id) {
+      const { data: parentCard } = await supabase.from('cards').select('*').eq('id', card.parent_card_id).single();
+      if (parentCard) {
+        card = parentCard;            // usa fechamento/vencimento do titular
+        effectiveCardId = parentCard.id;
+      }
+    }
 
     const txDate = new Date(dateStr);
     const day = txDate.getUTCDate();
@@ -138,7 +149,7 @@ export const FinanceService = {
     const { data: existing } = await supabase
       .from('card_statements')
       .select('id')
-      .eq('card_id', cardId)
+      .eq('card_id', effectiveCardId)
       .eq('month', stmtMonth)
       .eq('year', stmtYear)
       .maybeSingle();
@@ -163,7 +174,7 @@ export const FinanceService = {
       .from('card_statements')
       .insert({
         user_id: user.id,
-        card_id: cardId,
+        card_id: effectiveCardId,
         month: stmtMonth,
         year: stmtYear,
         status: 'OPEN',
