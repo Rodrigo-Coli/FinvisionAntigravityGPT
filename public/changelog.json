@@ -1,40 +1,39 @@
 {
-  "version": "2026.06.25.0200",
-  "title": "Acesso Livre, App Mais Rápido e Correções",
-  "date": "25/06/2026",
+  "version": "2026.06.26.1200",
+  "title": "Acesso Livre, Admin Completo e Consorcio",
+  "date": "26/06/2026",
   "benefits": [
     {
       "title": "Cadastro Sem Burocracia",
-      "desc": "Quem se cadastra agora entra direto no FinVision, sem precisar esperar aprovação de ninguém. Simples como deveria ser desde o início.",
+      "desc": "Quem se cadastra agora entra direto no FinVision, sem precisar esperar aprovacao de ninguem. O plano gratuito e criado automaticamente.",
       "type": "feature"
     },
     {
-      "title": "App Abre Muito Mais Rápido",
-      "desc": "Cada tela agora só carrega quando você vai até ela — não tudo de uma vez. Você vai sentir a diferença, especialmente em celulares mais simples.",
+      "title": "App Abre Muito Mais Rapido",
+      "desc": "Cada tela agora so carrega quando voce vai ate ela. Voce vai sentir a diferenca, especialmente em celulares mais simples.",
       "type": "performance"
     },
     {
-      "title": "Lançamentos Apagados de Verdade",
-      "desc": "Selecionar e excluir vários lançamentos ao mesmo tempo agora funciona certo — inclusive os do cartão de crédito, que antes ficavam esquecidos no banco.",
-      "type": "precisao"
-    },
-    {
-      "title": "Seu Plano Aparece Certinho",
-      "desc": "A barra lateral agora mostra o seu plano real — Gratuito, Essencial, Plus ou Pro. Antes aparecia 'Premium Plan' fixo para todo mundo.",
+      "title": "Admin Completo e Preciso",
+      "desc": "Painel administrativo com calculo de custo de IA por plano, campos sem zeros indesejados e simbolo de infinito para limites ilimitados.",
       "type": "ux"
     },
     {
-      "title": "Notificações Elegantes, Sem Interrupção",
-      "desc": "Os avisos de sucesso e erro agora aparecem como uma notificação discreta no canto da tela e somem sozinhos. Sem mais popups que travam tudo.",
-      "type": "usabilidade"
+      "title": "Consorcio Integrado",
+      "desc": "Consorcios agora aparecem no historico de transacoes, nos passivos e nos calculos de patrimonio. Tudo conectado como os outros lancamentos.",
+      "type": "feature"
+    },
+    {
+      "title": "Extrato Completo do Financiamento",
+      "desc": "O extrato do financiamento agora mostra todas as 166 parcelas do contrato atual, separadas do historico do contrato anterior.",
+      "type": "precisao"
     }
   ],
   "changes": [
-    "**Cadastro Aberto:** Novos usuários entram direto — sem esperar aprovação de administrador. O plano Gratuito é criado automaticamente.",
-    "**Velocidade:** O app carrega cada tela separadamente, economizando memória e deixando tudo mais fluido.",
-    "**Exclusão em Lote:** Deletar vários lançamentos juntos agora apaga corretamente tanto os bancários quanto os de cartão.",
-    "**IA de Categorização:** Corrigido o envio de dados para a inteligência artificial — as sugestões de categoria agora são mais precisas.",
-    "**Logos dos Cartões:** Visa, Mastercard e Amex agora ficam guardados no próprio app, sem depender de sites externos.",
-    "**Demo com Plano Definido:** Usuários do modo demonstração agora têm plano definido desde o início, sem inconsistências."
+    "**Cadastro Aberto:** Novos usuarios entram direto sem aprovacao manual.",
+    "**Admin:** Menu unificado, calculo de custo IA por plano, zeros e infinito corrigidos.",
+    "**Consorcio:** Wizard de cadastro, cards com 3 estados, integrado a transacoes e passivos.",
+    "**Financiamento:** Extrato mostra todas as parcelas do contrato atual (1 a 166).",
+    "**Seguranca:** isAdmin() centralizado, sem email fixo no codigo."
   ]
 }

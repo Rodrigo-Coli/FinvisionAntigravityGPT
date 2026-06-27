@@ -48,7 +48,7 @@ if (window.location.pathname === '/demo' || window.location.pathname === '/demo/
   window.location.replace('/#/demo');
 }
 
-const APP_VERSION = '6.2.3';
+const APP_VERSION = '6.2.4';
 
 // Spinner reutilizado pelo Suspense e pelo carregamento de auth
 const PageSpinner: React.FC = () => (
