@@ -124,6 +124,7 @@ const CreditCardsSection: React.FC = () => {
   const [isAdditional, setIsAdditional] = useState(false);
   const [parentCardId, setParentCardId] = useState('');
   const [additionalLabel, setAdditionalLabel] = useState('');
+  const [sumsIntoInvoice, setSumsIntoInvoice] = useState(true);
   const [defaultCategory, setDefaultCategory] = useState('Pessoal');
   const [defaultSubcategory, setDefaultSubcategory] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -721,9 +722,15 @@ const CreditCardsSection: React.FC = () => {
       const user = session?.user;
       if (!user) return;
 
+      // Cartões adicionais que SOMAM na fatura deste titular entram na mesma visão
+      const additionalThatSum = cards
+        .filter((c: any) => c.is_additional && c.parent_card_id === cardId && c.sums_into_invoice !== false)
+        .map((c: any) => c.id);
+      const cardIdsForInvoice = [cardId, ...additionalThatSum];
+
       let query = supabase.from('card_transactions').select('*').eq('user_id', user.id).order('date', { ascending: false });
       if (statementId) query = query.eq('statement_id', statementId);
-      else query = query.eq('card_id', cardId);
+      else query = query.in('card_id', cardIdsForInvoice);
       const { data, error } = await query;
       if (error) throw error;
       
@@ -1098,6 +1105,7 @@ const CreditCardsSection: React.FC = () => {
     setIsAdditional(selectedCard.is_additional);
     setParentCardId(selectedCard.parent_card_id || '');
     setAdditionalLabel(selectedCard.additional_label || '');
+    setSumsIntoInvoice(selectedCard.sums_into_invoice !== false);
     setDefaultCategory(selectedCard.default_category || 'Pessoal');
     setDefaultSubcategory(selectedCard.default_subcategory || '');
     setDefaultOwner(selectedCard.default_owner || 'Pessoal');
@@ -1199,6 +1207,7 @@ const CreditCardsSection: React.FC = () => {
         is_additional: isAdditional,
         parent_card_id: isAdditional ? parentCardId : null,
         additional_label: isAdditional ? additionalLabel : null,
+        sums_into_invoice: isAdditional ? sumsIntoInvoice : true,
         default_category: correctedCategory,
         default_subcategory: correctedSubcategory,
         default_owner: correctedOwner
@@ -1242,6 +1251,7 @@ const CreditCardsSection: React.FC = () => {
     setIsAdditional(false);
     setParentCardId('');
     setAdditionalLabel('');
+    setSumsIntoInvoice(true);
     setDefaultCategory('Pessoal');
     setDefaultSubcategory('');
     setDefaultOwner('Pessoal');
@@ -1698,6 +1708,8 @@ const CreditCardsSection: React.FC = () => {
         setParentCardId={setParentCardId}
         additionalLabel={additionalLabel}
         setAdditionalLabel={setAdditionalLabel}
+        sumsIntoInvoice={sumsIntoInvoice}
+        setSumsIntoInvoice={setSumsIntoInvoice}
         defaultCategory={defaultCategory}
         setDefaultCategory={setDefaultCategory}
         defaultSubcategory={defaultSubcategory}

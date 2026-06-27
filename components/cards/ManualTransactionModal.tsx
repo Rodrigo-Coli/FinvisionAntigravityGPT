@@ -134,7 +134,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                 <option value="">Selecione um cartão...</option>
                                 {cards.filter((c) => !c.is_archived).map((c) => (
                                     <option key={c.id} value={c.id}>
-                                        {c.name} (**** {c.last4})
+                                        {c.name} (**** {c.last4}){c.is_additional ? `  • Adicional${c.additional_label ? ': ' + c.additional_label : ''}` : ''}
                                     </option>
                                 ))}
                             </select>

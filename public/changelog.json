@@ -1,28 +1,28 @@
 {
-  "version": "2026.06.26.1630",
-  "title": "Limpeza de Dados e Exclusoes Corretas",
+  "version": "2026.06.26.1730",
+  "title": "Cartoes Adicionais e Limpeza Total",
   "date": "26/06/2026",
   "benefits": [
     {
-      "title": "Adeus Dados Fantasma",
-      "desc": "Ao excluir um bem ou um financiamento, agora todas as parcelas e lancamentos automaticos vinculados sao removidos junto. Nada mais reaparece depois de atualizar.",
-      "type": "precisao"
+      "title": "Cartao Adicional Completo",
+      "desc": "Agora voce escolhe se o cartao adicional soma na fatura do titular ou tem fatura separada. Os gastos aparecem corretamente em todas as telas de cartao.",
+      "type": "feature"
     },
     {
-      "title": "Painel Admin com Numeros Reais",
-      "desc": "O painel administrativo agora mostra apenas usuarios reais. Contas de demonstracao ficam ocultas e nao poluem mais as metricas de assinaturas e receita.",
+      "title": "Botao de Adicionar Cartao Liberado",
+      "desc": "O botao para cadastrar novos cartoes voltou a funcionar sem travas de plano.",
       "type": "ux"
     },
     {
-      "title": "Exclusao Mais Limpa",
-      "desc": "Quando voce remove um patrimonio, os alugueis, condominio, IPTU e parcelas gerados automaticamente sao apagados. Pagamentos feitos manualmente sao mantidos para historico.",
-      "type": "feature"
+      "title": "Sem Mais Dados Fantasma",
+      "desc": "Limpamos todos os lancamentos orfaos que sobravam de bens e financiamentos ja excluidos. O que voce apaga, some de verdade.",
+      "type": "precisao"
     }
   ],
   "changes": [
-    "**Exclusao de Bens:** Remove tambem os lancamentos automaticos vinculados e limpa o cache para evitar dados fantasma.",
-    "**Exclusao de Passivos:** Agora apaga de verdade todas as parcelas vinculadas ao financiamento ou consorcio.",
-    "**Admin:** Metricas e lista de usuarios excluem contas demo por padrao (botao para mostrar/ocultar).",
-    "**Banco:** Limpeza de contas demo acumuladas e registros orfaos."
+    "**Cartao Adicional:** Nova opcao soma na fatura do titular ou fatura separada, refletida no calculo da fatura.",
+    "**Cartoes:** Identificacao visual de adicionais ao lancar transacoes manuais.",
+    "**Limpeza:** Removidos 758 lancamentos orfaos/deletados do banco. Exclusao de bem ou passivo agora remove os lancamentos vinculados.",
+    "**Admin:** Plano dono liberado, metricas sem contas demo."
   ]
 }

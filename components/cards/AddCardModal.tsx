@@ -26,6 +26,8 @@ interface AddCardModalProps {
     setParentCardId: (v: string) => void;
     additionalLabel: string;
     setAdditionalLabel: (v: string) => void;
+    sumsIntoInvoice: boolean;
+    setSumsIntoInvoice: (v: boolean) => void;
     defaultCategory: string;
     setDefaultCategory: (v: string) => void;
     defaultSubcategory: string;
@@ -64,6 +66,8 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
     setParentCardId,
     additionalLabel,
     setAdditionalLabel,
+    sumsIntoInvoice,
+    setSumsIntoInvoice,
     defaultCategory,
     setDefaultCategory,
     defaultSubcategory,
@@ -273,6 +277,39 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
                                             placeholder="Identificação do portador"
                                             className="w-full h-14 px-5 bg-white border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                                         />
+                                    </div>
+
+                                    {/* Opção: soma na fatura do titular ou fatura separada */}
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Como aparece na fatura?</label>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSumsIntoInvoice(true)}
+                                                className={`flex items-start gap-3 p-4 rounded-2xl border-2 text-left transition-all ${sumsIntoInvoice ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                                            >
+                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${sumsIntoInvoice ? 'border-brand-500' : 'border-slate-300'}`}>
+                                                    {sumsIntoInvoice && <div className="w-2.5 h-2.5 rounded-full bg-brand-500" />}
+                                                </div>
+                                                <div>
+                                                    <p className={`text-xs font-black ${sumsIntoInvoice ? 'text-brand-700' : 'text-slate-700'}`}>Soma na fatura do titular</p>
+                                                    <p className="text-[10px] text-slate-400 mt-0.5">Os gastos deste adicional entram na mesma fatura do cartão principal (o mais comum).</p>
+                                                </div>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSumsIntoInvoice(false)}
+                                                className={`flex items-start gap-3 p-4 rounded-2xl border-2 text-left transition-all ${!sumsIntoInvoice ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                                            >
+                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${!sumsIntoInvoice ? 'border-amber-500' : 'border-slate-300'}`}>
+                                                    {!sumsIntoInvoice && <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />}
+                                                </div>
+                                                <div>
+                                                    <p className={`text-xs font-black ${!sumsIntoInvoice ? 'text-amber-700' : 'text-slate-700'}`}>Fatura separada</p>
+                                                    <p className="text-[10px] text-slate-400 mt-0.5">O adicional tem fatura própria, controlada de forma independente.</p>
+                                                </div>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             )}
