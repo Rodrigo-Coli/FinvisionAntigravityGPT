@@ -162,6 +162,12 @@ const buildSeriesFilter = (query: any, tx: any) => {
   return query;
 };
 
+// Lançamentos capitalizados (aquisição de bens, financiamento/empréstimo recebido, etc.) são movimentos
+// de patrimônio, não resultado operacional. O Painel (dashboard.service) e os Relatórios já os excluem
+// dos totais; aqui aplicamos a mesma regra para o resumo do Histórico não divergir das outras telas.
+const isCapitalizedMovement = (t: any): boolean =>
+  t?.metadata?.isCapitalized === true || t?.metadata?.type === 'asset_purchase';
+
 const getQueryParam = (name: string): string | null => {
   let search = window.location.search;
   if (!search && window.location.hash) {
@@ -2128,11 +2134,13 @@ const HistoryPage: React.FC = () => {
       ? transactions.filter(t => HistoryUtils.getStatus(t) !== 'PAID')
       : transactions;
 
+  // Exclui movimentos de patrimônio capitalizados dos gráficos/resumo (mesma regra do Painel e Relatórios)
+  const operationalChartTxs = chartTransactions.filter(t => !isCapitalizedMovement(t));
   const chartViewFiltered = viewMode === 'SETTLED'
-    ? chartTransactions.filter(t => HistoryUtils.getStatus(t) === 'PAID')
+    ? operationalChartTxs.filter(t => HistoryUtils.getStatus(t) === 'PAID')
     : viewMode === 'PENDING'
-      ? chartTransactions.filter(t => HistoryUtils.getStatus(t) !== 'PAID')
-      : chartTransactions;
+      ? operationalChartTxs.filter(t => HistoryUtils.getStatus(t) !== 'PAID')
+      : operationalChartTxs;
 
   const handleCreateCategory = async (name: string, type: 'INCOME' | 'EXPENSE') => {
     if (!supabase) return;
@@ -2255,6 +2263,7 @@ const HistoryPage: React.FC = () => {
     let expense = 0;
     combined.forEach((t: any) => {
       if (t.type === 'TRANSFER') return;
+      if (isCapitalizedMovement(t)) return;
       if (t.type === 'INCOME') income += Number(t.amount || 0);
       else if (t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT') expense += Math.abs(Number(t.amount || 0));
     });
@@ -2405,7 +2414,7 @@ const HistoryPage: React.FC = () => {
                 files: []
               }
             })}
-            className="hidden sm:flex flex-1 min-w-[140px] sm:flex-none items-center justify-center gap-2 px-4 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
+            className="flex flex-1 min-w-[140px] sm:flex-none items-center justify-center gap-2 px-4 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95"
           >
             <Plus size={18} />
             <span>Novo Lançamento</span>

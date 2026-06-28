@@ -1,27 +1,28 @@
 {
-  "version": "2026.06.26.1830",
-  "title": "Cartoes Adicionais 100% Integrados",
-  "date": "26/06/2026",
+  "version": "2026.06.27.1600",
+  "title": "Botoes no Celular e Resultado Consistente",
+  "date": "27/06/2026",
   "benefits": [
     {
-      "title": "Fatura do Adicional no Lugar Certo",
-      "desc": "Quando o cartao adicional soma na fatura do titular, os gastos entram de verdade na fatura do principal. Pagou a fatura, pagou tudo junto.",
-      "type": "precisao"
-    },
-    {
-      "title": "Dashboard Sem Duplicar",
-      "desc": "O painel inicial mostra so os cartoes principais. Adicionais que somam na fatura nao aparecem duplicados.",
+      "title": "Adicionar Cartao e Nova Conta no Celular",
+      "desc": "Os botoes de adicionar cartao e criar nova conta agora aparecem tambem no celular. Antes sumiam quando voce ja tinha pelo menos um cadastrado.",
       "type": "ux"
     },
     {
-      "title": "Cartoes Funcionando em Todas as Telas",
-      "desc": "Adicionais aparecem corretamente ao lancar gasto, conciliar, escanear cupom com IA e nos relatorios.",
-      "type": "feature"
+      "title": "Resultado do Mes Igual em Todas as Telas",
+      "desc": "Compra de bens e financiamentos recebidos nao distorcem mais o resultado do mes no Historico. Agora Historico, Painel e Relatorios mostram o mesmo numero.",
+      "type": "precisao"
+    },
+    {
+      "title": "Lancamentos de Patrimonio no Lugar Certo",
+      "desc": "Emprestimo concedido e quitacao de chaves passaram a ser tratados como movimento de patrimonio, com categoria correta, sem inflar suas despesas do mes.",
+      "type": "precisao"
     }
   ],
   "changes": [
-    "**Fatura:** Transacoes de adicional que soma na fatura vao para a fatura do titular (getOrCreateStatement usa o cartao principal).",
-    "**Dashboard:** So exibe titulares e adicionais com fatura separada, evitando dupla contagem.",
-    "**Auditoria:** Verificadas todas as telas que usam cartao (lancamento, conciliacao, IA, relatorios) - todas direcionam corretamente."
+    "**Mobile:** Botoes 'Adicionar Cartao', 'Nova Conta' e 'Novo Lancamento' deixam de ficar ocultos em telas pequenas (removido hidden sm:flex).",
+    "**Consistencia:** Resumo e graficos do Historico agora excluem lancamentos capitalizados (isCapitalized / asset_purchase), igual ao Painel e Relatorios.",
+    "**Patrimonio:** loan_disbursement e delivery_quitacao marcados como isCapitalized; quitacao de chaves e aluguel de veiculo recebem category_id garantido.",
+    "**Auditoria:** Verificadas as funcoes de cartao (lancamento, fatura, pagamento, reabertura) e a responsividade de menus/botoes em todos os tamanhos."
   ]
 }

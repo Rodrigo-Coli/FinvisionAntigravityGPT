@@ -1454,7 +1454,8 @@ const Assets: React.FC = () => {
           paid_at: dateStr,
           metadata: {
             linked_asset_id: asset.id,
-            type: 'loan_disbursement'
+            type: 'loan_disbursement',
+            isCapitalized: true
           }
         }]);
       }
@@ -1993,16 +1994,8 @@ const Assets: React.FC = () => {
         const platFee = parseFloat(formValues.rentalPlatformFee) || 0;
         const aluguelLiquido = Math.max(0, aluguel - platFee);
         
-        let rentalCatId = '';
-        const { data: rentCat } = await supabase
-          .from('categories')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('name', 'Receita Operacional Imobiliária') // Utiliza categoria de locação existente
-          .maybeSingle();
-        if (rentCat) {
-          rentalCatId = rentCat.id;
-        }
+        // Utiliza categoria de locação existente; cria se ainda não existir para nunca deixar category_id nulo
+        const rentalCatId = await getOrCreateCategory(userId, 'Receita Operacional Imobiliária', 'INCOME', 'bg-emerald-50 text-emerald-600') || '';
 
         const newRentTxs = [];
         for (let i = 0; i < 24; i++) { // Provisão de 24 meses
@@ -3984,6 +3977,7 @@ const Assets: React.FC = () => {
         if (realEstateManageForm.deliveryPaymentMethod === 'A_VISTA') {
           if (balance > 0) {
             const todayStr = new Date().toISOString().split('T')[0];
+            const habitacaoCatId = await getOrCreateCategory(user.id, 'Habitação', 'EXPENSE', 'bg-emerald-50 text-emerald-600');
             await supabase.from('transactions').insert([{
               user_id: user.id,
               description: `Quitação Saldo Chaves - ${asset.name}`,
@@ -3991,12 +3985,14 @@ const Assets: React.FC = () => {
               date: todayStr,
               type: 'EXPENSE',
               category: 'Habitação',
+              category_id: habitacaoCatId,
               is_paid: true,
               paid_amount: balance,
               paid_at: todayStr,
               metadata: {
                 linked_asset_id: asset.id,
-                type: 'delivery_quitacao'
+                type: 'delivery_quitacao',
+                isCapitalized: true
               }
             }]);
           }
@@ -5247,7 +5243,7 @@ const Assets: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Patrimônio Líquido</h1>
           <p className="text-sm text-slate-400 font-medium">Bens físicos, investimentos inteligentes e passivos consolidados.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3 w-full md:w-auto">
           {activeView === 'overview' && (
             <button
               onClick={() => setShowCustomizeModal(true)}

@@ -453,7 +453,7 @@ const AccountsSection: React.FC = () => {
         </div>
         <button
           onClick={() => { resetForm(); setShowModal(true); }}
-          className="hidden sm:flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95 whitespace-nowrap"
+          className="flex w-full sm:w-auto items-center justify-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95 whitespace-nowrap"
         >
           <Plus size={18} /> Nova Conta
         </button>

@@ -1435,7 +1435,7 @@ const CreditCardsSection: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Cartões de Crédito</h1>
           <p className="text-sm text-slate-400 font-medium">Controle de faturas, limites e gastos adicionais.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           <button
             onClick={() => {
               if (isCardsLocked) {
@@ -1444,14 +1444,14 @@ const CreditCardsSection: React.FC = () => {
                 setShowAddModal(true);
               }
             }}
-            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 transition-all active:scale-95"
+            className="flex flex-1 sm:flex-none items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 transition-all active:scale-95"
           >
             <Plus size={18} />
             <span>Adicionar Cartão</span>
           </button>
           <button
             onClick={() => setShowAddTxModal(true)}
-            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl font-semibold shadow-lg shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95"
+            className="flex flex-1 sm:flex-none items-center justify-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl font-semibold shadow-lg shadow-brand-500/20 hover:bg-brand-700 transition-all active:scale-95"
           >
             <Plus size={18} />
             <span>Lançamento</span>
