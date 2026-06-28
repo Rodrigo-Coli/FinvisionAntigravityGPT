@@ -230,6 +230,8 @@ const HistoryPage: React.FC = () => {
   });
   const [filterSubcategory, setFilterSubcategory] = useState<string[]>([]);
   const [filterOwner, setFilterOwner] = useState<string[]>([]);
+  // Origem: 'ALL' (conta + cartão, padrão) | 'ACCOUNT' (só conta) | 'CARD' (só cartão)
+  const [filterOrigin, setFilterOrigin] = useState<'ALL' | 'ACCOUNT' | 'CARD'>('ALL');
 
   // (no longer used for pills, kept empty to avoid breaking HistoryCharts prop)
   const [selectedTimelineCategories] = useState<string[]>([]);
@@ -657,6 +659,12 @@ const HistoryPage: React.FC = () => {
         let combined = [...(txs || []), ...normalizedCardTxs].map(applyTrueAmount);
 
         // Apply JS Filters
+        // Origem: separa lançamentos de cartão (metadata.is_card) dos de conta
+        if (filterOrigin === 'ACCOUNT') {
+          combined = combined.filter((t: any) => !t.metadata?.is_card);
+        } else if (filterOrigin === 'CARD') {
+          combined = combined.filter((t: any) => !!t.metadata?.is_card);
+        }
         if (filterType !== 'ALL') {
           combined = combined.filter((t: any) => t.type === filterType);
         }
@@ -770,11 +778,17 @@ const HistoryPage: React.FC = () => {
         }));
       };
 
+      // Assinatura do período atual: o cache só é válido se foi gerado para o MESMO intervalo de datas,
+      // pois a busca no banco é filtrada por data. Sem isso, ao trocar de período/voltar à página
+      // os totais de receita/despesa "piscam" com valores antigos (dados fantasma) antes de corrigir.
+      const currentCacheSig = JSON.stringify({ startDate: startDate || '', endDate: endDate || '' });
+
       // 1. Tentar ler do cache local primeiro para carregar instantaneamente
       let hasCache = false;
       try {
+        const cachedSig = localStorage.getItem(`finvision_cached_raw_sig_${user.id}`);
         const cachedRawTxs = localStorage.getItem(`finvision_cached_raw_txs_${user.id}`);
-        if (cachedRawTxs) {
+        if (cachedRawTxs && cachedSig === currentCacheSig) {
           accData = JSON.parse(
             localStorage.getItem('finvision_cached_accounts') ||
             localStorage.getItem('finvision_cached_accounts_full') ||
@@ -911,6 +925,7 @@ const HistoryPage: React.FC = () => {
         localStorage.setItem('finvision_cached_owners_objs', JSON.stringify(entityObjsRes));
         localStorage.setItem(`finvision_cached_raw_txs_${user.id}`, JSON.stringify(transactionsData));
         localStorage.setItem(`finvision_cached_raw_card_txs_${user.id}`, JSON.stringify(cardTxsData));
+        localStorage.setItem(`finvision_cached_raw_sig_${user.id}`, currentCacheSig);
       } catch (cacheErr) {
         console.warn("Falha ao salvar cache no localStorage:", cacheErr);
       }
@@ -922,7 +937,7 @@ const HistoryPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [filterType, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, page, sortField, sortDirection, debouncedSearch]);
+  }, [filterType, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, filterOrigin, page, sortField, sortDirection, debouncedSearch]);
 
   const refreshCharts = useCallback(async () => {
     await fetchData(true);
@@ -1502,6 +1517,7 @@ const HistoryPage: React.FC = () => {
 
   const resetFilters = () => {
     setFilterType('ALL'); setFilterCategory([]);
+    setFilterSubcategory([]); setFilterOrigin('ALL');
     setStartDate(DateUtils.formatToISODate(firstDay));
     setEndDate(DateUtils.formatToISODate(lastDay));
     setMinPrice(''); setMaxPrice('');
@@ -2591,6 +2607,7 @@ const HistoryPage: React.FC = () => {
         filterCategory={filterCategory} setFilterCategory={setFilterCategory} filterSubcategory={filterSubcategory} setFilterSubcategory={setFilterSubcategory} startDate={startDate} setStartDate={setStartDate}
         endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
         filterOwner={filterOwner} setFilterOwner={setFilterOwner} owners={owners}
+        filterOrigin={filterOrigin} setFilterOrigin={setFilterOrigin}
         categories={availableCategories} subcategories={Array.from(new Set(subcategories.map(s => s.name?.trim()))).filter(Boolean).sort()} accounts={accounts} resetFilters={resetFilters}
       />
 

@@ -173,6 +173,8 @@ interface HistoryFiltersProps {
     setMaxPrice: (v: string) => void;
     filterOwner: string[];
     setFilterOwner: (v: string[]) => void;
+    filterOrigin: 'ALL' | 'ACCOUNT' | 'CARD';
+    setFilterOrigin: (v: 'ALL' | 'ACCOUNT' | 'CARD') => void;
     owners: string[];
     categories: string[];
     subcategories: string[];
@@ -185,8 +187,13 @@ export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
     filterType, setFilterType, filterAccount, setFilterAccount,
     filterCategory, setFilterCategory, filterSubcategory, setFilterSubcategory, startDate, setStartDate,
     endDate, setEndDate, minPrice, setMinPrice, maxPrice, setMaxPrice,
-    filterOwner, setFilterOwner, owners, categories, subcategories, accounts, resetFilters
+    filterOwner, setFilterOwner, filterOrigin, setFilterOrigin, owners, categories, subcategories, accounts, resetFilters
 }) => {
+    const originOptions: { id: 'ALL' | 'ACCOUNT' | 'CARD'; label: string }[] = [
+        { id: 'ALL', label: 'Tudo' },
+        { id: 'ACCOUNT', label: 'Conta' },
+        { id: 'CARD', label: 'Cartão' },
+    ];
     return (
         <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
             <div className="flex flex-col lg:flex-row gap-4">
@@ -199,6 +206,19 @@ export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                     />
+                </div>
+                {/* Origem: Conta / Cartão / Tudo (padrão Tudo) */}
+                <div className="flex bg-slate-100 p-1 rounded-xl gap-1 shrink-0">
+                    {originOptions.map(opt => (
+                        <button
+                            key={opt.id}
+                            onClick={() => setFilterOrigin(opt.id)}
+                            title="Origem dos lançamentos"
+                            className={`px-4 h-10 self-center rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${filterOrigin === opt.id ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
                 </div>
                 <button
                     onClick={() => setShowFilters(!showFilters)}

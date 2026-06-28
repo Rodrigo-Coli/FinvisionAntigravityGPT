@@ -22,6 +22,7 @@ interface ManualTransactionModalProps {
     txSubcategory: string;
     setTxSubcategory: (v: string) => void;
     subcategories: { id: string, name: string, category_name?: string }[];
+    recentTxs?: { description: string; category_id?: string; category?: string; subcategory?: string; owner_name?: string }[];
     onCreateCategory?: (name: string) => Promise<any>;
 
     // --- NEW: RECURRENCE & INSTALLMENTS ---
@@ -64,6 +65,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     txSubcategory,
     setTxSubcategory,
     subcategories,
+    recentTxs = [],
     onCreateCategory,
     isInstallment = false,
     setIsInstallment,
@@ -85,6 +87,25 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     const [isCreatingCategory, setIsCreatingCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [isSavingCategory, setIsSavingCategory] = useState(false);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+
+    const descQuery = (txDescription || '').toLowerCase().trim();
+    const suggestions = descQuery.length >= 2
+        ? recentTxs.filter(t => (t.description || '').toLowerCase().includes(descQuery)).slice(0, 5)
+        : [];
+
+    const applySuggestion = (s: { description: string; category_id?: string; category?: string; subcategory?: string }) => {
+        setTxDescription(s.description);
+        // O campo de categoria usa o NOME (datalist), não o id
+        if (s.category) {
+            setTxCategory(s.category);
+        } else if (s.category_id) {
+            const catMatch = categories.find(c => c.id === s.category_id);
+            if (catMatch) setTxCategory(catMatch.name);
+        }
+        if (s.subcategory) setTxSubcategory(s.subcategory);
+        setShowSuggestions(false);
+    };
 
     const handleCreateCategorySubmit = async () => {
         if (!newCategoryName.trim() || !onCreateCategory) return;
@@ -166,15 +187,46 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                             </div>
                         </div>
 
-                        <div>
+                        <div className="relative">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Descrição</label>
                             <input
                                 type="text"
                                 value={txDescription}
-                                onChange={(e) => setTxDescription(e.target.value)}
+                                onFocus={() => setShowSuggestions(true)}
+                                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                                onChange={(e) => { setTxDescription(e.target.value); setShowSuggestions(true); }}
                                 placeholder="Ex: Uber / Mercado / Amazon..."
                                 className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                             />
+                            {showSuggestions && suggestions.length > 0 && (
+                                <div className="absolute z-[110] left-0 right-0 top-[80px] bg-white border border-slate-200/80 shadow-2xl rounded-2xl p-2 max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-200">
+                                    {suggestions.map((s, idx) => (
+                                        <button
+                                            key={idx}
+                                            type="button"
+                                            onClick={() => applySuggestion(s)}
+                                            className="w-full flex items-center justify-between p-3 hover:bg-slate-50 rounded-xl transition-all text-left border-none outline-none"
+                                        >
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-slate-800 text-xs sm:text-sm">{s.description}</span>
+                                                <span className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">Histórico Recente</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                                {s.category && (
+                                                    <span className="text-[9px] bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
+                                                        {s.category}
+                                                    </span>
+                                                )}
+                                                {s.subcategory && (
+                                                    <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
+                                                        {s.subcategory}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {/* TIPO DE LANÇAMENTO */}

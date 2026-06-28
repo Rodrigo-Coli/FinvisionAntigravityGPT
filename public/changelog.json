@@ -1,29 +1,51 @@
 {
-  "version": "2026.06.28.0100",
-  "title": "Emprestimos Concedidos sem Lancamentos Fantasmas",
+  "version": "2026.06.28.1900",
+  "title": "Cartoes com Filtros, Atalhos e Fatura Certa",
   "date": "28/06/2026",
   "benefits": [
     {
-      "title": "Emprestimo So Mostra o que e Dele",
-      "desc": "Um emprestimo concedido agora exibe apenas os pagamentos realmente vinculados a ele. Antes, por causa do nome generico (comeca com 'Emprestimo'), ele puxava lancamentos de outros eventos por engano.",
-      "type": "precisao"
-    },
-    {
-      "title": "Tela de Editar Mais Limpa",
-      "desc": "No emprestimo concedido nao aparecem mais campos sem sentido como 'Marcar como Vendido' e 'Taxa de Corretagem'.",
+      "title": "Filtro Completo nos Cartoes",
+      "desc": "A tela do cartao agora tem filtros como os das Transacoes: Busca, Categoria, Subcategoria, Pessoa/Empresa e Faixa de Valor, com botao Limpar.",
       "type": "ux"
     },
     {
-      "title": "Exclusao de Divida Sem Sobras",
-      "desc": "Ao excluir um financiamento/divida, os recebimentos antigos vinculados sao apagados junto, sem deixar lancamentos orfaos no sistema.",
-      "type": "precisao"
+      "title": "Lancamento de Cartao Mais Rapido",
+      "desc": "Ao digitar a descricao de uma compra no cartao, o app sugere lancamentos anteriores e preenche categoria e subcategoria sozinho. Menos digitacao.",
+      "type": "ux"
+    },
+    {
+      "title": "Subcategoria Nova Fica Salva",
+      "desc": "Quando voce cria uma subcategoria nova no cartao, ela passa a ficar guardada e aparece como opcao no futuro, em qualquer tela.",
+      "type": "ux"
+    },
+    {
+      "title": "Fatura Atual Volta Certo",
+      "desc": "Corrigido: depois de olhar uma fatura antiga e voltar para a Fatura Atual, os dados agora atualizam corretamente em vez de ficar presos na fatura anterior.",
+      "type": "correcao"
+    },
+    {
+      "title": "Seletor de Fatura Inteligente",
+      "desc": "O seletor de faturas agora deixa voce digitar o mes ou ano para buscar, e mostra as mais proximas primeiro em vez de jogar as faturas futuras na frente.",
+      "type": "ux"
+    },
+    {
+      "title": "Ver Conta, Cartao ou os Dois",
+      "desc": "Nas Transacoes ha um novo seletor de Origem (Tudo, Conta ou Cartao). O padrao mostra tudo junto, para a analise refletir todos os gastos.",
+      "type": "ux"
+    },
+    {
+      "title": "Fim dos Numeros Fantasmas",
+      "desc": "Ao trocar de periodo ou voltar para a tela de Transacoes, os totais de receita e despesa nao piscam mais com valores antigos antes de corrigir.",
+      "type": "correcao"
     }
   ],
   "changes": [
-    "**Vinculo de lancamentos:** ativos do tipo emprestimo concedido casam somente por linked_asset_id; descricao deixa de casar por palavras genericas (emprestimo, financiamento, parcela, aluguel, etc.).",
-    "**Form:** campos de venda/corretagem ocultos quando o ativo e emprestimo (isLoan).",
-    "**Exclusao de passivo:** passa a apagar tambem transacoes vinculadas apenas via metadata.liability_id (orfaos).",
-    "**Anti-duplicata:** recebimento de passivo deduplica por coluna e por metadata.liability_id.",
-    "**Limpeza de dados:** removidos 6 recebimentos orfaos de R$155.000 de um passivo ja excluido."
+    "**Cartoes - filtros:** adicionados filtros de subcategoria, pessoa e faixa de valor na CreditCardsSection, alem da busca e categoria ja existentes.",
+    "**Cartoes - autocomplete:** ManualTransactionModal recebe historico recente (recentTxs) e sugere descricoes, preenchendo categoria/subcategoria.",
+    "**Cartoes - subcategoria:** subcategoria nova digitada e persistida via ReconciliationService.ensureSubcategoryExists.",
+    "**Cartoes - fatura atual:** novo estado realCurrentStatement impede que a navegacao por outras faturas sobrescreva a fatura atual.",
+    "**Cartoes - seletor:** novo componente StatementPicker pesquisavel, agrupado em Atual, Anteriores e Proximas.",
+    "**Transacoes - origem:** novo filtro filterOrigin (ALL/ACCOUNT/CARD) aplicado sobre lancamentos combinados de conta e cartao.",
+    "**Transacoes - cache:** cache local validado por assinatura de periodo (datas) para eliminar lancamentos fantasmas ao remontar a tela."
   ]
 }

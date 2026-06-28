@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Loader2, Edit2, Archive, Trash2, Info } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
 import { FinanceService } from '../../services/finance.service';
+import { ReconciliationService } from '../../services/reconciliation.service';
 import { DateUtils } from '../../lib/dateUtils';
 import { findCloseMatch } from '../../lib/stringUtils';
 
@@ -12,6 +13,7 @@ import { StatementSummary } from '../cards/StatementSummary';
 import { TransactionList } from '../cards/TransactionList';
 import { AddCardModal } from '../cards/AddCardModal';
 import { ManualTransactionModal } from '../cards/ManualTransactionModal';
+import { StatementPicker } from '../cards/StatementPicker';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import PlanUpgradeModal from '../subscription/PlanUpgradeModal';
 import { PayStatementModal } from '../cards/PayStatementModal';
@@ -43,7 +45,12 @@ const CreditCardsSection: React.FC = () => {
   const [statements, setStatements] = useState<any[]>([]);
   const [selectedStatementId, setSelectedStatementId] = useState<string | 'ALL'>('CURRENT');
   const [transactions, setTransactions] = useState<any[]>([]);
+  // Histórico recente de lançamentos do cartão (para sugestões de descrição que preenchem categoria/subcategoria)
+  const [recentTxs, setRecentTxs] = useState<any[]>([]);
   const [currentStatement, setCurrentStatement] = useState<any | null>(null);
+  // Guarda a fatura ATUAL "de verdade" (calculada por data/fechamento).
+  // Não é sobrescrita quando o usuário navega por outras faturas, ao contrário de currentStatement.
+  const [realCurrentStatement, setRealCurrentStatement] = useState<any | null>(null);
 
   const [loading, setLoading] = useState(() => {
     const cached = localStorage.getItem('finvision_cached_cards');
@@ -59,6 +66,10 @@ const CreditCardsSection: React.FC = () => {
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('ALL');
+  const [filterSubcategory, setFilterSubcategory] = useState('ALL');
+  const [filterOwner, setFilterOwner] = useState('ALL');
+  const [minValue, setMinValue] = useState('');
+  const [maxValue, setMaxValue] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
   // categories + inline edit + manual tx modal
@@ -189,6 +200,7 @@ const CreditCardsSection: React.FC = () => {
     if (selectedCard) {
       setTxCardId(selectedCard.id);
       loadCardContext(selectedCard.id);
+      fetchRecentTxs();
     }
   }, [selectedCard]);
 
@@ -658,6 +670,8 @@ const CreditCardsSection: React.FC = () => {
       }
 
       setCurrentStatement(current || null);
+      // Memoriza a fatura atual "de verdade" para o seletor sempre conseguir voltar a ela
+      setRealCurrentStatement(current || null);
 
       // Se não houver seleção manual, focar na atual
       const targetId = selectedStatementId === 'CURRENT' ? current?.id : selectedStatementId;
@@ -696,6 +710,43 @@ const CreditCardsSection: React.FC = () => {
     } catch (err) {
       console.error('Erro ao buscar faturas, fallback cache:', err);
       return cachedData;
+    }
+  };
+
+  // Carrega lançamentos recentes do usuário (todos os cartões) para sugerir descrições,
+  // preenchendo categoria/subcategoria/pessoa automaticamente — igual às transações.
+  const fetchRecentTxs = async () => {
+    if (!supabase || !navigator.onLine) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
+      const { data, error } = await supabase
+        .from('card_transactions')
+        .select('description, category_id, subcategory, owner_name, categories(name)')
+        .eq('user_id', user.id)
+        .order('date', { ascending: false })
+        .limit(300);
+      if (error) throw error;
+
+      // Mantém apenas o lançamento mais recente por descrição (deduplica)
+      const seen = new Set<string>();
+      const unique: any[] = [];
+      for (const t of (data || [])) {
+        const key = (t.description || '').toLowerCase().trim();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        unique.push({
+          description: t.description,
+          category_id: t.category_id,
+          category: (t as any).categories?.name || '',
+          subcategory: t.subcategory || '',
+          owner_name: t.owner_name || ''
+        });
+      }
+      setRecentTxs(unique);
+    } catch (err) {
+      console.error('Erro ao buscar lançamentos recentes do cartão:', err);
     }
   };
 
@@ -940,7 +991,18 @@ const CreditCardsSection: React.FC = () => {
       if (cleanSubcategory && txCategory.trim()) {
         const subcatNames = subcategories.filter(s => s.category_name?.toLowerCase().trim() === txCategory.toLowerCase().trim()).map(s => s.name);
         const matched = findCloseMatch(cleanSubcategory, subcatNames);
-        if (matched) cleanSubcategory = matched;
+        if (matched) {
+          cleanSubcategory = matched;
+        } else if (resolvedCategoryId) {
+          // Subcategoria nova: registra na tabela para virar opção futura (igual às transações).
+          // O serviço já faz dedup interno, evitando duplicatas.
+          try {
+            await ReconciliationService.ensureSubcategoryExists(resolvedCategoryId, cleanSubcategory.trim());
+            fetchSubcategories();
+          } catch (e) {
+            console.error('Erro ao salvar subcategoria nova do cartão:', e);
+          }
+        }
       }
 
       const cardObj = cards.find(c => c.id === txCardId);
@@ -1591,33 +1653,24 @@ const CreditCardsSection: React.FC = () => {
                       {/* Statement Selector */}
                       <div className="flex flex-col gap-1 w-full sm:w-auto">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Período</span>
-                        <select
+                        <StatementPicker
+                          statements={statements}
                           value={selectedStatementId}
-                          onChange={(e) => {
-                            const val = e.target.value;
+                          realCurrentStatementId={realCurrentStatement?.id || currentStatement?.id || null}
+                          onChange={(val) => {
                             setSelectedStatementId(val);
                             if (val === 'ALL') {
                               fetchTransactions(selectedCard.id, null);
                             } else if (val === 'CURRENT') {
-                              fetchTransactions(selectedCard.id, currentStatement?.id || null);
+                              // Sempre volta para a fatura atual "de verdade", não para a que estava sendo vista
+                              const realCurrent = realCurrentStatement || currentStatement;
+                              if (realCurrent) setCurrentStatement(realCurrent);
+                              fetchTransactions(selectedCard.id, realCurrent?.id || null);
                             } else {
                               fetchTransactions(selectedCard.id, val);
                             }
                           }}
-                          className="bg-slate-50 dark:bg-brand-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[200px]"
-                        >
-                          <option value="CURRENT">Fatura Atual</option>
-                          <option value="ALL">Todo o Histórico</option>
-                          {statements.length > 0 && (
-                            <optgroup label="Faturas Anteriores">
-                              {statements.map(s => (
-                                <option key={s.id} value={s.id}>
-                                  {DateUtils.formatFullMonthYear(s.year, s.month)}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </select>
+                        />
                       </div>
 
                       {showFilters && (
@@ -1641,13 +1694,79 @@ const CreditCardsSection: React.FC = () => {
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria</span>
                             <select
                               value={filterCategory}
-                              onChange={(e) => setFilterCategory(e.target.value)}
+                              onChange={(e) => { setFilterCategory(e.target.value); setFilterSubcategory('ALL'); }}
                               className="bg-slate-50 dark:bg-brand-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[140px]"
                             >
                               <option value="ALL">Todas</option>
                               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                           </div>
+
+                          {/* Subcategory Filter */}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Subcategoria</span>
+                            <select
+                              value={filterSubcategory}
+                              onChange={(e) => setFilterSubcategory(e.target.value)}
+                              className="bg-slate-50 dark:bg-brand-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[140px]"
+                            >
+                              <option value="ALL">Todas</option>
+                              {Array.from(new Set(
+                                subcategories
+                                  .filter(s => {
+                                    if (filterCategory === 'ALL') return true;
+                                    const catName = categories.find(c => c.id === filterCategory)?.name;
+                                    return !catName || s.category_name === catName;
+                                  })
+                                  .map(s => s.name)
+                              )).sort((a, b) => a.localeCompare(b)).map(name => (
+                                <option key={name} value={name}>{name}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Owner Filter */}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pessoa/Empresa</span>
+                            <select
+                              value={filterOwner}
+                              onChange={(e) => setFilterOwner(e.target.value)}
+                              className="bg-slate-50 dark:bg-brand-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all min-w-[140px]"
+                            >
+                              <option value="ALL">Todas</option>
+                              {owners.map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          </div>
+
+                          {/* Value Range */}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Faixa de Valor</span>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                placeholder="Min"
+                                value={minValue}
+                                onChange={(e) => setMinValue(e.target.value)}
+                                className="bg-slate-50 dark:bg-brand-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-3 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all w-20"
+                              />
+                              <input
+                                type="number"
+                                placeholder="Max"
+                                value={maxValue}
+                                onChange={(e) => setMaxValue(e.target.value)}
+                                className="bg-slate-50 dark:bg-brand-900 border border-slate-100 dark:border-slate-700 rounded-2xl px-3 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all w-20"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Clear */}
+                          <button
+                            type="button"
+                            onClick={() => { setSearchQuery(''); setFilterCategory('ALL'); setFilterSubcategory('ALL'); setFilterOwner('ALL'); setMinValue(''); setMaxValue(''); }}
+                            className="h-[42px] px-4 text-rose-500 font-black text-[10px] uppercase tracking-widest hover:bg-rose-50 rounded-2xl transition-all"
+                          >
+                            Limpar
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1655,9 +1774,19 @@ const CreditCardsSection: React.FC = () => {
 
                   <TransactionList
                     transactions={transactions.filter(t => {
-                      const matchesSearch = t.description?.toLowerCase().includes(searchQuery.toLowerCase());
+                      const q = searchQuery.toLowerCase();
+                      const matchesSearch = !q
+                        || t.description?.toLowerCase().includes(q)
+                        || (t.subcategory || '').toLowerCase().includes(q)
+                        || (t.owner_name || '').toLowerCase().includes(q)
+                        || (t.notes || '').toLowerCase().includes(q);
                       const matchesCategory = filterCategory === 'ALL' || t.category_id === filterCategory;
-                      return matchesSearch && matchesCategory;
+                      const matchesSubcategory = filterSubcategory === 'ALL' || t.subcategory === filterSubcategory;
+                      const matchesOwner = filterOwner === 'ALL' || (t.owner_name || 'Pessoal') === filterOwner;
+                      const absVal = Math.abs(Number(t.amount || 0));
+                      const matchesMin = minValue === '' || absVal >= Number(minValue);
+                      const matchesMax = maxValue === '' || absVal <= Number(maxValue);
+                      return matchesSearch && matchesCategory && matchesSubcategory && matchesOwner && matchesMin && matchesMax;
                     })}
                     loadingTxs={loadingTxs}
                     categories={categories}
@@ -1730,6 +1859,7 @@ const CreditCardsSection: React.FC = () => {
         cards={cards}
         categories={categories}
         subcategories={subcategories}
+        recentTxs={recentTxs}
         txCardId={txCardId}
         setTxCardId={setTxCardId}
         txDate={txDate}
