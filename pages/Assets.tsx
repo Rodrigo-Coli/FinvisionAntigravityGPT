@@ -891,16 +891,32 @@ const Assets: React.FC = () => {
 
   // Pre-computes and maps all transactions to their respective physical assets in O(N) linear time.
   const linkedTransactionsMap = useMemo(() => {
+    // Palavras genéricas que NUNCA devem ser usadas para casar por descrição,
+    // pois aparecem em lançamentos de muitos eventos diferentes (ex.: "Recebimento de
+    // Empréstimo/Financiamento - Piazza do Bosque" casaria com um empréstimo chamado "Empréstimo Lion").
+    const GENERIC_MATCH_WORDS = new Set([
+      'emprestimo', 'empréstimo', 'financiamento', 'recebimento', 'pagamento',
+      'parcela', 'aluguel', 'rendimento', 'investimento', 'aquisicao', 'aquisição',
+      'desembolso', 'fatura', 'conta', 'outros', 'transferencia', 'transferência'
+    ]);
+
     const assetMatches = activePhysicalAssets.map(p => {
+      // Empréstimos concedidos só casam por vínculo explícito (linked_asset_id):
+      // o nome costuma começar com "Empréstimo", que é genérico demais para casar por descrição.
+      if (p.metadata?.isLoan) {
+        return { id: p.id, cleanName: '', firstWord: '' };
+      }
+
       const assetName = p.name.toLowerCase();
       const cleanName = assetName
         .replace(/apartamento|casa|carro|veículo|jeep|honda|audi|toyota/g, '')
         .trim();
       const firstWord = cleanName.length > 2 ? cleanName.split(/\s+/)[0] : '';
+      const safeFirstWord = firstWord && firstWord.length > 3 && !GENERIC_MATCH_WORDS.has(firstWord) ? firstWord : '';
       return {
         id: p.id,
-        cleanName,
-        firstWord: firstWord && firstWord.length > 3 ? firstWord : ''
+        cleanName: GENERIC_MATCH_WORDS.has(cleanName) ? '' : cleanName,
+        firstWord: safeFirstWord
       };
     });
 
@@ -1386,8 +1402,8 @@ const Assets: React.FC = () => {
     for (const liab of liabs) {
       if (liab.is_archived || liab.totalAmount <= 0) continue;
       
-      const hasInflowTx = linkedTxs.some((t: any) => 
-        t.liability_id === liab.id && 
+      const hasInflowTx = linkedTxs.some((t: any) =>
+        (t.liability_id === liab.id || t.metadata?.liability_id === liab.id) &&
         t.metadata?.type === 'liability_inflow'
       );
       
@@ -4410,6 +4426,12 @@ const Assets: React.FC = () => {
       // 1. Apaga TODAS as transações vinculadas a este passivo (parcelas, pagamentos)
       const { error: txErr } = await supabase.from('transactions').delete().eq('liability_id', id);
       if (txErr) console.warn('[Assets] Falha ao apagar transações do passivo:', txErr.message);
+
+      // 1b. Apaga também lançamentos que só têm o vínculo no metadata (ex.: recebimentos antigos
+      // de empréstimo/financiamento criados sem preencher a coluna liability_id). Sem isso eles
+      // ficavam órfãos no banco após a exclusão do passivo.
+      const { error: txMetaErr } = await supabase.from('transactions').delete().eq('metadata->>liability_id', id);
+      if (txMetaErr) console.warn('[Assets] Falha ao apagar transações órfãs do passivo (metadata):', txMetaErr.message);
 
       // 2. Se houver consórcio vinculado, apaga também
       await supabase.from('consortiums').delete().eq('liability_id', id);
@@ -8999,7 +9021,7 @@ const Assets: React.FC = () => {
                   </div>
                 )}
 
-                {editingAsset && (
+                {editingAsset && !formData.isLoan && (
                   <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 border-t border-slate-200 pt-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Taxa de Corretagem (R$)</label>

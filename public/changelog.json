@@ -1,28 +1,29 @@
 {
-  "version": "2026.06.27.1600",
-  "title": "Botoes no Celular e Resultado Consistente",
-  "date": "27/06/2026",
+  "version": "2026.06.28.0100",
+  "title": "Emprestimos Concedidos sem Lancamentos Fantasmas",
+  "date": "28/06/2026",
   "benefits": [
     {
-      "title": "Adicionar Cartao e Nova Conta no Celular",
-      "desc": "Os botoes de adicionar cartao e criar nova conta agora aparecem tambem no celular. Antes sumiam quando voce ja tinha pelo menos um cadastrado.",
-      "type": "ux"
-    },
-    {
-      "title": "Resultado do Mes Igual em Todas as Telas",
-      "desc": "Compra de bens e financiamentos recebidos nao distorcem mais o resultado do mes no Historico. Agora Historico, Painel e Relatorios mostram o mesmo numero.",
+      "title": "Emprestimo So Mostra o que e Dele",
+      "desc": "Um emprestimo concedido agora exibe apenas os pagamentos realmente vinculados a ele. Antes, por causa do nome generico (comeca com 'Emprestimo'), ele puxava lancamentos de outros eventos por engano.",
       "type": "precisao"
     },
     {
-      "title": "Lancamentos de Patrimonio no Lugar Certo",
-      "desc": "Emprestimo concedido e quitacao de chaves passaram a ser tratados como movimento de patrimonio, com categoria correta, sem inflar suas despesas do mes.",
+      "title": "Tela de Editar Mais Limpa",
+      "desc": "No emprestimo concedido nao aparecem mais campos sem sentido como 'Marcar como Vendido' e 'Taxa de Corretagem'.",
+      "type": "ux"
+    },
+    {
+      "title": "Exclusao de Divida Sem Sobras",
+      "desc": "Ao excluir um financiamento/divida, os recebimentos antigos vinculados sao apagados junto, sem deixar lancamentos orfaos no sistema.",
       "type": "precisao"
     }
   ],
   "changes": [
-    "**Mobile:** Botoes 'Adicionar Cartao', 'Nova Conta' e 'Novo Lancamento' deixam de ficar ocultos em telas pequenas (removido hidden sm:flex).",
-    "**Consistencia:** Resumo e graficos do Historico agora excluem lancamentos capitalizados (isCapitalized / asset_purchase), igual ao Painel e Relatorios.",
-    "**Patrimonio:** loan_disbursement e delivery_quitacao marcados como isCapitalized; quitacao de chaves e aluguel de veiculo recebem category_id garantido.",
-    "**Auditoria:** Verificadas as funcoes de cartao (lancamento, fatura, pagamento, reabertura) e a responsividade de menus/botoes em todos os tamanhos."
+    "**Vinculo de lancamentos:** ativos do tipo emprestimo concedido casam somente por linked_asset_id; descricao deixa de casar por palavras genericas (emprestimo, financiamento, parcela, aluguel, etc.).",
+    "**Form:** campos de venda/corretagem ocultos quando o ativo e emprestimo (isLoan).",
+    "**Exclusao de passivo:** passa a apagar tambem transacoes vinculadas apenas via metadata.liability_id (orfaos).",
+    "**Anti-duplicata:** recebimento de passivo deduplica por coluna e por metadata.liability_id.",
+    "**Limpeza de dados:** removidos 6 recebimentos orfaos de R$155.000 de um passivo ja excluido."
   ]
 }
