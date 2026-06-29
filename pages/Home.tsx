@@ -218,14 +218,6 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           .lte('date', endDate)
           .order('date', { ascending: false });
 
-        // Fetch card transactions
-        const { data: cardTxs, error: cardTxError } = await supabase
-          .from('card_transactions')
-          .select('id, date, amount, description, owner_name, categories(name)')
-          .eq('user_id', user.id)
-          .gte('date', startDate)
-          .lte('date', endDate);
-
         // Fetch excluded profiles for client side charting
         const { data: excludedEntities } = await supabase
           .from('entities')
@@ -235,23 +227,14 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
         const excludedSet = new Set((excludedEntities || []).map((e: any) => e.name));
 
-        if (txError || cardTxError) {
-          console.error("Error fetching transactions:", txError || cardTxError);
+        // Não mesclamos card_transactions aqui: o BILL_PAYMENT em transactions já
+        // representa o total pago ao cartão. Somar as compras individuais junto causaria
+        // conta dupla nos totais da Home (receita/despesa/gráficos).
+        if (txError) {
+          console.error("Error fetching transactions:", txError);
           if (!data) setError('Erro ao carregar transações.');
         } else {
-          const normalizedCardTxs = (cardTxs || []).map((ct: any) => ({
-            id: ct.id,
-            date: ct.date,
-            type: 'EXPENSE',
-            amount: Number(ct.amount),
-            category: ct.categories?.name || 'Cartão de Crédito',
-            description: ct.description,
-            is_paid: true,
-            paid_amount: Number(ct.amount),
-            owner_name: ct.owner_name || 'Pessoal'
-          }));
-
-          const allTxs = [...(txs || []), ...normalizedCardTxs].filter((t: any) => !t.owner_name || !excludedSet.has(t.owner_name));
+          const allTxs = (txs || []).filter((t: any) => !t.owner_name || !excludedSet.has(t.owner_name));
           setTransactions(allTxs);
           localStorage.setItem('finvision_cached_home_txs', JSON.stringify(allTxs));
         }

@@ -655,16 +655,16 @@ const HistoryPage: React.FC = () => {
           }
         }));
 
-        // Combined transactions for charts and table
-        let combined = [...(txs || []), ...normalizedCardTxs].map(applyTrueAmount);
-
-        // Apply JS Filters
-        // Origem: separa lançamentos de cartão (metadata.is_card) dos de conta
-        if (filterOrigin === 'ACCOUNT') {
-          combined = combined.filter((t: any) => !t.metadata?.is_card);
-        } else if (filterOrigin === 'CARD') {
-          combined = combined.filter((t: any) => !!t.metadata?.is_card);
-        }
+        // Origem define qual fonte entra no combined — NUNCA as duas ao mesmo tempo,
+        // pois o BILL_PAYMENT em transactions já representa o total pago ao cartão.
+        // Somar card_transactions junto causaria conta dupla em receitas/despesas/gráficos.
+        //   CARD    → só compras do cartão (card_transactions)
+        //   ACCOUNT → só movimentações bancárias (transactions), inclui BILL_PAYMENT
+        //   ALL     → movimentações bancárias (transactions) como padrão, idem ao ACCOUNT
+        let combined = (filterOrigin === 'CARD'
+          ? normalizedCardTxs
+          : (txs || [])
+        ).map(applyTrueAmount);
         if (filterType !== 'ALL') {
           combined = combined.filter((t: any) => t.type === filterType);
         }

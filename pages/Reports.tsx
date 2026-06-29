@@ -102,8 +102,10 @@ const Reports: React.FC = () => {
         txsPromise = q as any;
       }
 
-      // Se nenhum destino foi selecionado, ou o destino é um cartão, carrega transações do cartão
-      if (!selectedAccountId || isCard) {
+      // Só carrega card_transactions quando um cartão específico está selecionado.
+      // No modo "tudo" (!selectedAccountId), o BILL_PAYMENT em transactions já representa
+      // o total pago ao cartão — somar as compras individuais causaria conta dupla.
+      if (isCard && selectedAccountId) {
         let q = supabase
           .from('card_transactions')
           .select('date, description, category, amount, card_id')
