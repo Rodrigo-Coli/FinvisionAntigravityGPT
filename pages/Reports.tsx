@@ -102,18 +102,24 @@ const Reports: React.FC = () => {
         txsPromise = q as any;
       }
 
-      // Só carrega card_transactions quando um cartão específico está selecionado.
-      // No modo "tudo" (!selectedAccountId), o BILL_PAYMENT em transactions já representa
-      // o total pago ao cartão — somar as compras individuais causaria conta dupla.
-      if (isCard && selectedAccountId) {
+      // Relatórios é o único lugar que mostra análise POR CATEGORIA cruzando banco + cartão.
+      // Regra para não ter conta dupla:
+      //   TUDO selecionado    → banco SEM BILL_PAYMENT + card_transactions de todos os cartões
+      //   Conta bancária      → só transactions daquela conta (sem cartão)
+      //   Cartão específico   → só card_transactions daquele cartão (sem banco)
+      //
+      // O BILL_PAYMENT é excluído no modo TUDO porque as compras individuais do cartão
+      // já entram via card_transactions. Se incluíssemos o BILL_PAYMENT junto, a fatura
+      // seria contada duas vezes (uma como pagamento + uma via cada compra).
+      if (!selectedAccountId || isCard) {
         let q = supabase
           .from('card_transactions')
           .select('date, description, category, amount, card_id')
           .eq('user_id', user.id)
           .gte('date', dateRange.start)
           .lte('date', dateRange.end);
-        
-        if (selectedAccountId) {
+
+        if (isCard && selectedAccountId) {
           q = q.eq('card_id', selectedAccountId);
         }
         if (selectedCategory) {
@@ -126,23 +132,25 @@ const Reports: React.FC = () => {
       const txs = txsRes.data || [];
       const cardTxs = cardRes.data || [];
 
-      // Filtra transações capitalizadas de aquisição de bens imobilizados para evitar inflar o fluxo de caixa
-      const filteredTxs = txs.filter((t: any) => !(t.metadata?.isCapitalized === true || t.metadata?.type === 'asset_purchase'));
+      // Exclui: capitalizados + BILL_PAYMENT (no modo TUDO, pois compras do cartão já entram via cardTxs)
+      const excludeBillPayment = !selectedAccountId;
+      const filteredTxs = txs.filter((t: any) =>
+        !(t.metadata?.isCapitalized === true || t.metadata?.type === 'asset_purchase') &&
+        !(excludeBillPayment && t.type === 'BILL_PAYMENT')
+      );
 
       let income = 0;
       let expense = 0;
       let pending = 0;
 
       filteredTxs.forEach((t: any) => {
-        // Exclui transferências (movimentação interna neutra) dos totalizadores principais
         if (t.type === 'INCOME') income += t.amount;
         else if (t.type === 'EXPENSE') expense += t.amount;
-        
         if (!t.is_paid && t.type === 'EXPENSE') pending++;
       });
 
       cardTxs.forEach((c: any) => {
-        expense += c.amount; // Gastos de cartão são sempre saídas
+        expense += c.amount;
       });
 
       setStats({
