@@ -1,51 +1,41 @@
 {
-  "version": "2026.06.28.1900",
-  "title": "Cartoes com Filtros, Atalhos e Fatura Certa",
+  "version": "2026.06.28.2200",
+  "title": "Contas que Batem: Sem Soma Dupla em Nenhum Lugar",
   "date": "28/06/2026",
   "benefits": [
     {
-      "title": "Filtro Completo nos Cartoes",
-      "desc": "A tela do cartao agora tem filtros como os das Transacoes: Busca, Categoria, Subcategoria, Pessoa/Empresa e Faixa de Valor, com botao Limpar.",
-      "type": "ux"
-    },
-    {
-      "title": "Lancamento de Cartao Mais Rapido",
-      "desc": "Ao digitar a descricao de uma compra no cartao, o app sugere lancamentos anteriores e preenche categoria e subcategoria sozinho. Menos digitacao.",
-      "type": "ux"
-    },
-    {
-      "title": "Subcategoria Nova Fica Salva",
-      "desc": "Quando voce cria uma subcategoria nova no cartao, ela passa a ficar guardada e aparece como opcao no futuro, em qualquer tela.",
-      "type": "ux"
-    },
-    {
-      "title": "Fatura Atual Volta Certo",
-      "desc": "Corrigido: depois de olhar uma fatura antiga e voltar para a Fatura Atual, os dados agora atualizam corretamente em vez de ficar presos na fatura anterior.",
+      "title": "Totais que Batem de Verdade",
+      "desc": "Corrigido: os gastos do cartao nao eram somados duas vezes nos totais de despesa. Agora o sistema sabe a diferenca entre o pagamento da fatura (banco) e as compras individuais (cartao).",
       "type": "correcao"
     },
     {
-      "title": "Seletor de Fatura Inteligente",
-      "desc": "O seletor de faturas agora deixa voce digitar o mes ou ano para buscar, e mostra as mais proximas primeiro em vez de jogar as faturas futuras na frente.",
+      "title": "Transacoes Mostra so o Banco",
+      "desc": "A tela de Transacoes agora exibe apenas movimentos bancarios reais. O pagamento da fatura do cartao aparece como uma linha unica. Para ver as compras do cartao, use o filtro CARTAO.",
       "type": "ux"
     },
     {
-      "title": "Ver Conta, Cartao ou os Dois",
-      "desc": "Nas Transacoes ha um novo seletor de Origem (Tudo, Conta ou Cartao). O padrao mostra tudo junto, para a analise refletir todos os gastos.",
+      "title": "Cartao Mostra as Compras Certas",
+      "desc": "Ao filtrar por CARTAO em Transacoes, voce ve exatamente as compras daquele cartao com suas categorias, sem misturar com o extrato bancario.",
       "type": "ux"
     },
     {
-      "title": "Fim dos Numeros Fantasmas",
-      "desc": "Ao trocar de periodo ou voltar para a tela de Transacoes, os totais de receita e despesa nao piscam mais com valores antigos antes de corrigir.",
+      "title": "Relatorios: Categoria Completa",
+      "desc": "Em Relatorios com tudo selecionado, a analise por categoria agora combina gastos do banco e do cartao corretamente, sem duplicar o valor da fatura.",
+      "type": "correcao"
+    },
+    {
+      "title": "Emprestimo Concedido Limpo",
+      "desc": "O card de emprestimo concedido nao exibe mais lancamentos de outros eventos. So aparecem os pagamentos realmente registrados para aquele emprestimo.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "**Cartoes - filtros:** adicionados filtros de subcategoria, pessoa e faixa de valor na CreditCardsSection, alem da busca e categoria ja existentes.",
-    "**Cartoes - autocomplete:** ManualTransactionModal recebe historico recente (recentTxs) e sugere descricoes, preenchendo categoria/subcategoria.",
-    "**Cartoes - subcategoria:** subcategoria nova digitada e persistida via ReconciliationService.ensureSubcategoryExists.",
-    "**Cartoes - fatura atual:** novo estado realCurrentStatement impede que a navegacao por outras faturas sobrescreva a fatura atual.",
-    "**Cartoes - seletor:** novo componente StatementPicker pesquisavel, agrupado em Atual, Anteriores e Proximas.",
-    "**Transacoes - origem:** novo filtro filterOrigin (ALL/ACCOUNT/CARD) aplicado sobre lancamentos combinados de conta e cartao.",
-    "**Transacoes - cache:** cache local validado por assinatura de periodo (datas) para eliminar lancamentos fantasmas ao remontar a tela."
+    "**History.tsx:** combined nao mescla mais card_transactions quando filterOrigin e ALL ou ACCOUNT. Modo CARTAO mostra so card_transactions; modo TUDO/CONTA mostra so transactions (banco).",
+    "**Home.tsx:** removida mesclagem de card_transactions nos totais da home. Totais refletem apenas movimentos bancarios reais (incluindo BILL_PAYMENT como saida do cartao).",
+    "**Reports.tsx:** modo TUDO busca banco (excluindo BILL_PAYMENT) + card_transactions de todos os cartoes para analise por categoria sem conta dupla. Modo conta especifica: so transactions. Modo cartao especifico: so card_transactions.",
+    "**Assets.tsx (emprestimos):** linkedTransactionsMap usa apenas linked_asset_id para emprestimos; filtro de palavras genericas impede falsos vinculos por descricao.",
+    "**Assets.tsx (form):** campos Marcar como Vendido e Taxa de Corretagem ocultados quando ativo e emprestimo concedido.",
+    "**handleDeleteLiability:** apaga tambem transacoes vinculadas via metadata.liability_id (orfaos).",
+    "**Banco (limpeza):** removidos 6 recebimentos orfaos de R$155.000 e 24 alugueis projetados sem vinculo de ativo."
   ]
 }

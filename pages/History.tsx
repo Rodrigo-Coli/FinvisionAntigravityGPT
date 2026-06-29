@@ -655,12 +655,13 @@ const HistoryPage: React.FC = () => {
           }
         }));
 
-        // Origem define qual fonte entra no combined — NUNCA as duas ao mesmo tempo,
-        // pois o BILL_PAYMENT em transactions já representa o total pago ao cartão.
-        // Somar card_transactions junto causaria conta dupla em receitas/despesas/gráficos.
+        // Origem define qual fonte entra no combined — NUNCA as duas ao mesmo tempo.
+        // BILL_PAYMENT em transactions já representa o total pago ao cartão: somar
+        // card_transactions junto causaria conta dupla em receitas/despesas/gráficos.
         //   CARD    → só compras do cartão (card_transactions)
         //   ACCOUNT → só movimentações bancárias (transactions), inclui BILL_PAYMENT
-        //   ALL     → movimentações bancárias (transactions) como padrão, idem ao ACCOUNT
+        //   ALL     → movimentações bancárias (transactions), idem ao ACCOUNT
+        // v2026.06.28.2200
         let combined = (filterOrigin === 'CARD'
           ? normalizedCardTxs
           : (txs || [])
