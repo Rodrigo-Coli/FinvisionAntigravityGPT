@@ -1,8 +1,18 @@
 {
-  "version": "2026.07.04.1052",
-  "title": "Calculo da Parcela pelo Saldo Devedor",
+  "version": "2026.07.04.1447",
+  "title": "Master Console: Custo de IA por Funcao",
   "date": "04/07/2026",
   "benefits": [
+    {
+      "title": "Custo de IA Detalhado por Funcao",
+      "desc": "No Master Console, a calculadora de IA agora mostra quanto cada funcao gasta (scan de nota, chat, insights, conciliacao, extrato, importacao, voz, WhatsApp), com o teto de uso que o plano permite e o custo total por usuario.",
+      "type": "novidade"
+    },
+    {
+      "title": "Contador de Planos",
+      "desc": "A aba de Planos agora mostra um contador (total, ativos e arquivados) para nao restar duvida se algum plano sumiu. Arquivados aparecem esmaecidos abaixo.",
+      "type": "ux"
+    },
     {
       "title": "Calculo da Parcela Mais Preciso",
       "desc": "O botao 'calcular parcela pelo valor total' agora usa o saldo devedor (o que voce ainda deve) como base, igual ao cronograma. Se ja houve pagamentos anteriores, a parcela calculada nao fica mais inflada.",

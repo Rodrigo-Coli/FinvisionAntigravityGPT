@@ -1,52 +1,61 @@
-import React, { useState, useEffect } from 'react';
-import { Calculator, TrendingUp, Info, DollarSign, Brain } from 'lucide-react';
+import React, { useState } from 'react';
+import { Calculator, TrendingUp, Info, Brain, AlertTriangle } from 'lucide-react';
 
 interface TokenCalculatorProps {
   usdToBrl: number;
 }
 
+// Preços Gemini 2.5 Flash (USD por 1 milhão de tokens). Editáveis abaixo caso mudem.
+const DEFAULT_PRICES = {
+  inputUsdPer1M: 0.30,   // texto/imagem de entrada
+  outputUsdPer1M: 2.50,  // saída
+  audioUsdPer1M: 1.00,   // áudio de entrada
+};
+
+// Cada função de IA do app. Tokens são ESTIMATIVAS calibradas pelos prompts reais.
+// input inclui prompt de sistema + contexto + imagem (258 tokens/imagem já embutidos onde há foto/PDF).
+interface AiFn {
+  key: string;
+  label: string;
+  callsPerMonth: number; // teto permitido pelo plano (por usuário)
+  inputTokens: number;
+  outputTokens: number;
+  audioTokens: number;
+  note?: string;
+}
+
+const DEFAULT_FUNCTIONS: AiFn[] = [
+  { key: 'receipt', label: 'Scan de Nota/Cupom (foto)', callsPerMonth: 30, inputTokens: 1550, outputTokens: 800, audioTokens: 0, note: 'inclui ~258 tokens/imagem' },
+  { key: 'chat', label: 'Chat IA (FinVision)', callsPerMonth: 50, inputTokens: 2000, outputTokens: 500, audioTokens: 0, note: 'prompt + histórico + contexto' },
+  { key: 'wealth', label: 'Insights / Análise de Patrimônio', callsPerMonth: 4, inputTokens: 3200, outputTokens: 1200, audioTokens: 0 },
+  { key: 'categorize', label: 'Categorização automática', callsPerMonth: 20, inputTokens: 1000, outputTokens: 400, audioTokens: 0, note: 'por lote' },
+  { key: 'reconcile', label: 'Conciliação banco/cartão (PDF)', callsPerMonth: 4, inputTokens: 2200, outputTokens: 1000, audioTokens: 0 },
+  { key: 'statement', label: 'Leitura de extrato/fatura (PDF)', callsPerMonth: 4, inputTokens: 2500, outputTokens: 1500, audioTokens: 0 },
+  { key: 'import', label: 'Importação inteligente', callsPerMonth: 2, inputTokens: 2000, outputTokens: 1000, audioTokens: 0 },
+  { key: 'voice', label: 'Assistente de voz (áudio)', callsPerMonth: 10, inputTokens: 1200, outputTokens: 300, audioTokens: 320, note: '~10s áudio = 320 tokens' },
+  { key: 'whatsapp', label: 'IA no WhatsApp', callsPerMonth: 30, inputTokens: 1500, outputTokens: 400, audioTokens: 0 },
+];
+
 export default function TokenCalculator({ usdToBrl }: TokenCalculatorProps) {
-  const [inputs, setInputs] = useState({
-    avgScansPerMonth: 100,
-    avgImagesPerScan: 1,
-    avgAudioSecondsPerScan: 10,
-    avgOutputTokensPerScan: 800,
-  });
+  const [prices] = useState(DEFAULT_PRICES);
+  const [fns, setFns] = useState<AiFn[]>(DEFAULT_FUNCTIONS);
+  const [marginMultiplier, setMarginMultiplier] = useState(6);
 
-  const [costs, setCosts] = useState({
-    inputUsd: 0.30, // per 1M
-    outputUsd: 2.50, // per 1M
-    audioUsd: 1.00,  // per 1M
-  });
+  const fmtBrl = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  // Constants from Gemini 2.5 Flash
-  const TOKENS_PER_IMAGE = 258;
-  const TOKENS_PER_AUDIO_SEC = 32;
+  const costPerCallUsd = (f: AiFn) =>
+    (f.inputTokens / 1_000_000) * prices.inputUsdPer1M +
+    (f.outputTokens / 1_000_000) * prices.outputUsdPer1M +
+    (f.audioTokens / 1_000_000) * prices.audioUsdPer1M;
 
-  const calculate = () => {
-    const inputTokensPerScan = (inputs.avgImagesPerScan * TOKENS_PER_IMAGE) + 1000; // base text + image
-    const audioTokensPerScan = (inputs.avgAudioSecondsPerScan * TOKENS_PER_AUDIO_SEC);
-    const outputTokensPerScan = inputs.avgOutputTokensPerScan;
+  const monthlyUsd = (f: AiFn) => costPerCallUsd(f) * f.callsPerMonth;
 
-    const monthlyInputTokens = inputTokensPerScan * inputs.avgScansPerMonth;
-    const monthlyAudioTokens = audioTokensPerScan * inputs.avgScansPerMonth;
-    const monthlyOutputTokens = outputTokensPerScan * inputs.avgScansPerMonth;
+  const totalMonthlyUsd = fns.reduce((s, f) => s + monthlyUsd(f), 0);
+  const totalMonthlyBrl = totalMonthlyUsd * usdToBrl;
+  const suggestedPriceBrl = totalMonthlyBrl * marginMultiplier;
 
-    const inputCostUsd = (monthlyInputTokens / 1_000_000) * costs.inputUsd;
-    const audioCostUsd = (monthlyAudioTokens / 1_000_000) * costs.audioUsd;
-    const outputCostUsd = (monthlyOutputTokens / 1_000_000) * costs.outputUsd;
-
-    const totalUsd = inputCostUsd + audioCostUsd + outputCostUsd;
-    const totalBrl = totalUsd * usdToBrl;
-
-    return {
-      totalUsd,
-      totalBrl,
-      perScanBrl: totalBrl / inputs.avgScansPerMonth
-    };
-  };
-
-  const results = calculate();
+  const updateFn = (key: string, field: keyof AiFn, value: number) =>
+    setFns(prev => prev.map(f => f.key === key ? { ...f, [field]: isNaN(value) ? 0 : value } : f));
 
   return (
     <div className="bg-white rounded-[32px] border border-slate-100 p-8 shadow-sm space-y-8">
@@ -55,83 +64,100 @@ export default function TokenCalculator({ usdToBrl }: TokenCalculatorProps) {
           <Calculator size={24} />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-slate-900">ROI & Custo de IA</h2>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Baseado no Gemini 2.5 Flash</p>
+          <h2 className="text-xl font-bold text-slate-900">Custo de IA por Função</h2>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gemini 2.5 Flash · teto de uso por plano</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-        <div className="space-y-6">
-          <div className="space-y-4">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
-              <TrendingUp size={14} /> Simulação de Uso (Médio/Mês)
-            </h3>
-            
-            <div className="space-y-4">
-              <div>
-                <div className="flex justify-between mb-1">
-                  <label className="text-[11px] font-bold text-slate-500">Scans/Transações por Mês: {inputs.avgScansPerMonth}</label>
-                </div>
-                <input type="range" min="1" max="1000" step="10" value={inputs.avgScansPerMonth} 
-                  onChange={(e) => setInputs({...inputs, avgScansPerMonth: parseInt(e.target.value)})}
-                  className="w-full accent-brand-500" />
-              </div>
+      {/* Aviso de precisão */}
+      <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2">
+        <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+        <p className="text-[11px] text-amber-700 font-medium leading-normal">
+          Os tokens abaixo são <b>estimativas</b> calibradas pelos prompts reais. Para custo <b>exato (erro zero)</b>, o app precisa registrar o consumo real que o Gemini retorna (usageMetadata) a cada chamada — recomendado como próximo passo.
+        </p>
+      </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fotos por Scan</label>
-                  <input type="number" value={inputs.avgImagesPerScan} 
-                    onChange={(e) => setInputs({...inputs, avgImagesPerScan: parseInt(e.target.value)})}
-                    className="w-full h-10 bg-slate-50 rounded-xl px-3 font-bold text-sm border-none" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Seg. áudio por Scan</label>
-                  <input type="number" value={inputs.avgAudioSecondsPerScan} 
-                    onChange={(e) => setInputs({...inputs, avgAudioSecondsPerScan: parseInt(e.target.value)})}
-                    className="w-full h-10 bg-slate-50 rounded-xl px-3 font-bold text-sm border-none" />
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* Tabela por função */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+              <th className="text-left py-2 pr-2">Função de IA</th>
+              <th className="text-center px-2">Chamadas/mês<br/>(teto do plano)</th>
+              <th className="text-center px-2">Tokens entrada</th>
+              <th className="text-center px-2">Tokens saída</th>
+              <th className="text-right pl-2">Custo/mês</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fns.map(f => (
+              <tr key={f.key} className="border-b border-slate-50">
+                <td className="py-2 pr-2">
+                  <div className="font-bold text-slate-800 text-xs">{f.label}</div>
+                  {f.note && <div className="text-[9px] text-slate-400">{f.note}</div>}
+                </td>
+                <td className="px-2">
+                  <input type="number" min="0" value={f.callsPerMonth}
+                    onChange={e => updateFn(f.key, 'callsPerMonth', parseInt(e.target.value))}
+                    className="w-16 h-8 text-center bg-slate-50 rounded-lg text-xs font-bold border-none outline-none" />
+                </td>
+                <td className="px-2">
+                  <input type="number" min="0" value={f.inputTokens}
+                    onChange={e => updateFn(f.key, 'inputTokens', parseInt(e.target.value))}
+                    className="w-20 h-8 text-center bg-slate-50 rounded-lg text-xs font-bold border-none outline-none" />
+                </td>
+                <td className="px-2">
+                  <input type="number" min="0" value={f.outputTokens}
+                    onChange={e => updateFn(f.key, 'outputTokens', parseInt(e.target.value))}
+                    className="w-20 h-8 text-center bg-slate-50 rounded-lg text-xs font-bold border-none outline-none" />
+                </td>
+                <td className="text-right pl-2 font-black text-slate-900 whitespace-nowrap">
+                  {fmtBrl(monthlyUsd(f) * usdToBrl)}
+                  <div className="text-[9px] font-medium text-slate-400">{fmtBrl(costPerCallUsd(f) * usdToBrl)}/chamada</div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-          <div className="p-4 bg-slate-50 rounded-2xl space-y-2">
-            <div className="flex items-center gap-2 text-slate-400">
-               <Info size={14} />
-               <span className="text-[10px] font-bold uppercase tracking-widest">Premissas Técnicas:</span>
-            </div>
-            <ul className="text-[10px] text-slate-500 space-y-1 font-medium">
-              <li>• Tokens/Imagem: {TOKENS_PER_IMAGE}</li>
-              <li>• Tokens/Seg. Áudio: {TOKENS_PER_AUDIO_SEC}</li>
-              <li>• Prompt Base: ~1.000 tokens</li>
-              <li>• Taxa Câmbio: R$ {usdToBrl.toFixed(2)}</li>
-            </ul>
+      {/* Resumo */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="p-5 bg-brand-50 rounded-2xl text-center">
+          <p className="text-[9px] font-black text-brand-400 uppercase tracking-widest">Custo total/mês (por usuário no teto)</p>
+          <p className="text-2xl font-black text-slate-900 mt-1">{fmtBrl(totalMonthlyBrl)}</p>
+          <p className="text-[10px] text-slate-400">${totalMonthlyUsd.toFixed(3)} USD · câmbio R$ {usdToBrl.toFixed(2)}</p>
+        </div>
+        <div className="p-5 bg-slate-50 rounded-2xl text-center flex flex-col justify-center">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1"><TrendingUp size={12} /> Margem</p>
+          <div className="flex items-center justify-center gap-2 mt-1">
+            <button onClick={() => setMarginMultiplier(m => Math.max(1, m - 1))} className="w-7 h-7 rounded-lg bg-white border border-slate-200 font-black text-slate-500">−</button>
+            <span className="text-xl font-black text-slate-900">x{marginMultiplier}</span>
+            <button onClick={() => setMarginMultiplier(m => m + 1)} className="w-7 h-7 rounded-lg bg-white border border-slate-200 font-black text-slate-500">+</button>
           </div>
         </div>
-
-        <div className="flex flex-col justify-center items-center bg-brand-50 rounded-[40px] p-10 text-center relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-brand-200/20 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-brand-300/30 transition-all duration-700" />
-          
-          <Brain size={40} className="text-brand-600 mb-4 animate-pulse" />
-          <h4 className="text-[10px] font-black text-brand-400 uppercase tracking-[0.2em] mb-2">Custo Estimado da IA</h4>
-          <div className="text-4xl font-black text-slate-900 mb-2">
-            R$ {results.totalBrl.toFixed(2).replace('.', ',')}
-            <span className="text-xs text-slate-400 ml-2">/mês/user</span>
-          </div>
-          <p className="text-xs font-bold text-slate-500 max-w-[200px]">
-            Custo por interação: <span className="text-indigo-600">R$ {results.perScanBrl.toFixed(3)}</span>
-          </p>
-
-          <div className="mt-8 pt-8 border-t border-brand-200/50 w-full grid grid-cols-2 gap-4">
-             <div>
-                <p className="text-[9px] font-bold text-brand-400 uppercase tracking-widest">Custo USD</p>
-                <p className="text-lg font-black text-slate-700">${results.totalUsd.toFixed(3)}</p>
-             </div>
-             <div>
-                <p className="text-[9px] font-bold text-brand-400 uppercase tracking-widest">Margem Recomendada</p>
-                <p className="text-lg font-black text-emerald-600">x5 ~ x10</p>
-             </div>
-          </div>
+        <div className="p-5 bg-emerald-50 rounded-2xl text-center">
+          <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Preço sugerido do plano</p>
+          <p className="text-2xl font-black text-emerald-700 mt-1">{fmtBrl(suggestedPriceBrl)}</p>
+          <p className="text-[10px] text-slate-400">custo × margem</p>
         </div>
+      </div>
+
+      <div className="p-4 bg-slate-50 rounded-2xl space-y-2">
+        <div className="flex items-center gap-2 text-slate-400">
+          <Info size={14} />
+          <span className="text-[10px] font-bold uppercase tracking-widest">Premissas (Gemini 2.5 Flash):</span>
+        </div>
+        <ul className="text-[10px] text-slate-500 space-y-1 font-medium">
+          <li>• Entrada: ${prices.inputUsdPer1M}/1M tokens · Saída: ${prices.outputUsdPer1M}/1M · Áudio: ${prices.audioUsdPer1M}/1M</li>
+          <li>• "Chamadas/mês" = o teto que o plano PERMITE usar (custo máximo do plano).</li>
+          <li>• Imagem ≈ 258 tokens; áudio ≈ 32 tokens/segundo (já embutidos nas estimativas).</li>
+        </ul>
+      </div>
+
+      <div className="flex items-center gap-3 text-slate-400">
+        <Brain size={16} />
+        <span className="text-[10px] font-medium">Ajuste os tokens de cada função conforme a realidade — ou implemente o registro de consumo real para custo exato.</span>
       </div>
     </div>
   );

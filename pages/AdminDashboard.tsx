@@ -684,7 +684,13 @@ export default function AdminDashboard() {
       {activeTab === 'plans' && (
         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
           <div className="flex items-center justify-between">
-            <h2 className="font-black text-slate-900 dark:text-white text-lg">Planos & SaaS</h2>
+            <div>
+              <h2 className="font-black text-slate-900 dark:text-white text-lg">Planos & SaaS</h2>
+              <p className="text-[11px] font-bold text-slate-400 mt-0.5">
+                {plans.length} plano(s) · {plans.filter(p => p.is_active).length} ativo(s) · {plans.filter(p => !p.is_active).length} arquivado(s)
+                <span className="text-slate-300"> — arquivados aparecem esmaecidos abaixo</span>
+              </p>
+            </div>
             <button onClick={() => setShowNewPlanForm(true)} className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform">
               <Plus size={14} /> Novo Plano
             </button>
