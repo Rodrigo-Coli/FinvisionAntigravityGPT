@@ -46,3 +46,8 @@ pages_list.txt
 
 # Imagens de teste
 test_5050.png
+
+# --- Extras do ambiente local ---
+dev-dist/
+_backup_audit_20260628/
+error*.log
