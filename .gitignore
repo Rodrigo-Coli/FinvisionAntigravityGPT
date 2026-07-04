@@ -51,3 +51,6 @@ test_5050.png
 dev-dist/
 _backup_audit_20260628/
 error*.log
+
+# Config MCP local (nao versionar)
+.mcp.json
