@@ -1,8 +1,13 @@
 {
-  "version": "2026.07.04.1658",
-  "title": "Custo de IA Real (Erro Zero)",
+  "version": "2026.07.04.1829",
+  "title": "Parcela Editada Atualiza a Divida",
   "date": "04/07/2026",
   "benefits": [
+    {
+      "title": "Editou a Parcela? A Divida se Ajusta",
+      "desc": "Ao editar, pagar ou excluir uma parcela em Transacoes que esta vinculada a um passivo, o saldo devedor e o numero de parcelas restantes da divida sao recalculados automaticamente. O balanco do imovel vinculado reflete na hora.",
+      "type": "novidade"
+    },
     {
       "title": "Consumo de IA Medido de Verdade",
       "desc": "Cada funcao de IA agora registra o consumo REAL de tokens que o Gemini retorna. No Master Console aparece o custo real medido por funcao (30 dias) — fim das estimativas, custo exato conforme a IA e usada.",

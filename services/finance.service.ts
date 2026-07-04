@@ -2,6 +2,47 @@
 import { BankAccount, Transaction, CreditCardDetailed, Entity } from '../types';
 import { findCloseMatch } from '../lib/stringUtils';
 
+// PROPAGAÇÃO REVERSA: quando uma parcela vinculada a um passivo é editada/paga/excluída em
+// Transações, recalcula o saldo devedor e o nº de parcelas restantes do passivo a partir das
+// parcelas reais (não pagas e não excluídas). O imóvel vinculado, cujo balanço é derivado das
+// transações, reflete automaticamente. À prova de falha: nunca derruba a edição da transação.
+async function syncLiabilityFromTransactions(liabilityId: string): Promise<void> {
+  try {
+    if (!supabase || !liabilityId) return;
+    const { data: txs } = await supabase
+      .from('transactions')
+      .select('amount, is_paid')
+      .eq('liability_id', liabilityId)
+      .eq('is_deleted', false);
+    if (!txs) return;
+    const unpaid = txs.filter((t: any) => !t.is_paid);
+    const remaining = unpaid.reduce((s: number, t: any) => s + Number(t.amount || 0), 0);
+    await supabase
+      .from('liabilities')
+      .update({
+        remaining_balance: Math.round(remaining * 100) / 100,
+        installments_remaining: unpaid.length,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', liabilityId);
+  } catch {
+    // Silencioso: a sincronização do passivo nunca pode quebrar a edição da transação.
+  }
+}
+
+// Descobre o liability_id de uma transação e dispara a sincronização (se houver vínculo).
+async function propagateToLiability(transactionId: string): Promise<void> {
+  try {
+    if (!supabase) return;
+    const { data: tx } = await supabase
+      .from('transactions')
+      .select('liability_id')
+      .eq('id', transactionId)
+      .maybeSingle();
+    if (tx?.liability_id) await syncLiabilityFromTransactions(tx.liability_id);
+  } catch { /* silencioso */ }
+}
+
 export const FinanceService = {
   // Contas
   getAccounts: async (): Promise<BankAccount[]> => {
@@ -301,6 +342,8 @@ export const FinanceService = {
     }
     const { error } = await supabase.from('transactions').update(updates).eq('id', id);
     if (error) throw error;
+    // Propagação reversa: se a transação estiver vinculada a um passivo, recalcula o passivo.
+    await propagateToLiability(id);
   },
 
   deleteTransaction: async (id: string): Promise<void> => {
@@ -310,8 +353,12 @@ export const FinanceService = {
       offlineQueue.addAction('DELETE_TRANSACTION', { id });
       return;
     }
+    // Captura o vínculo ANTES de marcar como excluída (a linha ainda existe).
+    const { data: preTx } = await supabase.from('transactions').select('liability_id').eq('id', id).maybeSingle();
     const { error } = await supabase.from('transactions').update({ is_deleted: true }).eq('id', id);
     if (error) throw error;
+    // Propagação reversa: recalcula o passivo excluindo esta parcela.
+    if (preTx?.liability_id) await syncLiabilityFromTransactions(preTx.liability_id);
   },
 
   // Categorias
