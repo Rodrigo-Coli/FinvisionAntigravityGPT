@@ -1,7 +1,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
-import { recordAiUsage } from './ai-usage';
+import { recordAiUsage } from './ai-usage.js';
 import { Buffer } from 'node:buffer';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';

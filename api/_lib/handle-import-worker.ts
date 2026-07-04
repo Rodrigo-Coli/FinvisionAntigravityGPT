@@ -1,7 +1,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
-import { recordAiUsage } from './ai-usage';
+import { recordAiUsage } from './ai-usage.js';
 import Papa from 'papaparse';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
