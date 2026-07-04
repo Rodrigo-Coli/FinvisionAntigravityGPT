@@ -129,3 +129,68 @@ export async function handleNotifyBillsDue(req: any, res: any) {
     return res.status(500).json({ error: err.message });
   }
 }
+
+export async function handleWeeklySummary(req: any, res: any) {
+  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!process.env.IS_LOCAL && req.query.key !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+    const sevenDaysAhead = new Date(); sevenDaysAhead.setDate(sevenDaysAhead.getDate() + 7);
+    const sevenDaysAheadStr = sevenDaysAhead.toISOString().split('T')[0];
+
+    const { data: users } = await supabase.from('user_settings').select('user_id, whatsapp_number, whatsapp_enabled').eq('whatsapp_enabled', true);
+    const filteredUsers = users?.filter(u => u.whatsapp_number) || [];
+    if (filteredUsers.length === 0) return res.status(200).json({ message: 'No users.' });
+
+    const userIds = filteredUsers.map(u => u.user_id);
+
+    const [txRes, accountsRes, pendingRes] = await Promise.all([
+      supabase.from('transactions').select('user_id, amount, type, category').eq('is_deleted', false).in('user_id', userIds).gte('date', sevenDaysAgoStr).lte('date', todayStr),
+      supabase.from('accounts').select('user_id, institution, current_balance').eq('is_archived', false).in('user_id', userIds),
+      supabase.from('transactions').select('user_id, description, amount, date').eq('is_paid', false).eq('is_deleted', false).eq('type', 'EXPENSE').in('user_id', userIds).gte('date', todayStr).lte('date', sevenDaysAheadStr).order('date', { ascending: true })
+    ]);
+
+    for (const u of filteredUsers) {
+      const txs = (txRes.data || []).filter((t: any) => t.user_id === u.user_id);
+      const accounts = (accountsRes.data || []).filter((a: any) => a.user_id === u.user_id);
+      const upcoming = (pendingRes.data || []).filter((b: any) => b.user_id === u.user_id);
+
+      const weekIncome = txs.filter((t: any) => t.type === 'INCOME').reduce((s: number, t: any) => s + Number(t.amount), 0);
+      const weekExpense = txs.filter((t: any) => t.type === 'EXPENSE').reduce((s: number, t: any) => s + Number(t.amount), 0);
+      const totalBalance = accounts.reduce((s: number, a: any) => s + Number(a.current_balance || 0), 0);
+
+      const catSummary: Record<string, number> = {};
+      txs.filter((t: any) => t.type === 'EXPENSE').forEach((t: any) => {
+        catSummary[t.category || 'Outros'] = (catSummary[t.category || 'Outros'] || 0) + Number(t.amount);
+      });
+      const topCats = Object.entries(catSummary).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([cat, val]) => `  • ${cat}: R$ ${val.toFixed(2)}`).join('\n');
+
+      const upcomingLines = upcoming.slice(0, 5).map((b: any) => {
+        const dateFmt = b.date ? b.date.split('T')[0].split('-').reverse().join('/') : '';
+        return `  • ${b.description}: R$ ${Number(b.amount).toFixed(2)} (${dateFmt})`;
+      }).join('\n');
+
+      const weekStart = sevenDaysAgo.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      const weekEnd = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
+      let msg = `📊 *Resumo Semanal FinVision Pro*\n_${weekStart} a ${weekEnd}_\n\n`;
+      msg += `💰 *Entradas na semana:* R$ ${weekIncome.toFixed(2)}\n`;
+      msg += `💸 *Saídas na semana:* R$ ${weekExpense.toFixed(2)}\n`;
+      msg += `🏦 *Saldo atual:* R$ ${totalBalance.toFixed(2)}\n`;
+      if (topCats) msg += `\n📌 *Top gastos da semana:*\n${topCats}\n`;
+      if (upcoming.length > 0) msg += `\n📅 *Contas vencendo nos próximos 7 dias (${upcoming.length}):*\n${upcomingLines}\n`;
+      msg += `\nBoa semana! 🚀`;
+
+      if (u.whatsapp_enabled && u.whatsapp_number) await sendWhatsApp(u.whatsapp_number, msg);
+    }
+
+    return res.status(200).json({ success: true, usersNotified: filteredUsers.length });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+}
