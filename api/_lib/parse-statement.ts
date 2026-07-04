@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
+import { recordAiUsage } from './ai-usage';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 
@@ -50,6 +51,7 @@ export async function handleParseStatement(req: any, res: any) {
         }
       }
     });
+    await recordAiUsage(supabase, 'parse_statement', null, response, 'gemini-2.5-flash');
 
     const parsed = JSON.parse((response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '{"transactions":[]}');
     const transactions = parsed.transactions || [];

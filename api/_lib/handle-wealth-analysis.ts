@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
+import { recordAiUsage } from './ai-usage';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -87,6 +88,7 @@ export async function handleWealthAnalysis(req: any, res: any) {
             contents: [{ parts: [{ text: userPrompt }] }],
             config: { systemInstruction: systemPrompt, temperature: 0.7 }
         });
+        await recordAiUsage(supabase, 'wealth_analysis', userId, response, 'gemini-2.5-flash');
 
         const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
         if (!rawText) throw new Error('FinVision AI não retornou análise.');

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
+import { recordAiUsage } from './ai-usage';
 import Papa from 'papaparse';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
@@ -146,6 +147,7 @@ async function processWithGemini(buffer: Buffer, mimeType: string, context: stri
     contents: [{ parts: [{ text: prompt }, { inlineData: { data: buffer.toString('base64'), mimeType } }] }],
     config: { responseMimeType: "application/json" }
   });
+  await recordAiUsage(supabase, 'process_import', null, response, 'gemini-2.5-flash');
 
   try {
     const text = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';

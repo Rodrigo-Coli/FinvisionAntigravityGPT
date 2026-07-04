@@ -1,8 +1,21 @@
-import React, { useState } from 'react';
-import { Calculator, TrendingUp, Info, Brain, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Calculator, TrendingUp, Info, Brain, AlertTriangle, Activity } from 'lucide-react';
+import { supabase } from '../../lib/supabase/client';
 
 interface TokenCalculatorProps {
   usdToBrl: number;
+}
+
+// Rótulos amigáveis para os nomes técnicos gravados em ai_usage_logs.
+const FN_LABELS: Record<string, string> = {
+  chat: 'Chat IA', wealth_analysis: 'Insights / Patrimônio', categorize: 'Categorização',
+  receipt_items: 'Scan de Nota', bank_reconcile: 'Conciliação banco', card_reconcile: 'Conciliação cartão',
+  import_worker: 'Importação (worker)', parse_card_statement: 'Fatura de cartão', parse_statement: 'Extrato',
+  process_import: 'Importação',
+};
+
+interface RealUsageRow {
+  fn: string; calls: number; avg_prompt_tokens: number; avg_output_tokens: number; total_tokens_30d: number;
 }
 
 // Preços Gemini 2.5 Flash (USD por 1 milhão de tokens). Editáveis abaixo caso mudem.
@@ -40,6 +53,18 @@ export default function TokenCalculator({ usdToBrl }: TokenCalculatorProps) {
   const [prices] = useState(DEFAULT_PRICES);
   const [fns, setFns] = useState<AiFn[]>(DEFAULT_FUNCTIONS);
   const [marginMultiplier, setMarginMultiplier] = useState(6);
+  const [realUsage, setRealUsage] = useState<RealUsageRow[]>([]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.from('ai_usage_summary').select('*').then(({ data }: any) => {
+      if (data) setRealUsage(data);
+    });
+  }, []);
+
+  const realCostBrl = (r: RealUsageRow) =>
+    ((r.avg_prompt_tokens / 1_000_000) * prices.inputUsdPer1M +
+     (r.avg_output_tokens / 1_000_000) * prices.outputUsdPer1M) * r.calls * usdToBrl;
 
   const fmtBrl = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -141,6 +166,42 @@ export default function TokenCalculator({ usdToBrl }: TokenCalculatorProps) {
           <p className="text-2xl font-black text-emerald-700 mt-1">{fmtBrl(suggestedPriceBrl)}</p>
           <p className="text-[10px] text-slate-400">custo × margem</p>
         </div>
+      </div>
+
+      {/* Consumo REAL medido (erro zero) — vindo de ai_usage_logs */}
+      <div className="p-5 bg-emerald-50/50 border border-emerald-100 rounded-2xl space-y-3">
+        <div className="flex items-center gap-2 text-emerald-700">
+          <Activity size={15} />
+          <span className="text-[11px] font-black uppercase tracking-widest">Consumo Real Medido (últimos 30 dias)</span>
+        </div>
+        {realUsage.length === 0 ? (
+          <p className="text-[11px] text-slate-500 font-medium">
+            Ainda sem dados medidos. Conforme a IA for usada, o consumo real (tokens que o Gemini retorna) aparece aqui — aí o custo passa a ser <b>exato</b>, sem estimativa.
+          </p>
+        ) : (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-emerald-100">
+                <th className="text-left py-1">Função</th>
+                <th className="text-center">Chamadas</th>
+                <th className="text-center">Média entrada</th>
+                <th className="text-center">Média saída</th>
+                <th className="text-right">Custo real (30d)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {realUsage.map(r => (
+                <tr key={r.fn} className="border-b border-emerald-50">
+                  <td className="py-1.5 font-bold text-slate-700">{FN_LABELS[r.fn] || r.fn}</td>
+                  <td className="text-center text-slate-600">{r.calls}</td>
+                  <td className="text-center text-slate-600">{r.avg_prompt_tokens}</td>
+                  <td className="text-center text-slate-600">{r.avg_output_tokens}</td>
+                  <td className="text-right font-black text-emerald-700">{fmtBrl(realCostBrl(r))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <div className="p-4 bg-slate-50 rounded-2xl space-y-2">

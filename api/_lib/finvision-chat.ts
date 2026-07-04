@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
+import { recordAiUsage } from './ai-usage';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -212,6 +213,7 @@ ${goals.length > 0 ? goals.map((g: any) => `- Meta: "${g.name}" | Alvo: R$ ${Num
                 tools: [{ googleSearch: {} }] // Ativação nativa da pesquisa Google
             }
         });
+        await recordAiUsage(supabase, 'chat', userId, response, 'gemini-2.5-flash');
 
         const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
 

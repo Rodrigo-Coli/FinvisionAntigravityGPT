@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
+import { recordAiUsage } from './ai-usage';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { StatementTemplateHelper } from './statement-template-helper.js';
@@ -116,6 +117,7 @@ RETORNE APENAS JSON NO FORMATO:
               }
             }
           });
+          await recordAiUsage(supabase, 'card_reconcile', null, response, 'gemini-2.5-flash');
           rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
           if (rawText) break;
         } catch (e) { console.error(`Falha no modelo ${modelName}:`, e); }

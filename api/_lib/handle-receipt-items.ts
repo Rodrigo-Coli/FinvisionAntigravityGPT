@@ -1,6 +1,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
+import { recordAiUsage } from './ai-usage';
 import { Buffer } from 'node:buffer';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
@@ -71,6 +72,7 @@ export async function handleReceiptItems(req: any, res: any) {
                 responseMimeType: "application/json"
             }
         });
+        await recordAiUsage(supabase, 'receipt_items', null, response, 'gemini-2.5-flash');
 
         if (!response) {
             throw new Error('A IA não retornou nenhuma resposta.');
