@@ -1,41 +1,38 @@
 {
-  "version": "2026.06.28.2200",
-  "title": "Contas que Batem: Sem Soma Dupla em Nenhum Lugar",
-  "date": "28/06/2026",
+  "version": "2026.07.04.0058",
+  "title": "Imoveis: Compra Nao Vira Gasto e Financiamento Vira Divida",
+  "date": "04/07/2026",
   "benefits": [
     {
-      "title": "Totais que Batem de Verdade",
-      "desc": "Corrigido: os gastos do cartao nao eram somados duas vezes nos totais de despesa. Agora o sistema sabe a diferenca entre o pagamento da fatura (banco) e as compras individuais (cartao).",
+      "title": "Fim da Aquisicao Repetida",
+      "desc": "Corrigido: o imovel nao gera mais varios lancamentos duplicados de 'Aquisicao Ativo'. Comprar um bem deixou de ser tratado como um gasto que some do caixa, ele agora conta apenas no valor do seu patrimonio.",
       "type": "correcao"
     },
     {
-      "title": "Transacoes Mostra so o Banco",
-      "desc": "A tela de Transacoes agora exibe apenas movimentos bancarios reais. O pagamento da fatura do cartao aparece como uma linha unica. Para ver as compras do cartao, use o filtro CARTAO.",
+      "title": "Uso ou Investimento Ja no Cadastro",
+      "desc": "Ao cadastrar um imovel voce ja escolhe se ele e para Uso Proprio ou Investimento, sem precisar entrar na edicao depois.",
       "type": "ux"
     },
     {
-      "title": "Cartao Mostra as Compras Certas",
-      "desc": "Ao filtrar por CARTAO em Transacoes, voce ve exatamente as compras daquele cartao com suas categorias, sem misturar com o extrato bancario.",
+      "title": "Campo de Reformas Editavel",
+      "desc": "O valor de reformas e obras do imovel agora pode ser digitado direto e entra no balanco. As reformas ja lancadas em transacoes aparecem como referencia.",
       "type": "ux"
     },
     {
-      "title": "Relatorios: Categoria Completa",
-      "desc": "Em Relatorios com tudo selecionado, a analise por categoria agora combina gastos do banco e do cartao corretamente, sem duplicar o valor da fatura.",
-      "type": "correcao"
+      "title": "Financiamento Vira Divida de Verdade",
+      "desc": "Ao cadastrar um imovel financiado, o financiamento passa a ser registrado como um Passivo/Divida vinculado ao imovel, e as parcelas ficam ligadas a ele. Antes eram lancamentos soltos sem divida nenhuma.",
+      "type": "novidade"
     },
     {
-      "title": "Emprestimo Concedido Limpo",
-      "desc": "O card de emprestimo concedido nao exibe mais lancamentos de outros eventos. So aparecem os pagamentos realmente registrados para aquele emprestimo.",
-      "type": "correcao"
+      "title": "Onde Cadastrar Fica Claro",
+      "desc": "No cadastro do imovel, tanto no consorcio quanto no financiamento, agora aparece uma explicacao de onde cadastrar em Patrimonio > Passivos e Dividas.",
+      "type": "ux"
     }
   ],
   "changes": [
-    "**History.tsx:** combined nao mescla mais card_transactions quando filterOrigin e ALL ou ACCOUNT. Modo CARTAO mostra so card_transactions; modo TUDO/CONTA mostra so transactions (banco).",
-    "**Home.tsx:** removida mesclagem de card_transactions nos totais da home. Totais refletem apenas movimentos bancarios reais (incluindo BILL_PAYMENT como saida do cartao).",
-    "**Reports.tsx:** modo TUDO busca banco (excluindo BILL_PAYMENT) + card_transactions de todos os cartoes para analise por categoria sem conta dupla. Modo conta especifica: so transactions. Modo cartao especifico: so card_transactions.",
-    "**Assets.tsx (emprestimos):** linkedTransactionsMap usa apenas linked_asset_id para emprestimos; filtro de palavras genericas impede falsos vinculos por descricao.",
-    "**Assets.tsx (form):** campos Marcar como Vendido e Taxa de Corretagem ocultados quando ativo e emprestimo concedido.",
-    "**handleDeleteLiability:** apaga tambem transacoes vinculadas via metadata.liability_id (orfaos).",
-    "**Banco (limpeza):** removidos 6 recebimentos orfaos de R$155.000 e 24 alugueis projetados sem vinculo de ativo."
+    "**Assets.tsx (runAutoTransactionSync):** trava global autoSyncInFlight impede execucoes concorrentes (fim da duplicacao). Imoveis (REAL_ESTATE) nao geram mais transacao de despesa 'Aquisicao Ativo'.",
+    "**RealEstateWizardModal.tsx:** novo estado purpose (uso/investimento) escolhido no passo 1. Texto de ajuda de onde cadastrar consorcio e financiamento (Passivos).",
+    "**RealEstateWizardModal.tsx (Opcao A):** cria liability MORTGAGE vinculada ao imovel; parcelas recebem liability_id + is_amortization (espelho). Vinculo financingLiabilityId gravado no metadata do imovel.",
+    "**RealEstateDetailModal.tsx:** campo Reformas/Obras editavel (reformsManual em metadata) somando ao totalInvestedInitially junto com reformas de transacoes."
   ]
 }

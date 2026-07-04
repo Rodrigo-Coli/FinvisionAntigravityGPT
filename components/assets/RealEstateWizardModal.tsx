@@ -24,6 +24,7 @@ const getMonthsDifference = (d1: string, d2: string) => {
 export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ onClose, onSuccess }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [propertyStage, setPropertyStage] = useState<'PLANTA' | 'PRONTO'>('PRONTO');
+  const [purpose, setPurpose] = useState<'uso' | 'investimento'>('uso');
 
   // Identificação do Imóvel
   const [name, setName] = useState('');
@@ -241,7 +242,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
 
       const assetMetadata: Record<string, any> = {
         propertyStage,
-        purpose: 'uso',
+        purpose,
         purchaseValue: initialPurchase,
         indexType: financingIndexType,
         selectedConsortiumId: financingOption === 'B' ? (selectedConsortiumId || undefined) : undefined,
@@ -471,6 +472,44 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
           const baseStartDate = new Date(financingStartDate);
           const financingGroupId = generateUUID();
 
+          // Cria um Passivo/Dívida (financiamento) vinculado ao imóvel: é a "fonte da verdade".
+          // As parcelas abaixo passam a ser espelho deste passivo (liability_id) e aparecem também em Passivos e Dívidas.
+          const financingDueDay = baseStartDate.getDate();
+          const { data: newLiab, error: liabErr } = await supabase
+            .from('liabilities')
+            .insert([{
+              user_id: user.id,
+              name: `Financiamento: ${name}`,
+              type: 'MORTGAGE',
+              total_amount: fundingAmount,
+              remaining_balance: fundingAmount,
+              interest_rate: parseFloat(financingInterestRate) || 0,
+              installment_amount: firstInstallmentVal,
+              installments_remaining: n,
+              due_day: financingDueDay,
+              linked_asset_id: assetId,
+              is_archived: false,
+              metadata: {
+                isRealEstate: true,
+                propertyType: propertyStage,
+                amortizationType,
+                installments_count: n,
+                indexationType: financingIndexType,
+                indexationRate: parseFloat(financingIndexRate) || 0,
+                installment_group_id: financingGroupId,
+                source: 'real_estate_wizard'
+              }
+            }])
+            .select()
+            .single();
+          if (liabErr) throw liabErr;
+          const financingLiabilityId = newLiab?.id;
+          // Guarda o vínculo do passivo no próprio imóvel (a linha já foi inserida, então atualizamos).
+          await supabase
+            .from('physical_assets')
+            .update({ metadata: { ...assetMetadata, financingLiabilityId } })
+            .eq('id', assetId);
+
           let outstandingBalance = fundingAmount;
           const sacAmortization = fundingAmount / n;
 
@@ -510,8 +549,11 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
               installment_number: k,
               installment_total: n,
               installment_group_id: financingGroupId,
+              liability_id: financingLiabilityId,
+              is_amortization: true,
               metadata: {
                 linked_asset_id: assetId,
+                liability_id: financingLiabilityId,
                 property_tx_type: 'FINANCING',
                 amortization_type: amortizationType
               }
@@ -586,9 +628,15 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                      <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">1</div>
                      <h4 className="text-lg font-black text-slate-900 italic">Identificação e Status do Imóvel</h4>
                   </div>
-                  <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
-                    <button onClick={() => setPropertyStage('PRONTO')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${propertyStage === 'PRONTO' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Entregue (Pronto)</button>
-                    <button onClick={() => setPropertyStage('PLANTA')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${propertyStage === 'PLANTA' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Na Planta</button>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
+                      <button onClick={() => setPropertyStage('PRONTO')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${propertyStage === 'PRONTO' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Entregue (Pronto)</button>
+                      <button onClick={() => setPropertyStage('PLANTA')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${propertyStage === 'PLANTA' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Na Planta</button>
+                    </div>
+                    <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
+                      <button onClick={() => setPurpose('uso')} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${purpose === 'uso' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Uso Próprio</button>
+                      <button onClick={() => setPurpose('investimento')} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${purpose === 'investimento' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Investimento</button>
+                    </div>
                   </div>
                </div>
 
@@ -868,7 +916,13 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                   {financingOption === 'A' && (
                     <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4 animate-in fade-in duration-200">
                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Opção A: Financiamento Direto (SAC / Price)</p>
-                       
+                       <div className="p-3 rounded-2xl bg-brand-50 border border-brand-100">
+                         <p className="text-[11px] text-brand-700 font-semibold leading-normal flex items-start gap-1.5">
+                           <HelpCircle size={13} className="mt-0.5 shrink-0" />
+                           <span>Este financiamento será registrado como um <b>Passivo/Dívida</b> vinculado ao imóvel. As parcelas geradas aqui aparecerão em <b>Patrimônio → Passivos e Dívidas</b> e também em <b>Transações</b>, sempre espelhadas. Se preferir, você pode cadastrá-lo direto em Passivos e apenas vincular ao imóvel.</span>
+                         </p>
+                       </div>
+
                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-1.5">
                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saldo a Financiar</label>
@@ -925,7 +979,12 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                           {isLoadingConsortia ? (
                             <div className="flex items-center gap-2 text-slate-400 p-2"><Loader2 size={12} className="animate-spin" /> <span className="text-[8px] font-bold uppercase">Buscando Consórcios...</span></div>
                           ) : availableConsortia.length === 0 ? (
-                            <p className="text-xs text-slate-500 font-bold uppercase italic p-4 text-center">Nenhum consórcio cadastrado encontrado.</p>
+                            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-1.5">
+                              <p className="text-[10px] font-black uppercase text-amber-700 flex items-center gap-1.5"><HelpCircle size={13} /> Nenhum consórcio cadastrado</p>
+                              <p className="text-[11px] text-amber-700 font-semibold leading-normal">
+                                Cadastre o consórcio primeiro em <b>Patrimônio → Passivos e Dívidas → Novo Passivo</b>, escolhendo o tipo <b>Consórcio</b>. Depois volte aqui e vincule-o ao imóvel.
+                              </p>
+                            </div>
                           ) : (
                             availableConsortia.map(c => (
                               <button 

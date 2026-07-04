@@ -57,6 +57,10 @@ import ConsortiumSection from '../components/assets/ConsortiumSection';
 import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
 
+// Trava global para impedir que o sincronizador automático rode em paralelo
+// (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
+let autoSyncInFlight = false;
+
 const Assets: React.FC = () => {
   const navigate = useNavigate();
   const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities' | 'consortiums'>('overview');
@@ -1340,7 +1344,10 @@ const Assets: React.FC = () => {
 
   const runAutoTransactionSync = async (userId: string, assets: any[], liabs: any[], txs: any[]) => {
     if (!supabase) return;
-    
+    // Impede execuções concorrentes (evita duplicação de lançamentos automáticos).
+    if (autoSyncInFlight) return;
+    autoSyncInFlight = true;
+    try {
     // Busca todas as transações (incluindo deletadas) para auditar corretamente e evitar duplicar/recriar deletadas
     const { data: allLinkedTxs, error: linkedErr } = await supabase
       .from('transactions')
@@ -1356,6 +1363,10 @@ const Assets: React.FC = () => {
     // 1. Asset Purchase Transactions
     for (const asset of assets) {
       if (asset.category === 'INVESTMENT' || asset.metadata?.isLoan || asset.is_archived) continue;
+      // Imóveis NÃO geram lançamento de "Aquisição Ativo": a compra de um bem não é uma despesa
+      // (é conversão de caixa em patrimônio). O valor já é contabilizado pelo registro do ativo
+      // e pelo "Investimento Inicial" no balanço do imóvel. Isso também elimina a duplicação.
+      if (asset.category === 'REAL_ESTATE') continue;
       const amount = Number(asset.metadata?.purchaseValue) || asset.estimatedValue;
       if (amount <= 0) continue;
       
@@ -1519,6 +1530,9 @@ const Assets: React.FC = () => {
           await supabase.from('transactions').insert(futureTxs);
         }
       }
+    }
+    } finally {
+      autoSyncInFlight = false;
     }
   };
 

@@ -42,6 +42,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [acquisitionDate, setAcquisitionDate] = useState(asset.acquisitionDate || new Date().toISOString().split('T')[0]);
   const [despesasCartorarias, setDespesasCartorarias] = useState(String(asset.metadata?.despesasCartorarias || ''));
   const [mobiliarios, setMobiliarios] = useState(String(asset.metadata?.mobiliarios || ''));
+  const [reformsManual, setReformsManual] = useState(String(asset.metadata?.reformsManual || ''));
   const [historicalPaidAmount, setHistoricalPaidAmount] = useState(String(asset.metadata?.historicalPaidAmount || ''));
   const [historicalRentReceived, setHistoricalRentReceived] = useState(String(asset.metadata?.historicalRentReceived || ''));
   const [consortiumAllocationRatio, setConsortiumAllocationRatio] = useState(String(asset.metadata?.consortiumAllocationRatio || '100'));
@@ -142,8 +143,10 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
     const buy = parseFloat(purchaseValue) || 0;
     const cart = parseFloat(despesasCartorarias) || 0;
     const mob = parseFloat(mobiliarios) || 0;
-    return buy + reformsValue + cart + mob;
-  }, [purchaseValue, reformsValue, despesasCartorarias, mobiliarios]);
+    const reformsManualVal = parseFloat(reformsManual) || 0;
+    // Reformas contam tanto o valor digitado manualmente quanto o que foi lançado em transações de reforma.
+    return buy + reformsValue + reformsManualVal + cart + mob;
+  }, [purchaseValue, reformsValue, reformsManual, despesasCartorarias, mobiliarios]);
 
   const paidTransactionsAmount = useMemo(() => {
     return assetTransactions
@@ -790,6 +793,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         propertyStage,
         purpose,
         purchaseValue: buyVal,
+        reformsManual: parseFloat(reformsManual) || 0,
         despesasCartorarias: cartVal,
         mobiliarios: mobVal,
         historicalPaidAmount: histPaid,
@@ -1476,8 +1480,11 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Reformas Obras (Saldo)</label>
-                  <div className="w-full h-10 px-4 bg-slate-100 rounded-xl font-black text-slate-900 text-xs flex items-center">{formatCurrency(reformsValue)}</div>
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Reformas / Obras (R$)</label>
+                  <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="number" value={reformsManual} onChange={e => setReformsManual(e.target.value)} placeholder="0" />
+                  {reformsValue > 0 && (
+                    <p className="text-[8px] font-bold text-slate-400 pl-1">+ {formatCurrency(reformsValue)} já lançados em transações de reforma</p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Despesas Cartório</label>
