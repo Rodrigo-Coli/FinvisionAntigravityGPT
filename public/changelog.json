@@ -1,8 +1,13 @@
 {
-  "version": "2026.07.04.1037",
-  "title": "Passivos Completos e Consorcio Calculado Certo",
+  "version": "2026.07.04.1052",
+  "title": "Calculo da Parcela pelo Saldo Devedor",
   "date": "04/07/2026",
   "benefits": [
+    {
+      "title": "Calculo da Parcela Mais Preciso",
+      "desc": "O botao 'calcular parcela pelo valor total' agora usa o saldo devedor (o que voce ainda deve) como base, igual ao cronograma. Se ja houve pagamentos anteriores, a parcela calculada nao fica mais inflada.",
+      "type": "correcao"
+    },
     {
       "title": "Cadastro de Financiamento Completo em Passivos",
       "desc": "O formulario de Passivo agora tem os campos de financiamento: taxa de juros, tipo de amortizacao (SAC ou Price), indice de correcao, projecao de reajuste e data da 1a parcela.",

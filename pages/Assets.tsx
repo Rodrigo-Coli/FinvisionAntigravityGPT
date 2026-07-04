@@ -11114,8 +11114,9 @@ const Assets: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    // Calcula a 1ª parcela a partir do VALOR TOTAL (ou saldo devedor) + juros + amortização.
-                    const principal = (parseFloat(liabilityFormData.totalAmount) || 0) || (parseFloat(liabilityFormData.remainingBalance) || 0);
+                    // Base de amortização = SALDO DEVEDOR (o que ainda se deve), com fallback para o total.
+                    // Usa a mesma base do cronograma gerado ao salvar, para o valor não divergir.
+                    const principal = (parseFloat(liabilityFormData.remainingBalance) || 0) || (parseFloat(liabilityFormData.totalAmount) || 0);
                     const n = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
                     const i = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
                     const reaj = (parseFloat(liabilityFormData.indexationRate) || 0) / 100;
