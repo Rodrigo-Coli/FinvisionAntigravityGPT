@@ -450,6 +450,9 @@ const Assets: React.FC = () => {
     dueDay: '',
     linkedAssetId: '',
     indexationRate: '',
+    amortizationType: 'SAC' as 'SAC' | 'PRICE',
+    indexType: 'FIXED' as 'INCC' | 'IPCA' | 'IGP-M' | 'FIXED',
+    firstInstallmentDate: '',
     balloonMonth: '',
     balloonYear: '',
     balloonAmount: '',
@@ -1412,7 +1415,10 @@ const Assets: React.FC = () => {
     // 2. Liability Inflow Transactions
     for (const liab of liabs) {
       if (liab.is_archived || liab.totalAmount <= 0) continue;
-      
+      // Financiamento imobiliário (MORTGAGE) NÃO gera entrada de caixa: o banco paga o vendedor
+      // diretamente, o dinheiro não passa pela conta do usuário. Evita inflar o caixa.
+      if (liab.type === 'MORTGAGE') continue;
+
       const hasInflowTx = linkedTxs.some((t: any) =>
         (t.liability_id === liab.id || t.metadata?.liability_id === liab.id) &&
         t.metadata?.type === 'liability_inflow'
@@ -3557,6 +3563,9 @@ const Assets: React.FC = () => {
         dueDay: '10',
         linkedAssetId: '',
         indexationRate: '',
+        amortizationType: 'SAC',
+        indexType: 'FIXED',
+        firstInstallmentDate: '',
         balloonMonth: '',
         balloonYear: '',
         balloonAmount: '',
@@ -4250,6 +4259,9 @@ const Assets: React.FC = () => {
           metadata: {
             ...editingLiability.metadata,
             indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
+            amortizationType: liabilityFormData.amortizationType,
+            indexType: liabilityFormData.indexType,
+            firstInstallmentDate: liabilityFormData.firstInstallmentDate || undefined,
             balloons: liabilityFormData.balloons,
             propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
             isRealEstate: liabilityFormData.type === 'MORTGAGE' ? true : undefined,
@@ -4286,6 +4298,98 @@ const Assets: React.FC = () => {
             }
           }
         }
+
+        // #2 Regeneração de parcelas ao editar (opcional e só nas FUTURAS não pagas).
+        // Regra "só daqui pra frente": nunca mexe em parcelas pagas ou com data passada.
+        const oldInstallmentAmt = Number(editingLiability.installmentAmount) || 0;
+        const oldInstallmentsLeft = Number(editingLiability.installmentsRemaining) || 0;
+        const oldDueDay = Number(editingLiability.dueDay) || 0;
+        const scheduleChanged =
+          Math.abs(oldInstallmentAmt - installmentAmt) > 0.001 ||
+          oldInstallmentsLeft !== installmentsLeft ||
+          oldDueDay !== dueDay;
+
+        if (scheduleChanged && installmentAmt > 0 && installmentsLeft > 0) {
+          const confirmRegen = window.confirm(
+            'Você alterou o valor, a quantidade ou o vencimento das parcelas.\n\n' +
+            'Deseja REGENERAR as parcelas FUTURAS ainda não pagas com os novos valores?\n' +
+            '(As parcelas já pagas e as de datas passadas são mantidas.)'
+          );
+          if (confirmRegen) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            // Apaga apenas parcelas futuras, não pagas, geradas automaticamente para este passivo.
+            const { data: futureParcels } = await supabase
+              .from('transactions')
+              .select('id')
+              .eq('liability_id', editingLiability.id)
+              .eq('is_paid', false)
+              .gte('date', todayStr)
+              .eq('metadata->>auto_generated', 'true');
+            if (futureParcels && futureParcels.length > 0) {
+              await supabase.from('transactions').delete().in('id', futureParcels.map((t: any) => t.id));
+            }
+
+            // Recria o cronograma futuro (mesma lógica SAC/Price da criação).
+            const categoryName = 'Financiamento/Dívida';
+            let regenCatId: string | null = null;
+            const { data: regenCat } = await supabase.from('categories')
+              .select('id').eq('user_id', user.id).eq('name', categoryName).maybeSingle();
+            if (regenCat) {
+              regenCatId = regenCat.id;
+            } else {
+              const { data: c } = await supabase.from('categories').insert({
+                user_id: user.id, name: categoryName, type: 'EXPENSE', color: 'bg-rose-50 text-rose-600'
+              }).select('id').maybeSingle();
+              if (c) regenCatId = c.id;
+            }
+
+            const today = new Date();
+            const regenTxs: any[] = [];
+            const MAX_REGEN = Math.min(installmentsLeft, 120);
+            const regenPrincipal = remainingBal > 0 ? remainingBal : totalAmt;
+            const regenRate = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
+            const regenReaj = (parseFloat(liabilityFormData.indexationRate) || 0) / 100;
+            const regenIsSAC = liabilityFormData.amortizationType === 'SAC';
+            const regenSacAmort = installmentsLeft > 0 ? regenPrincipal / installmentsLeft : 0;
+            let regenOutstanding = regenPrincipal;
+            for (let i = 1; i <= MAX_REGEN; i++) {
+              const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
+              let parcelaAmt = installmentAmt;
+              if (regenIsSAC && regenRate > 0 && regenPrincipal > 0) {
+                parcelaAmt = (regenSacAmort + regenOutstanding * regenRate) * Math.pow(1 + regenReaj, i);
+                regenOutstanding -= regenSacAmort;
+              } else if (regenReaj > 0) {
+                parcelaAmt = installmentAmt * Math.pow(1 + regenReaj, i);
+              }
+              parcelaAmt = Math.round(parcelaAmt * 100) / 100;
+              regenTxs.push({
+                user_id: user.id,
+                description: `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
+                amount: parcelaAmt,
+                date: txDate.toISOString().split('T')[0],
+                type: 'EXPENSE',
+                category: categoryName,
+                category_id: regenCatId || null,
+                is_paid: false,
+                is_recurring: true,
+                is_installment: true,
+                installment_number: i,
+                installment_total: installmentsLeft,
+                installment_group_id: editingLiability.id,
+                liability_id: editingLiability.id,
+                metadata: {
+                  auto_generated: true,
+                  installment_number: i,
+                  installment_group_id: editingLiability.id,
+                  linked_asset_id: liabilityFormData.linkedAssetId || undefined
+                }
+              });
+            }
+            if (regenTxs.length > 0) {
+              await supabase.from('transactions').insert(regenTxs);
+            }
+          }
+        }
       } else {
         const { data: newLiab, error } = await supabase.from('liabilities').insert([{
           user_id: user.id,
@@ -4300,6 +4404,9 @@ const Assets: React.FC = () => {
           linked_asset_id: liabilityFormData.linkedAssetId || null,
           metadata: {
             indexationRate: parseFloat(liabilityFormData.indexationRate) || 0,
+            amortizationType: liabilityFormData.amortizationType,
+            indexType: liabilityFormData.indexType,
+            firstInstallmentDate: liabilityFormData.firstInstallmentDate || undefined,
             balloons: liabilityFormData.balloons,
             propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
             isRealEstate: liabilityFormData.type === 'MORTGAGE' ? true : undefined,
@@ -4341,12 +4448,28 @@ const Assets: React.FC = () => {
 
             const futureTransactions = [];
             const MAX_GENERATE = Math.min(installmentsLeft, 120); // Safety cap for bulk generation
+            // Parâmetros para cronograma SAC (parcelas decrescentes). Price/sem juros mantém valor fixo.
+            const principalForSchedule = remainingBal > 0 ? remainingBal : totalAmt;
+            const scheduleMonthlyRate = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
+            const scheduleReajuste = (parseFloat(liabilityFormData.indexationRate) || 0) / 100;
+            const isSAC = liabilityFormData.amortizationType === 'SAC';
+            const sacAmort = installmentsLeft > 0 ? principalForSchedule / installmentsLeft : 0;
+            let sacOutstanding = principalForSchedule;
             for (let i = 1; i <= MAX_GENERATE; i++) {
               const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
+              // Valor da parcela: SAC com juros = decrescente; caso contrário, valor fixo informado.
+              let parcelaAmt = installmentAmt;
+              if (isSAC && scheduleMonthlyRate > 0 && principalForSchedule > 0) {
+                parcelaAmt = (sacAmort + sacOutstanding * scheduleMonthlyRate) * Math.pow(1 + scheduleReajuste, i);
+                sacOutstanding -= sacAmort;
+              } else if (scheduleReajuste > 0) {
+                parcelaAmt = installmentAmt * Math.pow(1 + scheduleReajuste, i);
+              }
+              parcelaAmt = Math.round(parcelaAmt * 100) / 100;
               futureTransactions.push({
                 user_id: user.id,
                 description: `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
-                amount: installmentAmt,
+                amount: parcelaAmt,
                 date: txDate.toISOString().split('T')[0],
                 type: 'EXPENSE',
                 category: categoryName,
@@ -4385,6 +4508,9 @@ const Assets: React.FC = () => {
         dueDay: '',
         linkedAssetId: '',
         indexationRate: '',
+        amortizationType: 'SAC',
+        indexType: 'FIXED',
+        firstInstallmentDate: '',
         balloonMonth: '',
         balloonYear: '',
         balloonAmount: '',
@@ -4416,6 +4542,9 @@ const Assets: React.FC = () => {
       dueDay: liability.dueDay ? String(liability.dueDay) : '',
       linkedAssetId: liability.linkedAssetId || '',
       indexationRate: liability.metadata?.indexationRate ? String(liability.metadata.indexationRate) : '',
+      amortizationType: liability.metadata?.amortizationType || 'SAC',
+      indexType: liability.metadata?.indexType || liability.metadata?.indexationType || 'FIXED',
+      firstInstallmentDate: liability.metadata?.firstInstallmentDate || '',
       balloonMonth: '',
       balloonYear: '',
       balloonAmount: '',
@@ -5988,6 +6117,9 @@ const Assets: React.FC = () => {
                           dueDay: '',
                           linkedAssetId: '',
                           indexationRate: '',
+                          amortizationType: 'SAC',
+                          indexType: 'FIXED',
+                          firstInstallmentDate: '',
                           balloonMonth: '',
                           balloonYear: '',
                           balloonAmount: '',
@@ -8350,6 +8482,9 @@ const Assets: React.FC = () => {
                     dueDay: '10',
                     linkedAssetId: '',
                     indexationRate: '',
+                    amortizationType: 'SAC',
+                    indexType: 'FIXED',
+                    firstInstallmentDate: '',
                     balloonMonth: '',
                     balloonYear: '',
                     balloonAmount: '',
@@ -10911,6 +11046,95 @@ const Assets: React.FC = () => {
                   className="hover:underline flex items-center gap-1"
                 >
                   ⚙️ Recalcular valor parcela
+                </button>
+              </div>
+
+              {/* Detalhes de Financiamento (juros, amortização, índice) — imagem 2 migrada para o passivo */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-3">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Detalhes de Financiamento (opcional)</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Taxa Juros (% am)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                      placeholder="0.0"
+                      value={liabilityFormData.interestRate}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, interestRate: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo Amortização</label>
+                    <select
+                      className="w-full bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                      value={liabilityFormData.amortizationType}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, amortizationType: e.target.value as 'SAC' | 'PRICE' })}
+                    >
+                      <option value="SAC">SAC (Decrescente)</option>
+                      <option value="PRICE">Price (Igual)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data 1ª Parcela</label>
+                    <input
+                      type="date"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                      value={liabilityFormData.firstInstallmentDate}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, firstInstallmentDate: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Índice Correção</label>
+                    <select
+                      className="w-full bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                      value={liabilityFormData.indexType}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, indexType: e.target.value as any })}
+                    >
+                      <option value="FIXED">Fixo (Sem reajuste)</option>
+                      <option value="INCC">INCC</option>
+                      <option value="IPCA">IPCA</option>
+                      <option value="IGP-M">IGP-M</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Projeção Reajuste (% am)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                      placeholder="0.0"
+                      value={liabilityFormData.indexationRate}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, indexationRate: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Calcula a 1ª parcela a partir do VALOR TOTAL (ou saldo devedor) + juros + amortização.
+                    const principal = (parseFloat(liabilityFormData.totalAmount) || 0) || (parseFloat(liabilityFormData.remainingBalance) || 0);
+                    const n = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
+                    const i = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
+                    const reaj = (parseFloat(liabilityFormData.indexationRate) || 0) / 100;
+                    if (principal <= 0 || n <= 0) {
+                      alert('Preencha o Valor Total (ou Saldo Devedor) e a quantidade de Parcelas para calcular pelo valor total.');
+                      return;
+                    }
+                    let first = 0;
+                    if (liabilityFormData.amortizationType === 'SAC') {
+                      first = (principal / n) + (principal * i);
+                    } else {
+                      first = i === 0 ? (principal / n) : principal * (i * Math.pow(1 + i, n)) / (Math.pow(1 + i, n) - 1);
+                    }
+                    first = first * (1 + reaj);
+                    setLiabilityFormData(prev => ({ ...prev, installmentAmount: (Math.round(first * 100) / 100).toString() }));
+                  }}
+                  className="w-full py-2 rounded-xl bg-brand-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-brand-500 transition-colors"
+                >
+                  🧮 Calcular parcela pelo valor total
                 </button>
               </div>
 

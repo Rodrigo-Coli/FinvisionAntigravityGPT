@@ -152,7 +152,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
     return assetTransactions
       .filter(t => t.type === 'EXPENSE' && t.isPaid && t.metadata?.type !== 'asset_purchase')
       .reduce((sum, t) => {
-        const isConsortiumTx = t.metadata?.type === 'consortium_installment' || t.liability_id || t.description.toLowerCase().includes('consórcio');
+        // Consórcio é detectado pela marca carimbada quando a parcela é criada (não por adivinhação de vínculo/texto).
+        const isConsortiumTx = t.metadata?.is_consortium_installment === true || !!t.metadata?.consortium_id;
         const ratio = isConsortiumTx ? ((parseFloat(consortiumAllocationRatio) || 100) / 100) : 1;
         return sum + ((t.paidAmount || t.amount) * ratio);
       }, 0);
@@ -167,7 +168,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
     return assetTransactions
       .filter(t => t.type === 'EXPENSE' && !t.isPaid)
       .reduce((sum, t) => {
-        const isConsortiumTx = t.metadata?.type === 'consortium_installment' || t.liability_id || t.description.toLowerCase().includes('consórcio');
+        // Consórcio é detectado pela marca carimbada quando a parcela é criada (não por adivinhação de vínculo/texto).
+        const isConsortiumTx = t.metadata?.is_consortium_installment === true || !!t.metadata?.consortium_id;
         const ratio = isConsortiumTx ? ((parseFloat(consortiumAllocationRatio) || 100) / 100) : 1;
         return sum + (t.amount * ratio);
       }, 0);
@@ -239,7 +241,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         return subLower !== 'condomínio' && subLower !== 'condominio' && subLower !== 'iptu' && subLower !== 'manutenção/reparos' && subLower !== 'manutencao' && subLower !== 'reforma';
       })
       .reduce((sum, t) => {
-        const isConsortiumTx = t.metadata?.type === 'consortium_installment' || t.liability_id || t.description.toLowerCase().includes('consórcio');
+        // Consórcio é detectado pela marca carimbada quando a parcela é criada (não por adivinhação de vínculo/texto).
+        const isConsortiumTx = t.metadata?.is_consortium_installment === true || !!t.metadata?.consortium_id;
         const ratio = isConsortiumTx ? ((parseFloat(consortiumAllocationRatio) || 100) / 100) : 1;
         return sum + (t.amount * ratio);
       }, 0);
@@ -2167,7 +2170,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                             colorClass = 'text-rose-600'; // Red (overdue)
                           }
 
-                          const isConsortiumTx = tx.metadata?.type === 'consortium_installment' || tx.liability_id || tx.description.toLowerCase().includes('consórcio');
+                          const isConsortiumTx = tx.metadata?.is_consortium_installment === true || !!tx.metadata?.consortium_id;
                           const ratio = isConsortiumTx ? ((parseFloat(consortiumAllocationRatio) || 100) / 100) : 1;
 
                           return (

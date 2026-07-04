@@ -1,38 +1,39 @@
 {
-  "version": "2026.07.04.0058",
-  "title": "Imoveis: Compra Nao Vira Gasto e Financiamento Vira Divida",
+  "version": "2026.07.04.1037",
+  "title": "Passivos Completos e Consorcio Calculado Certo",
   "date": "04/07/2026",
   "benefits": [
     {
-      "title": "Fim da Aquisicao Repetida",
-      "desc": "Corrigido: o imovel nao gera mais varios lancamentos duplicados de 'Aquisicao Ativo'. Comprar um bem deixou de ser tratado como um gasto que some do caixa, ele agora conta apenas no valor do seu patrimonio.",
-      "type": "correcao"
-    },
-    {
-      "title": "Uso ou Investimento Ja no Cadastro",
-      "desc": "Ao cadastrar um imovel voce ja escolhe se ele e para Uso Proprio ou Investimento, sem precisar entrar na edicao depois.",
-      "type": "ux"
-    },
-    {
-      "title": "Campo de Reformas Editavel",
-      "desc": "O valor de reformas e obras do imovel agora pode ser digitado direto e entra no balanco. As reformas ja lancadas em transacoes aparecem como referencia.",
-      "type": "ux"
-    },
-    {
-      "title": "Financiamento Vira Divida de Verdade",
-      "desc": "Ao cadastrar um imovel financiado, o financiamento passa a ser registrado como um Passivo/Divida vinculado ao imovel, e as parcelas ficam ligadas a ele. Antes eram lancamentos soltos sem divida nenhuma.",
+      "title": "Cadastro de Financiamento Completo em Passivos",
+      "desc": "O formulario de Passivo agora tem os campos de financiamento: taxa de juros, tipo de amortizacao (SAC ou Price), indice de correcao, projecao de reajuste e data da 1a parcela.",
       "type": "novidade"
     },
     {
-      "title": "Onde Cadastrar Fica Claro",
-      "desc": "No cadastro do imovel, tanto no consorcio quanto no financiamento, agora aparece uma explicacao de onde cadastrar em Patrimonio > Passivos e Dividas.",
-      "type": "ux"
+      "title": "Calcular a Parcela pelo Valor Total",
+      "desc": "Novo botao que calcula automaticamente a parcela a partir do valor total da divida, dos juros e do tipo de amortizacao. As parcelas SAC agora sao geradas de forma decrescente (mais realista).",
+      "type": "novidade"
+    },
+    {
+      "title": "Editou o Passivo? Parcelas Atualizam",
+      "desc": "Ao alterar o valor, a quantidade ou o vencimento de um passivo, o sistema pergunta se voce quer regenerar as parcelas FUTURAS nao pagas com os novos valores. As parcelas ja pagas e passadas sao sempre mantidas.",
+      "type": "novidade"
+    },
+    {
+      "title": "Consorcio Contado Certo no Imovel",
+      "desc": "Corrigido: o balanco do imovel identifica consorcio pela marca real da parcela de consorcio, e nao mais por adivinhacao. Assim as parcelas de financiamento nao sao mais confundidas com consorcio.",
+      "type": "correcao"
+    },
+    {
+      "title": "Financiamento Nao Infla o Caixa",
+      "desc": "Financiamento imobiliario nao gera mais uma entrada de dinheiro no caixa, ja que nesse caso o banco paga o vendedor diretamente e o valor nao passa pela sua conta.",
+      "type": "correcao"
     }
   ],
   "changes": [
-    "**Assets.tsx (runAutoTransactionSync):** trava global autoSyncInFlight impede execucoes concorrentes (fim da duplicacao). Imoveis (REAL_ESTATE) nao geram mais transacao de despesa 'Aquisicao Ativo'.",
-    "**RealEstateWizardModal.tsx:** novo estado purpose (uso/investimento) escolhido no passo 1. Texto de ajuda de onde cadastrar consorcio e financiamento (Passivos).",
-    "**RealEstateWizardModal.tsx (Opcao A):** cria liability MORTGAGE vinculada ao imovel; parcelas recebem liability_id + is_amortization (espelho). Vinculo financingLiabilityId gravado no metadata do imovel.",
-    "**RealEstateDetailModal.tsx:** campo Reformas/Obras editavel (reformsManual em metadata) somando ao totalInvestedInitially junto com reformas de transacoes."
+    "**Assets.tsx (liabilityFormData):** novos campos amortizationType, indexType, firstInstallmentDate em todos os 5 pontos de init/reset/edit; persistidos no metadata do passivo.",
+    "**Assets.tsx (form UI):** bloco 'Detalhes de Financiamento' com Taxa Juros, Tipo Amortizacao, Indice Correcao, Projecao Reajuste, Data 1a Parcela + botao 'Calcular parcela pelo valor total' (SAC/Price).",
+    "**Assets.tsx (geracao de parcelas):** cronograma SAC decrescente com juros; Price/sem juros mantem valor fixo. Regeneracao opcional (com confirm) ao editar passivo, so em parcelas futuras nao pagas e auto_generated.",
+    "**Assets.tsx (runAutoTransactionSync):** passivo tipo MORTGAGE nao gera mais liability_inflow (entrada de caixa).",
+    "**RealEstateDetailModal.tsx:** deteccao de consorcio agora usa metadata.is_consortium_installment / consortium_id (marca real), removendo heuristica por liability_id/descricao (4 ocorrencias)."
   ]
 }
