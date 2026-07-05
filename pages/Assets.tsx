@@ -61,6 +61,36 @@ import { FinancialEngine } from '../lib/financialEngine';
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
 let autoSyncInFlight = false;
 
+// Cálculo AUTORITATIVO do valor de uma parcela (índice 1-based), a partir dos detalhes do financiamento.
+// - SAC + juros: amortização constante + juros sobre o saldo restante → parcela DECRESCE.
+// - Price + juros: parcela FIXA (fórmula Price).
+// - Sem juros: base linear (saldo / nº parcelas).
+// - Correção (reajuste) é aplicada por cima, acumulada por período.
+// Fica LINEAR (todas iguais) somente quando juros E reajuste estão zerados.
+const computeInstallmentAmount = (
+  index1: number,
+  principal: number,
+  n: number,
+  ratePct: number,
+  reajPct: number,
+  isSAC: boolean
+): number => {
+  if (n <= 0 || principal <= 0) return 0;
+  const rate = ratePct / 100;
+  const reaj = reajPct / 100;
+  const baseAmort = principal / n;
+  let parcela: number;
+  if (rate <= 0) {
+    parcela = baseAmort; // sem juros → base linear (iguais antes da correção)
+  } else if (isSAC) {
+    const outstandingStart = principal - baseAmort * (index1 - 1); // saldo no início do período
+    parcela = baseAmort + outstandingStart * rate; // SAC decrescente
+  } else {
+    parcela = principal * (rate * Math.pow(1 + rate, n)) / (Math.pow(1 + rate, n) - 1); // Price fixo
+  }
+  return Math.round(parcela * Math.pow(1 + reaj, index1) * 100) / 100;
+};
+
 const Assets: React.FC = () => {
   const navigate = useNavigate();
   const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities' | 'consortiums'>('overview');
@@ -4347,21 +4377,15 @@ const Assets: React.FC = () => {
             const regenTxs: any[] = [];
             const MAX_REGEN = Math.min(installmentsLeft, 120);
             const regenPrincipal = remainingBal > 0 ? remainingBal : totalAmt;
-            const regenRate = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
-            const regenReaj = (parseFloat(liabilityFormData.indexationRate) || 0) / 100;
+            const regenRatePct = parseFloat(liabilityFormData.interestRate) || 0;
+            const regenReajPct = parseFloat(liabilityFormData.indexationRate) || 0;
             const regenIsSAC = liabilityFormData.amortizationType === 'SAC';
-            const regenSacAmort = installmentsLeft > 0 ? regenPrincipal / installmentsLeft : 0;
-            let regenOutstanding = regenPrincipal;
+            const regenNoDetails = regenRatePct <= 0 && regenReajPct <= 0;
             for (let i = 1; i <= MAX_REGEN; i++) {
               const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
-              let parcelaAmt = installmentAmt;
-              if (regenIsSAC && regenRate > 0 && regenPrincipal > 0) {
-                parcelaAmt = (regenSacAmort + regenOutstanding * regenRate) * Math.pow(1 + regenReaj, i);
-                regenOutstanding -= regenSacAmort;
-              } else if (regenReaj > 0) {
-                parcelaAmt = installmentAmt * Math.pow(1 + regenReaj, i);
-              }
-              parcelaAmt = Math.round(parcelaAmt * 100) / 100;
+              const parcelaAmt = regenNoDetails
+                ? (installmentAmt > 0 ? installmentAmt : Math.round((regenPrincipal / installmentsLeft) * 100) / 100)
+                : computeInstallmentAmount(i, regenPrincipal, installmentsLeft, regenRatePct, regenReajPct, regenIsSAC);
               regenTxs.push({
                 user_id: user.id,
                 description: `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
@@ -4448,24 +4472,18 @@ const Assets: React.FC = () => {
 
             const futureTransactions = [];
             const MAX_GENERATE = Math.min(installmentsLeft, 120); // Safety cap for bulk generation
-            // Parâmetros para cronograma SAC (parcelas decrescentes). Price/sem juros mantém valor fixo.
+            // Base = saldo devedor (o que falta). Parcelas seguem amortização + correção; linear só se tudo zerado.
             const principalForSchedule = remainingBal > 0 ? remainingBal : totalAmt;
-            const scheduleMonthlyRate = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
-            const scheduleReajuste = (parseFloat(liabilityFormData.indexationRate) || 0) / 100;
+            const scheduleRatePct = parseFloat(liabilityFormData.interestRate) || 0;
+            const scheduleReajPct = parseFloat(liabilityFormData.indexationRate) || 0;
             const isSAC = liabilityFormData.amortizationType === 'SAC';
-            const sacAmort = installmentsLeft > 0 ? principalForSchedule / installmentsLeft : 0;
-            let sacOutstanding = principalForSchedule;
+            const noDetails = scheduleRatePct <= 0 && scheduleReajPct <= 0;
             for (let i = 1; i <= MAX_GENERATE; i++) {
               const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
-              // Valor da parcela: SAC com juros = decrescente; caso contrário, valor fixo informado.
-              let parcelaAmt = installmentAmt;
-              if (isSAC && scheduleMonthlyRate > 0 && principalForSchedule > 0) {
-                parcelaAmt = (sacAmort + sacOutstanding * scheduleMonthlyRate) * Math.pow(1 + scheduleReajuste, i);
-                sacOutstanding -= sacAmort;
-              } else if (scheduleReajuste > 0) {
-                parcelaAmt = installmentAmt * Math.pow(1 + scheduleReajuste, i);
-              }
-              parcelaAmt = Math.round(parcelaAmt * 100) / 100;
+              // Se não há juros nem reajuste, usa o valor informado (linear). Senão, calcula pelos detalhes.
+              const parcelaAmt = noDetails
+                ? (installmentAmt > 0 ? installmentAmt : Math.round((principalForSchedule / installmentsLeft) * 100) / 100)
+                : computeInstallmentAmount(i, principalForSchedule, installmentsLeft, scheduleRatePct, scheduleReajPct, isSAC);
               futureTransactions.push({
                 user_id: user.id,
                 description: `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
@@ -10861,10 +10879,8 @@ const Assets: React.FC = () => {
                                   historicalInstallmentsPaid: val,
                                   historicalPaidAmount: calculatedTotal > 0 ? calculatedTotal.toFixed(2) : ''
                                 };
-                                const totalContratado = parseFloat(prev.totalAmount) || 0;
-                                if (totalContratado > 0 && calculatedTotal > 0) {
-                                  next.remainingBalance = Math.max(0, totalContratado - calculatedTotal).toFixed(2);
-                                }
+                                // O Saldo Devedor NÃO é recalculado a partir do pago histórico (que inclui juros);
+                                // ele é informado por você (é o que o banco mostra). O histórico fica só como registro.
                                 return next;
                               });
                             }}
@@ -10890,10 +10906,8 @@ const Assets: React.FC = () => {
                                   historicalInstallmentValue: val,
                                   historicalPaidAmount: calculatedTotal > 0 ? calculatedTotal.toFixed(2) : ''
                                 };
-                                const totalContratado = parseFloat(prev.totalAmount) || 0;
-                                if (totalContratado > 0 && calculatedTotal > 0) {
-                                  next.remainingBalance = Math.max(0, totalContratado - calculatedTotal).toFixed(2);
-                                }
+                                // O Saldo Devedor NÃO é recalculado a partir do pago histórico (que inclui juros);
+                                // ele é informado por você (é o que o banco mostra). O histórico fica só como registro.
                                 return next;
                               });
                             }}
@@ -10912,18 +10926,11 @@ const Assets: React.FC = () => {
                           value={liabilityFormData.historicalPaidAmount}
                           onChange={(e) => {
                             const val = e.target.value;
-                            setLiabilityFormData(prev => {
-                              const paidAmt = parseFloat(val) || 0;
-                              const next = {
-                                ...prev,
-                                historicalPaidAmount: val
-                              };
-                              const totalContratado = parseFloat(prev.totalAmount) || 0;
-                              if (totalContratado > 0 && paidAmt > 0) {
-                                next.remainingBalance = Math.max(0, totalContratado - paidAmt).toFixed(2);
-                              }
-                              return next;
-                            });
+                            setLiabilityFormData(prev => ({
+                              ...prev,
+                              historicalPaidAmount: val
+                              // Saldo Devedor não é recalculado a partir do pago histórico (inclui juros) — é informado por você.
+                            }));
                           }}
                         />
                       </div>
@@ -10951,15 +10958,13 @@ const Assets: React.FC = () => {
                     value={liabilityFormData.totalAmount}
                     onChange={(e) => {
                       const val = e.target.value;
-                      setLiabilityFormData(prev => {
-                        const total = parseFloat(val) || 0;
-                        const paid = parseFloat(prev.historicalPaidAmount) || 0;
-                        return {
-                          ...prev,
-                          totalAmount: val,
-                          remainingBalance: paid > 0 && total > 0 ? Math.max(0, total - paid).toFixed(2) : prev.remainingBalance
-                        };
-                      });
+                      setLiabilityFormData(prev => ({
+                        ...prev,
+                        totalAmount: val,
+                        // Se o Saldo Devedor ainda está vazio, sugere o total (dívida nova sem histórico).
+                        // Nunca subtrai o pago histórico (que inclui juros) — isso distorcia o saldo.
+                        remainingBalance: (prev.remainingBalance === '' && val) ? val : prev.remainingBalance
+                      }));
                     }}
                   />
                 </div>

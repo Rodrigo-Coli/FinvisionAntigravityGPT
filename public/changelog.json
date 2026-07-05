@@ -1,8 +1,18 @@
 {
-  "version": "2026.07.04.2338",
-  "title": "Passivo: Dois Jeitos de Calcular a Parcela",
+  "version": "2026.07.04.2350",
+  "title": "Parcelas Seguem Juros e Correcao; Saldo Sob Seu Controle",
   "date": "04/07/2026",
   "benefits": [
+    {
+      "title": "Parcelas Calculadas pelos Detalhes",
+      "desc": "As parcelas geradas agora seguem de verdade os detalhes do financiamento: SAC decresce, Price fica igual, e a correcao (reajuste) e aplicada. So ficam lineares (iguais) quando juros E reajuste estao zerados.",
+      "type": "correcao"
+    },
+    {
+      "title": "Saldo Devedor Sob Seu Controle",
+      "desc": "Corrigido: o Total Pago Historico (que inclui juros) nao abate mais do saldo devedor automaticamente, o que distorcia o valor. Agora o saldo e o que voce informa (o que o banco mostra); o historico fica so como registro.",
+      "type": "correcao"
+    },
     {
       "title": "Calculo da Parcela Mais Claro",
       "desc": "No cadastro de passivo, sairam os botoes antigos de recalculo (que confundiam). Agora tem dois: 'Descobrir o valor da parcela' (voce diz quantas parcelas e ele calcula o valor) e 'Descobrir quantas parcelas faltam' (voce diz o valor da parcela e ele calcula o numero). Ambos usam o saldo devedor e os juros; sem juros as parcelas ficam iguais (lineares).",
