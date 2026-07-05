@@ -1,8 +1,13 @@
 {
-  "version": "2026.07.04.1829",
-  "title": "Parcela Editada Atualiza a Divida",
+  "version": "2026.07.04.2338",
+  "title": "Passivo: Dois Jeitos de Calcular a Parcela",
   "date": "04/07/2026",
   "benefits": [
+    {
+      "title": "Calculo da Parcela Mais Claro",
+      "desc": "No cadastro de passivo, sairam os botoes antigos de recalculo (que confundiam). Agora tem dois: 'Descobrir o valor da parcela' (voce diz quantas parcelas e ele calcula o valor) e 'Descobrir quantas parcelas faltam' (voce diz o valor da parcela e ele calcula o numero). Ambos usam o saldo devedor e os juros; sem juros as parcelas ficam iguais (lineares).",
+      "type": "novidade"
+    },
     {
       "title": "Editou a Parcela? A Divida se Ajusta",
       "desc": "Ao editar, pagar ou excluir uma parcela em Transacoes que esta vinculada a um passivo, o saldo devedor e o numero de parcelas restantes da divida sao recalculados automaticamente. O balanco do imovel vinculado reflete na hora.",

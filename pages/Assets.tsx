@@ -11012,43 +11012,6 @@ const Assets: React.FC = () => {
                 </div>
               </div>
 
-              {/* Opções de Recálculo Dinâmico */}
-              <div className="flex gap-2 justify-end text-[10px] text-brand-600 font-black tracking-wide mt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const balance = parseFloat(liabilityFormData.remainingBalance) || 0;
-                    const amt = parseFloat(liabilityFormData.installmentAmount) || 0;
-                    if (balance > 0 && amt > 0) {
-                      const computed = Math.ceil(balance / amt);
-                      setLiabilityFormData(prev => ({ ...prev, installmentsRemaining: computed.toString() }));
-                    } else {
-                      alert("Preencha o Saldo Devedor e o Valor da Parcela para calcular.");
-                    }
-                  }}
-                  className="hover:underline flex items-center gap-1"
-                >
-                  ⚙️ Recalcular nº parcelas
-                </button>
-                <span className="text-slate-300">|</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const balance = parseFloat(liabilityFormData.remainingBalance) || 0;
-                    const remaining = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
-                    if (balance > 0 && remaining > 0) {
-                      const computed = Math.round((balance / remaining) * 100) / 100;
-                      setLiabilityFormData(prev => ({ ...prev, installmentAmount: computed.toString() }));
-                    } else {
-                      alert("Preencha o Saldo Devedor e a quantidade de Parcelas Restantes para calcular.");
-                    }
-                  }}
-                  className="hover:underline flex items-center gap-1"
-                >
-                  ⚙️ Recalcular valor parcela
-                </button>
-              </div>
-
               {/* Detalhes de Financiamento (juros, amortização, índice) — imagem 2 migrada para o passivo */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-3">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Detalhes de Financiamento (opcional)</p>
@@ -11111,32 +11074,75 @@ const Assets: React.FC = () => {
                     />
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Base de amortização = SALDO DEVEDOR (o que ainda se deve), com fallback para o total.
-                    // Usa a mesma base do cronograma gerado ao salvar, para o valor não divergir.
-                    const principal = (parseFloat(liabilityFormData.remainingBalance) || 0) || (parseFloat(liabilityFormData.totalAmount) || 0);
-                    const n = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
-                    const i = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
-                    const reaj = (parseFloat(liabilityFormData.indexationRate) || 0) / 100;
-                    if (principal <= 0 || n <= 0) {
-                      alert('Preencha o Valor Total (ou Saldo Devedor) e a quantidade de Parcelas para calcular pelo valor total.');
-                      return;
-                    }
-                    let first = 0;
-                    if (liabilityFormData.amortizationType === 'SAC') {
-                      first = (principal / n) + (principal * i);
-                    } else {
-                      first = i === 0 ? (principal / n) : principal * (i * Math.pow(1 + i, n)) / (Math.pow(1 + i, n) - 1);
-                    }
-                    first = first * (1 + reaj);
-                    setLiabilityFormData(prev => ({ ...prev, installmentAmount: (Math.round(first * 100) / 100).toString() }));
-                  }}
-                  className="w-full py-2 rounded-xl bg-brand-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-brand-500 transition-colors"
-                >
-                  🧮 Calcular parcela pelo valor total
-                </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* A) Pelo Nº DE PARCELAS: sabe quantas parcelas e o saldo → calcula o VALOR da parcela. */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Base = SALDO DEVEDOR (o que ainda falta pagar).
+                      const principal = parseFloat(liabilityFormData.remainingBalance) || 0;
+                      const n = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
+                      const i = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
+                      const reaj = (parseFloat(liabilityFormData.indexationRate) || 0) / 100;
+                      if (principal <= 0 || n <= 0) {
+                        alert('Preencha o Saldo Devedor e a quantidade de Parcelas Restantes.');
+                        return;
+                      }
+                      let first = 0;
+                      if (i === 0) {
+                        // Sem juros → parcelas lineares (iguais).
+                        first = principal / n;
+                      } else if (liabilityFormData.amortizationType === 'SAC') {
+                        first = (principal / n) + (principal * i); // 1ª parcela (a maior); as demais decrescem
+                      } else {
+                        first = principal * (i * Math.pow(1 + i, n)) / (Math.pow(1 + i, n) - 1); // Price (iguais)
+                      }
+                      first = first * (1 + reaj);
+                      setLiabilityFormData(prev => ({ ...prev, installmentAmount: (Math.round(first * 100) / 100).toString() }));
+                    }}
+                    className="w-full py-2 rounded-xl bg-brand-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-brand-500 transition-colors"
+                  >
+                    🧮 Descobrir o valor da parcela
+                  </button>
+
+                  {/* B) Pelo VALOR DA PARCELA: sabe o valor da parcela e o saldo → calcula QUANTAS parcelas faltam. */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Base = SALDO DEVEDOR; a partir do valor da 1ª parcela, descobre o nº de parcelas.
+                      const principal = parseFloat(liabilityFormData.remainingBalance) || 0;
+                      const reaj = (parseFloat(liabilityFormData.indexationRate) || 0) / 100;
+                      const parcela = (parseFloat(liabilityFormData.installmentAmount) || 0) / (1 + reaj); // remove o reajuste da 1ª
+                      const i = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
+                      if (principal <= 0 || parcela <= 0) {
+                        alert('Preencha o Saldo Devedor e o Valor da Parcela.');
+                        return;
+                      }
+                      let n = 0;
+                      if (i === 0) {
+                        n = principal / parcela; // linear
+                      } else if (liabilityFormData.amortizationType === 'SAC') {
+                        // 1ª parcela SAC = saldo/n + saldo*i  →  n = saldo / (parcela - saldo*i)
+                        const denom = parcela - principal * i;
+                        if (denom <= 0) { alert('O valor da parcela é baixo demais para cobrir os juros. Aumente a parcela.'); return; }
+                        n = principal / denom;
+                      } else {
+                        // Price: parcela = saldo * i(1+i)^n / ((1+i)^n - 1)  →  n = -ln(1 - saldo*i/parcela) / ln(1+i)
+                        const ratio = 1 - (principal * i) / parcela;
+                        if (ratio <= 0) { alert('O valor da parcela é baixo demais para cobrir os juros. Aumente a parcela.'); return; }
+                        n = -Math.log(ratio) / Math.log(1 + i);
+                      }
+                      const nRounded = Math.max(1, Math.ceil(n));
+                      setLiabilityFormData(prev => ({ ...prev, installmentsRemaining: nRounded.toString() }));
+                    }}
+                    className="w-full py-2 rounded-xl bg-slate-800 text-white text-[10px] font-black uppercase tracking-widest hover:bg-slate-700 transition-colors"
+                  >
+                    🧮 Descobrir quantas parcelas faltam
+                  </button>
+                </div>
+                <p className="text-[9px] text-slate-400 leading-normal">
+                  As parcelas são geradas em Transações ao salvar. No SAC elas decrescem a partir da 1ª; sem juros ficam lineares (iguais).
+                </p>
               </div>
 
               {activePhysicalAssets.length > 0 && (
