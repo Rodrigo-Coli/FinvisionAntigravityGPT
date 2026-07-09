@@ -88,8 +88,8 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
                 className="absolute inset-0 bg-brand-900/60 backdrop-blur-sm"
                 onClick={() => !isAnyModalBusy && onClose()}
             ></div>
-            <div className="bg-white rounded-t-[32px] sm:rounded-[40px] w-full max-w-lg shadow-2xl relative overflow-hidden animate-in slide-in-from-bottom sm:zoom-in duration-300">
-                <div className="p-8 lg:p-10">
+            <div className="bg-white rounded-t-[32px] sm:rounded-[40px] w-full max-w-lg max-h-[90vh] shadow-2xl relative flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in duration-300">
+                <div className="p-8 lg:p-10 overflow-y-auto">
                     <div className="flex items-center justify-between mb-8">
                         <h2 className="text-2xl font-black text-slate-900 tracking-tight">{title}</h2>
                         <button
