@@ -92,7 +92,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
       <nav className="lg:hidden bg-white border-b border-slate-100 mobile-header-safe flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50">
         <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className="p-2 text-slate-500"
+          className="p-2.5 text-slate-500"
         >
           {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
@@ -104,7 +104,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
 
         <div className="flex items-center gap-2">
           <button
-            className="p-2 text-slate-400 hover:text-brand-600 transition-colors"
+            className="p-2.5 text-slate-400 hover:text-brand-600 transition-colors"
             aria-label="Notificações"
             title="Configurações de Notificações"
             onClick={() => navigate('/settings?section=notifications')}

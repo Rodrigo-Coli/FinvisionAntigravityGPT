@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { FileDown, Calendar, Filter, FileSpreadsheet, FileText, CheckCircle2, Loader2, Tag, Landmark, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase/client';
 import { DateUtils } from '../lib/dateUtils';
+import { useToast } from '../contexts/ToastContext';
 
 const Reports: React.FC = () => {
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const [stats, setStats] = useState({
@@ -220,7 +222,7 @@ const Reports: React.FC = () => {
 
   const exportToCSV = () => {
     if (printTxs.length === 0) {
-      alert('Nenhuma transação encontrada no período e filtros selecionados.');
+      toast('Nenhuma transação encontrada no período e filtros selecionados.', 'info');
       return;
     }
 
@@ -254,7 +256,7 @@ const Reports: React.FC = () => {
 
   const generatePDF = () => {
     if (printTxs.length === 0) {
-      alert('Nenhuma transação encontrada no período para gerar PDF.');
+      toast('Nenhuma transação encontrada no período para gerar PDF.', 'info');
       return;
     }
     window.print();

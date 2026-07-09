@@ -452,6 +452,7 @@ export default function AdminDashboard() {
   const toggleCampaign = async (id: string, current: boolean) => {
     const { error } = await supabase!.from('campaigns').update({ is_active: !current }).eq('id', id);
     if (!error) { setCampaigns(prev => prev.map(c => c.id === id ? { ...c, is_active: !current } : c)); toast(`Campanha ${!current ? 'ativada' : 'pausada'}!`, 'success'); }
+    else toast(`Erro: ${error.message}`, 'error');
   };
 
   const deleteCampaign = (id: string, title: string) => {
@@ -459,6 +460,7 @@ export default function AdminDashboard() {
       setConfirmState(null);
       const { error } = await supabase!.from('campaigns').delete().eq('id', id);
       if (!error) { toast('Campanha excluída.', 'success'); fetchCampaigns(); }
+      else toast(`Erro: ${error.message}`, 'error');
     }});
   };
 

@@ -18,6 +18,7 @@ import { useSubscription } from '../../contexts/SubscriptionContext';
 import PlanUpgradeModal from '../subscription/PlanUpgradeModal';
 import { PayStatementModal } from '../cards/PayStatementModal';
 import { SeriesScopeModal, SeriesScope } from '../SeriesScopeModal';
+import { useToast } from '../../contexts/ToastContext';
 
 type Account = {
   id: string;
@@ -29,7 +30,8 @@ type Account = {
 const CreditCardsSection: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  
+  const { toast } = useToast();
+
   const [cards, setCards] = useState<any[]>(() => {
     const cached = localStorage.getItem('finvision_cached_cards');
     return cached ? JSON.parse(cached) : [];
@@ -376,7 +378,7 @@ const CreditCardsSection: React.FC = () => {
       return data;
     } catch (err) {
       console.error('Erro ao criar categoria inline:', err);
-      alert('Erro ao criar categoria inline');
+      toast('Erro ao criar categoria inline', 'error');
     }
   };
 
@@ -853,7 +855,7 @@ const CreditCardsSection: React.FC = () => {
 
   const handleDeleteTx = async (id: string, confirmedScope?: SeriesScope) => {
     if (currentStatement?.status === 'PAID') {
-      alert("Fatura paga. Reabra a fatura para remover transações.");
+      toast("Fatura paga. Reabra a fatura para remover transações.", 'warning');
       return;
     }
     if (!supabase) return;
@@ -913,7 +915,7 @@ const CreditCardsSection: React.FC = () => {
       setTransactions(prev => prev.map(t => t.id === id ? { ...t, document_id: documentId } : t));
     } catch (err) {
       console.error('Erro ao anexar arquivo:', err);
-      alert('Erro ao anexar arquivo.');
+      toast('Erro ao anexar arquivo.', 'error');
     } finally {
       setSavingRowId(null);
     }
@@ -929,7 +931,7 @@ const CreditCardsSection: React.FC = () => {
       setTransactions(prev => prev.map(t => t.id === transactionId ? { ...t, document_id: null } : t));
     } catch (err) {
       console.error('Erro ao remover anexo:', err);
-      alert('Erro ao remover anexo.');
+      toast('Erro ao remover anexo.', 'error');
     } finally {
       setSavingRowId(null);
     }
@@ -939,7 +941,7 @@ const CreditCardsSection: React.FC = () => {
     try {
       const url = await FinanceService.getAttachmentUrl(documentId);
       if (url) window.open(url, '_blank');
-      else alert('Não foi possível carregar o comprovante.');
+      else toast('Não foi possível carregar o comprovante.', 'error');
     } catch (err) {
       console.error('Erro ao visualizar anexo:', err);
     }
@@ -1136,7 +1138,7 @@ const CreditCardsSection: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Erro crítico ao adicionar transação:', err);
-      alert("Erro ao salvar lançamento: " + (err.message || "Erro desconhecido"));
+      toast("Erro ao salvar lançamento: " + (err.message || "Erro desconhecido"), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -1192,7 +1194,7 @@ const CreditCardsSection: React.FC = () => {
       setSelectedCard(updatedCards.length > 0 ? updatedCards[0] : null);
     } catch (err) {
       console.error('Erro ao arquivar cartão:', err);
-      alert('Erro ao arquivar cartão.');
+      toast('Erro ao arquivar cartão.', 'error');
     }
   };
 
@@ -1213,7 +1215,7 @@ const CreditCardsSection: React.FC = () => {
       setSelectedCard(updatedCards.length > 0 ? updatedCards[0] : null);
     } catch (err) {
       console.error('Erro ao excluir cartão:', err);
-      alert('Erro ao excluir cartão. Verifique se há transações impedindo a exclusão.');
+      toast('Erro ao excluir cartão. Verifique se há transações impedindo a exclusão.', 'error');
     }
   };
 
@@ -1297,7 +1299,7 @@ const CreditCardsSection: React.FC = () => {
       resetCardForm();
     } catch (err: any) {
       console.error('Erro ao salvar cartão:', err);
-      alert('Erro ao salvar cartão: ' + (err.message || 'Verifique sua conexão.'));
+      toast('Erro ao salvar cartão: ' + (err.message || 'Verifique sua conexão.'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -1329,12 +1331,12 @@ const CreditCardsSection: React.FC = () => {
     
     const amount = Number(payAmount);
     if (isNaN(amount) || amount <= 0) {
-      alert("Por favor, insira um valor de pagamento válido maior que zero.");
+      toast("Por favor, insira um valor de pagamento válido maior que zero.", 'warning');
       return;
     }
     
     if (!payAccountId) {
-      alert("Por favor, selecione uma conta bancária para o pagamento.");
+      toast("Por favor, selecione uma conta bancária para o pagamento.", 'warning');
       return;
     }
     setIsPaying(true);
@@ -1416,7 +1418,7 @@ const CreditCardsSection: React.FC = () => {
       if (selectedCard?.id) loadCardContext(selectedCard.id);
     } catch (err: any) {
       console.error('Erro ao pagar fatura:', err);
-      alert("Erro ao processar pagamento: " + (err.message || "Erro desconhecido"));
+      toast("Erro ao processar pagamento: " + (err.message || "Erro desconhecido"), 'error');
     } finally {
       setIsPaying(false);
     }
@@ -1457,10 +1459,10 @@ const CreditCardsSection: React.FC = () => {
       // 4. Atualizar context
       if (selectedCard?.id) await loadCardContext(selectedCard.id);
       
-      alert("Fatura reaberta com sucesso!");
+      toast("Fatura reaberta com sucesso!", 'success');
     } catch (err: any) {
       console.error('Erro ao reabrir fatura:', err);
-      alert("Erro ao reabrir fatura: " + (err.message || "Erro desconhecido"));
+      toast("Erro ao reabrir fatura: " + (err.message || "Erro desconhecido"), 'error');
     } finally {
       setIsPaying(false);
     }

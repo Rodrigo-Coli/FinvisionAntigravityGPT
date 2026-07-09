@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, X, Loader2, AlertTriangle, Check, TrendingDown, Target, Trash2, Calendar, TrendingUp, PieChart, Pencil } from 'lucide-react';
 import { supabase } from '../lib/supabase/client';
 import { Budget, Goal } from '../types';
+import { useToast } from '../contexts/ToastContext';
 
 const BUDGET_COLORS = [
   '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'
@@ -19,6 +20,7 @@ const GOAL_COLORS = [
 const Planning: React.FC<{ user: any }> = ({ user }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'budget' | 'goals'>(() => {
@@ -36,6 +38,8 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
     return cached ? JSON.parse(cached) : [];
   });
   const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [isSavingBudget, setIsSavingBudget] = useState(false);
+  const [isSavingGoal, setIsSavingGoal] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [totalMonthly, setTotalMonthly] = useState(() => {
     const cached = localStorage.getItem('finvision_cached_budget_spending');
@@ -207,14 +211,15 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
 
   const handleSaveBudget = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase) return;
+    if (!supabase || isSavingBudget) return;
     const { data: { session } } = await supabase.auth.getSession();
     const u = session?.user;
     if (!u) return;
+    setIsSavingBudget(true);
     try {
       const limitVal = parseFloat(budgetFormData.monthlyLimit);
       if (isNaN(limitVal) || limitVal < 0) {
-        alert("Por favor, insira um limite mensal válido e positivo.");
+        toast("Por favor, insira um limite mensal válido e positivo.", 'warning');
         return;
       }
 
@@ -232,7 +237,9 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
       setShowBudgetModal(false);
       fetchData();
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
+    } finally {
+      setIsSavingBudget(false);
     }
   };
 
@@ -242,7 +249,7 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
       await supabase.from('budgets').delete().eq('id', id);
       fetchData();
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     }
   };
 
@@ -268,20 +275,21 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
 
   const handleSaveGoal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase) return;
+    if (!supabase || isSavingGoal) return;
     const { data: { session } } = await supabase.auth.getSession();
     const u = session?.user;
     if (!u) return;
+    setIsSavingGoal(true);
     try {
       const targetVal = parseFloat(goalFormData.targetAmount);
       const currentVal = parseFloat(goalFormData.currentAmount) || 0;
 
       if (isNaN(targetVal) || targetVal <= 0) {
-        alert("Por favor, insira um valor alvo válido maior que zero.");
+        toast("Por favor, insira um valor alvo válido maior que zero.", 'warning');
         return;
       }
       if (currentVal < 0) {
-        alert("O valor já guardado não pode ser negativo.");
+        toast("O valor já guardado não pode ser negativo.", 'warning');
         return;
       }
 
@@ -302,7 +310,9 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
       setShowGoalModal(false);
       fetchData();
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
+    } finally {
+      setIsSavingGoal(false);
     }
   };
 
@@ -312,7 +322,7 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
       await supabase.from('goals').delete().eq('id', id);
       fetchData();
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     }
   };
 
@@ -325,7 +335,7 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
       }).eq('id', g.id);
       fetchData();
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     }
   };
 
@@ -698,9 +708,10 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-[1.02] transition-transform"
+                  disabled={isSavingBudget}
+                  className="flex-1 px-4 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
-                  Salvar
+                  {isSavingBudget ? 'Salvando...' : 'Salvar'}
                 </button>
               </div>
             </form>
@@ -801,9 +812,10 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-[1.02] transition-transform"
+                  disabled={isSavingGoal}
+                  className="flex-1 px-4 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
-                  Salvar Meta
+                  {isSavingGoal ? 'Salvando...' : 'Salvar Meta'}
                 </button>
               </div>
             </form>

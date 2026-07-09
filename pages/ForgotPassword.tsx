@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../lib/supabase/client';
+import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { Mail, Loader2, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
 
 const ForgotPassword: React.FC = () => {
@@ -11,10 +11,14 @@ const ForgotPassword: React.FC = () => {
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isSupabaseConfigured || !supabase) {
+      setError('Serviço de autenticação indisponível (variáveis de ambiente não configuradas).');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const { error } = await supabase!.auth.resetPasswordForEmail(email, {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/#/reset-password`,
       });
       if (error) throw error;

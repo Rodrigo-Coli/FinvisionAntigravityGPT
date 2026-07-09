@@ -34,17 +34,29 @@ async function asaasRequest(path: string, method = 'GET', body?: any) {
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { 
-    userId, 
-    planSlug, 
-    period = 'monthly', 
-    paymentMethod = 'PIX', 
+  // Exige um token de login válido do Supabase — o userId é derivado do token,
+  // nunca aceito diretamente do corpo da requisição (evita cobrar em nome de terceiros).
+  const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+  const token = typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : null;
+  if (!token) return res.status(401).json({ error: 'Login necessário (token ausente).' });
+
+  const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !authUser) return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente.' });
+
+  const userId = authUser.id;
+
+  const {
+    planSlug,
+    period = 'monthly',
+    paymentMethod = 'PIX',
     couponCode,
     creditCard,
     creditCardHolderInfo
   } = req.body;
-  
-  if (!userId || !planSlug) return res.status(400).json({ error: 'userId and planSlug required' });
+
+  if (!planSlug) return res.status(400).json({ error: 'planSlug required' });
 
   try {
     // 1. Get plan
@@ -83,8 +95,11 @@ export default async function handler(req: any, res: any) {
       nextDue = now.toISOString().split('T')[0];
     }
 
-    // 5. Validate coupon
+    // 5. Validate coupon (SOMENTE leitura — o cupom só é marcado como usado depois que o
+    // pagamento for de fato confirmado pelo webhook do Asaas, evitando "queimar" o cupom
+    // de um usuário que nunca chegou a pagar).
     let discountPercent = 0;
+    let validCouponCode: string | null = null;
     if (couponCode) {
       const { data: coupon } = await supabase
         .from('coupons')
@@ -98,7 +113,7 @@ export default async function handler(req: any, res: any) {
           .select('id').eq('coupon_id', coupon.id).eq('user_id', userId).maybeSingle();
 
         if (!used) {
-          // Free plan override via coupon
+          // Plano gratuito via cupom: não há cobrança a aguardar, então confirma na hora.
           if (coupon.plan_override_id && coupon.plans?.price_cents === 0) {
             await upsertSubscription(userId, coupon.plans.id, 'admin_granted', null, p, null);
             await supabase.from('coupon_uses').insert({ coupon_id: coupon.id, user_id: userId });
@@ -106,8 +121,7 @@ export default async function handler(req: any, res: any) {
             return res.status(200).json({ success: true, message: 'Plan granted via coupon', plan: coupon.plans.name, period });
           }
           if (coupon.discount_type === 'percent') discountPercent = coupon.discount_value;
-          await supabase.from('coupon_uses').insert({ coupon_id: coupon.id, user_id: userId });
-          await supabase.from('coupons').update({ uses_count: (coupon.uses_count || 0) + 1 }).eq('id', coupon.id);
+          validCouponCode = coupon.code;
         }
       }
     }
@@ -138,7 +152,9 @@ export default async function handler(req: any, res: any) {
       nextDueDate: nextDue,
       cycle: ASAAS_CYCLE[p],
       description: `FinVision ${plan.name} (${PERIOD_MONTHS[p]} mês${PERIOD_MONTHS[p] > 1 ? 'es' : ''})`,
-      externalReference: `${userId}:${planSlug}:${p}`,
+      // Cupom pendente vai junto na referência para o webhook confirmar o uso somente
+      // quando o pagamento realmente cair (ver handleAsaasWebhook).
+      externalReference: `${userId}:${planSlug}:${p}:${validCouponCode || ''}`,
     };
 
     if (paymentMethod === 'CREDIT_CARD' && creditCard && creditCardHolderInfo) {

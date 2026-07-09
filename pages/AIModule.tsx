@@ -4,6 +4,7 @@ import { AIReconcileService } from '../services/aiReconcile.service';
 import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
 import { DateUtils } from '../lib/dateUtils';
+import { useToast } from '../contexts/ToastContext';
 
 // Helper to parse markdown into semantically correct HTML (protects lists and bolds)
 const parseMarkdownToReact = (text: string) => {
@@ -63,6 +64,7 @@ const parseMarkdownToReact = (text: string) => {
 };
 
 const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<'upload' | 'history' | 'comparative' | 'shopping' | 'wealth'>('upload');
   const [isProcessing, setIsProcessing] = useState(false);
   const [receipt, setReceipt] = useState<ExtractedReceipt | null>(null);
@@ -228,7 +230,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         setUserSettings(settings || { iof_rate: 2.38, spread_rate: 4.00 });
       }
       setIsApplyingTax(data.currency && data.currency !== 'BRL');
-    } catch (err: any) { alert(err.message || 'Erro ao processar cupons.'); } finally { setIsProcessing(false); }
+    } catch (err: any) { toast(err.message || 'Erro ao processar cupons.', 'error'); } finally { setIsProcessing(false); }
   };
 
   const toggleItemSelection = (index: number) => {
@@ -252,7 +254,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   };
 
   const handleFinalize = async () => {
-    if (!receipt || !targetId) { alert("Selecione um destino (Banco ou Cartão)."); return; }
+    if (!receipt || !targetId) { toast("Selecione um destino (Banco ou Cartão).", 'warning'); return; }
     setSaveStatus('saving');
     try {
       await AIReconcileService.saveReceiptToLabs(receipt);
@@ -288,7 +290,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       }
       setSaveStatus('done');
       setTimeout(() => { setReceipt(null); setSaveStatus('idle'); }, 2000);
-    } catch (err: any) { console.error('Erro ao finalizar:', err); alert(err.message || 'Erro ao processar.'); setSaveStatus('idle'); }
+    } catch (err: any) { console.error('Erro ao finalizar:', err); toast(err.message || 'Erro ao processar.', 'error'); setSaveStatus('idle'); }
   };
 
   const formatCurrency = (val: number) =>

@@ -1039,11 +1039,16 @@ const SettingsPage: React.FC = () => {
                   </div>
                   <button 
                     onClick={async () => {
+                      const oldPrefs = profile?.preferences;
                       const newValue = !(profile?.preferences?.show_bottom_nav ?? true);
                       const newPrefs = { ...profile?.preferences, show_bottom_nav: newValue };
                       setProfile({ ...profile, preferences: newPrefs });
-                      await supabase!.from('profiles').update({ preferences: newPrefs }).eq('id', profile.id);
-                    }} 
+                      const { error } = await supabase!.from('profiles').update({ preferences: newPrefs }).eq('id', profile.id);
+                      if (error) {
+                        setProfile({ ...profile, preferences: oldPrefs });
+                        toast('Erro ao salvar preferência. Tente novamente.', 'error');
+                      }
+                    }}
                     className={`w-14 h-8 rounded-full p-1 transition-all ${profile?.preferences?.show_bottom_nav !== false ? 'bg-brand-600' : 'bg-slate-200'}`}
                   >
                     <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${profile?.preferences?.show_bottom_nav !== false ? 'translate-x-6' : 'translate-x-0'}`} />
@@ -1069,13 +1074,18 @@ const SettingsPage: React.FC = () => {
                         <button
                           key={item.id}
                           onClick={async () => {
+                            const oldPrefs = profile?.preferences;
                             let currentItems = profile?.preferences?.bottom_nav_items || ['home', 'accounts', 'cards', 'history', 'reconcile'];
                             if (isSelected) currentItems = currentItems.filter((i: string) => i !== item.id);
                             else currentItems = [...currentItems, item.id];
-                            
+
                             const newPrefs = { ...profile?.preferences, bottom_nav_items: currentItems };
                             setProfile({ ...profile, preferences: newPrefs });
-                            await supabase!.from('profiles').update({ preferences: newPrefs }).eq('id', profile.id);
+                            const { error } = await supabase!.from('profiles').update({ preferences: newPrefs }).eq('id', profile.id);
+                            if (error) {
+                              setProfile({ ...profile, preferences: oldPrefs });
+                              toast('Erro ao salvar preferência. Tente novamente.', 'error');
+                            }
                           }}
                           className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${isSelected ? 'bg-brand-50 border-brand-100 text-brand-900' : 'bg-white border-slate-100 text-slate-500 hover:border-slate-200'}`}
                         >

@@ -28,9 +28,11 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { DateUtils } from '../lib/dateUtils';
 import { ReconciliationService } from '../services/reconciliation.service';
 import { FinanceService } from '../services/finance.service';
+import { useToast } from '../contexts/ToastContext';
 
 const Reconcile: React.FC = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [imported, setImported] = useState<ImportedTransaction[]>([]);
   const [realAccounts, setRealAccounts] = useState<BankAccount[]>([]);
   const [realCards, setRealCards] = useState<any[]>([]);
@@ -75,7 +77,7 @@ const Reconcile: React.FC = () => {
       const uniqueDescriptions = Array.from(new Set(needsCategory.map(t => t.description)));
 
       if (uniqueDescriptions.length === 0) {
-        alert("Nenhuma transação que necessite de categorização encontrada.");
+        toast("Nenhuma transação que necessite de categorização encontrada.", 'info');
         return;
       }
 
@@ -99,7 +101,7 @@ const Reconcile: React.FC = () => {
 
     } catch (err: any) {
       console.error(err);
-      alert("Erro na IA: " + err.message);
+      toast("Erro na IA: " + err.message, 'error');
     } finally {
       setIsCategorizingAI(false);
     }
@@ -319,7 +321,7 @@ const Reconcile: React.FC = () => {
             await attemptUpload(true);
           }
         } else {
-          alert(err.message);
+          toast(err.message, 'error');
         }
       } finally {
         setIsProcessing(false); setProgressStep(null);
@@ -379,12 +381,12 @@ const Reconcile: React.FC = () => {
         metadata: { ...t.metadata, category: editForm.category, subcategory: editForm.subcategory }
       } as any : t));
       setEditingId(null);
-    } catch (e) { alert("Erro ao salvar"); }
+    } catch (e) { toast("Erro ao salvar", 'error'); }
   };
 
   const handleSyncAll = async () => {
     if (!imported.length || !supabase) return;
-    if (!selectedTargetId) return alert("Selecione um destino (Banco/Cartão) para aplicar a todas as transações, ou ajuste individualmente.");
+    if (!selectedTargetId) return toast("Selecione um destino (Banco/Cartão) para aplicar a todas as transações, ou ajuste individualmente.", 'warning');
 
     if (!window.confirm(`Deseja sincronizar todas as ${imported.length} transações para o destino selecionado?`)) return;
 
@@ -396,10 +398,10 @@ const Reconcile: React.FC = () => {
       for (const item of itemsToSync) {
         await handleConfirm(item, true);
       }
-      alert("Sincronização concluída com sucesso!");
+      toast("Sincronização concluída com sucesso!", 'success');
     } catch (e) {
       console.error("Erro na sincronização em lote:", e);
-      alert("Houve um erro em algumas transações. Verifique a fila.");
+      toast("Houve um erro em algumas transações. Verifique a fila.", 'error');
     } finally {
       setIsProcessing(false);
       setProgressStep(null);
@@ -576,7 +578,7 @@ const Reconcile: React.FC = () => {
         return next;
       });
     } catch (e) {
-      alert("Erro ao ignorar transação");
+      toast("Erro ao ignorar transação", 'error');
     }
   };
 
@@ -596,7 +598,7 @@ const Reconcile: React.FC = () => {
       setSelectedIds(new Set());
       setBulkCategory(''); setBulkSubcategory(''); setBulkOwner(''); setBulkTarget('');
     } catch (e) {
-      alert("Erro ao ignorar itens selecionados");
+      toast("Erro ao ignorar itens selecionados", 'error');
     } finally {
       setIsProcessing(false);
       setProgressStep(null);
@@ -605,7 +607,7 @@ const Reconcile: React.FC = () => {
 
   const handleBulkConfirm = async () => {
     if (selectedIds.size === 0) return;
-    if (!selectedTargetId) return alert("Selecione um destino (Banco/Cartão) para confirmar a seleção.");
+    if (!selectedTargetId) return toast("Selecione um destino (Banco/Cartão) para confirmar a seleção.", 'warning');
 
     if (!window.confirm(`Deseja confirmar as ${selectedIds.size} transações selecionadas?`)) return;
 
@@ -623,7 +625,7 @@ const Reconcile: React.FC = () => {
       setBulkCategory(''); setBulkSubcategory(''); setBulkOwner(''); setBulkTarget('');
       setSelectedIds(new Set());
     } catch (e) {
-      alert("Erro ao confirmar itens selecionados. Alguns podem não ter sido processados.");
+      toast("Erro ao confirmar itens selecionados. Alguns podem não ter sido processados.", 'error');
     } finally {
       setIsProcessing(false);
       setProgressStep(null);
@@ -651,7 +653,7 @@ const Reconcile: React.FC = () => {
     const finalDescription = isEditing ? editForm.description : item.description;
     const finalDate = isEditing ? editForm.date : item.date;
 
-    if (!targetId && !isBulk) return alert("Selecione um destino (Banco/Cartão)");
+    if (!targetId && !isBulk) return toast("Selecione um destino (Banco/Cartão)", 'warning');
     if (!targetId) return; // Pula em bulk se não tiver destino
 
     setProcessingItemId(item.id);
@@ -764,7 +766,7 @@ const Reconcile: React.FC = () => {
     } catch (e: any) {
       if (!isBulk) {
         const errorMsg = e?.message || e?.details || JSON.stringify(e);
-        alert(`Erro na confirmação: ${errorMsg}`);
+        toast(`Erro na confirmação: ${errorMsg}`, 'error');
       }
       throw e;
     } finally {

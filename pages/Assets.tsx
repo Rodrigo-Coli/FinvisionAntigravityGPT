@@ -56,6 +56,7 @@ import { RealEstateDetailModal } from '../components/assets/RealEstateDetailModa
 import ConsortiumSection from '../components/assets/ConsortiumSection';
 import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
+import { useToast } from '../contexts/ToastContext';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -93,6 +94,7 @@ const computeInstallmentAmount = (
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities' | 'consortiums'>('overview');
   const [allAccounts, setAllAccounts] = useState<any[]>([]);
   const [collapsedBrokers, setCollapsedBrokers] = useState<Record<string, boolean>>({});
@@ -2344,7 +2346,7 @@ const Assets: React.FC = () => {
       if (error) throw error;
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao atualizar status: ${err.message}`);
+      toast(`Erro ao atualizar status: ${err.message}`, 'error');
     }
   };
 
@@ -2363,13 +2365,13 @@ const Assets: React.FC = () => {
         : (parseFloat(resgateForm.amount) || 0);
 
       if (amountToRedeem <= 0) {
-        alert('Por favor, informe um valor de resgate maior que zero.');
+        toast('Por favor, informe um valor de resgate maior que zero.', 'warning');
         return;
       }
 
       const currentEstimated = Number(asset.estimatedValue || 0);
       if (amountToRedeem > currentEstimated) {
-        alert('O valor de resgate não pode ser maior do que o Saldo Bruto Atual.');
+        toast('O valor de resgate não pode ser maior do que o Saldo Bruto Atual.', 'warning');
         return;
       }
 
@@ -2532,9 +2534,9 @@ const Assets: React.FC = () => {
       setSelectedAssetForResgate(null);
       setResgateForm({ type: 'TOTAL', amount: '', destinationAccountId: '' });
       fetchData();
-      alert('Resgate processado com sucesso!');
+      toast('Resgate processado com sucesso!', 'success');
     } catch (err: any) {
-      alert(`Erro ao resgatar investimento: ${err.message}`);
+      toast(`Erro ao resgatar investimento: ${err.message}`, 'error');
     }
   };
 
@@ -2549,7 +2551,7 @@ const Assets: React.FC = () => {
       if (formData.isSold) {
         const soldVal = parseFloat(formData.soldValue) || 0;
         if (soldVal <= 0) {
-          alert('Por favor, informe um valor de venda maior que zero.');
+          toast('Por favor, informe um valor de venda maior que zero.', 'warning');
           return;
         }
 
@@ -2557,13 +2559,13 @@ const Assets: React.FC = () => {
           const cashVal = parseFloat(formData.saleCashAmount) || 0;
           const permutaTotal = (formData.permutaItems || []).reduce((sum, item) => sum + (parseFloat(item.value) || 0), 0);
           if (Math.abs(soldVal - (cashVal + permutaTotal)) > 0.01) {
-            alert(`Inconsistência de valores na venda: O valor de venda (R$ ${soldVal.toLocaleString('pt-BR')}) deve ser igual à soma do valor em dinheiro (R$ ${cashVal.toLocaleString('pt-BR')}) + permutas (R$ ${permutaTotal.toLocaleString('pt-BR')}).`);
+            toast(`Inconsistência de valores na venda: O valor de venda (R$ ${soldVal.toLocaleString('pt-BR')}) deve ser igual à soma do valor em dinheiro (R$ ${cashVal.toLocaleString('pt-BR')}) + permutas (R$ ${permutaTotal.toLocaleString('pt-BR')}).`, 'warning');
             return;
           }
         } else if (formData.salePaymentMethod === 'PERMUTA') {
           const permutaTotal = (formData.permutaItems || []).reduce((sum, item) => sum + (parseFloat(item.value) || 0), 0);
           if (Math.abs(soldVal - permutaTotal) > 0.01) {
-            alert(`Inconsistência de valores na venda: O valor de venda (R$ ${soldVal.toLocaleString('pt-BR')}) deve ser igual à soma dos bens em permuta (R$ ${permutaTotal.toLocaleString('pt-BR')}).`);
+            toast(`Inconsistência de valores na venda: O valor de venda (R$ ${soldVal.toLocaleString('pt-BR')}) deve ser igual à soma dos bens em permuta (R$ ${permutaTotal.toLocaleString('pt-BR')}).`, 'warning');
             return;
           }
         }
@@ -3455,9 +3457,9 @@ const Assets: React.FC = () => {
       setEditingAsset(null);
       resetAssetForm();
       fetchData();
-      alert('Ativo salvo com sucesso!');
+      toast('Ativo salvo com sucesso!', 'success');
     } catch (err: any) {
-      alert(`Erro ao salvar ativo: ${err.message}`);
+      toast(`Erro ao salvar ativo: ${err.message}`, 'error');
     }
   };
 
@@ -3763,7 +3765,7 @@ const Assets: React.FC = () => {
       if (error) throw error;
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao arquivar: ${err.message}`);
+      toast(`Erro ao arquivar: ${err.message}`, 'error');
     }
   };
 
@@ -3778,7 +3780,7 @@ const Assets: React.FC = () => {
       if (error) throw error;
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao restaurar: ${err.message}`);
+      toast(`Erro ao restaurar: ${err.message}`, 'error');
     }
   };
 
@@ -3856,7 +3858,7 @@ const Assets: React.FC = () => {
 
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao excluir: ${err.message}`);
+      toast(`Erro ao excluir: ${err.message}`, 'error');
     }
   };
 
@@ -3923,7 +3925,7 @@ const Assets: React.FC = () => {
     setShowExtratoModal(false);
     openEditAsset(asset);
     setFormData(prev => ({ ...prev, isSold: true }));
-    alert('Marcar como Vendido selecionado. Preencha os detalhes da venda no formulário e clique em Salvar Alterações.');
+    toast('Marcar como Vendido selecionado. Preencha os detalhes da venda no formulário e clique em Salvar Alterações.', 'info');
   };
 
   // Real estate manage modal
@@ -4165,7 +4167,7 @@ const Assets: React.FC = () => {
       setSelectedLiabilityForManage(null);
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao salvar os ajustes: ${err.message}`);
+      toast(`Erro ao salvar os ajustes: ${err.message}`, 'error');
     }
   };
 
@@ -4266,12 +4268,12 @@ const Assets: React.FC = () => {
       const remainingBal = parseFloat(liabilityFormData.remainingBalance) || 0;
 
       if (totalAmt < 0 || remainingBal < 0 || installmentAmt < 0 || installmentsLeft < 0) {
-        alert("Valores monetários e parcelas não podem ser negativos.");
+        toast("Valores monetários e parcelas não podem ser negativos.", 'warning');
         return;
       }
 
       if (dueDay < 1 || dueDay > 31) {
-        alert("O dia de vencimento deve estar entre 1 e 31.");
+        toast("O dia de vencimento deve estar entre 1 e 31.", 'warning');
         return;
       }
 
@@ -4542,7 +4544,7 @@ const Assets: React.FC = () => {
       });
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao salvar passivo: ${err.message}`);
+      toast(`Erro ao salvar passivo: ${err.message}`, 'error');
     }
   };
 
@@ -4610,7 +4612,7 @@ const Assets: React.FC = () => {
 
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao excluir passivo: ${err.message}`);
+      toast(`Erro ao excluir passivo: ${err.message}`, 'error');
     }
   };
 
@@ -4620,6 +4622,9 @@ const Assets: React.FC = () => {
     if (!window.confirm(`Deseja realmente ${actionText} este passivo? Ele será removido da lista ativa, e todas as parcelas futuras PENDENTES (não pagas) associadas a ele serão excluídas para não afetar suas projeções. Os pagamentos históricos já realizados serão mantidos.`)) return;
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+
       const { error: liabError } = await supabase
         .from('liabilities')
         .update({ is_archived: true })
@@ -4633,9 +4638,19 @@ const Assets: React.FC = () => {
         .eq('is_paid', false);
       if (txError) throw txError;
 
+      // Limpa caches locais (evita dados fantasma nas projeções/resumo)
+      try {
+        if (userId) {
+          localStorage.removeItem(`finvision_cached_raw_txs_${userId}`);
+          localStorage.removeItem(`finvision_cached_projections_${userId}`);
+        }
+        localStorage.removeItem('finvision_cached_home_txs');
+        localStorage.removeItem('finvision_cached_summary');
+      } catch (e) {}
+
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao arquivar passivo: ${err.message}`);
+      toast(`Erro ao arquivar passivo: ${err.message}`, 'error');
     }
   };
 
@@ -4649,7 +4664,7 @@ const Assets: React.FC = () => {
       if (error) throw error;
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao desarquivar passivo: ${err.message}`);
+      toast(`Erro ao desarquivar passivo: ${err.message}`, 'error');
     }
   };
 
@@ -4663,7 +4678,7 @@ const Assets: React.FC = () => {
 
       const amt = parseFloat(newTxForm.amount) || 0;
       if (amt <= 0) {
-        alert("Preencha um valor válido.");
+        toast("Preencha um valor válido.", 'warning');
         return;
       }
 
@@ -4770,7 +4785,7 @@ const Assets: React.FC = () => {
 
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao lançar pagamento: ${err.message}`);
+      toast(`Erro ao lançar pagamento: ${err.message}`, 'error');
     }
   };
 
@@ -4827,9 +4842,21 @@ const Assets: React.FC = () => {
         installmentsRemaining: newInstallments
       } : null);
 
+      // Limpa caches locais (evita dados fantasma nas projeções/resumo)
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        if (userId) {
+          localStorage.removeItem(`finvision_cached_raw_txs_${userId}`);
+          localStorage.removeItem(`finvision_cached_projections_${userId}`);
+        }
+        localStorage.removeItem('finvision_cached_home_txs');
+        localStorage.removeItem('finvision_cached_summary');
+      } catch (e) {}
+
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao excluir pagamento: ${err.message}`);
+      toast(`Erro ao excluir pagamento: ${err.message}`, 'error');
     }
   };
 
@@ -4844,7 +4871,7 @@ const Assets: React.FC = () => {
 
       const amt = parseFloat(newTxForm.amount) || 0;
       if (amt <= 0) {
-        alert("Preencha um valor válido.");
+        toast("Preencha um valor válido.", 'warning');
         return;
       }
 
@@ -4917,7 +4944,7 @@ const Assets: React.FC = () => {
       // Update selected asset representation locally to reflect the new transaction
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao adicionar lançamento: ${err.message}`);
+      toast(`Erro ao adicionar lançamento: ${err.message}`, 'error');
     }
   };
 
@@ -4934,7 +4961,7 @@ const Assets: React.FC = () => {
       if (error) throw error;
       fetchData();
     } catch (err: any) {
-      alert(`Erro ao deletar lançamento: ${err.message}`);
+      toast(`Erro ao deletar lançamento: ${err.message}`, 'error');
     }
   };
 
@@ -11090,7 +11117,7 @@ const Assets: React.FC = () => {
                       const i = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
                       const reaj = (parseFloat(liabilityFormData.indexationRate) || 0) / 100;
                       if (principal <= 0 || n <= 0) {
-                        alert('Preencha o Saldo Devedor e a quantidade de Parcelas Restantes.');
+                        toast('Preencha o Saldo Devedor e a quantidade de Parcelas Restantes.', 'warning');
                         return;
                       }
                       let first = 0;
@@ -11120,7 +11147,7 @@ const Assets: React.FC = () => {
                       const parcela = (parseFloat(liabilityFormData.installmentAmount) || 0) / (1 + reaj); // remove o reajuste da 1ª
                       const i = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
                       if (principal <= 0 || parcela <= 0) {
-                        alert('Preencha o Saldo Devedor e o Valor da Parcela.');
+                        toast('Preencha o Saldo Devedor e o Valor da Parcela.', 'warning');
                         return;
                       }
                       let n = 0;
@@ -11129,12 +11156,12 @@ const Assets: React.FC = () => {
                       } else if (liabilityFormData.amortizationType === 'SAC') {
                         // 1ª parcela SAC = saldo/n + saldo*i  →  n = saldo / (parcela - saldo*i)
                         const denom = parcela - principal * i;
-                        if (denom <= 0) { alert('O valor da parcela é baixo demais para cobrir os juros. Aumente a parcela.'); return; }
+                        if (denom <= 0) { toast('O valor da parcela é baixo demais para cobrir os juros. Aumente a parcela.', 'warning'); return; }
                         n = principal / denom;
                       } else {
                         // Price: parcela = saldo * i(1+i)^n / ((1+i)^n - 1)  →  n = -ln(1 - saldo*i/parcela) / ln(1+i)
                         const ratio = 1 - (principal * i) / parcela;
-                        if (ratio <= 0) { alert('O valor da parcela é baixo demais para cobrir os juros. Aumente a parcela.'); return; }
+                        if (ratio <= 0) { toast('O valor da parcela é baixo demais para cobrir os juros. Aumente a parcela.', 'warning'); return; }
                         n = -Math.log(ratio) / Math.log(1 + i);
                       }
                       const nRounded = Math.max(1, Math.ceil(n));

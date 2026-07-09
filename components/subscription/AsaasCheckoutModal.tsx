@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, CreditCard, Check, AlertCircle, Copy, ArrowLeft, CheckCircle2, RotateCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSubscription } from '../../contexts/SubscriptionContext';
+import { useToast } from '../../contexts/ToastContext';
+import { supabase } from '../../lib/supabase/client';
 
 interface AsaasCheckoutModalProps {
   plan: {
@@ -19,6 +21,7 @@ interface AsaasCheckoutModalProps {
 const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, onClose }) => {
   const { user } = useAuth();
   const { refreshSubscription } = useSubscription();
+  const { toast } = useToast();
 
   const [paymentMethod, setPaymentMethod] = useState<'PIX' | 'CREDIT_CARD'>('PIX');
   const [loading, setLoading] = useState(false);
@@ -54,7 +57,7 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
   const handleCopyPix = () => {
     if (pixData?.copiaECola) {
       navigator.clipboard.writeText(pixData.copiaECola);
-      alert('Código Pix Copia e Cola copiado com sucesso!');
+      toast('Código Pix Copia e Cola copiado com sucesso!', 'success');
     }
   };
 
@@ -66,8 +69,10 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
     setError(null);
 
     try {
+      const { data: { session } } = await supabase!.auth.getSession();
+      if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
+
       const payload: any = {
-        userId: user.id,
         planSlug: plan.slug,
         period,
         paymentMethod,
@@ -99,7 +104,10 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
 
       const res = await fetch('/api/asaas-create-subscription', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify(payload),
       });
 

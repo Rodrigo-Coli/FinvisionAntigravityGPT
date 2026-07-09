@@ -27,6 +27,7 @@ import { BankAccount, AccountType } from '../../types';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
 import { DateUtils } from '../../lib/dateUtils';
 import { findCloseMatch } from '../../lib/stringUtils';
+import { useToast } from '../../contexts/ToastContext';
 
 const COLORS = [
   { name: 'Blue', hex: '#3b82f6' },
@@ -39,6 +40,7 @@ const COLORS = [
 ];
 
 const AccountsSection: React.FC = () => {
+  const { toast } = useToast();
   const [accounts, setAccounts] = useState<BankAccount[]>(() => {
     const cached = localStorage.getItem('finvision_cached_accounts_full');
     return cached ? JSON.parse(cached) : [];
@@ -176,7 +178,7 @@ const AccountsSection: React.FC = () => {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user) {
-        alert('Usuário não autenticado');
+        toast('Usuário não autenticado', 'error');
         return;
       }
 
@@ -226,7 +228,7 @@ const AccountsSection: React.FC = () => {
       fetchAccounts();
     } catch (err: any) {
       console.error('Error saving account:', err);
-      alert('Erro ao salvar conta: ' + (err.message || 'Erro desconhecido'));
+      toast('Erro ao salvar conta: ' + (err.message || 'Erro desconhecido'), 'error');
     }
   };
 
@@ -236,7 +238,7 @@ const AccountsSection: React.FC = () => {
       await supabase.from('accounts').update({ is_archived: !current }).eq('id', id);
       fetchAccounts();
     } catch (err) {
-      alert('Erro ao arquivar conta');
+      toast('Erro ao arquivar conta', 'error');
     }
   };
 
@@ -288,7 +290,7 @@ const AccountsSection: React.FC = () => {
           const cashDelta = newCash - currentCash;
 
           if (Math.abs(cashDelta) < 0.01) {
-            alert("O novo saldo é igual ao saldo atual. Informe um valor diferente.");
+            toast("O novo saldo é igual ao saldo atual. Informe um valor diferente.", 'warning');
             setIsSavingAdjust(false);
             return;
           }
@@ -336,7 +338,7 @@ const AccountsSection: React.FC = () => {
           const delta = Number(adjustValue) - adjustAccount.currentBalance;
 
           if (delta === 0) {
-            alert("O novo saldo é igual ao saldo atual. Informe um valor diferente.");
+            toast("O novo saldo é igual ao saldo atual. Informe um valor diferente.", 'warning');
             setIsSavingAdjust(false);
             return;
           }
@@ -373,7 +375,7 @@ const AccountsSection: React.FC = () => {
       fetchAccounts();
     } catch (err: any) {
       console.error(err);
-      alert("Erro ao salvar ajuste: " + err.message);
+      toast("Erro ao salvar ajuste: " + err.message, 'error');
     } finally {
       setIsSavingAdjust(false);
     }
