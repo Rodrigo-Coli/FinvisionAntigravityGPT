@@ -1,35 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
+import { getPaymentGateway } from './payment/index.js';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co',
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy'
 );
 
-const ASAAS_BASE_URL = 'https://sandbox.asaas.com/api/v3';
-const ASAAS_KEY = process.env.ASAAS_SANDBOX_KEY || '';
-
 type Period = 'monthly' | 'semiannual' | 'annual';
-
-const ASAAS_CYCLE: Record<Period, string> = {
-  monthly: 'MONTHLY',
-  semiannual: 'SEMIANNUALLY',
-  annual: 'YEARLY',
-};
 
 const PERIOD_MONTHS: Record<Period, number> = {
   monthly: 1,
   semiannual: 6,
   annual: 12,
 };
-
-async function asaasRequest(path: string, method = 'GET', body?: any) {
-  const res = await fetch(`${ASAAS_BASE_URL}${path}`, {
-    method,
-    headers: { 'access_token': ASAAS_KEY, 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return res.json();
-}
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -126,93 +109,42 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 6. Create/find Asaas customer
-    const existingCustomers = await asaasRequest(`/customers?email=${encodeURIComponent(user.email)}`);
-    let asaasCustomerId: string;
-    if (existingCustomers.data?.length > 0) {
-      asaasCustomerId = existingCustomers.data[0].id;
-    } else {
-      const customer = await asaasRequest('/customers', 'POST', {
-        name: user.email.split('@')[0],
-        email: user.email,
-        externalReference: userId,
-      });
-      if (!customer.id) throw new Error('Failed to create Asaas customer: ' + JSON.stringify(customer));
-      asaasCustomerId = customer.id;
-    }
-
-    // 7. Apply discount to total price
+    // 6. Apply discount to total price
     const priceInReais = (totalPrice / 100) * (1 - discountPercent / 100);
 
-    // 8. Create Asaas subscription payload
-    const subPayload: any = {
-      customer: asaasCustomerId,
-      billingType: paymentMethod === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX',
-      value: priceInReais,
+    // 7. Criar assinatura através da abstração de gateway (troca de banco no
+    //    futuro = trocar o gateway aqui, sem mexer no resto desta função).
+    const gateway = getPaymentGateway('asaas');
+    const result = await gateway.createSubscription({
+      customerEmail: user.email,
+      customerExternalReference: userId,
+      valueReais: priceInReais,
+      billingPeriod: p,
       nextDueDate: nextDue,
-      cycle: ASAAS_CYCLE[p],
+      paymentMethod,
       description: `FinVision ${plan.name} (${PERIOD_MONTHS[p]} mês${PERIOD_MONTHS[p] > 1 ? 'es' : ''})`,
       // Cupom pendente vai junto na referência para o webhook confirmar o uso somente
       // quando o pagamento realmente cair (ver handleAsaasWebhook).
       externalReference: `${userId}:${planSlug}:${p}:${validCouponCode || ''}`,
-    };
+      creditCard: paymentMethod === 'CREDIT_CARD' && creditCard ? creditCard : undefined,
+      creditCardHolderInfo: paymentMethod === 'CREDIT_CARD' && creditCardHolderInfo
+        ? { ...creditCardHolderInfo, email: creditCardHolderInfo.email || user.email }
+        : undefined,
+      remoteIp: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1',
+    });
 
-    if (paymentMethod === 'CREDIT_CARD' && creditCard && creditCardHolderInfo) {
-      subPayload.creditCard = {
-        holderName: creditCard.holderName,
-        number: creditCard.number,
-        expiryMonth: creditCard.expiryMonth,
-        expiryYear: creditCard.expiryYear,
-        ccv: creditCard.ccv
-      };
-      subPayload.creditCardHolderInfo = {
-        name: creditCardHolderInfo.name,
-        email: creditCardHolderInfo.email || user.email,
-        cpfCnpj: creditCardHolderInfo.cpfCnpj,
-        postalCode: creditCardHolderInfo.postalCode,
-        addressNumber: creditCardHolderInfo.addressNumber,
-        phone: creditCardHolderInfo.phone,
-        mobilePhone: creditCardHolderInfo.phone
-      };
-      subPayload.remoteIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
-    }
-
-    // Create Asaas subscription
-    const subscription = await asaasRequest('/subscriptions', 'POST', subPayload);
-    if (!subscription.id) throw new Error('Failed to create Asaas subscription: ' + JSON.stringify(subscription));
-
-    // 9. Fetch Pix details if payment method is PIX
-    let pixData: any = null;
-    if (paymentMethod === 'PIX') {
-      // Small delay to ensure Asaas generates the first payment invoice
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      const paymentsResponse = await asaasRequest(`/payments?subscription=${subscription.id}`);
-      if (paymentsResponse.data && paymentsResponse.data.length > 0) {
-        const firstPayment = paymentsResponse.data[0];
-        const qrCodeResponse = await asaasRequest(`/payments/${firstPayment.id}/pixQrCode`);
-        if (qrCodeResponse.success) {
-          pixData = {
-            paymentId: firstPayment.id,
-            qrCode: qrCodeResponse.encodedImage,
-            copiaECola: qrCodeResponse.payload,
-            expirationDate: qrCodeResponse.expirationDate
-          };
-        }
-      }
-    }
-
-    // 10. Upsert in our DB
+    // 8. Upsert in our DB
     const initialStatus = paymentMethod === 'CREDIT_CARD' ? 'active' : (trialEndsAt ? 'trialing' : 'past_due');
-    await upsertSubscription(userId, plan.id, initialStatus, subscription.id, p, trialEndsAt);
+    await upsertSubscription(userId, plan.id, initialStatus, result.gatewaySubscriptionId, p, trialEndsAt, gateway.name);
 
     return res.status(200).json({
       success: true,
-      asaasSubscriptionId: subscription.id,
+      asaasSubscriptionId: result.gatewaySubscriptionId,
       plan: plan.name,
       period,
       totalPrice: priceInReais,
-      nextDueDate: subscription.nextDueDate,
-      pix: pixData
+      nextDueDate: result.nextDueDate,
+      pix: result.pix
     });
 
   } catch (err: any) {
@@ -221,7 +153,7 @@ export default async function handler(req: any, res: any) {
   }
 }
 
-async function upsertSubscription(userId: string, planId: string, status: string, asaasId: string | null, period: Period, trialEndsAt: string | null) {
+async function upsertSubscription(userId: string, planId: string, status: string, asaasId: string | null, period: Period, trialEndsAt: string | null, paymentGateway?: string) {
   const now = new Date();
   const months = PERIOD_MONTHS[period];
   const periodEnd = new Date(now);
@@ -237,6 +169,7 @@ async function upsertSubscription(userId: string, planId: string, status: string
     updated_at: now.toISOString(),
   };
   if (asaasId) payload.asaas_subscription_id = asaasId;
+  if (paymentGateway) payload.payment_gateway = paymentGateway;
 
   await supabase.from('subscriptions').upsert(payload, { onConflict: 'user_id' });
 }

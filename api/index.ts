@@ -22,6 +22,10 @@ import { handleReceiptItems } from './_lib/handle-receipt-items.js';
 import { handleAsaasBillingHistory } from './_lib/asaas-billing-history.js';
 import handleAsaasCreateSubscription from './_lib/asaas-create-subscription.js';
 import { handlePromoteDemo } from './_lib/promote-demo.js';
+import { handleAttachReferral } from './_lib/attach-referral.js';
+import { handleAffiliateMe, handleAffiliateUpdatePix, handleAffiliateRequestPayout } from './_lib/affiliate.js';
+import { handleAdminProcessPayout } from './_lib/admin-process-payout.js';
+import { handleNotifyReferralEngagement } from './_lib/notify-referral-engagement.js';
 
 function setCorsHeaders(res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -58,6 +62,14 @@ export default async function handler(req: any, res: any) {
 
     // --- Cron ---
     if (url.includes('/notify-bills-due'))         return handleNotifyBillsDue(req, res);
+    if (url.includes('/notify-referral-engagement')) return handleNotifyReferralEngagement(req, res);
+
+    // --- Programa de Indicação ---
+    if (url.includes('/attach-referral'))          return handleAttachReferral(req, res);
+    if (url.includes('/affiliate-me'))             return handleAffiliateMe(req, res);
+    if (url.includes('/affiliate-update-pix'))     return handleAffiliateUpdatePix(req, res);
+    if (url.includes('/affiliate-request-payout')) return handleAffiliateRequestPayout(req, res);
+    if (url.includes('/admin-process-payout'))     return handleAdminProcessPayout(req, res);
 
     // --- Demo ---
     if (url.includes('/promote-demo'))             return handlePromoteDemo(req, res);

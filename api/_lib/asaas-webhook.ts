@@ -1,46 +1,55 @@
 import { createClient } from '@supabase/supabase-js';
+import { getPaymentGateway } from './payment/index.js';
+import type { NormalizedWebhookEventType } from './payment/types.js';
+import { recordCommissionEvent, reverseCommissionEvent, syncReferralStatusFromSubscription } from './referral.service.js';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co',
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy'
 );
 
+const STATUS_MAP: Partial<Record<NormalizedWebhookEventType, string>> = {
+  payment_confirmed: 'active',
+  payment_overdue: 'past_due',
+  payment_refunded: 'past_due',
+  payment_chargeback: 'past_due',
+  payment_deleted: 'canceled',
+  subscription_deleted: 'canceled',
+};
+
 export async function handleAsaasWebhook(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
-  const token = req.headers['asaas-access-token'];
-  if (process.env.ASAAS_WEBHOOK_TOKEN && token !== process.env.ASAAS_WEBHOOK_TOKEN) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+
+  const gateway = getPaymentGateway('asaas');
+  if (!gateway.verifyWebhookAuth(req)) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    const payload = req.body || {};
-    const { event, payment, subscription } = payload;
-    const asaasSubId = subscription?.id || payment?.subscription;
-    if (!asaasSubId) return res.status(200).json({ received: true, ignored: true });
+    const event = gateway.normalizeWebhookEvent(req.body || {});
+    if (event.type === 'ignored' || !event.gatewaySubscriptionId) {
+      return res.status(200).json({ received: true, ignored: true });
+    }
 
-    const statusMap: Record<string, string> = {
-      'PAYMENT_RECEIVED': 'active',
-      'PAYMENT_CONFIRMED': 'active',
-      'PAYMENT_OVERDUE': 'past_due',
-      'PAYMENT_REFUNDED': 'past_due',
-      'PAYMENT_CHARGEBACK_REQUESTED': 'past_due',
-      'PAYMENT_DELETED': 'canceled',
-      'SUBSCRIPTION_DELETED': 'canceled'
-    };
-
-    if (statusMap[event]) {
-      await supabase.from('subscriptions').update({
-        status: statusMap[event],
-        updated_at: new Date().toISOString()
-      }).eq('asaas_subscription_id', asaasSubId);
+    let subscriptionRow: { id: string } | null = null;
+    const nextStatus = STATUS_MAP[event.type];
+    if (nextStatus) {
+      const { data } = await supabase.from('subscriptions')
+        .update({ status: nextStatus, updated_at: new Date().toISOString() })
+        .eq('asaas_subscription_id', event.gatewaySubscriptionId)
+        .select('id')
+        .maybeSingle();
+      subscriptionRow = data;
+      if (subscriptionRow) {
+        await syncReferralStatusFromSubscription(subscriptionRow.id, nextStatus)
+          .catch(err => console.error('[referral] syncReferralStatusFromSubscription:', err));
+      }
     }
 
     // Só agora que o Asaas confirmou o recebimento do pagamento é que o cupom
     // (se houver) é marcado como usado — evita queimar o cupom de quem nunca pagou.
-    if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
-      const externalReference: string | undefined = payment?.externalReference;
-      const parts = externalReference?.split(':') || [];
-      const [refUserId, , , couponCode] = parts;
+    const refUserId = event.externalReference?.split(':')[0] || null;
+    if (event.type === 'payment_confirmed') {
+      const parts = event.externalReference?.split(':') || [];
+      const [, , , couponCode] = parts;
       if (refUserId && couponCode) {
         const { data: coupon } = await supabase
           .from('coupons')
@@ -58,8 +67,41 @@ export async function handleAsaasWebhook(req: any, res: any) {
       }
     }
 
+    // Comissão de indicação: cada pagamento confirmado do indicado gera um
+    // evento de comissão (com carência) para quem o indicou, se houver.
+    if (event.type === 'payment_confirmed' && event.gatewayPaymentId && event.amountCents != null && refUserId) {
+      const { data: referral } = await supabase
+        .from('affiliate_referrals')
+        .select('id, subscription_id')
+        .eq('referred_user_id', refUserId)
+        .maybeSingle();
+
+      if (referral) {
+        if (!referral.subscription_id && subscriptionRow?.id) {
+          await supabase.from('affiliate_referrals').update({ subscription_id: subscriptionRow.id }).eq('id', referral.id);
+        }
+        await recordCommissionEvent({
+          referralId: referral.id,
+          subscriptionId: subscriptionRow?.id || referral.subscription_id,
+          gateway: gateway.name,
+          gatewayPaymentId: event.gatewayPaymentId,
+          chargeAmountCents: event.amountCents,
+        }).catch(err => console.error('[referral] recordCommissionEvent:', err));
+      }
+    }
+
+    // Estorno/chargeback: cancela a comissão daquele pagamento específico.
+    if ((event.type === 'payment_refunded' || event.type === 'payment_chargeback') && event.gatewayPaymentId) {
+      await reverseCommissionEvent({
+        gateway: gateway.name,
+        gatewayPaymentId: event.gatewayPaymentId,
+        reason: event.type,
+      }).catch(err => console.error('[referral] reverseCommissionEvent:', err));
+    }
+
     return res.status(200).json({ received: true });
   } catch (err: any) {
+    console.error('asaas-webhook error:', err);
     return res.status(500).json({ error: err.message });
   }
 }

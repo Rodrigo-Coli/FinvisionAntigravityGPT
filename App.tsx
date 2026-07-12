@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, HashRouter } from 'react-router-dom';
 import { supabase } from './lib/supabase/client';
 import { Profile, UserRole } from './types';
 import { isAdmin } from './lib/authUtils';
+import { captureReferralCodeFromUrl, attachPendingReferral } from './lib/referralUtils';
 import Nav from './components/Nav';
 import BottomNav from './components/BottomNav';
 import { PushManager } from './components/PushManager';
@@ -129,10 +130,14 @@ const App: React.FC = () => {
       keysToClear.forEach(key => localStorage.removeItem(key));
     };
 
+    captureReferralCodeFromUrl();
+
     supabase.auth.getSession().then(({ data: { session } }: any) => {
       setSession(session);
-      if (session?.user) fetchProfile(session.user.id, session.user.email);
-      else {
+      if (session?.user) {
+        fetchProfile(session.user.id, session.user.email);
+        if (session.access_token) attachPendingReferral(session.access_token);
+      } else {
         clearSessionData();
         setLoading(false);
       }
@@ -140,8 +145,10 @@ const App: React.FC = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       setSession(session);
-      if (session?.user) fetchProfile(session.user.id, session.user.email);
-      else {
+      if (session?.user) {
+        fetchProfile(session.user.id, session.user.email);
+        if (session.access_token) attachPendingReferral(session.access_token);
+      } else {
         setProfile(null);
         clearSessionData();
         setLoading(false);
