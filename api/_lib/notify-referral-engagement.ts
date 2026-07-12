@@ -7,6 +7,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy'
 );
 
+const APP_URL = process.env.APP_URL || 'https://finvision-antigravity-gpt.vercel.app';
+const REFERRALS_LINK = `${APP_URL}/#/referrals`;
+
 function money(cents: number): string {
   return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 }
@@ -53,7 +56,7 @@ export async function handleNotifyReferralEngagement(req: any, res: any) {
         const tier = await getTierProgress(aff.id);
         if (tier && tier.referralsToNextTier != null && tier.referralsToNextTier <= 2 && !(await wasNotifiedRecently(aff.user_id, 'referral_tier_nudge', 7))) {
           const faltam = tier.referralsToNextTier;
-          const msg = `🚀 *FinVision Pro — Quase lá!*\n\nFaltam apenas *${faltam}* indicaç${faltam === 1 ? 'ão ativa' : 'ões ativas'} para sua comissão subir de *${tier.currentPercent}%* para *${tier.nextPercent}%* em todas as próximas indicações!\n\nCompartilhe seu link e garanta o próximo degrau. 💪`;
+          const msg = `🚀 *FinVision Pro — Quase lá!*\n\nFaltam apenas *${faltam}* indicaç${faltam === 1 ? 'ão ativa' : 'ões ativas'} para seu cashback subir de *${tier.currentPercent}%* para *${tier.nextPercent}%* em todas as próximas indicações!\n\nCompartilhe seu link e garanta o próximo degrau: ${REFERRALS_LINK}`;
           if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_tier_nudge', userId: aff.user_id })) nudgedCount++;
           continue; // uma mensagem por afiliado por execução do cron
         }
@@ -62,7 +65,7 @@ export async function handleNotifyReferralEngagement(req: any, res: any) {
       // 2. Comissões em queda: estimula indicar mais
       const trend = await getRecentCommissionTrend(aff.id);
       if (trend.decreasing && !(await wasNotifiedRecently(aff.user_id, 'referral_declining_nudge', 21))) {
-        const msg = `📉 *FinVision Pro — Indicação*\n\nSuas comissões de indicação caíram nos últimos 30 dias (de ${money(trend.prev30)} para ${money(trend.last30)}).\n\nQuanto mais amigos ativos você tiver, maior sua renda todo mês. Que tal chamar mais alguém hoje? Você pode ganhar muito mais. 🚀`;
+        const msg = `📉 *FinVision Pro — Indicação*\n\nSeu cashback de indicação caiu nos últimos 30 dias (de ${money(trend.prev30)} para ${money(trend.last30)}).\n\nQuanto mais amigos ativos você tiver, maior sua renda todo mês. Que tal chamar mais alguém hoje? Você pode ganhar muito mais: ${REFERRALS_LINK}`;
         if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_declining_nudge', userId: aff.user_id })) decliningCount++;
         continue;
       }
@@ -72,13 +75,17 @@ export async function handleNotifyReferralEngagement(req: any, res: any) {
       if (availableCents > 0) {
         const opportunity = await getUpgradeOpportunity(aff.user_id, availableCents);
         if (opportunity && !(await wasNotifiedRecently(aff.user_id, 'referral_upgrade_opportunity', 30))) {
-          const msg = `⭐ *FinVision Pro — Você já pode subir de plano!*\n\nSeu saldo de comissão (${money(availableCents)}) já cobre o plano *${opportunity.planName}* (${money(opportunity.planPriceCents)}).\n\nVocê pode usar esse saldo para abater sua própria mensalidade sempre que quiser — é só autorizar na tela de Indicações do app. 💳`;
+          const msg = `⭐ *FinVision Pro — Seu cashback já pode virar upgrade!*\n\nSeu saldo de cashback de indicação (${money(availableCents)}) já cobre o plano *${opportunity.planName}* (${money(opportunity.planPriceCents)}).\n\nVocê pode usar esse saldo para abater sua própria mensalidade sempre que quiser — é só autorizar aqui: ${REFERRALS_LINK}`;
           if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_upgrade_opportunity', userId: aff.user_id })) upgradeCount++;
         }
       }
     }
 
     // 4. Assinantes pagantes que nunca ouviram falar do programa: dica única.
+    // Importante: NÃO prometer "N amigos pagam sua assinatura" — o cashback
+    // depende do plano que CADA amigo escolher (pode ser mais barato ou mais
+    // caro que o seu), prometer um número fixo seria propaganda enganosa.
+    // A mensagem destaca o percentual de cashback, que é sempre verdadeiro.
     const { data: payingSubs } = await supabase.from('subscriptions')
       .select('user_id, plans(price_cents)').eq('status', 'active');
     const { data: existingAffiliates } = await supabase.from('affiliates').select('user_id');
@@ -94,11 +101,7 @@ export async function handleNotifyReferralEngagement(req: any, res: any) {
       const target = await getWhatsappTarget(sub.user_id);
       if (!target) continue;
 
-      const planPriceCents = sub.plans?.price_cents || 0;
-      const commissionPerFriendCents = Math.round(planPriceCents * (basePercent / 100));
-      const friendsToPaySystem = commissionPerFriendCents > 0 ? Math.ceil(planPriceCents / commissionPerFriendCents) : 0;
-
-      const msg = `💡 *Você sabia?*\n\nIndicando o FinVision Pro para amigos, você ganha *${basePercent}%* da mensalidade de cada um, todo mês.\n\n${friendsToPaySystem > 0 ? `Com apenas *${friendsToPaySystem} amig${friendsToPaySystem === 1 ? 'o' : 'os'} ativo${friendsToPaySystem === 1 ? '' : 's'}*, sua própria assinatura já se paga sozinha!\n\n` : ''}Toque em "Indicar Amigos" no app e pegue seu link. 🔗`;
+      const msg = `💡 *Cashback FinVision Pro*\n\nIndicando amigos para o FinVision Pro, você ganha *${basePercent}% de cashback* sobre a mensalidade de cada um, todo mês, enquanto a indicação durar.\n\nQuanto mais amigos ativos, maior seu cashback recorrente — e você ainda pode usar esse saldo para abater sua própria mensalidade quando quiser.\n\nPegue seu link aqui: ${REFERRALS_LINK}`;
       if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_onboarding', userId: sub.user_id })) onboardedCount++;
     }
 
