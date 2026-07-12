@@ -23,9 +23,11 @@ import { handleAsaasBillingHistory } from './_lib/asaas-billing-history.js';
 import handleAsaasCreateSubscription from './_lib/asaas-create-subscription.js';
 import { handlePromoteDemo } from './_lib/promote-demo.js';
 import { handleAttachReferral } from './_lib/attach-referral.js';
-import { handleAffiliateMe, handleAffiliateUpdatePix, handleAffiliateRequestPayout } from './_lib/affiliate.js';
+import { handleAffiliateMe, handleAffiliateUpdatePix, handleAffiliateRequestPayout, handleAffiliateRedeemCredit } from './_lib/affiliate.js';
+import { handleAffiliateAcceptTerms } from './_lib/affiliate-accept-terms.js';
 import { handleAdminProcessPayout } from './_lib/admin-process-payout.js';
 import { handleNotifyReferralEngagement } from './_lib/notify-referral-engagement.js';
+import { handleDailyCron } from './_lib/daily-cron.js';
 
 function setCorsHeaders(res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -61,14 +63,17 @@ export default async function handler(req: any, res: any) {
     if (url.includes('/whatsapp-webhook'))         return handleWhatsAppWebhook(req, res);
 
     // --- Cron ---
+    if (url.includes('/daily-cron'))               return handleDailyCron(req, res);
     if (url.includes('/notify-bills-due'))         return handleNotifyBillsDue(req, res);
     if (url.includes('/notify-referral-engagement')) return handleNotifyReferralEngagement(req, res);
 
     // --- Programa de Indicação ---
     if (url.includes('/attach-referral'))          return handleAttachReferral(req, res);
+    if (url.includes('/affiliate-accept-terms'))   return handleAffiliateAcceptTerms(req, res);
     if (url.includes('/affiliate-me'))             return handleAffiliateMe(req, res);
     if (url.includes('/affiliate-update-pix'))     return handleAffiliateUpdatePix(req, res);
     if (url.includes('/affiliate-request-payout')) return handleAffiliateRequestPayout(req, res);
+    if (url.includes('/affiliate-redeem-credit'))  return handleAffiliateRedeemCredit(req, res);
     if (url.includes('/admin-process-payout'))     return handleAdminProcessPayout(req, res);
 
     // --- Demo ---

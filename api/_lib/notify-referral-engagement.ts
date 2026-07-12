@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { releaseMaturedCommissions, getTierProgress } from './referral.service.js';
+import { releaseMaturedCommissions, getTierProgress, getRecentCommissionTrend, getUpgradeOpportunity, getAvailableBalanceCents } from './referral.service.js';
 import { sendWhatsAppRotated } from './whatsapp-rotation.service.js';
 
 const supabase = createClient(
@@ -19,62 +19,66 @@ async function wasNotifiedRecently(userId: string, purpose: string, withinDays: 
   return (count || 0) > 0;
 }
 
-// Cron diário — estimula a indicação sem ser chato: cada usuário só recebe
-// UMA mensagem por gatilho (comissão liberada, perto de subir de faixa, ou
-// a dica única de "como isso paga sua assinatura"), nunca um bombardeio.
+async function getWhatsappTarget(userId: string): Promise<string | null> {
+  const { data } = await supabase.from('user_settings').select('whatsapp_number, whatsapp_enabled').eq('user_id', userId).maybeSingle();
+  if (!data?.whatsapp_enabled || !data.whatsapp_number) return null;
+  return data.whatsapp_number;
+}
+
+// Cron diário — estimula a indicação sem ser chato: cada gatilho manda no
+// máximo 1 mensagem por usuário dentro da sua janela (nunca bombardeio).
+// Não avisa mais "comissão liberada" (decisão de produto: informação de
+// baixo valor, o saldo já aparece na tela do indicador).
 export async function handleNotifyReferralEngagement(req: any, res: any) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     if (!process.env.IS_LOCAL && req.query.key !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
-    let releasedCount = 0, nudgedCount = 0, onboardedCount = 0;
+    // Libera para saque quem já passou da carência — sem notificar (só a
+    // liberação operacional; o saldo aparece na tela quando o usuário abrir).
+    await releaseMaturedCommissions();
 
-    // 1. Comissões cuja carência venceu agora: liberar + avisar quem indicou.
-    const released = await releaseMaturedCommissions();
-    const releasedByAffiliate = new Map<string, number>();
-    for (const r of released) releasedByAffiliate.set(r.affiliateId, (releasedByAffiliate.get(r.affiliateId) || 0) + r.amountCents);
+    let nudgedCount = 0, decliningCount = 0, upgradeCount = 0, onboardedCount = 0;
 
-    if (releasedByAffiliate.size > 0) {
-      const affiliateIds = [...releasedByAffiliate.keys()];
-      const { data: affiliates } = await supabase.from('affiliates')
-        .select('id, user_id, total_earned_cents, total_paid_cents')
-        .in('id', affiliateIds);
+    const { data: activeAffiliates } = await supabase.from('affiliates')
+      .select('id, user_id, has_custom_terms').eq('is_active', true);
 
-      for (const aff of affiliates || []) {
-        const { data: settings } = await supabase.from('user_settings')
-          .select('whatsapp_number, whatsapp_enabled').eq('user_id', aff.user_id).maybeSingle();
-        if (!settings?.whatsapp_enabled || !settings.whatsapp_number) continue;
+    for (const aff of activeAffiliates || []) {
+      const target = await getWhatsappTarget(aff.user_id);
+      if (!target) continue;
 
-        const releasedNow = releasedByAffiliate.get(aff.id) || 0;
-        const balance = (aff.total_earned_cents || 0) - (aff.total_paid_cents || 0);
-        const msg = `💸 *FinVision Pro — Indicação*\n\nSua comissão de *${money(releasedNow)}* acabou de ser liberada!\n\nSaldo disponível para saque: *${money(balance)}*.\n\nContinue indicando: cada amigo ativo aumenta sua renda todo mês. 🚀`;
-        const ok = await sendWhatsAppRotated({ number: settings.whatsapp_number, text: msg, category: 'utility', purpose: 'referral_commission_released', userId: aff.user_id });
-        if (ok) releasedCount++;
+      // 1. Perto de subir de faixa (só quem está no escalonamento automático)
+      if (!aff.has_custom_terms) {
+        const tier = await getTierProgress(aff.id);
+        if (tier && tier.referralsToNextTier != null && tier.referralsToNextTier <= 2 && !(await wasNotifiedRecently(aff.user_id, 'referral_tier_nudge', 7))) {
+          const faltam = tier.referralsToNextTier;
+          const msg = `🚀 *FinVision Pro — Quase lá!*\n\nFaltam apenas *${faltam}* indicaç${faltam === 1 ? 'ão ativa' : 'ões ativas'} para sua comissão subir de *${tier.currentPercent}%* para *${tier.nextPercent}%* em todas as próximas indicações!\n\nCompartilhe seu link e garanta o próximo degrau. 💪`;
+          if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_tier_nudge', userId: aff.user_id })) nudgedCount++;
+          continue; // uma mensagem por afiliado por execução do cron
+        }
+      }
+
+      // 2. Comissões em queda: estimula indicar mais
+      const trend = await getRecentCommissionTrend(aff.id);
+      if (trend.decreasing && !(await wasNotifiedRecently(aff.user_id, 'referral_declining_nudge', 21))) {
+        const msg = `📉 *FinVision Pro — Indicação*\n\nSuas comissões de indicação caíram nos últimos 30 dias (de ${money(trend.prev30)} para ${money(trend.last30)}).\n\nQuanto mais amigos ativos você tiver, maior sua renda todo mês. Que tal chamar mais alguém hoje? Você pode ganhar muito mais. 🚀`;
+        if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_declining_nudge', userId: aff.user_id })) decliningCount++;
+        continue;
+      }
+
+      // 3. Saldo já cobre um upgrade
+      const availableCents = await getAvailableBalanceCents(aff.id);
+      if (availableCents > 0) {
+        const opportunity = await getUpgradeOpportunity(aff.user_id, availableCents);
+        if (opportunity && !(await wasNotifiedRecently(aff.user_id, 'referral_upgrade_opportunity', 30))) {
+          const msg = `⭐ *FinVision Pro — Você já pode subir de plano!*\n\nSeu saldo de comissão (${money(availableCents)}) já cobre o plano *${opportunity.planName}* (${money(opportunity.planPriceCents)}).\n\nVocê pode usar esse saldo para abater sua própria mensalidade sempre que quiser — é só autorizar na tela de Indicações do app. 💳`;
+          if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_upgrade_opportunity', userId: aff.user_id })) upgradeCount++;
+        }
       }
     }
 
-    // 2. Afiliados a 1-2 indicações de subir de faixa: dá um empurrãozinho.
-    const { data: activeAffiliates } = await supabase.from('affiliates')
-      .select('id, user_id').eq('is_active', true).eq('has_custom_terms', false);
-
-    for (const aff of activeAffiliates || []) {
-      const tier = await getTierProgress(aff.id);
-      if (!tier || tier.referralsToNextTier == null || tier.referralsToNextTier > 2) continue;
-      if (await wasNotifiedRecently(aff.user_id, 'referral_tier_nudge', 7)) continue;
-
-      const { data: settings } = await supabase.from('user_settings')
-        .select('whatsapp_number, whatsapp_enabled').eq('user_id', aff.user_id).maybeSingle();
-      if (!settings?.whatsapp_enabled || !settings.whatsapp_number) continue;
-
-      const faltam = tier.referralsToNextTier;
-      const msg = `🚀 *FinVision Pro — Quase lá!*\n\nFaltam apenas *${faltam}* indicaç${faltam === 1 ? 'ão ativa' : 'ões ativas'} para sua comissão subir de *${tier.currentPercent}%* para *${tier.nextPercent}%* em todas as próximas indicações!\n\nCompartilhe seu link e garanta o próximo degrau. 💪`;
-      const ok = await sendWhatsAppRotated({ number: settings.whatsapp_number, text: msg, category: 'utility', purpose: 'referral_tier_nudge', userId: aff.user_id });
-      if (ok) nudgedCount++;
-    }
-
-    // 3. Assinantes pagantes que nunca ouviram falar do programa: dica única,
-    //    com a conta de "quantos amigos pagam sua assinatura" já pronta.
+    // 4. Assinantes pagantes que nunca ouviram falar do programa: dica única.
     const { data: payingSubs } = await supabase.from('subscriptions')
       .select('user_id, plans(price_cents)').eq('status', 'active');
     const { data: existingAffiliates } = await supabase.from('affiliates').select('user_id');
@@ -87,20 +91,18 @@ export async function handleNotifyReferralEngagement(req: any, res: any) {
     for (const sub of eligibleSubs as any[]) {
       if (await wasNotifiedRecently(sub.user_id, 'referral_onboarding', 3650)) continue; // envia uma única vez
 
-      const { data: userSettings } = await supabase.from('user_settings')
-        .select('whatsapp_number, whatsapp_enabled').eq('user_id', sub.user_id).maybeSingle();
-      if (!userSettings?.whatsapp_enabled || !userSettings.whatsapp_number) continue;
+      const target = await getWhatsappTarget(sub.user_id);
+      if (!target) continue;
 
       const planPriceCents = sub.plans?.price_cents || 0;
       const commissionPerFriendCents = Math.round(planPriceCents * (basePercent / 100));
       const friendsToPaySystem = commissionPerFriendCents > 0 ? Math.ceil(planPriceCents / commissionPerFriendCents) : 0;
 
       const msg = `💡 *Você sabia?*\n\nIndicando o FinVision Pro para amigos, você ganha *${basePercent}%* da mensalidade de cada um, todo mês.\n\n${friendsToPaySystem > 0 ? `Com apenas *${friendsToPaySystem} amig${friendsToPaySystem === 1 ? 'o' : 'os'} ativo${friendsToPaySystem === 1 ? '' : 's'}*, sua própria assinatura já se paga sozinha!\n\n` : ''}Toque em "Indicar Amigos" no app e pegue seu link. 🔗`;
-      const ok = await sendWhatsAppRotated({ number: userSettings.whatsapp_number, text: msg, category: 'utility', purpose: 'referral_onboarding', userId: sub.user_id });
-      if (ok) onboardedCount++;
+      if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_onboarding', userId: sub.user_id })) onboardedCount++;
     }
 
-    return res.status(200).json({ success: true, releasedCount, nudgedCount, onboardedCount });
+    return res.status(200).json({ success: true, nudgedCount, decliningCount, upgradeCount, onboardedCount });
   } catch (err: any) {
     console.error('notify-referral-engagement error:', err);
     return res.status(500).json({ error: err.message });

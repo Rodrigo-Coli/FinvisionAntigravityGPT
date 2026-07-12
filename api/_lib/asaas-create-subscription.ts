@@ -33,7 +33,7 @@ export default async function handler(req: any, res: any) {
   const {
     planSlug,
     period = 'monthly',
-    paymentMethod = 'PIX',
+    paymentMethod = 'CREDIT_CARD',
     couponCode,
     creditCard,
     creditCardHolderInfo

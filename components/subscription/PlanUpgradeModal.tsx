@@ -9,7 +9,7 @@ interface PlanUpgradeModalProps {
   onClose: () => void;
 }
 
-const FEATURE_LABELS: Record<string, string> = {
+export const FEATURE_LABELS: Record<string, string> = {
   dashboard: 'Dashboard Financeiro',
   accounts: 'Contas Bancárias',
   cards: 'Cartões de Crédito',

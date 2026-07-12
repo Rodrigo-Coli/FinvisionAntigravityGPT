@@ -21,6 +21,7 @@ import TrialBanner from './components/TrialBanner';
 import GracefulDowngradeBanner from './components/subscription/GracefulDowngradeBanner';
 import AccountSelectionModal from './components/subscription/AccountSelectionModal';
 import UpgradeModal from './components/UpgradeModal';
+import PlanUpsellNudge from './components/PlanUpsellNudge';
 import DemoBanner from './components/DemoBanner';
 import UpdateAlert from './components/UpdateAlert';
 
@@ -44,6 +45,7 @@ const Landing       = lazy(() => import('./pages/Landing'));
 const Terms         = lazy(() => import('./pages/Terms'));
 const Privacy       = lazy(() => import('./pages/Privacy'));
 const PendingApproval = lazy(() => import('./pages/PendingApproval'));
+const Referrals      = lazy(() => import('./pages/Referrals'));
 
 if (window.location.pathname === '/demo' || window.location.pathname === '/demo/') {
   window.location.replace('/#/demo');
@@ -202,6 +204,7 @@ const App: React.FC = () => {
             <GracefulDowngradeBanner />
             <AccountSelectionModal />
             <UpgradeModal />
+            <PlanUpsellNudge />
             <PushManager />
             <PWAInstallPrompt />
             <IOSInstallPrompt />
@@ -251,6 +254,7 @@ const App: React.FC = () => {
                           <Route path="/ai" element={<AIModule user={profile} />} />
                           <Route path="/settings" element={<SettingsPage />} />
                           <Route path="/reports" element={<Reports />} />
+                          <Route path="/referrals" element={<Referrals />} />
                           {isAdmin(profile) && (
                             <>
                               <Route path="/admin" element={<AdminDashboard />} />

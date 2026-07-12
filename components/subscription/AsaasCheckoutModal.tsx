@@ -23,7 +23,9 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
   const { refreshSubscription } = useSubscription();
   const { toast } = useToast();
 
-  const [paymentMethod, setPaymentMethod] = useState<'PIX' | 'CREDIT_CARD'>('PIX');
+  // Cartão de crédito recorrente é a forma principal (cobra automaticamente
+  // todo mês, sem o usuário precisar lembrar de pagar o Pix na mão).
+  const [paymentMethod, setPaymentMethod] = useState<'PIX' | 'CREDIT_CARD'>('CREDIT_CARD');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -222,8 +224,22 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
           ) : (
             <form onSubmit={handleCheckout} className="space-y-5">
               
-              {/* Payment Methods tabs */}
+              {/* Payment Methods tabs — cartão recorrente é a forma principal */}
               <div className="grid grid-cols-2 gap-3 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('CREDIT_CARD')}
+                  className={`relative py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
+                    paymentMethod === 'CREDIT_CARD'
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                  }`}
+                >
+                  Cartão de Crédito
+                  <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-emerald-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">
+                    Recomendado
+                  </span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('PIX')}
@@ -234,17 +250,6 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
                   }`}
                 >
                   Pix Instantâneo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('CREDIT_CARD')}
-                  className={`py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
-                    paymentMethod === 'CREDIT_CARD'
-                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-                  }`}
-                >
-                  Cartão de Crédito
                 </button>
               </div>
 
@@ -268,6 +273,9 @@ const AsaasCheckoutModal: React.FC<AsaasCheckoutModalProps> = ({ plan, period, o
                 </div>
               ) : (
                 <div className="space-y-4">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Cobrança automática todo mês no cartão — sem precisar lembrar de pagar. Você pode cancelar quando quiser.
+                  </p>
                   <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">Dados do Cartão</h4>
                   
                   <div className="space-y-3">

@@ -9,6 +9,7 @@ import {
   RefreshCw, ArrowUpRight, XCircle, Menu
 } from 'lucide-react';
 import TokenCalculator from '../components/admin/TokenCalculator';
+import ReferralAdminPanel from '../components/admin/ReferralAdminPanel';
 import { useToast } from '../contexts/ToastContext';
 
 // ─── Catálogo de features dos planos ────────────────────────────────────────
@@ -40,7 +41,7 @@ const FEATURE_CATALOG = [
 const LIMIT_FEATURES = ['accounts', 'cards', 'multi_user', 'ai_scanner', 'ai_shopping_list'];
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
-type Tab = 'overview' | 'plans' | 'users' | 'campaigns' | 'coupons' | 'prompts' | 'audit';
+type Tab = 'overview' | 'plans' | 'users' | 'campaigns' | 'coupons' | 'prompts' | 'audit' | 'referrals';
 
 // ─── Componente de confirmação inline ────────────────────────────────────────
 const ConfirmAction: React.FC<{
@@ -141,6 +142,7 @@ export default function AdminDashboard() {
     { id: 'users',      label: 'Usuários',              icon: <Users size={15} />,       short: 'Usuários' },
     { id: 'campaigns',  label: 'Campanhas',             icon: <Megaphone size={15} />,   short: 'Campanhas' },
     { id: 'coupons',    label: 'Cupons',                icon: <Tag size={15} />,         short: 'Cupons' },
+    { id: 'referrals',  label: 'Indicações',            icon: <Gift size={15} />,        short: 'Indicações' },
     { id: 'prompts',    label: 'IA & Custos',           icon: <Brain size={15} />,       short: 'IA' },
     { id: 'audit',      label: 'Auditoria',             icon: <ShieldCheck size={15} />, short: 'Audit' },
   ];
@@ -1255,6 +1257,16 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* TAB: INDICAÇÕES                                                      */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'referrals' && (
+        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+          <h2 className="font-black text-slate-900 dark:text-white text-lg">Programa de Indicação</h2>
+          <ReferralAdminPanel />
         </div>
       )}
 

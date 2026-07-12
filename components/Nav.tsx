@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, BookOpen, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown, ShieldCheck } from 'lucide-react';
+import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, BookOpen, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown, ShieldCheck, Gift } from 'lucide-react';
 import { Profile } from '../types';
 import { isAdmin } from '../lib/authUtils';
 import { supabase } from '../lib/supabase/client';
@@ -25,6 +25,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { label: 'Planejamento', path: '/planning', icon: <Target size={20} /> },
     { label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },
     { label: 'Relatórios', path: '/reports', icon: <FileDown size={20} /> },
+    { label: 'Indicações', path: '/referrals', icon: <Gift size={20} /> },
     { label: 'Ajustes', path: '/settings', icon: <Settings size={20} /> },
   ];
 

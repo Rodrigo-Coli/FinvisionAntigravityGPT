@@ -109,13 +109,36 @@ function generateAffiliateCode(userId: string): string {
   return `FV${base}${suffix}`;
 }
 
-export async function getOrCreateAffiliate(userId: string) {
-  const { data: existing } = await supabase.from('affiliates').select('*').eq('user_id', userId).maybeSingle();
-  if (existing) return existing;
+// Leitura simples — não cria nada. Usada para saber se o usuário já é
+// afiliado (e portanto já aceitou os termos) antes de qualquer ação.
+export async function getAffiliate(userId: string) {
+  const { data } = await supabase.from('affiliates').select('*').eq('user_id', userId).maybeSingle();
+  return data;
+}
+
+// Único ponto que cria um afiliado — sempre exige aceite dos termos
+// (ver TERMS_VERSION em referral-terms.ts). Se o afiliado já existir mas
+// ainda não tiver aceitado (dado legado), registra o aceite agora.
+export async function createAffiliateWithTerms(userId: string, termsVersion: string) {
+  const existing = await getAffiliate(userId);
+  if (existing) {
+    if (!existing.terms_accepted_at) {
+      const { data } = await supabase.from('affiliates')
+        .update({ terms_accepted_at: new Date().toISOString(), terms_version: termsVersion })
+        .eq('id', existing.id).select().single();
+      return data;
+    }
+    return existing;
+  }
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateAffiliateCode(userId);
-    const { data, error } = await supabase.from('affiliates').insert({ user_id: userId, affiliate_code: code }).select().single();
+    const { data, error } = await supabase.from('affiliates').insert({
+      user_id: userId,
+      affiliate_code: code,
+      terms_accepted_at: new Date().toISOString(),
+      terms_version: termsVersion,
+    }).select().single();
     if (!error) return data;
     if (error.code !== '23505') throw error; // erro != "código já existe" -> propaga
   }
@@ -177,6 +200,18 @@ export async function recordCommissionEvent(params: {
     return { created: false, reason: 'duration_expired' };
   }
 
+  const { data: affiliateRow } = await supabase.from('affiliates').select('user_id, total_earned_cents').eq('id', referral.affiliate_id).single();
+
+  // Regra do programa: só são devidas comissões de pagamentos novos enquanto
+  // o PRÓPRIO plano do indicador estiver ativo. Comissões já geradas antes
+  // disso não são revertidas — só pausa o que viria a partir de agora.
+  if (affiliateRow?.user_id) {
+    const { data: referrerSub } = await supabase.from('subscriptions').select('status').eq('user_id', affiliateRow.user_id).maybeSingle();
+    if (referrerSub && referrerSub.status !== 'active') {
+      return { created: false, reason: 'referrer_plan_inactive' };
+    }
+  }
+
   const amountCents = Math.round(params.chargeAmountCents * (Number(referral.commission_percent) / 100));
   const availableAt = new Date(Date.now() + referral.hold_period_days * 24 * 60 * 60 * 1000).toISOString();
 
@@ -204,12 +239,104 @@ export async function recordCommissionEvent(params: {
     updated_at: new Date().toISOString(),
   }).eq('id', referral.id);
 
-  const { data: affiliateRow } = await supabase.from('affiliates').select('total_earned_cents').eq('id', referral.affiliate_id).single();
   await supabase.from('affiliates').update({
     total_earned_cents: (affiliateRow?.total_earned_cents || 0) + amountCents,
   }).eq('id', referral.affiliate_id);
 
   return { created: true, amountCents };
+}
+
+// Saldo liberado e ainda não reservado para nenhum pedido de saque/resgate.
+export async function getAvailableBalanceCents(affiliateId: string): Promise<number> {
+  const { data } = await supabase.from('affiliate_commission_events')
+    .select('amount_cents')
+    .eq('affiliate_id', affiliateId)
+    .eq('status', 'available')
+    .is('paid_in_payout_id', null);
+  return (data || []).reduce((s: number, e: any) => s + e.amount_cents, 0);
+}
+
+// Compara a comissão dos últimos 30 dias com os 30 dias anteriores — usado
+// para avisar o indicador quando a renda de indicação está caindo (menos
+// indicações ativas), sem ser um alarme falso em quem só está começando.
+export async function getRecentCommissionTrend(affiliateId: string): Promise<{ last30: number; prev30: number; decreasing: boolean }> {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const { data: events } = await supabase.from('affiliate_commission_events')
+    .select('amount_cents, created_at')
+    .eq('affiliate_id', affiliateId)
+    .neq('status', 'reversed')
+    .gte('created_at', new Date(now - 60 * day).toISOString());
+
+  let last30 = 0, prev30 = 0;
+  for (const e of events || []) {
+    const t = new Date(e.created_at).getTime();
+    if (t >= now - 30 * day) last30 += e.amount_cents;
+    else prev30 += e.amount_cents;
+  }
+  return { last30, prev30, decreasing: prev30 > 0 && last30 < prev30 };
+}
+
+// Se o saldo disponível do indicador já cobre um plano acima do atual dele.
+export async function getUpgradeOpportunity(userId: string, availableCents: number): Promise<{ planName: string; planPriceCents: number } | null> {
+  if (availableCents <= 0) return null;
+
+  const { data: sub } = await supabase.from('subscriptions').select('plans(price_cents)').eq('user_id', userId).maybeSingle();
+  const currentPriceCents = (sub as any)?.plans?.price_cents || 0;
+
+  const { data: higherPlans } = await supabase.from('plans')
+    .select('name, price_cents')
+    .eq('is_active', true)
+    .gt('price_cents', currentPriceCents)
+    .order('price_cents', { ascending: true })
+    .limit(1);
+
+  const nextPlan = higherPlans?.[0];
+  if (!nextPlan || availableCents < nextPlan.price_cents) return null;
+  return { planName: nextPlan.name, planPriceCents: nextPlan.price_cents };
+}
+
+// Afiliado autoriza usar o saldo disponível para abater a PRÓPRIA
+// mensalidade. Fica como pedido para o superadmin aplicar — a redução real
+// na cobrança do Asaas é feita manualmente por segurança (evita qualquer
+// risco de descompasso entre o que cobramos e o que o gateway já processou).
+export async function requestCreditRedemption(userId: string, amountCents: number): Promise<{ payoutId: string }> {
+  const affiliate = await getAffiliate(userId);
+  if (!affiliate) throw new Error('Você ainda não é um afiliado — aceite os termos do programa primeiro.');
+  const available = await getAvailableBalanceCents(affiliate.id);
+  if (amountCents <= 0 || amountCents > available) {
+    throw new Error(`Saldo insuficiente. Disponível: R$ ${(available / 100).toFixed(2)}.`);
+  }
+
+  const { data: sub } = await supabase.from('subscriptions').select('id').eq('user_id', userId).maybeSingle();
+
+  const { data: eventsToReserve } = await supabase.from('affiliate_commission_events')
+    .select('id, amount_cents')
+    .eq('affiliate_id', affiliate.id)
+    .eq('status', 'available')
+    .is('paid_in_payout_id', null)
+    .order('available_at', { ascending: true });
+
+  const reservedIds: string[] = [];
+  let reserved = 0;
+  for (const e of eventsToReserve || []) {
+    if (reserved >= amountCents) break;
+    reservedIds.push(e.id);
+    reserved += e.amount_cents;
+  }
+
+  const { data: payout, error } = await supabase.from('affiliate_payouts').insert({
+    affiliate_id: affiliate.id,
+    amount_cents: reserved,
+    redemption_type: 'subscription_credit',
+    applied_subscription_id: sub?.id || null,
+    status: 'requested',
+  }).select().single();
+  if (error) throw error;
+
+  await supabase.from('affiliate_commission_events').update({ paid_in_payout_id: payout.id }).in('id', reservedIds);
+
+  return { payoutId: payout.id };
 }
 
 // Chamada pelo webhook em estorno/chargeback. "Sem estorno" = a comissão
