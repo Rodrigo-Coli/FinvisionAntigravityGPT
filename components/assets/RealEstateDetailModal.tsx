@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase/client';
 import { PhysicalAsset, Transaction } from '../../types';
 import { DateUtils } from '../../lib/dateUtils';
 import * as XLSX from 'xlsx';
+import { syncRentalTransactions as sharedSyncRentalTransactions, syncCondoIptuTransactions } from './realEstatePropertySync';
 
 // Trava global contra salvamento concorrente. syncRentalTransactions/syncExpenseProvisions
 // apagam as parcelas futuras e recriam do zero a cada chamada — se handleSaveChanges rodar
@@ -271,6 +272,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   }, [filteredTransactions, totalInvestedInitially, consortiumAllocationRatio]);
 
   // Sync / Auto-generate rolling monthly rents or delete future ones
+  // Wrapper fino sobre o motor compartilhado (realEstatePropertySync.ts) — mesma
+  // lógica usada por "Editar" e pelo cadastro inicial, pra nunca mais divergir.
   const syncRentalTransactions = async (
     assetId: string,
     isRentedVal: boolean,
@@ -282,384 +285,39 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
     discType: 'PERCENT' | 'VALUE',
     discVal: number
   ) => {
-    if (!supabase) return;
-    try {
-      const todayStr = new Date().toISOString().split('T')[0];
-
-      // Fetch all non-deleted rental transactions for this asset
-      const { data: allTxs, error: fetchErr } = await supabase
-        .from('transactions')
-        .select('id, date, is_paid, metadata')
-        .eq('user_id', userId)
-        .eq('is_deleted', false);
-
-      if (fetchErr) throw fetchErr;
-
-      // Clean up future unpaid rents if deactivated or type is short_stay or rent income is <= 0
-      if (!isRentedVal || rentTypeVal === 'short_stay' || rentIncomeVal <= 0) {
-        const targetTxs = (allTxs || []).filter((t: any) =>
-          t.metadata?.linked_asset_id === assetId &&
-          t.metadata?.type === 'rental_income' &&
-          t.date >= todayStr &&
-          !t.is_paid
-        );
-
-        if (targetTxs.length > 0) {
-          const idsToDelete = targetTxs.map((t: any) => t.id);
-          await supabase.from('transactions').delete().in('id', idsToDelete);
-        }
-        return;
-      }
-
-      // Delete future unpaid rents to regenerate them with updated values
-      const targetTxs = (allTxs || []).filter((t: any) =>
-        t.metadata?.linked_asset_id === assetId &&
-        t.metadata?.type === 'rental_income' &&
-        t.date >= todayStr &&
-        !t.is_paid
-      );
-
-      if (targetTxs.length > 0) {
-        const idsToDelete = targetTxs.map((t: any) => t.id);
-        await supabase.from('transactions').delete().in('id', idsToDelete);
-      }
-
-      // Generate or extend rolling 24 months rents
-      const categoryName = 'Receita Operacional Imobiliária';
-      let catId = '';
-      const { data: existingCat } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('name', categoryName)
-        .maybeSingle();
-
-      if (existingCat) {
-        catId = existingCat.id;
-      } else {
-        const { data: c } = await supabase
-          .from('categories')
-          .insert({
-            user_id: userId,
-            name: categoryName,
-            type: 'INCOME',
-            color: 'bg-emerald-50 text-emerald-600'
-          })
-          .select('id')
-          .maybeSingle();
-        if (c) catId = c.id;
-      }
-
-      // Determine net rent amount after Taxa ADM (discountValue)
-      let netAmount = rentIncomeVal;
-      if (discVal > 0) {
-        if (discType === 'PERCENT') {
-          netAmount = rentIncomeVal * (1 - discVal / 100);
-        } else {
-          netAmount = rentIncomeVal - discVal;
-        }
-      }
-
-      const today = new Date();
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-
-      const baseDate = rentDateVal ? new Date(rentDateVal + 'T00:00:00') : today;
-      const rentDay = baseDate.getDate();
-
-      const futureRentTxs = [];
-      let currentYear = baseDate.getFullYear();
-      let currentMonth = baseDate.getMonth();
-      const startTarget = new Date(currentYear, currentMonth, rentDay);
-      if (startTarget < sixtyDaysAgo) {
-        currentYear = today.getFullYear();
-        currentMonth = today.getMonth();
-      }
-
-      for (let i = 0; i < 24; i++) {
-        const currentTarget = new Date(currentYear, currentMonth, rentDay);
-        const dateStr = currentTarget.toISOString().split('T')[0];
-
-        if (dateStr < todayStr) {
-          const txDate = new Date(dateStr + 'T00:00:00');
-          if (txDate < sixtyDaysAgo || dateStr < rentDateVal) {
-            currentMonth++;
-            if (currentMonth > 11) { currentMonth = 0; currentYear++; }
-            continue;
-          }
-        }
-
-        // Check if there is already a paid rent in this month
-        const hasPaidRentInMonth = (allTxs || []).some((t: any) =>
-          t.metadata?.linked_asset_id === assetId &&
-          t.metadata?.type === 'rental_income' &&
-          t.date.substring(0, 7) === dateStr.substring(0, 7) &&
-          t.is_paid
-        );
-
-        if (!hasPaidRentInMonth) {
-          futureRentTxs.push({
-            user_id: userId,
-            description: `Receita de Aluguel Regular - ${assetName}`,
-            amount: netAmount,
-            date: dateStr,
-            type: 'INCOME',
-            category: categoryName,
-            subcategory: 'Aluguel Regular',
-            category_id: catId || null,
-            is_paid: false,
-            paid_amount: 0,
-            paid_at: null,
-            metadata: {
-              linked_asset_id: assetId,
-              type: 'rental_income',
-              auto_generated: true
-            }
-          });
-        }
-
-        currentMonth++;
-        if (currentMonth > 11) {
-          currentMonth = 0;
-          currentYear++;
-        }
-      }
-
-      if (futureRentTxs.length > 0) {
-        await supabase.from('transactions').insert(futureRentTxs);
-      }
-    } catch (e) {
-      console.error('Error syncing rents:', e);
-    }
+    await sharedSyncRentalTransactions({
+      assetId,
+      userId,
+      assetName,
+      isRented: isRentedVal,
+      rentalIncome: rentIncomeVal,
+      rentalType: rentTypeVal,
+      rentalDate: rentDateVal,
+      discountType: discType,
+      discountValue: discVal
+    });
   };
 
-  // Sync Condomínio / IPTU expenses & revenues
+  // Wrapper fino sobre o motor compartilhado (realEstatePropertySync.ts).
+  // Observação: o payer efetivo só vale a regra de reembolso/inquilino quando o
+  // imóvel está alugado no modelo "anual" — fora disso, o proprietário arca
+  // direto (mesma regra que já existia aqui).
   const syncExpenseProvisions = async (userId: string) => {
-    if (!supabase) return;
-    try {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const today = new Date();
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-
-      // Retrieve all existing condo/iptu transactions for this asset
-      const { data: allTxs } = await supabase
-        .from('transactions')
-        .select('id, date, is_paid, subcategory, metadata')
-        .eq('user_id', userId)
-        .eq('metadata->>linked_asset_id', asset.id)
-        .eq('is_deleted', false);
-
-      const existingTxs = allTxs || [];
-
-      // Category Id for Ativos Imobiliários
-      let catId = '';
-      const { data: catRes } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('name', 'Ativos Imobiliários')
-        .maybeSingle();
-      if (catRes) catId = catRes.id;
-
-      // Category Id for Receita Operacional Imobiliária
-      let rentCatId = '';
-      const { data: rentCatRes } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('name', 'Receita Operacional Imobiliária')
-        .maybeSingle();
-      if (rentCatRes) rentCatId = rentCatRes.id;
-
-      // Determine effective payer
-      const effCondoPayer = (isRented && rentalType === 'anual') ? condoPayer : 'PROPRIETARIO';
-      const effIptuPayer = (isRented && rentalType === 'anual') ? iptuPayer : 'PROPRIETARIO';
-
-      // 1. CONDO SYNC
-      const condoAmt = propertyStage === 'PLANTA' ? 0 : (parseFloat(condoFee) || 0);
-      
-      // Delete future unpaid condo provisions
-      const condoFutureUnpaid = existingTxs.filter((t: any) =>
-        (t.metadata?.type === 'condo_provision' || t.metadata?.type === 'condo_expense' || t.metadata?.type === 'condo_revenue') &&
-        t.date >= todayStr &&
-        !t.is_paid
-      );
-      if (condoFutureUnpaid.length > 0) {
-        await supabase.from('transactions').delete().in('id', condoFutureUnpaid.map((t: any) => t.id));
-      }
-
-      if (condoAmt > 0 && effCondoPayer !== 'INQUILINO_DIRETO') {
-        const start = new Date(condoNextDate + 'T00:00:00');
-        const newCondoProvisions = [];
-
-        let currentYear = start.getFullYear();
-        let currentMonth = start.getMonth();
-        const startTarget = new Date(currentYear, currentMonth, start.getDate());
-        if (startTarget < sixtyDaysAgo) {
-          currentYear = today.getFullYear();
-          currentMonth = today.getMonth();
-        }
-
-        for (let i = 0; i < 24; i++) {
-          const txDate = new Date(currentYear, currentMonth, start.getDate());
-          const dateStr = txDate.toISOString().split('T')[0];
-
-          if (dateStr < todayStr) {
-            const txDateObj = new Date(dateStr + 'T00:00:00');
-            if (txDateObj < sixtyDaysAgo || dateStr < condoNextDate) {
-              currentMonth++;
-              if (currentMonth > 11) { currentMonth = 0; currentYear++; }
-              continue;
-            }
-          }
-
-          // Check if there is already a paid condo expense in this month
-          const hasPaidCondoExpense = existingTxs.some((t: any) =>
-            t.date.substring(0, 7) === dateStr.substring(0, 7) &&
-            (t.metadata?.type === 'condo_provision' || t.metadata?.type === 'condo_expense') &&
-            t.is_paid
-          );
-
-          if (!hasPaidCondoExpense) {
-            newCondoProvisions.push({
-              user_id: userId,
-              description: `Despesa Condomínio - ${name}`,
-              amount: condoAmt,
-              date: dateStr,
-              type: 'EXPENSE',
-              category: 'Ativos Imobiliários',
-              subcategory: 'Condomínio',
-              category_id: catId || null,
-              is_paid: false,
-              metadata: { linked_asset_id: asset.id, type: 'condo_expense' }
-            });
-          }
-
-          // Condo revenue provision if reimbursed
-          if (effCondoPayer === 'PROPRIETARIO_REEMBOLSO') {
-            const hasPaidCondoRevenue = existingTxs.some((t: any) =>
-              t.date.substring(0, 7) === dateStr.substring(0, 7) &&
-              t.metadata?.type === 'condo_revenue' &&
-              t.is_paid
-            );
-
-            if (!hasPaidCondoRevenue) {
-              newCondoProvisions.push({
-                user_id: userId,
-                description: `Reembolso Condomínio - ${name}`,
-                amount: condoAmt,
-                date: dateStr,
-                type: 'INCOME',
-                category: 'Receita Operacional Imobiliária',
-                subcategory: 'Condomínio',
-                category_id: rentCatId || null,
-                is_paid: false,
-                metadata: { linked_asset_id: asset.id, type: 'condo_revenue' }
-              });
-            }
-          }
-
-          currentMonth++;
-          if (currentMonth > 11) { currentMonth = 0; currentYear++; }
-        }
-
-        if (newCondoProvisions.length > 0) {
-          await supabase.from('transactions').insert(newCondoProvisions);
-        }
-      }
-
-      // 2. IPTU SYNC
-      const iptuAmt = propertyStage === 'PLANTA' ? 0 : (parseFloat(iptuFee) || 0);
-      
-      // Delete future unpaid iptu provisions
-      const iptuFutureUnpaid = existingTxs.filter((t: any) =>
-        (t.metadata?.type === 'iptu_provision' || t.metadata?.type === 'iptu_expense' || t.metadata?.type === 'iptu_revenue') &&
-        t.date >= todayStr &&
-        !t.is_paid
-      );
-      if (iptuFutureUnpaid.length > 0) {
-        await supabase.from('transactions').delete().in('id', iptuFutureUnpaid.map((t: any) => t.id));
-      }
-
-      if (iptuAmt > 0 && effIptuPayer !== 'INQUILINO_DIRETO') {
-        const start = new Date(iptuNextDate + 'T00:00:00');
-        const newIptuProvisions = [];
-        const iterations = iptuFrequency === 'monthly' ? 24 : 2;
-        const monthStep = iptuFrequency === 'monthly' ? 1 : 12;
-
-        let currentYear = start.getFullYear();
-        let currentMonth = start.getMonth();
-        const startTarget = new Date(currentYear, currentMonth, start.getDate());
-        if (startTarget < sixtyDaysAgo) {
-          currentYear = today.getFullYear();
-          currentMonth = today.getMonth();
-        }
-
-        for (let i = 0; i < iterations; i++) {
-          const txDate = new Date(currentYear, currentMonth + (i * monthStep), start.getDate());
-          const dateStr = txDate.toISOString().split('T')[0];
-
-          if (dateStr < todayStr) {
-            const txDateObj = new Date(dateStr + 'T00:00:00');
-            if (txDateObj < sixtyDaysAgo || dateStr < iptuNextDate) continue;
-          }
-
-          // Check if there is already a paid iptu expense in this month/year
-          const hasPaidIptuExpense = existingTxs.some((t: any) =>
-            t.date.substring(0, 7) === dateStr.substring(0, 7) &&
-            (t.metadata?.type === 'iptu_provision' || t.metadata?.type === 'iptu_expense') &&
-            t.is_paid
-          );
-
-          if (!hasPaidIptuExpense) {
-            newIptuProvisions.push({
-              user_id: userId,
-              description: `Despesa IPTU - ${name}`,
-              amount: iptuAmt,
-              date: dateStr,
-              type: 'EXPENSE',
-              category: 'Ativos Imobiliários',
-              subcategory: 'IPTU',
-              category_id: catId || null,
-              is_paid: false,
-              metadata: { linked_asset_id: asset.id, type: 'iptu_expense' }
-            });
-          }
-
-          // IPTU revenue provision if reimbursed
-          if (effIptuPayer === 'PROPRIETARIO_REEMBOLSO') {
-            const hasPaidIptuRevenue = existingTxs.some((t: any) =>
-              t.date.substring(0, 7) === dateStr.substring(0, 7) &&
-              t.metadata?.type === 'iptu_revenue' &&
-              t.is_paid
-            );
-
-            if (!hasPaidIptuRevenue) {
-              newIptuProvisions.push({
-                user_id: userId,
-                description: `Reembolso IPTU - ${name}`,
-                amount: iptuAmt,
-                date: dateStr,
-                type: 'INCOME',
-                category: 'Receita Operacional Imobiliária',
-                subcategory: 'IPTU',
-                category_id: rentCatId || null,
-                is_paid: false,
-                metadata: { linked_asset_id: asset.id, type: 'iptu_revenue' }
-              });
-            }
-          }
-        }
-
-        if (newIptuProvisions.length > 0) {
-          await supabase.from('transactions').insert(newIptuProvisions);
-        }
-      }
-
-    } catch (err) {
-      console.error('Error syncing condo/iptu provisions:', err);
-    }
+    const effCondoPayer = (isRented && rentalType === 'anual') ? condoPayer : 'PROPRIETARIO';
+    const effIptuPayer = (isRented && rentalType === 'anual') ? iptuPayer : 'PROPRIETARIO';
+    await syncCondoIptuTransactions({
+      assetId: asset.id,
+      userId,
+      assetName: name,
+      propertyStage,
+      condoPayer: effCondoPayer,
+      condoFee: parseFloat(condoFee) || 0,
+      condoNextDate,
+      iptuPayer: effIptuPayer,
+      iptuFee: parseFloat(iptuFee) || 0,
+      iptuNextDate,
+      iptuFrequency
+    });
   };
 
   // Sync Short Stay bookings
