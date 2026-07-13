@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Save, Loader2, Users, Wallet, MessageCircle, Settings2, CheckCircle2, XCircle, Ban, RefreshCw } from 'lucide-react';
+import { Save, Loader2, Users, Wallet, MessageCircle, Settings2, CheckCircle2, XCircle, Ban, RefreshCw, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -20,7 +20,10 @@ interface WhatsappCostRow { id: string; category: string; meta_cost_usd: number;
 interface WhatsappInstanceRow { name: string; status: string; }
 interface AffiliateRow {
   id: string; user_id: string; affiliate_code: string; is_active: boolean; has_custom_terms: boolean;
-  commission_percent_override: number | null; total_earned_cents: number; total_paid_cents: number; email?: string;
+  commission_percent_override: number | null;
+  duration_months_override: number | null;
+  duration_lifetime_override: boolean;
+  total_earned_cents: number; total_paid_cents: number; email?: string;
 }
 interface PayoutRow {
   id: string; affiliate_id: string; amount_cents: number; pix_key: string | null; status: string;
@@ -42,6 +45,11 @@ export default function ReferralAdminPanel() {
   const [affiliates, setAffiliates] = useState<AffiliateRow[]>([]);
   const [payouts, setPayouts] = useState<PayoutRow[]>([]);
   const [payoutsFilter, setPayoutsFilter] = useState<'requested' | 'approved' | 'paid' | 'rejected'>('requested');
+  const [selectedAffIds, setSelectedAffIds] = useState<Set<string>>(new Set());
+  const [bulkPercent, setBulkPercent] = useState('');
+  const [bulkMonths, setBulkMonths] = useState('');
+  const [bulkLifetime, setBulkLifetime] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -136,6 +144,86 @@ export default function ReferralAdminPanel() {
   const saveAffiliateOverride = async (aff: AffiliateRow, value: number | null) => {
     const { error } = await supabase!.from('affiliates').update({ commission_percent_override: value, updated_at: new Date().toISOString() }).eq('id', aff.id);
     if (error) toast(error.message, 'error'); else toast('Override salvo.', 'success');
+  };
+
+  // Duração individual: só é usada se has_custom_terms=true; se o campo de meses
+  // ficar vazio (e não for vitalício), a indicação segue o padrão geral do
+  // programa automaticamente (ver resolveReferralTerms) — ninguém muda sem eu
+  // mexer manualmente aqui.
+  const saveAffiliateDuration = async (aff: AffiliateRow, months: number | null, lifetime: boolean) => {
+    const { error } = await supabase!.from('affiliates').update({
+      duration_months_override: lifetime ? null : months,
+      duration_lifetime_override: lifetime,
+      updated_at: new Date().toISOString(),
+    }).eq('id', aff.id);
+    if (error) toast(error.message, 'error'); else { toast('Duração individual salva.', 'success'); load(); }
+  };
+
+  const toggleSelectAff = (id: string) => {
+    setSelectedAffIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllAffs = () => {
+    setSelectedAffIds(prev => prev.size === affiliates.length ? new Set() : new Set(affiliates.map(a => a.id)));
+  };
+
+  // Aplica a MESMA regra manual a vários afiliados de uma vez — útil pra ajustar
+  // um grupo (ex.: uma campanha específica) sem clicar um por um. Só entra em
+  // vigor pras indicações que forem criadas DAQUI PRA FRENTE por esses afiliados;
+  // indicações já existentes mantêm os termos que já estavam travados nelas.
+  const applyBulkOverride = async () => {
+    if (selectedAffIds.size === 0) return;
+    if (bulkPercent === '' && bulkMonths === '' && !bulkLifetime) {
+      return toast('Preencha ao menos um campo (comissão ou duração) para aplicar em lote.', 'error');
+    }
+    setBulkSaving(true);
+    try {
+      const updates: any = { has_custom_terms: true, updated_at: new Date().toISOString() };
+      if (bulkPercent !== '') updates.commission_percent_override = Number(bulkPercent);
+      if (bulkLifetime) {
+        updates.duration_lifetime_override = true;
+        updates.duration_months_override = null;
+      } else if (bulkMonths !== '') {
+        updates.duration_lifetime_override = false;
+        updates.duration_months_override = Number(bulkMonths);
+      }
+      const { error } = await supabase!.from('affiliates').update(updates).in('id', Array.from(selectedAffIds));
+      if (error) throw error;
+      toast(`Regra manual aplicada a ${selectedAffIds.size} afiliado(s).`, 'success');
+      setSelectedAffIds(new Set());
+      setBulkPercent(''); setBulkMonths(''); setBulkLifetime(false);
+      load();
+    } catch (err: any) {
+      toast(err.message, 'error');
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const applyBulkResetToDefault = async () => {
+    if (selectedAffIds.size === 0) return;
+    setBulkSaving(true);
+    try {
+      const { error } = await supabase!.from('affiliates').update({
+        has_custom_terms: false,
+        commission_percent_override: null,
+        duration_months_override: null,
+        duration_lifetime_override: false,
+        updated_at: new Date().toISOString(),
+      }).in('id', Array.from(selectedAffIds));
+      if (error) throw error;
+      toast(`${selectedAffIds.size} afiliado(s) voltaram ao padrão automático.`, 'success');
+      setSelectedAffIds(new Set());
+      load();
+    } catch (err: any) {
+      toast(err.message, 'error');
+    } finally {
+      setBulkSaving(false);
+    }
   };
 
   const processPayout = async (payoutId: string, action: 'approve' | 'pay' | 'reject') => {
@@ -250,21 +338,58 @@ export default function ReferralAdminPanel() {
       {/* Afiliados */}
       <section className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-5">
         <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2 mb-4"><Users size={14} /> Afiliados ({affiliates.length})</h3>
+
+        {selectedAffIds.size > 0 && (
+          <div className="mb-4 p-4 bg-brand-50 dark:bg-brand-950/20 border border-brand-100 dark:border-brand-900/30 rounded-2xl">
+            <p className="text-[10px] font-black uppercase tracking-widest text-brand-700 dark:text-brand-400 mb-3">
+              {selectedAffIds.size} selecionado(s) — regra manual só vale pras indicações novas desses afiliados a partir de agora
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Comissão (%)</label>
+                <input type="number" value={bulkPercent} onChange={e => setBulkPercent(e.target.value)} placeholder="não alterar"
+                  className="w-28 px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs" />
+              </div>
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">Duração (meses)</label>
+                <input type="number" value={bulkMonths} onChange={e => setBulkMonths(e.target.value)} placeholder="não alterar" disabled={bulkLifetime}
+                  className="w-28 px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs disabled:opacity-40" />
+              </div>
+              <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 pb-1.5 cursor-pointer">
+                <input type="checkbox" checked={bulkLifetime} onChange={e => setBulkLifetime(e.target.checked)} /> vitalício
+              </label>
+              <button onClick={applyBulkOverride} disabled={bulkSaving} className="px-4 py-2 bg-brand-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-700 disabled:opacity-50">
+                Aplicar aos selecionados
+              </button>
+              <button onClick={applyBulkResetToDefault} disabled={bulkSaving} className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50">
+                <RotateCcw size={12} /> Voltar ao padrão
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-slate-800">
+                <th className="py-2 pr-3">
+                  <input type="checkbox" checked={affiliates.length > 0 && selectedAffIds.size === affiliates.length} onChange={toggleSelectAllAffs} />
+                </th>
                 <th className="py-2 pr-3">Usuário</th>
                 <th className="py-2 pr-3">Código</th>
                 <th className="py-2 pr-3">Ganho total</th>
                 <th className="py-2 pr-3">Pago</th>
                 <th className="py-2 pr-3">Override manual</th>
                 <th className="py-2 pr-3">%</th>
+                <th className="py-2 pr-3">Duração (meses)</th>
               </tr>
             </thead>
             <tbody>
               {affiliates.map(aff => (
                 <tr key={aff.id} className="border-b border-slate-50 dark:border-slate-800/50">
+                  <td className="py-2 pr-3">
+                    <input type="checkbox" checked={selectedAffIds.has(aff.id)} onChange={() => toggleSelectAff(aff.id)} />
+                  </td>
                   <td className="py-2 pr-3 font-bold text-slate-700 dark:text-slate-300">{aff.email || aff.user_id.slice(0, 8)}</td>
                   <td className="py-2 pr-3 text-slate-500">{aff.affiliate_code}</td>
                   <td className="py-2 pr-3 font-bold">{money(aff.total_earned_cents)}</td>
@@ -279,6 +404,22 @@ export default function ReferralAdminPanel() {
                       <input type="number" defaultValue={aff.commission_percent_override ?? ''} placeholder="padrão"
                         onBlur={e => saveAffiliateOverride(aff, e.target.value === '' ? null : Number(e.target.value))}
                         className="w-16 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs" />
+                    ) : <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className="py-2 pr-3">
+                    {aff.has_custom_terms ? (
+                      <div className="flex items-center gap-1.5">
+                        <input type="number" defaultValue={aff.duration_lifetime_override ? '' : (aff.duration_months_override ?? '')}
+                          placeholder={aff.duration_lifetime_override ? 'vitalício' : 'padrão'}
+                          disabled={aff.duration_lifetime_override}
+                          onBlur={e => saveAffiliateDuration(aff, e.target.value === '' ? null : Number(e.target.value), aff.duration_lifetime_override)}
+                          className="w-16 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs disabled:opacity-40" />
+                        <label className="flex items-center gap-1 text-[9px] font-bold text-slate-400 cursor-pointer whitespace-nowrap">
+                          <input type="checkbox" checked={aff.duration_lifetime_override}
+                            onChange={e => saveAffiliateDuration(aff, aff.duration_months_override, e.target.checked)} />
+                          vitalício
+                        </label>
+                      </div>
                     ) : <span className="text-slate-300">—</span>}
                   </td>
                 </tr>

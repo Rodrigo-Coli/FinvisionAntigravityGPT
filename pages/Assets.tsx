@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -151,6 +151,11 @@ const Assets: React.FC = () => {
 
   // Category Selector and Real Estate detail states
   const [savingAssetUi, setSavingAssetUi] = useState(false);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
   const [showCategorySelector, setShowCategorySelector] = useState(false);
   const [selectedRealEstateForDetail, setSelectedRealEstateForDetail] = useState<PhysicalAsset | null>(null);
   const [showRealEstateDetailModal, setShowRealEstateDetailModal] = useState(false);
@@ -2540,12 +2545,12 @@ const Assets: React.FC = () => {
     e.preventDefault();
     if (saveAssetInFlight) return;
     saveAssetInFlight = true;
-    setSavingAssetUi(true);
+    if (isMountedRef.current) setSavingAssetUi(true);
     try {
       await handleSaveAssetInner(e);
     } finally {
       saveAssetInFlight = false;
-      setSavingAssetUi(false);
+      if (isMountedRef.current) setSavingAssetUi(false);
     }
   };
 
@@ -4423,7 +4428,11 @@ const Assets: React.FC = () => {
             }
 
             // Recria o cronograma futuro (mesma lógica SAC/Price da criação).
-            const categoryName = 'Financiamento/Dívida';
+            // Financiamento de imóvel vinculado usa a MESMA categoria/rótulo do
+            // assistente de Ativo Imobiliário — antes ficava com nome diferente
+            // ("Financiamento/Dívida") dependendo de qual tela criou a dívida.
+            const isLinkedRealEstateFinancing = liabilityFormData.type === 'MORTGAGE' && !!liabilityFormData.linkedAssetId;
+            const categoryName = isLinkedRealEstateFinancing ? 'Ativos Imobiliários' : 'Financiamento/Dívida';
             let regenCatId: string | null = null;
             const { data: regenCat } = await supabase.from('categories')
               .select('id').eq('user_id', user.id).eq('name', categoryName).maybeSingle();
@@ -4431,7 +4440,8 @@ const Assets: React.FC = () => {
               regenCatId = regenCat.id;
             } else {
               const { data: c } = await supabase.from('categories').insert({
-                user_id: user.id, name: categoryName, type: 'EXPENSE', color: 'bg-rose-50 text-rose-600'
+                user_id: user.id, name: categoryName, type: 'EXPENSE',
+                color: isLinkedRealEstateFinancing ? 'bg-brand-50 text-brand-600' : 'bg-rose-50 text-rose-600'
               }).select('id').maybeSingle();
               if (c) regenCatId = c.id;
             }
@@ -4451,11 +4461,14 @@ const Assets: React.FC = () => {
                 : computeInstallmentAmount(i, regenPrincipal, installmentsLeft, regenRatePct, regenReajPct, regenIsSAC);
               regenTxs.push({
                 user_id: user.id,
-                description: `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
+                description: isLinkedRealEstateFinancing
+                  ? `Parcela Financiamento ${i}/${installmentsLeft} (${liabilityFormData.amortizationType}) - ${liabilityFormData.name}`
+                  : `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
                 amount: parcelaAmt,
                 date: txDate.toISOString().split('T')[0],
                 type: 'EXPENSE',
                 category: categoryName,
+                subcategory: isLinkedRealEstateFinancing ? 'Financiamento' : undefined,
                 category_id: regenCatId || null,
                 is_paid: false,
                 is_recurring: true,
@@ -4464,11 +4477,14 @@ const Assets: React.FC = () => {
                 installment_total: installmentsLeft,
                 installment_group_id: editingLiability.id,
                 liability_id: editingLiability.id,
+                is_amortization: isLinkedRealEstateFinancing || undefined,
                 metadata: {
                   auto_generated: true,
                   installment_number: i,
                   installment_group_id: editingLiability.id,
-                  linked_asset_id: liabilityFormData.linkedAssetId || undefined
+                  linked_asset_id: liabilityFormData.linkedAssetId || undefined,
+                  property_tx_type: isLinkedRealEstateFinancing ? 'FINANCING' : undefined,
+                  liability_id: isLinkedRealEstateFinancing ? editingLiability.id : undefined
                 }
               });
             }
@@ -4515,7 +4531,11 @@ const Assets: React.FC = () => {
           // Auto-generate future pending cash flow transactions
           if (installmentAmt > 0 && installmentsLeft > 0) {
             const today = new Date();
-            const categoryName = 'Financiamento/Dívida';
+            // Financiamento de imóvel vinculado usa a MESMA categoria/rótulo do
+            // assistente de Ativo Imobiliário — antes ficava com nome diferente
+            // ("Financiamento/Dívida") dependendo de qual tela criou a dívida.
+            const isLinkedRealEstateFinancing = liabilityFormData.type === 'MORTGAGE' && !!liabilityFormData.linkedAssetId;
+            const categoryName = isLinkedRealEstateFinancing ? 'Ativos Imobiliários' : 'Financiamento/Dívida';
 
             const { data: existingCat } = await supabase.from('categories')
               .select('id').eq('user_id', user.id).eq('name', categoryName).single();
@@ -4526,7 +4546,7 @@ const Assets: React.FC = () => {
                 user_id: user.id,
                 name: categoryName,
                 type: 'EXPENSE',
-                color: 'bg-rose-50 text-rose-600'
+                color: isLinkedRealEstateFinancing ? 'bg-brand-50 text-brand-600' : 'bg-rose-50 text-rose-600'
               }).select('id').single();
               if (c) catId = c.id;
             } else {
@@ -4549,11 +4569,14 @@ const Assets: React.FC = () => {
                 : computeInstallmentAmount(i, principalForSchedule, installmentsLeft, scheduleRatePct, scheduleReajPct, isSAC);
               futureTransactions.push({
                 user_id: user.id,
-                description: `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
+                description: isLinkedRealEstateFinancing
+                  ? `Parcela Financiamento ${i}/${installmentsLeft} (${liabilityFormData.amortizationType}) - ${liabilityFormData.name}`
+                  : `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
                 amount: parcelaAmt,
                 date: txDate.toISOString().split('T')[0],
                 type: 'EXPENSE',
                 category: categoryName,
+                subcategory: isLinkedRealEstateFinancing ? 'Financiamento' : undefined,
                 category_id: catId || null,
                 is_paid: false,
                 is_recurring: true,
@@ -4562,11 +4585,14 @@ const Assets: React.FC = () => {
                 installment_total: installmentsLeft,
                 installment_group_id: liabilityId,
                 liability_id: liabilityId,
+                is_amortization: isLinkedRealEstateFinancing || undefined,
                 metadata: {
                   auto_generated: true,
                   installment_number: i,
                   installment_group_id: liabilityId,
-                  linked_asset_id: liabilityFormData.linkedAssetId || undefined
+                  linked_asset_id: liabilityFormData.linkedAssetId || undefined,
+                  property_tx_type: isLinkedRealEstateFinancing ? 'FINANCING' : undefined,
+                  liability_id: isLinkedRealEstateFinancing ? liabilityId : undefined
                 }
               });
             }
@@ -11714,8 +11740,8 @@ const Assets: React.FC = () => {
 
       {showCategorySelector && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-[45px] w-full max-w-3xl shadow-2xl overflow-hidden border border-white/20 animate-in slide-in-from-bottom-4">
-            <div className="px-10 py-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <div className="bg-white rounded-[45px] w-full max-w-3xl max-h-[90vh] shadow-2xl overflow-hidden border border-white/20 animate-in slide-in-from-bottom-4 flex flex-col">
+            <div className="px-10 py-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
               <div>
                 <h3 className="text-2xl font-black text-slate-900 tracking-tight italic">Selecione o Tipo de Ativo</h3>
                 <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Para onde deseja direcionar seu novo patrimônio?</p>
@@ -11723,7 +11749,7 @@ const Assets: React.FC = () => {
               <button onClick={() => setShowCategorySelector(false)} className="w-10 h-10 bg-white border border-slate-200 text-slate-400 hover:text-rose-500 rounded-xl flex items-center justify-center transition-all shadow-sm"><X size={20} /></button>
             </div>
 
-            <div className="p-10 grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="p-10 grid grid-cols-1 sm:grid-cols-2 gap-6 overflow-y-auto">
               
               {/* Option 1: Imóvel */}
               <button

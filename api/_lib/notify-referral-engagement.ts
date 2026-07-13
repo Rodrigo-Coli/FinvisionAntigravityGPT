@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
-import { releaseMaturedCommissions, getTierProgress, getRecentCommissionTrend, getUpgradeOpportunity, getAvailableBalanceCents } from './referral.service.js';
+import { releaseMaturedCommissions, getTierProgress, getRecentCommissionTrend, getUpgradeOpportunity, getAvailableBalanceCents, retryFailedCommissionEvents } from './referral.service.js';
 import { sendWhatsAppRotated } from './whatsapp-rotation.service.js';
+import { isCronAuthorized } from './cron-auth.js';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co',
@@ -33,14 +34,16 @@ async function getWhatsappTarget(userId: string): Promise<string | null> {
 // Não avisa mais "comissão liberada" (decisão de produto: informação de
 // baixo valor, o saldo já aparece na tela do indicador).
 export async function handleNotifyReferralEngagement(req: any, res: any) {
-  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
-    if (!process.env.IS_LOCAL && req.query.key !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-  }
+  if (!isCronAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     // Libera para saque quem já passou da carência — sem notificar (só a
     // liberação operacional; o saldo aparece na tela quando o usuário abrir).
     await releaseMaturedCommissions();
+
+    // Reprocessa comissões que falharam no webhook por algum motivo passageiro
+    // (ver recordCommissionEventFailure) — idempotente, seguro rodar todo dia.
+    const commissionRetry = await retryFailedCommissionEvents();
 
     let nudgedCount = 0, decliningCount = 0, upgradeCount = 0, onboardedCount = 0;
 
@@ -105,7 +108,7 @@ export async function handleNotifyReferralEngagement(req: any, res: any) {
       if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_onboarding', userId: sub.user_id })) onboardedCount++;
     }
 
-    return res.status(200).json({ success: true, nudgedCount, decliningCount, upgradeCount, onboardedCount });
+    return res.status(200).json({ success: true, nudgedCount, decliningCount, upgradeCount, onboardedCount, commissionRetry });
   } catch (err: any) {
     console.error('notify-referral-engagement error:', err);
     return res.status(500).json({ error: err.message });

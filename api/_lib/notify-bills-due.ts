@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import webpush from 'web-push';
+import { isCronAuthorized } from './cron-auth.js';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co',
@@ -57,9 +58,7 @@ async function sendWhatsApp(number: string, text: string) {
 }
 
 export async function handleNotifyBillsDue(req: any, res: any) {
-  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
-    if (!process.env.IS_LOCAL && req.query.key !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-  }
+  if (!isCronAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -131,9 +130,7 @@ export async function handleNotifyBillsDue(req: any, res: any) {
 }
 
 export async function handleWeeklySummary(req: any, res: any) {
-  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
-    if (!process.env.IS_LOCAL && req.query.key !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-  }
+  if (!isCronAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     const now = new Date();

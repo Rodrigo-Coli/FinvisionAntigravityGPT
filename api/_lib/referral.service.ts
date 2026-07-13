@@ -17,6 +17,12 @@ const supabase = createClient(
 // existem. Isso vale também para o escalonamento automático por
 // indicações ativas: o degrau é calculado no momento da nova
 // indicação, não recalculado retroativamente nas antigas.
+//
+// duration_months é uma cota de MESES PAGOS, não uma data-limite no calendário:
+// se o indicado pausar a assinatura e voltar a pagar depois, os meses da pausa
+// não contam (nem a favor, nem contra) — o indicador sempre recebe o total de
+// meses combinado, só que pode demorar mais para completar. Ver
+// commission_months_credited em recordCommissionEvent/reverseCommissionEvent.
 // ============================================================
 
 export interface ResolvedReferralTerms {
@@ -30,10 +36,14 @@ async function getGlobalSettings() {
   return data;
 }
 
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
+const BILLING_PERIOD_MONTHS: Record<string, number> = { monthly: 1, semiannual: 6, annual: 12 };
+
+// Quantos meses de comissão um pagamento específico cobre, de acordo com o ciclo
+// de cobrança da assinatura no momento em que o pagamento foi confirmado.
+async function getBillingPeriodMonths(subscriptionId: string | null | undefined): Promise<number> {
+  if (!subscriptionId) return 1;
+  const { data } = await supabase.from('subscriptions').select('billing_period').eq('id', subscriptionId).maybeSingle();
+  return BILLING_PERIOD_MONTHS[data?.billing_period || 'monthly'] || 1;
 }
 
 export async function resolveReferralTerms(affiliateId: string): Promise<ResolvedReferralTerms> {
@@ -159,17 +169,15 @@ export async function attachReferral(referredUserId: string, affiliateCode: stri
   if (affiliate.user_id === referredUserId) return { attached: false, reason: 'self_referral' };
 
   const terms = await resolveReferralTerms(affiliate.id);
-  const commissionActiveUntil = terms.durationMonths != null
-    ? addMonths(new Date(), terms.durationMonths).toISOString()
-    : null;
-
+  // duration_months é a cota de MESES PAGOS (não uma data-limite) — ver
+  // recordCommissionEvent/commission_months_credited. commission_active_until
+  // não é mais usado como trava; fica de fora para não sugerir o contrário.
   const { error } = await supabase.from('affiliate_referrals').insert({
     affiliate_id: affiliate.id,
     referred_user_id: referredUserId,
     commission_percent: terms.commissionPercent,
     duration_months: terms.durationMonths,
     hold_period_days: terms.holdPeriodDays,
-    commission_active_until: commissionActiveUntil,
     status: 'active',
   });
 
@@ -193,7 +201,23 @@ export async function recordCommissionEvent(params: {
   const { data: referral } = await supabase.from('affiliate_referrals').select('*').eq('id', params.referralId).single();
   if (!referral) return { created: false, reason: 'referral_not_found' };
 
-  if (referral.commission_active_until && new Date(referral.commission_active_until).getTime() < Date.now()) {
+  const monthsThisPayment = await getBillingPeriodMonths(params.subscriptionId);
+
+  // Indicações criadas ANTES desta mudança já têm commission_active_until
+  // preenchido (regra antiga: data-limite fixa desde o início) — essas
+  // continuam exatamente como estavam, sem efeito retroativo. Indicações
+  // criadas a partir de agora nunca recebem esse campo (ver attachReferral) e
+  // usam a regra nova: cota de MESES PAGOS (commission_months_credited), que
+  // não anda durante meses em que o indicado não pagou e retoma quando ele
+  // volta a pagar, até completar o total combinado.
+  if (referral.commission_active_until != null) {
+    if (new Date(referral.commission_active_until).getTime() < Date.now()) {
+      if (referral.status !== 'expired') {
+        await supabase.from('affiliate_referrals').update({ status: 'expired', updated_at: new Date().toISOString() }).eq('id', referral.id);
+      }
+      return { created: false, reason: 'duration_expired' };
+    }
+  } else if (referral.duration_months != null && (referral.commission_months_credited || 0) >= referral.duration_months) {
     if (referral.status !== 'expired') {
       await supabase.from('affiliate_referrals').update({ status: 'expired', updated_at: new Date().toISOString() }).eq('id', referral.id);
     }
@@ -224,6 +248,7 @@ export async function recordCommissionEvent(params: {
     charge_amount_cents: params.chargeAmountCents,
     commission_percent_applied: referral.commission_percent,
     amount_cents: amountCents,
+    months_covered: monthsThisPayment,
     status: 'pending_hold',
     available_at: availableAt,
   });
@@ -233,9 +258,14 @@ export async function recordCommissionEvent(params: {
     throw error;
   }
 
+  const newMonthsCredited = referral.duration_months != null
+    ? Math.min(referral.duration_months, (referral.commission_months_credited || 0) + monthsThisPayment)
+    : (referral.commission_months_credited || 0) + monthsThisPayment;
+
   await supabase.from('affiliate_referrals').update({
     status: 'active',
     total_commission_cents: (referral.total_commission_cents || 0) + amountCents,
+    commission_months_credited: newMonthsCredited,
     updated_at: new Date().toISOString(),
   }).eq('id', referral.id);
 
@@ -354,20 +384,53 @@ export async function reverseCommissionEvent(params: { gateway: string; gatewayP
 
   if (!event || event.status === 'reversed') return { reversed: false };
 
+  // Se o dinheiro já tinha sido efetivamente entregue ao afiliado (payout marcado
+  // como pago), não dá pra "tirar de volta" o que já foi pago — em vez disso,
+  // lança um débito negativo no saldo dele, que abate automaticamente das
+  // próximas comissões liberadas até compensar o valor. Se ainda não tinha sido
+  // pago (só na carência ou disponível sem saque feito), basta excluir do saldo
+  // disponível — não chega a faltar dinheiro no caixa dele.
+  const alreadyPaidOut = event.status === 'paid';
+
   await supabase.from('affiliate_commission_events').update({
     status: 'reversed',
     reversed_at: new Date().toISOString(),
     reversed_reason: params.reason,
   }).eq('id', event.id);
 
+  if (alreadyPaidOut) {
+    const { error: debtError } = await supabase.from('affiliate_commission_events').insert({
+      affiliate_id: event.affiliate_id,
+      referral_id: event.referral_id,
+      subscription_id: event.subscription_id,
+      gateway: event.gateway,
+      gateway_payment_id: `${event.gateway_payment_id}:chargeback_debt`,
+      charge_amount_cents: -event.charge_amount_cents,
+      commission_percent_applied: event.commission_percent_applied,
+      amount_cents: -event.amount_cents,
+      months_covered: 0,
+      status: 'available',
+      available_at: new Date().toISOString(),
+    });
+    // 23505 = já existe um débito pra esse pagamento (reversão duplicada) — ignora.
+    if (debtError && debtError.code !== '23505') throw debtError;
+  }
+
   const [{ data: referral }, { data: affiliate }] = await Promise.all([
-    supabase.from('affiliate_referrals').select('total_commission_cents').eq('id', event.referral_id).single(),
+    supabase.from('affiliate_referrals').select('total_commission_cents, commission_months_credited').eq('id', event.referral_id).single(),
     supabase.from('affiliates').select('total_earned_cents').eq('id', event.affiliate_id).single(),
   ]);
+
+  // Devolve os meses que esse pagamento tinha creditado — um estorno/chargeback
+  // não pode "gastar" a cota de meses combinada com o indicador sem que o pagamento
+  // de fato tenha valido.
+  const monthsCovered = event.months_covered || 1;
+  const restoredMonthsCredited = Math.max(0, (referral?.commission_months_credited || 0) - monthsCovered);
 
   await Promise.all([
     supabase.from('affiliate_referrals').update({
       total_commission_cents: (referral?.total_commission_cents || 0) - event.amount_cents,
+      commission_months_credited: restoredMonthsCredited,
       updated_at: new Date().toISOString(),
     }).eq('id', event.referral_id),
     supabase.from('affiliates').update({
@@ -376,6 +439,62 @@ export async function reverseCommissionEvent(params: { gateway: string; gatewayP
   ]);
 
   return { reversed: true };
+}
+
+// Rede de segurança para quando recordCommissionEvent/reverseCommissionEvent
+// falham no webhook (ex.: instabilidade passageira do banco). Antes, o erro só
+// ia pro console.error e a comissão sumia sem ninguém perceber. Agora fica
+// registrada aqui e o cron diário tenta de novo automaticamente — como as duas
+// funções são idempotentes (chave única por gateway+gatewayPaymentId), reprocessar
+// não duplica nada.
+export async function recordCommissionEventFailure(
+  eventType: 'record' | 'reverse',
+  payload: Record<string, any>,
+  error: unknown
+): Promise<void> {
+  try {
+    await supabase.from('commission_event_failures').insert({
+      event_type: eventType,
+      payload,
+      error_message: error instanceof Error ? error.message : String(error),
+    });
+  } catch (err) {
+    // Se nem isso conseguir gravar, ao menos deixa no log do servidor.
+    console.error('[referral] Falha ao registrar commission_event_failure:', err);
+  }
+}
+
+// Chamada pelo cron diário: reprocessa falhas ainda não resolvidas.
+export async function retryFailedCommissionEvents(): Promise<{ resolved: number; stillFailing: number }> {
+  const { data: pending } = await supabase
+    .from('commission_event_failures')
+    .select('*')
+    .is('resolved_at', null)
+    .order('created_at', { ascending: true })
+    .limit(50);
+
+  let resolved = 0, stillFailing = 0;
+  for (const failure of pending || []) {
+    try {
+      if (failure.event_type === 'record') {
+        await recordCommissionEvent(failure.payload);
+      } else {
+        await reverseCommissionEvent(failure.payload);
+      }
+      await supabase.from('commission_event_failures')
+        .update({ resolved_at: new Date().toISOString() })
+        .eq('id', failure.id);
+      resolved++;
+    } catch (err) {
+      await supabase.from('commission_event_failures').update({
+        attempts: (failure.attempts || 1) + 1,
+        error_message: err instanceof Error ? err.message : String(err),
+        last_attempt_at: new Date().toISOString(),
+      }).eq('id', failure.id);
+      stillFailing++;
+    }
+  }
+  return { resolved, stillFailing };
 }
 
 // Mantém affiliate_referrals.status espelhando o status real da assinatura

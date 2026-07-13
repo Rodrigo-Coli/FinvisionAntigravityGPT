@@ -134,7 +134,12 @@ export default async function handler(req: any, res: any) {
     });
 
     // 8. Upsert in our DB
-    const initialStatus = paymentMethod === 'CREDIT_CARD' ? 'active' : (trialEndsAt ? 'trialing' : 'past_due');
+    // Importante: mesmo pagando no cartão, NÃO marcamos como 'active' aqui — a cobrança
+    // acabou de ser criada no Asaas, mas pode ser recusada segundos depois. Só o webhook
+    // (evento payment_confirmed) promove para 'active', quando o pagamento é confirmado
+    // de verdade. Até lá, fica 'past_due' (mesmo tratamento de "fatura pendente" que já
+    // existe na tela — não libera os limites do plano pago).
+    const initialStatus = trialEndsAt ? 'trialing' : 'past_due';
     await upsertSubscription(userId, plan.id, initialStatus, result.gatewaySubscriptionId, p, trialEndsAt, gateway.name);
 
     return res.status(200).json({

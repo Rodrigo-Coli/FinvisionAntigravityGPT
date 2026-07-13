@@ -121,8 +121,13 @@ export class AsaasGateway implements PaymentGateway {
   }
 
   verifyWebhookAuth(req: any): boolean {
+    // Fail-closed: sem o token configurado, qualquer um poderia forjar um aviso de
+    // "pagamento confirmado" e ativar assinatura + comissão de indicação de graça.
+    if (!process.env.ASAAS_WEBHOOK_TOKEN) {
+      console.error('[asaas-webhook] ASAAS_WEBHOOK_TOKEN não configurado — recusando webhook por segurança.');
+      return false;
+    }
     const token = req.headers['asaas-access-token'];
-    if (!process.env.ASAAS_WEBHOOK_TOKEN) return true; // sem segredo configurado: não bloqueia (compat. com comportamento anterior)
     return token === process.env.ASAAS_WEBHOOK_TOKEN;
   }
 }

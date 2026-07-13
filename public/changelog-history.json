@@ -1,0 +1,148 @@
+[
+  {
+    "version": "2026.07.13.1053",
+    "title": "Cadastro de Imóvel Completo e Rótulos Consistentes",
+    "date": "13/07/2026",
+    "benefits": [
+      {
+        "title": "Nenhuma opção de patrimônio mais escondida",
+        "desc": "A janela de 'Novo Ativo' agora rola direitinho no celular — antes, em telas menores, o título e a última opção (Passivo/Dívida) ficavam cortados fora da tela.",
+        "type": "ux"
+      },
+      {
+        "title": "Aluguel, condomínio e IPTU já no cadastro do imóvel",
+        "desc": "Não precisa mais cadastrar o imóvel e depois entrar em Detalhes para configurar aluguel, condomínio e IPTU — agora dá para informar tudo isso na hora de cadastrar.",
+        "type": "novidade"
+      },
+      {
+        "title": "Parcelas de financiamento sempre com o mesmo nome",
+        "desc": "Um financiamento de imóvel agora aparece com o mesmo rótulo e categoria em Transações, não importa se foi cadastrado pelo assistente de Ativo Imobiliário ou direto em Passivos e Dívidas.",
+        "type": "precisao"
+      }
+    ],
+    "changes": [
+      "Assets.tsx: modal showCategorySelector ganhou max-h-[90vh] + overflow-y-auto (era overflow-hidden sem limite de altura, cortando conteúdo em viewports menores que a modal renderizada).",
+      "RealEstateWizardModal.tsx: nova seção 'Aluguel, Condomínio e IPTU' (PRONTO apenas), reaproveitando os mesmos nomes de campo/metadata de RealEstateDetailModal.tsx e chamando syncRentalTransactions/syncCondoIptuTransactions de realEstatePropertySync.ts após criar o ativo.",
+      "Assets.tsx handleSaveLiability (criação e regeneração): passivo tipo MORTGAGE com linked_asset_id agora usa category='Ativos Imobiliários', subcategory='Financiamento' e a mesma descrição/metadata (property_tx_type, is_amortization) que o assistente de imóvel gera — antes usava sempre category='Financiamento/Dívida' sem subcategoria, diferente do que saía pelo assistente."
+    ]
+  },
+  {
+    "version": "2026.07.13.1029",
+    "title": "Estorno de Comissão e Edição em Lote de Afiliados",
+    "date": "13/07/2026",
+    "benefits": [
+      {
+        "title": "Chargeback nunca fica com o indicador",
+        "desc": "Se um pagamento for estornado depois de a comissão já ter sido paga ao indicador, o valor agora é descontado automaticamente das próximas comissões dele, até compensar — ele nunca fica com dinheiro que a FinVision não recebeu.",
+        "type": "security"
+      },
+      {
+        "title": "Edição em lote de afiliados",
+        "desc": "Agora dá para selecionar vários indicadores de uma vez no painel e aplicar a mesma comissão ou duração personalizada para todos, ou devolvê-los ao padrão automático em um clique.",
+        "type": "novidade"
+      },
+      {
+        "title": "Regra antiga preservada para indicações já existentes",
+        "desc": "A nova forma de contar os meses pagos de comissão vale só para indicações criadas a partir de agora — as que já existiam continuam exatamente como estavam combinadas.",
+        "type": "precisao"
+      }
+    ],
+    "changes": [
+      "reverseCommissionEvent: quando o evento revertido já estava com status 'paid', gera um lançamento negativo (débito) no lugar de só ajustar os totais — o saldo disponível do afiliado (getAvailableBalanceCents) já soma isso automaticamente e passa a exigir compensação antes de liberar novos saques.",
+      "recordCommissionEvent: passou a checar commission_active_until quando presente (indicações antigas, regra de calendário original) e só usa commission_months_credited (regra nova) quando esse campo está vazio — ou seja, só em indicações criadas depois desta mudança.",
+      "ReferralAdminPanel: seleção múltipla de afiliados (checkbox por linha + selecionar todos) com barra de ação em lote para aplicar comissão/duração/vitalício a todos os selecionados de uma vez, ou reverter todos ao padrão automático."
+    ]
+  },
+  {
+    "version": "2026.07.13.0045",
+    "title": "Comissão de Indicação Paga pelos Meses Certos",
+    "date": "13/07/2026",
+    "benefits": [
+      {
+        "title": "Comissão sempre pelo prazo combinado",
+        "desc": "Se você combinou 12 meses de comissão com um indicador, agora ele recebe os 12 meses pagos de verdade — mesmo que o indicado pause e volte a pagar depois.",
+        "type": "precisao"
+      },
+      {
+        "title": "Regras individuais por indicador",
+        "desc": "Além do percentual, agora também dá para definir uma duração diferente (ou vitalícia) para um indicador específico, sem mudar a regra de ninguém mais.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "recordCommissionEvent/reverseCommissionEvent: duração da comissão passou de 'data-limite desde o início' para 'contador de meses efetivamente pagos' (commission_months_credited), considerando o ciclo de cobrança (mensal/semestral/anual) de cada pagamento.",
+      "Nova coluna affiliate_referrals.commission_months_credited e affiliate_commission_events.months_covered (migração referral_commission_paid_months_tracking).",
+      "ReferralAdminPanel: nova coluna 'Duração (meses)' por afiliado com override manual + opção vitalício, seguindo o mesmo padrão do override de percentual — só se aplica quando o afiliado está marcado como 'Manual'."
+    ]
+  },
+  {
+    "version": "2026.07.13.0029",
+    "title": "Correções de Segurança e Confiabilidade",
+    "date": "13/07/2026",
+    "benefits": [
+      {
+        "title": "Avisos automáticos mais seguros",
+        "desc": "Fechamos uma brecha que, em cenários raros, poderia deixar os avisos de contas e de indicação sem proteção de senha.",
+        "type": "security"
+      },
+      {
+        "title": "Cobrança no cartão mais confiável",
+        "desc": "A assinatura só é liberada depois que o pagamento no cartão é realmente confirmado — nunca antes disso.",
+        "type": "security"
+      },
+      {
+        "title": "Comissão de indicação nunca mais some",
+        "desc": "Se uma comissão falhar ao ser registrada por instabilidade passageira, o sistema tenta de novo automaticamente no dia seguinte.",
+        "type": "precisao"
+      },
+      {
+        "title": "Avisos de atualização com a informação certa",
+        "desc": "A partir de agora, as novidades mostradas aqui refletem exatamente o que mudou em cada versão — sem texto repetido ou desatualizado.",
+        "type": "ux"
+      }
+    ],
+    "changes": [
+      "Centralizada a checagem de senha dos avisos automáticos (contas a vencer, indicação, resumo semanal) — recusa acesso por padrão se a senha não estiver configurada.",
+      "Verificação de autenticidade do webhook de pagamento Asaas também travada por padrão quando o token não está configurado.",
+      "Status de assinatura no cartão de crédito só vira 'ativo' após confirmação real do pagamento pelo webhook, não mais na hora da criação da cobrança.",
+      "Nova rede de segurança (commission_event_failures) com reprocessamento automático diário para comissões de indicação que falharem ao ser registradas.",
+      "Captura do código de indicação protegida contra falha de armazenamento do navegador — não trava mais o carregamento do app.",
+      "Corrigido aviso técnico de atualização de tela ao sair da página de Ativos durante um salvamento.",
+      "Criado o histórico de atualizações em Ajustes → Novidades, para as versões anteriores não se perderem quando uma nova sobrescrever este arquivo."
+    ]
+  },
+  {
+    "version": "2026.07.04.2350",
+    "title": "Parcelas Seguem Juros e Correcao; Saldo Sob Seu Controle",
+    "date": "04/07/2026",
+    "benefits": [
+      {
+        "title": "Parcelas Calculadas pelos Detalhes",
+        "desc": "As parcelas geradas agora seguem de verdade os detalhes do financiamento: SAC decresce, Price fica igual, e a correcao (reajuste) e aplicada. So ficam lineares (iguais) quando juros E reajuste estao zerados.",
+        "type": "correcao"
+      },
+      {
+        "title": "Saldo Devedor Sob Seu Controle",
+        "desc": "Corrigido: o Total Pago Historico (que inclui juros) nao abate mais do saldo devedor automaticamente, o que distorcia o valor. Agora o saldo e o que voce informa (o que o banco mostra); o historico fica so como registro.",
+        "type": "correcao"
+      },
+      {
+        "title": "Consorcio Contado Certo no Imovel",
+        "desc": "Corrigido: o balanco do imovel identifica consorcio pela marca real da parcela de consorcio, e nao mais por adivinhacao.",
+        "type": "correcao"
+      },
+      {
+        "title": "Financiamento Nao Infla o Caixa",
+        "desc": "Financiamento imobiliario nao gera mais uma entrada de dinheiro no caixa, ja que o banco paga o vendedor diretamente.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "Assets.tsx (liabilityFormData): novos campos amortizationType, indexType, firstInstallmentDate.",
+      "Assets.tsx (form UI): bloco 'Detalhes de Financiamento' com Taxa Juros, Tipo Amortizacao, Indice Correcao, Projecao Reajuste, Data 1a Parcela.",
+      "Assets.tsx (geracao de parcelas): cronograma SAC decrescente com juros; Price/sem juros mantem valor fixo.",
+      "Assets.tsx (runAutoTransactionSync): passivo tipo MORTGAGE nao gera mais liability_inflow (entrada de caixa).",
+      "RealEstateDetailModal.tsx: deteccao de consorcio agora usa metadata.is_consortium_installment / consortium_id."
+    ]
+  }
+]

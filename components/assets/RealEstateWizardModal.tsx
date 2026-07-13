@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase/client';
-import { X, Plus, Trash2, Upload, Loader2, Building2, Wallet, ArrowRight, TrendingUp, HelpCircle } from 'lucide-react';
+import { X, Plus, Trash2, Upload, Loader2, Building2, Wallet, ArrowRight, TrendingUp, HelpCircle, Home } from 'lucide-react';
 import { Liability } from '../../types';
+import { syncRentalTransactions, syncCondoIptuTransactions, PayerOption } from './realEstatePropertySync';
 
 interface RealEstateWizardModalProps {
   onClose: () => void;
@@ -33,6 +34,26 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
   const [description, setDescription] = useState('');
   const [historicalPaidAmount, setHistoricalPaidAmount] = useState('');
   const [historicalRentReceived, setHistoricalRentReceived] = useState('');
+
+  // Aluguel, Condomínio e IPTU (recorrentes, geram lançamentos futuros de verdade —
+  // diferente do "Total Recebido de Aluguel (Histórico)" acima, que é só p/ Yield).
+  // Mesmos nomes de campo usados em RealEstateDetailModal.tsx e no motor único
+  // realEstatePropertySync.ts, pra editar depois ou lançar aqui dar o mesmo resultado.
+  const [isRented, setIsRented] = useState(false);
+  const [rentalType, setRentalType] = useState<'anual' | 'short_stay'>('anual');
+  const [rentalIncome, setRentalIncome] = useState('');
+  const [rentalDate, setRentalDate] = useState(new Date().toISOString().split('T')[0]);
+  const [discountType, setDiscountType] = useState<'PERCENT' | 'VALUE'>('VALUE');
+  const [discountValue, setDiscountValue] = useState('');
+
+  const [condoPayer, setCondoPayer] = useState<PayerOption>('PROPRIETARIO');
+  const [condoFee, setCondoFee] = useState('');
+  const [condoNextDate, setCondoNextDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const [iptuPayer, setIptuPayer] = useState<PayerOption>('PROPRIETARIO');
+  const [iptuFee, setIptuFee] = useState('');
+  const [iptuNextDate, setIptuNextDate] = useState(new Date().toISOString().split('T')[0]);
+  const [iptuFrequency, setIptuFrequency] = useState<'monthly' | 'yearly'>('monthly');
 
   // Entradas (Down Payments List)
   const [downPayments, setDownPayments] = useState<{ amount: number; date: string; label: string }[]>([]);
@@ -270,6 +291,24 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         assetMetadata.constructorInstallmentsCount = parseInt(constructorInstallmentsCount, 10) || 0;
         assetMetadata.constructorIndexType = constructorIndexType;
         assetMetadata.constructorIndexRate = parseFloat(constructorIndexRate) || 0;
+      } else {
+        // Só faz sentido pra imóvel já entregue — mesmos nomes de campo que
+        // RealEstateDetailModal.tsx usa, pra edição futura ler certinho.
+        const effCondoPayer = (isRented && rentalType === 'anual') ? condoPayer : 'PROPRIETARIO';
+        const effIptuPayer = (isRented && rentalType === 'anual') ? iptuPayer : 'PROPRIETARIO';
+        assetMetadata.isRented = isRented;
+        assetMetadata.rentalIncome = parseFloat(rentalIncome) || 0;
+        assetMetadata.rentalType = rentalType;
+        assetMetadata.rentalDate = rentalDate;
+        assetMetadata.discountType = discountType;
+        assetMetadata.discountValue = parseFloat(discountValue) || 0;
+        assetMetadata.condoPayer = effCondoPayer;
+        assetMetadata.condoFee = parseFloat(condoFee) || 0;
+        assetMetadata.condoNextDate = condoNextDate;
+        assetMetadata.iptuPayer = effIptuPayer;
+        assetMetadata.iptuFee = parseFloat(iptuFee) || 0;
+        assetMetadata.iptuNextDate = iptuNextDate;
+        assetMetadata.iptuFrequency = iptuFrequency;
       }
 
       const { data: assetData, error: assetErr } = await supabase
@@ -566,6 +605,23 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
       if (futureTransactions.length > 0) {
         const { error: txErr } = await supabase.from('transactions').insert(futureTransactions);
         if (txErr) throw txErr;
+      }
+
+      // Aluguel, condomínio e IPTU (mesmo motor usado na tela de Detalhes &
+      // Evolução) — só faz sentido para imóvel já entregue.
+      if (propertyStage === 'PRONTO') {
+        const effCondoPayer = (isRented && rentalType === 'anual') ? condoPayer : 'PROPRIETARIO';
+        const effIptuPayer = (isRented && rentalType === 'anual') ? iptuPayer : 'PROPRIETARIO';
+        await syncRentalTransactions({
+          assetId, userId: user.id, assetName: name,
+          isRented, rentalIncome: parseFloat(rentalIncome) || 0, rentalType, rentalDate,
+          discountType, discountValue: parseFloat(discountValue) || 0,
+        });
+        await syncCondoIptuTransactions({
+          assetId, userId: user.id, assetName: name, propertyStage,
+          condoPayer: effCondoPayer, condoFee: parseFloat(condoFee) || 0, condoNextDate,
+          iptuPayer: effIptuPayer, iptuFee: parseFloat(iptuFee) || 0, iptuNextDate, iptuFrequency,
+        });
       }
 
       alert("Ativo Imobiliário criado e transações consolidadas!");
@@ -870,12 +926,100 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                </div>
             </div>
 
+            {/* ALUGUEL, CONDOMÍNIO E IPTU (Apenas para imóvel Pronto/Entregue) */}
+            {propertyStage === 'PRONTO' && (
+              <div className="space-y-6">
+                 <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">5</div>
+                    <h4 className="text-lg font-black text-slate-900 italic">Aluguel, Condomínio e IPTU</h4>
+                 </div>
+
+                 <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-5">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-normal">
+                       Diferente do histórico acima, os valores aqui geram lançamentos recorrentes de verdade no seu extrato — mesmo motor usado em Patrimônio → Detalhes do Imóvel.
+                    </p>
+
+                    <div className="flex items-center gap-3">
+                      <Home size={16} className="text-slate-400" />
+                      <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
+                        <button type="button" onClick={() => setIsRented(true)} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${isRented ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Já Alugado: Sim</button>
+                        <button type="button" onClick={() => setIsRented(false)} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${!isRented ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Já Alugado: Não</button>
+                      </div>
+                    </div>
+
+                    {isRented && (
+                      <div className="space-y-3 animate-in fade-in duration-200">
+                        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50 w-fit">
+                          <button type="button" onClick={() => setRentalType('anual')} className={`px-3 py-1 rounded text-[8px] font-black uppercase tracking-wider ${rentalType === 'anual' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}>Mensal</button>
+                          <button type="button" onClick={() => setRentalType('short_stay')} className={`px-3 py-1 rounded text-[8px] font-black uppercase tracking-wider ${rentalType === 'short_stay' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}>Short Stay</button>
+                        </div>
+                        {rentalType === 'anual' ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                            <div className="space-y-1.5">
+                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor do Aluguel (R$)</label>
+                              <input className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" type="number" value={rentalIncome} onChange={e => setRentalIncome(e.target.value)} placeholder="0,00" />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Dia do Recebimento</label>
+                              <input className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" type="date" value={rentalDate} onChange={e => setRentalDate(e.target.value)} />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Desconto (opcional)</label>
+                              <div className="flex gap-1.5">
+                                <select className="h-10 px-2 bg-white border rounded-xl text-[10px] font-bold outline-none" value={discountType} onChange={e => setDiscountType(e.target.value as any)}>
+                                  <option value="VALUE">R$</option>
+                                  <option value="PERCENT">%</option>
+                                </select>
+                                <input className="w-full h-10 px-3 bg-white border rounded-xl text-xs font-bold" type="number" value={discountValue} onChange={e => setDiscountValue(e.target.value)} placeholder="0" />
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-500 font-semibold">Imóveis Short Stay usam lançamento avulso por reserva — cadastre a diária depois em Detalhes do Imóvel.</p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Condomínio</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input className="h-10 px-4 bg-white border rounded-xl text-xs font-bold" type="number" value={condoFee} onChange={e => setCondoFee(e.target.value)} placeholder="Valor mensal (R$)" />
+                          <input className="h-10 px-4 bg-white border rounded-xl text-xs font-bold" type="date" value={condoNextDate} onChange={e => setCondoNextDate(e.target.value)} />
+                        </div>
+                        <select className="w-full h-10 px-3 bg-white border rounded-xl text-[10px] font-bold outline-none" value={condoPayer} onChange={e => setCondoPayer(e.target.value as PayerOption)}>
+                          <option value="PROPRIETARIO">Eu pago (proprietário)</option>
+                          <option value="INQUILINO_DIRETO">Inquilino paga direto (não lança em mim)</option>
+                          <option value="PROPRIETARIO_REEMBOLSO">Eu pago e o inquilino me reembolsa</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">IPTU</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input className="h-10 px-4 bg-white border rounded-xl text-xs font-bold" type="number" value={iptuFee} onChange={e => setIptuFee(e.target.value)} placeholder="Valor (R$)" />
+                          <input className="h-10 px-4 bg-white border rounded-xl text-xs font-bold" type="date" value={iptuNextDate} onChange={e => setIptuNextDate(e.target.value)} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <select className="h-10 px-2 bg-white border rounded-xl text-[10px] font-bold outline-none" value={iptuFrequency} onChange={e => setIptuFrequency(e.target.value as any)}>
+                            <option value="monthly">Parcelado (mensal)</option>
+                            <option value="yearly">Anual (à vista)</option>
+                          </select>
+                          <select className="h-10 px-2 bg-white border rounded-xl text-[10px] font-bold outline-none" value={iptuPayer} onChange={e => setIptuPayer(e.target.value as PayerOption)}>
+                            <option value="PROPRIETARIO">Eu pago</option>
+                            <option value="INQUILINO_DIRETO">Inquilino paga direto</option>
+                            <option value="PROPRIETARIO_REEMBOLSO">Eu pago, inquilino reembolsa</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                 </div>
+              </div>
+            )}
+
             {/* FINANCING & AMORTIZATION TABLE (SAC vs PRICE) */}
             <div className="space-y-6">
                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">
-                    {propertyStage === 'PLANTA' ? '6' : '5'}
-                  </div>
+                  <div className="w-6 h-6 bg-slate-100 text-slate-950 rounded-lg flex items-center justify-center font-black text-[10px]">6</div>
                   <h4 className="text-lg font-black text-slate-900 italic">Amortização / Financiamento ou Consórcio</h4>
                </div>
 

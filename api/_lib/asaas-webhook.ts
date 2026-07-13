@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { getPaymentGateway } from './payment/index.js';
 import type { NormalizedWebhookEventType } from './payment/types.js';
-import { recordCommissionEvent, reverseCommissionEvent, syncReferralStatusFromSubscription } from './referral.service.js';
+import { recordCommissionEvent, reverseCommissionEvent, syncReferralStatusFromSubscription, recordCommissionEventFailure } from './referral.service.js';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co',
@@ -80,23 +80,31 @@ export async function handleAsaasWebhook(req: any, res: any) {
         if (!referral.subscription_id && subscriptionRow?.id) {
           await supabase.from('affiliate_referrals').update({ subscription_id: subscriptionRow.id }).eq('id', referral.id);
         }
-        await recordCommissionEvent({
+        const recordParams = {
           referralId: referral.id,
           subscriptionId: subscriptionRow?.id || referral.subscription_id,
           gateway: gateway.name,
           gatewayPaymentId: event.gatewayPaymentId,
           chargeAmountCents: event.amountCents,
-        }).catch(err => console.error('[referral] recordCommissionEvent:', err));
+        };
+        await recordCommissionEvent(recordParams).catch(err => {
+          console.error('[referral] recordCommissionEvent:', err);
+          return recordCommissionEventFailure('record', recordParams, err);
+        });
       }
     }
 
     // Estorno/chargeback: cancela a comissão daquele pagamento específico.
     if ((event.type === 'payment_refunded' || event.type === 'payment_chargeback') && event.gatewayPaymentId) {
-      await reverseCommissionEvent({
+      const reverseParams = {
         gateway: gateway.name,
         gatewayPaymentId: event.gatewayPaymentId,
         reason: event.type,
-      }).catch(err => console.error('[referral] reverseCommissionEvent:', err));
+      };
+      await reverseCommissionEvent(reverseParams).catch(err => {
+        console.error('[referral] reverseCommissionEvent:', err);
+        return recordCommissionEventFailure('reverse', reverseParams, err);
+      });
     }
 
     return res.status(200).json({ received: true });
