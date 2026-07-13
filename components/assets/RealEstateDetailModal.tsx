@@ -5,6 +5,13 @@ import { PhysicalAsset, Transaction } from '../../types';
 import { DateUtils } from '../../lib/dateUtils';
 import * as XLSX from 'xlsx';
 
+// Trava global contra salvamento concorrente. syncRentalTransactions/syncExpenseProvisions
+// apagam as parcelas futuras e recriam do zero a cada chamada — se handleSaveChanges rodar
+// duas vezes ao mesmo tempo (ex.: o segundo clique chega antes do primeiro terminar), a
+// segunda chamada lê o estado "antigo" (ainda sem o apagamento da primeira) e insere um
+// segundo lote inteiro por cima, duplicando todas as parcelas dos próximos 24 meses.
+let realEstateSaveInFlight = false;
+
 const getMonthsDifference = (d1: string, d2: string) => {
   const parts1 = d1.split('-');
   const parts2 = d2.split('-');
@@ -752,7 +759,19 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
     }
   };
 
+  // Wrapper fino: só garante que a lógica de verdade (handleSaveChangesInner) nunca
+  // rode duas vezes em paralelo — ver realEstateSaveInFlight acima.
   const handleSaveChanges = async () => {
+    if (realEstateSaveInFlight) return;
+    realEstateSaveInFlight = true;
+    try {
+      await handleSaveChangesInner();
+    } finally {
+      realEstateSaveInFlight = false;
+    }
+  };
+
+  const handleSaveChangesInner = async () => {
     if (!supabase) return;
     setIsSubmitting(true);
     try {

@@ -62,6 +62,11 @@ import { useToast } from '../contexts/ToastContext';
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
 let autoSyncInFlight = false;
 
+// Trava global para impedir que o salvamento de ativo rode em paralelo (duplo-clique,
+// múltiplos disparos do form, etc.) — sem isso, funções como syncRentalTransactions
+// leem "o que já existe" antes da gravação anterior terminar e geram parcelas em dobro.
+let saveAssetInFlight = false;
+
 // Cálculo AUTORITATIVO do valor de uma parcela (índice 1-based), a partir dos detalhes do financiamento.
 // - SAC + juros: amortização constante + juros sobre o saldo restante → parcela DECRESCE.
 // - Price + juros: parcela FIXA (fórmula Price).
@@ -144,6 +149,7 @@ const Assets: React.FC = () => {
   };
 
   // Category Selector and Real Estate detail states
+  const [savingAssetUi, setSavingAssetUi] = useState(false);
   const [showCategorySelector, setShowCategorySelector] = useState(false);
   const [selectedRealEstateForDetail, setSelectedRealEstateForDetail] = useState<PhysicalAsset | null>(null);
   const [showRealEstateDetailModal, setShowRealEstateDetailModal] = useState(false);
@@ -2540,8 +2546,23 @@ const Assets: React.FC = () => {
     }
   };
 
+  // Trava contra salvamento concorrente (duplo-clique, duplo-submit do form) — ver
+  // saveAssetInFlight acima. A lógica original fica intacta em handleSaveAssetInner;
+  // este wrapper só garante que ela nunca rode duas vezes ao mesmo tempo.
   const handleSaveAsset = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saveAssetInFlight) return;
+    saveAssetInFlight = true;
+    setSavingAssetUi(true);
+    try {
+      await handleSaveAssetInner(e);
+    } finally {
+      saveAssetInFlight = false;
+      setSavingAssetUi(false);
+    }
+  };
+
+  const handleSaveAssetInner = async (e: React.FormEvent) => {
     if (!supabase) return;
     const { data: { session } } = await supabase.auth.getSession();
     const user = session?.user;
@@ -9929,7 +9950,7 @@ const Assets: React.FC = () => {
 
             <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancelar</button>
-                <button type="submit" className="flex-1 px-4 py-3 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-[1.02] transition-transform active:scale-95">Salvar Bem</button>
+                <button type="submit" disabled={savingAssetUi} className="flex-1 px-4 py-3 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:scale-[1.02] transition-transform active:scale-95 disabled:opacity-50 disabled:hover:scale-100">{savingAssetUi ? 'Salvando...' : 'Salvar Bem'}</button>
               </div>
             </form>
           </div>

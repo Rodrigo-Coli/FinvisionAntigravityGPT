@@ -9,6 +9,32 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 let cachedAllSettings: any[] | null = null;
 let cachedSettingsTimestamp = 0;
 
+// Trava do convite para número não cadastrado: sem isso, toda mensagem de um
+// número desconhecido reenviava o convite de novo, criando loop infinito se
+// do outro lado houvesse uma automação respondendo sozinha. Regra: no máximo
+// 1 convite a cada 24h, e no máximo 3 convites no total por número — depois
+// disso fica em silêncio até a pessoa realmente se cadastrar.
+const INVITE_COOLDOWN_HOURS = 24;
+const INVITE_MAX_COUNT = 3;
+
+async function shouldSendUnregisteredInvite(phone: string): Promise<boolean> {
+  const { data } = await supabase.from('whatsapp_unregistered_contacts').select('*').eq('phone', phone).maybeSingle();
+  if (!data) return true;
+  if (data.invite_count >= INVITE_MAX_COUNT) return false;
+  if (!data.last_invited_at) return true;
+  const hoursSince = (Date.now() - new Date(data.last_invited_at).getTime()) / (1000 * 60 * 60);
+  return hoursSince >= INVITE_COOLDOWN_HOURS;
+}
+
+async function recordUnregisteredInviteSent(phone: string): Promise<void> {
+  const { data } = await supabase.from('whatsapp_unregistered_contacts').select('invite_count').eq('phone', phone).maybeSingle();
+  await supabase.from('whatsapp_unregistered_contacts').upsert({
+    phone,
+    last_invited_at: new Date().toISOString(),
+    invite_count: (data?.invite_count || 0) + 1,
+  }, { onConflict: 'phone' });
+}
+
 interface CachedUserLists {
   timestamp: number;
   accountsPromptList: string;
@@ -1394,8 +1420,12 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
 
 
     if (!userSet) {
-      await sendWhatsApp(phone, `Olá! Bem-vindo ao *FinVision AI* 💎\n\nEu sou o seu consultor financeiro pessoal inteligente.\n\nIdentifiquei que seu número ainda não está vinculado a uma conta ativa no FinVision Pro.\n\n🆕 *É novo por aqui? Faça seu cadastro rápido em segundos:*\n👉 https://finvision.automanow.com.br/signup?wp=${phone}\n_(Ganhe 7 dias grátis de acesso Wealth Premium no nosso lançamento!)_\n\n🔄 *Já possui uma conta ativa? Veja como é fácil vincular seu número de WhatsApp:*\n1️⃣ Acesse o FinVision Pro pelo computador ou celular.\n2️⃣ Vá no menu **Ajustes** (ícone de engrenagem no painel).\n3️⃣ Na aba **Preferências**, ative a opção **Notificações via WhatsApp**.\n4️⃣ Digite seu número de telefone com DDD (ex: +55 45 99999-9999) e salve.\n\nPronto! Em segundos, seu assistente pessoal estará ativo para receber fotos de cupons, áudios e comandar suas finanças direto por aqui!`);
-      return res.status(200).json({ status: 'user_invited', phoneUsed: phone });
+      const canInvite = await shouldSendUnregisteredInvite(phone);
+      if (canInvite) {
+        await sendWhatsApp(phone, `Olá! Bem-vindo ao *FinVision AI* 💎\n\nEu sou o seu consultor financeiro pessoal inteligente.\n\nIdentifiquei que seu número ainda não está vinculado a uma conta ativa no FinVision Pro.\n\n🆕 *É novo por aqui? Faça seu cadastro rápido em segundos:*\n👉 https://finvision.automanow.com.br/signup?wp=${phone}\n_(Ganhe 7 dias grátis de acesso Wealth Premium no nosso lançamento!)_\n\n🔄 *Já possui uma conta ativa? Veja como é fácil vincular seu número de WhatsApp:*\n1️⃣ Acesse o FinVision Pro pelo computador ou celular.\n2️⃣ Vá no menu **Ajustes** (ícone de engrenagem no painel).\n3️⃣ Na aba **Preferências**, ative a opção **Notificações via WhatsApp**.\n4️⃣ Digite seu número de telefone com DDD (ex: +55 45 99999-9999) e salve.\n\nPronto! Em segundos, seu assistente pessoal estará ativo para receber fotos de cupons, áudios e comandar suas finanças direto por aqui!`);
+        await recordUnregisteredInviteSent(phone);
+      }
+      return res.status(200).json({ status: canInvite ? 'user_invited' : 'user_invited_cooldown', phoneUsed: phone });
     }
     if (!userSet.whatsapp_enabled) return res.status(200).json({ status: 'whatsapp_disabled_by_user' });
 
