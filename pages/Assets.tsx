@@ -2342,6 +2342,67 @@ const Assets: React.FC = () => {
           meta.rentalType || 'anual',
           meta.rentalDate || new Date().toISOString().split('T')[0]
         );
+
+        // Vira PRONTO com financiamento/consórcio já configurado no cadastro (PLANTA)?
+        // Sincroniza o passivo agora — antes disso, esse cenário só era sincronizado
+        // se o usuário passasse pelo formulário completo de edição, e o toggle rápido
+        // (este botão) deixava o financiamento "fantasma": só no metadata, sem passivo
+        // nem parcelas em Transações.
+        if (newStage === 'PRONTO' && meta.deliveryPaymentMethod) {
+          const { data: existingLiabs } = await supabase
+            .from('liabilities')
+            .select('*')
+            .eq('linked_asset_id', asset.id);
+          const linkedLiab = (existingLiabs || [])[0] || null;
+
+          if (meta.deliveryPaymentMethod === 'FINANCIAMENTO') {
+            const instCount = parseInt(meta.financingInstallmentsCount, 10) || 240;
+            const instAmount = parseFloat(meta.financingInstallment) || 0;
+            const originalTotal = parseFloat(meta.financingOriginalTotal) || parseFloat(meta.deliveryBalance) || 0;
+            const dueDayVal = parseInt(meta.financingDueDay, 10) || 10;
+            const finName = meta.financingName || `Financiamento: ${asset.name}`;
+
+            if (linkedLiab && linkedLiab.type === 'MORTGAGE') {
+              await supabase.from('liabilities').update({
+                name: finName,
+                total_amount: originalTotal,
+                remaining_balance: parseFloat(meta.deliveryBalance) || originalTotal,
+                installment_amount: instAmount,
+                installments_remaining: instCount,
+                due_day: dueDayVal,
+                metadata: { ...linkedLiab.metadata, propertyType: 'PRONTO', isRealEstate: true }
+              }).eq('id', linkedLiab.id);
+            } else {
+              if (linkedLiab) {
+                await supabase.from('liabilities').update({ linked_asset_id: null }).eq('id', linkedLiab.id);
+              }
+              await supabase.from('liabilities').insert([{
+                user_id: user.id,
+                name: finName,
+                type: 'MORTGAGE',
+                total_amount: originalTotal,
+                remaining_balance: parseFloat(meta.deliveryBalance) || originalTotal,
+                installment_amount: instAmount,
+                installments_remaining: instCount,
+                due_day: dueDayVal,
+                linked_asset_id: asset.id,
+                metadata: { propertyType: 'PRONTO', isRealEstate: true }
+              }]);
+            }
+
+            if (instAmount <= 0) {
+              toast('Financiamento vinculado, mas sem valor de parcela definido — abra "Editar" e informe o valor para gerar as cobranças.', 'warning');
+            }
+          } else if (meta.deliveryPaymentMethod === 'CONSORCIO' && meta.selectedConsortiumId) {
+            if (linkedLiab && linkedLiab.id !== meta.selectedConsortiumId) {
+              await supabase.from('liabilities').update({ linked_asset_id: null }).eq('id', linkedLiab.id);
+            }
+            await supabase.from('liabilities').update({
+              linked_asset_id: asset.id,
+              metadata: { propertyType: 'PRONTO', isRealEstate: true }
+            }).eq('id', meta.selectedConsortiumId);
+          }
+        }
       }
 
       const { error } = await supabase
@@ -11667,6 +11728,47 @@ const Assets: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {/* Option 5: Passivo / Dívida */}
+              <button
+                onClick={() => {
+                  setShowCategorySelector(false);
+                  setLiabilityFormData({
+                    name: '',
+                    type: 'PERSONAL_LOAN',
+                    totalAmount: '',
+                    remainingBalance: '',
+                    interestRate: '',
+                    installmentAmount: '',
+                    installmentsRemaining: '',
+                    dueDay: '10',
+                    linkedAssetId: '',
+                    indexationRate: '',
+                    amortizationType: 'SAC',
+                    indexType: 'FIXED',
+                    firstInstallmentDate: '',
+                    balloonMonth: '',
+                    balloonYear: '',
+                    balloonAmount: '',
+                    balloons: [],
+                    propertyType: 'PLANTA',
+                    hasHistoricalPayments: false,
+                    historicalCalculationType: 'calculated',
+                    historicalInstallmentsPaid: '',
+                    historicalInstallmentValue: '',
+                    historicalPaidAmount: ''
+                  });
+                  setEditingLiability(null);
+                  setShowLiabilityModal(true);
+                }}
+                className="p-6 bg-white border border-slate-100 hover:border-brand-500 rounded-[30px] text-left hover:shadow-xl transition-all duration-300 flex items-start gap-4 group"
+              >
+                <div className="w-12 h-12 bg-slate-100 group-hover:bg-slate-900 group-hover:text-white rounded-2xl flex items-center justify-center transition-colors"><Landmark size={24} /></div>
+                <div className="space-y-1">
+                  <h4 className="font-black text-slate-900 text-sm group-hover:text-brand-600">Passivo / Dívida</h4>
+                  <p className="text-xs text-slate-400 leading-normal font-medium">Empréstimos, consórcios, financiamentos não vinculados a um imóvel/veículo específico.</p>
+                </div>
+              </button>
             </div>
           </div>
         </div>
