@@ -1,27 +1,28 @@
 {
-  "version": "2026.07.13.1053",
-  "title": "Cadastro de Imóvel Completo e Rótulos Consistentes",
+  "version": "2026.07.13.1829",
+  "title": "App Nunca Mais Trava no Safari + Dados Sempre da Conta Certa",
   "date": "13/07/2026",
   "benefits": [
     {
-      "title": "Nenhuma opção de patrimônio mais escondida",
-      "desc": "A janela de 'Novo Ativo' agora rola direitinho no celular — antes, em telas menores, o título e a última opção (Passivo/Dívida) ficavam cortados fora da tela.",
-      "type": "ux"
+      "title": "Funciona no Safari e no iPhone",
+      "desc": "Corrigido um travamento que impedia o site de abrir no Safari (funcionava só no Chrome) — acontecia quando o navegador bloqueia certos dados de rastreamento, uma configuração comum no iPhone.",
+      "type": "security"
     },
     {
-      "title": "Aluguel, condomínio e IPTU já no cadastro do imóvel",
-      "desc": "Não precisa mais cadastrar o imóvel e depois entrar em Detalhes para configurar aluguel, condomínio e IPTU — agora dá para informar tudo isso na hora de cadastrar.",
-      "type": "novidade"
+      "title": "Cada conta sempre com seus próprios dados",
+      "desc": "Se alguém troca de conta no mesmo celular ou computador (ex.: sai do modo demonstração e entra numa conta real), a tela agora sempre mostra os dados certos daquela conta — nunca mais informações de uma sessão anterior.",
+      "type": "precisao"
     },
     {
-      "title": "Parcelas de financiamento sempre com o mesmo nome",
-      "desc": "Um financiamento de imóvel agora aparece com o mesmo rótulo e categoria em Transações, não importa se foi cadastrado pelo assistente de Ativo Imobiliário ou direto em Passivos e Dívidas.",
+      "title": "Menu lateral sempre mostra quem está logado",
+      "desc": "Corrigido: o nome/e-mail de quem está conectado aparece corretamente no menu, mesmo depois de trocar de conta no mesmo aparelho.",
       "type": "precisao"
     }
   ],
   "changes": [
-    "Assets.tsx: modal showCategorySelector ganhou max-h-[90vh] + overflow-y-auto (era overflow-hidden sem limite de altura, cortando conteúdo em viewports menores que a modal renderizada).",
-    "RealEstateWizardModal.tsx: nova seção 'Aluguel, Condomínio e IPTU' (PRONTO apenas), reaproveitando os mesmos nomes de campo/metadata de RealEstateDetailModal.tsx e chamando syncRentalTransactions/syncCondoIptuTransactions de realEstatePropertySync.ts após criar o ativo.",
-    "Assets.tsx handleSaveLiability (criação e regeneração): passivo tipo MORTGAGE com linked_asset_id agora usa category='Ativos Imobiliários', subcategory='Financiamento' e a mesma descrição/metadata (property_tx_type, is_amortization) que o assistente de imóvel gera — antes usava sempre category='Financiamento/Dívida' sem subcategoria, diferente do que saía pelo assistente."
+    "Novo lib/safeStorage.ts: leituras/escritas de localStorage nunca mais lançam exceção — Safari pode bloquear esse acesso (SecurityError) quando 'Impedir Rastreamento entre Sites' está ativo, e isso derrubava o app inteiro sem nenhuma tela de erro.",
+    "App.tsx: leitura do perfil em cache no useState inicial agora usa safeStorage; clearSessionData passou de lista fixa de chaves para limpeza por prefixo (finvision_cached_, finvision_dashboard_, finvision_demo, is_finvision_demo), disparada também quando o usuário logado muda (não só no logout).",
+    "services/dashboard.service.ts: getCachedSummary/setCachedSummary usando safeStorage (mesma causa do travamento no Safari, via Home.tsx).",
+    "index.tsx: ErrorBoundary agora envolve o <App/> por fora — antes só protegia o que o App renderizava, não os próprios hooks de inicialização do App."
   ]
 }

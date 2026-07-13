@@ -1,5 +1,33 @@
 [
   {
+    "version": "2026.07.13.1829",
+    "title": "App Nunca Mais Trava no Safari + Dados Sempre da Conta Certa",
+    "date": "13/07/2026",
+    "benefits": [
+      {
+        "title": "Funciona no Safari e no iPhone",
+        "desc": "Corrigido um travamento que impedia o site de abrir no Safari (funcionava só no Chrome) — acontecia quando o navegador bloqueia certos dados de rastreamento, uma configuração comum no iPhone.",
+        "type": "security"
+      },
+      {
+        "title": "Cada conta sempre com seus próprios dados",
+        "desc": "Se alguém troca de conta no mesmo celular ou computador (ex.: sai do modo demonstração e entra numa conta real), a tela agora sempre mostra os dados certos daquela conta — nunca mais informações de uma sessão anterior.",
+        "type": "precisao"
+      },
+      {
+        "title": "Menu lateral sempre mostra quem está logado",
+        "desc": "Corrigido: o nome/e-mail de quem está conectado aparece corretamente no menu, mesmo depois de trocar de conta no mesmo aparelho.",
+        "type": "precisao"
+      }
+    ],
+    "changes": [
+      "Novo lib/safeStorage.ts: leituras/escritas de localStorage nunca mais lançam exceção — Safari pode bloquear esse acesso (SecurityError) quando 'Impedir Rastreamento entre Sites' está ativo, e isso derrubava o app inteiro sem nenhuma tela de erro.",
+      "App.tsx: leitura do perfil em cache no useState inicial agora usa safeStorage; clearSessionData passou de lista fixa de chaves para limpeza por prefixo (finvision_cached_, finvision_dashboard_, finvision_demo, is_finvision_demo), disparada também quando o usuário logado muda (não só no logout).",
+      "services/dashboard.service.ts: getCachedSummary/setCachedSummary usando safeStorage (mesma causa do travamento no Safari, via Home.tsx).",
+      "index.tsx: ErrorBoundary agora envolve o <App/> por fora — antes só protegia o que o App renderizava, não os próprios hooks de inicialização do App."
+    ]
+  },
+  {
     "version": "2026.07.13.1053",
     "title": "Cadastro de Imóvel Completo e Rótulos Consistentes",
     "date": "13/07/2026",

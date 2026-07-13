@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase/client';
 import { DashboardData } from '../types';
 import { projectionService } from './projection.service';
+import { safeStorage } from '../lib/safeStorage';
 
 export const DashboardService = {
   getSummary: async (): Promise<DashboardData> => {
@@ -213,17 +214,11 @@ export const DashboardService = {
   },
 
   getCachedSummary: (): DashboardData | null => {
-    const cached = localStorage.getItem('finvision_dashboard_summary');
-    if (!cached) return null;
-    try {
-      return JSON.parse(cached);
-    } catch (e) {
-      return null;
-    }
+    return safeStorage.getJSON<DashboardData>('finvision_dashboard_summary');
   },
 
   setCachedSummary: (data: DashboardData): void => {
-    localStorage.setItem('finvision_dashboard_summary', JSON.stringify(data));
+    safeStorage.setItem('finvision_dashboard_summary', JSON.stringify(data));
   },
 
   refreshBalance: async (): Promise<number> => {

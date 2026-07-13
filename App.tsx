@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase/client';
 import { Profile, UserRole } from './types';
 import { isAdmin } from './lib/authUtils';
 import { captureReferralCodeFromUrl, attachPendingReferral } from './lib/referralUtils';
+import { safeStorage } from './lib/safeStorage';
 import Nav from './components/Nav';
 import BottomNav from './components/BottomNav';
 import { PushManager } from './components/PushManager';
@@ -77,30 +78,20 @@ function applyDarkMode(forceDark: boolean, autoDark: boolean) {
 }
 
 const App: React.FC = () => {
-  const [profile, setProfile] = useState<Profile | null>(() => {
-    const cached = localStorage.getItem('finvision_cached_profile');
-    if (cached) {
-      try {
-        return JSON.parse(cached);
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  });
+  const [profile, setProfile] = useState<Profile | null>(() => safeStorage.getJSON<Profile>('finvision_cached_profile'));
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
 
   // Inicializa dark mode a partir do localStorage e escuta mudanças de preferência do sistema
   useEffect(() => {
     applyDarkMode(
-      localStorage.getItem('finvision_dark_mode_force') === 'true',
-      localStorage.getItem('finvision_auto_dark_mode') === 'true'
+      safeStorage.getItem('finvision_dark_mode_force') === 'true',
+      safeStorage.getItem('finvision_auto_dark_mode') === 'true'
     );
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = () => applyDarkMode(
-      localStorage.getItem('finvision_dark_mode_force') === 'true',
-      localStorage.getItem('finvision_auto_dark_mode') === 'true'
+      safeStorage.getItem('finvision_dark_mode_force') === 'true',
+      safeStorage.getItem('finvision_auto_dark_mode') === 'true'
     );
     mediaQuery.addEventListener('change', handleChange);
     return () => mediaQuery.removeEventListener('change', handleChange);
@@ -112,42 +103,31 @@ const App: React.FC = () => {
       return;
     }
 
+    // Limpa TODO o cache local por prefixo (não uma lista fixa de chaves —
+    // era assim antes, e toda vez que uma tela nova criava uma chave de cache
+    // esquecia de somar aqui, deixando "vazar" dado de uma conta pra outra no
+    // mesmo aparelho/navegador).
     const clearSessionData = () => {
-      const keysToClear = [
-        'is_finvision_demo',
-        'is_finvision_demo_promoted',
-        'finvision_demo_tasks',
-        'finvision_demo_asked_ai',
-        'finvision_cached_profile',
-        'finvision_cached_home_txs',
-        'finvision_cached_accounts',
-        'finvision_cached_categories',
-        'finvision_cached_subcategories',
-        'finvision_cached_owners',
-        'finvision_cached_budgets',
-        'finvision_cached_goals',
-        'finvision_cached_avg_monthly_savings',
-        'finvision_cached_budget_spending'
-      ];
-      keysToClear.forEach(key => localStorage.removeItem(key));
+      safeStorage.clearByPrefix(['finvision_cached_', 'finvision_dashboard_', 'finvision_demo', 'is_finvision_demo']);
+      safeStorage.removeItem('finvision_last_user_id');
     };
 
     captureReferralCodeFromUrl();
 
-    supabase.auth.getSession().then(({ data: { session } }: any) => {
+    const handleSession = (session: any) => {
       setSession(session);
       if (session?.user) {
-        fetchProfile(session.user.id, session.user.email);
-        if (session.access_token) attachPendingReferral(session.access_token);
-      } else {
-        clearSessionData();
-        setLoading(false);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
-      setSession(session);
-      if (session?.user) {
+        // Se o usuário logado mudou desde a última vez que este navegador foi
+        // usado (ex.: saiu do modo demo e entrou numa conta real diferente, ou
+        // trocou de conta), limpa o cache da conta anterior ANTES de buscar os
+        // dados da conta nova — senão a tela mostra os dados de quem usou o
+        // aparelho antes (às vezes por bastante tempo, se a busca nova falhar).
+        const lastUserId = safeStorage.getItem('finvision_last_user_id');
+        if (lastUserId && lastUserId !== session.user.id) {
+          clearSessionData();
+          setProfile(null);
+        }
+        safeStorage.setItem('finvision_last_user_id', session.user.id);
         fetchProfile(session.user.id, session.user.email);
         if (session.access_token) attachPendingReferral(session.access_token);
       } else {
@@ -155,7 +135,10 @@ const App: React.FC = () => {
         clearSessionData();
         setLoading(false);
       }
-    });
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }: any) => handleSession(session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => handleSession(session));
 
     return () => subscription?.unsubscribe();
   }, []);
@@ -168,10 +151,10 @@ const App: React.FC = () => {
         const newProfile = { id: uid, email: email || '', role: UserRole.USER, is_approved: true };
         const { data: created } = await supabase.from('profiles').upsert(newProfile).select().single();
         setProfile(created);
-        localStorage.setItem('finvision_cached_profile', JSON.stringify(created));
+        safeStorage.setItem('finvision_cached_profile', JSON.stringify(created));
       } else if (data) {
         setProfile(data);
-        localStorage.setItem('finvision_cached_profile', JSON.stringify(data));
+        safeStorage.setItem('finvision_cached_profile', JSON.stringify(data));
       }
 
       // Sincroniza preferência de dark mode do banco e aplica
@@ -179,8 +162,8 @@ const App: React.FC = () => {
       if (userSettings) {
         const forceDark = userSettings.dark_mode_force || false;
         const autoDark = userSettings.auto_dark_mode || false;
-        localStorage.setItem('finvision_dark_mode_force', String(forceDark));
-        localStorage.setItem('finvision_auto_dark_mode', String(autoDark));
+        safeStorage.setItem('finvision_dark_mode_force', String(forceDark));
+        safeStorage.setItem('finvision_auto_dark_mode', String(autoDark));
         applyDarkMode(forceDark, autoDark);
       }
     } catch (e) {
