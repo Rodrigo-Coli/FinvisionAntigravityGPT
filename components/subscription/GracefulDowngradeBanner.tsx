@@ -17,7 +17,7 @@ export default function GracefulDowngradeBanner() {
 
   let message = '';
   if (isTrialExpired) {
-    message = 'Seu período de teste do FinVision Pro acabou. Seus limites foram reduzidos para o plano Starter (Gratuito).';
+    message = 'Seu período de teste do Zyvion acabou. Seus limites foram reduzidos para o plano Starter (Gratuito).';
   } else if (isPastDue) {
     message = 'Sua assinatura possui uma fatura pendente. Seus limites foram temporariamente reduzidos para o plano Starter (Gratuito).';
   } else {

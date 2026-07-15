@@ -268,7 +268,7 @@ export const UpdateAlert: React.FC = () => {
           <Check size={18} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-black tracking-wide">FinVision Pronto Offline!</p>
+          <p className="text-[11px] font-black tracking-wide">Zyvion Pronto Offline!</p>
           <p className="text-[10px] font-bold text-slate-400 mt-0.5 leading-normal">O aplicativo foi salvo e funcionará normalmente sem internet.</p>
         </div>
         <button 

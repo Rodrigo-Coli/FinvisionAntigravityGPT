@@ -80,7 +80,7 @@ async function sendReaction(messageKey: any, emoji: string) {
   }
 }
 
-const HELP_MESSAGE = `🤖 *FinVision AI — O que posso fazer por você:*
+const HELP_MESSAGE = `🤖 *Zyvion AI — O que posso fazer por você:*
 
 💳 *Lançar Gastos e Receitas*
 • "Gastei 50 no mercado no Nubank"
@@ -186,7 +186,7 @@ async function resolveOwnerName(userId: string, parsedOwner: string | null | und
   return 'Pessoal';
 }
 
-const COMPETITOR_RESTRICTION_PROMPT = `Você é a FinVision AI, exclusiva do FinVision Pro. Você está expressamente proibida de responder perguntas sobre concorrentes do mercado financeiro (ex: Mobills, Organizze, Olivia, Minhas Economias, Guiabolso) ou qualquer assunto não relacionado diretamente ao sistema FinVision. Se o usuário perguntar sobre concorrentes ou fizer comparações, recuse educadamente, explicando que seu foco é exclusivamente ajudar a gerenciar as finanças e analisar os dados dentro do FinVision Pro.`;
+const COMPETITOR_RESTRICTION_PROMPT = `Você é a Zyvion AI, exclusiva do Zyvion. Você está expressamente proibida de responder perguntas sobre concorrentes do mercado financeiro (ex: Mobills, Organizze, Olivia, Minhas Economias, Guiabolso) ou qualquer assunto não relacionado diretamente ao sistema Zyvion. Se o usuário perguntar sobre concorrentes ou fizer comparações, recuse educadamente, explicando que seu foco é exclusivamente ajudar a gerenciar as finanças e analisar os dados dentro do Zyvion.`;
 
 async function sendWhatsApp(number: string, text: string) {
   if (process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY && process.env.EVOLUTION_INSTANCE) {
@@ -1000,7 +1000,7 @@ async function handleInteractiveFinancialQuery(
         const ai = new GoogleGenAI({ apiKey: geminiKey });
         
         const dateExtractionPrompt = `
-        Você é a inteligência de processamento temporal do FinVision Pro.
+        Você é a inteligência de processamento temporal do Zyvion.
         Hoje é ${now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} (data do sistema: ${todayStr}).
 
         Analise a pergunta do usuário para identificar se ele está solicitando transações ou dados financeiros de um período temporal específico (ex: "lançamentos dos dois últimos meses", "gastos de janeiro", "ano passado", "mês passado", "últimos 6 meses", "desde março").
@@ -1136,7 +1136,7 @@ async function handleInteractiveFinancialQuery(
 
   const systemPrompt = `
 # IDENTIDADE
-Você é a FinVision AI, a Assistente Financeira Premium do software FinVision Pro.
+Você é a Zyvion AI, a Assistente Financeira Premium do software Zyvion.
 Seu tom de voz deve ser de especialista, educado, curto e sucinto. Use emojis úteis (📊, 💼, 💸, 💰).
 
 # REGRAS DO WHATSAPP
@@ -1144,7 +1144,7 @@ Seu tom de voz deve ser de especialista, educado, curto e sucinto. Use emojis ú
 2. Use formatações em negrito do WhatsApp (*texto*).
 3. Nunca invente dados. Use as métricas reais fornecidas abaixo para responder à dúvida.
 4. IMPORTANTÍSSIMO: Sempre que o usuário perguntar sobre transações, gastos ou lançamentos de contas ou cartões, verifique detalhadamente a lista de "TRANSAÇÕES DETALHADAS NO PERÍODO SOLICITADO" abaixo. Os termos pesquisados podem estar na *descrição*, *categoria* ou *subcategoria*. Responda de forma completa, detalhando os lançamentos correspondentes (com data, descrição, valor e status de pagamento).
-5. RESTRIÇÃO IMPORTANTE DE CONCORRENTES: Você é a FinVision AI, exclusiva do FinVision Pro. Você está expressamente proibida de responder perguntas sobre concorrentes do mercado financeiro (ex: Mobills, Organizze, Olivia, Minhas Economias, Guiabolso) ou qualquer assunto não relacionado diretamente ao sistema FinVision. Se o usuário perguntar sobre concorrentes ou fizer comparações, recuse educadamente, explicando que seu foco é exclusivamente ajudar a gerenciar as finanças e analisar os dados dentro do FinVision Pro.
+5. RESTRIÇÃO IMPORTANTE DE CONCORRENTES: Você é a Zyvion AI, exclusiva do Zyvion. Você está expressamente proibida de responder perguntas sobre concorrentes do mercado financeiro (ex: Mobills, Organizze, Olivia, Minhas Economias, Guiabolso) ou qualquer assunto não relacionado diretamente ao sistema Zyvion. Se o usuário perguntar sobre concorrentes ou fizer comparações, recuse educadamente, explicando que seu foco é exclusivamente ajudar a gerenciar as finanças e analisar os dados dentro do Zyvion.
 
 
 # DADOS DO USUÁRIO
@@ -1422,7 +1422,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
     if (!userSet) {
       const canInvite = await shouldSendUnregisteredInvite(phone);
       if (canInvite) {
-        await sendWhatsApp(phone, `Olá! Bem-vindo ao *FinVision AI* 💎\n\nEu sou o seu consultor financeiro pessoal inteligente.\n\nIdentifiquei que seu número ainda não está vinculado a uma conta ativa no FinVision Pro.\n\n🆕 *É novo por aqui? Faça seu cadastro rápido em segundos:*\n👉 https://finvision.automanow.com.br/signup?wp=${phone}\n_(Ganhe 7 dias grátis de acesso Wealth Premium no nosso lançamento!)_\n\n🔄 *Já possui uma conta ativa? Veja como é fácil vincular seu número de WhatsApp:*\n1️⃣ Acesse o FinVision Pro pelo computador ou celular.\n2️⃣ Vá no menu **Ajustes** (ícone de engrenagem no painel).\n3️⃣ Na aba **Preferências**, ative a opção **Notificações via WhatsApp**.\n4️⃣ Digite seu número de telefone com DDD (ex: +55 45 99999-9999) e salve.\n\nPronto! Em segundos, seu assistente pessoal estará ativo para receber fotos de cupons, áudios e comandar suas finanças direto por aqui!`);
+        await sendWhatsApp(phone, `Olá! Bem-vindo ao *Zyvion AI* 💎\n\nEu sou o seu consultor financeiro pessoal inteligente.\n\nIdentifiquei que seu número ainda não está vinculado a uma conta ativa no Zyvion.\n\n🆕 *É novo por aqui? Faça seu cadastro rápido em segundos:*\n👉 https://finvision.automanow.com.br/signup?wp=${phone}\n_(Ganhe 7 dias grátis de acesso Wealth Premium no nosso lançamento!)_\n\n🔄 *Já possui uma conta ativa? Veja como é fácil vincular seu número de WhatsApp:*\n1️⃣ Acesse o Zyvion pelo computador ou celular.\n2️⃣ Vá no menu **Ajustes** (ícone de engrenagem no painel).\n3️⃣ Na aba **Preferências**, ative a opção **Notificações via WhatsApp**.\n4️⃣ Digite seu número de telefone com DDD (ex: +55 45 99999-9999) e salve.\n\nPronto! Em segundos, seu assistente pessoal estará ativo para receber fotos de cupons, áudios e comandar suas finanças direto por aqui!`);
         await recordUnregisteredInviteSent(phone);
       }
       return res.status(200).json({ status: canInvite ? 'user_invited' : 'user_invited_cooldown', phoneUsed: phone });
@@ -1480,7 +1480,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       const textLowOnboard = text.toLowerCase().trim();
       const isGreeting = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'oie', 'ei', 'hey', 'boa', 'hello', 'hi'].some(p => textLowOnboard === p || textLowOnboard.startsWith(p + ' ') || textLowOnboard.startsWith(p + '!') || textLowOnboard.startsWith(p + ','));
       if (isGreeting) {
-        const onboardMsg = `👋 *Olá! Seja bem-vindo ao FinVision AI!*\n\nSou seu assistente financeiro pessoal. Estou pronto para ajudar você a controlar suas finanças direto pelo WhatsApp!\n\n${HELP_MESSAGE}`;
+        const onboardMsg = `👋 *Olá! Seja bem-vindo ao Zyvion AI!*\n\nSou seu assistente financeiro pessoal. Estou pronto para ajudar você a controlar suas finanças direto pelo WhatsApp!\n\n${HELP_MESSAGE}`;
         await sendWhatsApp(phone, onboardMsg);
         history.push({ role: 'user', content: text });
         history.push({ role: 'model', content: onboardMsg });
@@ -1523,7 +1523,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       const ai = new GoogleGenAI({ apiKey: geminiKey });
 
       const voicePrompt = `
-      Você é a inteligência transcritora da assistente financeira FinVision AI.
+      Você é a inteligência transcritora da assistente financeira Zyvion AI.
       Sua tarefa é ouvir o áudio do usuário e transcrever EXATAMENTE o que ele disse em formato de texto.
       Retorne apenas a transcrição do áudio em formato de texto simples, sem aspas, comentários ou decorações em português.
       `;
@@ -1775,7 +1775,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             }
 
             await supabase.from('whatsapp_drafts').delete().eq('id', draft.id);
-            await sendWhatsApp(phone, `✅ *Lançamento Alterado com Sucesso!* 🔄\n\nO lançamento foi atualizado no FinVision.`);
+            await sendWhatsApp(phone, `✅ *Lançamento Alterado com Sucesso!* 🔄\n\nO lançamento foi atualizado no Zyvion.`);
             await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
             return res.status(200).json({ status: 'confirmed_update' });
           }
@@ -2014,7 +2014,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           }
 
           await supabase.from('whatsapp_drafts').update({ status: 'confirmed' }).eq('id', draft.id);
-          await sendWhatsApp(phone, `✅ *Lançamento Alterado com Sucesso!* 🔄\n\nO lançamento foi atualizado no FinVision.`);
+          await sendWhatsApp(phone, `✅ *Lançamento Alterado com Sucesso!* 🔄\n\nO lançamento foi atualizado no Zyvion.`);
           await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
           return res.status(200).json({ status: 'confirmed_update' });
         } else if (tx.type === 'multi') {
@@ -2613,7 +2613,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         
         await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
         
-        let summaryMsg = `✅ *Múltiplos Lançamentos Cadastrados com Sucesso!* 🤖\n\nLancei as seguintes ações no seu FinVision:\n\n`;
+        let summaryMsg = `✅ *Múltiplos Lançamentos Cadastrados com Sucesso!* 🤖\n\nLancei as seguintes ações no seu Zyvion:\n\n`;
         launchResults.forEach((lr: any, idx: number) => {
           const dateFmt = lr.tx.date ? lr.tx.date.split('-').reverse().join('/') : '';
           summaryMsg += `*${idx + 1}. Cadastrado:* "${lr.tx.description}" - R$ ${Number(lr.tx.amount).toFixed(2)} (${dateFmt}) na conta ${lr.result.accountName}\n`;
@@ -2703,7 +2703,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       const todayStr = now.toISOString().split('T')[0];
 
       const classificationPrompt = `
-      Você é o cérebro central classificador da assistente FinVision AI.
+      Você é o cérebro central classificador da assistente Zyvion AI.
       Sua tarefa é analisar a mensagem atual do usuário, considerando o histórico de conversa recente e as informações do sistema, para classificar as intenções dele com precisão cirúrgica de forma a realizar um processamento extremamente rápido.
 
       # INFORMAÇÕES DO SISTEMA
@@ -2729,7 +2729,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       ${formattedPendingBills}
 
       # HISTÓRICO RECENTE DA CONVERSA
-      ${history.slice(-6).map((h: any) => `${h.role === 'user' ? 'Usuário' : 'FinVision'}: ${h.content}`).join('\n')}
+      ${history.slice(-6).map((h: any) => `${h.role === 'user' ? 'Usuário' : 'Zyvion'}: ${h.content}`).join('\n')}
 
       # MENSAGEM ATUAL DO USUÁRIO
       Mensagem: "${text}"
@@ -2954,7 +2954,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           
           if (!chatReply) {
             const systemPromptChat = `
-            Você é a FinVision AI, a Assistente Financeira Premium do software FinVision Pro.
+            Você é a Zyvion AI, a Assistente Financeira Premium do software Zyvion.
             Seu tom de voz deve ser de especialista, extremamente educado, curto e sucinto. Use emojis úteis.
             Use formatações em negrito do WhatsApp (*texto*).
             Seja amigável e utilize o histórico da conversa para responder de forma contínua e natural.
@@ -2982,7 +2982,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               }
             });
 
-            chatReply = (chatResponse as any).text || (chatResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || 'Olá! Sou a FinVision AI. Como posso te ajudar com suas finanças hoje?';
+            chatReply = (chatResponse as any).text || (chatResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || 'Olá! Sou a Zyvion AI. Como posso te ajudar com suas finanças hoje?';
           }
 
           await sendWhatsApp(phone, chatReply);
@@ -3497,7 +3497,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             }
             await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
             
-            let summaryMsg = `✅ *Múltiplos Lançamentos Cadastrados com Sucesso!* 🤖\n\nLancei as seguintes ações no seu FinVision:\n\n`;
+            let summaryMsg = `✅ *Múltiplos Lançamentos Cadastrados com Sucesso!* 🤖\n\nLancei as seguintes ações no seu Zyvion:\n\n`;
             launchResults.forEach((lr: any, idx: number) => {
               const dateFmt = lr.tx.date ? lr.tx.date.split('-').reverse().join('/') : '';
               summaryMsg += `*${idx + 1}. Cadastrado:* "${lr.tx.description}" - R$ ${Number(lr.tx.amount).toFixed(2)} (${dateFmt}) na conta ${lr.result.accountName}\n`;
@@ -3558,7 +3558,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       const isQuota = errStr.includes('quota') || errStr.includes('limit') || errStr.includes('429') || errStr.includes('exhausted');
       
       if (isQuota) {
-        await sendWhatsApp(phone, `⚠️ *FinVision AI - Limite Temporário Atingido* 🤖\n\nNotamos que sua assistente inteligente excedeu o limite temporário de consultas da inteligência artificial (Cota da API do Google).\n\n⚡ *Como resolver:* de forma a garantir a velocidade e disponibilidade total, pedimos que aguarde cerca de *1 minuto* e tente novamente. Caso persistir, isso indica que a cota diária gratuita da API foi atingida. Nosso time já está monitorando para ampliar os recursos!`);
+        await sendWhatsApp(phone, `⚠️ *Zyvion AI - Limite Temporário Atingido* 🤖\n\nNotamos que sua assistente inteligente excedeu o limite temporário de consultas da inteligência artificial (Cota da API do Google).\n\n⚡ *Como resolver:* de forma a garantir a velocidade e disponibilidade total, pedimos que aguarde cerca de *1 minuto* e tente novamente. Caso persistir, isso indica que a cota diária gratuita da API foi atingida. Nosso time já está monitorando para ampliar os recursos!`);
       } else {
         await sendWhatsApp(phone, `❌ *Ops! Tivemos um probleminha técnico.* 🤖\n\nNão consegui processar o seu comando neste momento devido a uma instabilidade temporária na comunicação com nossos servidores de inteligência artificial.\n\nPor favor, tente falar novamente em alguns instantes.`);
       }

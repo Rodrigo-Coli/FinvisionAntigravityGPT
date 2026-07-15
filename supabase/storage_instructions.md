@@ -1,7 +1,7 @@
 
 # Configuração do Storage (Supabase)
 
-Para habilitar o armazenamento de recibos e comprovantes no FinVision, siga estes passos no painel do Supabase:
+Para habilitar o armazenamento de recibos e comprovantes no Zyvion, siga estes passos no painel do Supabase:
 
 ## 1. Criar o Bucket
 1. No menu lateral, clique em **Storage**.

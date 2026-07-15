@@ -1,5 +1,29 @@
 [
   {
+    "version": "2026.07.15.1841",
+    "title": "Nova Identidade: Conheça o Zyvion!",
+    "date": "15/07/2026",
+    "benefits": [
+      {
+        "title": "O FinVision agora se chama Zyvion",
+        "desc": "Mesma conta, mesmos dados, mesmo login — só o nome e o visual do sistema mudaram, com uma nova identidade visual em tons de azul.",
+        "type": "novidade"
+      },
+      {
+        "title": "Ícone novo no celular",
+        "desc": "Se você instalou o app na tela inicial, o ícone e o nome vão atualizar sozinhos para o novo símbolo do Zyvion assim que o app atualizar no seu aparelho.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "Rebrand completo FinVision/FinVision Pro → Zyvion em ~50 arquivos: telas, componentes, e-mails automáticos, mensagens de WhatsApp, prompts da IA e manifesto do PWA.",
+      "Nova paleta de cores (brand-50 a brand-950) derivada das cores fornecidas (#0A1F44, #2D7FF9, #38D8FF) em index.html.",
+      "Novos assets de marca gerados a partir da arte fornecida: favicon.ico, logo.png, logo-192.png, badge.png (monocromático), logo.svg e logo-icon.png.",
+      "vite.config.ts e public/manifest.json: nome do app e theme_color atualizados para o PWA.",
+      "Rodapé da Landing: razão social atualizada para ZIntec LTDA."
+    ]
+  },
+  {
     "version": "2026.07.13.1829",
     "title": "App Nunca Mais Trava no Safari + Dados Sempre da Conta Certa",
     "date": "13/07/2026",
@@ -61,7 +85,7 @@
     "benefits": [
       {
         "title": "Chargeback nunca fica com o indicador",
-        "desc": "Se um pagamento for estornado depois de a comissão já ter sido paga ao indicador, o valor agora é descontado automaticamente das próximas comissões dele, até compensar — ele nunca fica com dinheiro que a FinVision não recebeu.",
+        "desc": "Se um pagamento for estornado depois de a comissão já ter sido paga ao indicador, o valor agora é descontado automaticamente das próximas comissões dele, até compensar — ele nunca fica com dinheiro que a Zyvion não recebeu.",
         "type": "security"
       },
       {

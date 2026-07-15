@@ -1,7 +1,7 @@
 
 # Guia de Aprovação Manual e Gestão de Usuários
 
-Como o FinVision Pro Master exige aprovação manual para garantir a segurança dos dados financeiros, siga as instruções abaixo para gerenciar novos cadastros.
+Como o Zyvion Master exige aprovação manual para garantir a segurança dos dados financeiros, siga as instruções abaixo para gerenciar novos cadastros.
 
 ## 1. Aprovação via Interface do App (Recomendado)
 Se você já é um **Administrador**, pode aprovar usuários diretamente no sistema:

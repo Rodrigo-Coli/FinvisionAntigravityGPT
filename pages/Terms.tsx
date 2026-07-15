@@ -11,7 +11,7 @@ const Terms: React.FC = () => {
             <ChevronLeft size={16} /> Voltar
           </Link>
           <div className="flex items-center gap-2 text-slate-900 font-bold italic text-xl">
-            <div className="w-8 h-8 rounded-xl bg-brand-900 text-white flex items-center justify-center text-sm not-italic">FV</div>
+            <img src="/logo-icon.png" alt="Zyvion" className="w-8 h-8 object-contain" />
           </div>
         </div>
 
@@ -29,12 +29,12 @@ const Terms: React.FC = () => {
           <div className="space-y-8 text-slate-600 leading-relaxed font-medium">
             <section>
               <h2 className="text-xl font-bold text-slate-900 mb-4">1. Aceitação dos Termos</h2>
-              <p>Ao acessar e utilizar a plataforma FinVision Pro ("SaaS"), você concorda em cumprir e ser regido pelos presentes Termos de Serviço. Se não concordar com qualquer parte destes termos, não utilize nossos serviços.</p>
+              <p>Ao acessar e utilizar a plataforma Zyvion ("SaaS"), você concorda em cumprir e ser regido pelos presentes Termos de Serviço. Se não concordar com qualquer parte destes termos, não utilize nossos serviços.</p>
             </section>
 
             <section>
               <h2 className="text-xl font-bold text-slate-900 mb-4">2. Descrição do Serviço</h2>
-              <p>O FinVision Pro é um software de gestão e inteligência financeira na nuvem. Nós fornecemos ferramentas de conciliação assistida por IA, centralização de patrimônio e emissão de extratos consolidados.</p>
+              <p>O Zyvion é um software de gestão e inteligência financeira na nuvem. Nós fornecemos ferramentas de conciliação assistida por IA, centralização de patrimônio e emissão de extratos consolidados.</p>
             </section>
 
             <section>
@@ -44,7 +44,7 @@ const Terms: React.FC = () => {
 
             <section>
               <h2 className="text-xl font-bold text-slate-900 mb-4">4. Limitação de Responsabilidade</h2>
-              <p>As análises geradas pela Inteligência Artificial e motores do FinVision Pro têm caráter puramente informativo para organização pessoal ou empresarial. Não constituem aconselhamento financeiro formal ou recomendação de investimentos.</p>
+              <p>As análises geradas pela Inteligência Artificial e motores do Zyvion têm caráter puramente informativo para organização pessoal ou empresarial. Não constituem aconselhamento financeiro formal ou recomendação de investimentos.</p>
             </section>
           </div>
         </div>

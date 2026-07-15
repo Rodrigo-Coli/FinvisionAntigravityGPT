@@ -67,7 +67,7 @@ export const TourProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               {/* Texto principal */}
               <div className="space-y-2">
                 <p className="text-[10px] font-bold text-brand-500 uppercase tracking-[0.3em]">
-                  FinVision Pro
+                  Zyvion
                 </p>
                 <h2 className="text-xl font-bold text-slate-900 leading-snug">
                   Seu dinheiro.<br />

@@ -39,7 +39,7 @@ interface AiFn {
 
 const DEFAULT_FUNCTIONS: AiFn[] = [
   { key: 'receipt', label: 'Scan de Nota/Cupom (foto)', callsPerMonth: 30, inputTokens: 1550, outputTokens: 800, audioTokens: 0, note: 'inclui ~258 tokens/imagem' },
-  { key: 'chat', label: 'Chat IA (FinVision)', callsPerMonth: 50, inputTokens: 2000, outputTokens: 500, audioTokens: 0, note: 'prompt + histórico + contexto' },
+  { key: 'chat', label: 'Chat IA (Zyvion)', callsPerMonth: 50, inputTokens: 2000, outputTokens: 500, audioTokens: 0, note: 'prompt + histórico + contexto' },
   { key: 'wealth', label: 'Insights / Análise de Patrimônio', callsPerMonth: 4, inputTokens: 3200, outputTokens: 1200, audioTokens: 0 },
   { key: 'categorize', label: 'Categorização automática', callsPerMonth: 20, inputTokens: 1000, outputTokens: 400, audioTokens: 0, note: 'por lote' },
   { key: 'reconcile', label: 'Conciliação banco/cartão (PDF)', callsPerMonth: 4, inputTokens: 2200, outputTokens: 1000, audioTokens: 0 },

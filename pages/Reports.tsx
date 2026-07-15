@@ -245,7 +245,7 @@ const Reports: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `FinVision_Relatorio_${dateRange.start}_${dateRange.end}.csv`);
+      link.setAttribute('download', `Zyvion_Relatorio_${dateRange.start}_${dateRange.end}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -415,7 +415,7 @@ const Reports: React.FC = () => {
       {/* Tabela de Extrato Visível Apenas na Impressão/PDF */}
       <div className="print-only mt-12 space-y-6">
         <div className="border-b border-slate-300 pb-4">
-          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Demonstrativo de Extrato FinVision</h2>
+          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Demonstrativo de Extrato Zyvion</h2>
           <p className="text-xs text-slate-500 font-bold uppercase mt-1">Período: {DateUtils.formatDisplayDate(dateRange.start)} até {DateUtils.formatDisplayDate(dateRange.end)}</p>
         </div>
 

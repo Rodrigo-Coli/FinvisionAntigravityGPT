@@ -91,7 +91,7 @@ export default function DemoMode() {
       
       <h1 className="text-2xl font-black text-slate-100 text-center tracking-tight">Preparando seu ambiente</h1>
       <p className="text-slate-400 font-medium text-center mt-2 max-w-sm">
-        Estamos carregando transações, contas e cartões fictícios para você explorar todo o poder do FinVision.
+        Estamos carregando transações, contas e cartões fictícios para você explorar todo o poder do Zyvion.
       </p>
 
       {error ? (

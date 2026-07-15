@@ -93,7 +93,7 @@ export class GeminiLiveService {
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
-        systemInstruction: 'Você é o consultor financeiro inteligente da FinVision. Ajude o usuário de forma natural com suas finanças, fornecendo insights baseados em dados reais de gestão financeira.',
+        systemInstruction: 'Você é o consultor financeiro inteligente da Zyvion. Ajude o usuário de forma natural com suas finanças, fornecendo insights baseados em dados reais de gestão financeira.',
       },
     });
     this.session = await sessionPromise;

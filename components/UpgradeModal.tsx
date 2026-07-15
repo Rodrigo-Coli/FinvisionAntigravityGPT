@@ -34,13 +34,13 @@ export default function UpgradeModal() {
         </h2>
         <p className="text-slate-500 mb-8 text-sm leading-relaxed">
           {isTrialExpired 
-            ? 'Esperamos que você tenha gostado do FinVision Pro! Para continuar usando todos os recursos premium e a inteligência artificial, você precisa adquirir um plano.'
+            ? 'Esperamos que você tenha gostado do Zyvion! Para continuar usando todos os recursos premium e a inteligência artificial, você precisa adquirir um plano.'
             : 'Sua assinatura encontra-se com o pagamento pendente ou foi cancelada. Regularize sua situação para voltar a usar o sistema.'}
         </p>
 
         <div className="space-y-3">
           <a
-            href="https://wa.me/5511999999999?text=Oi%21+Gostaria+de+renovar+ou+assinar+meu+plano+no+FinVision+Pro."
+            href="https://wa.me/5511999999999?text=Oi%21+Gostaria+de+renovar+ou+assinar+meu+plano+no+Zyvion."
             target="_blank"
             rel="noopener noreferrer"
             className="w-full flex justify-center items-center gap-2 py-3.5 bg-brand-600 text-white rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-brand-700 transition-all"
@@ -50,7 +50,7 @@ export default function UpgradeModal() {
           </a>
 
           <a
-            href="https://wa.me/5511999999999?text=Preciso+de+ajuda+com+minha+assinatura+do+FinVision."
+            href="https://wa.me/5511999999999?text=Preciso+de+ajuda+com+minha+assinatura+do+Zyvion."
             target="_blank"
             rel="noopener noreferrer"
             className="w-full flex justify-center items-center gap-2 py-3.5 bg-slate-100 text-slate-700 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"

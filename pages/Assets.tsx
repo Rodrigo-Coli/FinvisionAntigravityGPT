@@ -7545,7 +7545,7 @@ const Assets: React.FC = () => {
                     const totalInterest = rows.slice(1).reduce((s, r) => s + r.interest, 0);
                     const currentBalance = rows[rows.length - 1]?.balance ?? 0;
                     const pctPaid = principal > 0 ? Math.min(100, (totalPaid / (principal + totalInterest)) * 100) : 0;
-                    const refNum = `FV-${loan.id.slice(0, 8).toUpperCase()}`;
+                    const refNum = `ZY-${loan.id.slice(0, 8).toUpperCase()}`;
 
                     const rowsHTML = rows.map((r, i) => {
                       const isFirst = i === 0;
@@ -7621,9 +7621,9 @@ const Assets: React.FC = () => {
   <!-- CABEÇALHO -->
   <div class="header">
     <div class="logo">
-      <div class="logo-box">FV</div>
+      <img src="/logo-icon.png" alt="Zyvion" style="width:44px;height:44px;object-fit:contain;" />
       <div>
-        <div class="logo-text">FinVision Pro</div>
+        <div class="logo-text">Zyvion</div>
         <div class="logo-sub">Gestão Financeira Inteligente</div>
       </div>
     </div>
@@ -7725,7 +7725,7 @@ const Assets: React.FC = () => {
   <!-- RODAPÉ -->
   <div class="footer">
     <div class="footer-left">
-      <strong>FinVision Pro</strong> — Documento gerado automaticamente<br>
+      <strong>Zyvion</strong> — Documento gerado automaticamente<br>
       Este extrato é apenas informativo e não constitui título executivo.
     </div>
     <div class="footer-right">
@@ -7942,7 +7942,7 @@ const Assets: React.FC = () => {
                                 const totalPaid = pmts.reduce((s: number, p: any) => s + Number(p.amount), 0);
                                 const fmtW = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
                                 const msg = encodeURIComponent(
-                                  `🔔 *FinVision Pro — Extrato de Empréstimo*\n\n` +
+                                  `🔔 *Zyvion — Extrato de Empréstimo*\n\n` +
                                   `Olá, ${meta.loanDebtor || 'prezado(a)'}!\n\n` +
                                   `Segue o resumo do seu empréstimo:\n` +
                                   `📋 *${loan.name}*\n` +
@@ -7950,7 +7950,7 @@ const Assets: React.FC = () => {
                                   `📈 Taxa: ${rate}% a.m. (${meta.loanInterestType === 'COMPOUND' ? 'Compostos' : 'Simples'})\n` +
                                   `✅ Total pago: ${fmtW(totalPaid)}\n` +
                                   `📅 Atualizado em: ${new Date().toLocaleDateString('pt-BR')}\n\n` +
-                                  `_Extrato gerado pelo FinVision Pro_`
+                                  `_Extrato gerado pelo Zyvion_`
                                 );
                                 window.open(`https://wa.me/?text=${msg}`, '_blank');
                               }}
@@ -10683,7 +10683,7 @@ const Assets: React.FC = () => {
 
             {/* Print header - only visible during print */}
             <div className="hidden print:block p-8 border-b border-slate-200">
-              <h2 className="text-2xl font-black text-slate-900">FinVision – Extrato de Empréstimo Concedido</h2>
+              <h2 className="text-2xl font-black text-slate-900">Zyvion – Extrato de Empréstimo Concedido</h2>
               <p className="text-sm text-slate-600 mt-1">Empréstimo: <strong>{selectedAssetForExtrato.name}</strong></p>
               {selectedAssetForExtrato.metadata?.loanDebtor && (
                 <p className="text-sm text-slate-600">Devedor: <strong>{selectedAssetForExtrato.metadata.loanDebtor}</strong></p>
@@ -11027,7 +11027,7 @@ const Assets: React.FC = () => {
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider cursor-pointer select-none" htmlFor="hasHistoricalPayments">
-                    Possui pagamentos anteriores ao FinVision?
+                    Possui pagamentos anteriores ao Zyvion?
                   </label>
                   <input
                     id="hasHistoricalPayments"
@@ -11451,7 +11451,7 @@ const Assets: React.FC = () => {
 
             {/* Print Header */}
             <div className="hidden print:block p-8 border-b border-slate-200">
-              <h2 className="text-2xl font-black text-slate-900">FinVision – Extrato de Passivo / Dívida</h2>
+              <h2 className="text-2xl font-black text-slate-900">Zyvion – Extrato de Passivo / Dívida</h2>
               <p className="text-sm text-slate-600 mt-1">Passivo: <strong>{selectedLiabilityForExtrato.name}</strong></p>
               <p className="text-sm text-slate-600">Tipo: <strong>{selectedLiabilityForExtrato.type}</strong></p>
               <p className="text-sm text-slate-600">Emitido em: {new Date().toLocaleDateString('pt-BR')}</p>

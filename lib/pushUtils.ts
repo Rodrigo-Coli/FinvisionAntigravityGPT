@@ -1,4 +1,4 @@
-// FinVision Pro — Notification Service
+// Zyvion — Notification Service
 // Gerencia permissões, notificações locais agendadas e registro do SW
 
 const FINVISION_SW = '/sw.js';
@@ -26,7 +26,7 @@ export async function getSwRegistration(): Promise<ServiceWorkerRegistration | n
     await navigator.serviceWorker.register(FINVISION_SW, { scope: '/' });
     return await navigator.serviceWorker.ready;
   } catch (err) {
-    console.error('[FinVision SW] Falha ao registrar:', err);
+    console.error('[Zyvion SW] Falha ao registrar:', err);
     return null;
   }
 }
@@ -138,19 +138,19 @@ export async function subscribeUserToPush(): Promise<PushSubscription | null> {
   try {
     const sw = await getSwRegistration();
     if (!sw) {
-      console.warn('[FinVision SW] Service Worker não registrado.');
+      console.warn('[Zyvion SW] Service Worker não registrado.');
       return null;
     }
 
     // 1. Buscar chave pública VAPID do backend
     const res = await fetch('/api/vapid-public-key');
     if (!res.ok) {
-      console.warn('[FinVision Push] Falha ao obter chave VAPID do servidor.');
+      console.warn('[Zyvion Push] Falha ao obter chave VAPID do servidor.');
       return null;
     }
     const { publicKey } = await res.json();
     if (!publicKey) {
-      console.warn('[FinVision Push] Chave pública VAPID não configurada no servidor.');
+      console.warn('[Zyvion Push] Chave pública VAPID não configurada no servidor.');
       return null;
     }
 
@@ -168,10 +168,10 @@ export async function subscribeUserToPush(): Promise<PushSubscription | null> {
       applicationServerKey: applicationServerKey as any
     });
 
-    console.info('[FinVision Push] Usuário inscrito para push notifications com sucesso!');
+    console.info('[Zyvion Push] Usuário inscrito para push notifications com sucesso!');
     return subscription;
   } catch (err: any) {
-    console.error('[FinVision Push] Falha ao inscrever para push:', err.message || err);
+    console.error('[Zyvion Push] Falha ao inscrever para push:', err.message || err);
     return null;
   }
 }

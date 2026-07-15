@@ -88,7 +88,7 @@ export async function handleNotifyBillsDue(req: any, res: any) {
       const bills = expenses?.filter(e => e.user_id === u.user_id) || [];
       if (bills.length === 0) continue;
       
-      let msg = `*FinVision Pro* 🔔\nVocê tem *${bills.length}* contas pendentes:\n\n`;
+      let msg = `*Zyvion* 🔔\nVocê tem *${bills.length}* contas pendentes:\n\n`;
       bills.forEach((b: any) => {
         const cleanBillDate = b.date ? b.date.split('T')[0] : '';
         const dateFmt = cleanBillDate ? cleanBillDate.split('-').reverse().join('/') : 'Sem data';
@@ -114,7 +114,7 @@ export async function handleNotifyBillsDue(req: any, res: any) {
       if (u.push_enabled && u.push_subscription) {
         try { 
           await webpush.sendNotification(u.push_subscription, JSON.stringify({ 
-            title: 'FinVision Pro 🔔', 
+            title: 'Zyvion 🔔',
             body: `Você tem ${bills.length} contas pendentes.`,
             url: '/#/history?status=PENDING'
           })); 
@@ -175,7 +175,7 @@ export async function handleWeeklySummary(req: any, res: any) {
       const weekStart = sevenDaysAgo.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
       const weekEnd = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
-      let msg = `📊 *Resumo Semanal FinVision Pro*\n_${weekStart} a ${weekEnd}_\n\n`;
+      let msg = `📊 *Resumo Semanal Zyvion*\n_${weekStart} a ${weekEnd}_\n\n`;
       msg += `💰 *Entradas na semana:* R$ ${weekIncome.toFixed(2)}\n`;
       msg += `💸 *Saídas na semana:* R$ ${weekExpense.toFixed(2)}\n`;
       msg += `🏦 *Saldo atual:* R$ ${totalBalance.toFixed(2)}\n`;

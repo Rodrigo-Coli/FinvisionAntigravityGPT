@@ -142,17 +142,30 @@ export const ensureInvestmentCategoriesAndSubcategories = async (userId: string)
 
 const SettingsPage: React.FC = () => {
   const { toast } = useToast();
-  const [activeSection, setActiveSection] = useState<'general' | 'navigation' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription'>('general');
+  const [activeSection, setActiveSection] = useState<'general' | 'navigation' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription' | 'changelog'>('general');
   const { subscription, loadingSub } = useSubscription();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [searchParams] = useSearchParams();
+  const [changelogHistory, setChangelogHistory] = useState<any[] | null>(null);
+  const [loadingChangelog, setLoadingChangelog] = useState(false);
 
   useEffect(() => {
     const section = searchParams.get('section');
-    if (section && ['general', 'navigation', 'categories', 'establishments', 'products', 'backup', 'currencies', 'rates', 'entities', 'subscription'].includes(section)) {
+    if (section && ['general', 'navigation', 'categories', 'establishments', 'products', 'backup', 'currencies', 'rates', 'entities', 'subscription', 'changelog'].includes(section)) {
       setActiveSection(section as any);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (activeSection === 'changelog' && changelogHistory === null && !loadingChangelog) {
+      setLoadingChangelog(true);
+      fetch(`/changelog-history.json?cb=${Date.now()}`)
+        .then(res => res.ok ? res.json() : [])
+        .then(data => setChangelogHistory(Array.isArray(data) ? data : []))
+        .catch(() => setChangelogHistory([]))
+        .finally(() => setLoadingChangelog(false));
+    }
+  }, [activeSection, changelogHistory, loadingChangelog]);
   const [settings, setSettings] = useState({
     email_notifications: true,
     dark_mode_force: false,
@@ -419,7 +432,7 @@ const SettingsPage: React.FC = () => {
 
     const cat = categories.find(c => c.id === editingCatId);
     if (cat && cat.name.toLowerCase() === 'investimento') {
-      toast("A categoria 'Investimento' é essencial para as análises do FinVision e não pode ser renomeada.", 'warning');
+      toast("A categoria 'Investimento' é essencial para as análises do Zyvion e não pode ser renomeada.", 'warning');
       setEditingCatId(null);
       return;
     }
@@ -668,7 +681,8 @@ const SettingsPage: React.FC = () => {
     { id: 'entities', label: 'Perfis / Donos', icon: <Building2 size={18} /> },
     { id: 'establishments', label: 'Estabelecimentos', icon: <Store size={18} /> },
     { id: 'rates', label: 'Taxas e Conversão', icon: <Percent size={18} /> },
-    { id: 'backup', label: 'Backup e Dados', icon: <Cloud size={18} />, divider: true },
+    { id: 'backup', label: 'Backup e Dados', icon: <Cloud size={18} /> },
+    { id: 'changelog', label: 'Novidades', icon: <Bell size={18} />, divider: true },
   ];
 
   return (
@@ -726,6 +740,51 @@ const SettingsPage: React.FC = () => {
 
         {/* CONTENT AREA */}
         <main className="flex-1 space-y-8 min-w-0">
+          {activeSection === 'changelog' && (
+            <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 italic">Novidades</h2>
+                <p className="text-sm text-slate-500 font-medium">Histórico de tudo que já foi corrigido e melhorado no sistema, na ordem em que aconteceu.</p>
+              </div>
+
+              {loadingChangelog && (
+                <div className="flex items-center gap-2 text-sm text-slate-400 font-semibold py-8 justify-center">
+                  <Loader2 size={16} className="animate-spin" /> Carregando histórico...
+                </div>
+              )}
+
+              {!loadingChangelog && changelogHistory && changelogHistory.length === 0 && (
+                <p className="text-sm text-slate-400 font-medium">Nenhum registro de atualização ainda.</p>
+              )}
+
+              {!loadingChangelog && changelogHistory && changelogHistory.map((entry, idx) => (
+                <div key={entry.version || idx} className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-base font-black text-slate-900">{entry.title}</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-brand-600 bg-brand-50 px-2 py-0.5 rounded-lg border border-brand-100">v{entry.version}</span>
+                      {entry.date && <span className="text-[10px] font-bold text-slate-400">{entry.date}</span>}
+                    </div>
+                  </div>
+
+                  {entry.benefits && entry.benefits.length > 0 && (
+                    <div className="space-y-2">
+                      {entry.benefits.map((b: any, bIdx: number) => (
+                        <div key={bIdx} className="flex gap-2.5 items-start bg-slate-50/60 p-3 rounded-2xl border border-slate-100/60">
+                          <Check size={14} className="text-emerald-500 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-[11px] font-black text-slate-900">{b.title}</p>
+                            <p className="text-[10px] font-bold text-slate-500 leading-normal">{b.desc}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {activeSection === 'subscription' && (
             <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
               {/* HERO DO PLANO */}
@@ -873,7 +932,7 @@ const SettingsPage: React.FC = () => {
             <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm p-10 space-y-10">
               <div className="space-y-2">
                 <h2 className="text-xl font-bold text-slate-900 italic">Interface e Alertas</h2>
-                <p className="text-sm text-slate-500 font-medium">Ajuste como o FinVision interage com você.</p>
+                <p className="text-sm text-slate-500 font-medium">Ajuste como o Zyvion interage com você.</p>
               </div>
 
               <div className="space-y-4">
@@ -929,7 +988,7 @@ const SettingsPage: React.FC = () => {
                             await updateSetting('push_subscription', sub);
                           }
                           await updateSetting('push_enabled', true);
-                          await showLocalNotification('FinVision Pro ✓', 'Notificações ativadas com sucesso! Você será alertado sobre vencimentos.', { url: '/', tag: 'welcome' });
+                          await showLocalNotification('Zyvion ✓', 'Notificações ativadas com sucesso! Você será alertado sobre vencimentos.', { url: '/', tag: 'welcome' });
                         } else {
                           alert('Permissão negada. Você pode ativar nas configurações do navegador.');
                         }
@@ -962,7 +1021,7 @@ const SettingsPage: React.FC = () => {
                   {typeof Notification !== 'undefined' && Notification.permission === 'granted' && (
                     <button
                       onClick={async () => {
-                        await showLocalNotification('FinVision Pro ✓', 'Notificações funcionando! Você será alertado sobre vencimentos.', { url: '/', tag: 'test' });
+                        await showLocalNotification('Zyvion ✓', 'Notificações funcionando! Você será alertado sobre vencimentos.', { url: '/', tag: 'test' });
                       }}
                       className="w-full py-2.5 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-600 transition-all"
                     >
@@ -974,7 +1033,7 @@ const SettingsPage: React.FC = () => {
                   <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 space-y-1">
                     <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest">📱 Para receber notificações no celular:</p>
                     <ol className="text-[10px] font-bold text-amber-600 space-y-1 list-decimal list-inside">
-                      <li>Abra o FinVision no <span className="font-black">Safari (iOS)</span> ou <span className="font-black">Chrome (Android)</span></li>
+                      <li>Abra o Zyvion no <span className="font-black">Safari (iOS)</span> ou <span className="font-black">Chrome (Android)</span></li>
                       <li>Toque em <span className="font-black">&quot;Compartilhar&quot; → &quot;Adicionar à Tela de Início&quot;</span> (iOS) ou <span className="font-black">&quot;Instalar app&quot;</span> (Android)</li>
                       <li>Abra o app instalado e ative as notificações aqui</li>
                     </ol>
@@ -1411,7 +1470,7 @@ const SettingsPage: React.FC = () => {
                     <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center border border-indigo-100"><Database size={24} /></div>
                     <h3 className="font-bold text-slate-900 text-xl tracking-tight">Infraestrutura</h3>
                   </div>
-                  <p className="text-slate-500 font-medium leading-relaxed italic">Seus dados estão sincronizados via <span className="font-bold text-slate-600 uppercase text-xs tracking-widest">FinVision Vault™</span> com tecnologia de banco de dados inteligente.</p>
+                  <p className="text-slate-500 font-medium leading-relaxed italic">Seus dados estão sincronizados via <span className="font-bold text-slate-600 uppercase text-xs tracking-widest">Zyvion Vault™</span> com tecnologia de banco de dados inteligente.</p>
 
                   <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border ${isSupabaseConfigured ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
                     {isSupabaseConfigured ? <Check size={14} /> : <XCircle size={14} />}

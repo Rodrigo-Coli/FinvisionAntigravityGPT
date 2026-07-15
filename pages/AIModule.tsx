@@ -635,7 +635,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   <button
                     onClick={() => {
                       if (shoppingList.length === 0) return;
-                      let text = `🛒 *Lista de Compras Otimizada - FinVision*\n\n`;
+                      let text = `🛒 *Lista de Compras Otimizada - Zyvion*\n\n`;
                       const merchants = Array.from(new Set(shoppingList.map(i => i.bestMerchant)));
                       merchants.forEach(m => {
                         text += `🏬 *${m}*:\n`;
@@ -762,7 +762,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   <Brain size={40} className="text-brand-400" />
                 </div>
                 <div className="text-center md:text-left">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-1">FinVision Private Banking</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-1">Zyvion Private Banking</p>
                   <h2 className="text-3xl md:text-4xl font-bold tracking-tight">Diagnóstico Patrimonial Completo</h2>
                   <p className="text-slate-400 mt-2 font-medium">Análise de toda a sua vida financeira: dívidas, investimentos, fluxo de caixa e oportunidades.</p>
                 </div>
@@ -838,7 +838,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 <div className="px-10 py-6 border-b border-slate-50 flex items-center justify-between gap-3 no-print-container">
                   <div className="flex items-center gap-3">
                     <Sparkles size={18} className="text-brand-500" />
-                    <h3 className="font-bold text-slate-900 uppercase tracking-widest text-[10px]">Relatório FinVision Advisor</h3>
+                    <h3 className="font-bold text-slate-900 uppercase tracking-widest text-[10px]">Relatório Zyvion Advisor</h3>
                   </div>
                   <button
                     onClick={handlePrintPDF}
@@ -852,7 +852,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 <div className="hidden print:block p-10 pb-0 space-y-6">
                   <div className="flex justify-between items-center pb-4 border-b-2 border-amber-600">
                     <div>
-                      <h1 className="text-3xl font-black text-slate-900 tracking-tight italic">FinVision <span className="text-amber-600 font-medium">Private</span></h1>
+                      <h1 className="text-3xl font-black text-slate-900 tracking-tight italic">Zyvion <span className="text-amber-600 font-medium">Private</span></h1>
                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em]">Wealth Management & Private Banking</p>
                     </div>
                     <div className="text-right">
@@ -907,7 +907,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
               <div className="py-20 border-2 border-dashed border-slate-100 rounded-[40px] flex flex-col items-center justify-center text-slate-300 gap-4">
                 <Brain size={48} />
                 <p className="font-bold uppercase tracking-widest text-xs">Clique em "Gerar Diagnóstico" para começar</p>
-                <p className="text-[10px] text-slate-400 font-medium max-w-xs text-center">O FinVision irá analisar todos seus ativos, passivos, fluxo de caixa e te dar um plano de ação preciso.</p>
+                <p className="text-[10px] text-slate-400 font-medium max-w-xs text-center">O Zyvion irá analisar todos seus ativos, passivos, fluxo de caixa e te dar um plano de ação preciso.</p>
               </div>
             )}
           </div>

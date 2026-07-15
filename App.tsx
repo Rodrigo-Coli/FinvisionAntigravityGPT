@@ -58,7 +58,7 @@ const APP_VERSION = '6.2.7';
 const PageSpinner: React.FC = () => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900">
     <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-    <p className="mt-4 text-slate-500 font-bold uppercase tracking-widest text-[10px]">Carregando FinVision Pro</p>
+    <p className="mt-4 text-slate-500 font-bold uppercase tracking-widest text-[10px]">Carregando Zyvion</p>
   </div>
 );
 

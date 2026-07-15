@@ -84,7 +84,7 @@ export default async function handler(req: any, res: any) {
     if (url.includes('/health'))                   return handleHealth(req, res);
 
     // --- Fallback (Health Check) ---
-    return res.status(200).json({ status: 'ok', service: 'FinVision Unified API', timestamp: new Date().toISOString() });
+    return res.status(200).json({ status: 'ok', service: 'Zyvion Unified API', timestamp: new Date().toISOString() });
 
   } catch (err: any) {
     console.error('[UnifiedAPI] Unhandled error:', err);

@@ -79,7 +79,7 @@ export function PushManager() {
         );
       }
     } catch (err) {
-      console.warn('[FinVision PushManager] Erro ao verificar vencimentos:', err);
+      console.warn('[Zyvion PushManager] Erro ao verificar vencimentos:', err);
     }
   };
 

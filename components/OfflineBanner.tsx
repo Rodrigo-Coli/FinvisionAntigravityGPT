@@ -41,8 +41,8 @@ const OfflineBanner: React.FC = () => {
 
     const openWhatsApp = () => {
         const msg = encodeURIComponent(
-            `🆘 *FinVision Pro — Problema de Conexão*\n\n` +
-            `Olá, estou com dificuldades para acessar meus dados no FinVision Pro.\n` +
+            `🆘 *Zyvion — Problema de Conexão*\n\n` +
+            `Olá, estou com dificuldades para acessar meus dados no Zyvion.\n` +
             `Status: *${isOffline ? 'Sem internet' : 'Internet lenta / erro de sincronização'}*\n` +
             `Lançamentos pendentes: *${pendingCount}*\n` +
             `Hora: ${new Date().toLocaleString('pt-BR')}`

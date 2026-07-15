@@ -1055,7 +1055,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         {/* PRINT ONLY HEADER */}
         <div className="hidden print:flex flex-col mb-6 pb-4 border-b border-slate-200">
           <h2 className="text-2xl font-bold">{name}</h2>
-          <p className="text-sm text-slate-500">Relatório Patrimonial de Ativos Imobiliários - FinVision Pro</p>
+          <p className="text-sm text-slate-500">Relatório Patrimonial de Ativos Imobiliários - Zyvion</p>
         </div>
 
         {/* SCROLL CONTAINER */}

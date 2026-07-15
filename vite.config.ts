@@ -17,10 +17,10 @@ export default defineConfig({
       },
       includeAssets: ['favicon.ico', 'logo.png', 'logo.svg', 'badge.png'],
       manifest: {
-        name: 'FinVision Pro',
-        short_name: 'FinVision',
+        name: 'Zyvion',
+        short_name: 'Zyvion',
         description: 'Gestão financeira pessoal premium — controle total das suas finanças',
-        theme_color: '#4f46e5',
+        theme_color: '#0A1F44',
         background_color: '#f8fafc',
         display: 'standalone',
         orientation: 'portrait-primary',

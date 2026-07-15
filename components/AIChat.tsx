@@ -88,7 +88,7 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
             setMessages([{
                 id: 'init',
                 role: 'assistant',
-                content: 'Olá! Sou o seu Assistente FinVision. Como posso ajudar a analisar suas finanças hoje?',
+                content: 'Olá! Sou o seu Assistente Zyvion. Como posso ajudar a analisar suas finanças hoje?',
                 timestamp: new Date()
             }]);
         }
@@ -186,7 +186,7 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
                         <Sparkles size={18} className="text-brand-400" />
                     </div>
                     <div>
-                        <h3 className="font-bold text-xs sm:text-sm tracking-tight">FinVision AI</h3>
+                        <h3 className="font-bold text-xs sm:text-sm tracking-tight">Zyvion AI</h3>
                         <p className="text-[8px] sm:text-[9px] font-bold text-white/50 uppercase tracking-widest">Seu private banker</p>
                     </div>
                 </div>

@@ -129,10 +129,8 @@ export default function Landing() {
       >
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12 flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo(0,0)}>
-            <div className="w-10 h-10 bg-gradient-to-br from-brand-600 to-indigo-600 rounded-[14px] flex items-center justify-center text-white shadow-[0_0_20px_rgba(79,70,229,0.3)]">
-              <Sparkles size={20} />
-            </div>
-            <span className="text-xl font-black tracking-tight text-white">FinVision<span className="text-brand-400">Pro</span></span>
+            <img src="/logo-icon.png" alt="Zyvion" className="w-10 h-10 object-contain" />
+            <span className="text-xl font-black tracking-tight text-white">Zyvion</span>
           </div>
 
           <div className="hidden md:flex items-center gap-10">
@@ -159,10 +157,8 @@ export default function Landing() {
         <div className="fixed inset-0 z-[100] md:hidden bg-[#020617] h-[100dvh] w-full flex flex-col items-center justify-center animate-in fade-in slide-in-from-top duration-300">
           <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center bg-[#020617]/80 backdrop-blur-md border-b border-white/5">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-brand-600 to-indigo-600 rounded-lg flex items-center justify-center text-white">
-                <Sparkles size={16} />
-              </div>
-              <span className="text-lg font-black tracking-tight text-white">FinVision<span className="text-brand-400">Pro</span></span>
+              <img src="/logo-icon.png" alt="Zyvion" className="w-8 h-8 object-contain" />
+              <span className="text-lg font-black tracking-tight text-white">Zyvion</span>
             </div>
             <button className="text-white p-2" onClick={() => setMobileMenuOpen(false)}>
               <X size={28} />
@@ -322,7 +318,7 @@ export default function Landing() {
                     <div className="w-14 h-14 bg-brand-500/20 border border-brand-500/30 text-brand-400 rounded-2xl flex items-center justify-center mb-6">
                       <Brain size={28} />
                     </div>
-                    <h3 className="text-3xl font-black tracking-tight mb-4">FinVision Advisor</h3>
+                    <h3 className="text-3xl font-black tracking-tight mb-4">Zyvion Advisor</h3>
                     <p className="text-slate-400 text-lg max-w-md leading-relaxed">Seu conselheiro patrimonial inteligente. Ele analisa seus ativos (Investimentos, Casas, Carros), cruza com suas dívidas e emite relatórios analíticos profundos e prontos para leitura, diagnosticando exatamente se a sua Riqueza está blindada ou derretendo frente à inflação.</p>
                   </div>
                   
@@ -414,7 +410,7 @@ export default function Landing() {
                 <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-6">Seus dados não treinam a <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Inteligência Artificial Pública</span>.</h2>
                 <p className="text-slate-400 text-lg font-medium max-w-xl mb-10 leading-relaxed">
                   Aplicativos grátis vendem o seu perfil de compra.<br/> 
-                  O FinVision Pro funciona como um cofre digital inviolável. Nossa Inteligência Artificial processa seus extratos e cupons de forma isolada, sob a proteção de criptografia militar. Seu patrimônio permanece invisível para terceiros e 100% sob seu controle.
+                  O Zyvion funciona como um cofre digital inviolável. Nossa Inteligência Artificial processa seus extratos e cupons de forma isolada, sob a proteção de criptografia militar. Seu patrimônio permanece invisível para terceiros e 100% sob seu controle.
                 </p>
                 <div className="inline-flex flex-wrap items-center gap-4">
                   <div className="px-6 py-3 bg-white/5 border border-white/10 rounded-xl flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-300"><Lock size={16} className="text-emerald-500"/> AES-256 Bit</div>
@@ -439,7 +435,7 @@ export default function Landing() {
         <section className="py-24 md:py-32 relative z-10 bg-[#020617] border-t border-white/5">
           <div className="max-w-[1200px] mx-auto px-6 lg:px-12">
             <div className="text-center mb-16">
-              <h2 className="text-3xl lg:text-5xl font-black tracking-tight mb-4">Por que migrar para o <span className="text-brand-500">FinVision Pro</span>?</h2>
+              <h2 className="text-3xl lg:text-5xl font-black tracking-tight mb-4">Por que migrar para o <span className="text-brand-500">Zyvion</span>?</h2>
               <p className="text-slate-400 font-medium">Compare e descubra por que os métodos tradicionais custam o seu tempo e a sua privacidade.</p>
             </div>
 
@@ -455,7 +451,7 @@ export default function Landing() {
                       <span className="inline-block bg-white/5 border border-white/10 px-3 py-1 rounded-md text-slate-400 font-bold text-[10px] uppercase tracking-widest">Apps Tradicionais (Mobills/Organizze)</span>
                     </th>
                     <th className="p-6 text-center border-l border-brand-500/30 bg-brand-900/10 w-[20%]">
-                      <span className="inline-block bg-brand-500 text-white px-4 py-1.5 rounded-md font-black text-[10px] uppercase tracking-[0.2em] shadow-lg">FinVision Pro</span>
+                      <span className="inline-block bg-brand-500 text-white px-4 py-1.5 rounded-md font-black text-[10px] uppercase tracking-[0.2em] shadow-lg">Zyvion</span>
                     </th>
                   </tr>
                 </thead>
@@ -540,7 +536,7 @@ export default function Landing() {
                   avatar: "MS"
                 },
                 {
-                  quote: "Separar gastos pessoais de PJ era um pesadelo. Com a conciliação inteligente do FinVision, arrasto os extratos de 3 bancos diferentes e resolvo tudo em minutos, sem expor minhas senhas bancárias.",
+                  quote: "Separar gastos pessoais de PJ era um pesadelo. Com a conciliação inteligente do Zyvion, arrasto os extratos de 3 bancos diferentes e resolvo tudo em minutos, sem expor minhas senhas bancárias.",
                   name: "Thiago A.",
                   role: "Empreendedor & Diretor de Tecnologia",
                   avatar: "TA"
@@ -820,10 +816,8 @@ export default function Landing() {
       {/* FOOTER ULTRA DARK */}
       <footer className="bg-black py-16 text-center text-slate-400 font-medium relative border-t border-white/5">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12 flex flex-col items-center">
-          <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-slate-300 mb-6">
-            <Sparkles size={24} />
-          </div>
-          <h4 className="text-2xl font-black text-white tracking-tight mb-2">FinVision Pro</h4>
+          <img src="/logo-icon.png" alt="Zyvion" className="w-12 h-12 object-contain mb-6" />
+          <h4 className="text-2xl font-black text-white tracking-tight mb-2">Zyvion</h4>
           <p className="text-slate-400 text-sm mb-10 max-w-sm">Elevando a barra do controle financeiro com tecnologia de inteligência artificial de ponta.</p>
           
           <div className="flex gap-8 mb-10 border-b border-white/5 pb-10 w-full justify-center">
@@ -832,7 +826,7 @@ export default function Landing() {
             <a href="mailto:suporte@automanow.com.br" className="font-bold text-[10px] uppercase tracking-widest hover:text-white transition-colors">Contato</a>
           </div>
 
-          <p className="text-[10px] font-bold uppercase tracking-widest">© {new Date().getFullYear()} FinVision Software LTDA. O Motor por Trás do Seu Sucesso.</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest">© {new Date().getFullYear()} ZIntec LTDA. O Motor por Trás do Seu Sucesso.</p>
         </div>
       </footer>
     </div>

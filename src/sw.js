@@ -1,4 +1,4 @@
-// FinVision Pro — Service Worker v8
+// Zyvion — Service Worker v8
 // Compilado pelo vite-plugin-pwa (injectManifest)
 
 import { clientsClaim } from 'workbox-core';
@@ -10,11 +10,11 @@ self.addEventListener('message', (event) => {
 
   if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
     const { title, body, icon, url, tag } = event.data.payload;
-    self.registration.showNotification(title || 'FinVision Pro', {
+    self.registration.showNotification(title || 'Zyvion', {
       body: body || '',
       icon: icon || '/logo.png',
       badge: '/badge.png',
-      tag: tag || 'finvision',
+      tag: tag || 'zyvion',
       data: { url: url || '/' },
       vibrate: [200, 100, 200],
     });
@@ -23,11 +23,11 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SCHEDULE_NOTIFICATION') {
     const { title, body, icon, url, tag, delay } = event.data.payload;
     setTimeout(() => {
-      self.registration.showNotification(title || 'FinVision Pro', {
+      self.registration.showNotification(title || 'Zyvion', {
         body: body || '',
         icon: icon || '/logo.png',
         badge: '/badge.png',
-        tag: tag || 'finvision-scheduled',
+        tag: tag || 'zyvion-scheduled',
         data: { url: url || '/' },
         vibrate: [200, 100, 200],
       });
@@ -58,7 +58,7 @@ self.addEventListener('fetch', (event) => {
         .then((response) => {
           if (response && response.status === 200) {
             const clone = response.clone();
-            caches.open('finvision-dynamic-v8').then((cache) => cache.put(event.request, clone));
+            caches.open('zyvion-dynamic-v8').then((cache) => cache.put(event.request, clone));
           }
           return response;
         })
@@ -84,7 +84,7 @@ self.addEventListener('fetch', (event) => {
       return fetch(event.request).then((response) => {
         if (response && response.status === 200) {
           const clone = response.clone();
-          caches.open('finvision-dynamic-v8').then((cache) => cache.put(event.request, clone));
+          caches.open('zyvion-dynamic-v8').then((cache) => cache.put(event.request, clone));
         }
         return response;
       }).catch(async () => {
@@ -98,7 +98,7 @@ self.addEventListener('fetch', (event) => {
 
 // ── Push (Web Push API — futuro) ──────────────────────────────────────
 self.addEventListener('push', (event) => {
-  let payload = { title: 'FinVision Pro', body: 'Você tem novas atualizações!', url: '/' };
+  let payload = { title: 'Zyvion', body: 'Você tem novas atualizações!', url: '/' };
   if (event.data) {
     try { payload = { ...payload, ...event.data.json() }; }
     catch { payload.body = event.data.text(); }

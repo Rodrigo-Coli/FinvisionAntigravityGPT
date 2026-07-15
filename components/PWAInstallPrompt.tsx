@@ -76,10 +76,10 @@ export const PWAInstallPrompt: React.FC = () => {
         {/* Header colorido */}
         <div className="bg-gradient-to-r from-brand-600 to-brand-900 p-5 flex items-center gap-4">
           <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center border border-white/30 shrink-0">
-            <img src="/logo.png" alt="FinVision" className="w-10 h-10 object-contain rounded-xl" />
+            <img src="/logo.png" alt="Zyvion" className="w-10 h-10 object-contain rounded-xl" />
           </div>
           <div className="text-white">
-            <h4 className="font-black text-base tracking-tight">Instalar FinVision Pro</h4>
+            <h4 className="font-black text-base tracking-tight">Instalar Zyvion</h4>
             <p className="text-brand-200 text-xs font-medium mt-0.5">Adicione à sua tela inicial como app</p>
           </div>
         </div>

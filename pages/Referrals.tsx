@@ -93,7 +93,7 @@ const Referrals: React.FC = () => {
 
   const shareWhatsApp = () => {
     if (!referralLink) return;
-    const text = encodeURIComponent(`Estou usando o FinVision Pro para organizar minhas finanças e recomendo muito! Assine pelo meu link e me ajude a continuar melhorando o app: ${referralLink}`);
+    const text = encodeURIComponent(`Estou usando o Zyvion para organizar minhas finanças e recomendo muito! Assine pelo meu link e me ajude a continuar melhorando o app: ${referralLink}`);
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
 

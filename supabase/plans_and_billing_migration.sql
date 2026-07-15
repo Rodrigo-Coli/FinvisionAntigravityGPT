@@ -2,7 +2,7 @@
 -- FINVISION PRO � BILLING & PLANS MIGRATION (v1.0)
 -- ============================================================
 -- Data: 2026-06-21
--- Autor: FinVision Architecture Team
+-- Autor: Zyvion Architecture Team
 -- IDEMPOTENTE: seguro para re-executar múltiplas vezes.
 -- Compatível com: PostgreSQL 15+ / Supabase
 --

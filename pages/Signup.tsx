@@ -103,7 +103,7 @@ const Signup: React.FC = () => {
           <p className="text-slate-400 font-medium text-sm leading-relaxed mb-4">
             {needsConfirmation
               ? <>Enviamos um link de confirmação para <strong className="text-slate-700">{email}</strong>. Acesse seu e-mail e clique no link para ativar sua conta.</>
-              : <>Bem-vindo ao <strong className="text-slate-700">FinVision Pro</strong>! Sua conta gratuita está pronta.</>
+              : <>Bem-vindo ao <strong className="text-slate-700">Zyvion</strong>! Sua conta gratuita está pronta.</>
             }
           </p>
           {!needsConfirmation && (
@@ -127,7 +127,7 @@ const Signup: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-white p-6 animate-in fade-in duration-700">
       <div className="max-w-md w-full p-4">
         <div className="text-center mb-12">
-          <div className="w-14 h-14 bg-brand-900 rounded-2xl flex items-center justify-center text-white font-bold italic text-2xl shadow-lg mx-auto mb-6">FV</div>
+          <img src="/logo-icon.png" alt="Zyvion" className="w-14 h-14 object-contain mx-auto mb-6" />
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Crie sua conta grátis</h1>
           <p className="text-slate-400 font-medium text-sm mt-2">Acesso imediato · Sem cartão de crédito</p>
         </div>

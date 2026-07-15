@@ -11,7 +11,7 @@ const Privacy: React.FC = () => {
             <ChevronLeft size={16} /> Voltar
           </Link>
           <div className="flex items-center gap-2 text-slate-900 font-bold italic text-xl">
-            <div className="w-8 h-8 rounded-xl bg-brand-900 text-white flex items-center justify-center text-sm not-italic">FV</div>
+            <img src="/logo-icon.png" alt="Zyvion" className="w-8 h-8 object-contain" />
           </div>
         </div>
 
@@ -34,7 +34,7 @@ const Privacy: React.FC = () => {
 
             <section>
               <h2 className="text-xl font-bold text-slate-900 mb-4">2. Segurança e Criptografia (RLS)</h2>
-              <p>Seus dados financeiros são sigilosos e protegidos sob arquitetura Row Level Security (RLS) em nossa base PostgreSQL. Nem mesmo administradores da plataforma do FinVision possuem acesso de visualização aos seus extratos e cartões vinculados.</p>
+              <p>Seus dados financeiros são sigilosos e protegidos sob arquitetura Row Level Security (RLS) em nossa base PostgreSQL. Nem mesmo administradores da plataforma do Zyvion possuem acesso de visualização aos seus extratos e cartões vinculados.</p>
             </section>
 
             <section>

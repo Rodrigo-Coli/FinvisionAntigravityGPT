@@ -149,7 +149,7 @@ export default function DemoBanner() {
       setIsDemo(false);
       setShowPromoteModal(false);
 
-      toast('🎉 Conta criada! Seus dados do demo foram preservados. Bem-vindo ao FinVision!', 'success');
+      toast('🎉 Conta criada! Seus dados do demo foram preservados. Bem-vindo ao Zyvion!', 'success');
       setTimeout(() => window.location.reload(), 1500);
     } catch (err: any) {
       console.error('Erro na promoção de conta:', err);

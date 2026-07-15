@@ -122,7 +122,7 @@ export default async function handler(req: any, res: any) {
       billingPeriod: p,
       nextDueDate: nextDue,
       paymentMethod,
-      description: `FinVision ${plan.name} (${PERIOD_MONTHS[p]} mês${PERIOD_MONTHS[p] > 1 ? 'es' : ''})`,
+      description: `Zyvion ${plan.name} (${PERIOD_MONTHS[p]} mês${PERIOD_MONTHS[p] > 1 ? 'es' : ''})`,
       // Cupom pendente vai junto na referência para o webhook confirmar o uso somente
       // quando o pagamento realmente cair (ver handleAsaasWebhook).
       externalReference: `${userId}:${planSlug}:${p}:${validCouponCode || ''}`,

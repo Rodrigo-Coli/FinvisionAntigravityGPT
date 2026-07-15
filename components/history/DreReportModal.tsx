@@ -87,7 +87,7 @@ export const DreReportModal: React.FC<DreReportModalProps> = ({ report, onClose 
 
                 {/* Área Padrão para PDF (Visível apenas em print) */}
                 <div className="hidden print:block p-8 border-b-2 border-slate-900 mb-6">
-                    <h1 className="text-3xl font-black text-slate-900 mb-2">FinVision</h1>
+                    <h1 className="text-3xl font-black text-slate-900 mb-2">Zyvion</h1>
                     <h2 className="text-lg font-bold text-slate-600 uppercase tracking-widest">Demonstrativo de Resultado do Exercício (DRE)</h2>
                     <p className="text-sm text-slate-500 mt-4">Período: {report.period?.start || 'Início'} até {report.period?.end || 'Hoje'}</p>
                 </div>
@@ -172,7 +172,7 @@ export const DreReportModal: React.FC<DreReportModalProps> = ({ report, onClose 
                 </div>
 
                 <div className="hidden print:block text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-10 pt-4 border-t border-slate-200">
-                    Gerado por FinVision - Software de Excelência Financeira
+                    Gerado por Zyvion - Software de Excelência Financeira
                 </div>
             </div>
             {/* O estilo print nativo esconde o body e mostra so o content */}

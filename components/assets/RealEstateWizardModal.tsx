@@ -897,7 +897,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                
                <div className="bg-slate-50/50 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-slate-100 space-y-4">
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-normal">
-                     Se o imóvel foi adquirido antes de você começar a usar o FinVision, informe aqui o valor total já pago acumulado. Este valor será utilizado apenas para cálculos de rentabilidade/Yield e não lançará transações retroativas no seu extrato.
+                     Se o imóvel foi adquirido antes de você começar a usar o Zyvion, informe aqui o valor total já pago acumulado. Este valor será utilizado apenas para cálculos de rentabilidade/Yield e não lançará transações retroativas no seu extrato.
                   </p>
                   <div className={propertyStage === 'PLANTA' ? 'grid grid-cols-1 gap-4' : 'grid grid-cols-1 sm:grid-cols-2 gap-4'}>
                      <div className="space-y-1.5">

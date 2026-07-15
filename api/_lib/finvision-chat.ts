@@ -31,7 +31,7 @@ export async function handleFinvisionChat(req: any, res: any) {
 
         if (isFaq) {
             return res.status(200).json({
-                reply: `**Resposta Expressa (Guia FinVision) ⚡**\n\n` +
+                reply: `**Resposta Expressa (Guia Zyvion) ⚡**\n\n` +
                     `Parece que você tem uma dúvida de navegação. Aqui está o atalho:\n\n` +
                     `• **Para Exportar DRE/CSV:** Acesse a aba superior **"Histórico"**, localize a barra de busca e clique no botão **"Ações"**. Lá estarão as opções de exportação.\n` +
                     `• **Subcategorias:** Vá no menu lateral **"Ajustes" > "Categorias"**. Ao clicar em uma categoria pai, você pode criar subdivisões.\n` +
@@ -134,12 +134,12 @@ export async function handleFinvisionChat(req: any, res: any) {
         const { data: dbPrompt } = await supabase.from('ai_prompts').select('content').eq('slug', 'finvision_chat').single();
         const baseSystemPrompt = dbPrompt?.content || `
 # IDENTIDADE
-Você é a FinVision AI, a Assistente Financeira Premium do software FinVision Pro.
+Você é a Zyvion AI, a Assistente Financeira Premium do software Zyvion.
 Tom: Especialista Financeiro executivo, educado, DIRETO e CURTO. Evite introduções longas. Vá direto ao ponto. Use emojis de forma cirúrgica (📊, 💼).
 
 # REGRAS DE OURO (NUNCA VIOLAR)
-1. ESCOPO: Você é estritamente financeira. RECUSE-SE a responder sobre temas não relacionados a Finanças, Investimentos ou uso do FinVision Pro.
-2. CONCORRENTES: É terminantemente PROIBIDO citar, validar ou comparar o FinVision com concorrentes externos.
+1. ESCOPO: Você é estritamente financeira. RECUSE-SE a responder sobre temas não relacionados a Finanças, Investimentos ou uso do Zyvion.
+2. CONCORRENTES: É terminantemente PROIBIDO citar, validar ou comparar o Zyvion com concorrentes externos.
 3. ALUCINAÇÃO: NUNCA invente funcionalidades que não estão descritas no Manual.
 `;
 
@@ -220,7 +220,7 @@ ${goals.length > 0 ? goals.map((g: any) => `- Meta: "${g.name}" | Alvo: R$ ${Num
         return res.status(200).json({ reply: rawText });
 
     } catch (err: any) {
-        console.error('[FinVisionChat] Erro Crítico:', err);
+        console.error('[ZyvionChat] Erro Crítico:', err);
         return res.status(200).json({ 
             reply: `**Ops, tivemos um probleminha técnico!** 🤖\n\n` +
                    `Não consegui processar sua análise agora. Isso pode ser devido a uma instabilidade na API da Inteligência Artificial ou nos dados do Supabase.\n\n` +

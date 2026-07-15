@@ -96,7 +96,7 @@ const PendingApproval: React.FC<PendingApprovalProps> = ({ user }) => {
           </div>
 
           <p className="text-[10px] text-slate-300 font-bold uppercase tracking-[0.4em]">
-            Controle de Acesso &bull; FinVision Pro
+            Controle de Acesso &bull; Zyvion
           </p>
         </div>
       </div>

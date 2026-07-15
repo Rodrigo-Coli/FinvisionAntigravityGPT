@@ -59,7 +59,7 @@ export async function handleNotifyReferralEngagement(req: any, res: any) {
         const tier = await getTierProgress(aff.id);
         if (tier && tier.referralsToNextTier != null && tier.referralsToNextTier <= 2 && !(await wasNotifiedRecently(aff.user_id, 'referral_tier_nudge', 7))) {
           const faltam = tier.referralsToNextTier;
-          const msg = `🚀 *FinVision Pro — Quase lá!*\n\nFaltam apenas *${faltam}* indicaç${faltam === 1 ? 'ão ativa' : 'ões ativas'} para seu cashback subir de *${tier.currentPercent}%* para *${tier.nextPercent}%* em todas as próximas indicações!\n\nCompartilhe seu link e garanta o próximo degrau: ${REFERRALS_LINK}`;
+          const msg = `🚀 *Zyvion — Quase lá!*\n\nFaltam apenas *${faltam}* indicaç${faltam === 1 ? 'ão ativa' : 'ões ativas'} para seu cashback subir de *${tier.currentPercent}%* para *${tier.nextPercent}%* em todas as próximas indicações!\n\nCompartilhe seu link e garanta o próximo degrau: ${REFERRALS_LINK}`;
           if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_tier_nudge', userId: aff.user_id })) nudgedCount++;
           continue; // uma mensagem por afiliado por execução do cron
         }
@@ -68,7 +68,7 @@ export async function handleNotifyReferralEngagement(req: any, res: any) {
       // 2. Comissões em queda: estimula indicar mais
       const trend = await getRecentCommissionTrend(aff.id);
       if (trend.decreasing && !(await wasNotifiedRecently(aff.user_id, 'referral_declining_nudge', 21))) {
-        const msg = `📉 *FinVision Pro — Indicação*\n\nSeu cashback de indicação caiu nos últimos 30 dias (de ${money(trend.prev30)} para ${money(trend.last30)}).\n\nQuanto mais amigos ativos você tiver, maior sua renda todo mês. Que tal chamar mais alguém hoje? Você pode ganhar muito mais: ${REFERRALS_LINK}`;
+        const msg = `📉 *Zyvion — Indicação*\n\nSeu cashback de indicação caiu nos últimos 30 dias (de ${money(trend.prev30)} para ${money(trend.last30)}).\n\nQuanto mais amigos ativos você tiver, maior sua renda todo mês. Que tal chamar mais alguém hoje? Você pode ganhar muito mais: ${REFERRALS_LINK}`;
         if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_declining_nudge', userId: aff.user_id })) decliningCount++;
         continue;
       }
@@ -78,7 +78,7 @@ export async function handleNotifyReferralEngagement(req: any, res: any) {
       if (availableCents > 0) {
         const opportunity = await getUpgradeOpportunity(aff.user_id, availableCents);
         if (opportunity && !(await wasNotifiedRecently(aff.user_id, 'referral_upgrade_opportunity', 30))) {
-          const msg = `⭐ *FinVision Pro — Seu cashback já pode virar upgrade!*\n\nSeu saldo de cashback de indicação (${money(availableCents)}) já cobre o plano *${opportunity.planName}* (${money(opportunity.planPriceCents)}).\n\nVocê pode usar esse saldo para abater sua própria mensalidade sempre que quiser — é só autorizar aqui: ${REFERRALS_LINK}`;
+          const msg = `⭐ *Zyvion — Seu cashback já pode virar upgrade!*\n\nSeu saldo de cashback de indicação (${money(availableCents)}) já cobre o plano *${opportunity.planName}* (${money(opportunity.planPriceCents)}).\n\nVocê pode usar esse saldo para abater sua própria mensalidade sempre que quiser — é só autorizar aqui: ${REFERRALS_LINK}`;
           if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_upgrade_opportunity', userId: aff.user_id })) upgradeCount++;
         }
       }
@@ -104,7 +104,7 @@ export async function handleNotifyReferralEngagement(req: any, res: any) {
       const target = await getWhatsappTarget(sub.user_id);
       if (!target) continue;
 
-      const msg = `💡 *Cashback FinVision Pro*\n\nIndicando amigos para o FinVision Pro, você ganha *${basePercent}% de cashback* sobre a mensalidade de cada um, todo mês, enquanto a indicação durar.\n\nQuanto mais amigos ativos, maior seu cashback recorrente — e você ainda pode usar esse saldo para abater sua própria mensalidade quando quiser.\n\nPegue seu link aqui: ${REFERRALS_LINK}`;
+      const msg = `💡 *Cashback Zyvion*\n\nIndicando amigos para o Zyvion, você ganha *${basePercent}% de cashback* sobre a mensalidade de cada um, todo mês, enquanto a indicação durar.\n\nQuanto mais amigos ativos, maior seu cashback recorrente — e você ainda pode usar esse saldo para abater sua própria mensalidade quando quiser.\n\nPegue seu link aqui: ${REFERRALS_LINK}`;
       if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_onboarding', userId: sub.user_id })) onboardedCount++;
     }
 

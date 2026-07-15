@@ -100,7 +100,7 @@ export async function handleHealth(req: any, res: any) {
           },
           body: JSON.stringify({ 
             number: number, 
-            text: "FinVision Teste de Conexão WhatsApp 🤖"
+            text: "Zyvion Teste de Conexão WhatsApp 🤖"
           })
         });
 

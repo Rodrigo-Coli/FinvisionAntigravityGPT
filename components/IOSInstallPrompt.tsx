@@ -52,10 +52,10 @@ export const IOSInstallPrompt: React.FC = () => {
           
           <div className="flex-1">
             <h3 className="font-bold text-slate-900 dark:text-white text-lg leading-tight mb-1">
-              Instalar FinVision Pro
+              Instalar Zyvion
             </h3>
             <p className="text-slate-600 dark:text-slate-400 text-sm leading-snug mb-4">
-              Tenha a experiência completa de aplicativo instalando o FinVision na sua tela de início.
+              Tenha a experiência completa de aplicativo instalando o Zyvion na sua tela de início.
             </p>
             
             <div className="space-y-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 border border-slate-100 dark:border-slate-700">

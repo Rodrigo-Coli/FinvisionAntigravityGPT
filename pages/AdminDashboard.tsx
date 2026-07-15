@@ -542,7 +542,7 @@ export default function AdminDashboard() {
           <div className="w-12 h-12 bg-slate-900 dark:bg-slate-800 rounded-[18px] flex items-center justify-center text-white shadow-xl"><Shield size={24} /></div>
           <div>
             <h1 className="text-xl font-black text-slate-900 dark:text-white italic tracking-tight">Master Console</h1>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Infraestrutura SaaS · FinVision Pro</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Infraestrutura SaaS · Zyvion</p>
           </div>
         </div>
         <div className="flex gap-3 flex-wrap">

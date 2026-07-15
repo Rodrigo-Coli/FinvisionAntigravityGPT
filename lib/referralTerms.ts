@@ -14,27 +14,27 @@ export const REFERRAL_TERMS_SECTIONS: ReferralTermsSection[] = [
   {
     title: '1. O que é o Programa de Indicação',
     body: [
-      'Ao participar, você (o "Indicador") recebe um código e um link únicos para convidar novas pessoas a assinar o FinVision Pro (o "Indicado"). Quando alguém assina usando o seu link ou código, essa indicação fica registrada e vinculada à sua conta.',
+      'Ao participar, você (o "Indicador") recebe um código e um link únicos para convidar novas pessoas a assinar o Zyvion (o "Indicado"). Quando alguém assina usando o seu link ou código, essa indicação fica registrada e vinculada à sua conta.',
     ],
   },
   {
     title: '2. Quem pode participar',
     body: [
-      'Qualquer usuário com conta ativa no FinVision Pro pode se tornar Indicador, desde que aceite estes termos. Uma pessoa não pode se autoindicar (usar o próprio código para assinar).',
+      'Qualquer usuário com conta ativa no Zyvion pode se tornar Indicador, desde que aceite estes termos. Uma pessoa não pode se autoindicar (usar o próprio código para assinar).',
     ],
   },
   {
     title: '3. Como a comissão é calculada',
     body: [
       'Você recebe um percentual sobre cada pagamento confirmado do Indicado, enquanto a indicação estiver dentro do prazo contratado.',
-      'O percentual e o prazo aplicados à SUA indicação são definidos no momento em que ela é registrada, com base no padrão vigente naquele momento (ou em uma condição especial combinada com a equipe FinVision). Se o padrão geral do programa mudar depois, isso vale apenas para indicações NOVAS — a sua já registrada mantém as condições originais, mesmo que o padrão geral suba ou desça.',
-      'O percentual pode aumentar automaticamente conforme o número de indicações ativas simultâneas cresce (escalonamento), até um teto definido pelo FinVision. Esse aumento também vale só para indicações novas feitas a partir do momento em que você atinge cada novo patamar — indicações antigas não sobem de percentual retroativamente.',
+      'O percentual e o prazo aplicados à SUA indicação são definidos no momento em que ela é registrada, com base no padrão vigente naquele momento (ou em uma condição especial combinada com a equipe Zyvion). Se o padrão geral do programa mudar depois, isso vale apenas para indicações NOVAS — a sua já registrada mantém as condições originais, mesmo que o padrão geral suba ou desça.',
+      'O percentual pode aumentar automaticamente conforme o número de indicações ativas simultâneas cresce (escalonamento), até um teto definido pelo Zyvion. Esse aumento também vale só para indicações novas feitas a partir do momento em que você atinge cada novo patamar — indicações antigas não sobem de percentual retroativamente.',
     ],
   },
   {
     title: '4. Comissão exige que o SEU plano esteja ativo',
     body: [
-      'Só são devidas comissões sobre pagamentos NOVOS do Indicado enquanto a sua própria assinatura do FinVision Pro estiver ativa. Se a sua assinatura ficar inadimplente, cancelada ou vencer, os pagamentos do Indicado feitos a partir desse momento não geram comissão para você.',
+      'Só são devidas comissões sobre pagamentos NOVOS do Indicado enquanto a sua própria assinatura do Zyvion estiver ativa. Se a sua assinatura ficar inadimplente, cancelada ou vencer, os pagamentos do Indicado feitos a partir desse momento não geram comissão para você.',
       'Comissões já geradas antes disso não são canceladas nem descontadas por esse motivo — a regra vale apenas para pagamentos futuros. Reativando sua assinatura, novos pagamentos do Indicado voltam a gerar comissão normalmente (respeitado o prazo total contratado na indicação).',
     ],
   },
@@ -53,8 +53,8 @@ export const REFERRAL_TERMS_SECTIONS: ReferralTermsSection[] = [
   {
     title: '7. Saque e uso do saldo',
     body: [
-      'Você pode solicitar o saque do saldo já liberado via Pix, respeitando o valor mínimo de saque definido pelo FinVision.',
-      'Alternativamente, você pode autorizar o uso do seu saldo disponível para abater o valor da SUA PRÓPRIA mensalidade do FinVision Pro. Essa opção é sempre por sua escolha — nunca aplicada automaticamente sem sua autorização explícita.',
+      'Você pode solicitar o saque do saldo já liberado via Pix, respeitando o valor mínimo de saque definido pelo Zyvion.',
+      'Alternativamente, você pode autorizar o uso do seu saldo disponível para abater o valor da SUA PRÓPRIA mensalidade do Zyvion. Essa opção é sempre por sua escolha — nunca aplicada automaticamente sem sua autorização explícita.',
     ],
   },
   {
@@ -66,7 +66,7 @@ export const REFERRAL_TERMS_SECTIONS: ReferralTermsSection[] = [
   {
     title: '9. Alterações nestes termos',
     body: [
-      'O FinVision pode atualizar estes termos a qualquer momento. Alterações valem apenas para indicações feitas depois da atualização — indicações já registradas continuam com as condições vigentes no momento do seu registro, conforme descrito na seção 3.',
+      'O Zyvion pode atualizar estes termos a qualquer momento. Alterações valem apenas para indicações feitas depois da atualização — indicações já registradas continuam com as condições vigentes no momento do seu registro, conforme descrito na seção 3.',
     ],
   },
   {
@@ -78,7 +78,7 @@ export const REFERRAL_TERMS_SECTIONS: ReferralTermsSection[] = [
   {
     title: '11. Encerramento',
     body: [
-      'O FinVision pode encerrar o programa ou a participação de um afiliado específico a qualquer momento, em caso de uso indevido. Saldos já liberados e não sacados continuam disponíveis para saque mesmo após o encerramento, salvo em casos de fraude comprovada.',
+      'O Zyvion pode encerrar o programa ou a participação de um afiliado específico a qualquer momento, em caso de uso indevido. Saldos já liberados e não sacados continuam disponíveis para saque mesmo após o encerramento, salvo em casos de fraude comprovada.',
     ],
   },
 ];
