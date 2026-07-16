@@ -36,7 +36,7 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-[#020617] p-6 animate-in fade-in duration-700">
       <div className="max-w-md w-full p-4">
         <div className="text-center mb-12">
-          <img src="/logo-lockup.png" alt="Zyvion" className="w-64 max-w-full mx-auto mb-4 rounded-2xl object-contain" />
+          <img src="/logo-lockup.png" alt="Zyvion" className="w-64 max-w-full mx-auto mb-4 object-contain" />
           <p className="text-slate-400 font-medium text-sm mt-1 uppercase tracking-widest">Torre de Controle Financeiro</p>
         </div>
 

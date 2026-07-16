@@ -40,7 +40,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
       {/* Sidebar Desktop */}
       <aside className="hidden lg:flex flex-col w-64 h-screen bg-white border-r border-slate-100 sticky top-0 z-50 p-6 overflow-y-auto">
         <div className="flex items-center gap-3 mb-12 px-2">
-          <img src="/logo-icon.png" alt="Zyvion" className="w-10 h-10 rounded-xl object-contain" />
+          <img src="/logo-icon.png" alt="Zyvion" className="w-10 h-10 object-contain" />
           <span className="text-xl font-bold tracking-tight text-slate-900">Zyvion</span>
         </div>
 
@@ -99,7 +99,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
         </button>
 
         <Link to="/" className="text-brand-600 font-bold text-lg flex items-center gap-2">
-          <img src="/logo-icon.png" alt="Zyvion" className="w-8 h-8 rounded-lg object-contain" />
+          <img src="/logo-icon.png" alt="Zyvion" className="w-8 h-8 object-contain" />
           Zyvion
         </Link>
 
@@ -121,7 +121,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
         <div className={`absolute top-0 left-0 w-4/5 h-full bg-white shadow-2xl flex flex-col transition-all duration-300 transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="flex items-center justify-between p-6 pb-4 menu-overlay-safe">
             <div className="flex items-center gap-3">
-              <img src="/logo-icon.png" alt="Zyvion" className="w-9 h-9 rounded-lg object-contain" />
+              <img src="/logo-icon.png" alt="Zyvion" className="w-9 h-9 object-contain" />
               <span className="font-bold text-slate-900">Zyvion</span>
             </div>
             <button onClick={() => setIsMenuOpen(false)} className="text-slate-400"><X size={24} /></button>

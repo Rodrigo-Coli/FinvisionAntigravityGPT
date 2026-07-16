@@ -127,7 +127,7 @@ const Signup: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-white p-6 animate-in fade-in duration-700">
       <div className="max-w-md w-full p-4">
         <div className="text-center mb-12">
-          <img src="/logo-icon.png" alt="Zyvion" className="w-14 h-14 rounded-2xl object-contain mx-auto mb-6" />
+          <img src="/logo-icon.png" alt="Zyvion" className="w-14 h-14 object-contain mx-auto mb-6" />
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Crie sua conta grátis</h1>
           <p className="text-slate-400 font-medium text-sm mt-2">Acesso imediato · Sem cartão de crédito</p>
         </div>
