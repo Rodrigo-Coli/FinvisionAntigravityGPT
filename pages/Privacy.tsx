@@ -11,7 +11,7 @@ const Privacy: React.FC = () => {
             <ChevronLeft size={16} /> Voltar
           </Link>
           <div className="flex items-center gap-2 text-slate-900 font-bold italic text-xl">
-            <img src="/logo-icon.png" alt="Zyvion" className="w-8 h-8 object-contain" />
+            <img src="/logo-icon.png" alt="Zyvion" className="w-8 h-8 rounded-lg object-contain" />
           </div>
         </div>
 

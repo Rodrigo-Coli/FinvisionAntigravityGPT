@@ -128,9 +128,8 @@ export default function Landing() {
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${isScrolled ? 'bg-[#020617]/80 backdrop-blur-xl border-b border-white/5 shadow-2xl py-4' : 'bg-transparent py-6'}`}
       >
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12 flex justify-between items-center">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo(0,0)}>
-            <img src="/logo-icon.png" alt="Zyvion" className="w-10 h-10 object-contain" />
-            <span className="text-xl font-black tracking-tight text-white">Zyvion</span>
+          <div className="flex items-center cursor-pointer" onClick={() => window.scrollTo(0,0)}>
+            <img src="/logo-lockup-nav.png" alt="Zyvion" className="h-14 md:h-16 w-auto rounded-2xl object-contain" />
           </div>
 
           <div className="hidden md:flex items-center gap-10">
@@ -156,9 +155,8 @@ export default function Landing() {
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-[100] md:hidden bg-[#020617] h-[100dvh] w-full flex flex-col items-center justify-center animate-in fade-in slide-in-from-top duration-300">
           <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center bg-[#020617]/80 backdrop-blur-md border-b border-white/5">
-            <div className="flex items-center gap-3">
-              <img src="/logo-icon.png" alt="Zyvion" className="w-8 h-8 object-contain" />
-              <span className="text-lg font-black tracking-tight text-white">Zyvion</span>
+            <div className="flex items-center">
+              <img src="/logo-lockup-nav.png" alt="Zyvion" className="h-11 w-auto rounded-xl object-contain" />
             </div>
             <button className="text-white p-2" onClick={() => setMobileMenuOpen(false)}>
               <X size={28} />
@@ -180,7 +178,7 @@ export default function Landing() {
 
       <main>
         {/* 2. HERO SECTION ÉPICA */}
-        <section className="relative pt-32 pb-16 md:pt-48 md:pb-24 lg:pt-64 lg:pb-40 overflow-hidden">
+        <section className="relative pt-24 pb-16 md:pt-32 md:pb-24 lg:pt-40 lg:pb-40 overflow-hidden">
           {/* Animated Background Gradients & Grids */}
           <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[1000px] bg-brand-600/10 rounded-full blur-[150px] mix-blend-screen animate-pulse pointer-events-none duration-10000" />
@@ -816,7 +814,7 @@ export default function Landing() {
       {/* FOOTER ULTRA DARK */}
       <footer className="bg-black py-16 text-center text-slate-400 font-medium relative border-t border-white/5">
         <div className="max-w-[1400px] mx-auto px-6 lg:px-12 flex flex-col items-center">
-          <img src="/logo-icon.png" alt="Zyvion" className="w-12 h-12 object-contain mb-6" />
+          <img src="/logo-icon.png" alt="Zyvion" className="w-12 h-12 rounded-xl object-contain mb-6" />
           <h4 className="text-2xl font-black text-white tracking-tight mb-2">Zyvion</h4>
           <p className="text-slate-400 text-sm mb-10 max-w-sm">Elevando a barra do controle financeiro com tecnologia de inteligência artificial de ponta.</p>
           

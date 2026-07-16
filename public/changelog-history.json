@@ -1,5 +1,33 @@
 [
   {
+    "version": "2026.07.15.2210",
+    "title": "Marca Zyvion em Tamanho Grande + Login Renovado",
+    "date": "15/07/2026",
+    "benefits": [
+      {
+        "title": "Logo em destaque na página inicial e no login",
+        "desc": "A marca Zyvion completa (símbolo + nome) agora aparece em tamanho grande no topo da página inicial e na tela de login, usando a arte oficial enviada.",
+        "type": "novidade"
+      },
+      {
+        "title": "Tela de login com o visual novo",
+        "desc": "A tela de login ganhou o mesmo fundo escuro e elegante da página inicial, em vez do fundo branco antigo.",
+        "type": "novidade"
+      },
+      {
+        "title": "Menos espaço vazio na página inicial",
+        "desc": "Reduzimos o espaço em branco entre o menu superior e o conteúdo principal da página inicial.",
+        "type": "ux"
+      }
+    ],
+    "changes": [
+      "Landing.tsx: header (desktop e mobile) e menu mobile usando logo-lockup-nav.png (ícone + wordmark, sem tagline) em vez de ícone pequeno + texto solto; padding do hero reduzido (pt-64→pt-40 em telas grandes).",
+      "Login.tsx: fundo convertido para bg-[#020617] com cartão em glassmorphism (bg-white/5); logo trocado para logo-lockup.png (lockup completo com tagline) em tamanho grande.",
+      "Novos assets gerados a partir de WhatsApp Image 2026-07-15 17.18.25 (fundo removido via preenchimento por cor): logo-icon.png, logo-lockup.png, logo-lockup-nav.png, além de logo.png/logo-192.png/favicon.ico/badge.png regenerados com o mesmo ícone.",
+      "Bordas arredondadas adicionadas em todos os usos do ícone pequeno (Nav.tsx, Terms.tsx, Privacy.tsx, Signup.tsx, Landing.tsx rodapé, template de impressão em Assets.tsx)."
+    ]
+  },
+  {
     "version": "2026.07.15.1841",
     "title": "Nova Identidade: Conheça o Zyvion!",
     "date": "15/07/2026",

@@ -7621,7 +7621,7 @@ const Assets: React.FC = () => {
   <!-- CABEÇALHO -->
   <div class="header">
     <div class="logo">
-      <img src="/logo-icon.png" alt="Zyvion" style="width:44px;height:44px;object-fit:contain;" />
+      <img src="/logo-icon.png" alt="Zyvion" style="width:44px;height:44px;object-fit:contain;border-radius:10px;" />
       <div>
         <div class="logo-text">Zyvion</div>
         <div class="logo-sub">Gestão Financeira Inteligente</div>
