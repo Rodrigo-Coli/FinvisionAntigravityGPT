@@ -1,5 +1,25 @@
 [
   {
+    "version": "2026.07.16.0003",
+    "title": "Submenu de Patrimônio Chegou no Celular",
+    "date": "16/07/2026",
+    "benefits": [
+      {
+        "title": "Mesmo submenu de Patrimônio, agora no celular",
+        "desc": "No menu (ícone de três linhas), tocar em \"Patrimônio\" abre as mesmas categorias do computador — Visão Geral, Imobiliário, Veículos, Investimentos, Empréstimos, Consórcios, Dívidas e Outros Bens — direto ali, sem precisar entrar na página primeiro.",
+        "type": "novidade"
+      },
+      {
+        "title": "Menu fecha sozinho ao escolher uma categoria",
+        "desc": "Ao tocar numa categoria, o menu fecha e leva direto pra ela.",
+        "type": "ux"
+      }
+    ],
+    "changes": [
+      "Nav.tsx: gaveta mobile (Mobile Menu Overlay) ganhou o mesmo padrão de subItems expansíveis do menu lateral desktop, reaproveitando o estado assetsMenuOpen já existente. Toque em 'Patrimônio' expande/recolhe sem fechar a gaveta; toque em uma sub-categoria navega e fecha a gaveta (onClick com setIsMenuOpen(false))."
+    ]
+  },
+  {
     "version": "2026.07.15.2345",
     "title": "Menu Lateral com Submenu de Patrimônio (Piloto)",
     "date": "15/07/2026",

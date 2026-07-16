@@ -204,20 +204,71 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
           </div>
 
           <div className="flex-1 overflow-y-auto px-6 space-y-2">
-            {allItems.map(item => (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setIsMenuOpen(false)}
-                className={`flex items-center gap-4 p-4 rounded-2xl text-sm font-bold ${location.pathname === item.path
-                  ? 'bg-brand-50 text-brand-600'
-                  : 'text-slate-500 hover:bg-slate-50'
-                  }`}
-              >
-                {item.icon}
-                {item.label}
-              </Link>
-            ))}
+            {allItems.map(item => {
+              const isActive = location.pathname === item.path;
+              if (item.subItems) {
+                const isOpen = isActive && assetsMenuOpen;
+                return (
+                  <div key={item.path}>
+                    <Link
+                      to={item.path}
+                      onClick={(e) => {
+                        if (isActive) {
+                          e.preventDefault();
+                          setAssetsMenuOpen(o => !o);
+                        }
+                      }}
+                      className={`flex items-center gap-4 p-4 rounded-2xl text-sm font-bold ${isActive
+                        ? 'bg-brand-50 text-brand-600'
+                        : 'text-slate-500 hover:bg-slate-50'
+                        }`}
+                    >
+                      {item.icon}
+                      <span className="flex-grow">{item.label}</span>
+                      <ChevronDown
+                        size={18}
+                        className={`text-slate-300 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                      />
+                    </Link>
+                    {isOpen && (
+                      <div className="mt-1 ml-4 pl-4 border-l border-slate-100 space-y-1">
+                        {item.subItems.map(sub => {
+                          const isSubActive = currentAssetView === sub.id;
+                          return (
+                            <Link
+                              key={sub.id}
+                              to={`${item.path}?view=${sub.id}`}
+                              onClick={() => setIsMenuOpen(false)}
+                              className={`flex items-center gap-3 p-3 rounded-xl text-xs font-bold ${isSubActive
+                                ? 'bg-brand-50 text-brand-600'
+                                : 'text-slate-400 hover:bg-slate-50'
+                                }`}
+                            >
+                              {sub.icon}
+                              {sub.label}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setIsMenuOpen(false)}
+                  className={`flex items-center gap-4 p-4 rounded-2xl text-sm font-bold ${isActive
+                    ? 'bg-brand-50 text-brand-600'
+                    : 'text-slate-500 hover:bg-slate-50'
+                    }`}
+                >
+                  {item.icon}
+                  {item.label}
+                </Link>
+              );
+            })}
           </div>
 
           <div className="p-6 pt-4 border-t border-slate-100">

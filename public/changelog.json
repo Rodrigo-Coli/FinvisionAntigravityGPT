@@ -1,22 +1,20 @@
 {
-  "version": "2026.07.15.2345",
-  "title": "Menu Lateral com Submenu de Patrimônio (Piloto)",
-  "date": "15/07/2026",
+  "version": "2026.07.16.0003",
+  "title": "Submenu de Patrimônio Chegou no Celular",
+  "date": "16/07/2026",
   "benefits": [
     {
-      "title": "Navegação do Patrimônio direto no menu lateral",
-      "desc": "No computador, ao clicar em \"Patrimônio\" no menu lateral, abre um submenu com todas as categorias (Visão Geral, Imobiliário, Veículos, Investimentos, Empréstimos, Consórcios, Dívidas e Outros Bens) — sem precisar entrar na página pra trocar de aba.",
+      "title": "Mesmo submenu de Patrimônio, agora no celular",
+      "desc": "No menu (ícone de três linhas), tocar em \"Patrimônio\" abre as mesmas categorias do computador — Visão Geral, Imobiliário, Veículos, Investimentos, Empréstimos, Consórcios, Dívidas e Outros Bens — direto ali, sem precisar entrar na página primeiro.",
       "type": "novidade"
     },
     {
-      "title": "Menu se ajusta sozinho",
-      "desc": "O submenu abre automaticamente ao entrar em Patrimônio e fecha ao sair para outra página, mantendo o menu sempre organizado.",
+      "title": "Menu fecha sozinho ao escolher uma categoria",
+      "desc": "Ao tocar numa categoria, o menu fecha e leva direto pra ela.",
       "type": "ux"
     }
   ],
   "changes": [
-    "Nav.tsx: item 'Patrimônio' do menu lateral desktop ganhou subItems expansíveis, sincronizados via query param (?view=) da URL — clique no item ativo alterna abrir/fechar; navegar para outra página fecha automaticamente.",
-    "Assets.tsx: activeView migrado de useState local para useSearchParams (query param 'view'), permitindo que o menu lateral controle a aba ativa sem estado duplicado; barra de abas horizontal antiga mantida apenas para o celular (lg:hidden).",
-    "Este é um piloto apenas na página Patrimônio — outras páginas com abas internas (Configurações, Master Console, Planejamento, IA, Contas) continuam com o menu de abas horizontal por enquanto."
+    "Nav.tsx: gaveta mobile (Mobile Menu Overlay) ganhou o mesmo padrão de subItems expansíveis do menu lateral desktop, reaproveitando o estado assetsMenuOpen já existente. Toque em 'Patrimônio' expande/recolhe sem fechar a gaveta; toque em uma sub-categoria navega e fecha a gaveta (onClick com setIsMenuOpen(false))."
   ]
 }
