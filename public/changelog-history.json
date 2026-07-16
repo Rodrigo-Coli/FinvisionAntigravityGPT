@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.07.15.2345",
+    "title": "Menu Lateral com Submenu de Patrimônio (Piloto)",
+    "date": "15/07/2026",
+    "benefits": [
+      {
+        "title": "Navegação do Patrimônio direto no menu lateral",
+        "desc": "No computador, ao clicar em \"Patrimônio\" no menu lateral, abre um submenu com todas as categorias (Visão Geral, Imobiliário, Veículos, Investimentos, Empréstimos, Consórcios, Dívidas e Outros Bens) — sem precisar entrar na página pra trocar de aba.",
+        "type": "novidade"
+      },
+      {
+        "title": "Menu se ajusta sozinho",
+        "desc": "O submenu abre automaticamente ao entrar em Patrimônio e fecha ao sair para outra página, mantendo o menu sempre organizado.",
+        "type": "ux"
+      }
+    ],
+    "changes": [
+      "Nav.tsx: item 'Patrimônio' do menu lateral desktop ganhou subItems expansíveis, sincronizados via query param (?view=) da URL — clique no item ativo alterna abrir/fechar; navegar para outra página fecha automaticamente.",
+      "Assets.tsx: activeView migrado de useState local para useSearchParams (query param 'view'), permitindo que o menu lateral controle a aba ativa sem estado duplicado; barra de abas horizontal antiga mantida apenas para o celular (lg:hidden).",
+      "Este é um piloto apenas na página Patrimônio — outras páginas com abas internas (Configurações, Master Console, Planejamento, IA, Contas) continuam com o menu de abas horizontal por enquanto."
+    ]
+  },
+  {
     "version": "2026.07.15.2308",
     "title": "Ajustes Finos na Marca Zyvion",
     "date": "15/07/2026",

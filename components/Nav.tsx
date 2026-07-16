@@ -1,27 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, BookOpen, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown, ShieldCheck, Gift } from 'lucide-react';
+import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, BookOpen, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown, ShieldCheck, Gift, LayoutGrid, Building2, Car, TrendingUp, HandCoins, Layers, Box, ChevronDown } from 'lucide-react';
 import { Profile } from '../types';
 import { isAdmin } from '../lib/authUtils';
 import { supabase } from '../lib/supabase/client';
 import { useTour } from '../contexts/TourContext';
 import { useSubscription } from '../contexts/SubscriptionContext';
 
+type NavSubItem = { id: string; label: string; icon: React.ReactNode };
+type NavItem = { label: string; path: string; icon: React.ReactNode; subItems?: NavSubItem[] };
+
 const Nav: React.FC<{ user: Profile }> = ({ user }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [assetsMenuOpen, setAssetsMenuOpen] = useState(location.pathname === '/assets');
   const { startTour } = useTour();
   const { subscription } = useSubscription();
 
   const planLabel = subscription?.plans?.name ?? (subscription ? 'Plano Ativo' : 'Plano Gratuito');
+  const currentAssetView = new URLSearchParams(location.search).get('view') || 'overview';
 
-  const items = [
+  useEffect(() => {
+    setAssetsMenuOpen(location.pathname === '/assets');
+  }, [location.pathname]);
+
+  const assetsSubItems = [
+    { id: 'overview', label: 'Visão Geral', icon: <LayoutGrid size={16} /> },
+    { id: 'realestate', label: 'Ativos Imobiliários', icon: <Building2 size={16} /> },
+    { id: 'vehicles', label: 'Veículos', icon: <Car size={16} /> },
+    { id: 'investments', label: 'Investimentos', icon: <TrendingUp size={16} /> },
+    { id: 'loans', label: 'Empréstimos Concedidos', icon: <HandCoins size={16} /> },
+    { id: 'consortiums', label: 'Consórcios', icon: <Layers size={16} /> },
+    { id: 'liabilities', label: 'Passivos (Dívidas)', icon: <Landmark size={16} /> },
+    { id: 'physical', label: 'Outros Ativos Físicos', icon: <Box size={16} /> },
+  ];
+
+  const items: NavItem[] = [
     { label: 'Início', path: '/', icon: <Home size={20} /> },
     { label: 'Contas & Cartões', path: '/banking', icon: <Landmark size={20} /> },
     { label: 'Transações', path: '/history', icon: <History size={20} /> },
     { label: 'Insights AI', path: '/ai', icon: <Sparkles size={20} /> },
-    { label: 'Patrimônio', path: '/assets', icon: <Gem size={20} /> },
+    { label: 'Patrimônio', path: '/assets', icon: <Gem size={20} />, subItems: assetsSubItems },
     { label: 'Planejamento', path: '/planning', icon: <Target size={20} /> },
     { label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },
     { label: 'Relatórios', path: '/reports', icon: <FileDown size={20} /> },
@@ -29,7 +49,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { label: 'Ajustes', path: '/settings', icon: <Settings size={20} /> },
   ];
 
-  const adminItems = isAdmin(user) ? [
+  const adminItems: NavItem[] = isAdmin(user) ? [
     { label: 'Master Console', path: '/admin', icon: <ShieldCheck size={20} /> },
   ] : [];
 
@@ -45,25 +65,81 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
         </div>
 
         <nav className="flex-grow space-y-2">
-          {allItems.map(item => (
-            <Link
-              key={item.path}
-              to={item.path}
-              id={`tour-nav-${item.path.replace('/', '') || 'home'}`}
-              className={`group flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all relative ${location.pathname === item.path
-                ? 'text-brand-600 font-bold'
-                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-            >
-              {location.pathname === item.path && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-brand-600 rounded-r-full" />
-              )}
-              <span className={`${location.pathname === item.path ? 'text-brand-600' : 'text-slate-400 group-hover:text-slate-600'}`}>
-                {item.icon}
-              </span>
-              {item.label}
-            </Link>
-          ))}
+          {allItems.map(item => {
+            const isActive = location.pathname === item.path;
+            if (item.subItems) {
+              const isOpen = isActive && assetsMenuOpen;
+              return (
+                <div key={item.path}>
+                  <Link
+                    to={item.path}
+                    id={`tour-nav-${item.path.replace('/', '') || 'home'}`}
+                    onClick={(e) => {
+                      if (isActive) {
+                        e.preventDefault();
+                        setAssetsMenuOpen(o => !o);
+                      }
+                    }}
+                    className={`group flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all relative ${isActive
+                      ? 'text-brand-600 font-bold'
+                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                      }`}
+                  >
+                    {isActive && (
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-brand-600 rounded-r-full" />
+                    )}
+                    <span className={`${isActive ? 'text-brand-600' : 'text-slate-400 group-hover:text-slate-600'}`}>
+                      {item.icon}
+                    </span>
+                    <span className="flex-grow">{item.label}</span>
+                    <ChevronDown
+                      size={16}
+                      className={`text-slate-300 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                    />
+                  </Link>
+                  {isOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-slate-100 space-y-0.5">
+                      {item.subItems.map(sub => {
+                        const isSubActive = currentAssetView === sub.id;
+                        return (
+                          <Link
+                            key={sub.id}
+                            to={`${item.path}?view=${sub.id}`}
+                            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${isSubActive
+                              ? 'text-brand-600 font-bold bg-brand-50'
+                              : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
+                              }`}
+                          >
+                            {sub.icon}
+                            {sub.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                id={`tour-nav-${item.path.replace('/', '') || 'home'}`}
+                className={`group flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all relative ${isActive
+                  ? 'text-brand-600 font-bold'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+              >
+                {isActive && (
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-brand-600 rounded-r-full" />
+                )}
+                <span className={`${isActive ? 'text-brand-600' : 'text-slate-400 group-hover:text-slate-600'}`}>
+                  {item.icon}
+                </span>
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="mt-auto pt-6 border-t border-slate-50 space-y-4">

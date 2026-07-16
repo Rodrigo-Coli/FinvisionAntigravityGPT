@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Home as HomeIcon,
@@ -98,10 +98,18 @@ const computeInstallmentAmount = (
   return Math.round(parcela * Math.pow(1 + reaj, index1) * 100) / 100;
 };
 
+type AssetView = 'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities' | 'consortiums';
+const ASSET_VIEWS: AssetView[] = ['overview', 'realestate', 'vehicles', 'physical', 'investments', 'loans', 'liabilities', 'consortiums'];
+
 const Assets: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [activeView, setActiveView] = useState<'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities' | 'consortiums'>('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const viewParam = searchParams.get('view') as AssetView | null;
+  const activeView: AssetView = viewParam && ASSET_VIEWS.includes(viewParam) ? viewParam : 'overview';
+  const setActiveView = (view: AssetView) => {
+    setSearchParams(view === 'overview' ? {} : { view }, { replace: false });
+  };
   const [allAccounts, setAllAccounts] = useState<any[]>([]);
   const [collapsedBrokers, setCollapsedBrokers] = useState<Record<string, boolean>>({});
   const [showResgateModal, setShowResgateModal] = useState(false);
@@ -5558,8 +5566,8 @@ const Assets: React.FC = () => {
         </div>
       </div>
 
-      {/* NAVIGATION TABS - IMMEDIATELY ACCESSIBLE AT TOP */}
-      <div className="flex gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full max-w-full overflow-x-auto scrollbar-hide">
+      {/* NAVIGATION TABS - mobile only; no menu lateral tem submenu equivalente no desktop */}
+      <div className="lg:hidden flex gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full max-w-full overflow-x-auto scrollbar-hide">
         {[
           { id: 'overview', label: 'Visão Geral', icon: <LayoutGrid size={16} /> },
           { id: 'realestate', label: 'Ativos Imobiliários', icon: <Building2 size={16} /> },
