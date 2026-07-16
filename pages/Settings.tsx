@@ -142,19 +142,18 @@ export const ensureInvestmentCategoriesAndSubcategories = async (userId: string)
 
 const SettingsPage: React.FC = () => {
   const { toast } = useToast();
-  const [activeSection, setActiveSection] = useState<'general' | 'navigation' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription' | 'changelog'>('general');
+  type SettingsSection = 'general' | 'navigation' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription' | 'changelog';
+  const SETTINGS_SECTIONS: SettingsSection[] = ['general', 'navigation', 'categories', 'establishments', 'products', 'backup', 'currencies', 'rates', 'entities', 'subscription', 'changelog'];
   const { subscription, loadingSub } = useSubscription();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sectionParam = searchParams.get('section') as SettingsSection | null;
+  const activeSection: SettingsSection = sectionParam && SETTINGS_SECTIONS.includes(sectionParam) ? sectionParam : 'general';
+  const setActiveSection = (section: SettingsSection) => {
+    setSearchParams(section === 'general' ? {} : { section }, { replace: false });
+  };
   const [changelogHistory, setChangelogHistory] = useState<any[] | null>(null);
   const [loadingChangelog, setLoadingChangelog] = useState(false);
-
-  useEffect(() => {
-    const section = searchParams.get('section');
-    if (section && ['general', 'navigation', 'categories', 'establishments', 'products', 'backup', 'currencies', 'rates', 'entities', 'subscription', 'changelog'].includes(section)) {
-      setActiveSection(section as any);
-    }
-  }, [searchParams]);
 
   useEffect(() => {
     if (activeSection === 'changelog' && changelogHistory === null && !loadingChangelog) {
@@ -696,8 +695,8 @@ const SettingsPage: React.FC = () => {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-10">
-        {/* SIDEBAR NAVIGATION — Horizontal pills on mobile, buttons on desktop */}
-        <aside className="w-full lg:w-72 shrink-0">
+        {/* SIDEBAR NAVIGATION — mobile only; no menu lateral tem submenu equivalente no desktop */}
+        <aside className="w-full lg:hidden shrink-0">
           {/* Mobile: Horizontal scrollable Pill Tabs */}
           <div className="block lg:hidden overflow-x-auto scrollbar-none py-2 border-b border-slate-100 -mx-4 px-4">
             <div className="flex gap-2.5 whitespace-nowrap">

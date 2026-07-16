@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase/client';
 import {
   Check, X, Save, Loader2, Shield, Settings, Tag, Users,
@@ -74,7 +75,13 @@ const ConfirmAction: React.FC<{
 // ─── Componente principal ────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const ADMIN_TABS: Tab[] = ['overview', 'plans', 'users', 'campaigns', 'coupons', 'prompts', 'audit', 'referrals'];
+  const [searchParams, setSearchParams] = useSearchParams();
+  const viewParam = searchParams.get('view') as Tab | null;
+  const activeTab: Tab = viewParam && ADMIN_TABS.includes(viewParam) ? viewParam : 'overview';
+  const setActiveTab = (tab: Tab) => {
+    setSearchParams(tab === 'overview' ? {} : { view: tab }, { replace: false });
+  };
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -563,8 +570,8 @@ export default function AdminDashboard() {
 
       {/* NAVEGAÇÃO — responsiva */}
       <div className="relative">
-        {/* Desktop: abas completas */}
-        <div className="hidden md:flex gap-1 p-1.5 bg-slate-100/50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800 rounded-[20px] w-full overflow-x-auto shadow-inner">
+        {/* Desktop: abas completas (md-lg; a partir de lg o menu lateral tem o submenu) */}
+        <div className="hidden md:flex lg:hidden gap-1 p-1.5 bg-slate-100/50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800 rounded-[20px] w-full overflow-x-auto shadow-inner">
           {tabs.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-[14px] text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-1 justify-center ${activeTab === tab.id ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-md' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>

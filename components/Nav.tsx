@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, BookOpen, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown, ShieldCheck, Gift, LayoutGrid, Building2, Car, TrendingUp, HandCoins, Layers, Box, ChevronDown } from 'lucide-react';
+import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, BookOpen, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown, ShieldCheck, Gift, LayoutGrid, Building2, Car, TrendingUp, HandCoins, Layers, Box, ChevronDown, Receipt, Store, ShoppingCart, BarChart3, Brain, Users, Megaphone, Tag, Tags, Navigation, Percent, Cloud } from 'lucide-react';
 import { Profile } from '../types';
 import { isAdmin } from '../lib/authUtils';
 import { supabase } from '../lib/supabase/client';
@@ -8,24 +8,19 @@ import { useTour } from '../contexts/TourContext';
 import { useSubscription } from '../contexts/SubscriptionContext';
 
 type NavSubItem = { id: string; label: string; icon: React.ReactNode };
-type NavItem = { label: string; path: string; icon: React.ReactNode; subItems?: NavSubItem[] };
+type NavItem = { label: string; path: string; icon: React.ReactNode; subItems?: NavSubItem[]; paramName?: string };
 
 const Nav: React.FC<{ user: Profile }> = ({ user }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [assetsMenuOpen, setAssetsMenuOpen] = useState(location.pathname === '/assets');
+  const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const { startTour } = useTour();
   const { subscription } = useSubscription();
 
   const planLabel = subscription?.plans?.name ?? (subscription ? 'Plano Ativo' : 'Plano Gratuito');
-  const currentAssetView = new URLSearchParams(location.search).get('view') || 'overview';
 
-  useEffect(() => {
-    setAssetsMenuOpen(location.pathname === '/assets');
-  }, [location.pathname]);
-
-  const assetsSubItems = [
+  const assetsSubItems: NavSubItem[] = [
     { id: 'overview', label: 'Visão Geral', icon: <LayoutGrid size={16} /> },
     { id: 'realestate', label: 'Ativos Imobiliários', icon: <Building2 size={16} /> },
     { id: 'vehicles', label: 'Veículos', icon: <Car size={16} /> },
@@ -36,24 +31,73 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { id: 'physical', label: 'Outros Ativos Físicos', icon: <Box size={16} /> },
   ];
 
+  const bankingSubItems: NavSubItem[] = [
+    { id: 'accounts', label: 'Contas e Carteiras', icon: <Landmark size={16} /> },
+    { id: 'cards', label: 'Cartões de Crédito', icon: <CreditCard size={16} /> },
+  ];
+
+  const aiSubItems: NavSubItem[] = [
+    { id: 'upload', label: 'Escanear Cupom', icon: <Receipt size={16} /> },
+    { id: 'comparative', label: 'Comparador', icon: <Store size={16} /> },
+    { id: 'shopping', label: 'Lista de Compras', icon: <ShoppingCart size={16} /> },
+    { id: 'history', label: 'Minha Inflação', icon: <BarChart3 size={16} /> },
+    { id: 'wealth', label: 'Diagnóstico', icon: <Brain size={16} /> },
+  ];
+
+  const planningSubItems: NavSubItem[] = [
+    { id: 'budget', label: 'Orçamentos', icon: <PieChart size={16} /> },
+    { id: 'goals', label: 'Metas', icon: <Target size={16} /> },
+  ];
+
+  const settingsSubItems: NavSubItem[] = [
+    { id: 'general', label: 'Preferências', icon: <Settings size={16} /> },
+    { id: 'navigation', label: 'Navegação', icon: <Navigation size={16} /> },
+    { id: 'subscription', label: 'Meu Plano', icon: <Gem size={16} /> },
+    { id: 'categories', label: 'Categorias', icon: <Tags size={16} /> },
+    { id: 'entities', label: 'Perfis / Donos', icon: <Building2 size={16} /> },
+    { id: 'establishments', label: 'Estabelecimentos', icon: <Store size={16} /> },
+    { id: 'rates', label: 'Taxas e Conversão', icon: <Percent size={16} /> },
+    { id: 'backup', label: 'Backup e Dados', icon: <Cloud size={16} /> },
+    { id: 'changelog', label: 'Novidades', icon: <Bell size={16} /> },
+  ];
+
+  const adminSubItems: NavSubItem[] = [
+    { id: 'overview', label: 'Visão Geral', icon: <BarChart3 size={16} /> },
+    { id: 'plans', label: 'Planos & SaaS', icon: <Gem size={16} /> },
+    { id: 'users', label: 'Usuários', icon: <Users size={16} /> },
+    { id: 'campaigns', label: 'Campanhas', icon: <Megaphone size={16} /> },
+    { id: 'coupons', label: 'Cupons', icon: <Tag size={16} /> },
+    { id: 'referrals', label: 'Indicações', icon: <Gift size={16} /> },
+    { id: 'prompts', label: 'IA & Custos', icon: <Brain size={16} /> },
+    { id: 'audit', label: 'Auditoria', icon: <ShieldCheck size={16} /> },
+  ];
+
   const items: NavItem[] = [
     { label: 'Início', path: '/', icon: <Home size={20} /> },
-    { label: 'Contas & Cartões', path: '/banking', icon: <Landmark size={20} /> },
+    { label: 'Contas & Cartões', path: '/banking', icon: <Landmark size={20} />, subItems: bankingSubItems, paramName: 'tab' },
     { label: 'Transações', path: '/history', icon: <History size={20} /> },
-    { label: 'Insights AI', path: '/ai', icon: <Sparkles size={20} /> },
+    { label: 'Insights AI', path: '/ai', icon: <Sparkles size={20} />, subItems: aiSubItems },
     { label: 'Patrimônio', path: '/assets', icon: <Gem size={20} />, subItems: assetsSubItems },
-    { label: 'Planejamento', path: '/planning', icon: <Target size={20} /> },
+    { label: 'Planejamento', path: '/planning', icon: <Target size={20} />, subItems: planningSubItems, paramName: 'tab' },
     { label: 'Conciliar', path: '/reconcile', icon: <FileCheck size={20} /> },
     { label: 'Relatórios', path: '/reports', icon: <FileDown size={20} /> },
     { label: 'Indicações', path: '/referrals', icon: <Gift size={20} /> },
-    { label: 'Ajustes', path: '/settings', icon: <Settings size={20} /> },
+    { label: 'Ajustes', path: '/settings', icon: <Settings size={20} />, subItems: settingsSubItems, paramName: 'section' },
   ];
 
   const adminItems: NavItem[] = isAdmin(user) ? [
-    { label: 'Master Console', path: '/admin', icon: <ShieldCheck size={20} /> },
+    { label: 'Master Console', path: '/admin', icon: <ShieldCheck size={20} />, subItems: adminSubItems },
   ] : [];
 
   const allItems = [...items, ...adminItems];
+
+  useEffect(() => {
+    const match = allItems.find(i => i.subItems && i.path === location.pathname);
+    setExpandedItem(match ? match.path : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  const getSubValue = (item: NavItem) => new URLSearchParams(location.search).get(item.paramName || 'view');
 
   return (
     <>
@@ -68,7 +112,8 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
           {allItems.map(item => {
             const isActive = location.pathname === item.path;
             if (item.subItems) {
-              const isOpen = isActive && assetsMenuOpen;
+              const isOpen = isActive && expandedItem === item.path;
+              const currentSubValue = getSubValue(item) || item.subItems[0].id;
               return (
                 <div key={item.path}>
                   <Link
@@ -77,7 +122,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
                     onClick={(e) => {
                       if (isActive) {
                         e.preventDefault();
-                        setAssetsMenuOpen(o => !o);
+                        setExpandedItem(o => o === item.path ? null : item.path);
                       }
                     }}
                     className={`group flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all relative ${isActive
@@ -100,11 +145,11 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
                   {isOpen && (
                     <div className="mt-1 ml-4 pl-4 border-l border-slate-100 space-y-0.5">
                       {item.subItems.map(sub => {
-                        const isSubActive = currentAssetView === sub.id;
+                        const isSubActive = currentSubValue === sub.id;
                         return (
                           <Link
                             key={sub.id}
-                            to={`${item.path}?view=${sub.id}`}
+                            to={`${item.path}?${item.paramName || 'view'}=${sub.id}`}
                             className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${isSubActive
                               ? 'text-brand-600 font-bold bg-brand-50'
                               : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
@@ -207,7 +252,8 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
             {allItems.map(item => {
               const isActive = location.pathname === item.path;
               if (item.subItems) {
-                const isOpen = isActive && assetsMenuOpen;
+                const isOpen = isActive && expandedItem === item.path;
+                const currentSubValue = getSubValue(item) || item.subItems[0].id;
                 return (
                   <div key={item.path}>
                     <Link
@@ -215,7 +261,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
                       onClick={(e) => {
                         if (isActive) {
                           e.preventDefault();
-                          setAssetsMenuOpen(o => !o);
+                          setExpandedItem(o => o === item.path ? null : item.path);
                         }
                       }}
                       className={`flex items-center gap-4 p-4 rounded-2xl text-sm font-bold ${isActive
@@ -233,11 +279,11 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
                     {isOpen && (
                       <div className="mt-1 ml-4 pl-4 border-l border-slate-100 space-y-1">
                         {item.subItems.map(sub => {
-                          const isSubActive = currentAssetView === sub.id;
+                          const isSubActive = currentSubValue === sub.id;
                           return (
                             <Link
                               key={sub.id}
-                              to={`${item.path}?view=${sub.id}`}
+                              to={`${item.path}?${item.paramName || 'view'}=${sub.id}`}
                               onClick={() => setIsMenuOpen(false)}
                               className={`flex items-center gap-3 p-3 rounded-xl text-xs font-bold ${isSubActive
                                 ? 'bg-brand-50 text-brand-600'

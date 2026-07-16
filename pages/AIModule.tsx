@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, Box, LayoutGrid, Brain, ShieldCheck, AlertTriangle, Target, Lightbulb } from 'lucide-react';
 import { AIReconcileService } from '../services/aiReconcile.service';
 import { ExtractedReceipt, Profile } from '../types';
@@ -65,7 +66,14 @@ const parseMarkdownToReact = (text: string) => {
 
 const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<'upload' | 'history' | 'comparative' | 'shopping' | 'wealth'>('upload');
+  type AITab = 'upload' | 'history' | 'comparative' | 'shopping' | 'wealth';
+  const AI_TABS: AITab[] = ['upload', 'history', 'comparative', 'shopping', 'wealth'];
+  const [searchParams, setSearchParams] = useSearchParams();
+  const viewParam = searchParams.get('view') as AITab | null;
+  const activeTab: AITab = viewParam && AI_TABS.includes(viewParam) ? viewParam : 'upload';
+  const setActiveTab = (tab: AITab) => {
+    setSearchParams(tab === 'upload' ? {} : { view: tab }, { replace: false });
+  };
   const [isProcessing, setIsProcessing] = useState(false);
   const [receipt, setReceipt] = useState<ExtractedReceipt | null>(null);
   const [reconcileMode, setReconcileMode] = useState<'total' | 'partial' | 'items'>('total');
@@ -309,9 +317,9 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         </div>
       </div>
 
-      {/* NAVIGATION TABS */}
+      {/* NAVIGATION TABS - mobile only; no menu lateral tem submenu equivalente no desktop */}
       {/* Mobile: grid 2 colunas; sm+: linha única horizontal */}
-      <div className="flex flex-wrap gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full">
+      <div className="lg:hidden flex flex-wrap gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full">
         {[
           { id: 'upload', label: 'Escanear Cupom', icon: <Receipt size={16} /> },
           { id: 'comparative', label: 'Comparador', icon: <Store size={16} /> },

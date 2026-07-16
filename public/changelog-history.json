@@ -1,5 +1,28 @@
 [
   {
+    "version": "2026.07.16.0026",
+    "title": "Submenu no Menu Lateral em Todas as Páginas",
+    "date": "16/07/2026",
+    "benefits": [
+      {
+        "title": "Navegação direto pelo menu em 6 páginas",
+        "desc": "O padrão que estreamos em Patrimônio agora vale para Contas & Cartões, Insights AI, Planejamento, Ajustes e Master Console — clique no item do menu e as categorias aparecem ali mesmo, sem precisar entrar na página primeiro.",
+        "type": "novidade"
+      },
+      {
+        "title": "Funciona igual no computador e no celular",
+        "desc": "No celular, é só abrir o menu (☰) e tocar no item — o mesmo submenu aparece na hora.",
+        "type": "ux"
+      }
+    ],
+    "changes": [
+      "Nav.tsx: generalizado de um estado único (assetsMenuOpen) para expandedItem (path-keyed), suportando múltiplos itens com subItems simultaneamente; adicionado paramName por item (view/tab/section) para respeitar a convenção de query param já usada por cada página.",
+      "Banking.tsx e Planning.tsx: barra de abas horizontal escondida no desktop (lg:hidden), mantida no celular; corrigido bug pré-existente em Planning.tsx onde o activeTab só lia a URL na primeira carga e não se atualizava em navegações subsequentes.",
+      "AIModule.tsx e AdminDashboard.tsx: activeTab migrado de useState local para useSearchParams (query param 'view').",
+      "Settings.tsx: activeSection migrado para leitura/escrita bidirecional via useSearchParams (query param 'section', já usado antes só para leitura); sidebar de seções antiga escondida no desktop, mantida como pills horizontais no celular."
+    ]
+  },
+  {
     "version": "2026.07.16.0003",
     "title": "Submenu de Patrimônio Chegou no Celular",
     "date": "16/07/2026",

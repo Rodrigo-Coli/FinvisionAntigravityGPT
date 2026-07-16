@@ -31,8 +31,8 @@ const Banking: React.FC = () => {
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 pb-36 space-y-8 animate-in fade-in duration-500">
-      {/* UNIFIED TABS */}
-      <div className="flex justify-center sm:justify-start border-b border-slate-100 pb-4">
+      {/* UNIFIED TABS - mobile only; no menu lateral tem submenu equivalente no desktop */}
+      <div className="lg:hidden flex justify-center sm:justify-start border-b border-slate-100 pb-4">
         <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-100 w-full sm:w-auto">
           <button
             onClick={() => handleTabChange('accounts')}

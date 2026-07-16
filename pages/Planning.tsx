@@ -77,6 +77,16 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
   };
 
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab === 'goals' && activeTab !== 'goals') {
+      setActiveTab('goals');
+    } else if (tab !== 'goals' && activeTab !== 'budget') {
+      setActiveTab('budget');
+    }
+  }, [location.search]);
+
+  useEffect(() => {
     const cachedBudgets = localStorage.getItem('finvision_cached_budgets');
     const cachedGoals = localStorage.getItem('finvision_cached_goals');
     const hasCache = !!cachedBudgets && !!cachedGoals;
@@ -382,8 +392,8 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
           </p>
         </div>
         
-        {/* Alternância de Abas Premium */}
-        <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200/50 shadow-sm shrink-0">
+        {/* Alternância de Abas Premium - mobile only; no menu lateral tem submenu equivalente no desktop */}
+        <div className="lg:hidden flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200/50 shadow-sm shrink-0">
           <button
             onClick={() => handleTabChange('budget')}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
