@@ -719,20 +719,24 @@ const HistoryPage: React.FC = () => {
           metadata: { is_card: !!t.metadata?.is_card }
         })));
 
-        // Origem define qual fonte entra no combined — NUNCA as duas ao mesmo tempo.
-        // BILL_PAYMENT em transactions já representa o total pago ao cartão: somar
-        // card_transactions junto causaria conta dupla em receitas/despesas/gráficos.
+        // Origem define qual fonte entra no combined.
         //   CARD    → só compras do cartão (card_transactions)
-        //   ACCOUNT → só movimentações bancárias (transactions), inclui BILL_PAYMENT
-        //   ALL     → movimentações bancárias (transactions), idem ao ACCOUNT
-        // Nota: o gráfico de categorias (HistoryCharts) NÃO usa mais este `combined`
-        // diretamente — ele usa `chartCategoryTransactions` (acima), que já vem
-        // combinado. Este `combined` continua servindo a tabela de lançamentos e os
-        // totais do topo da página, exatamente como antes.
-        // v2026.07.17.1400
-        let combined = (filterOrigin === 'CARD'
-          ? normalizedCardTxs
-          : (txs || [])
+        //   ACCOUNT → só movimentações bancárias (transactions), inclui o lançamento de pagamento de fatura
+        //   ALL     → banco + cartão combinados de verdade: pega as movimentações bancárias
+        //             MENOS o lançamento de pagamento de fatura (metadata.is_provision === true,
+        //             criado em syncStatementToHistory) e soma no lugar as compras individuais
+        //             do cartão — assim "Tudo" mostra o gasto real por lançamento, sem contar a
+        //             fatura duas vezes (uma como fatura, outra como cada compra).
+        // Esta mesma lógica também alimenta chartCategoryTransactions (usado só pelo gráfico),
+        // então o comportamento entre lista e gráfico ficou consistente.
+        // v2026.07.17.1830
+        let combined = (
+          filterOrigin === 'CARD' ? normalizedCardTxs :
+          filterOrigin === 'ACCOUNT' ? (txs || []) :
+          [
+            ...(txs || []).filter((t: any) => !(t?.metadata?.is_provision === true)),
+            ...normalizedCardTxs
+          ]
         ).map(applyTrueAmount);
         if (filterType !== 'ALL') {
           combined = combined.filter((t: any) => t.type === filterType);

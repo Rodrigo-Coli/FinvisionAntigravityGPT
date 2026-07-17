@@ -1,5 +1,22 @@
 [
   {
+    "version": "2026.07.17.1830",
+    "title": "Lista de Transações Agora Mostra Banco + Cartão Juntos",
+    "date": "17/07/2026",
+    "benefits": [
+      {
+        "title": "Filtro \"Tudo\" agora mostra tudo de verdade",
+        "desc": "Na tela de Transações, o filtro \"Tudo\" (Tudo/Conta/Cartão) passa a mostrar os lançamentos do banco JUNTO com as compras individuais do cartão de crédito, sem duplicar a fatura. Antes, \"Tudo\" só mostrava o banco — as compras do cartão só apareciam trocando pro filtro \"Cartão\". Os filtros \"Conta\" (só banco) e \"Cartão\" (só cartão) continuam funcionando exatamente como antes, para quem quiser ver separado.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "pages/History.tsx: no branch 'ALL' da seleção de origem (filterOrigin) que monta a variável 'combined', trocado o fallback que usava só transactions (idêntico ao branch 'ACCOUNT') por uma união real de transactions (excluindo o lançamento de pagamento de fatura, metadata.is_provision=true) + card_transactions (normalizedCardTxs). Os branches 'CARD' e 'ACCOUNT' foram mantidos byte-a-byte iguais.",
+      "Verificado que a edição/exclusão/pagamento por linha já roteava corretamente entre transactions e card_transactions via metadata.is_card (preservado por detectLegacySeries, que faz spread do metadata original) — por isso a lista mista em 'Tudo' não quebra essas ações.",
+      "Verificado que o preset de data \"Tudo\" (startDate='0001-01-01', endDate='9999-12-31') já buscava corretamente todo o histórico via paginação em blocos de 1000 linhas, tanto para transactions quanto para card_transactions — sem limite escondido."
+    ]
+  },
+  {
     "version": "2026.07.17.1500",
     "title": "Compras do Cartão Agora Aparecem nos Gráficos por Categoria",
     "date": "17/07/2026",
