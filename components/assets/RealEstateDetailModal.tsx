@@ -1154,7 +1154,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
               <div className="flex items-center justify-between">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Custos de Aquisição & Capital</p>
                 <div className="flex bg-slate-200/50 p-0.5 rounded-lg border">
-                  <button onClick={() => setPurpose('uso')} className={`px-3 py-1 rounded text-[8px] font-black uppercase tracking-wider ${purpose === 'uso' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Uso Próprio</button>
+                  <button onClick={() => { setPurpose('uso'); setIsRented(false); }} className={`px-3 py-1 rounded text-[8px] font-black uppercase tracking-wider ${purpose === 'uso' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Uso Próprio</button>
                   <button onClick={() => setPurpose('investimento')} className={`px-3 py-1 rounded text-[8px] font-black uppercase tracking-wider ${purpose === 'investimento' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Investimento</button>
                 </div>
               </div>

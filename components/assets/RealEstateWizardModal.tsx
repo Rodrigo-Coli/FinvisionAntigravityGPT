@@ -690,7 +690,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                       <button onClick={() => setPropertyStage('PLANTA')} className={`px-6 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${propertyStage === 'PLANTA' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Na Planta</button>
                     </div>
                     <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
-                      <button onClick={() => setPurpose('uso')} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${purpose === 'uso' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Uso Próprio</button>
+                      <button onClick={() => { setPurpose('uso'); setIsRented(false); }} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${purpose === 'uso' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Uso Próprio</button>
                       <button onClick={() => setPurpose('investimento')} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${purpose === 'investimento' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Investimento</button>
                     </div>
                   </div>
@@ -939,15 +939,22 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                        Diferente do histórico acima, os valores aqui geram lançamentos recorrentes de verdade no seu extrato — mesmo motor usado em Patrimônio → Detalhes do Imóvel.
                     </p>
 
-                    <div className="flex items-center gap-3">
-                      <Home size={16} className="text-slate-400" />
-                      <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
-                        <button type="button" onClick={() => setIsRented(true)} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${isRented ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Já Alugado: Sim</button>
-                        <button type="button" onClick={() => setIsRented(false)} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${!isRented ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Já Alugado: Não</button>
+                    {purpose === 'investimento' ? (
+                      <div className="flex items-center gap-3">
+                        <Home size={16} className="text-slate-400" />
+                        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
+                          <button type="button" onClick={() => setIsRented(true)} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${isRented ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Já Alugado: Sim</button>
+                          <button type="button" onClick={() => setIsRented(false)} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${!isRented ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400'}`}>Já Alugado: Não</button>
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-[10px] text-slate-400 font-semibold">
+                        <Home size={16} className="text-slate-300" />
+                        Imóvel de uso próprio não gera receita de aluguel. Só condomínio e IPTU abaixo.
+                      </div>
+                    )}
 
-                    {isRented && (
+                    {isRented && purpose === 'investimento' && (
                       <div className="space-y-3 animate-in fade-in duration-200">
                         <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50 w-fit">
                           <button type="button" onClick={() => setRentalType('anual')} className={`px-3 py-1 rounded text-[8px] font-black uppercase tracking-wider ${rentalType === 'anual' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}>Mensal</button>

@@ -1476,7 +1476,11 @@ const Assets: React.FC = () => {
       if (liab.is_archived || liab.totalAmount <= 0) continue;
       // Financiamento imobiliário (MORTGAGE) NÃO gera entrada de caixa: o banco paga o vendedor
       // diretamente, o dinheiro não passa pela conta do usuário. Evita inflar o caixa.
-      if (liab.type === 'MORTGAGE') continue;
+      // Consórcio (CONSORTIUM) também não: ao entrar no consórcio nenhum dinheiro é recebido —
+      // só na contemplação (sorteio/lance) é que se recebe a carta de crédito, que nem é dinheiro
+      // em conta. Tratar como entrada de caixa aqui infla receita e patrimônio líquido na hora
+      // do cadastro, mesmo sem ter sido contemplado ainda.
+      if (liab.type === 'MORTGAGE' || liab.type === 'CONSORTIUM') continue;
 
       const hasInflowTx = linkedTxs.some((t: any) =>
         (t.liability_id === liab.id || t.metadata?.liability_id === liab.id) &&
@@ -10358,6 +10362,10 @@ const Assets: React.FC = () => {
             </div>
 
             <div className="p-6 space-y-4">
+              {(() => {
+                const linkedAssetForRent = physicalAssets.find(p => p.id === selectedLiabilityForManage?.linkedAssetId);
+                const isUsoProprio = linkedAssetForRent?.metadata?.purpose === 'uso';
+                return (
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Estágio do Imóvel</label>
@@ -10366,8 +10374,8 @@ const Assets: React.FC = () => {
                     value={realEstateManageForm.propertyType}
                     onChange={(e) => {
                       const newType = e.target.value as 'PLANTA' | 'PRONTO';
-                      setRealEstateManageForm({ 
-                        ...realEstateManageForm, 
+                      setRealEstateManageForm({
+                        ...realEstateManageForm,
                         propertyType: newType,
                         isRented: newType === 'PRONTO' ? false : realEstateManageForm.isRented
                       });
@@ -10377,7 +10385,7 @@ const Assets: React.FC = () => {
                     <option value="PLANTA">Na Planta (Em Construção)</option>
                   </select>
                 </div>
-                {realEstateManageForm.propertyType === 'PRONTO' && (
+                {realEstateManageForm.propertyType === 'PRONTO' && !isUsoProprio && (
                   <label className="flex items-center gap-2 cursor-pointer font-bold text-xs select-none pt-6">
                     <input
                       type="checkbox"
@@ -10387,7 +10395,12 @@ const Assets: React.FC = () => {
                     Está Alugado?
                   </label>
                 )}
+                {realEstateManageForm.propertyType === 'PRONTO' && isUsoProprio && (
+                  <p className="text-[10px] text-slate-400 font-semibold pt-6">Imóvel de uso próprio não gera aluguel. Mude para "Investimento" no cadastro do imóvel pra liberar essa opção.</p>
+                )}
               </div>
+                );
+              })()}
 
               {/* Delivery Settle Wizard (Detail 5) */}
               {(() => {

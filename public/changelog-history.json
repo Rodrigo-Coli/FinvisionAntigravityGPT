@@ -1,5 +1,28 @@
 [
   {
+    "version": "2026.07.17.2130",
+    "title": "Consórcio Não Lança Mais Receita Falsa + Imóvel de Uso Próprio Não Gera Aluguel",
+    "date": "17/07/2026",
+    "benefits": [
+      {
+        "title": "Consórcio não infla mais sua receita",
+        "desc": "Ao cadastrar um consórcio, o sistema estava lançando automaticamente uma \"receita\" no valor total da carta de crédito, como se esse dinheiro tivesse caído na sua conta na hora do cadastro. Isso não existe em consórcio — você só recebe a carta quando é contemplado (sorteio ou lance). Corrigido: consórcio não lança mais receita nenhuma ao ser cadastrado, só as parcelas mensais de verdade.",
+        "type": "novidade"
+      },
+      {
+        "title": "Imóvel \"Uso Próprio\" não deixa mais marcar aluguel por engano",
+        "desc": "Se o imóvel é pra você morar (Uso Próprio), não faz sentido ele gerar receita de aluguel — só condomínio e IPTU, que você paga de qualquer forma. Agora, ao marcar um imóvel como Uso Próprio, a opção de aluguel some do cadastro, da edição e da tela de ajustar custos. Pra alugar, é só marcar o imóvel como \"Investimento\".",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "pages/Assets.tsx (~linha 1479): runAutoTransactionSync — exclusão de 'entrada de caixa automática' estendida de liab.type==='MORTGAGE' para também incluir 'CONSORTIUM'. Antes, todo passivo tipo CONSORTIUM sem uma transação liability_inflow ainda gerava uma INCOME no valor total da carta de crédito na primeira vez que a tela de Patrimônio carregava.",
+      "components/assets/RealEstateWizardModal.tsx: botão 'Uso Próprio' agora também chama setIsRented(false); o toggle 'Já Alugado' e os campos de aluguel só aparecem quando purpose==='investimento' (antes apareciam sempre que o imóvel fosse Pronto, independente da finalidade).",
+      "components/assets/RealEstateDetailModal.tsx: botão 'Uso Próprio' agora também chama setIsRented(false) — o módulo de Locação já era condicionado a purpose==='investimento', mas o estado isRented podia ficar 'true' internamente ao trocar de Investimento pra Uso Próprio sem resetar, e seria salvo do jeito antigo se o usuário clicasse Salvar.",
+      "pages/Assets.tsx (modal 'Ajustar Custos & Aluguel', ~linha 10364): checkbox 'Está Alugado?' agora só aparece se o imóvel vinculado NÃO for de uso próprio (antes não tinha nenhuma checagem de finalidade nesse modal)."
+    ]
+  },
+  {
     "version": "2026.07.17.1830",
     "title": "Lista de Transações Agora Mostra Banco + Cartão Juntos",
     "date": "17/07/2026",
