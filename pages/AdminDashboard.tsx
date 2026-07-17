@@ -571,7 +571,7 @@ export default function AdminDashboard() {
       {/* NAVEGAÇÃO — responsiva */}
       <div className="relative">
         {/* Desktop: abas completas (md-lg; a partir de lg o menu lateral tem o submenu) */}
-        <div className="hidden md:flex lg:hidden gap-1 p-1.5 bg-slate-100/50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800 rounded-[20px] w-full overflow-x-auto shadow-inner">
+        <div className="hidden gap-1 p-1.5 bg-slate-100/50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800 rounded-[20px] w-full overflow-x-auto shadow-inner">
           {tabs.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-[14px] text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-1 justify-center ${activeTab === tab.id ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-md' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>
@@ -581,7 +581,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Mobile: aba ativa + botão de menu */}
-        <div className="md:hidden">
+        <div className="hidden">
           <div className="flex items-center gap-2 p-1.5 bg-slate-100/50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800 rounded-[20px] shadow-inner">
             <div className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-900 rounded-[14px] text-brand-600 font-black uppercase tracking-widest text-[10px] shadow-md flex-1">
               {tabs.find(t => t.id === activeTab)?.icon}

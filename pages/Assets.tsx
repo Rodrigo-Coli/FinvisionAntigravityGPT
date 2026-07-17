@@ -5567,7 +5567,7 @@ const Assets: React.FC = () => {
       </div>
 
       {/* NAVIGATION TABS - mobile only; no menu lateral tem submenu equivalente no desktop */}
-      <div className="lg:hidden flex gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full max-w-full overflow-x-auto scrollbar-hide">
+      <div className="hidden gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full max-w-full overflow-x-auto scrollbar-hide">
         {[
           { id: 'overview', label: 'Visão Geral', icon: <LayoutGrid size={16} /> },
           { id: 'realestate', label: 'Ativos Imobiliários', icon: <Building2 size={16} /> },

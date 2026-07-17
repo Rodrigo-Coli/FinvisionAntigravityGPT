@@ -696,7 +696,7 @@ const SettingsPage: React.FC = () => {
 
       <div className="flex flex-col lg:flex-row gap-10">
         {/* SIDEBAR NAVIGATION — mobile only; no menu lateral tem submenu equivalente no desktop */}
-        <aside className="w-full lg:hidden shrink-0">
+        <aside className="hidden shrink-0">
           {/* Mobile: Horizontal scrollable Pill Tabs */}
           <div className="block lg:hidden overflow-x-auto scrollbar-none py-2 border-b border-slate-100 -mx-4 px-4">
             <div className="flex gap-2.5 whitespace-nowrap">

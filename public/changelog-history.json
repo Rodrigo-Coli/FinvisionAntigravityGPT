@@ -1,5 +1,20 @@
 [
   {
+    "version": "2026.07.16.2225",
+    "title": "Sem Mais Menu Duplicado no Celular",
+    "date": "16/07/2026",
+    "benefits": [
+      {
+        "title": "Uma só navegação, sem repetição",
+        "desc": "A barra de categorias que ainda aparecia no meio da tela no celular (Patrimônio, Contas & Cartões, Insights AI, Planejamento, Ajustes e Master Console) foi removida — agora a troca de categoria é sempre pelo menu (☰), sem duplicar a mesma opção duas vezes na tela.",
+        "type": "ux"
+      }
+    ],
+    "changes": [
+      "Assets.tsx, Banking.tsx, AIModule.tsx, Planning.tsx, AdminDashboard.tsx, Settings.tsx: barra/lista de abas interna (antes visível só no celular via lg:hidden) agora permanentemente oculta (hidden) em todos os tamanhos de tela — a navegação por categoria passa a ser feita exclusivamente pelo menu lateral/gaveta em qualquer dispositivo."
+    ]
+  },
+  {
     "version": "2026.07.16.0026",
     "title": "Submenu no Menu Lateral em Todas as Páginas",
     "date": "16/07/2026",

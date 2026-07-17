@@ -319,7 +319,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
       {/* NAVIGATION TABS - mobile only; no menu lateral tem submenu equivalente no desktop */}
       {/* Mobile: grid 2 colunas; sm+: linha única horizontal */}
-      <div className="lg:hidden flex flex-wrap gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full">
+      <div className="hidden flex-wrap gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full">
         {[
           { id: 'upload', label: 'Escanear Cupom', icon: <Receipt size={16} /> },
           { id: 'comparative', label: 'Comparador', icon: <Store size={16} /> },
