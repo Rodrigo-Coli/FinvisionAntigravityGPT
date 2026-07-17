@@ -6,6 +6,7 @@ import { isAdmin } from '../lib/authUtils';
 import { supabase } from '../lib/supabase/client';
 import { useTour } from '../contexts/TourContext';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import { resolveTabParam } from '../lib/urlTabState';
 
 type NavSubItem = { id: string; label: string; icon: React.ReactNode };
 type NavItem = { label: string; path: string; icon: React.ReactNode; subItems?: NavSubItem[]; paramName?: string };
@@ -97,7 +98,8 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
-  const getSubValue = (item: NavItem) => new URLSearchParams(location.search).get(item.paramName || 'view');
+  const getSubValue = (item: NavItem) =>
+    item.subItems ? resolveTabParam(new URLSearchParams(location.search).get(item.paramName || 'view'), item.subItems.map(s => s.id), item.subItems[0].id) : null;
 
   return (
     <>
@@ -113,7 +115,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
             const isActive = location.pathname === item.path;
             if (item.subItems) {
               const isOpen = isActive && expandedItem === item.path;
-              const currentSubValue = getSubValue(item) || item.subItems[0].id;
+              const currentSubValue = getSubValue(item);
               return (
                 <div key={item.path}>
                   <Link
@@ -150,6 +152,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
                           <Link
                             key={sub.id}
                             to={`${item.path}?${item.paramName || 'view'}=${sub.id}`}
+                            replace
                             className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${isSubActive
                               ? 'text-brand-600 font-bold bg-brand-50'
                               : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
@@ -253,7 +256,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
               const isActive = location.pathname === item.path;
               if (item.subItems) {
                 const isOpen = isActive && expandedItem === item.path;
-                const currentSubValue = getSubValue(item) || item.subItems[0].id;
+                const currentSubValue = getSubValue(item);
                 return (
                   <div key={item.path}>
                     <Link
@@ -284,6 +287,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
                             <Link
                               key={sub.id}
                               to={`${item.path}?${item.paramName || 'view'}=${sub.id}`}
+                            replace
                               onClick={() => setIsMenuOpen(false)}
                               className={`flex items-center gap-3 p-3 rounded-xl text-xs font-bold ${isSubActive
                                 ? 'bg-brand-50 text-brand-600'

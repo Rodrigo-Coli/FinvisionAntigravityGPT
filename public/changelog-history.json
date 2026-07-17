@@ -1,5 +1,29 @@
 [
   {
+    "version": "2026.07.16.2344",
+    "title": "Ajustes da Auditoria de Código",
+    "date": "16/07/2026",
+    "benefits": [
+      {
+        "title": "Botão \"voltar\" agora sempre sai da tela",
+        "desc": "Ao trocar de categoria no menu lateral (Patrimônio, Insights AI, Master Console, Ajustes), o botão voltar do navegador/celular leva direto para a tela anterior, em vez de passar categoria por categoria.",
+        "type": "ux"
+      },
+      {
+        "title": "Preview do link corrigido",
+        "desc": "Ao compartilhar o link do Zyvion no WhatsApp ou LinkedIn, agora aparece a logo em vez de um ícone de imagem quebrada.",
+        "type": "ux"
+      }
+    ],
+    "changes": [
+      "Nav.tsx: adicionado replace no <Link> das sub-categorias do submenu (desktop e mobile) — o replace:true feito antes só cobria a navegação programática (setActiveView etc.), não os links do menu lateral, que são o caminho mais usado.",
+      "pages/Assets.tsx, AIModule.tsx, AdminDashboard.tsx, Settings.tsx: setSearchParams agora usa replace:true, igual ao padrão já usado em Banking.tsx/Planning.tsx.",
+      "lib/urlTabState.ts (novo) + tests/urlTabState.test.ts (5 testes): extraída a lógica de 'resolver aba ativa a partir da URL', antes duplicada em 5 lugares, para uma função única testada.",
+      "pages/AdminDashboard.tsx: removido dropdown de abas mobile morto (nunca mais renderizava desde que o menu lateral ganhou submenu).",
+      "index.html: og:image corrigido de /dashboard_pt_br.png (nunca existiu no projeto) para /logo.png (existe)."
+    ]
+  },
+  {
     "version": "2026.07.16.2225",
     "title": "Sem Mais Menu Duplicado no Celular",
     "date": "16/07/2026",

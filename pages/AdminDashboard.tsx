@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { resolveTabParam } from '../lib/urlTabState';
 import { supabase } from '../lib/supabase/client';
 import {
   Check, X, Save, Loader2, Shield, Settings, Tag, Users,
@@ -7,7 +8,7 @@ import {
   Gem, Brain, TrendingUp, BarChart3, ChevronDown, Copy,
   Megaphone, Gift, AlertTriangle, ToggleLeft, ToggleRight,
   Eye, EyeOff, Calendar, DollarSign, Star, Palette,
-  RefreshCw, ArrowUpRight, XCircle, Menu
+  RefreshCw, ArrowUpRight, XCircle
 } from 'lucide-react';
 import TokenCalculator from '../components/admin/TokenCalculator';
 import ReferralAdminPanel from '../components/admin/ReferralAdminPanel';
@@ -77,12 +78,10 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const ADMIN_TABS: Tab[] = ['overview', 'plans', 'users', 'campaigns', 'coupons', 'prompts', 'audit', 'referrals'];
   const [searchParams, setSearchParams] = useSearchParams();
-  const viewParam = searchParams.get('view') as Tab | null;
-  const activeTab: Tab = viewParam && ADMIN_TABS.includes(viewParam) ? viewParam : 'overview';
+  const activeTab: Tab = resolveTabParam(searchParams.get('view'), ADMIN_TABS, 'overview');
   const setActiveTab = (tab: Tab) => {
-    setSearchParams(tab === 'overview' ? {} : { view: tab }, { replace: false });
+    setSearchParams(tab === 'overview' ? {} : { view: tab }, { replace: true });
   };
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -580,28 +579,6 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* Mobile: aba ativa + botão de menu */}
-        <div className="hidden">
-          <div className="flex items-center gap-2 p-1.5 bg-slate-100/50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800 rounded-[20px] shadow-inner">
-            <div className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-900 rounded-[14px] text-brand-600 font-black uppercase tracking-widest text-[10px] shadow-md flex-1">
-              {tabs.find(t => t.id === activeTab)?.icon}
-              {tabs.find(t => t.id === activeTab)?.label}
-            </div>
-            <button onClick={() => setMobileMenuOpen(p => !p)} className="px-4 py-2.5 bg-white dark:bg-slate-900 rounded-[14px] shadow-md text-slate-500 dark:text-slate-400">
-              <Menu size={16} />
-            </button>
-          </div>
-          {mobileMenuOpen && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[20px] shadow-2xl z-50 p-2 animate-in slide-in-from-top-2 duration-200">
-              {tabs.map(tab => (
-                <button key={tab.id} onClick={() => { setActiveTab(tab.id); setMobileMenuOpen(false); }}
-                  className={`flex items-center gap-3 w-full px-4 py-3 rounded-[14px] text-sm font-bold transition-all ${activeTab === tab.id ? 'bg-brand-50 text-brand-600' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-slate-400'}`}>
-                  {tab.icon} {tab.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* ════════════════════════════════════════════════════════════════════ */}

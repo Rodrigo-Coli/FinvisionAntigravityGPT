@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { resolveTabParam } from '../lib/urlTabState';
 import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, Box, LayoutGrid, Brain, ShieldCheck, AlertTriangle, Target, Lightbulb } from 'lucide-react';
 import { AIReconcileService } from '../services/aiReconcile.service';
 import { ExtractedReceipt, Profile } from '../types';
@@ -69,10 +70,9 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   type AITab = 'upload' | 'history' | 'comparative' | 'shopping' | 'wealth';
   const AI_TABS: AITab[] = ['upload', 'history', 'comparative', 'shopping', 'wealth'];
   const [searchParams, setSearchParams] = useSearchParams();
-  const viewParam = searchParams.get('view') as AITab | null;
-  const activeTab: AITab = viewParam && AI_TABS.includes(viewParam) ? viewParam : 'upload';
+  const activeTab: AITab = resolveTabParam(searchParams.get('view'), AI_TABS, 'upload');
   const setActiveTab = (tab: AITab) => {
-    setSearchParams(tab === 'upload' ? {} : { view: tab }, { replace: false });
+    setSearchParams(tab === 'upload' ? {} : { view: tab }, { replace: true });
   };
   const [isProcessing, setIsProcessing] = useState(false);
   const [receipt, setReceipt] = useState<ExtractedReceipt | null>(null);

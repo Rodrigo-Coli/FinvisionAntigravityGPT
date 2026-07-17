@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { resolveTabParam } from '../lib/urlTabState';
 import {
   Plus,
   Home as HomeIcon,
@@ -105,10 +106,9 @@ const Assets: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const viewParam = searchParams.get('view') as AssetView | null;
-  const activeView: AssetView = viewParam && ASSET_VIEWS.includes(viewParam) ? viewParam : 'overview';
+  const activeView: AssetView = resolveTabParam(searchParams.get('view'), ASSET_VIEWS, 'overview');
   const setActiveView = (view: AssetView) => {
-    setSearchParams(view === 'overview' ? {} : { view }, { replace: false });
+    setSearchParams(view === 'overview' ? {} : { view }, { replace: true });
   };
   const [allAccounts, setAllAccounts] = useState<any[]>([]);
   const [collapsedBrokers, setCollapsedBrokers] = useState<Record<string, boolean>>({});

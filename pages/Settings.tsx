@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { resolveTabParam } from '../lib/urlTabState';
 import {
   Settings as SettingsIcon,
   Tags,
@@ -147,10 +148,9 @@ const SettingsPage: React.FC = () => {
   const { subscription, loadingSub } = useSubscription();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const sectionParam = searchParams.get('section') as SettingsSection | null;
-  const activeSection: SettingsSection = sectionParam && SETTINGS_SECTIONS.includes(sectionParam) ? sectionParam : 'general';
+  const activeSection: SettingsSection = resolveTabParam(searchParams.get('section'), SETTINGS_SECTIONS, 'general');
   const setActiveSection = (section: SettingsSection) => {
-    setSearchParams(section === 'general' ? {} : { section }, { replace: false });
+    setSearchParams(section === 'general' ? {} : { section }, { replace: true });
   };
   const [changelogHistory, setChangelogHistory] = useState<any[] | null>(null);
   const [loadingChangelog, setLoadingChangelog] = useState(false);
