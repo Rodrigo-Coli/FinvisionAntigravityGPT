@@ -38,7 +38,8 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
     onMonthClick
 }) => {
     const [activeTab, setActiveTab] = useState<'categories' | 'mom' | 'timeline'>('categories');
-    
+    const [expandedCategory, setExpandedCategory] = useState<{ name: string, kind: 'income' | 'expense' } | null>(null);
+
     const [internalStartDate, setInternalStartDate] = useState(propStartDate);
     const [internalEndDate, setInternalEndDate] = useState(propEndDate);
     const [showInternalFilters, setShowInternalFilters] = useState(false);
@@ -106,8 +107,6 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
         let totalAllIncome = 0;
 
         activeTx.forEach(t => {
-            if (t.category === 'Cartão de Crédito') return; // Excluir categoria de provisionamento para evitar duplicidade
-
             const type = (t.type || '').toUpperCase();
             const amt = Math.abs(Number(t.amount || 0));
 
@@ -152,11 +151,9 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             }
 
             activeTx.forEach(t => {
-                if (t.category === 'Cartão de Crédito') return;
-
                 const type = (t.type || '').toUpperCase();
                 const amt = Math.abs(Number(t.amount || 0));
-                
+
                 // Robust parsing
                 const datePart = t.date.split('T')[0];
                 const [yStr, mStr] = datePart.split('-');
@@ -178,8 +175,6 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             momBars = customSlots.map(slot => {
                 let inc = 0; let exp = 0;
                 activeTx.forEach(t => {
-                    if (t.category === 'Cartão de Crédito') return;
-                    
                     const type = (t.type || '').toUpperCase();
                     const ymd = t.date.split('T')[0];
 
@@ -218,7 +213,6 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             if (diffDays > 90) {
                 const tMap = new Map();
                 activeTx.forEach(t => {
-                    if (t.category === 'Cartão de Crédito') return;
                     if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
 
                     const type = (t.type || '').toUpperCase();
@@ -248,7 +242,6 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             } else {
                 const tMap = new Map();
                 activeTx.forEach(t => {
-                    if (t.category === 'Cartão de Crédito') return;
                     if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
 
                     const type = (t.type || '').toUpperCase();
@@ -296,6 +289,19 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
         };
     }, [chartFilteredTransactions, momMode, customSlots, momCompareMonths, selectedTimelineCategories]);
 
+    // Lançamentos por trás da categoria expandida (banco + cartão) — usados no "ver lançamentos" ao clicar numa categoria
+    const categoryDetailItems = useMemo(() => {
+        if (!expandedCategory) return [];
+        return chartFilteredTransactions
+            .filter(t => t.category === expandedCategory.name)
+            .filter(t => {
+                const type = (t.type || '').toUpperCase();
+                const isExpenseTx = type === 'EXPENSE' || type === 'BILL_PAYMENT' || (type === 'ADJUSTMENT' && Number(t.amount) < 0);
+                const isIncomeTx = type === 'INCOME' || (type === 'ADJUSTMENT' && Number(t.amount) >= 0);
+                return expandedCategory.kind === 'expense' ? isExpenseTx : isIncomeTx;
+            })
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [expandedCategory, chartFilteredTransactions]);
 
     if (transactions.length === 0) return null;
     // Build the period label from the actual date filters (not from transaction data)
@@ -488,13 +494,16 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                     return (
                                         <div
                                             key={cat.name}
-                                            className={`group ${onCategoryClick ? 'cursor-pointer hover:bg-slate-50 transition-colors rounded-xl p-2 -m-2' : ''}`}
-                                            onClick={() => onCategoryClick?.(cat.name)}
+                                            className="group cursor-pointer hover:bg-slate-50 transition-colors rounded-xl p-2 -m-2"
+                                            onClick={() => {
+                                                setExpandedCategory(prev => (prev?.name === cat.name && prev.kind === 'income') ? null : { name: cat.name, kind: 'income' });
+                                                onCategoryClick?.(cat.name);
+                                            }}
                                         >
                                             <div className="flex justify-between items-end mb-1">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                                                    <span className={`text-sm font-bold text-slate-700 ${onCategoryClick ? 'group-hover:text-emerald-600 transition-colors' : ''}`}>{cat.name}</span>
+                                                    <span className="text-sm font-bold text-slate-700 group-hover:text-emerald-600 transition-colors">{cat.name}</span>
                                                     <span className="text-[10px] font-bold text-slate-400 ml-2">{pct.toFixed(1)}%</span>
                                                 </div>
                                                 <span className="text-xs font-bold text-slate-900">{HistoryUtils.formatCurrency(cat.value)}</span>
@@ -505,6 +514,26 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                                     style={{ width: `${widthPct}%`, backgroundColor: color }}
                                                 />
                                             </div>
+                                            {expandedCategory?.name === cat.name && expandedCategory.kind === 'income' && (
+                                                <div className="mt-3 pl-4 border-l-2 border-emerald-100 space-y-2 animate-in slide-in-from-top-1" onClick={e => e.stopPropagation()}>
+                                                    {categoryDetailItems.length === 0 ? (
+                                                        <p className="text-xs text-slate-400 italic">Nenhum lançamento encontrado.</p>
+                                                    ) : (
+                                                        categoryDetailItems.map(item => (
+                                                            <div key={item.id} className="flex items-center justify-between text-xs gap-2">
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <span className={`shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${(item as any).metadata?.is_card ? 'bg-purple-50 text-purple-600' : 'bg-slate-100 text-slate-500'}`}>
+                                                                        {(item as any).metadata?.is_card ? 'Cartão' : 'Banco'}
+                                                                    </span>
+                                                                    <span className="truncate text-slate-600">{item.description}</span>
+                                                                    <span className="shrink-0 text-slate-400">{HistoryUtils.formatDateBR(item.date)}</span>
+                                                                </div>
+                                                                <span className="shrink-0 font-bold text-slate-700">{HistoryUtils.formatCurrency(Math.abs(Number(item.amount || 0)))}</span>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })
@@ -530,13 +559,16 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                     return (
                                         <div
                                             key={cat.name}
-                                            className={`group ${onCategoryClick ? 'cursor-pointer hover:bg-slate-50 transition-colors rounded-xl p-2 -m-2' : ''}`}
-                                            onClick={() => onCategoryClick?.(cat.name)}
+                                            className="group cursor-pointer hover:bg-slate-50 transition-colors rounded-xl p-2 -m-2"
+                                            onClick={() => {
+                                                setExpandedCategory(prev => (prev?.name === cat.name && prev.kind === 'expense') ? null : { name: cat.name, kind: 'expense' });
+                                                onCategoryClick?.(cat.name);
+                                            }}
                                         >
                                             <div className="flex justify-between items-end mb-1">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                                                    <span className={`text-sm font-bold text-slate-700 ${onCategoryClick ? 'group-hover:text-rose-600 transition-colors' : ''}`}>{cat.name}</span>
+                                                    <span className="text-sm font-bold text-slate-700 group-hover:text-rose-600 transition-colors">{cat.name}</span>
                                                     <span className="text-[10px] font-bold text-slate-400 ml-2">{pct.toFixed(1)}%</span>
                                                 </div>
                                                 <span className="text-xs font-bold text-slate-900">{HistoryUtils.formatCurrency(cat.value)}</span>
@@ -547,6 +579,26 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                                     style={{ width: `${widthPct}%`, backgroundColor: color }}
                                                 />
                                             </div>
+                                            {expandedCategory?.name === cat.name && expandedCategory.kind === 'expense' && (
+                                                <div className="mt-3 pl-4 border-l-2 border-rose-100 space-y-2 animate-in slide-in-from-top-1" onClick={e => e.stopPropagation()}>
+                                                    {categoryDetailItems.length === 0 ? (
+                                                        <p className="text-xs text-slate-400 italic">Nenhum lançamento encontrado.</p>
+                                                    ) : (
+                                                        categoryDetailItems.map(item => (
+                                                            <div key={item.id} className="flex items-center justify-between text-xs gap-2">
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <span className={`shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${(item as any).metadata?.is_card ? 'bg-purple-50 text-purple-600' : 'bg-slate-100 text-slate-500'}`}>
+                                                                        {(item as any).metadata?.is_card ? 'Cartão' : 'Banco'}
+                                                                    </span>
+                                                                    <span className="truncate text-slate-600">{item.description}</span>
+                                                                    <span className="shrink-0 text-slate-400">{HistoryUtils.formatDateBR(item.date)}</span>
+                                                                </div>
+                                                                <span className="shrink-0 font-bold text-slate-700">{HistoryUtils.formatCurrency(Math.abs(Number(item.amount || 0)))}</span>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })

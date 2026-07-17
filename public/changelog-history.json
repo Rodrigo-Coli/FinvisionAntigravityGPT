@@ -1,5 +1,28 @@
 [
   {
+    "version": "2026.07.17.1500",
+    "title": "Compras do Cartão Agora Aparecem nos Gráficos por Categoria",
+    "date": "17/07/2026",
+    "benefits": [
+      {
+        "title": "Gráfico de categorias agora soma banco + cartão",
+        "desc": "No Histórico, o gráfico \"Categorias\" agora soma as compras feitas no cartão de crédito junto com as do banco (ex: tudo que for \"Alimentação\", seja no débito ou no cartão, aparece somado). Antes, compras do cartão sem categoria definida simplesmente desapareciam do gráfico.",
+        "type": "novidade"
+      },
+      {
+        "title": "Clique numa categoria para ver os lançamentos",
+        "desc": "Clicando em qualquer categoria do gráfico, abre uma lista com os lançamentos daquela categoria, com uma etiqueta \"Banco\" ou \"Cartão\" em cada um — assim dá pra ver de onde veio cada gasto sem sair da tela.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "components/history/HistoryCharts.tsx: removida a exclusão por nome de categoria 'Cartão de Crédito' (linhas antigas 109/155/181/221/251) — ela escondia qualquer lançamento com esse nome, incluindo compras de cartão sem categoria própria atribuída. A exclusão da fatura (evitar contar 2x) passou a acontecer antes, em History.tsx, de forma mais precisa (via metadata.is_provision).",
+      "components/history/HistoryCharts.tsx: adicionado estado expandedCategory + lista categoryDetailItems para exibir, ao clicar numa categoria, os lançamentos de banco e cartão daquela categoria lado a lado, com etiqueta de origem.",
+      "pages/History.tsx: novo dataset combinedForChart/chartCategoryTransactions, que soma transactions (excluindo o lançamento de pagamento de fatura, metadata.is_provision=true) + card_transactions (compras individuais do cartão). Esse dataset alimenta só o componente HistoryCharts.",
+      "pages/History.tsx: os totais do topo da página (Receitas/Despesas/Balanço) e a tabela principal de lançamentos continuam usando exatamente a mesma lógica de antes (variável 'combined'/'chartTransactions'/'summary', intocada) — não foram afetados por esta mudança."
+    ]
+  },
+  {
     "version": "2026.07.16.2344",
     "title": "Ajustes da Auditoria de Código",
     "date": "16/07/2026",

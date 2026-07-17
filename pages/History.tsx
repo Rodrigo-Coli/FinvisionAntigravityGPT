@@ -189,6 +189,7 @@ const HistoryPage: React.FC = () => {
   const [comparisonResults, setComparisonResults] = useState<Record<string, { income: number; expense: number; balance: number }>>({});
   const [isComparing, setIsComparing] = useState(false);
   const [chartTransactions, setChartTransactions] = useState<Transaction[]>([]); // full set for charts (no pagination)
+  const [chartCategoryTransactions, setChartCategoryTransactions] = useState<Transaction[]>([]); // banco + cartão combinados, só para o gráfico de categorias
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [availableCategories, setAvailableCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [categoryObjects, setCategoryObjects] = useState<{ name: string, type?: 'INCOME' | 'EXPENSE' }[]>(DEFAULT_CATEGORIES.map(c => ({ name: c })));
@@ -655,13 +656,80 @@ const HistoryPage: React.FC = () => {
           }
         }));
 
+        // ── Dataset combinado (banco + cartão) só para o GRÁFICO de categorias ──
+        // Objetivo: o gráfico deve mostrar o gasto por categoria somando banco e
+        // cartão (ex: Mercado do débito + Mercado do cartão), sem contar a fatura
+        // como um gasto duplicado. Por isso excluímos aqui só o lançamento de
+        // "pagamento de fatura" (metadata.is_provision === true, criado em
+        // syncStatementToHistory) e somamos as compras individuais do cartão no
+        // lugar dele. Isso NÃO altera a tabela de lançamentos nem os totais do
+        // topo da página — só o que alimenta o componente HistoryCharts.
+        let combinedForChart = [
+          ...(txs || []).filter((t: any) => !(t?.metadata?.is_provision === true)),
+          ...normalizedCardTxs
+        ].map(applyTrueAmount);
+        if (filterType !== 'ALL') {
+          combinedForChart = combinedForChart.filter((t: any) => t.type === filterType);
+        }
+        if (filterAccount.length > 0) {
+          combinedForChart = combinedForChart.filter((t: any) => filterAccount.includes(t.account_id));
+        }
+        if (filterSubcategory.length > 0) {
+          combinedForChart = combinedForChart.filter((t: any) => filterSubcategory.includes(t.subcategory));
+        }
+        if (filterOwner.length > 0) {
+          combinedForChart = combinedForChart.filter((t: any) => filterOwner.includes(t.owner_name));
+        }
+        if (minPrice !== '') {
+          combinedForChart = combinedForChart.filter((t: any) => t._trueAmount >= Number(minPrice));
+        }
+        if (maxPrice !== '') {
+          combinedForChart = combinedForChart.filter((t: any) => t._trueAmount <= Number(maxPrice));
+        }
+        if (debouncedSearch) {
+          const searchNormalized = normalize(debouncedSearch);
+          combinedForChart = combinedForChart.filter((t: any) =>
+            normalize(t.description || '').includes(searchNormalized) ||
+            normalize(t.category || '').includes(searchNormalized) ||
+            normalize(t.subcategory || '').includes(searchNormalized) ||
+            normalize(t.account_name || '').includes(searchNormalized) ||
+            normalize(t.owner_name || '').includes(searchNormalized) ||
+            normalize(t.notes || '').includes(searchNormalized) ||
+            (t.tags || []).some((tag: string) => normalize(tag).includes(searchNormalized))
+          );
+        }
+        setChartCategoryTransactions(combinedForChart.map((t: any) => ({
+          id: t.id,
+          description: t.description || '',
+          amount: Number(t.amount || 0),
+          date: t.date,
+          type: t.type as TransactionType,
+          accountId: t.account_id,
+          accountName: t.account_name ?? '',
+          category: t.category ?? 'Outros',
+          subcategory: t.subcategory ?? undefined,
+          owner_name: t.owner_name ?? 'Pessoal',
+          notes: t.notes ?? '',
+          tags: t.tags ?? [],
+          isDeleted: !!t.is_deleted,
+          isReconciled: !!t.is_reconciled,
+          isPaid: !!t.is_paid,
+          paidAmount: Number(t.paid_amount || 0),
+          is_amortization: !!t.is_amortization,
+          metadata: { is_card: !!t.metadata?.is_card }
+        })));
+
         // Origem define qual fonte entra no combined — NUNCA as duas ao mesmo tempo.
         // BILL_PAYMENT em transactions já representa o total pago ao cartão: somar
         // card_transactions junto causaria conta dupla em receitas/despesas/gráficos.
         //   CARD    → só compras do cartão (card_transactions)
         //   ACCOUNT → só movimentações bancárias (transactions), inclui BILL_PAYMENT
         //   ALL     → movimentações bancárias (transactions), idem ao ACCOUNT
-        // v2026.06.28.2200
+        // Nota: o gráfico de categorias (HistoryCharts) NÃO usa mais este `combined`
+        // diretamente — ele usa `chartCategoryTransactions` (acima), que já vem
+        // combinado. Este `combined` continua servindo a tabela de lançamentos e os
+        // totais do topo da página, exatamente como antes.
+        // v2026.07.17.1400
         let combined = (filterOrigin === 'CARD'
           ? normalizedCardTxs
           : (txs || [])
@@ -2159,6 +2227,14 @@ const HistoryPage: React.FC = () => {
       ? operationalChartTxs.filter(t => HistoryUtils.getStatus(t) !== 'PAID')
       : operationalChartTxs;
 
+  // Mesma regra acima, mas para o dataset combinado (banco + cartão) do gráfico de categorias
+  const operationalChartCategoryTxs = chartCategoryTransactions.filter(t => !isCapitalizedMovement(t));
+  const chartCategoryViewFiltered = viewMode === 'SETTLED'
+    ? operationalChartCategoryTxs.filter(t => HistoryUtils.getStatus(t) === 'PAID')
+    : viewMode === 'PENDING'
+      ? operationalChartCategoryTxs.filter(t => HistoryUtils.getStatus(t) !== 'PAID')
+      : operationalChartCategoryTxs;
+
   const handleCreateCategory = async (name: string, type: 'INCOME' | 'EXPENSE') => {
     if (!supabase) return;
     try {
@@ -2815,7 +2891,7 @@ const HistoryPage: React.FC = () => {
       </div>
 
       <HistoryCharts
-        transactions={chartViewFiltered}
+        transactions={chartCategoryViewFiltered}
         selectedTimelineCategories={selectedTimelineCategories}
         setSelectedTimelineCategories={setSelectedTimelineCategories}
         startDate={startDate}
