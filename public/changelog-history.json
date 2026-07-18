@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.07.17.2245",
+    "title": "Orçamentos Voltaram a Enxergar Seus Gastos + Cadastro de Investimentos Corrigido",
+    "date": "17/07/2026",
+    "benefits": [
+      {
+        "title": "Limites de gastos agora mostram o gasto real do mês",
+        "desc": "A tela de Planejamento mostrava R$ 0 gasto em todas as categorias, mesmo com o mês cheio de despesas — um erro de fuso horário fazia o sistema buscar os gastos num intervalo de datas impossível. Corrigido: os limites agora comparam certinho o que você gastou contra o que orçou, com os alertas de 'Atenção' e 'Estourado' funcionando.",
+        "type": "novidade"
+      },
+      {
+        "title": "Cadastro de investimentos financeiros funcionando",
+        "desc": "Cadastrar um investimento (CDB, ações, etc.) em Patrimônio → Investimentos falhava sempre, com uma mensagem de erro que sumia em segundos. Era uma trava desatualizada no banco de dados que não aceitava a categoria de investimento. Corrigido — investimentos agora salvam normalmente.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "pages/Planning.tsx: endOfMonth era calculado via new Date('YYYY-MM-01') + toISOString() — a string é interpretada como UTC e, em fusos atrás de UTC (todo o Brasil), o resultado voltava um dia, produzindo range invertido (>= 01/07 e <= 30/06) que retornava sempre vazio. Trocado por aritmética local pura (new Date(ano, mes, 0).getDate()) sem passar por ISO/UTC.",
+      "Supabase (APLICADO EM PRODUÇÃO em 17/07): constraint physical_assets_category_check ampliada para aceitar 'INVESTMENT' (antes só REAL_ESTATE/VEHICLE/OTHER, e o app envia INVESTMENT desde que a tela de investimentos existe — todo insert falhava). Arquivos supabase/create_physical_assets.sql e master_migration.sql atualizados + novo supabase/fix_physical_assets_investment_category.sql documentando.",
+      "Achados de QA adicionais registrados para correção posterior (não inclusos neste deploy): estratégia de saldo inconsistente entre pagar lançamento (incremental) e pagar fatura (recálculo do zero, que zera saldos sem transações por trás); editar valor de lançamento já pago não recalcula valor pago/saldo; empréstimos concedidos com juros percentuais não geram parcelas a receber (exige juros fixo em R$); data do desembolso de empréstimo grava um dia à frente (UTC); saldo de contas tipo INVESTMENT invisível no Saldo Consolidado/página de Investimentos; rótulos 'jul/de 26' na projeção; card 'Contas Abertas' do Relatórios sempre 0."
+    ]
+  },
+  {
     "version": "2026.07.17.2130",
     "title": "Consórcio Não Lança Mais Receita Falsa + Imóvel de Uso Próprio Não Gera Aluguel",
     "date": "17/07/2026",

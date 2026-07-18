@@ -106,7 +106,13 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
 
         // Run fetches in parallel
         const startOfMonth = `${currentMonth}-01`;
-        const endOfMonth = new Date(new Date(startOfMonth).getFullYear(), new Date(startOfMonth).getMonth() + 1, 0).toISOString().split('T')[0];
+        // Calcula o último dia do mês SEM passar por new Date('YYYY-MM-DD')/toISOString():
+        // esse par interpreta a string como UTC e, em fusos atrás de UTC (Brasil),
+        // devolvia o último dia do MÊS ANTERIOR — o range ficava invertido
+        // (ex: 01/07 até 30/06) e o gasto do orçamento saía sempre R$ 0.
+        const [pyYear, pyMonth] = currentMonth.split('-').map(Number);
+        const lastDayOfMonth = new Date(pyYear, pyMonth, 0).getDate();
+        const endOfMonth = `${currentMonth}-${String(lastDayOfMonth).padStart(2, '0')}`;
         
         const threeMonthsAgo = new Date();
         threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);

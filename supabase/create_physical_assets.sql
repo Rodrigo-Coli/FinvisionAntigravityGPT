@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS public.physical_assets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    category TEXT CHECK (category IN ('REAL_ESTATE', 'VEHICLE', 'OTHER')),
+    category TEXT CHECK (category IN ('REAL_ESTATE', 'VEHICLE', 'OTHER', 'INVESTMENT')),
     estimated_value DECIMAL(12,2) DEFAULT 0,
     acquisition_date DATE,
     description TEXT,
