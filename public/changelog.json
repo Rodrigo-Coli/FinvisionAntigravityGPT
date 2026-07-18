@@ -1,42 +1,22 @@
 {
-  "version": "2026.07.18.0035",
-  "title": "Saldos Blindados, Datas no Fuso Certo e Contas do Mesmo Banco Visíveis",
+  "version": "2026.07.18.0130",
+  "title": "Empréstimos Concedidos: Parcelas Calculadas Pela Taxa de Juros",
   "date": "18/07/2026",
   "benefits": [
     {
-      "title": "Pagar fatura não bagunça mais o saldo da conta",
-      "desc": "Havia casos em que pagar uma fatura de cartão fazia o saldo da conta despencar para um valor errado (acontecia principalmente no modo demonstração). A base de dados foi corrigida para que o saldo sempre feche certinho: pagar, editar ou excluir qualquer lançamento agora move o saldo exatamente pela diferença certa.",
+      "title": "Parcelas a receber geradas pela taxa de juros (%)",
+      "desc": "Ao emprestar dinheiro no modelo Parcelado Fixo informando só a taxa de juros em %, o sistema não gerava nenhuma parcela a receber no seu extrato — e não avisava. Agora as parcelas são calculadas e lançadas automaticamente: juros compostos usam a Tabela Price (parcela fixa que quita principal + juros) e juros simples usam devolução do principal + juros sobre o valor emprestado. Com juros fixo em R$, a parcela agora também inclui a devolução do principal.",
       "type": "novidade"
     },
     {
-      "title": "Editar o valor de um lançamento já pago atualiza tudo junto",
-      "desc": "Antes, se você editasse o valor de uma despesa já paga (ex: de R$ 50 para R$ 75), o sistema continuava mostrando \"pago R$ 50\" por dentro e o saldo da conta não acompanhava. Agora o valor pago e o saldo acompanham a edição na hora.",
+      "title": "Saldo devedor do empréstimo conta só o que foi recebido",
+      "desc": "As parcelas a receber que ainda não foram pagas não abatem mais o saldo devedor — antes, ao gerar as parcelas, o empréstimo podia aparecer como \"quitado\" na hora. Ao dar baixa numa parcela, o retorno e o saldo devedor atualizam na hora; no modelo Conta Corrente, os juros (simples ou compostos) continuam recalculando dia a dia sobre o saldo real a cada recebimento.",
       "type": "novidade"
-    },
-    {
-      "title": "Datas sempre no seu fuso horário",
-      "desc": "Lançamentos criados à noite (depois das 21h) podiam ser gravados com a data do dia seguinte, por causa de uma conversão de fuso horário. Corrigido em todo o app: desembolso de empréstimos, parcelas de imóveis (aluguel/condomínio/IPTU), consórcios, veículos e notificações. E o pagamento de fatura agora registra a data real do dia em que você pagou — antes ficava com a data de vencimento da fatura.",
-      "type": "novidade"
-    },
-    {
-      "title": "Duas contas no mesmo banco? Agora as duas aparecem",
-      "desc": "Se você tinha duas contas na mesma instituição (ex: conta corrente + caixinha no Nubank), a segunda simplesmente sumia da tela de Contas e do filtro de Transações — e os lançamentos dela podiam ficar ocultos. Agora todas as contas aparecem, os contadores batem e a instituição de investimento é exibida com o saldo correto.",
-      "type": "novidade"
-    },
-    {
-      "title": "Ajustes visuais",
-      "desc": "Rótulos dos meses na projeção corrigidos (\"jul/26\" em vez de \"jul/de 26\") e o card \"Contas Abertas\" dos Relatórios agora considera o mês inteiro — antes mostrava sempre 0 porque as contas a vencer ficavam fora do período padrão.",
-      "type": "ux"
     }
   ],
   "changes": [
-    "Supabase (APLICADO EM PRODUÇÃO 18/07): clone_demo_data reescrita — accounts agora recebem initial_balance calculado (initial + soma de paid_amount = saldo exibido) e transações pagas recebem paid_amount/paid_at. Antes, o primeiro recálculo do trigger de saldo (qualquer pagamento/edição) zerava os saldos plantados da demo. Conta demo ativa reparada com a mesma regra. Documentado em supabase/fix_demo_seed_balances.sql.",
-    "pages/History.tsx (handleUpdate, edição de amount): lançamento totalmente pago tem paid_amount atualizado junto com amount (trigger de saldo soma paid_amount, não amount); parcialmente pago não é tocado. Apenas lançamentos de banco (cartão fora — card_transactions não tem paid_amount).",
-    "Varredura de datas UTC: todos os new Date().toISOString().split('T')[0] (data 'de hoje' em UTC — vira amanhã após as 21h no Brasil) substituídos por DateUtils.formatToISODate() (fuso local, helper já existente) em pages/Assets.tsx, Home.tsx, History.tsx (futureLimit), Planning.tsx, AIModule.tsx, AdminDashboard.tsx, components/assets/{RealEstateDetailModal,RealEstateWizardModal,realEstatePropertySync,ConsortiumSection}, components/PushManager.tsx. Vars derivadas de new Date() mutado (futureDate/yesterday/oneYearAgo/sixtyDaysAhead/threeMonthsAgo) idem. Padrões parse-UTC roundtrip (new Date('YYYY-MM-DD').toISOString()) mantidos intactos de propósito.",
-    "services/finance.service.ts (syncStatementToHistory): data do lançamento espelho da fatura — em aberto usa due_date (provisão, como antes); ao PAGAR usa a data local de hoje; re-sync de fatura já paga preserva a data original do pagamento.",
-    "components/banking/AccountsSection.tsx + pages/History.tsx: deduplicação de contas trocada de por-nome-da-instituição para por-ID. A dedup por nome escondia a segunda conta do mesmo banco (invisível na tela de Contas, fora do filtro do Histórico, e lançamentos dela podiam ser ocultados pelo filtro padrão de contas).",
-    "services/projection.service.ts + components/history/HistoryCharts.tsx: replace incompleto do formato pt-BR ('jul. de 26' → 'jul/de 26') corrigido para 'jul/26'.",
-    "pages/Reports.tsx: intervalo padrão agora vai até o FIM do mês (igual ao atalho 'Este Mês'); antes terminava em 'hoje' e o card Contas Abertas mostrava sempre 0.",
-    "components/cards/TransactionList.tsx: opção 'Pessoal' duplicada no seletor de perfil (React key warning) — dedup do array de owners."
+    "pages/Assets.tsx (runAutoTransactionSync, geração de parcelas de empréstimo): antes exigia loanFixedValue (R$) > 0 e usava só esse valor como parcela (juros sem principal). Agora: modelo OPEN_BALANCE (Conta Corrente) explicitamente não gera parcelas (saldo é dinâmico via extrato); Parcelado Fixo gera por prioridade — juros fixo R$ → principal/n + fixo; taxa % composta → PMT Price; taxa % simples → principal/n + principal×taxa; sem juros → principal/n. Arredondado a 2 casas.",
+    "pages/Assets.tsx (cartão do empréstimo + extrato PDF): loanPayments e payments agora filtram isPaid — parcelas provisionadas não pagas não entram como pagamento no ledger de conta corrente, no histórico de pagamentos, nem no cálculo de 'Retorno do Principal' (que antes usava totalIncome de todas as receitas vinculadas, pagas ou não).",
+    "Verificado ao vivo na demo: empréstimo de R$ 12.000, 12x, 2% a.m. compostos → 12 parcelas de R$ 1.134,72 (Price exato); cartão mostra 0% retornado com as parcelas provisionadas; baixa da parcela 1 → retorno 9% (R$ 1.134,72) e saldo devedor R$ 10.865,28."
   ]
 }

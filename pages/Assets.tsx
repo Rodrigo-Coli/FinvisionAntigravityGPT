@@ -1556,11 +1556,40 @@ const Assets: React.FC = () => {
         }]);
       }
       
-      // Also generate pending installments if loanInstallmentsCount exists in metadata
+      // Gera as parcelas a receber (só no modelo Parcelado Fixo).
+      // Conta Corrente (OPEN_BALANCE) NÃO gera parcelas: o saldo devedor é dinâmico —
+      // juros pro-rata (simples ou composto) acumulam sobre o saldo e cada baixa
+      // recalcula, via extrato (calcOpenBalance / handleGeneratePDF).
       const installmentsCount = Number(asset.metadata?.loanInstallmentsCount) || 0;
-      const monthlyValue = Number(asset.metadata?.loanFixedValue) || 0;
+      const fixedInterestMonthly = Number(asset.metadata?.loanFixedValue) || 0;
+      const loanRatePct = Number(asset.metadata?.loanInterestRate) || 0;
+      const loanInterestType = asset.metadata?.loanInterestType || 'SIMPLE';
+      const isOpenBalanceLoan = asset.metadata?.loanType === 'OPEN_BALANCE';
+      const loanPrincipalForCalc = Number(asset.metadata?.loanPrincipal) || 0;
       const dueDate = Number(asset.metadata?.loanDueDate) || 10;
-      
+
+      // Valor da parcela: antes SÓ gerava se "Juros Fixo Mensal (R$)" fosse preenchido —
+      // empréstimos com taxa em % (o caso comum) nunca ganhavam parcelas, silenciosamente.
+      // E mesmo com juros fixo, a parcela era só o juros, sem devolver o principal.
+      let monthlyValue = 0;
+      if (!isOpenBalanceLoan && installmentsCount > 0 && loanPrincipalForCalc > 0) {
+        const i = loanRatePct / 100;
+        const n = installmentsCount;
+        if (fixedInterestMonthly > 0) {
+          // Juros fixo em R$: devolução do principal + juros fixo por mês
+          monthlyValue = loanPrincipalForCalc / n + fixedInterestMonthly;
+        } else if (i > 0) {
+          monthlyValue = loanInterestType === 'COMPOUND'
+            // Compostos: parcela fixa pela Tabela Price (quita principal + juros compostos)
+            ? loanPrincipalForCalc * (i * Math.pow(1 + i, n)) / (Math.pow(1 + i, n) - 1)
+            // Simples: devolução do principal + juros simples sobre o principal original
+            : loanPrincipalForCalc / n + loanPrincipalForCalc * i;
+        } else {
+          monthlyValue = loanPrincipalForCalc / n; // sem juros
+        }
+        monthlyValue = Math.round(monthlyValue * 100) / 100;
+      }
+
       if (installmentsCount > 0 && monthlyValue > 0) {
         const hasInstallments = linkedTxs.some((t: any) => 
           t.metadata?.linked_asset_id === asset.id && 
@@ -7507,8 +7536,10 @@ const Assets: React.FC = () => {
 
                   // ── Gera extrato completo em HTML e abre para impressão / PDF ──
                   const handleGeneratePDF = () => {
+                    // Só pagamentos efetivamente recebidos (isPaid) entram no extrato —
+                    // parcelas provisionadas ainda não pagas não abatem o saldo.
                     const payments = getAssetLinkedTransactions(loan.id)
-                      .filter((t: any) => t.type === 'INCOME')
+                      .filter((t: any) => t.type === 'INCOME' && t.isPaid)
                       .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
                     const monthlyRate = rate / 100;
@@ -7760,9 +7791,12 @@ const Assets: React.FC = () => {
                     }
                   };
 
-                  // Pagamentos vinculados a este empréstimo (via linkedTransactionsMap)
+                  // Pagamentos vinculados a este empréstimo (via linkedTransactionsMap).
+                  // Só conta o que foi EFETIVAMENTE RECEBIDO (isPaid): as parcelas
+                  // provisionadas (a receber, ainda não pagas) não podem abater o saldo
+                  // devedor nem aparecer no histórico de pagamentos.
                   const loanPayments = getAssetLinkedTransactions(loan.id)
-                    .filter((t: any) => t.type === 'INCOME')
+                    .filter((t: any) => t.type === 'INCOME' && t.isPaid)
                     .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
                   // Cálculo de saldo para modelo Conta Corrente
@@ -7811,8 +7845,11 @@ const Assets: React.FC = () => {
                   };
 
                   const openBalanceInfo = calcOpenBalance();
-                  const txsInfo = getAssetFinancialHistory(loan);
-                  const returned = txsInfo.totalIncome;
+                  // "Devolvido" = soma dos pagamentos RECEBIDOS (loanPayments já filtra
+                  // isPaid). Antes usava todas as receitas vinculadas — as parcelas
+                  // provisionadas (não pagas) contavam como devolvidas e o empréstimo
+                  // aparecia como quitado assim que as parcelas eram geradas.
+                  const returned = loanPayments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
                   const currentBalance = isOpenBalance && openBalanceInfo
                     ? openBalanceInfo.balance
                     : Math.max(0, principal - returned);

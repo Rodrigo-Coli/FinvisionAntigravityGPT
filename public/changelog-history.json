@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.07.18.0130",
+    "title": "Empréstimos Concedidos: Parcelas Calculadas Pela Taxa de Juros",
+    "date": "18/07/2026",
+    "benefits": [
+      {
+        "title": "Parcelas a receber geradas pela taxa de juros (%)",
+        "desc": "Ao emprestar dinheiro no modelo Parcelado Fixo informando só a taxa de juros em %, o sistema não gerava nenhuma parcela a receber no seu extrato — e não avisava. Agora as parcelas são calculadas e lançadas automaticamente: juros compostos usam a Tabela Price (parcela fixa que quita principal + juros) e juros simples usam devolução do principal + juros sobre o valor emprestado. Com juros fixo em R$, a parcela agora também inclui a devolução do principal.",
+        "type": "novidade"
+      },
+      {
+        "title": "Saldo devedor do empréstimo conta só o que foi recebido",
+        "desc": "As parcelas a receber que ainda não foram pagas não abatem mais o saldo devedor — antes, ao gerar as parcelas, o empréstimo podia aparecer como \"quitado\" na hora. Ao dar baixa numa parcela, o retorno e o saldo devedor atualizam na hora; no modelo Conta Corrente, os juros (simples ou compostos) continuam recalculando dia a dia sobre o saldo real a cada recebimento.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "pages/Assets.tsx (runAutoTransactionSync, geração de parcelas de empréstimo): antes exigia loanFixedValue (R$) > 0 e usava só esse valor como parcela (juros sem principal). Agora: modelo OPEN_BALANCE (Conta Corrente) explicitamente não gera parcelas (saldo é dinâmico via extrato); Parcelado Fixo gera por prioridade — juros fixo R$ → principal/n + fixo; taxa % composta → PMT Price; taxa % simples → principal/n + principal×taxa; sem juros → principal/n. Arredondado a 2 casas.",
+      "pages/Assets.tsx (cartão do empréstimo + extrato PDF): loanPayments e payments agora filtram isPaid — parcelas provisionadas não pagas não entram como pagamento no ledger de conta corrente, no histórico de pagamentos, nem no cálculo de 'Retorno do Principal' (que antes usava totalIncome de todas as receitas vinculadas, pagas ou não).",
+      "Verificado ao vivo na demo: empréstimo de R$ 12.000, 12x, 2% a.m. compostos → 12 parcelas de R$ 1.134,72 (Price exato); cartão mostra 0% retornado com as parcelas provisionadas; baixa da parcela 1 → retorno 9% (R$ 1.134,72) e saldo devedor R$ 10.865,28."
+    ]
+  },
+  {
     "version": "2026.07.18.0035",
     "title": "Saldos Blindados, Datas no Fuso Certo e Contas do Mesmo Banco Visíveis",
     "date": "18/07/2026",
