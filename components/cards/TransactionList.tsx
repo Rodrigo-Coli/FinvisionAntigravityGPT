@@ -170,7 +170,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                 }}
                                                 className="w-full text-[10px] font-bold bg-white border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                             >
-                                                {['Pessoal', ...new Set(transactions.map(t => t.owner_name).filter(Boolean))].map(o => (
+                                                {[...new Set(['Pessoal', ...transactions.map(t => t.owner_name).filter(Boolean)])].map(o => (
                                                     <option key={o} value={o}>{o}</option>
                                                 ))}
                                             </select>

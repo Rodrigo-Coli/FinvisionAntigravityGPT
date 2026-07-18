@@ -1,0 +1,25 @@
+-- Correção (18/07/2026, QA pré-lançamento): a semente da demo (clone_demo_data)
+-- plantava current_balance nas contas SEM initial_balance e marcava transações
+-- como pagas SEM paid_amount. Como o trigger de saldo recalcula sempre
+-- (initial_balance + soma de paid_amount), o primeiro pagamento/edição de
+-- qualquer usuário demo APAGAVA o saldo da conta (ex: Nubank 3.850 -> -30 ao
+-- pagar uma fatura de 30).
+--
+-- Correção JÁ APLICADA em produção em 18/07/2026 via CREATE OR REPLACE da
+-- função clone_demo_data, com duas mudanças:
+--
+-- 1. INSERT de accounts agora inclui initial_balance calculado para que
+--    initial + soma(paid_amount das transações semeadas) = saldo exibido:
+--      Itaú     14.500,80 exibido - 8.029,10 pagos = 6.471,70 inicial
+--      Nubank    3.850,25 (sem transações)         = 3.850,25 inicial
+--      XPI      85.000,00                          = 85.000,00 inicial
+--      Caixinha 12.500,00 (INVESTMENT)             = 12.500,00 inicial
+--
+-- 2. Após o INSERT das transações:
+--      UPDATE public.transactions
+--      SET paid_amount = amount, paid_at = date
+--      WHERE user_id = new_uid AND is_paid = true;
+--
+-- A fonte completa da função vive no banco (pg_proc). Este arquivo documenta a
+-- mudança para futuros ambientes; se recriar o banco, reaplicar a função com
+-- essas duas mudanças incluídas.

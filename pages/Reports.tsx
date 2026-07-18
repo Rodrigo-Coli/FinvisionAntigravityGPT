@@ -15,9 +15,12 @@ const Reports: React.FC = () => {
     pendingCount: 0
   });
 
+  // Padrão inicial = mês INTEIRO (igual ao atalho "Este Mês"). Antes terminava em
+  // "hoje", o que deixava as contas a vencer (futuras) fora do intervalo e fazia o
+  // card "Contas Abertas" mostrar 0 mesmo com pendências no mês.
   const [dateRange, setDateRange] = useState({
     start: DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
-    end: DateUtils.formatToISODate(new Date())
+    end: DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0))
   });
 
   // Filtros Avançados

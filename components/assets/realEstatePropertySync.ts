@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase/client';
+import { DateUtils } from '../../lib/dateUtils';
 
 // ============================================================
 // Motor único de geração de lançamentos recorrentes de imóveis
@@ -38,7 +39,7 @@ export async function syncRentalTransactions(params: RentalSyncParams): Promise<
   const discountValue = params.discountValue || 0;
 
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = DateUtils.formatToISODate();
 
     const { data: allTxs, error: fetchErr } = await supabase
       .from('transactions')
@@ -109,7 +110,7 @@ export async function syncRentalTransactions(params: RentalSyncParams): Promise<
 
     for (let i = 0; i < 24; i++) {
       const currentTarget = new Date(currentYear, currentMonth, rentDay);
-      const dateStr = currentTarget.toISOString().split('T')[0];
+      const dateStr = DateUtils.formatToISODate(currentTarget);
 
       if (dateStr < todayStr) {
         const txDate = new Date(dateStr + 'T00:00:00');
@@ -175,7 +176,7 @@ export async function syncCondoIptuTransactions(params: CondoIptuSyncParams): Pr
   const { assetId, userId, assetName, propertyStage, condoPayer, condoFee, condoNextDate, iptuPayer, iptuFee, iptuNextDate, iptuFrequency } = params;
 
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = DateUtils.formatToISODate();
     const today = new Date();
     const sixtyDaysAgo = new Date();
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
@@ -219,7 +220,7 @@ export async function syncCondoIptuTransactions(params: CondoIptuSyncParams): Pr
 
       for (let i = 0; i < 24; i++) {
         const txDate = new Date(currentYear, currentMonth, start.getDate());
-        const dateStr = txDate.toISOString().split('T')[0];
+        const dateStr = DateUtils.formatToISODate(txDate);
 
         if (dateStr < todayStr) {
           const txDateObj = new Date(dateStr + 'T00:00:00');
@@ -290,7 +291,7 @@ export async function syncCondoIptuTransactions(params: CondoIptuSyncParams): Pr
 
       for (let i = 0; i < iterations; i++) {
         const txDate = new Date(currentYear, currentMonth + (i * monthStep), start.getDate());
-        const dateStr = txDate.toISOString().split('T')[0];
+        const dateStr = DateUtils.formatToISODate(txDate);
 
         if (dateStr < todayStr) {
           const txDateObj = new Date(dateStr + 'T00:00:00');

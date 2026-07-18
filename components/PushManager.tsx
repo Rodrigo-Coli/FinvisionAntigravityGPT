@@ -1,3 +1,4 @@
+import { DateUtils } from '../lib/dateUtils';
 import { useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase/client';
 import {
@@ -52,8 +53,8 @@ export function PushManager() {
       if (!user) return;
 
       // Busca transações pendentes dos próximos 3 dias
-      const todayStr = new Date().toISOString().split('T')[0];
-      const threeDaysStr = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
+      const todayStr = DateUtils.formatToISODate();
+      const threeDaysStr = DateUtils.formatToISODate(new Date(Date.now() + 3 * 86400000));
 
       const { data } = await supabase
         .from('transactions')

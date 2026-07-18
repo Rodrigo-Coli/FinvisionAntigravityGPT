@@ -1,3 +1,4 @@
+import { DateUtils } from '../../lib/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase/client';
 import { X, Plus, Trash2, Upload, Loader2, Building2, Wallet, ArrowRight, TrendingUp, HelpCircle, Home } from 'lucide-react';
@@ -30,7 +31,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
   // Identificação do Imóvel
   const [name, setName] = useState('');
   const [estimatedValue, setEstimatedValue] = useState('');
-  const [acquisitionDate, setAcquisitionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [acquisitionDate, setAcquisitionDate] = useState(DateUtils.formatToISODate());
   const [description, setDescription] = useState('');
   const [historicalPaidAmount, setHistoricalPaidAmount] = useState('');
   const [historicalRentReceived, setHistoricalRentReceived] = useState('');
@@ -42,43 +43,43 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
   const [isRented, setIsRented] = useState(false);
   const [rentalType, setRentalType] = useState<'anual' | 'short_stay'>('anual');
   const [rentalIncome, setRentalIncome] = useState('');
-  const [rentalDate, setRentalDate] = useState(new Date().toISOString().split('T')[0]);
+  const [rentalDate, setRentalDate] = useState(DateUtils.formatToISODate());
   const [discountType, setDiscountType] = useState<'PERCENT' | 'VALUE'>('VALUE');
   const [discountValue, setDiscountValue] = useState('');
 
   const [condoPayer, setCondoPayer] = useState<PayerOption>('PROPRIETARIO');
   const [condoFee, setCondoFee] = useState('');
-  const [condoNextDate, setCondoNextDate] = useState(new Date().toISOString().split('T')[0]);
+  const [condoNextDate, setCondoNextDate] = useState(DateUtils.formatToISODate());
 
   const [iptuPayer, setIptuPayer] = useState<PayerOption>('PROPRIETARIO');
   const [iptuFee, setIptuFee] = useState('');
-  const [iptuNextDate, setIptuNextDate] = useState(new Date().toISOString().split('T')[0]);
+  const [iptuNextDate, setIptuNextDate] = useState(DateUtils.formatToISODate());
   const [iptuFrequency, setIptuFrequency] = useState<'monthly' | 'yearly'>('monthly');
 
   // Entradas (Down Payments List)
   const [downPayments, setDownPayments] = useState<{ amount: number; date: string; label: string }[]>([]);
   const [inputDownAmount, setInputDownAmount] = useState('');
-  const [inputDownDate, setInputDownDate] = useState(new Date().toISOString().split('T')[0]);
+  const [inputDownDate, setInputDownDate] = useState(DateUtils.formatToISODate());
   const [inputDownFrequency, setInputDownFrequency] = useState<'SINGLE' | 'MONTHLY' | 'QUARTERLY' | 'SEMESTRAL'>('SINGLE');
   const [inputDownCount, setInputDownCount] = useState('1');
 
   // Intermediárias (Balloons List)
   const [balloons, setBalloons] = useState<{ amount: number; date: string; label: string }[]>([]);
   const [inputBalloonAmount, setInputBalloonAmount] = useState('');
-  const [inputBalloonDate, setInputBalloonDate] = useState(new Date().toISOString().split('T')[0]);
+  const [inputBalloonDate, setInputBalloonDate] = useState(DateUtils.formatToISODate());
   const [inputBalloonFrequency, setInputBalloonFrequency] = useState<'SINGLE' | 'MONTHLY' | 'QUARTERLY' | 'SEMESTRAL'>('SINGLE');
   const [inputBalloonCount, setInputBalloonCount] = useState('1');
 
   // Parcelas da Construtora (Apenas para Na Planta)
   const [constructorAmount, setConstructorAmount] = useState('');
-  const [constructorStartDate, setConstructorStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [constructorStartDate, setConstructorStartDate] = useState(DateUtils.formatToISODate());
   const [constructorInstallmentsCount, setConstructorInstallmentsCount] = useState('12');
   const [constructorIndexType, setConstructorIndexType] = useState<'INCC' | 'IPCA' | 'IGP-M' | 'FIXED'>('INCC');
   const [constructorIndexRate, setConstructorIndexRate] = useState('0.0'); // % ao mês reajuste
 
   // Financiamento (Funding & Amortization)
   const [financingAmount, setFinancingAmount] = useState('');
-  const [financingStartDate, setFinancingStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [financingStartDate, setFinancingStartDate] = useState(DateUtils.formatToISODate());
   const [financingInstallmentsCount, setFinancingInstallmentsCount] = useState('120');
   const [financingInterestRate, setFinancingInterestRate] = useState('0.8'); // % ao mês
   const [financingIndexType, setFinancingIndexType] = useState<'INCC' | 'IPCA' | 'IGP-M' | 'FIXED'>('FIXED');
@@ -279,7 +280,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
         financingDueDay: financingStartDate ? new Date(financingStartDate + 'T00:00:00').getDate().toString() : '10',
         financingName: `Financiamento: ${name}`,
         valuationHistory: [{
-          date: acquisitionDate || new Date().toISOString().split('T')[0],
+          date: acquisitionDate || DateUtils.formatToISODate(),
           value: estimatedAmt || 0,
           label: 'Aquisição'
         }]

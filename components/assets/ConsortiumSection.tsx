@@ -1,3 +1,4 @@
+import { DateUtils } from '../../lib/dateUtils';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, X, Loader2, Check, ChevronRight, ChevronLeft,
@@ -108,7 +109,7 @@ const INITIAL_FORM = {
   asset_category: 'REAL_ESTATE' as string,
   total_months: '',
   months_paid: '0',
-  start_date: new Date().toISOString().split('T')[0],
+  start_date: DateUtils.formatToISODate(),
   assembly_day: '',
   admin_fee_pct: '',
   reserve_fund_pct: '',

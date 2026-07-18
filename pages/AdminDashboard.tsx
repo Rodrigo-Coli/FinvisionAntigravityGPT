@@ -1,3 +1,4 @@
+import { DateUtils } from '../lib/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { resolveTabParam } from '../lib/urlTabState';
@@ -118,7 +119,7 @@ export default function AdminDashboard() {
     title: '', description: '', type: 'announcement' as string,
     discount_percent: 0, trial_days_extension: 0,
     banner_text: '', target_audience: 'all' as string,
-    starts_at: new Date().toISOString().split('T')[0],
+    starts_at: DateUtils.formatToISODate(),
     ends_at: '', is_active: true
   });
 
@@ -175,7 +176,7 @@ export default function AdminDashboard() {
 
   const fetchMetrics = async () => {
     if (!supabase) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = DateUtils.formatToISODate();
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 
@@ -450,7 +451,7 @@ export default function AdminDashboard() {
       if (!error) {
         toast('Campanha criada!', 'success');
         setShowNewCampaign(false);
-        setNewCampaign({ title: '', description: '', type: 'announcement', discount_percent: 0, trial_days_extension: 0, banner_text: '', target_audience: 'all', starts_at: new Date().toISOString().split('T')[0], ends_at: '', is_active: true });
+        setNewCampaign({ title: '', description: '', type: 'announcement', discount_percent: 0, trial_days_extension: 0, banner_text: '', target_audience: 'all', starts_at: DateUtils.formatToISODate(), ends_at: '', is_active: true });
         fetchCampaigns();
       } else throw error;
     } catch (err: any) { toast(`Erro: ${err.message}`, 'error'); }

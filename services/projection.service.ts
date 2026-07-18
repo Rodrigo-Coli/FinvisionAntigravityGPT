@@ -139,7 +139,7 @@ export const projectionService = {
     for (let i = 0; i < monthsAhead; i++) {
         const dt = new Date(today.getFullYear(), today.getMonth() + i, 1);
         const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-        const label = dt.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. ', '/');
+        const label = dt.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/').replace(' de ', '/');
         const md = monthlyData[key] || { income: 0, expense: 0 };
         
         const startingBalance = rollingBalance;
@@ -171,7 +171,7 @@ export const projectionService = {
     const now = new Date();
     for (let i = 0; i < months; i++) {
         const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-        const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+        const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/').replace(' de ', '/');
         result.push({
             date: d.toISOString().substring(0, 7), label,
             startingBalance: rolling, projectedIncome: 0, recurringIncome: 0,

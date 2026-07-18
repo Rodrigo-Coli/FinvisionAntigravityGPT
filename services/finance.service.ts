@@ -1,6 +1,7 @@
 ﻿import { supabase } from '../lib/supabase/client';
 import { BankAccount, Transaction, CreditCardDetailed, Entity } from '../types';
 import { findCloseMatch } from '../lib/stringUtils';
+import { DateUtils } from '../lib/dateUtils';
 
 // PROPAGAÇÃO REVERSA: quando uma parcela vinculada a um passivo é editada/paga/excluída em
 // Transações, recalcula o saldo devedor e o nº de parcelas restantes do passivo a partir das
@@ -590,24 +591,38 @@ export const FinanceService = {
       // 3. Upsert na tabela de transações usando query direta no jsonb
       const { data: queryTx } = await supabase
         .from('transactions')
-        .select('id')
+        .select('id, is_paid, date')
         .eq('user_id', user.id)
         .filter('metadata->>card_statement_id', 'eq', statementId)
         .maybeSingle();
+
+      const isPaidFinal = overridePaid !== undefined ? overridePaid : stmt.status === 'PAID';
+
+      // Data do lançamento espelho:
+      //  - fatura em aberto (provisão): data de vencimento, como sempre foi;
+      //  - fatura sendo PAGA agora: data de HOJE no fuso local (antes ficava o
+      //    vencimento — pagar em 17/07 gerava despesa datada 25/08);
+      //  - fatura que JÁ estava paga (re-sync): preserva a data original do pagamento.
+      let mirrorDate = stmt.due_date;
+      if (isPaidFinal) {
+        mirrorDate = (queryTx && (queryTx as any).is_paid && (queryTx as any).date)
+          ? (queryTx as any).date
+          : DateUtils.formatToISODate();
+      }
 
       const payload: any = {
         user_id: user.id,
         account_id: targetAccountId,
         description: `Fatura Cartão: ${stmt.cards?.name || 'Cartão'} (${stmt.month}/${stmt.year})`,
         amount: amount,
-        date: stmt.due_date,
+        date: mirrorDate,
         type: 'BILL_PAYMENT',
         category: stmt.cards?.default_category || 'Pagamento de Fatura',
         subcategory: stmt.cards?.default_subcategory || null,
         owner_name: stmt.cards?.default_owner || 'Pessoal',
-        is_paid: overridePaid !== undefined ? overridePaid : stmt.status === 'PAID',
-        paid_amount: (overridePaid !== undefined ? overridePaid : stmt.status === 'PAID') ? amount : 0,
-        paid_at: (overridePaid !== undefined ? overridePaid : stmt.status === 'PAID') ? new Date().toISOString() : null,
+        is_paid: isPaidFinal,
+        paid_amount: isPaidFinal ? amount : 0,
+        paid_at: isPaidFinal ? new Date().toISOString() : null,
         metadata: {
           card_statement_id: statementId,
           is_provision: true

@@ -497,7 +497,7 @@ const HistoryPage: React.FC = () => {
 
       const todayRaw = new Date();
       const sixtyDaysAhead = new Date(todayRaw.getFullYear(), todayRaw.getMonth(), todayRaw.getDate() + 60);
-      const futureLimit = sixtyDaysAhead.toISOString().split('T')[0];
+      const futureLimit = DateUtils.formatToISODate(sixtyDaysAhead);
 
       const renderData = (
         accs: any[],
@@ -510,13 +510,16 @@ const HistoryPage: React.FC = () => {
       ) => {
         if (requestId !== lastRequestId.current) return;
 
-        // Map state and deduplicate accounts by institution name
+        // Deduplica por ID (não por nome do banco): duas contas na mesma instituição
+        // (ex: conta corrente + caixinha no Nubank) são contas diferentes. A dedup
+        // antiga por nome descartava a segunda — ela sumia do filtro de contas e,
+        // pior, os lançamentos dela eram OCULTADOS quando o filtro padrão de contas
+        // era inicializado só com os IDs sobreviventes.
         const uniqueAccData: any[] = [];
-        const seenAccNames = new Set<string>();
+        const seenAccIds = new Set<string>();
         for (const a of (accs || [])) {
-          const name = (a.institution || a.name || a.bank_name || 'Conta').trim().toLowerCase();
-          if (!seenAccNames.has(name)) {
-            seenAccNames.add(name);
+          if (a?.id && !seenAccIds.has(a.id)) {
+            seenAccIds.add(a.id);
             uniqueAccData.push(a);
           }
         }
@@ -1097,6 +1100,19 @@ const HistoryPage: React.FC = () => {
 
         const isNegative = parsedAmt < 0;
         patch = { amount: Math.abs(parsedAmt) };
+
+        // Lançamento TOTALMENTE pago que teve o valor editado: o valor pago acompanha
+        // o novo valor. Sem isso, ficava "PAGO R$ 75" com paid_amount 50 e o saldo da
+        // conta parado em -50 (o trigger de saldo soma paid_amount, não amount).
+        // Parcialmente pago não é tocado (a diferença continua em aberto).
+        if (tx && (tx as any).isPaid && !tx.metadata?.is_card) {
+          const rawPaid = Number((tx as any).paidAmount || 0);
+          const oldAmt = Math.abs(Number(tx.amount || 0));
+          const wasFullyPaid = rawPaid <= 0.005 || Math.abs(rawPaid - oldAmt) < 0.005;
+          if (wasFullyPaid) {
+            patch.paid_amount = Math.abs(parsedAmt);
+          }
+        }
 
         if (tx && tx.type === 'TRANSFER') {
           patch.metadata = {

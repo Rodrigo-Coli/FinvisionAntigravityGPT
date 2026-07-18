@@ -1,3 +1,4 @@
+import { DateUtils } from '../lib/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, X, Loader2, AlertTriangle, Check, TrendingDown, Target, Trash2, Calendar, TrendingUp, PieChart, Pencil } from 'lucide-react';
@@ -116,7 +117,7 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
         
         const threeMonthsAgo = new Date();
         threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-        const threeMonthsAgoStr = threeMonthsAgo.toISOString().split('T')[0];
+        const threeMonthsAgoStr = DateUtils.formatToISODate(threeMonthsAgo);
 
         const [budgetsRes, txCurrentMonthRes, goalsRes, txSavingsRes] = await Promise.all([
           sb.from('budgets').select('*').eq('user_id', u.id).eq('is_active', true),

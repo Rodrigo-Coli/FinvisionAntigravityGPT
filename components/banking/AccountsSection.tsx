@@ -139,17 +139,19 @@ const AccountsSection: React.FC = () => {
             includeInDashboard: acc.include_in_dashboard !== false
           }));
 
-        // Deduplicate accounts with identical institution names
+        // Deduplica por ID (não por nome do banco): é normal ter mais de uma conta
+        // na mesma instituição (ex: conta corrente + caixinha no Nubank). A dedup
+        // antiga por nome fazia a segunda conta SUMIR da tela — ela ficava
+        // invisível e ingerenciável, e o contador de contas/investimentos errava.
         const mapped: typeof rawMapped = [];
         const seenAccs = new Set<string>();
         for (const acc of rawMapped) {
-          const key = acc.institution.toLowerCase().trim();
-          if (!seenAccs.has(key)) {
-            seenAccs.add(key);
+          if (!seenAccs.has(acc.id)) {
+            seenAccs.add(acc.id);
             mapped.push(acc);
           }
         }
-        mapped.sort((a: any, b: any) => a.institution.localeCompare(b.institution));
+        mapped.sort((a: any, b: any) => a.institution.localeCompare(b.institution) || a.name.localeCompare(b.name));
 
         setAccounts(mapped);
         localStorage.setItem('finvision_cached_accounts_full', JSON.stringify(mapped));

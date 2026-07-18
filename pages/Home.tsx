@@ -100,7 +100,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
   // State for Chart Filters
   const initialStart = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
-  const initialEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+  const initialEnd = DateUtils.formatToISODate(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0));
   const [startDate, setStartDate] = useState(initialStart);
   const [endDate, setEndDate] = useState(initialEnd);
   const [viewMode, setViewMode] = useState<'ALL' | 'SETTLED'>('ALL');
@@ -163,7 +163,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         // Fetch pending transactions for current month and accounts
         const now = new Date();
         const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+        const endOfMonth = DateUtils.formatToISODate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
         const [pendingRes, accountsRes] = await Promise.all([
           supabase
@@ -458,7 +458,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           onClick={() => {
             const now = new Date();
             const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-            const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+            const end = DateUtils.formatToISODate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
             navigate(`/history?startDate=${start}&endDate=${end}&type=INCOME&status=PENDING`);
           }}
           className="bg-white border border-slate-100 hover:border-emerald-100 rounded-2xl p-4 sm:p-5 text-left transition-all hover:shadow-md hover:scale-[1.02] active:scale-95 group flex justify-between items-center shadow-sm"
@@ -479,7 +479,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           onClick={() => {
             const now = new Date();
             const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-            const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+            const end = DateUtils.formatToISODate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
             navigate(`/history?startDate=${start}&endDate=${end}&type=EXPENSE&status=PENDING`);
           }}
           className="bg-white border border-slate-100 hover:border-rose-100 rounded-2xl p-4 sm:p-5 text-left transition-all hover:shadow-md hover:scale-[1.02] active:scale-95 group flex justify-between items-center shadow-sm"

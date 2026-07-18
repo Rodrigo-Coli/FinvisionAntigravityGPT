@@ -362,7 +362,7 @@ const Assets: React.FC = () => {
     loanFixedValue: '',
     loanDueDate: '',
     loanInterestType: 'SIMPLE' as 'SIMPLE' | 'COMPOUND',
-    acquisitionDate: new Date().toISOString().split('T')[0],
+    acquisitionDate: DateUtils.formatToISODate(),
     description: '',
     status: 'ATIVO'
   });
@@ -396,12 +396,12 @@ const Assets: React.FC = () => {
     inquilinoPaysCondo: false,
     inquilinoPaysIPTU: false,
     condoPayer: 'PROPRIETARIO' as PayerOption,
-    condoNextDate: new Date().toISOString().split('T')[0],
+    condoNextDate: DateUtils.formatToISODate(),
     iptuPayer: 'PROPRIETARIO' as PayerOption,
-    iptuNextDate: new Date().toISOString().split('T')[0],
+    iptuNextDate: DateUtils.formatToISODate(),
     iptuFrequency: 'monthly' as 'monthly' | 'yearly',
     rentalType: 'anual' as 'anual' | 'short_stay',
-    rentalDate: new Date().toISOString().split('T')[0],
+    rentalDate: DateUtils.formatToISODate(),
     // Loan assets
     isLoan: false,
     loanType: 'INSTALLMENTS' as 'INSTALLMENTS' | 'OPEN_BALANCE',
@@ -445,7 +445,7 @@ const Assets: React.FC = () => {
     permutaImovelNome: '',
     permutaOutrosValor: '',
     permutaOutrosNome: '',
-    saleDate: new Date().toISOString().split('T')[0],
+    saleDate: DateUtils.formatToISODate(),
     saleCashAmount: '',
     ipvaPaymentMethod: 'PARCELADO' as 'A_VISTA' | 'PARCELADO',
     ipvaInstallmentsCount: '5',
@@ -494,7 +494,7 @@ const Assets: React.FC = () => {
     rentalType: 'anual' as 'anual' | 'short_stay',
     financingName: '',
     financingOriginalTotal: '',
-    rentalDate: new Date().toISOString().split('T')[0]
+    rentalDate: DateUtils.formatToISODate()
   });
 
   const [editingLiability, setEditingLiability] = useState<any | null>(null);
@@ -529,7 +529,7 @@ const Assets: React.FC = () => {
     description: '',
     amount: '',
     type: 'EXPENSE' as 'INCOME' | 'EXPENSE',
-    date: new Date().toISOString().split('T')[0],
+    date: DateUtils.formatToISODate(),
     isHistorical: false,
     category: 'Outros',
     subcategory: '',
@@ -742,7 +742,7 @@ const Assets: React.FC = () => {
       let allTxs: any[] = [];
       const oneYearAgo = new Date();
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-      const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
+      const oneYearAgoStr = DateUtils.formatToISODate(oneYearAgo);
 
       const [res1, res2, res3] = await Promise.all([
         supabase
@@ -903,7 +903,7 @@ const Assets: React.FC = () => {
             parsedAnnualRate: 0
           };
         } else {
-          const acqDate = p.acquisitionDate || new Date().toISOString().split('T')[0];
+          const acqDate = p.acquisitionDate || DateUtils.formatToISODate();
           const parsedAnnualRate = FinancialEngine.parseYieldRate(meta.yieldRate || '', meta.interestType || 'PRE');
           const isExempt = !!meta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'POUPANCA'].includes(meta.investmentType);
           
@@ -1449,7 +1449,7 @@ const Assets: React.FC = () => {
         }
         
         const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
-        const dateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
+        const dateStr = asset.acquisitionDate || DateUtils.formatToISODate();
         
         await supabase.from('transactions').insert([{
           user_id: userId,
@@ -1492,7 +1492,7 @@ const Assets: React.FC = () => {
         const catColor = 'bg-brand-50 text-brand-600';
         const catId = await getOrCreateCategory(userId, catName, 'INCOME', catColor);
         
-        let dateStr = new Date().toISOString().split('T')[0];
+        let dateStr = DateUtils.formatToISODate();
         if (liab.createdAt) {
           const sep = liab.createdAt.includes('T') ? 'T' : ' ';
           dateStr = liab.createdAt.split(sep)[0];
@@ -1535,7 +1535,7 @@ const Assets: React.FC = () => {
         const catName = 'Empréstimos/Investimentos';
         const catColor = 'bg-brand-50 text-brand-600';
         const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
-        const dateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
+        const dateStr = asset.acquisitionDate || DateUtils.formatToISODate();
         
         await supabase.from('transactions').insert([{
           user_id: userId,
@@ -1615,7 +1615,7 @@ const Assets: React.FC = () => {
     assetName: string,
     userId: string,
     rentalType: 'anual' | 'short_stay' = 'anual',
-    rentalDate: string = new Date().toISOString().split('T')[0],
+    rentalDate: string = DateUtils.formatToISODate(),
     discountType: 'PERCENT' | 'VALUE' = 'VALUE',
     discountValue: number = 0
   ) => {
@@ -1674,7 +1674,7 @@ const Assets: React.FC = () => {
   ) => {
     if (!supabase) return;
     try {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = DateUtils.formatToISODate();
       const categoryName = 'Ativos Físicos';
       let catId = '';
       
@@ -1807,7 +1807,7 @@ const Assets: React.FC = () => {
           for (let i = 0; i < parcelas; i++) {
             const futureDate = new Date();
             futureDate.setMonth(futureDate.getMonth() + i);
-            const futureDateStr = futureDate.toISOString().split('T')[0];
+            const futureDateStr = DateUtils.formatToISODate(futureDate);
 
             newSaleInstallments.push({
               user_id: userId,
@@ -1921,7 +1921,7 @@ const Assets: React.FC = () => {
         for (let i = 0; i < parcelasIPVA; i++) {
           const futureDate = new Date();
           futureDate.setMonth(futureDate.getMonth() + i);
-          const futureDateStr = futureDate.toISOString().split('T')[0];
+          const futureDateStr = DateUtils.formatToISODate(futureDate);
 
           newIpvaTxs.push({
             user_id: userId,
@@ -1963,7 +1963,7 @@ const Assets: React.FC = () => {
         for (let i = 0; i < parcelasSeguro; i++) {
           const futureDate = new Date();
           futureDate.setMonth(futureDate.getMonth() + i);
-          const futureDateStr = futureDate.toISOString().split('T')[0];
+          const futureDateStr = DateUtils.formatToISODate(futureDate);
 
           newSeguroTxs.push({
             user_id: userId,
@@ -1989,7 +1989,7 @@ const Assets: React.FC = () => {
       if (licenciamento > 0) {
         const futureDate = new Date();
         futureDate.setMonth(futureDate.getMonth() + 3); // Vence daqui a 3 meses por exemplo
-        const futureDateStr = futureDate.toISOString().split('T')[0];
+        const futureDateStr = DateUtils.formatToISODate(futureDate);
 
         await supabase.from('transactions').insert([{
           user_id: userId,
@@ -2018,7 +2018,7 @@ const Assets: React.FC = () => {
         for (let i = 0; i < 24; i++) { // Provisão de 24 meses
           const futureDate = new Date();
           futureDate.setMonth(futureDate.getMonth() + i);
-          const futureDateStr = futureDate.toISOString().split('T')[0];
+          const futureDateStr = DateUtils.formatToISODate(futureDate);
 
           newRentTxs.push({
             user_id: userId,
@@ -2048,7 +2048,7 @@ const Assets: React.FC = () => {
   ) => {
     if (!supabase) return;
     try {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = DateUtils.formatToISODate();
       const categoryName = 'Patrimônio';
       let catId = '';
       
@@ -2162,7 +2162,7 @@ const Assets: React.FC = () => {
           for (let i = 0; i < parcelas; i++) {
             const futureDate = new Date();
             futureDate.setMonth(futureDate.getMonth() + i);
-            const futureDateStr = futureDate.toISOString().split('T')[0];
+            const futureDateStr = DateUtils.formatToISODate(futureDate);
 
             newSaleInstallments.push({
               user_id: userId,
@@ -2237,7 +2237,7 @@ const Assets: React.FC = () => {
         for (let i = 0; i < 24; i++) { // Provisão de 24 meses
           const futureDate = new Date();
           futureDate.setMonth(futureDate.getMonth() + i);
-          const futureDateStr = futureDate.toISOString().split('T')[0];
+          const futureDateStr = DateUtils.formatToISODate(futureDate);
 
           newRentTxs.push({
             user_id: userId,
@@ -2283,7 +2283,7 @@ const Assets: React.FC = () => {
           asset.name,
           user.id,
           meta.rentalType || 'anual',
-          meta.rentalDate || new Date().toISOString().split('T')[0]
+          meta.rentalDate || DateUtils.formatToISODate()
         );
 
         // Vira PRONTO com financiamento/consórcio já configurado no cadastro (PLANTA)?
@@ -2386,7 +2386,7 @@ const Assets: React.FC = () => {
       }
 
       const targetAccountId = resgateForm.destinationAccountId;
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = DateUtils.formatToISODate();
 
       // 1. Atualizar o Ativo Físico
       if (isTotal || amountToRedeem === currentEstimated) {
@@ -2798,7 +2798,7 @@ const Assets: React.FC = () => {
             if (newCat) catId = newCat.id;
           }
 
-          const todayStr = new Date().toISOString().split('T')[0];
+          const todayStr = DateUtils.formatToISODate();
           await supabase.from('transactions').insert([{
             user_id: user.id,
             description: `Resgate Total Investimento - ${formData.name}`,
@@ -2873,7 +2873,7 @@ const Assets: React.FC = () => {
               if (newCat) catId = newCat.id;
             }
 
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = DateUtils.formatToISODate();
             await supabase.from('transactions').insert([{
               user_id: user.id,
               description: `Rendimento automático - ${formData.name}`,
@@ -2916,7 +2916,7 @@ const Assets: React.FC = () => {
                 .eq('metadata->>linked_asset_id', editingAsset.id);
 
               if (txsToRecalc && txsToRecalc.length > 0) {
-                const acquisitionDateStr = editingAsset.acquisitionDate || new Date().toISOString().split('T')[0];
+                const acquisitionDateStr = editingAsset.acquisitionDate || DateUtils.formatToISODate();
                 const ratePercent = newRate / 100;
 
                 const getMonthsDifferenceLocal = (d1: string, d2: string) => {
@@ -3109,7 +3109,7 @@ const Assets: React.FC = () => {
             if (newCat) catId = newCat.id;
           }
 
-          const todayStr = new Date().toISOString().split('T')[0];
+          const todayStr = DateUtils.formatToISODate();
           await supabase.from('transactions').insert([{
             user_id: user.id,
             description: `Resgate Total Investimento - ${formData.name}`,
@@ -3188,7 +3188,7 @@ const Assets: React.FC = () => {
           }
 
           // Initial Cash Outflow transaction (Not historical)
-          const todayStr = new Date().toISOString().split('T')[0];
+          const todayStr = DateUtils.formatToISODate();
           await supabase.from('transactions').insert([{
             user_id: user.id,
             description: `Desembolso Empréstimo Concedido - ${formData.name}`,
@@ -3288,7 +3288,7 @@ const Assets: React.FC = () => {
       if (isRealEstate && formData.isSold && (!editingAsset || !editingAsset.metadata?.isSold)) {
         const soldAmount = parseFloat(formData.soldValue) || 0;
         const comission = parseFloat(formData.saleCommission || (formData as any).saleComission) || 0;
-        const saleDateStr = formData.saleDate || new Date().toISOString().split('T')[0];
+        const saleDateStr = formData.saleDate || DateUtils.formatToISODate();
 
         // 1. Excluir provisões futuras não pagas vinculadas ao imóvel
         const { data: oldProvisions } = await supabase
@@ -3401,7 +3401,7 @@ const Assets: React.FC = () => {
           for (let i = 0; i < parcelas; i++) {
             const futureDate = new Date(saleDateStr + 'T00:00:00');
             futureDate.setMonth(futureDate.getMonth() + i);
-            const futureDateStr = futureDate.toISOString().split('T')[0];
+            const futureDateStr = DateUtils.formatToISODate(futureDate);
 
             newSaleInstallments.push({
               user_id: user.id,
@@ -3554,12 +3554,12 @@ const Assets: React.FC = () => {
       inquilinoPaysCondo: false,
       inquilinoPaysIPTU: false,
       condoPayer: 'PROPRIETARIO',
-      condoNextDate: new Date().toISOString().split('T')[0],
+      condoNextDate: DateUtils.formatToISODate(),
       iptuPayer: 'PROPRIETARIO',
-      iptuNextDate: new Date().toISOString().split('T')[0],
+      iptuNextDate: DateUtils.formatToISODate(),
       iptuFrequency: 'monthly',
       rentalType: 'anual',
-      rentalDate: new Date().toISOString().split('T')[0],
+      rentalDate: DateUtils.formatToISODate(),
       isLoan: false,
       loanType: 'INSTALLMENTS' as 'INSTALLMENTS' | 'OPEN_BALANCE',
       loanPrincipal: '',
@@ -3606,7 +3606,7 @@ const Assets: React.FC = () => {
       permutaOutrosValor: '',
       permutaOutrosNome: '',
       permutaItems: [],
-      saleDate: new Date().toISOString().split('T')[0],
+      saleDate: DateUtils.formatToISODate(),
       saleCashAmount: '',
       // Investment-specific fields
       investmentType: 'CDB',
@@ -3750,12 +3750,12 @@ const Assets: React.FC = () => {
       inquilinoPaysCondo: !!meta.inquilinoPaysCondo,
       inquilinoPaysIPTU: !!meta.inquilinoPaysIPTU,
       condoPayer: meta.condoPayer || (meta.inquilinoPaysCondo ? 'INQUILINO_DIRETO' : 'PROPRIETARIO'),
-      condoNextDate: meta.condoNextDate || new Date().toISOString().split('T')[0],
+      condoNextDate: meta.condoNextDate || DateUtils.formatToISODate(),
       iptuPayer: meta.iptuPayer || (meta.inquilinoPaysIPTU ? 'INQUILINO_DIRETO' : 'PROPRIETARIO'),
-      iptuNextDate: meta.iptuNextDate || new Date().toISOString().split('T')[0],
+      iptuNextDate: meta.iptuNextDate || DateUtils.formatToISODate(),
       iptuFrequency: meta.iptuFrequency || 'monthly',
       rentalType: meta.rentalType || 'anual',
-      rentalDate: meta.rentalDate || new Date().toISOString().split('T')[0],
+      rentalDate: meta.rentalDate || DateUtils.formatToISODate(),
       isLoan: !!meta.isLoan,
       loanType: (meta.loanType || 'INSTALLMENTS') as 'INSTALLMENTS' | 'OPEN_BALANCE',
       loanPrincipal: meta.loanPrincipal ? String(meta.loanPrincipal) : '',
@@ -3808,7 +3808,7 @@ const Assets: React.FC = () => {
           ...(meta.permutaOutrosNome || meta.permutaOutrosValor ? [{ type: 'OTHER' as const, name: meta.permutaOutrosNome || '', value: String(meta.permutaOutrosValor || '') }] : []),
         ] : []
       ),
-      saleDate: meta.saleDate || new Date().toISOString().split('T')[0],
+      saleDate: meta.saleDate || DateUtils.formatToISODate(),
       saleCashAmount: meta.saleCashAmount !== undefined ? String(meta.saleCashAmount) : '',
       // Investment-specific fields
       investmentType: meta.investmentType || 'CDB',
@@ -4031,7 +4031,7 @@ const Assets: React.FC = () => {
         rentalType: meta.rentalType || 'anual',
         financingName: liability.name || `Financiamento: ${asset.name}`,
         financingOriginalTotal: liability.totalAmount ? String(liability.totalAmount) : '',
-        rentalDate: meta.rentalDate || new Date().toISOString().split('T')[0]
+        rentalDate: meta.rentalDate || DateUtils.formatToISODate()
       });
     } else {
       setSelectedLiabilityForManage({
@@ -4067,7 +4067,7 @@ const Assets: React.FC = () => {
         rentalType: meta.rentalType || 'anual',
         financingName: `Financiamento: ${asset.name}`,
         financingOriginalTotal: '',
-        rentalDate: meta.rentalDate || new Date().toISOString().split('T')[0]
+        rentalDate: meta.rentalDate || DateUtils.formatToISODate()
       });
     }
     setShowRealEstateManageModal(true);
@@ -4125,7 +4125,7 @@ const Assets: React.FC = () => {
         
         if (realEstateManageForm.deliveryPaymentMethod === 'A_VISTA') {
           if (balance > 0) {
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = DateUtils.formatToISODate();
             const habitacaoCatId = await getOrCreateCategory(user.id, 'Habitação', 'EXPENSE', 'bg-emerald-50 text-emerald-600');
             await supabase.from('transactions').insert([{
               user_id: user.id,
@@ -4287,7 +4287,7 @@ const Assets: React.FC = () => {
 
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
-        const txDate = yesterday.toISOString().split('T')[0];
+        const txDate = DateUtils.formatToISODate(yesterday);
 
         const txData = {
           user_id: userId,
@@ -4426,7 +4426,7 @@ const Assets: React.FC = () => {
             '(As parcelas já pagas e as de datas passadas são mantidas.)'
           );
           if (confirmRegen) {
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = DateUtils.formatToISODate();
             // Apaga apenas parcelas futuras, não pagas, geradas automaticamente para este passivo.
             const { data: futureParcels } = await supabase
               .from('transactions')
@@ -5033,7 +5033,7 @@ const Assets: React.FC = () => {
         description: '',
         amount: '',
         type: 'EXPENSE',
-        date: new Date().toISOString().split('T')[0],
+        date: DateUtils.formatToISODate(),
         isHistorical: false,
         category: 'Outros',
         subcategory: '',
@@ -7522,7 +7522,7 @@ const Assets: React.FC = () => {
                     // Constrói as linhas da tabela de evolução
                     type Row = { date: string; days: number; interest: number; payment: number; balance: number; label: string };
                     const rows: Row[] = [];
-                    const startDate = meta.acquisitionDate || loan.acquisitionDate || new Date().toISOString().split('T')[0];
+                    const startDate = meta.acquisitionDate || loan.acquisitionDate || DateUtils.formatToISODate();
                     let balance = principal;
                     let lastDate = startDate;
                     rows.push({ date: startDate, days: 0, interest: 0, payment: 0, balance: principal, label: 'Concessão do empréstimo' });
@@ -7541,7 +7541,7 @@ const Assets: React.FC = () => {
                     }
 
                     // Linha de hoje
-                    const today = new Date().toISOString().split('T')[0];
+                    const today = DateUtils.formatToISODate();
                     if (today !== lastDate) {
                       const msA = new Date(lastDate + 'T12:00:00').getTime();
                       const msB = new Date(today + 'T12:00:00').getTime();
@@ -7777,7 +7777,7 @@ const Assets: React.FC = () => {
                     today.setHours(0, 0, 0, 0);
 
                     let balance = principal;
-                    let lastDate = new Date(meta.acquisitionDate || loan.acquisitionDate || new Date().toISOString().split('T')[0]);
+                    let lastDate = new Date(meta.acquisitionDate || loan.acquisitionDate || DateUtils.formatToISODate());
                     lastDate.setHours(0, 0, 0, 0);
                     let totalInterest = 0;
                     let totalPaid = 0;
@@ -7927,7 +7927,7 @@ const Assets: React.FC = () => {
                             onClick={() => setLoanPaymentModal({
                               loan,
                               amount: '',
-                              date: new Date().toISOString().split('T')[0],
+                              date: DateUtils.formatToISODate(),
                               accountId: allAccounts[0]?.id || '',
                               isSubmitting: false
                             })}
@@ -10727,7 +10727,7 @@ const Assets: React.FC = () => {
                 const monthlyRate = (Number(meta.loanInterestRate) || 0) / 100;
 
                 // Build amortization schedule from paid receipts based on elapsed time
-                const concessionDate = selectedAssetForExtrato.acquisitionDate || new Date().toISOString().split('T')[0];
+                const concessionDate = selectedAssetForExtrato.acquisitionDate || DateUtils.formatToISODate();
                 const schedule = loanLinkedTxs.map((tx, idx) => {
                   const prevDate = idx === 0 ? concessionDate : loanLinkedTxs[idx - 1].date;
                   const d1 = new Date(prevDate);
@@ -10864,7 +10864,7 @@ const Assets: React.FC = () => {
                             description: `Recebimento de Empréstimo - ${selectedAssetForExtrato.name}`,
                             amount: '',
                             type: 'INCOME',
-                            date: new Date().toISOString().split('T')[0],
+                            date: DateUtils.formatToISODate(),
                             isHistorical: false,
                             category: 'Empréstimos/Investimentos',
                             subcategory: 'Amortização',
@@ -10875,7 +10875,7 @@ const Assets: React.FC = () => {
                             description: '',
                             amount: '',
                             type: 'EXPENSE',
-                            date: new Date().toISOString().split('T')[0],
+                            date: DateUtils.formatToISODate(),
                             isHistorical: false,
                             category: 'Outros',
                             subcategory: '',
@@ -11541,7 +11541,7 @@ const Assets: React.FC = () => {
                           description: `Pagamento Parcela - ${selectedLiabilityForExtrato.name}`,
                           amount: selectedLiabilityForExtrato.installmentAmount ? String(selectedLiabilityForExtrato.installmentAmount) : '',
                           type: 'EXPENSE',
-                          date: new Date().toISOString().split('T')[0],
+                          date: DateUtils.formatToISODate(),
                           isHistorical: false,
                           category: 'Financiamento/Dívida',
                           subcategory: 'Amortização',

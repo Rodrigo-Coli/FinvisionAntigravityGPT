@@ -144,7 +144,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                 momMonthsByDate.push({
                     year: d.getFullYear(),
                     month: d.getMonth(),
-                    label: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+                    label: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/').replace(' de ', '/'),
                     income: 0,
                     expense: 0
                 });

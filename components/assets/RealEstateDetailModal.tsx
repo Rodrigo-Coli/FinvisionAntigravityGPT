@@ -47,7 +47,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [propertyStage, setPropertyStage] = useState<'PLANTA' | 'PRONTO'>(asset.metadata?.propertyStage || 'PRONTO');
   const [purpose, setPurpose] = useState<'uso' | 'investimento'>(asset.metadata?.purpose || 'uso');
   const [purchaseValue, setPurchaseValue] = useState(String(asset.metadata?.purchaseValue || ''));
-  const [acquisitionDate, setAcquisitionDate] = useState(asset.acquisitionDate || new Date().toISOString().split('T')[0]);
+  const [acquisitionDate, setAcquisitionDate] = useState(asset.acquisitionDate || DateUtils.formatToISODate());
   const [despesasCartorarias, setDespesasCartorarias] = useState(String(asset.metadata?.despesasCartorarias || ''));
   const [mobiliarios, setMobiliarios] = useState(String(asset.metadata?.mobiliarios || ''));
   const [reformsManual, setReformsManual] = useState(String(asset.metadata?.reformsManual || ''));
@@ -61,7 +61,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [salePaymentMethod, setSalePaymentMethod] = useState<'A_VISTA' | 'PARCELADO' | 'PERMUTA' | 'HIBRIDO'>(
     asset.metadata?.salePaymentMethod || 'A_VISTA'
   );
-  const [saleDate, setSaleDate] = useState(asset.metadata?.saleDate || new Date().toISOString().split('T')[0]);
+  const [saleDate, setSaleDate] = useState(asset.metadata?.saleDate || DateUtils.formatToISODate());
   const [saleCashAmount, setSaleCashAmount] = useState(String(asset.metadata?.saleCashAmount || ''));
   const [permutaItems, setPermutaItems] = useState<{ type: 'VEHICLE' | 'REAL_ESTATE' | 'OTHER'; name: string; value: string }[]>(
     asset.metadata?.permutaItems || []
@@ -79,7 +79,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [isRented, setIsRented] = useState(!!asset.metadata?.isRented);
   const [rentalType, setRentalType] = useState<'anual' | 'short_stay'>(asset.metadata?.rentalType || 'anual');
   const [rentalIncome, setRentalIncome] = useState(String(asset.metadata?.rentalIncome || ''));
-  const [rentalDate, setRentalDate] = useState(asset.metadata?.rentalDate || new Date().toISOString().split('T')[0]);
+  const [rentalDate, setRentalDate] = useState(asset.metadata?.rentalDate || DateUtils.formatToISODate());
   const [discountType, setDiscountType] = useState<'PERCENT' | 'VALUE'>(asset.metadata?.discountType || 'VALUE');
   const [discountValue, setDiscountValue] = useState(String(asset.metadata?.discountValue || ''));
   const [inquilinoPaysCondo, setInquilinoPaysCondo] = useState(!!asset.metadata?.inquilinoPaysCondo);
@@ -104,12 +104,12 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [condoNextDate, setCondoNextDate] = useState(
     asset.metadata?.condoNextDate || (asset.metadata?.condoDueDay ? 
       `${new Date().toISOString().substring(0, 8)}${String(asset.metadata.condoDueDay).padStart(2, '0')}` : 
-      new Date().toISOString().split('T')[0])
+      DateUtils.formatToISODate())
   );
   const [iptuNextDate, setIptuNextDate] = useState(
     asset.metadata?.iptuNextDate || (asset.metadata?.iptuDueDay ? 
       `${new Date().toISOString().substring(0, 8)}${String(asset.metadata.iptuDueDay).padStart(2, '0')}` : 
-      new Date().toISOString().split('T')[0])
+      DateUtils.formatToISODate())
   );
 
   // Short Stay Bookings
@@ -118,7 +118,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   );
   const [newBookingDesc, setNewBookingDesc] = useState('');
   const [newBookingAmount, setNewBookingAmount] = useState('');
-  const [newBookingDate, setNewBookingDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newBookingDate, setNewBookingDate] = useState(DateUtils.formatToISODate());
 
   // New Quick Transaction states
   const [showQuickTxForm, setShowQuickTxForm] = useState(false);
@@ -324,7 +324,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const syncShortStayBookings = async (userId: string) => {
     if (!supabase) return;
     try {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = DateUtils.formatToISODate();
 
       // Fetch existing bookings transactions from DB
       const { data: dbBookings } = await supabase
@@ -462,7 +462,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       const lastVal = valuationHistory.length > 0 ? valuationHistory[valuationHistory.length - 1] : null;
       if (!lastVal || lastVal.value !== estVal) {
         valuationHistory.push({
-          date: new Date().toISOString().split('T')[0],
+          date: DateUtils.formatToISODate(),
           value: estVal,
           label: 'Atualização'
         });
@@ -511,7 +511,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       if (isSold && !wasSoldBefore) {
         const soldAmount = saleVal;
         const comission = parseFloat(saleCommission) || 0;
-        const saleDateStr = saleDate || new Date().toISOString().split('T')[0];
+        const saleDateStr = saleDate || DateUtils.formatToISODate();
 
         // 1. Excluir provisões futuras não pagas vinculadas ao imóvel
         const { data: oldProvisions } = await supabase
@@ -624,7 +624,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
           for (let i = 0; i < parcelas; i++) {
             const futureDate = new Date(saleDateStr + 'T00:00:00');
             futureDate.setMonth(futureDate.getMonth() + i);
-            const futureDateStr = futureDate.toISOString().split('T')[0];
+            const futureDateStr = DateUtils.formatToISODate(futureDate);
 
             newSaleInstallments.push({
               user_id: user.id,
@@ -744,7 +744,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
           if (txFetchErr) throw txFetchErr;
 
           if (txsToRecalc && txsToRecalc.length > 0) {
-            const acquisitionDateStr = asset.acquisitionDate || new Date().toISOString().split('T')[0];
+            const acquisitionDateStr = asset.acquisitionDate || DateUtils.formatToISODate();
             const ratePercent = newRate / 100;
 
             for (const tx of txsToRecalc) {
@@ -1837,7 +1837,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                       filteredTransactions
                         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                         .map((tx) => {
-                          const todayStr = new Date().toISOString().split('T')[0];
+                          const todayStr = DateUtils.formatToISODate();
                           const isOverdue = !tx.isPaid && tx.date < todayStr;
                           
                           let colorClass = 'text-slate-900'; // Default black (future unpaid)

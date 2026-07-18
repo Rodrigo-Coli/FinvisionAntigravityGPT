@@ -275,7 +275,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         // Fluxo direto: salva no cartão sem passar pelo Reconcile
         await AIReconcileService.saveDirectToCard({
           cardId: targetId,
-          date: receipt.date || new Date().toISOString().split('T')[0],
+          date: receipt.date || DateUtils.formatToISODate(),
           description,
           amount: finalAmount,
           categoryId: confirmCategory || undefined
