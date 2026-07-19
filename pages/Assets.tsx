@@ -4489,14 +4489,20 @@ const Assets: React.FC = () => {
 
             const today = new Date();
             const regenTxs: any[] = [];
-            const MAX_REGEN = Math.min(installmentsLeft, 120);
+            // Sem trava artificial: consórcios/financiamentos longos podem ter até
+            // 420+ parcelas (ex.: consórcio de imóvel), e a trava de 120 fazia o
+            // passivo perder parcelas silenciosamente.
+            const MAX_REGEN = installmentsLeft;
             const regenPrincipal = remainingBal > 0 ? remainingBal : totalAmt;
             const regenRatePct = parseFloat(liabilityFormData.interestRate) || 0;
             const regenReajPct = parseFloat(liabilityFormData.indexationRate) || 0;
             const regenIsSAC = liabilityFormData.amortizationType === 'SAC';
             const regenNoDetails = regenRatePct <= 0 && regenReajPct <= 0;
+            // Se o dia de vencimento deste mês ainda não passou, a 1ª parcela cai neste
+            // mês; senão, cai no mês seguinte (antes pulava sempre pro mês seguinte).
+            const regenFirstMonthOffset = dueDay > today.getDate() ? 0 : 1;
             for (let i = 1; i <= MAX_REGEN; i++) {
-              const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
+              const txDate = new Date(today.getFullYear(), today.getMonth() + regenFirstMonthOffset + (i - 1), dueDay);
               const parcelaAmt = regenNoDetails
                 ? (installmentAmt > 0 ? installmentAmt : Math.round((regenPrincipal / installmentsLeft) * 100) / 100)
                 : computeInstallmentAmount(i, regenPrincipal, installmentsLeft, regenRatePct, regenReajPct, regenIsSAC);
@@ -4595,15 +4601,22 @@ const Assets: React.FC = () => {
             }
 
             const futureTransactions = [];
-            const MAX_GENERATE = Math.min(installmentsLeft, 120); // Safety cap for bulk generation
+            // Sem trava artificial: consórcios/financiamentos longos podem ter até
+            // 420+ parcelas (ex.: consórcio de imóvel), e a trava de 120 fazia o
+            // passivo perder parcelas silenciosamente.
+            const MAX_GENERATE = installmentsLeft;
             // Base = saldo devedor (o que falta). Parcelas seguem amortização + correção; linear só se tudo zerado.
             const principalForSchedule = remainingBal > 0 ? remainingBal : totalAmt;
             const scheduleRatePct = parseFloat(liabilityFormData.interestRate) || 0;
             const scheduleReajPct = parseFloat(liabilityFormData.indexationRate) || 0;
             const isSAC = liabilityFormData.amortizationType === 'SAC';
             const noDetails = scheduleRatePct <= 0 && scheduleReajPct <= 0;
+            // Se o dia de vencimento deste mês ainda não passou, a 1ª parcela cai neste
+            // mês; senão, cai no mês seguinte (antes pulava sempre pro mês seguinte, e uma
+            // dívida cadastrada antes do vencimento do mês "sumia" até o mês seguinte).
+            const firstMonthOffset = dueDay > today.getDate() ? 0 : 1;
             for (let i = 1; i <= MAX_GENERATE; i++) {
-              const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDay);
+              const txDate = new Date(today.getFullYear(), today.getMonth() + firstMonthOffset + (i - 1), dueDay);
               // Se não há juros nem reajuste, usa o valor informado (linear). Senão, calcula pelos detalhes.
               const parcelaAmt = noDetails
                 ? (installmentAmt > 0 ? installmentAmt : Math.round((principalForSchedule / installmentsLeft) * 100) / 100)
