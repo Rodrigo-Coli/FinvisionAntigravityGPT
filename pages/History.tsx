@@ -2920,6 +2920,12 @@ const HistoryPage: React.FC = () => {
           setFilterCategory([cat]);
           window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
         }}
+        onMonthClick={(month, year) => {
+          const first = new Date(year, parseInt(month, 10) - 1, 1);
+          const last = new Date(year, parseInt(month, 10), 0);
+          setStartDate(DateUtils.formatToISODate(first));
+          setEndDate(DateUtils.formatToISODate(last));
+        }}
       />
 
       <div />

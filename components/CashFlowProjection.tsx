@@ -130,11 +130,12 @@ export default function CashFlowProjection({
                     key={i} 
                     className="flex-1 flex flex-col items-center gap-3 relative group cursor-pointer"
                     onClick={() => {
-                       const [mName, yShort] = item.label.split('/');
-                       const monthMap: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
-                       const m = monthMap[mName] || '01';
-                       const y = 2000 + parseInt(yShort);
-                       onMonthClick?.(m, y);
+                       // item.date já vem no formato "YYYY-MM" — usar direto evita
+                       // depender do texto do label (que sai em minúsculo do toLocaleDateString
+                       // e nunca batia com o monthMap capitalizado, então todo clique caía
+                       // no fallback de janeiro).
+                       const [yStr, mStr] = item.date.split('-');
+                       onMonthClick?.(mStr, parseInt(yStr, 10));
                     }}
                   >
                     {/* Tooltip Hover */}
@@ -213,11 +214,8 @@ export default function CashFlowProjection({
                       key={idx} 
                       className="hover:bg-slate-50/50 transition-colors cursor-pointer"
                       onClick={() => {
-                        const [mName, yShort] = item.label.split('/');
-                        const monthMap: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
-                        const m = monthMap[mName] || '01';
-                        const y = 2000 + parseInt(yShort);
-                        onMonthClick?.(m, y);
+                        const [yStr, mStr] = item.date.split('-');
+                        onMonthClick?.(mStr, parseInt(yStr, 10));
                       }}
                     >
                       <td className="px-4 py-3 font-bold text-slate-700">

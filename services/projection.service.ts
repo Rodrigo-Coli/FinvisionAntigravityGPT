@@ -106,21 +106,15 @@ export const projectionService = {
         }
     });
 
-    // 4. Liabilities & Balloon Payments
+    // 4. Balloon Payments
+    // As parcelas regulares de cada passivo (financiamento, consórcio etc.) já entram
+    // aqui via seção 1 (pendingTx), pois todo passivo tem suas parcelas materializadas
+    // como linhas em `transactions`. Somar `installment_amount` de novo por passivo/mês
+    // duplicava o valor real (e usava um valor fixo, ignorando parcelas que variam mês a
+    // mês, como SAC) — só as balão (que não têm linha própria em transactions) precisam
+    // ser projetadas aqui.
     (liabilities || []).forEach((l: any) => {
-        const instAmt = Number(l.installment_amount || 0);
         const balloons = (l.balloon_payments || []) as any[];
-        
-        // Regular installments
-        if (instAmt > 0) {
-            for (let i = 0; i < monthsAhead; i++) {
-                const dt = new Date(today.getFullYear(), today.getMonth() + i, 1);
-                const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-                if (monthlyData[key]) {
-                    monthlyData[key].expense += instAmt;
-                }
-            }
-        }
 
         // Balloon payments
         balloons.forEach(b => {

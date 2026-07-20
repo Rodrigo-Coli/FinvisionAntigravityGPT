@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, PieChart, BarChart3, Activity, Filter, Plus, Trash2, Calendar, Settings } from 'lucide-react';
 import { Transaction } from '../../types';
 import { HistoryUtils } from '../../lib/historyUtils';
@@ -43,6 +43,15 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
     const [internalStartDate, setInternalStartDate] = useState(propStartDate);
     const [internalEndDate, setInternalEndDate] = useState(propEndDate);
     const [showInternalFilters, setShowInternalFilters] = useState(false);
+
+    // Acompanha o filtro de período da tela (History.tsx) quando ele muda — antes só
+    // era lido uma vez na montagem, então trocar o filtro externo (ex. pra julho) não
+    // atualizava esta seção, que ficava presa no período em que foi montada (ex. janeiro).
+    // O botão "Resetar" continua funcionando igual: só reaplica manualmente os mesmos valores.
+    useEffect(() => {
+        setInternalStartDate(propStartDate);
+        setInternalEndDate(propEndDate);
+    }, [propStartDate, propEndDate]);
     const [momCompareMonths, setMomCompareMonths] = useState(3);
     
     // Custom Comparison Slots

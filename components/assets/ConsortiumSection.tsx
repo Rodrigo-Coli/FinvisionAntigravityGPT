@@ -207,6 +207,17 @@ const ConsortiumWizard: React.FC<{
         intended_asset_description: form.intended_asset_description || null,
         intended_asset_value: form.intended_asset_value ? parseFloat(form.intended_asset_value) : null,
         notes: form.notes || null,
+        // Preserva metadata já existente (ex.: marcações de migração) e só grava
+        // valor/tipo do lance quando a contemplação foi por lance — antes esses
+        // dois campos eram preenchidos no formulário mas nunca chegavam a ser
+        // salvos em lugar nenhum.
+        metadata: {
+          ...(editing?.metadata || {}),
+          ...(form.contemplation_method === 'BID' ? {
+            bid_amount: parseFloat(form.bid_amount) || 0,
+            bid_type: form.bid_type
+          } : {})
+        },
         updated_at: new Date().toISOString()
       };
 

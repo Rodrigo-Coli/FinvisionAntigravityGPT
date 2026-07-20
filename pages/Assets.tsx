@@ -2700,8 +2700,8 @@ const Assets: React.FC = () => {
         // Financing / Consortium details
         deliveryPaymentMethod: isRealEstate ? formData.deliveryPaymentMethod : undefined,
         deliveryBalance: isRealEstate ? (parseFloat(formData.deliveryBalance) || 0) : undefined,
-        selectedConsortiumId: isRealEstate ? (formData.selectedConsortiumId || undefined) : undefined,
-        consortiumAllocationRatio: isRealEstate && formData.selectedConsortiumId ? (parseFloat(formData.consortiumAllocationRatio) || 100) : undefined,
+        selectedConsortiumId: (isRealEstate || formData.category === 'VEHICLE') ? (formData.selectedConsortiumId || undefined) : undefined,
+        consortiumAllocationRatio: (isRealEstate || formData.category === 'VEHICLE') && formData.selectedConsortiumId ? (parseFloat(formData.consortiumAllocationRatio) || 100) : undefined,
         financingInstallment: isRealEstate ? (parseFloat(formData.financingInstallment) || 0) : undefined,
         financingInstallmentsCount: isRealEstate ? (parseInt(formData.financingInstallmentsCount, 10) || 0) : undefined,
         financingDueDay: isRealEstate ? formData.financingDueDay : undefined,
@@ -3310,6 +3310,25 @@ const Assets: React.FC = () => {
           } else if (linkedLiab) {
             await supabase.from('liabilities').update({ linked_asset_id: null }).eq('id', linkedLiab.id);
           }
+        }
+      }
+
+      // Vincula/desvincula consórcio existente a um Veículo (mesma lógica usada para
+      // Imóvel acima, só sem os ramos de Financiamento/À Vista — o veículo já tem seus
+      // próprios campos de IPVA/seguro/financiamento separados).
+      if (formData.category === 'VEHICLE' && assetId) {
+        const linkedVehicleLiab = activeLiabilities.find(l => l.linkedAssetId === assetId);
+        if (formData.selectedConsortiumId) {
+          if (linkedVehicleLiab && linkedVehicleLiab.id !== formData.selectedConsortiumId) {
+            await supabase.from('liabilities').update({ linked_asset_id: null }).eq('id', linkedVehicleLiab.id);
+          }
+          const targetConsortiumLiab = activeLiabilities.find(l => l.id === formData.selectedConsortiumId);
+          await supabase.from('liabilities').update({
+            linked_asset_id: assetId,
+            metadata: { ...(targetConsortiumLiab?.metadata || {}), isVehicle: true }
+          }).eq('id', formData.selectedConsortiumId);
+        } else if (linkedVehicleLiab) {
+          await supabase.from('liabilities').update({ linked_asset_id: null }).eq('id', linkedVehicleLiab.id);
         }
       }
 
@@ -8971,6 +8990,35 @@ const Assets: React.FC = () => {
                         value={formData.fipeValue}
                         onChange={(e) => setFormData({ ...formData, fipeValue: e.target.value })}
                       />
+                    </div>
+
+                    <div className="space-y-3 pt-3 border-t border-dashed border-slate-200">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Consórcio Vinculado (opcional)</label>
+                        <select
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
+                          value={formData.selectedConsortiumId}
+                          onChange={(e) => setFormData({ ...formData, selectedConsortiumId: e.target.value })}
+                        >
+                          <option value="">-- Nenhum --</option>
+                          {activeLiabilities.filter(l => l.type === 'CONSORTIUM').map(l => (
+                            <option key={l.id} value={l.id}>{l.name} (Saldo: {formatCurrency(l.remainingBalance)})</option>
+                          ))}
+                        </select>
+                      </div>
+                      {formData.selectedConsortiumId && (
+                        <div>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Percentual Alocado ao Veículo (%)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
+                            value={formData.consortiumAllocationRatio}
+                            onChange={(e) => setFormData({ ...formData, consortiumAllocationRatio: e.target.value })}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
