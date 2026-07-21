@@ -177,6 +177,16 @@ export const StatementTemplateHelper = {
         .replace(/(sp|rj|mg|df|br|brasil|online|app|internet)$/g, ""); // remove sufixos comuns
     };
     
+    // Cada transação já existente só pode confirmar a duplicidade de UM candidato do
+    // import por vez. Sem isso, quando duas compras reais de mesmo valor/data vêm no
+    // extrato (ex.: duas compras "Shopee" de R$46,75 no mesmo dia) e só uma já tinha
+    // sido lançada manualmente, as DUAS eram marcadas como duplicata da mesma linha
+    // já existente — escondendo a que era realmente nova e nunca tinha sido lançada.
+    const consumeMatch = (pool: any[], chosen: any) => {
+      const idx = pool.indexOf(chosen);
+      if (idx !== -1) pool.splice(idx, 1);
+    };
+
     if (isCard) {
       const { data: existingTxs } = await supabase
         .from('card_transactions')
@@ -184,40 +194,41 @@ export const StatementTemplateHelper = {
         .eq('user_id', userId)
         .gte('date', minDate)
         .lte('date', maxDate);
-        
-      const existingList = existingTxs || [];
-      
+
+      const availableExisting = [...(existingTxs || [])];
+
       return transactions.map(t => {
         const tAmountStr = Math.abs(Number(t.amount)).toFixed(2);
-        
-        // Encontrar transações existentes de mesma data e valor
-        const matches = existingList.filter((e: any) => 
-          e.date === t.date && 
+
+        // Encontrar transações existentes (ainda não usadas por outro candidato) de mesma data e valor
+        const matches = availableExisting.filter((e: any) =>
+          e.date === t.date &&
           Math.abs(Number(e.amount)).toFixed(2) === tAmountStr
         );
-        
+
         if (matches.length > 0) {
           const normT = normalizeDesc(t.description);
-          
+
           // Tentar encontrar uma que tenha local similar
           const similarMatch = matches.find((e: any) => {
             const normE = normalizeDesc(e.description);
             return normE === normT || normE.includes(normT) || normT.includes(normE);
           });
-          
+
           const chosenMatch = similarMatch || matches[0];
           const isSimilar = !!similarMatch;
-          
+          consumeMatch(availableExisting, chosenMatch);
+
           return {
             ...t,
             potential_duplicate: true,
-            duplicate_reason: isSimilar 
+            duplicate_reason: isSimilar
               ? 'Transação com mesma data, valor e local similar já lançada'
               : 'Atenção: Transação com mesmo valor e data em local diferente',
-            duplicate_tx: { 
-              description: chosenMatch.description, 
-              date: chosenMatch.date, 
-              amount: chosenMatch.amount 
+            duplicate_tx: {
+              description: chosenMatch.description,
+              date: chosenMatch.date,
+              amount: chosenMatch.amount
             }
           };
         }
@@ -231,40 +242,41 @@ export const StatementTemplateHelper = {
         .is('is_deleted', false)
         .gte('date', minDate)
         .lte('date', maxDate);
-        
-      const existingList = existingTxs || [];
-      
+
+      const availableExisting = [...(existingTxs || [])];
+
       return transactions.map(t => {
         const tAmountStr = Math.abs(Number(t.amount)).toFixed(2);
         const tType = t.amount < 0 ? 'EXPENSE' : 'INCOME';
-        
-        const matches = existingList.filter((e: any) => 
-          e.date === t.date && 
+
+        const matches = availableExisting.filter((e: any) =>
+          e.date === t.date &&
           Math.abs(Number(e.amount)).toFixed(2) === tAmountStr &&
           e.type === tType
         );
-        
+
         if (matches.length > 0) {
           const normT = normalizeDesc(t.description);
-          
+
           const similarMatch = matches.find((e: any) => {
             const normE = normalizeDesc(e.description);
             return normE === normT || normE.includes(normT) || normT.includes(normE);
           });
-          
+
           const chosenMatch = similarMatch || matches[0];
           const isSimilar = !!similarMatch;
-          
+          consumeMatch(availableExisting, chosenMatch);
+
           return {
             ...t,
             potential_duplicate: true,
-            duplicate_reason: isSimilar 
+            duplicate_reason: isSimilar
               ? 'Transação com mesma data, valor e local similar já lançada'
               : 'Atenção: Transação com mesmo valor e data em local diferente',
-            duplicate_tx: { 
-              description: chosenMatch.description, 
-              date: chosenMatch.date, 
-              amount: chosenMatch.amount 
+            duplicate_tx: {
+              description: chosenMatch.description,
+              date: chosenMatch.date,
+              amount: chosenMatch.amount
             }
           };
         }
