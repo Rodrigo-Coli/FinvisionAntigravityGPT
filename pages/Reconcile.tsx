@@ -907,8 +907,9 @@ const Reconcile: React.FC = () => {
                 {isCategorizingAI ? 'IA Analisando...' : 'Auto-Categorizar (IA)'}
               </button>
             </div>
+          </div>
 
-            {selectedIds.size > 0 && (
+          {selectedIds.size > 0 && (
               <div className="sticky top-4 z-[50] mt-4 flex flex-wrap items-center gap-2 p-4 bg-brand-900 rounded-[24px] shadow-2xl animate-in zoom-in duration-300 w-full mb-6">
                 <div className="flex items-center gap-2 px-3 border-r border-slate-700 mr-2">
                   <span className="text-[10px] font-black text-brand-400 uppercase tracking-widest">{selectedIds.size}</span>
@@ -1005,7 +1006,6 @@ const Reconcile: React.FC = () => {
                 </div>
               </div>
             )}
-          </div>
 
           {isLoadingQueue ? (
             <div className="py-40 bg-white rounded-[40px] border border-slate-100 flex flex-col items-center justify-center">

@@ -1747,7 +1747,7 @@ const HistoryPage: React.FC = () => {
       return;
     }
 
-    if (!bulkDescription && !bulkAccount && !bulkCategory && !bulkOwner) {
+    if (!bulkDescription && !bulkAccount && !bulkCategory && !bulkSubcategory && !bulkOwner) {
       { toast("Preencha ao menos um campo para editar em lote.", 'warning'); return; };
     }
 
@@ -1776,6 +1776,14 @@ const HistoryPage: React.FC = () => {
             await ReconciliationService.ensureSubcategoryExists(catId, cleanSubcategory);
           }
         }
+      } else if (cleanSubcategory) {
+        // Editando só a subcategoria (sem trocar a categoria): os itens selecionados podem
+        // ter categorias diferentes entre si, então só corrigimos a digitação comparando com
+        // todas as subcategorias já cadastradas, sem tentar registrar/criar (isso é feito por
+        // categoria e aqui não temos uma única categoria de referência).
+        const allSubcatNames = subcategories.map(s => s.name);
+        const subMatched = findCloseMatch(cleanSubcategory, allSubcatNames);
+        if (subMatched) cleanSubcategory = subMatched;
       }
 
       const patch: any = {};
@@ -2644,25 +2652,29 @@ const HistoryPage: React.FC = () => {
               </datalist>
             </div>
 
-            {bulkCategory && (
-              <div className="relative w-full md:w-44 animate-in zoom-in-95 duration-200">
-                <Tag size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  list="bulk-subcategories-list"
-                  value={bulkSubcategory}
-                  onChange={(e) => setBulkSubcategory(e.target.value)}
-                  placeholder="Trocar Subcat..."
-                  className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
-                />
-                <datalist id="bulk-subcategories-list">
-                  {subcategories
-                    .filter(s => s.category_name === bulkCategory)
-                    .map(s => (
-                      <option key={s.id} value={s.name} />
-                    ))}
-                </datalist>
-              </div>
-            )}
+            <div className="relative w-full md:w-44">
+              <Tag size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                list="bulk-subcategories-list"
+                value={bulkSubcategory}
+                onChange={(e) => setBulkSubcategory(e.target.value)}
+                placeholder="Trocar Subcat..."
+                className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
+              />
+              <datalist id="bulk-subcategories-list">
+                {/* Sem categoria escolhida no lote, sugere todas (os itens selecionados podem
+                    ter categorias diferentes); com categoria escolhida, filtra por ela. */}
+                {(bulkCategory
+                  ? subcategories.filter(s => s.category_name === bulkCategory)
+                  : subcategories
+                )
+                  .filter((s, idx, arr) => arr.findIndex(x => x.name === s.name) === idx)
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map(s => (
+                    <option key={s.id} value={s.name} />
+                  ))}
+              </datalist>
+            </div>
 
             <div className="relative w-full md:w-44">
               <User size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
