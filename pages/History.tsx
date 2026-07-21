@@ -233,7 +233,10 @@ const HistoryPage: React.FC = () => {
   const [filterSubcategory, setFilterSubcategory] = useState<string[]>([]);
   const [filterOwner, setFilterOwner] = useState<string[]>([]);
   // Origem: 'ALL' (conta + cartão, padrão) | 'ACCOUNT' (só conta) | 'CARD' (só cartão)
-  const [filterOrigin, setFilterOrigin] = useState<'ALL' | 'ACCOUNT' | 'CARD'>('ALL');
+  // Padrão "Conta": é a única aba que mostra a linha resumida "Fatura Cartão: valor
+  // total" (as outras escondem ela de propósito pra não contar a fatura em dobro com
+  // as compras individuais do cartão) — assim o usuário já vê fatura a vencer ao abrir a tela.
+  const [filterOrigin, setFilterOrigin] = useState<'ALL' | 'ACCOUNT' | 'CARD'>('ACCOUNT');
 
   // (no longer used for pills, kept empty to avoid breaking HistoryCharts prop)
   const [selectedTimelineCategories] = useState<string[]>([]);
