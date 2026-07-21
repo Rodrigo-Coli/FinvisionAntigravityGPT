@@ -735,9 +735,14 @@ const Reconcile: React.FC = () => {
         if (isNaN(parsedCardAmt)) parsedCardAmt = 0;
 
         const stmtId = await FinanceService.getOrCreateStatement(targetId, finalDate);
+        // card_transactions não tem campo "type": o sinal do amount carrega o significado.
+        // Convenção: positivo = compra normal (como sempre foi), negativo = estorno/crédito
+        // que abate a fatura. Na fila de conciliação negativo = despesa, então invertemos
+        // (sem Math.abs) pra virar positivo aqui; um estorno, que chega positivo na fila,
+        // vira negativo aqui — preservando a natureza de crédito em vez de virar mais uma compra.
         const { error: insertCardErr } = await supabase.from('card_transactions').insert({
           user_id: user.id, card_id: targetId, used_card_id: targetId, statement_id: stmtId,
-          date: finalDate, description: finalDescription, amount: Math.abs(parsedCardAmt),
+          date: finalDate, description: finalDescription, amount: -parsedCardAmt,
           source: 'IMPORT', status: 'POSTED', owner_name: owner === 'Pessoal' ? null : owner,
           category_id: finalCategoryId || null,
           category: categoryName,

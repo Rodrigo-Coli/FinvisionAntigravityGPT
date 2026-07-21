@@ -60,7 +60,7 @@ SE for um arquivo de texto estruturado (como CSV ou Excel/XLSX), identifique a e
   "decimal_separator": "," ou "."
 }
 
-REGRAS: 1. DATA (YYYY-MM-DD). 2. DESCRIÇÃO. 3. VALOR. PARCELAMENTO: Se '2/5', installment_number=2, installment_total=5.
+REGRAS: 1. DATA (YYYY-MM-DD). 2. DESCRIÇÃO. 3. VALOR: mantenha o sinal exatamente como aparece no extrato — compras normais são positivas; estornos, reembolsos, cashback ou qualquer crédito que reduza a fatura devem vir NEGATIVOS. PARCELAMENTO: Se '2/5', installment_number=2, installment_total=5.
 
 RETORNE APENAS JSON NO FORMATO:
 {
@@ -196,7 +196,10 @@ RETORNE APENAS JSON NO FORMATO:
             import_id,
             date: parsedDate,
             description: t.description,
-            amount: -Math.abs(parsedAmount),
+            // Inverte o sinal (sem forçar valor absoluto): compra positiva no extrato vira
+            // débito (negativo) na fila de conciliação; estorno/crédito negativo no extrato
+            // vira crédito (positivo) — assim ele não fica indistinguível de uma compra normal.
+            amount: -Number(parsedAmount),
             account_id: targetAccountId,
             status: 'READY_TO_RECONCILE',
             fingerprint: fingerprint,

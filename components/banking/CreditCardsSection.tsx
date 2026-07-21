@@ -231,7 +231,9 @@ const CreditCardsSection: React.FC = () => {
   const getCalculatedTotal = () => {
     // Sempre somamos as transações carregadas para garantir que lançamentos manuais
     // e conciliações recentes (que podem não ter atualizado o total_amount na DB) sejam considerados.
-    return transactions.reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0);
+    // Soma pelo valor com sinal (não abs): estornos/créditos ficam negativos e abatem a
+    // fatura, em vez de somar como se fossem mais uma compra.
+    return transactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
   };
 
   const statementTotal = Math.round(getCalculatedTotal() * 100) / 100;

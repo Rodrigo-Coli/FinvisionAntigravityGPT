@@ -650,7 +650,9 @@ const HistoryPage: React.FC = () => {
         const normalizedCardTxs = (cardTxs || []).map((ct: any) => ({
           id: ct.id,
           date: ct.date,
-          type: 'EXPENSE',
+          // card_transactions não tem coluna "type": amount negativo é estorno/crédito
+          // (abate a fatura), então aqui vira INCOME pra não ser tratado como mais uma despesa.
+          type: Number(ct.amount) < 0 ? 'INCOME' : 'EXPENSE',
           amount: Number(ct.amount),
           category: ct.categories?.name || 'Cartão de Crédito',
           subcategory: ct.subcategory || undefined,
@@ -2347,7 +2349,8 @@ const HistoryPage: React.FC = () => {
     const normalizedCardTxs = rawCardTxs.map((ct: any) => ({
       id: ct.id,
       date: ct.date,
-      type: 'EXPENSE',
+      // Idem ao fetchData principal: amount negativo em card_transactions é estorno/crédito.
+      type: Number(ct.amount) < 0 ? 'INCOME' : 'EXPENSE',
       amount: Number(ct.amount),
       category: ct.categories?.name || ct.category || 'Cartão de Crédito',
       subcategory: ct.subcategory || undefined,

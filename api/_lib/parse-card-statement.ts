@@ -26,7 +26,7 @@ export async function handleParseCardStatement(req: any, res: any) {
     if (!process.env.GEMINI_API_KEY && !process.env.API_KEY) throw new Error('GEMINI_API_KEY não configurada.');
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.API_KEY || '' });
 
-    const prompt = `Você é um especialista em conciliação bancária. Analise o extrato de cartão de crédito. Extraia todas as transações individuais para uma lista estruturada. REGRAS: 1. Campo 'date' deve ser YYYY-MM-DD. 2. Campo 'amount' deve ser um número float absoluto. 3. Identifique o merchant e parcelamento se houver. Retorne APENAS um objeto JSON.`;
+    const prompt = `Você é um especialista em conciliação bancária. Analise o extrato de cartão de crédito. Extraia todas as transações individuais para uma lista estruturada. REGRAS: 1. Campo 'date' deve ser YYYY-MM-DD. 2. Campo 'amount' deve ser um número float MANTENDO O SINAL exatamente como aparece no extrato: compras normais são positivas; estornos, reembolsos, cashback ou qualquer crédito que reduza a fatura devem vir NEGATIVOS. 3. Identifique o merchant e parcelamento se houver. Retorne APENAS um objeto JSON.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -47,7 +47,12 @@ export async function handleParseCardStatement(req: any, res: any) {
     const txsToInsert = processedTxs.map((t: any) => {
       const fpData = `${t.date}|${t.amount.toFixed(2)}|${t.description.toLowerCase()}|${card_id || ''}`;
       const fingerprint = crypto.createHash('sha256').update(fpData).digest('hex');
-      return { user_id: imp.user_id, import_id: import_id, date: t.date, description: t.description, amount: -Math.abs(t.amount), account_id: card_id, status: 'READY_TO_RECONCILE', fingerprint: fingerprint, metadata: { is_card: true, merchant_normalized: t.merchant_normalized, installment_info: { number: t.installment_number, total: t.installment_total } } };
+      // Sinal invertido de propósito: no extrato, compra = positivo e estorno/crédito = negativo.
+      // Na fila de conciliação (imported_transactions), negativo = despesa (vermelho) e
+      // positivo = crédito (verde) — então aqui só invertemos, sem forçar valor absoluto,
+      // pra um estorno (negativo no extrato) virar um crédito (positivo) na fila, e não
+      // mais um débito igual a uma compra normal.
+      return { user_id: imp.user_id, import_id: import_id, date: t.date, description: t.description, amount: -Number(t.amount), account_id: card_id, status: 'READY_TO_RECONCILE', fingerprint: fingerprint, metadata: { is_card: true, merchant_normalized: t.merchant_normalized, installment_info: { number: t.installment_number, total: t.installment_total } } };
     });
 
     if (txsToInsert.length > 0) {
