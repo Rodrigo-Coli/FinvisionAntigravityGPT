@@ -1,5 +1,20 @@
 [
   {
+    "version": "2026.07.21.0045",
+    "title": "Categoria em Cartões Não Volta Mais Sozinha",
+    "date": "21/07/2026",
+    "benefits": [
+      {
+        "title": "Categoria digitada em Cartões para de \"desfazer\" sozinha",
+        "desc": "A mudança de ontem que trouxe a digitação com sugestão pra categoria em Cartões tinha um efeito colateral: se você editasse a categoria e, em seguida, mexesse rápido em outra linha ou outro campo antes de tudo terminar de salvar, a tela recarregava e podia mostrar a categoria antiga de novo, como se a mudança nunca tivesse acontecido (mesmo tendo digitado certo). Deixamos o salvamento bem mais rápido, então essa corrida contra o recarregamento da tela não acontece mais.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "components/banking/CreditCardsSection.tsx: handleCategoryCommit passa a resolver pela lista de categorias já carregada em memória (zero chamadas de rede no caminho comum), só fazendo uma chamada bloqueante quando é categoria genuinamente nova; handleSubcategoryCommit salva o campo imediatamente e registra a subcategoria nova (pra virar sugestão futura) em segundo plano, sem atrasar o saveTxPatch — reduzindo a janela em que o loadCardContext de outro campo/linha podia sobrescrever uma edição ainda não salva."
+    ]
+  },
+  {
     "version": "2026.07.21.0025",
     "title": "Estorno de Cartão Agora Abate a Fatura Corretamente",
     "date": "21/07/2026",

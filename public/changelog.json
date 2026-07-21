@@ -1,19 +1,15 @@
 {
-  "version": "2026.07.21.0025",
-  "title": "Estorno de Cartão Agora Abate a Fatura Corretamente",
+  "version": "2026.07.21.0045",
+  "title": "Categoria em Cartões Não Volta Mais Sozinha",
   "date": "21/07/2026",
   "benefits": [
     {
-      "title": "Estorno importado do cartão volta a reduzir a fatura",
-      "desc": "Quando o extrato do cartão trazia um estorno (reembolso, cashback, cancelamento de compra) — que aparece como valor negativo no extrato original — o sistema estava jogando fora esse sinal e tratando o estorno como se fosse mais uma compra normal, aumentando a fatura em vez de diminuir. Corrigido em toda a linha: da importação até a fatura final, o estorno agora é reconhecido como crédito e abate corretamente o valor que você deve pagar.",
+      "title": "Categoria digitada em Cartões para de \"desfazer\" sozinha",
+      "desc": "A mudança de ontem que trouxe a digitação com sugestão pra categoria em Cartões tinha um efeito colateral: se você editasse a categoria e, em seguida, mexesse rápido em outra linha ou outro campo antes de tudo terminar de salvar, a tela recarregava e podia mostrar a categoria antiga de novo, como se a mudança nunca tivesse acontecido (mesmo tendo digitado certo). Deixamos o salvamento bem mais rápido, então essa corrida contra o recarregamento da tela não acontece mais.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "api/_lib/parse-card-statement.ts + api/_lib/handle-card-reconcile.ts: prompt da IA passa a pedir o valor com o sinal original (compra positiva, estorno/reembolso negativo); inserção na fila de conciliação (imported_transactions) inverte o sinal em vez de forçar -Math.abs, então estorno negativo no extrato vira crédito positivo na fila (verde) em vez de débito (vermelho) igual a uma compra.",
-    "pages/Reconcile.tsx: confirmação para card_transactions preserva o sinal (positivo = compra, negativo = estorno) em vez de Math.abs.",
-    "components/banking/CreditCardsSection.tsx: total da fatura (getCalculatedTotal) passa a somar com sinal, então o estorno abate em vez de somar como mais uma compra.",
-    "pages/History.tsx: normalizedCardTxs passa a marcar type='INCOME' quando o amount é negativo (em vez de sempre 'EXPENSE'), refletindo o crédito corretamente nos totais e gráficos de Transações.",
-    "Nenhuma migração de banco necessária: o gatilho recalculate_card_statement_total (fix_card_statements_integrity.sql) já soma os valores sem Math.abs, então já estava pronto para valores negativos."
+    "components/banking/CreditCardsSection.tsx: handleCategoryCommit passa a resolver pela lista de categorias já carregada em memória (zero chamadas de rede no caminho comum), só fazendo uma chamada bloqueante quando é categoria genuinamente nova; handleSubcategoryCommit salva o campo imediatamente e registra a subcategoria nova (pra virar sugestão futura) em segundo plano, sem atrasar o saveTxPatch — reduzindo a janela em que o loadCardContext de outro campo/linha podia sobrescrever uma edição ainda não salva."
   ]
 }
