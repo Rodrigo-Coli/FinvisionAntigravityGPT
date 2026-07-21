@@ -2,7 +2,7 @@
 description: Protocolo de Retrocompatibilidade e Evolução Segura (Passado Preservado)
 ---
 
-# Protocolo de Evolução Segura: FinVision Pro
+# Protocolo de Evolução Segura: Zyvion
 
 Este documento estabelece as regras obrigatórias para qualquer alteração no esquema do banco de dados (Supabase) ou na lógica de negócio do sistema. O objetivo é garantir que **nenhuma atualização invalide o histórico do usuário**.
 
