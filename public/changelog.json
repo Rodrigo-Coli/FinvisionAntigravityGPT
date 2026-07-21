@@ -1,21 +1,15 @@
 {
-  "version": "2026.07.21.0220",
-  "title": "Barra de Ações em Lote Corrigida + Subcategoria Liberada em Transações",
+  "version": "2026.07.21.1045",
+  "title": "Importação \"Diversos\" Agora Atualiza o Saldo da Conta",
   "date": "21/07/2026",
   "benefits": [
     {
-      "title": "Barra de \"Selecionados\" em Conciliar não fica mais cortada",
-      "desc": "Ao selecionar vários lançamentos em Conciliar, a barra com as opções em lote (categoria, banco/cartão, destino, confirmar tudo) estava espremida e cortada na tela, dependendo do zoom/tamanho da janela — em alguns casos quase não dava pra ver. Era um problema de layout: ela estava encaixada no lugar errado, disputando espaço com o cabeçalho da tela em vez de ficar numa linha própria. Corrigido.",
-      "type": "correcao"
-    },
-    {
-      "title": "Subcategoria liberada na edição em lote de Transações",
-      "desc": "Pra editar a subcategoria de vários lançamentos de uma vez em Transações, você era obrigado a também preencher a categoria — mesmo quando só queria corrigir a subcategoria e manter a categoria de cada um como já estava. Agora o campo de subcategoria fica disponível direto, sem essa exigência.",
+      "title": "Importar por \"Diversos\" passa a mexer no saldo corretamente",
+      "desc": "Ao importar um arquivo pela opção \"Diversos\" em Conciliar, as transações entravam marcadas como pagas, mas o saldo da conta não se mexia — porque faltava registrar o \"valor efetivamente pago\" de cada uma (é esse campo que o cálculo de saldo usa, não o valor bruto). Agora toda transação importada por Diversos já entra com esse valor preenchido, então o saldo da conta reflete o que foi importado, igual acontece na importação por Banco depois de confirmada. Vale para as próximas importações.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "pages/Reconcile.tsx: bloco da barra 'N Selecionados' movido pra fora do container flex-row do cabeçalho (título + busca/filtros), onde antes disputava espaço sem quebra de linha (sem flex-wrap no pai) e ficava espremido/cortado.",
-    "pages/History.tsx: campo de subcategoria na edição em lote deixou de depender de 'bulkCategory' preenchido; datalist mostra todas as subcategorias quando nenhuma categoria foi escolhida no lote (filtra por categoria quando ela é informada); guarda de 'preencha ao menos um campo' passou a considerar bulkSubcategory."
+    "api/_lib/handle-bank-reconcile.ts: no ramo Mobills/diversos (import_source=smart), o insert direto em transactions passou a definir paid_amount = ABS(valor) junto de is_paid=true (antes só is_paid=true, deixando paid_amount NULL). O trigger recalculate_account_balance soma COALESCE(paid_amount,0), então sem esse campo as transações não afetavam current_balance. Também passou a preencher account_name para exibição. Cartão (card_transactions, saldo via total da fatura) e Banco (fila de conciliação, paid_amount definido na confirmação manual) não eram afetados."
   ]
 }

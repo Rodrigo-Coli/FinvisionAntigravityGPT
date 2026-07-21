@@ -1,5 +1,20 @@
 [
   {
+    "version": "2026.07.21.1045",
+    "title": "Importação \"Diversos\" Agora Atualiza o Saldo da Conta",
+    "date": "21/07/2026",
+    "benefits": [
+      {
+        "title": "Importar por \"Diversos\" passa a mexer no saldo corretamente",
+        "desc": "Ao importar um arquivo pela opção \"Diversos\" em Conciliar, as transações entravam marcadas como pagas, mas o saldo da conta não se mexia — porque faltava registrar o \"valor efetivamente pago\" de cada uma (é esse campo que o cálculo de saldo usa, não o valor bruto). Agora toda transação importada por Diversos já entra com esse valor preenchido, então o saldo da conta reflete o que foi importado, igual acontece na importação por Banco depois de confirmada. Vale para as próximas importações.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "api/_lib/handle-bank-reconcile.ts: no ramo Mobills/diversos (import_source=smart), o insert direto em transactions passou a definir paid_amount = ABS(valor) junto de is_paid=true (antes só is_paid=true, deixando paid_amount NULL). O trigger recalculate_account_balance soma COALESCE(paid_amount,0), então sem esse campo as transações não afetavam current_balance. Também passou a preencher account_name para exibição. Cartão (card_transactions, saldo via total da fatura) e Banco (fila de conciliação, paid_amount definido na confirmação manual) não eram afetados."
+    ]
+  },
+  {
     "version": "2026.07.21.0220",
     "title": "Barra de Ações em Lote Corrigida + Subcategoria Liberada em Transações",
     "date": "21/07/2026",
