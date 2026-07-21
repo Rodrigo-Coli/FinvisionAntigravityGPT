@@ -1,15 +1,17 @@
 {
-  "version": "2026.07.21.1045",
-  "title": "Importação \"Diversos\" Agora Atualiza o Saldo da Conta",
+  "version": "2026.07.21.1900",
+  "title": "Importação \"Diversos\" Agora Aponta Possíveis Duplicados",
   "date": "21/07/2026",
   "benefits": [
     {
-      "title": "Importar por \"Diversos\" passa a mexer no saldo corretamente",
-      "desc": "Ao importar um arquivo pela opção \"Diversos\" em Conciliar, as transações entravam marcadas como pagas, mas o saldo da conta não se mexia — porque faltava registrar o \"valor efetivamente pago\" de cada uma (é esse campo que o cálculo de saldo usa, não o valor bruto). Agora toda transação importada por Diversos já entra com esse valor preenchido, então o saldo da conta reflete o que foi importado, igual acontece na importação por Banco depois de confirmada. Vale para as próximas importações.",
-      "type": "correcao"
+      "title": "Diversos passa a avisar sobre lançamentos repetidos",
+      "desc": "Diferente de Banco e Cartão, a importação por \"Diversos\" entrava tudo direto como pago, sem nunca conferir se algum lançamento já existia — por isso ela nunca te avisava de repetidos. Agora ela também confere: cada lançamento importado é comparado com o que você já tem (mesma data, valor e tipo) e, se for suspeito de repetido, ganha um selo amarelo \"Possível duplicado\" na tela de Transações. Nada é apagado sozinho — a marca serve só pra você achar e decidir. Apareceu um botão \"Possíveis duplicados (N)\" em Transações que mostra só esses, pra facilitar a conferência.",
+      "type": "novidade"
     }
   ],
   "changes": [
-    "api/_lib/handle-bank-reconcile.ts: no ramo Mobills/diversos (import_source=smart), o insert direto em transactions passou a definir paid_amount = ABS(valor) junto de is_paid=true (antes só is_paid=true, deixando paid_amount NULL). O trigger recalculate_account_balance soma COALESCE(paid_amount,0), então sem esse campo as transações não afetavam current_balance. Também passou a preencher account_name para exibição. Cartão (card_transactions, saldo via total da fatura) e Banco (fila de conciliação, paid_amount definido na confirmação manual) não eram afetados."
+    "api/_lib/handle-bank-reconcile.ts: ramo Mobills/diversos passou a rodar StatementTemplateHelper.checkDuplicates e gravar potential_duplicate/duplicate_reason/duplicate_tx no metadata da transação (sem pular nenhuma — só sinaliza).",
+    "components/history/TransactionTable.tsx: selo 'Possível duplicado' (âmbar, motivo no tooltip) ao lado da descrição, nas visões mobile e desktop.",
+    "pages/History.tsx: estado showOnlyDuplicates + botão-filtro 'Possíveis duplicados (N)' que filtra a lista pelos marcados; só aparece quando há algum. Como o metadata é preservado por detectLegacySeries, o selo/flag sobrevive ao carregamento da lista."
   ]
 }

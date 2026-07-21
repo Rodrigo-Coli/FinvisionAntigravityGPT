@@ -1,5 +1,22 @@
 [
   {
+    "version": "2026.07.21.1900",
+    "title": "Importação \"Diversos\" Agora Aponta Possíveis Duplicados",
+    "date": "21/07/2026",
+    "benefits": [
+      {
+        "title": "Diversos passa a avisar sobre lançamentos repetidos",
+        "desc": "Diferente de Banco e Cartão, a importação por \"Diversos\" entrava tudo direto como pago, sem nunca conferir se algum lançamento já existia — por isso ela nunca te avisava de repetidos. Agora ela também confere: cada lançamento importado é comparado com o que você já tem (mesma data, valor e tipo) e, se for suspeito de repetido, ganha um selo amarelo \"Possível duplicado\" na tela de Transações. Nada é apagado sozinho — a marca serve só pra você achar e decidir. Apareceu um botão \"Possíveis duplicados (N)\" em Transações que mostra só esses, pra facilitar a conferência.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "api/_lib/handle-bank-reconcile.ts: ramo Mobills/diversos passou a rodar StatementTemplateHelper.checkDuplicates e gravar potential_duplicate/duplicate_reason/duplicate_tx no metadata da transação (sem pular nenhuma — só sinaliza).",
+      "components/history/TransactionTable.tsx: selo 'Possível duplicado' (âmbar, motivo no tooltip) ao lado da descrição, nas visões mobile e desktop.",
+      "pages/History.tsx: estado showOnlyDuplicates + botão-filtro 'Possíveis duplicados (N)' que filtra a lista pelos marcados; só aparece quando há algum. Como o metadata é preservado por detectLegacySeries, o selo/flag sobrevive ao carregamento da lista."
+    ]
+  },
+  {
     "version": "2026.07.21.1045",
     "title": "Importação \"Diversos\" Agora Atualiza o Saldo da Conta",
     "date": "21/07/2026",
