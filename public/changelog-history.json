@@ -1,5 +1,26 @@
 [
   {
+    "version": "2026.07.21.0220",
+    "title": "Barra de Ações em Lote Corrigida + Subcategoria Liberada em Transações",
+    "date": "21/07/2026",
+    "benefits": [
+      {
+        "title": "Barra de \"Selecionados\" em Conciliar não fica mais cortada",
+        "desc": "Ao selecionar vários lançamentos em Conciliar, a barra com as opções em lote (categoria, banco/cartão, destino, confirmar tudo) estava espremida e cortada na tela, dependendo do zoom/tamanho da janela — em alguns casos quase não dava pra ver. Era um problema de layout: ela estava encaixada no lugar errado, disputando espaço com o cabeçalho da tela em vez de ficar numa linha própria. Corrigido.",
+        "type": "correcao"
+      },
+      {
+        "title": "Subcategoria liberada na edição em lote de Transações",
+        "desc": "Pra editar a subcategoria de vários lançamentos de uma vez em Transações, você era obrigado a também preencher a categoria — mesmo quando só queria corrigir a subcategoria e manter a categoria de cada um como já estava. Agora o campo de subcategoria fica disponível direto, sem essa exigência.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "pages/Reconcile.tsx: bloco da barra 'N Selecionados' movido pra fora do container flex-row do cabeçalho (título + busca/filtros), onde antes disputava espaço sem quebra de linha (sem flex-wrap no pai) e ficava espremido/cortado.",
+      "pages/History.tsx: campo de subcategoria na edição em lote deixou de depender de 'bulkCategory' preenchido; datalist mostra todas as subcategorias quando nenhuma categoria foi escolhida no lote (filtra por categoria quando ela é informada); guarda de 'preencha ao menos um campo' passou a considerar bulkSubcategory."
+    ]
+  },
+  {
     "version": "2026.07.21.0130",
     "title": "Importação de Banco Não Cai Mais em \"Diversos\"",
     "date": "21/07/2026",

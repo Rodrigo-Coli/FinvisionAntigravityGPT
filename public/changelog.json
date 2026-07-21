@@ -1,15 +1,21 @@
 {
-  "version": "2026.07.21.0130",
-  "title": "Importação de Banco Não Cai Mais em \"Diversos\"",
+  "version": "2026.07.21.0220",
+  "title": "Barra de Ações em Lote Corrigida + Subcategoria Liberada em Transações",
   "date": "21/07/2026",
   "benefits": [
     {
-      "title": "Aba \"Banco\" continua selecionada ao voltar em Conciliar",
-      "desc": "A tela de Conciliar tem 3 opções pra importar: Banco, Cartão e Diversos. Quem importava um extrato escolhendo \"Banco\" e depois saía e voltava pra conferir a fila encontrava a tela mostrando \"Diversos\" selecionado — mesmo os lançamentos já importados continuando corretamente identificados como banco por baixo dos panos. Era só a telinha \"esquecendo\" sua escolha. Agora, ao abrir a tela de Conciliar, ela já vem com \"Banco\" selecionado (o fluxo mais usado), então não some mais.",
+      "title": "Barra de \"Selecionados\" em Conciliar não fica mais cortada",
+      "desc": "Ao selecionar vários lançamentos em Conciliar, a barra com as opções em lote (categoria, banco/cartão, destino, confirmar tudo) estava espremida e cortada na tela, dependendo do zoom/tamanho da janela — em alguns casos quase não dava pra ver. Era um problema de layout: ela estava encaixada no lugar errado, disputando espaço com o cabeçalho da tela em vez de ficar numa linha própria. Corrigido.",
+      "type": "correcao"
+    },
+    {
+      "title": "Subcategoria liberada na edição em lote de Transações",
+      "desc": "Pra editar a subcategoria de vários lançamentos de uma vez em Transações, você era obrigado a também preencher a categoria — mesmo quando só queria corrigir a subcategoria e manter a categoria de cada um como já estava. Agora o campo de subcategoria fica disponível direto, sem essa exigência.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "pages/Reconcile.tsx: valor inicial de importSource trocado de 'smart' para 'bank'. Esse estado não é persistido — ele reseta pro valor inicial toda vez que a página é remontada (navegar pra outra tela e voltar, recarregar o navegador), então o valor padrão errado fazia a UI parecer que o tipo do import tinha mudado, mesmo sem nenhuma mudança real nos dados."
+    "pages/Reconcile.tsx: bloco da barra 'N Selecionados' movido pra fora do container flex-row do cabeçalho (título + busca/filtros), onde antes disputava espaço sem quebra de linha (sem flex-wrap no pai) e ficava espremido/cortado.",
+    "pages/History.tsx: campo de subcategoria na edição em lote deixou de depender de 'bulkCategory' preenchido; datalist mostra todas as subcategorias quando nenhuma categoria foi escolhida no lote (filtra por categoria quando ela é informada); guarda de 'preencha ao menos um campo' passou a considerar bulkSubcategory."
   ]
 }
