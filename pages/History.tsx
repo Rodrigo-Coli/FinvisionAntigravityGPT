@@ -214,6 +214,7 @@ const HistoryPage: React.FC = () => {
 
   // Filters
   const [showFilters, setShowFilters] = useState(false);
+  const [showOnlyDuplicates, setShowOnlyDuplicates] = useState(false);
   const [showDreModal, setShowDreModal] = useState(false);
   const [dreReport, setDreReport] = useState<DreReport | null>(null);
   const [search, setSearch] = useState('');
@@ -2277,11 +2278,19 @@ const HistoryPage: React.FC = () => {
     return <span className={`${base} bg-slate-50 text-slate-400 border-slate-100`}>PENDENTE</span>;
   };
 
-  const viewFiltered = viewMode === 'SETTLED'
+  const viewFilteredBase = viewMode === 'SETTLED'
     ? transactions.filter(t => HistoryUtils.getStatus(t) === 'PAID')
     : viewMode === 'PENDING'
       ? transactions.filter(t => HistoryUtils.getStatus(t) !== 'PAID')
       : transactions;
+
+  // Filtro opcional "só possíveis duplicados" (marcados na importação por Diversos).
+  const viewFiltered = showOnlyDuplicates
+    ? viewFilteredBase.filter(t => (t.metadata as any)?.potential_duplicate)
+    : viewFilteredBase;
+
+  // Quantos possíveis duplicados existem na lista atual (pra mostrar no botão do filtro).
+  const duplicateCount = transactions.filter(t => (t.metadata as any)?.potential_duplicate).length;
 
   // Exclui movimentos de patrimônio capitalizados dos gráficos/resumo (mesma regra do Painel e Relatórios)
   const operationalChartTxs = chartTransactions.filter(t => !isCapitalizedMovement(t));
@@ -2772,6 +2781,11 @@ const HistoryPage: React.FC = () => {
             <button onClick={() => setDatePreset(90)} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all bg-slate-50 text-slate-500 hover:bg-slate-100`}>3 Meses</button>
             <button onClick={() => setDatePreset('ALL')} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${startDate === '0001-01-01' && endDate === '9999-12-31' ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>Tudo</button>
             <button onClick={() => setShowComparison(prev => !prev)} className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${showComparison ? 'bg-indigo-650 text-white shadow-sm' : 'bg-slate-100 text-indigo-600 hover:bg-indigo-50 border border-indigo-100'}`}>Comparar Períodos</button>
+            {duplicateCount > 0 && (
+              <button onClick={() => setShowOnlyDuplicates(prev => !prev)} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border ${showOnlyDuplicates ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'}`}>
+                <AlertCircle size={13} /> {showOnlyDuplicates ? 'Mostrando duplicados' : `Possíveis duplicados (${duplicateCount})`}
+              </button>
+            )}
           </div>
 
           {/* Spacer */}

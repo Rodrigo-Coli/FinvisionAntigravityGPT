@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, Trash2, RotateCcw, Check, ChevronUp, ChevronDown, Search, Plus, X, Paperclip, Eye, Download, Upload, Pencil } from 'lucide-react';
+import { Loader2, Trash2, RotateCcw, Check, ChevronUp, ChevronDown, Search, Plus, X, Paperclip, Eye, Download, Upload, Pencil, Copy } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 import { Transaction, BankAccount } from '../../types';
 
@@ -696,6 +696,14 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     <Pencil size={11} className="text-slate-200 shrink-0" />
                                                 </div>
                                             </button>
+                                            {t.metadata?.potential_duplicate && (
+                                                <span
+                                                    title={t.metadata?.duplicate_reason || 'Possível lançamento repetido'}
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-black uppercase tracking-wider"
+                                                >
+                                                    <Copy size={10} /> Possível duplicado
+                                                </span>
+                                            )}
                                             {t.metadata?.payment_history && Array.isArray(t.metadata.payment_history) && t.metadata.payment_history.length > 0 && (
                                                 <div className="p-2 bg-slate-50 border border-slate-100 rounded-xl space-y-1 text-[9px] font-bold text-slate-500 max-w-xs animate-in slide-in-from-top-1">
                                                     <p className="uppercase text-[8px] font-black text-slate-400 tracking-wider">Histórico de Pagamentos:</p>
@@ -1006,6 +1014,14 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                          <Pencil size={12} className="text-slate-200 group-hover/edit:text-brand-500 transition-colors" />
                                                      </div>
                                                  </button>
+                                                 {t.metadata?.potential_duplicate && (
+                                                     <span
+                                                         title={t.metadata?.duplicate_reason || 'Possível lançamento repetido'}
+                                                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-black uppercase tracking-wider w-fit"
+                                                     >
+                                                         <Copy size={10} /> Possível duplicado
+                                                     </span>
+                                                 )}
                                                  {t.metadata?.payment_history && Array.isArray(t.metadata.payment_history) && t.metadata.payment_history.length > 0 && (
                                                      <div className="p-2 bg-slate-50 border border-slate-100 rounded-xl space-y-1 text-[9px] font-bold text-slate-500 max-w-xs animate-in slide-in-from-top-1">
                                                          <p className="uppercase text-[8px] font-black text-slate-400 tracking-wider">Histórico de Pagamentos:</p>

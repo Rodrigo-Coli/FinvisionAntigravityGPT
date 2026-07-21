@@ -137,13 +137,19 @@ RETORNE APENAS JSON NO FORMATO:
 
     if (transactions.length > 0) {
       if (isMobills) {
+        // Diversos entra direto como pago (sem fila de revisão), mas ainda assim
+        // marcamos os possíveis duplicados: cada transação é comparada com o que já
+        // existe (mesma data/valor/tipo) e a marca fica no metadata pra aparecer com
+        // selo e filtro na tela de Transações. NÃO pulamos nada — só sinalizamos, pra
+        // o usuário achar e apagar depois se quiser.
+        const flaggedTxs = await StatementTemplateHelper.checkDuplicates(supabase, imp.user_id, transactions, false);
         const accountCache = new Map<string, string>();
         const categoryCache = new Map<string, string>();
         const entries = [];
-        for (const t of transactions) {
+        for (const t of flaggedTxs) {
           const parsedDate = StatementTemplateHelper.parseDate(t.date) || new Date().toISOString().split('T')[0];
           const parsedAmount = StatementTemplateHelper.parseAmount(t.amount);
-          
+
           const type = parsedAmount < 0 ? 'EXPENSE' : 'INCOME';
           const accKey = (t.account_name || 'Mobills').toUpperCase();
           let accId = accountCache.get(accKey);
@@ -165,7 +171,7 @@ RETORNE APENAS JSON NO FORMATO:
           // (recalculate_account_balance) soma paid_amount, NÃO amount. Sem isso, a
           // transação entra como paga mas o saldo da conta fica parado (paid_amount NULL
           // vira 0 no COALESCE). Espelha o que o fluxo de confirmação de banco já faz.
-          entries.push({ user_id: imp.user_id, date: parsedDate, description: t.description.trim(), amount: Math.abs(parsedAmount), type, account_id: accId || imp.account_id, account_name: t.account_name || accKey, category: t.category_name || t.category || 'Outros', category_id: catId, is_paid: true, paid_amount: Math.abs(parsedAmount), paid_at: parsedDate, metadata: { import_id: imp.id, source: 'mobills_direct_motor' } });
+          entries.push({ user_id: imp.user_id, date: parsedDate, description: t.description.trim(), amount: Math.abs(parsedAmount), type, account_id: accId || imp.account_id, account_name: t.account_name || accKey, category: t.category_name || t.category || 'Outros', category_id: catId, is_paid: true, paid_amount: Math.abs(parsedAmount), paid_at: parsedDate, metadata: { import_id: imp.id, source: 'mobills_direct_motor', potential_duplicate: t.potential_duplicate || false, duplicate_reason: t.duplicate_reason || null, duplicate_tx: t.duplicate_tx || null } });
         }
         if (entries.length > 0) {
           const { error: insErr } = await supabase.from('transactions').insert(entries);
