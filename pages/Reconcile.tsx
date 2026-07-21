@@ -41,7 +41,15 @@ const Reconcile: React.FC = () => {
   const [progressStep, setProgressStep] = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState('');
   const [selectedTargetName, setSelectedTargetName] = useState('');
-  const [importSource, setImportSource] = useState<'bank' | 'card' | 'smart'>('smart');
+  // Padrão "bank": essa aba (Fluxo de Entrada) volta pra "Diversos" toda vez que a
+  // página é remontada (troca de tela e volta, recarregar o navegador etc.), já que é
+  // só um useState local sem persistência. Como Diversos era o valor inicial, quem
+  // importava um extrato de banco e voltava depois pra conferir a fila via qualquer
+  // outro caminho (não o mesmo clique seguido) encontrava a aba em "Diversos" em vez
+  // de "Banco" — mesmo os lançamentos já importados continuando corretamente
+  // marcados como banco no banco de dados. "Banco" é o fluxo mais comum, então vira
+  // o padrão em vez de "Diversos" (smart).
+  const [importSource, setImportSource] = useState<'bank' | 'card' | 'smart'>('bank');
   const [isLoadingQueue, setIsLoadingQueue] = useState(true);
   const [recentImports, setRecentImports] = useState<any[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
