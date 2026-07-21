@@ -1,15 +1,15 @@
 {
-  "version": "2026.07.21.0100",
-  "title": "Sugestão de Subcategoria em Cartões Corrigida",
+  "version": "2026.07.21.0115",
+  "title": "Transações Já Abre Mostrando a Fatura do Cartão a Vencer",
   "date": "21/07/2026",
   "benefits": [
     {
-      "title": "Subcategoria agora sugere as que você já usou naquela categoria",
-      "desc": "A sugestão automática de subcategoria em Cartões nunca aparecia porque a tela não sabia o nome da categoria de cada lançamento depois de recarregar (só sabia o código interno dela). Corrigido: agora, ao digitar na subcategoria, aparecem as subcategorias que você já lançou para aquela categoria específica — igual já funciona em Conciliação e Transações. Isso também deixa o nome da categoria mais estável na tela depois de salvar.",
-      "type": "correcao"
+      "title": "Fatura do cartão aparece assim que você abre Transações",
+      "desc": "A tela de Transações tem 3 abas — Tudo, Conta e Cartão — e só a aba \"Conta\" mostra a linha resumida \"Fatura Cartão: valor total\" (nas outras duas, cada compra do cartão aparece separada, então a fatura resumida fica escondida de propósito pra não contar o mesmo gasto duas vezes). Como o padrão era abrir em \"Tudo\", a fatura a vencer não aparecia de cara. Agora a tela já abre na aba \"Conta\", então você vê a fatura pendente assim que entra. Pra ver as compras do cartão detalhadas uma a uma, é só clicar em \"Tudo\" ou \"Cartão\" — continuam funcionando normalmente.",
+      "type": "novidade"
     }
   ],
   "changes": [
-    "components/banking/CreditCardsSection.tsx: fetchTransactions passa a buscar 'categories(name)' junto com card_transactions (antes era select('*') puro, então tx.category chegava sempre undefined — só existia tx.category_id) e mapear category: t.categories?.name para cada linha; isso alimenta corretamente o campo de categoria e a datalist de subcategoria filtrada por categoria em components/cards/TransactionList.tsx."
+    "pages/History.tsx: filterOrigin inicial trocado de 'ALL' para 'ACCOUNT'."
   ]
 }

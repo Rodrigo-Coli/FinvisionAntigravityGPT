@@ -1,5 +1,20 @@
 [
   {
+    "version": "2026.07.21.0115",
+    "title": "Transações Já Abre Mostrando a Fatura do Cartão a Vencer",
+    "date": "21/07/2026",
+    "benefits": [
+      {
+        "title": "Fatura do cartão aparece assim que você abre Transações",
+        "desc": "A tela de Transações tem 3 abas — Tudo, Conta e Cartão — e só a aba \"Conta\" mostra a linha resumida \"Fatura Cartão: valor total\" (nas outras duas, cada compra do cartão aparece separada, então a fatura resumida fica escondida de propósito pra não contar o mesmo gasto duas vezes). Como o padrão era abrir em \"Tudo\", a fatura a vencer não aparecia de cara. Agora a tela já abre na aba \"Conta\", então você vê a fatura pendente assim que entra. Pra ver as compras do cartão detalhadas uma a uma, é só clicar em \"Tudo\" ou \"Cartão\" — continuam funcionando normalmente.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "pages/History.tsx: filterOrigin inicial trocado de 'ALL' para 'ACCOUNT'."
+    ]
+  },
+  {
     "version": "2026.07.21.0100",
     "title": "Sugestão de Subcategoria em Cartões Corrigida",
     "date": "21/07/2026",
