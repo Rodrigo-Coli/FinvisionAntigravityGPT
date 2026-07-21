@@ -1,23 +1,27 @@
 {
-  "version": "2026.07.18.1230",
-  "title": "Recorrências de Imóveis Renovam Sozinhas + Limpeza Automática do Modo Demo",
-  "date": "18/07/2026",
+  "version": "2026.07.20.2345",
+  "title": "Auto-Categorizar com IA Corrigido + Cartões Voltam a Aparecer na Busca",
+  "date": "20/07/2026",
   "benefits": [
     {
-      "title": "Aluguel, condomínio e IPTU nunca mais param de aparecer",
-      "desc": "Os lançamentos recorrentes dos seus imóveis eram gerados 24 meses pra frente, mas só renovavam se você reabrisse e salvasse o imóvel — quem não mexia mais no cadastro veria as recorrências simplesmente pararem no futuro. Agora uma rotina diária automática mantém sempre 2 anos de cobertura à frente: quando faltar menos de 1 ano, ela estende sozinha, respeitando os valores atuais, a cadência (mensal ou IPTU anual) e sem nunca ressuscitar uma série desativada (ex: imóvel que deixou de ser alugado).",
-      "type": "novidade"
+      "title": "Botão \"Auto-Categorizar (IA)\" na Conciliação voltou a funcionar",
+      "desc": "Ele estava dando erro toda vez que você tentava usar (a IA travava ao tentar pesquisar na internet e organizar a resposta ao mesmo tempo). Agora funciona normalmente: a IA reconhece o nome do estabelecimento, pesquisa quando não conhece, e já preenche categoria e subcategoria pra você revisar.",
+      "type": "correcao"
     },
     {
-      "title": "Contas de demonstração abandonadas são limpas sozinhas",
-      "desc": "Cada visitante do modo demo cria uma conta temporária. As que não viram conta real em 7 dias agora são apagadas automaticamente todo dia — mantém o banco de dados limpo sem nenhum risco para contas reais (quem cria a conta definitiva troca o e-mail e fica automaticamente protegido).",
-      "type": "novidade"
+      "title": "Transações de cartão voltam a aparecer na busca e nos filtros",
+      "desc": "Buscar ou filtrar em Transações — mesmo nas abas \"Cartão\" e \"Tudo\" — não trazia nenhum resultado de compras feitas no cartão. O filtro de conta só reconhecia contas bancárias, não cartões. Agora o campo \"Conta ou Cartão\" lista os dois juntos, e os lançamentos de cartão aparecem certinho na busca.",
+      "type": "correcao"
+    },
+    {
+      "title": "Sugestões de subcategoria na conciliação em lote",
+      "desc": "Ao selecionar várias transações de uma vez em Conciliação e definir a categoria, o campo de subcategoria agora sugere as subcategorias que você já tem cadastradas, em vez de ficar em branco.",
+      "type": "correcao"
     }
   ],
   "changes": [
-    "Supabase (APLICADO E TESTADO EM PRODUÇÃO 18/07): função renew_property_recurrences(horizonte=24, mínimo=12) — séries rental_income/condo_expense/condo_revenue/iptu_expense/iptu_revenue com max(date) < hoje+12 meses são estendidas até hoje+24 meses clonando o último lançamento; cadência detectada pelos 2 últimos (mensal ou anual); guardas de imóvel ativo/PRONTO/não vendido e configuração vigente (isRented+rentalIncome / condoFee / iptuFee). Testes ao vivo: série mensal 3→27 lançamentos até jul/2028; IPTU anual detectou cadência 12 e criou 2027/2028; imóvel não-alugado intocado; segunda execução = 0 inserções (idempotente).",
-    "Supabase: função cleanup_abandoned_demo_users(7) — apaga auth.users com e-mail demo+%@finvision.app e mais de 7 dias (máx 50/execução, falha individual não derruba o lote; cascade limpa as tabelas do app). Testada ao vivo: 1 demo de 28/06 apagada, 17 recentes e contas reais intactas.",
-    "Permissões: EXECUTE das duas funções revogado de anon/authenticated — só service_role (o cron) pode chamar.",
-    "api/_lib/maintenance.ts (novo): handler que dispara os dois RPCs à prova de falha; api/_lib/daily-cron.ts passa a chamá-lo após bills/referral (import com extensão .js, obrigatório no ESM da Vercel). Documentação completa em supabase/maintenance_functions.sql."
+    "api/_lib/categorize-transactions.ts: removida a combinação de responseMimeType/responseSchema com a tool googleSearch na chamada ao Gemini (causava erro 400 INVALID_ARGUMENT: 'Tool use with a response mime type: application/json is unsupported'); JSON agora é pedido só por instrução no prompt, com parsing tolerante a cercas markdown e texto extra ao redor do array.",
+    "pages/Reconcile.tsx: adicionada a datalist 'subcategories-bulk-list' (existia a referência no input mas a lista de opções nunca tinha sido criada) filtrada pela categoria selecionada no lote.",
+    "pages/History.tsx + components/history/HistoryFilters.tsx: filtro de conta (inicial e no botão Limpar) passou a incluir também os IDs de cartão, não só de contas bancárias que somam no dashboard; comparações de filtro (lista principal, gráfico de categorias e comparação de períodos) passaram a checar metadata.card_id/card_id além de account_id; dropdown 'Conta' renomeado para 'Conta ou Cartão' e agora lista as duas coisas juntas (fonte: tabela cards, cache local finvision_cached_card_defs)."
   ]
 }

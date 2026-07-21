@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.07.20.2345",
+    "title": "Auto-Categorizar com IA Corrigido + Cartões Voltam a Aparecer na Busca",
+    "date": "20/07/2026",
+    "benefits": [
+      {
+        "title": "Botão \"Auto-Categorizar (IA)\" na Conciliação voltou a funcionar",
+        "desc": "Ele estava dando erro toda vez que você tentava usar (a IA travava ao tentar pesquisar na internet e organizar a resposta ao mesmo tempo). Agora funciona normalmente: a IA reconhece o nome do estabelecimento, pesquisa quando não conhece, e já preenche categoria e subcategoria pra você revisar.",
+        "type": "correcao"
+      },
+      {
+        "title": "Transações de cartão voltam a aparecer na busca e nos filtros",
+        "desc": "Buscar ou filtrar em Transações — mesmo nas abas \"Cartão\" e \"Tudo\" — não trazia nenhum resultado de compras feitas no cartão. O filtro de conta só reconhecia contas bancárias, não cartões. Agora o campo \"Conta ou Cartão\" lista os dois juntos, e os lançamentos de cartão aparecem certinho na busca.",
+        "type": "correcao"
+      },
+      {
+        "title": "Sugestões de subcategoria na conciliação em lote",
+        "desc": "Ao selecionar várias transações de uma vez em Conciliação e definir a categoria, o campo de subcategoria agora sugere as subcategorias que você já tem cadastradas, em vez de ficar em branco.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "api/_lib/categorize-transactions.ts: removida a combinação de responseMimeType/responseSchema com a tool googleSearch na chamada ao Gemini (causava erro 400 INVALID_ARGUMENT: 'Tool use with a response mime type: application/json is unsupported'); JSON agora é pedido só por instrução no prompt, com parsing tolerante a cercas markdown e texto extra ao redor do array.",
+      "pages/Reconcile.tsx: adicionada a datalist 'subcategories-bulk-list' (existia a referência no input mas a lista de opções nunca tinha sido criada) filtrada pela categoria selecionada no lote.",
+      "pages/History.tsx + components/history/HistoryFilters.tsx: filtro de conta (inicial e no botão Limpar) passou a incluir também os IDs de cartão, não só de contas bancárias que somam no dashboard; comparações de filtro (lista principal, gráfico de categorias e comparação de períodos) passaram a checar metadata.card_id/card_id além de account_id; dropdown 'Conta' renomeado para 'Conta ou Cartão' e agora lista as duas coisas juntas (fonte: tabela cards, cache local finvision_cached_card_defs)."
+    ]
+  },
+  {
     "version": "2026.07.18.1230",
     "title": "Recorrências de Imóveis Renovam Sozinhas + Limpeza Automática do Modo Demo",
     "date": "18/07/2026",
