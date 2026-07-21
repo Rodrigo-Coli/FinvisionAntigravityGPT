@@ -161,7 +161,11 @@ RETORNE APENAS JSON NO FORMATO:
             else { const { data: newCat } = await supabase.from('categories').insert({ user_id: imp.user_id, name: t.category_name || t.category || 'Outros', color: type === 'INCOME' ? '#22c55e' : '#ef4444', icon: 'Tag' }).select('id').single(); catId = newCat?.id; }
             if (catId) categoryCache.set(catKey, catId);
           }
-          entries.push({ user_id: imp.user_id, date: parsedDate, description: t.description.trim(), amount: Math.abs(parsedAmount), type, account_id: accId || imp.account_id, category: t.category_name || t.category || 'Outros', category_id: catId, is_paid: true, paid_at: parsedDate, metadata: { import_id: imp.id, source: 'mobills_direct_motor' } });
+          // paid_amount é OBRIGATÓRIO quando is_paid=true: o trigger de saldo
+          // (recalculate_account_balance) soma paid_amount, NÃO amount. Sem isso, a
+          // transação entra como paga mas o saldo da conta fica parado (paid_amount NULL
+          // vira 0 no COALESCE). Espelha o que o fluxo de confirmação de banco já faz.
+          entries.push({ user_id: imp.user_id, date: parsedDate, description: t.description.trim(), amount: Math.abs(parsedAmount), type, account_id: accId || imp.account_id, account_name: t.account_name || accKey, category: t.category_name || t.category || 'Outros', category_id: catId, is_paid: true, paid_amount: Math.abs(parsedAmount), paid_at: parsedDate, metadata: { import_id: imp.id, source: 'mobills_direct_motor' } });
         }
         if (entries.length > 0) {
           const { error: insErr } = await supabase.from('transactions').insert(entries);
