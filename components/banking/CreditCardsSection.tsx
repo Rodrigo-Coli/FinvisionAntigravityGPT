@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Loader2, Edit2, Archive, Trash2, Info } from 'lucide-react';
+import { Plus, Loader2, Edit2, Archive, Trash2, Info, Filter, X as XIcon } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
 import { FinanceService } from '../../services/finance.service';
 import { ReconciliationService } from '../../services/reconciliation.service';
@@ -853,6 +853,49 @@ const CreditCardsSection: React.FC = () => {
     }
   };
 
+  // Digitação inteligente (autocomplete) da categoria na tabela de lançamentos:
+  // o campo é texto livre com sugestões (datalist), então aqui resolvemos o nome
+  // pra um category_id existente (com correção de digitação) ou cria a categoria
+  // na hora, igual já acontece em Conciliação e em Transações.
+  const handleCategoryCommit = async (id: string, rawValue: string) => {
+    const value = rawValue.trim();
+    if (!value) {
+      updateTxLocal(id, { category: '', category_id: null });
+      saveTxPatch(id, { category_id: null });
+      return;
+    }
+    const names = categories.map(c => c.name);
+    const matchedName = findCloseMatch(value, names) || value;
+    const catId = await ReconciliationService.ensureCategoryExists(matchedName);
+    if (catId) {
+      updateTxLocal(id, { category: matchedName, category_id: catId });
+      saveTxPatch(id, { category_id: catId });
+      fetchCategories();
+    }
+  };
+
+  const handleSubcategoryCommit = async (id: string, rawValue: string) => {
+    const value = rawValue.trim();
+    const tx = transactions.find(t => t.id === id);
+    if (!value) {
+      updateTxLocal(id, { subcategory: '' });
+      saveTxPatch(id, { subcategory: null });
+      return;
+    }
+    const catName = tx?.category || '';
+    const subcatNames = subcategories.filter(s => s.category_name === catName).map(s => s.name);
+    const matchedName = findCloseMatch(value, subcatNames) || value;
+    updateTxLocal(id, { subcategory: matchedName });
+    saveTxPatch(id, { subcategory: matchedName });
+    if (catName) {
+      const catId = tx?.category_id || await ReconciliationService.ensureCategoryExists(catName);
+      if (catId) {
+        await (ReconciliationService as any).ensureSubcategoryExists(catId, matchedName);
+        fetchSubcategories();
+      }
+    }
+  };
+
   const handleDeleteTx = async (id: string, confirmedScope?: SeriesScope) => {
     if (currentStatement?.status === 'PAID') {
       toast("Fatura paga. Reabra a fatura para remover transações.", 'warning');
@@ -1642,10 +1685,11 @@ const CreditCardsSection: React.FC = () => {
                         <h3 className="text-lg font-black text-slate-900 dark:text-white">Lançamentos</h3>
                         <button
                           onClick={() => setShowFilters(!showFilters)}
-                          className={`p-2 rounded-xl border transition-all ${showFilters ? 'bg-brand-50 border-brand-200 text-brand-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${showFilters ? 'bg-brand-50 border-brand-200 text-brand-600' : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-brand-200 hover:text-brand-500'}`}
                           title="Alternar Filtros"
                         >
-                          <Plus size={16} className={showFilters ? 'rotate-45 transition-transform' : 'transition-transform'} />
+                          {showFilters ? <XIcon size={14} /> : <Filter size={14} />}
+                          Filtros
                         </button>
                       </div>
                       <p className="text-slate-400 text-sm font-medium">Controle e filtre os gastos deste cartão</p>
@@ -1792,10 +1836,13 @@ const CreditCardsSection: React.FC = () => {
                     })}
                     loadingTxs={loadingTxs}
                     categories={categories}
+                    subcategories={subcategories}
                     savingRowId={savingRowId}
                     onAddManualTx={() => setShowAddTxModal(true)}
                     onUpdateTxLocal={updateTxLocal}
                     onSaveTxPatch={saveTxPatch}
+                    onCommitCategory={handleCategoryCommit}
+                    onCommitSubcategory={handleSubcategoryCommit}
                     onDeleteTx={handleDeleteTx}
                     onUploadAttachment={handleUploadAttachment}
                     onDeleteAttachment={handleDeleteAttachment}

@@ -6,10 +6,13 @@ interface TransactionListProps {
     transactions: any[];
     loadingTxs: boolean;
     categories: { id: string; name: string }[];
+    subcategories?: { id: string; name: string; category_name?: string }[];
     savingRowId: string | null;
     onAddManualTx: () => void;
     onUpdateTxLocal: (id: string, patch: any) => void;
     onSaveTxPatch: (id: string, patch: any) => void;
+    onCommitCategory?: (id: string, value: string) => void;
+    onCommitSubcategory?: (id: string, value: string) => void;
     onDeleteTx: (id: string) => void;
     showStatementScope: boolean;
     statements: any[];
@@ -23,10 +26,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     transactions,
     loadingTxs,
     categories,
+    subcategories = [],
     savingRowId,
     onAddManualTx,
     onUpdateTxLocal,
     onSaveTxPatch,
+    onCommitCategory,
+    onCommitSubcategory,
     onDeleteTx,
     showStatementScope,
     statements,
@@ -127,22 +133,16 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                         {/* Category */}
                                         <div className="col-span-2">
                                             <div className="relative">
-                                                <select
-                                                    value={tx.category_id || ''}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value || null;
-                                                        onUpdateTxLocal(tx.id, { category_id: val });
-                                                        onSaveTxPatch(tx.id, { category_id: val });
-                                                    }}
-                                                    className="w-full text-[10px] font-bold bg-white border border-slate-200 rounded-xl px-2 py-1.5 pl-6 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 appearance-none transition-all shadow-sm"
-                                                >
-                                                    <option value="">Sem categoria</option>
-                                                    {categories.map((c) => (
-                                                        <option key={c.id} value={c.id}>
-                                                            {c.name}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                <input
+                                                    type="text"
+                                                    list="card-categories-list"
+                                                    value={tx.category ?? ''}
+                                                    placeholder="Categoria..."
+                                                    onFocus={(e) => e.target.select()}
+                                                    onChange={(e) => onUpdateTxLocal(tx.id, { category: e.target.value })}
+                                                    onBlur={(e) => onCommitCategory?.(tx.id, e.target.value)}
+                                                    className="w-full text-[10px] font-bold bg-white border border-slate-200 rounded-xl px-2 py-1.5 pl-6 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm truncate"
+                                                />
                                                 <Tags size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
                                             </div>
                                         </div>
@@ -151,12 +151,20 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                         <div className="col-span-1">
                                             <input
                                                 type="text"
+                                                list={`card-subcategories-${tx.id}`}
                                                 value={tx.subcategory || ''}
                                                 placeholder="..."
+                                                onFocus={(e) => e.target.select()}
                                                 onChange={(e) => onUpdateTxLocal(tx.id, { subcategory: e.target.value })}
-                                                onBlur={(e) => onSaveTxPatch(tx.id, { subcategory: e.target.value })}
+                                                onBlur={(e) => onCommitSubcategory?.(tx.id, e.target.value)}
                                                 className="w-full text-[10px] font-bold bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all truncate shadow-sm"
                                             />
+                                            <datalist id={`card-subcategories-${tx.id}`}>
+                                                {subcategories
+                                                    .filter(s => s.category_name === tx.category)
+                                                    .sort((a, b) => a.name.localeCompare(b.name))
+                                                    .map(s => <option key={s.id} value={s.name} />)}
+                                            </datalist>
                                         </div>
 
                                         {/* Entity */}
@@ -254,6 +262,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                     </div>
                 )}
             </div>
+
+            <datalist id="card-categories-list">
+                {categories.map((c) => <option key={c.id} value={c.name} />)}
+            </datalist>
         </div>
     );
 };
