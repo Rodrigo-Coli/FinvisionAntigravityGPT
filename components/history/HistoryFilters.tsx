@@ -179,6 +179,7 @@ interface HistoryFiltersProps {
     categories: string[];
     subcategories: string[];
     accounts: BankAccount[];
+    cards?: { id: string; name: string; last4?: string }[];
     resetFilters: () => void;
 }
 
@@ -187,8 +188,12 @@ export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
     filterType, setFilterType, filterAccount, setFilterAccount,
     filterCategory, setFilterCategory, filterSubcategory, setFilterSubcategory, startDate, setStartDate,
     endDate, setEndDate, minPrice, setMinPrice, maxPrice, setMaxPrice,
-    filterOwner, setFilterOwner, filterOrigin, setFilterOrigin, owners, categories, subcategories, accounts, resetFilters
+    filterOwner, setFilterOwner, filterOrigin, setFilterOrigin, owners, categories, subcategories, accounts, cards = [], resetFilters
 }) => {
+    const accountAndCardOptions = [
+        ...accounts.map(acc => ({ id: acc.id, label: acc.institution })),
+        ...cards.map(c => ({ id: c.id, label: `${c.name}${c.last4 ? ` •${c.last4}` : ''} (Cartão)` }))
+    ];
     const originOptions: { id: 'ALL' | 'ACCOUNT' | 'CARD'; label: string }[] = [
         { id: 'ALL', label: 'Tudo' },
         { id: 'ACCOUNT', label: 'Conta' },
@@ -246,11 +251,11 @@ export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
                     </div>
 
                     <SearchableMultiSelect
-                        label="Conta"
-                        placeholder="Todas as Contas"
-                        searchPlaceholder="Buscar conta..."
+                        label="Conta ou Cartão"
+                        placeholder="Todas as Contas/Cartões"
+                        searchPlaceholder="Buscar conta ou cartão..."
                         icon={<CreditCard size={12} />}
-                        options={accounts.map(acc => ({ id: acc.id, label: acc.institution }))}
+                        options={accountAndCardOptions}
                         selected={filterAccount}
                         onChange={setFilterAccount}
                     />

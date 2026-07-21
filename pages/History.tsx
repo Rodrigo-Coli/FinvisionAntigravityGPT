@@ -191,6 +191,7 @@ const HistoryPage: React.FC = () => {
   const [chartTransactions, setChartTransactions] = useState<Transaction[]>([]); // full set for charts (no pagination)
   const [chartCategoryTransactions, setChartCategoryTransactions] = useState<Transaction[]>([]); // banco + cartão combinados, só para o gráfico de categorias
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [cards, setCards] = useState<{ id: string; name: string; last4?: string }[]>([]);
   const [availableCategories, setAvailableCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [categoryObjects, setCategoryObjects] = useState<{ name: string, type?: 'INCOME' | 'EXPENSE' }[]>(DEFAULT_CATEGORIES.map(c => ({ name: c })));
   const [subcategories, setSubcategories] = useState<{ id: string; name: string; category_name?: string }[]>([]);
@@ -488,6 +489,7 @@ const HistoryPage: React.FC = () => {
       setUserId(user.id);
 
       let accData: any[] = [];
+      let cardDefsData: any[] = [];
       let catData: any[] = [];
       let subData: any[] = [];
       let dbEntities: any[] = [];
@@ -501,6 +503,7 @@ const HistoryPage: React.FC = () => {
 
       const renderData = (
         accs: any[],
+        cardDefs: any[],
         cats: any[],
         subs: any[],
         entities: any[],
@@ -547,6 +550,19 @@ const HistoryPage: React.FC = () => {
           };
         }).sort((a: any, b: any) => a.institution.localeCompare(b.institution)));
 
+        // Cartões (definições, não as compras) — usados para o filtro "Conta" também
+        // listar cartões, e para o filtro padrão não excluir compras de cartão que
+        // não têm conta bancária vinculada (cartão avulso, sem account_id).
+        const uniqueCardDefs: any[] = [];
+        const seenCardIds = new Set<string>();
+        for (const c of (cardDefs || [])) {
+          if (c?.id && !seenCardIds.has(c.id)) {
+            seenCardIds.add(c.id);
+            uniqueCardDefs.push(c);
+          }
+        }
+        setCards(uniqueCardDefs.map((c: any) => ({ id: c.id, name: c.name || 'Cartão', last4: c.last4 })).sort((a, b) => a.name.localeCompare(b.name)));
+
         const deduplicatedOwners = Array.from(new Set((entities || []).map((o: string) => o.trim()))).filter(Boolean);
         setOwners(deduplicatedOwners.sort((a, b) => a.localeCompare(b)));
 
@@ -563,9 +579,14 @@ const HistoryPage: React.FC = () => {
                 return inc;
               })
               .map((a: any) => a.id);
-            
-            if (summingAccountIds.length > 0) {
-              setFilterAccount(summingAccountIds);
+            // Cartões não têm a flag "include_in_dashboard" — entram sempre por padrão,
+            // senão compras de cartão (principalmente cartões sem conta vinculada) somem
+            // das telas de Cartão/Tudo assim que o filtro de Conta é inicializado.
+            const allCardIds = uniqueCardDefs.map((c: any) => c.id);
+            const summingIds = [...summingAccountIds, ...allCardIds];
+
+            if (summingIds.length > 0) {
+              setFilterAccount(summingIds);
               didInitializeFilters = true;
             }
           }
@@ -675,7 +696,9 @@ const HistoryPage: React.FC = () => {
           combinedForChart = combinedForChart.filter((t: any) => t.type === filterType);
         }
         if (filterAccount.length > 0) {
-          combinedForChart = combinedForChart.filter((t: any) => filterAccount.includes(t.account_id));
+          // Compras de cartão são identificadas pelo card_id (metadata), não pelo
+          // account_id (que é a conta bancária vinculada ao cartão, quando existe).
+          combinedForChart = combinedForChart.filter((t: any) => filterAccount.includes(t.account_id) || (t?.metadata?.card_id && filterAccount.includes(t.metadata.card_id)));
         }
         if (filterSubcategory.length > 0) {
           combinedForChart = combinedForChart.filter((t: any) => filterSubcategory.includes(t.subcategory));
@@ -745,7 +768,8 @@ const HistoryPage: React.FC = () => {
           combined = combined.filter((t: any) => t.type === filterType);
         }
         if (filterAccount.length > 0) {
-          combined = combined.filter((t: any) => filterAccount.includes(t.account_id));
+          // Idem: compras de cartão casam pelo card_id, não pelo account_id.
+          combined = combined.filter((t: any) => filterAccount.includes(t.account_id) || (t?.metadata?.card_id && filterAccount.includes(t.metadata.card_id)));
         }
         if (filterCategory.length > 0) {
           combined = combined.filter((t: any) => filterCategory.includes(t.category));
@@ -871,6 +895,7 @@ const HistoryPage: React.FC = () => {
             localStorage.getItem('finvision_cached_accounts_cc') ||
             '[]'
           );
+          cardDefsData = JSON.parse(localStorage.getItem('finvision_cached_card_defs') || '[]');
           catData = JSON.parse(
             localStorage.getItem('finvision_cached_categories') ||
             localStorage.getItem('finvision_cached_categories_cc') ||
@@ -899,7 +924,7 @@ const HistoryPage: React.FC = () => {
       }
 
       if (hasCache) {
-        renderData(accData, catData, subData, dbEntities, entityObjsRes, transactionsData, cardTxsData);
+        renderData(accData, cardDefsData, catData, subData, dbEntities, entityObjsRes, transactionsData, cardTxsData);
         setIsLoading(false);
       } else if (!isSilent) {
         setIsLoading(true);
@@ -911,8 +936,9 @@ const HistoryPage: React.FC = () => {
       }
 
       // 2. Busca online atualizada em segundo plano (silent refresh)
-      const [accRes, catRes, subRes, entitiesRes, entityObjs] = await Promise.all([
+      const [accRes, cardDefsRes, catRes, subRes, entitiesRes, entityObjs] = await Promise.all([
         supabase.from('accounts').select('*').eq('is_archived', false),
+        supabase.from('cards').select('id, name, last4').eq('user_id', user.id).eq('is_archived', false),
         supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name'),
         supabase.from('subcategories').select('*').eq('user_id', user.id).order('name'),
         FinanceService.getEntities(),
@@ -920,10 +946,12 @@ const HistoryPage: React.FC = () => {
       ]);
 
       if (accRes.error) throw accRes.error;
+      if (cardDefsRes.error) throw cardDefsRes.error;
       if (catRes.error) throw catRes.error;
       if (subRes.error) throw subRes.error;
 
       accData = accRes.data || [];
+      cardDefsData = cardDefsRes.data || [];
       catData = catRes.data || [];
       subData = subRes.data || [];
       dbEntities = entitiesRes || [];
@@ -995,6 +1023,7 @@ const HistoryPage: React.FC = () => {
       // Salvar caches atualizados de forma segura
       try {
         localStorage.setItem('finvision_cached_accounts', JSON.stringify(accData));
+        localStorage.setItem('finvision_cached_card_defs', JSON.stringify(cardDefsData));
         localStorage.setItem('finvision_cached_categories', JSON.stringify(catData));
         localStorage.setItem('finvision_cached_subcategories', JSON.stringify(subData));
         localStorage.setItem('finvision_cached_owners', JSON.stringify(dbEntities));
@@ -1006,7 +1035,7 @@ const HistoryPage: React.FC = () => {
         console.warn("Falha ao salvar cache no localStorage:", cacheErr);
       }
 
-      renderData(accData, catData, subData, dbEntities, entityObjsRes, transactionsData, cardTxsData);
+      renderData(accData, cardDefsData, catData, subData, dbEntities, entityObjsRes, transactionsData, cardTxsData);
     } catch (err) {
       console.error(err);
       setError('Erro ao carregar dados.');
@@ -1615,7 +1644,9 @@ const HistoryPage: React.FC = () => {
     const defaultIncludeNonSumming = localStorage.getItem('finvision_default_include_non_summing') === 'true';
     if (!defaultIncludeNonSumming) {
       const summingAccountIds = accounts.filter(a => a.includeInDashboard).map(a => a.id);
-      setFilterAccount(summingAccountIds);
+      // Cartões não têm flag "includeInDashboard" — sempre entram, senão o reset de
+      // filtros volta a esconder as compras de cartão (mesmo bug do carregamento inicial).
+      setFilterAccount([...summingAccountIds, ...cards.map(c => c.id)]);
     } else {
       setFilterAccount([]);
     }
@@ -2323,6 +2354,7 @@ const HistoryPage: React.FC = () => {
       description: ct.description,
       account_id: ct.account_id || ct.cards?.account_id || undefined,
       account_name: ct.account_name || ct.cards?.name || accs.find(a => a.id === (ct.account_id || ct.cards?.account_id))?.institution || 'Cartão de Crédito',
+      card_id: ct.card_id,
       owner_name: ct.owner_name || 'Pessoal',
       notes: ct.notes || '',
       tags: ct.tags || [],
@@ -2337,7 +2369,9 @@ const HistoryPage: React.FC = () => {
       combined = combined.filter((t: any) => t.type === filterType);
     }
     if (filterAccount.length > 0) {
-      combined = combined.filter((t: any) => filterAccount.includes(t.account_id));
+      // Compras de cartão casam pelo card_id, não pelo account_id (que é a conta
+      // bancária vinculada ao cartão, quando existe).
+      combined = combined.filter((t: any) => filterAccount.includes(t.account_id) || (t.card_id && filterAccount.includes(t.card_id)));
     }
     if (filterCategory.length > 0) {
       combined = combined.filter((t: any) => filterCategory.includes(t.category));
@@ -2705,7 +2739,7 @@ const HistoryPage: React.FC = () => {
         endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
         filterOwner={filterOwner} setFilterOwner={setFilterOwner} owners={owners}
         filterOrigin={filterOrigin} setFilterOrigin={setFilterOrigin}
-        categories={availableCategories} subcategories={Array.from(new Set(subcategories.map(s => s.name?.trim()))).filter(Boolean).sort()} accounts={accounts} resetFilters={resetFilters}
+        categories={availableCategories} subcategories={Array.from(new Set(subcategories.map(s => s.name?.trim()))).filter(Boolean).sort()} accounts={accounts} cards={cards} resetFilters={resetFilters}
       />
 
       {/* QUICK DATE FILTERS + CUSTOM RANGE + VIEW MODE TOGGLE */}
