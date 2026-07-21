@@ -783,14 +783,18 @@ const CreditCardsSection: React.FC = () => {
         .map((c: any) => c.id);
       const cardIdsForInvoice = [cardId, ...additionalThatSum];
 
-      let query = supabase.from('card_transactions').select('*').eq('user_id', user.id).order('date', { ascending: false });
+      // Join com categories(name): sem isso, tx.category vem undefined (a coluna real
+      // é category_id) e tanto o campo de categoria quanto a sugestão de subcategoria
+      // (filtrada por tx.category) ficam sem nada pra mostrar depois de todo recarregamento.
+      let query = supabase.from('card_transactions').select('*, categories(name)').eq('user_id', user.id).order('date', { ascending: false });
       if (statementId) query = query.eq('statement_id', statementId);
       else query = query.in('card_id', cardIdsForInvoice);
       const { data, error } = await query;
       if (error) throw error;
-      
-      setTransactions(data || []);
-      localStorage.setItem(dynamicKey, JSON.stringify(data || []));
+
+      const mapped = (data || []).map((t: any) => ({ ...t, category: t.categories?.name || '' }));
+      setTransactions(mapped);
+      localStorage.setItem(dynamicKey, JSON.stringify(mapped));
     } catch (err) {
       console.error('Erro ao buscar transações de cartão, fallback cache:', err);
     } finally {
