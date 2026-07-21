@@ -1,5 +1,26 @@
 [
   {
+    "version": "2026.07.21.0015",
+    "title": "Cartões: Filtros à Mostra + Categoria com Sugestão Automática",
+    "date": "21/07/2026",
+    "benefits": [
+      {
+        "title": "Filtros da tela de Cartões agora aparecem de verdade",
+        "desc": "Os filtros (busca, categoria, subcategoria, pessoa/empresa, faixa de valor) sempre existiram na tela de Cartões, mas ficavam escondidos atrás de um ícone \"+\" sem nenhum texto — muito fácil de não perceber que estava ali. Agora o botão diz \"Filtros\" bem visível, igual ao resto do sistema.",
+        "type": "correcao"
+      },
+      {
+        "title": "Categoria e subcategoria com sugestão enquanto você digita",
+        "desc": "Na lista de lançamentos de cada cartão, a categoria era uma caixinha fechada (só escolhia da lista) e a subcategoria não sugeria nada. Agora os dois campos são texto livre com sugestão automática conforme você digita — igual já funciona em Conciliação e em Transações. Se você digitar uma categoria nova, ela é criada na hora; se a categoria mudar em Cartões, ela já vale também em Transações, porque é o mesmo registro.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "components/cards/TransactionList.tsx: campo de categoria (col Categoria) trocado de <select> para <input list> com datalist compartilhada 'card-categories-list'; subcategoria ganhou datalist por linha filtrada pela categoria atual da transação; novas props subcategories, onCommitCategory, onCommitSubcategory.",
+      "components/banking/CreditCardsSection.tsx: handlers handleCategoryCommit/handleSubcategoryCommit resolvem nome digitado -> category_id existente (com findCloseMatch) ou criam categoria/subcategoria sob demanda via ReconciliationService.ensureCategoryExists/ensureSubcategoryExists, reaproveitando saveTxPatch (mantém o fluxo de confirmação de série de parcelas/recorrência); botão 'Alternar Filtros' trocado de ícone sozinho para botão com rótulo 'Filtros'."
+    ]
+  },
+  {
     "version": "2026.07.20.2345",
     "title": "Auto-Categorizar com IA Corrigido + Cartões Voltam a Aparecer na Busca",
     "date": "20/07/2026",
