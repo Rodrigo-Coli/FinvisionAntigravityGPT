@@ -1,21 +1,19 @@
 {
-  "version": "2026.07.21.0015",
-  "title": "Cartões: Filtros à Mostra + Categoria com Sugestão Automática",
+  "version": "2026.07.21.0025",
+  "title": "Estorno de Cartão Agora Abate a Fatura Corretamente",
   "date": "21/07/2026",
   "benefits": [
     {
-      "title": "Filtros da tela de Cartões agora aparecem de verdade",
-      "desc": "Os filtros (busca, categoria, subcategoria, pessoa/empresa, faixa de valor) sempre existiram na tela de Cartões, mas ficavam escondidos atrás de um ícone \"+\" sem nenhum texto — muito fácil de não perceber que estava ali. Agora o botão diz \"Filtros\" bem visível, igual ao resto do sistema.",
+      "title": "Estorno importado do cartão volta a reduzir a fatura",
+      "desc": "Quando o extrato do cartão trazia um estorno (reembolso, cashback, cancelamento de compra) — que aparece como valor negativo no extrato original — o sistema estava jogando fora esse sinal e tratando o estorno como se fosse mais uma compra normal, aumentando a fatura em vez de diminuir. Corrigido em toda a linha: da importação até a fatura final, o estorno agora é reconhecido como crédito e abate corretamente o valor que você deve pagar.",
       "type": "correcao"
-    },
-    {
-      "title": "Categoria e subcategoria com sugestão enquanto você digita",
-      "desc": "Na lista de lançamentos de cada cartão, a categoria era uma caixinha fechada (só escolhia da lista) e a subcategoria não sugeria nada. Agora os dois campos são texto livre com sugestão automática conforme você digita — igual já funciona em Conciliação e em Transações. Se você digitar uma categoria nova, ela é criada na hora; se a categoria mudar em Cartões, ela já vale também em Transações, porque é o mesmo registro.",
-      "type": "novidade"
     }
   ],
   "changes": [
-    "components/cards/TransactionList.tsx: campo de categoria (col Categoria) trocado de <select> para <input list> com datalist compartilhada 'card-categories-list'; subcategoria ganhou datalist por linha filtrada pela categoria atual da transação; novas props subcategories, onCommitCategory, onCommitSubcategory.",
-    "components/banking/CreditCardsSection.tsx: handlers handleCategoryCommit/handleSubcategoryCommit resolvem nome digitado -> category_id existente (com findCloseMatch) ou criam categoria/subcategoria sob demanda via ReconciliationService.ensureCategoryExists/ensureSubcategoryExists, reaproveitando saveTxPatch (mantém o fluxo de confirmação de série de parcelas/recorrência); botão 'Alternar Filtros' trocado de ícone sozinho para botão com rótulo 'Filtros'."
+    "api/_lib/parse-card-statement.ts + api/_lib/handle-card-reconcile.ts: prompt da IA passa a pedir o valor com o sinal original (compra positiva, estorno/reembolso negativo); inserção na fila de conciliação (imported_transactions) inverte o sinal em vez de forçar -Math.abs, então estorno negativo no extrato vira crédito positivo na fila (verde) em vez de débito (vermelho) igual a uma compra.",
+    "pages/Reconcile.tsx: confirmação para card_transactions preserva o sinal (positivo = compra, negativo = estorno) em vez de Math.abs.",
+    "components/banking/CreditCardsSection.tsx: total da fatura (getCalculatedTotal) passa a somar com sinal, então o estorno abate em vez de somar como mais uma compra.",
+    "pages/History.tsx: normalizedCardTxs passa a marcar type='INCOME' quando o amount é negativo (em vez de sempre 'EXPENSE'), refletindo o crédito corretamente nos totais e gráficos de Transações.",
+    "Nenhuma migração de banco necessária: o gatilho recalculate_card_statement_total (fix_card_statements_integrity.sql) já soma os valores sem Math.abs, então já estava pronto para valores negativos."
   ]
 }
