@@ -927,6 +927,13 @@ const Reconcile: React.FC = () => {
                     />
                   )}
 
+                  <datalist id="subcategories-bulk-list">
+                    {subcategories
+                      .filter(s => s.category_name === bulkCategory)
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((s: any) => <option key={s.id} value={s.name} />)}
+                  </datalist>
+
                   <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
                     <button 
                       onClick={() => setImportSource('bank')} 

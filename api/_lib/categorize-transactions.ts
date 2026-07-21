@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { GoogleGenAI, Schema, Type } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
@@ -36,39 +36,46 @@ ${JSON.stringify(categories.map((c: any) => c.category_name + " > " + c.name), n
 DESCRIÇÕES PARA ANALISAR:
 ${JSON.stringify(descriptions, null, 2)}
 
-Importante: 
-1. Responda apenas com a string JSON. Sem marcações markdown como \`\`\`.
+Importante:
+1. Responda APENAS com a string JSON pura (um array), sem nenhum texto antes ou depois, e sem marcações markdown como \`\`\`json ou \`\`\`.
 2. A 'category' e 'subcategory' devem existir exatamente nestes nomes caso você as escolha.
+3. O formato de cada item deve ser exatamente: {"description": "...", "category": "...", "subcategory": "..."}
 `;
 
-    const schema: Schema = {
-      type: Type.ARRAY,
-      description: "List of mapped transactions",
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          description: { type: Type.STRING, description: "The exact raw description string from the input array." },
-          category: { type: Type.STRING, description: "The matching category name from the available options (e.g. Transporte). Leave empty if unknown." },
-          subcategory: { type: Type.STRING, description: "The matching subcategory name from the available options (e.g. Combustível). Leave empty if unknown." }
-        },
-        required: ["description", "category", "subcategory"]
-      }
-    };
-
+    // A API do Gemini não permite combinar `tools` (Google Search) com
+    // `responseMimeType`/`responseSchema` na mesma chamada (erro 400
+    // INVALID_ARGUMENT: "Tool use with a response mime type: 'application/json'
+    // is unsupported"). Como precisamos do Google Search para reconhecer
+    // estabelecimentos desconhecidos, pedimos o JSON só via instrução no
+    // prompt e fazemos o parsing de forma tolerante abaixo.
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
-        responseMimeType: "application/json",
-        responseSchema: schema,
         temperature: 0.2,
         tools: [{ googleSearch: {} }]
       }
     });
     await recordAiUsage(supabase, 'categorize', null, response, 'gemini-2.5-flash');
 
-    const text = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || "[]";
-    const parsed = JSON.parse(text);
+    let text = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+    text = text.trim();
+    // Remove cercas de markdown (```json ... ``` ou ``` ... ```) caso o modelo as inclua.
+    text = text.replace(/^```[a-zA-Z]*\s*/, '').replace(/```\s*$/, '').trim();
+    // Isola o array JSON caso venha com texto extra ao redor.
+    const firstBracket = text.indexOf('[');
+    const lastBracket = text.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+      text = text.slice(firstBracket, lastBracket + 1);
+    }
+
+    let parsed: any[];
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseErr) {
+      console.error('[API Categorizacao] Falha ao interpretar JSON da IA:', text);
+      throw new Error('A IA retornou uma resposta em formato inesperado. Tente novamente.');
+    }
 
     return res.status(200).json({ ok: true, data: parsed });
 
