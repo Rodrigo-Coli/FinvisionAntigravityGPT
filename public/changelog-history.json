@@ -1,5 +1,20 @@
 [
   {
+    "version": "2026.07.21.0130",
+    "title": "Importação de Banco Não Cai Mais em \"Diversos\"",
+    "date": "21/07/2026",
+    "benefits": [
+      {
+        "title": "Aba \"Banco\" continua selecionada ao voltar em Conciliar",
+        "desc": "A tela de Conciliar tem 3 opções pra importar: Banco, Cartão e Diversos. Quem importava um extrato escolhendo \"Banco\" e depois saía e voltava pra conferir a fila encontrava a tela mostrando \"Diversos\" selecionado — mesmo os lançamentos já importados continuando corretamente identificados como banco por baixo dos panos. Era só a telinha \"esquecendo\" sua escolha. Agora, ao abrir a tela de Conciliar, ela já vem com \"Banco\" selecionado (o fluxo mais usado), então não some mais.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "pages/Reconcile.tsx: valor inicial de importSource trocado de 'smart' para 'bank'. Esse estado não é persistido — ele reseta pro valor inicial toda vez que a página é remontada (navegar pra outra tela e voltar, recarregar o navegador), então o valor padrão errado fazia a UI parecer que o tipo do import tinha mudado, mesmo sem nenhuma mudança real nos dados."
+    ]
+  },
+  {
     "version": "2026.07.21.0115",
     "title": "Transações Já Abre Mostrando a Fatura do Cartão a Vencer",
     "date": "21/07/2026",
