@@ -69,7 +69,7 @@ export async function handleHealth(req: any, res: any) {
           body: JSON.stringify({
             webhook: {
               enabled: true,
-              url: 'https://finvision.automanow.com.br/api/whatsapp-webhook',
+              url: 'https://zyvion.automanow.com.br/api/whatsapp-webhook',
               webhookByEvents: false,
               webhookBase64: false,
               events: ['MESSAGES_UPSERT']
