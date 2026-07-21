@@ -859,6 +859,16 @@ const CreditCardsSection: React.FC = () => {
   // o campo é texto livre com sugestões (datalist), então aqui resolvemos o nome
   // pra um category_id existente (com correção de digitação) ou cria a categoria
   // na hora, igual já acontece em Conciliação e em Transações.
+  //
+  // IMPORTANTE: cada salvamento de campo (saveTxPatch) recarrega TODA a lista de
+  // lançamentos no final (loadCardContext). Se esse commit ficar esperando uma
+  // chamada de rede extra antes de chamar saveTxPatch, o usuário tem tempo de editar
+  // outra linha/campo enquanto isso — e quando o loadCardContext daquele outro campo
+  // termina primeiro, ele sobrescreve esta edição (que ainda não tinha sido salva)
+  // com o valor antigo do banco, dando a impressão de que a categoria "voltou sozinha".
+  // Por isso resolvemos pela lista já carregada em memória (categories/subcategories)
+  // sempre que possível, e só fazemos uma chamada de rede bloqueante quando é
+  // realmente uma categoria/subcategoria nova.
   const handleCategoryCommit = async (id: string, rawValue: string) => {
     const value = rawValue.trim();
     if (!value) {
@@ -866,17 +876,23 @@ const CreditCardsSection: React.FC = () => {
       saveTxPatch(id, { category_id: null });
       return;
     }
-    const names = categories.map(c => c.name);
-    const matchedName = findCloseMatch(value, names) || value;
-    const catId = await ReconciliationService.ensureCategoryExists(matchedName);
+    const matchedName = findCloseMatch(value, categories.map(c => c.name));
+    const existing = matchedName ? categories.find(c => c.name === matchedName) : undefined;
+    if (existing) {
+      updateTxLocal(id, { category: existing.name, category_id: existing.id });
+      saveTxPatch(id, { category_id: existing.id });
+      return;
+    }
+    // Categoria nova: só aqui precisamos esperar a criação no banco.
+    const catId = await ReconciliationService.ensureCategoryExists(value);
     if (catId) {
-      updateTxLocal(id, { category: matchedName, category_id: catId });
+      updateTxLocal(id, { category: value, category_id: catId });
       saveTxPatch(id, { category_id: catId });
       fetchCategories();
     }
   };
 
-  const handleSubcategoryCommit = async (id: string, rawValue: string) => {
+  const handleSubcategoryCommit = (id: string, rawValue: string) => {
     const value = rawValue.trim();
     const tx = transactions.find(t => t.id === id);
     if (!value) {
@@ -887,14 +903,19 @@ const CreditCardsSection: React.FC = () => {
     const catName = tx?.category || '';
     const subcatNames = subcategories.filter(s => s.category_name === catName).map(s => s.name);
     const matchedName = findCloseMatch(value, subcatNames) || value;
+    // Salva o campo imediatamente, sem esperar nenhuma chamada de rede.
     updateTxLocal(id, { subcategory: matchedName });
     saveTxPatch(id, { subcategory: matchedName });
-    if (catName) {
-      const catId = tx?.category_id || await ReconciliationService.ensureCategoryExists(catName);
-      if (catId) {
-        await (ReconciliationService as any).ensureSubcategoryExists(catId, matchedName);
-        fetchSubcategories();
-      }
+    // Registrar a subcategoria nova (pra virar sugestão futura) roda em segundo
+    // plano, sem atrasar o salvamento do campo em si.
+    if (catName && !subcatNames.includes(matchedName)) {
+      (async () => {
+        const catId = tx?.category_id || await ReconciliationService.ensureCategoryExists(catName);
+        if (catId) {
+          await (ReconciliationService as any).ensureSubcategoryExists(catId, matchedName);
+          fetchSubcategories();
+        }
+      })();
     }
   };
 
