@@ -131,12 +131,30 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
 }
 
 /**
+ * Serializa operações de assinatura push. PushManager (montado sempre) e a
+ * tela de Ajustes podem chamar ensureFreshPushSubscription/subscribeUserToPush
+ * de forma independente; sem essa fila, dois unsubscribe()+subscribe() em
+ * paralelo podem se atropelar e deixar o banco com uma assinatura diferente
+ * da que o navegador realmente tem.
+ */
+let pushOpQueue: Promise<any> = Promise.resolve();
+function serializePushOp<T>(fn: () => Promise<T>): Promise<T> {
+  const run = pushOpQueue.then(fn, fn);
+  pushOpQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+/**
  * Auto-conserto da assinatura push: compara a chave VAPID do servidor com a
  * chave usada na assinatura atual do navegador. Se divergirem (ex.: chaves do
  * servidor foram trocadas), renova a assinatura silenciosamente.
  * NÃO pede permissão ao usuário — só age se já foi concedida.
  */
 export async function ensureFreshPushSubscription(): Promise<{ subscription: PushSubscription; renewed: boolean } | null> {
+  return serializePushOp(() => ensureFreshPushSubscriptionInner());
+}
+
+async function ensureFreshPushSubscriptionInner(): Promise<{ subscription: PushSubscription; renewed: boolean } | null> {
   if (getNotificationPermission() !== 'granted') return null;
 
   try {
@@ -181,6 +199,10 @@ export async function ensureFreshPushSubscription(): Promise<{ subscription: Pus
 
 // Legado — mantido para compatibilidade com Settings.tsx
 export async function subscribeUserToPush(): Promise<PushSubscription | null> {
+  return serializePushOp(() => subscribeUserToPushInner());
+}
+
+async function subscribeUserToPushInner(): Promise<PushSubscription | null> {
   const permission = await requestNotificationPermission();
   if (permission !== 'granted') return null;
 

@@ -1,30 +1,21 @@
 {
-  "version": "2026.07.23.1122",
-  "title": "Cartão de Crédito: Acabamento da Regra do Mês de Vencimento",
+  "version": "2026.07.23.1839",
+  "title": "Notificações: Reforço Contra Corrida Interna",
   "date": "23/07/2026",
   "benefits": [
     {
-      "title": "Relatórios certos já na primeira olhada",
-      "desc": "A tela de Relatórios podia mostrar, no primeiro carregamento, os gastos de cartão contados pelo mês da compra (regra antiga) e só corrigir quando você mexia em algum filtro — era uma corrida interna entre duas buscas de dados. Agora o cálculo espera os dados dos cartões chegarem antes de somar, então o número certo aparece de primeira. O mesmo acerto foi feito no recurso Comparar Períodos da tela de Transações.",
+      "title": "Fim da 'corrida' entre partes do app na hora de renovar a notificação",
+      "desc": "O app tem duas rotinas que podem tentar renovar a conexão de notificações do aparelho ao mesmo tempo (uma que roda em segundo plano sempre, outra na tela de Ajustes). Elas podiam disputar entre si e uma atropelar o resultado da outra — contribuindo para casos raros de 'reparei e continuou falhando'. Agora elas são organizadas numa fila: uma espera a outra terminar, sempre.",
       "type": "correcao"
     },
     {
-      "title": "Cartão arquivado não bagunça mais o histórico",
-      "desc": "Se um dia você arquivar um cartão, as compras antigas dele continuarão contando no mês de vencimento da fatura, como todas as outras — antes elas voltariam silenciosamente a contar pelo mês da compra, recriando a diferença de totais que acabamos de corrigir.",
-      "type": "correcao"
-    },
-    {
-      "title": "Telas de cartão mais rápidas e à prova de mudanças futuras",
-      "desc": "A busca de compras de cartão agora traz só o necessário para o período visível (com folga de segurança), em vez do histórico inteiro — mais leve conforme seus dados crescem. E a regra que decide em qual mês cada compra conta ganhou 18 testes automáticos: se alguém mudar esse cálculo no futuro, o sistema acusa na hora se quebrar.",
+      "title": "Convite de notificações mais discreto",
+      "desc": "O convite para ativar notificações não aparece mais em cima dos avisos de 'instalar o app' na primeira visita, e não fica reaparecendo sozinho durante o uso — só é oferecido uma vez por sessão do aparelho.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "pages/Reports.tsx: gate filtersLoaded — fetchStats só roda após fetchFilters preencher cards/cardStatements (setFiltersLoaded(true) em finally, para não travar a tela em caso de erro); dropdown de cartões filtra is_archived; query de cards passa a trazer arquivados para o mapa de competência.",
-    "pages/History.tsx: fetchSlotTotals (Comparar Períodos) busca cards + card_statements frescos do Supabase quando online, em vez de depender do estado do componente (que podia estar vazio se o usuário abrisse a comparação antes do fetchData inicial terminar); fallback offline usa novo estado allCardMeta.",
-    "pages/History.tsx: query de cards sem filtro is_archived (competência de cartão arquivado preservada); UI de filtro e filtro padrão (allCardIds) continuam só com ativos; novo estado allCardMeta com todos.",
-    "pages/History.tsx + pages/Reports.tsx: busca de card_transactions limitada à janela [start − 92 dias, end] — o vencimento nunca é anterior à compra e fica no máximo ~62 dias depois, então a folga de 92 dias cobre com sobra sem baixar o histórico inteiro.",
-    "lib/dateUtils.ts: novo DateUtils.addDaysISO(dateStr, delta) com aritmética UTC e preservação das sentinelas 0001-01-01/9999-12-31 dos presets de período.",
-    "tests/historyUtils.competence.test.ts (novo): 18 testes cobrindo getCardCompetenceDate (viradas de mês/ano, due_day < closing_day, configurações reais dos cartões) + invariante da janela de 92 dias + addDaysISO. Suíte total: 85 testes."
+    "lib/pushUtils.ts: fila serializePushOp (Promise chain) em torno de ensureFreshPushSubscription e subscribeUserToPush — impede duas chamadas concorrentes de unsubscribe()/subscribe() no mesmo PushSubscription, causa raiz de assinatura no banco divergir da assinatura real do navegador.",
+    "components/PushManager.tsx: inviteCheckedRef evita repetir a checagem do convite a cada onAuthStateChange (Supabase dispara esse evento também em refresh silencioso de token, não só no login); isInstallPromptPending() adia o convite de notificações se o aviso de instalar o app (PWA/iOS) ainda pode aparecer, evitando dois banners disputando a tela."
   ]
 }

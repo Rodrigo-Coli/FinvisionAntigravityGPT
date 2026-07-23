@@ -1,5 +1,26 @@
 [
   {
+    "version": "2026.07.23.1839",
+    "title": "Notificações: Reforço Contra Corrida Interna",
+    "date": "23/07/2026",
+    "benefits": [
+      {
+        "title": "Fim da 'corrida' entre partes do app na hora de renovar a notificação",
+        "desc": "O app tem duas rotinas que podem tentar renovar a conexão de notificações do aparelho ao mesmo tempo (uma que roda em segundo plano sempre, outra na tela de Ajustes). Elas podiam disputar entre si e uma atropelar o resultado da outra — contribuindo para casos raros de 'reparei e continuou falhando'. Agora elas são organizadas numa fila: uma espera a outra terminar, sempre.",
+        "type": "correcao"
+      },
+      {
+        "title": "Convite de notificações mais discreto",
+        "desc": "O convite para ativar notificações não aparece mais em cima dos avisos de 'instalar o app' na primeira visita, e não fica reaparecendo sozinho durante o uso — só é oferecido uma vez por sessão do aparelho.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "lib/pushUtils.ts: fila serializePushOp (Promise chain) em torno de ensureFreshPushSubscription e subscribeUserToPush — impede duas chamadas concorrentes de unsubscribe()/subscribe() no mesmo PushSubscription, causa raiz de assinatura no banco divergir da assinatura real do navegador.",
+      "components/PushManager.tsx: inviteCheckedRef evita repetir a checagem do convite a cada onAuthStateChange (Supabase dispara esse evento também em refresh silencioso de token, não só no login); isInstallPromptPending() adia o convite de notificações se o aviso de instalar o app (PWA/iOS) ainda pode aparecer, evitando dois banners disputando a tela."
+    ]
+  },
+  {
     "version": "2026.07.23.1122",
     "title": "Cartão de Crédito: Acabamento da Regra do Mês de Vencimento",
     "date": "23/07/2026",

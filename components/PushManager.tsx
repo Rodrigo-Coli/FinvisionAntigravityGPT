@@ -26,6 +26,7 @@ const INVITE_DISMISSED_KEY = 'zyvion_push_invite_dismissed';
 export function PushManager() {
   const lastCheckRef = useRef<string>('');
   const healedRef = useRef(false);
+  const inviteCheckedRef = useRef(false);
   const [showInvite, setShowInvite] = useState(false);
   const [activating, setActivating] = useState(false);
 
@@ -62,16 +63,38 @@ export function PushManager() {
     if (Notification.permission === 'granted') {
       await runBillsCheck();
       await autoHealSubscription(user.id);
-    } else if (Notification.permission === 'default' && !localStorage.getItem(INVITE_DISMISSED_KEY)) {
-      // Convite de ativação: só para quem nunca decidiu (nem permitiu, nem bloqueou)
+    } else if (
+      Notification.permission === 'default' &&
+      !localStorage.getItem(INVITE_DISMISSED_KEY) &&
+      !inviteCheckedRef.current &&
+      !isInstallPromptPending()
+    ) {
+      // Convite de ativação: só para quem nunca decidiu (nem permitiu, nem
+      // bloqueou). inviteCheckedRef evita repetir a checagem a cada renovação
+      // silenciosa de login do Supabase (onAuthStateChange também dispara
+      // init() nesses casos, não só no login inicial).
+      inviteCheckedRef.current = true;
       try {
         const { data } = await supabase.from('user_settings').select('push_enabled').eq('user_id', user.id).maybeSingle();
         if (!data?.push_enabled) {
-          // Pequeno delay para não competir com prompts de instalação do PWA
           setTimeout(() => setShowInvite(true), 6000);
         }
       } catch { /* silencioso */ }
     }
+  };
+
+  // Evita competir com os avisos de "instalar o app" (PWA/iOS), que também
+  // aparecem na primeira visita: se algum ainda pode aparecer, adia o
+  // convite de notificações para a próxima abertura do app.
+  const isInstallPromptPending = () => {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+      || (window.navigator as any).standalone === true;
+    if (isStandalone) return false;
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    if (isIOS) return !sessionStorage.getItem('ios-prompt-shown');
+
+    return !localStorage.getItem('pwa-prompt-dismissed') && !!(window as any).__pwaInstallPrompt;
   };
 
   /**
