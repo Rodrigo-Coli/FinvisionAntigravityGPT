@@ -95,5 +95,25 @@ export const DateUtils = {
         const date = new Date(year, month - 1);
         const monthStr = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(date).toUpperCase();
         return `${monthStr} ${year}`;
+    },
+
+    /**
+     * Soma (ou subtrai, com delta negativo) dias a uma data YYYY-MM-DD sem
+     * deslocamento de fuso horário (aritmética em UTC). Se a string não for
+     * uma data válida (ex: sentinelas "0001-01-01"/"9999-12-31" dos presets
+     * de período), devolve a própria string sem alterar.
+     */
+    addDaysISO: (dateStr: string, delta: number): string => {
+        const pure = (dateStr || '').split('T')[0];
+        const m = pure.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return dateStr;
+        const year = parseInt(m[1], 10);
+        // Sentinelas de "período inteiro" ficam como estão — somar/subtrair dias
+        // nelas não tem significado e poderia estourar o range do Date.
+        if (year < 1900 || year > 9000) return dateStr;
+        const d = new Date(Date.UTC(year, parseInt(m[2], 10) - 1, parseInt(m[3], 10)));
+        d.setUTCDate(d.getUTCDate() + delta);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
     }
 };

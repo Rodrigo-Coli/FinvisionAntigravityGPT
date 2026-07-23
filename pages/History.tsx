@@ -191,7 +191,9 @@ const HistoryPage: React.FC = () => {
   const [chartTransactions, setChartTransactions] = useState<Transaction[]>([]); // full set for charts (no pagination)
   const [chartCategoryTransactions, setChartCategoryTransactions] = useState<Transaction[]>([]); // banco + cartão combinados, só para o gráfico de categorias
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
-  const [cards, setCards] = useState<{ id: string; name: string; last4?: string; closingDay?: number; dueDay?: number; isAdditional?: boolean; parentCardId?: string; sumsIntoInvoice?: boolean }[]>([]);
+  const [cards, setCards] = useState<{ id: string; name: string; last4?: string; closingDay?: number; dueDay?: number; isAdditional?: boolean; parentCardId?: string; sumsIntoInvoice?: boolean; isArchived?: boolean }[]>([]);
+  // Todos os cartões (inclusive arquivados) — só para o cálculo de competência.
+  const [allCardMeta, setAllCardMeta] = useState<{ id: string; name: string; closingDay?: number; dueDay?: number; isAdditional?: boolean; parentCardId?: string; sumsIntoInvoice?: boolean; isArchived?: boolean }[]>([]);
   const [cardStatements, setCardStatements] = useState<{ id: string; due_date: string }[]>([]);
   const [availableCategories, setAvailableCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [categoryObjects, setCategoryObjects] = useState<{ name: string, type?: 'INCOME' | 'EXPENSE' }[]>(DEFAULT_CATEGORIES.map(c => ({ name: c })));
@@ -564,7 +566,10 @@ const HistoryPage: React.FC = () => {
             uniqueCardDefs.push(c);
           }
         }
-        setCards(uniqueCardDefs.map((c: any) => ({
+        // A lista da UI (filtro "Conta") mostra só cartões ativos; o estado
+        // completo (allCardMeta) guarda TODOS — inclusive arquivados — porque o
+        // cálculo de competência precisa do fechamento/vencimento deles também.
+        const mapCardDef = (c: any) => ({
           id: c.id,
           name: c.name || 'Cartão',
           last4: c.last4,
@@ -572,8 +577,11 @@ const HistoryPage: React.FC = () => {
           dueDay: c.due_day,
           isAdditional: !!c.is_additional,
           parentCardId: c.parent_card_id || undefined,
-          sumsIntoInvoice: c.sums_into_invoice !== false
-        })).sort((a, b) => a.name.localeCompare(b.name)));
+          sumsIntoInvoice: c.sums_into_invoice !== false,
+          isArchived: !!c.is_archived
+        });
+        setCards(uniqueCardDefs.filter((c: any) => !c.is_archived).map(mapCardDef).sort((a, b) => a.name.localeCompare(b.name)));
+        setAllCardMeta(uniqueCardDefs.map(mapCardDef));
         setCardStatements((cardStatements || []).map((s: any) => ({ id: s.id, due_date: String(s.due_date || '').split('T')[0] })));
 
         const deduplicatedOwners = Array.from(new Set((entities || []).map((o: string) => o.trim()))).filter(Boolean);
@@ -595,7 +603,8 @@ const HistoryPage: React.FC = () => {
             // Cartões não têm a flag "include_in_dashboard" — entram sempre por padrão,
             // senão compras de cartão (principalmente cartões sem conta vinculada) somem
             // das telas de Cartão/Tudo assim que o filtro de Conta é inicializado.
-            const allCardIds = uniqueCardDefs.map((c: any) => c.id);
+            // Arquivados ficam de fora do filtro padrão (a query agora traz todos).
+            const allCardIds = uniqueCardDefs.filter((c: any) => !c.is_archived).map((c: any) => c.id);
             const summingIds = [...summingAccountIds, ...allCardIds];
 
             if (summingIds.length > 0) {
@@ -1005,7 +1014,11 @@ const HistoryPage: React.FC = () => {
       // 2. Busca online atualizada em segundo plano (silent refresh)
       const [accRes, cardDefsRes, catRes, subRes, entitiesRes, entityObjs, cardStatementsRes] = await Promise.all([
         supabase.from('accounts').select('*').eq('is_archived', false),
-        supabase.from('cards').select('id, name, last4, closing_day, due_day, is_additional, parent_card_id, sums_into_invoice').eq('user_id', user.id).eq('is_archived', false),
+        // Traz TODOS os cartões (inclusive arquivados): o cálculo de competência
+        // (mês de vencimento) precisa do closing_day/due_day mesmo de cartão
+        // arquivado, senão as compras antigas dele voltariam a contar pela data
+        // da compra. A UI de filtro continua listando só os ativos (renderData).
+        supabase.from('cards').select('id, name, last4, closing_day, due_day, is_additional, parent_card_id, sums_into_invoice, is_archived').eq('user_id', user.id),
         supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name'),
         supabase.from('subcategories').select('*').eq('user_id', user.id).order('name'),
         FinanceService.getEntities(),
@@ -1071,14 +1084,21 @@ const HistoryPage: React.FC = () => {
       let cardOffset = 0;
 
       while (hasMoreCards) {
-        // Sem filtro de data aqui: uma compra de cartão pode ter sido feita em um mês
-        // mas pertencer à fatura que vence no mês seguinte. O recorte por período
-        // correto (mês de VENCIMENTO da fatura) é aplicado depois, em memória, via
-        // HistoryUtils.getCardCompetenceDate/card_statements — não pela data da compra.
+        // O recorte por período correto (mês de VENCIMENTO da fatura) é aplicado
+        // em memória via HistoryUtils.getCardCompetenceDate/card_statements — não
+        // pela data da compra. Mas dá pra limitar a busca com uma janela segura:
+        // o vencimento nunca é anterior à compra e fica no máximo ~62 dias depois
+        // (compra logo após o fechamento + due_day < closing_day vira 2 meses).
+        // Então compras com vencimento dentro de [start, end] têm data de compra
+        // dentro de [start - 92 dias, end] — folga de 92 dias cobre com sobra,
+        // sem precisar baixar o histórico inteiro do usuário a cada carga.
         let chunkQuery = supabase.from('card_transactions')
           .select('id, date, amount, description, card_id, statement_id, category_id, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)')
           .eq('user_id', user.id)
           .range(cardOffset, cardOffset + 999);
+
+        if (startDate) chunkQuery = chunkQuery.gte('date', DateUtils.addDaysISO(startDate, -92));
+        if (endDate) chunkQuery = chunkQuery.lte('date', endDate);
 
         const { data, error } = await chunkQuery;
         if (error) {
@@ -2392,24 +2412,55 @@ const HistoryPage: React.FC = () => {
   const fetchSlotTotals = async (start: string, end: string) => {
     let rawTxs: any[] = [];
     let rawCardTxs: any[] = [];
+    // Cartões/faturas para o cálculo de competência: busca fresco quando online
+    // (o usuário pode abrir "Comparar Períodos" antes do fetchData principal
+    // terminar de preencher os estados — sem isso, os totais dos slots contariam
+    // as compras pelo mês da compra em vez do vencimento). Offline: usa o estado.
+    let slotCardDefs: any[] = allCardMeta;
+    let slotStatements: { id: string; due_date: string }[] = cardStatements;
     if (navigator.onLine && supabase && userId) {
       try {
-        const { data: txs } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('is_deleted', false)
-          .gte('date', start)
-          .lte('date', end);
-        rawTxs = txs || [];
-
-        // Sem filtro de data: uma compra pode pertencer à fatura de outro mês.
-        // Recorte correto (mês de vencimento) é aplicado abaixo, em memória.
-        const { data: cardTxs } = await supabase
-          .from('card_transactions')
-          .select('*, categories(name), cards(account_id, name)')
-          .eq('user_id', userId);
-        rawCardTxs = cardTxs || [];
+        const [txsRes, cardTxsRes, cardsRes, stmtsRes] = await Promise.all([
+          supabase
+            .from('transactions')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('is_deleted', false)
+            .gte('date', start)
+            .lte('date', end),
+          // Janela segura: vencimento nunca é anterior à compra e no máximo ~62
+          // dias depois — 92 dias de folga cobre; recorte exato vem abaixo.
+          supabase
+            .from('card_transactions')
+            .select('*, categories(name), cards(account_id, name)')
+            .eq('user_id', userId)
+            .gte('date', DateUtils.addDaysISO(start, -92))
+            .lte('date', end),
+          // Inclui arquivados: competência precisa do fechamento/vencimento deles.
+          supabase
+            .from('cards')
+            .select('id, closing_day, due_day, is_additional, parent_card_id, sums_into_invoice')
+            .eq('user_id', userId),
+          supabase
+            .from('card_statements')
+            .select('id, due_date')
+            .eq('user_id', userId)
+        ]);
+        rawTxs = txsRes.data || [];
+        rawCardTxs = cardTxsRes.data || [];
+        if (cardsRes.data) {
+          slotCardDefs = cardsRes.data.map((c: any) => ({
+            id: c.id,
+            closingDay: c.closing_day,
+            dueDay: c.due_day,
+            isAdditional: !!c.is_additional,
+            parentCardId: c.parent_card_id || undefined,
+            sumsIntoInvoice: c.sums_into_invoice !== false
+          }));
+        }
+        if (stmtsRes.data) {
+          slotStatements = stmtsRes.data.map((s: any) => ({ id: s.id, due_date: String(s.due_date || '').split('T')[0] }));
+        }
       } catch (err) {
         console.error("Online fetch failed for comparison slot, falling back to cache:", err);
       }
@@ -2436,7 +2487,7 @@ const HistoryPage: React.FC = () => {
 
     // Mês de vencimento da fatura por compra (mesma regra do fetchData principal).
     const cardMetaById = new Map<string, { closingDay?: number; dueDay?: number; isAdditional?: boolean; parentCardId?: string; sumsIntoInvoice?: boolean }>();
-    cards.forEach(c => cardMetaById.set(c.id, c));
+    slotCardDefs.forEach(c => cardMetaById.set(c.id, c));
     const getEffectiveCardMeta = (cardId?: string) => {
       if (!cardId) return undefined;
       const meta = cardMetaById.get(cardId);
@@ -2447,7 +2498,7 @@ const HistoryPage: React.FC = () => {
       return meta;
     };
     const stmtDueById = new Map<string, string>();
-    cardStatements.forEach(s => { if (s.id && s.due_date) stmtDueById.set(s.id, s.due_date); });
+    slotStatements.forEach(s => { if (s.id && s.due_date) stmtDueById.set(s.id, s.due_date); });
     const getCompetenceDate = (ct: any): string => {
       if (ct.statement_id && stmtDueById.has(ct.statement_id)) return stmtDueById.get(ct.statement_id)!;
       const meta = getEffectiveCardMeta(ct.card_id);

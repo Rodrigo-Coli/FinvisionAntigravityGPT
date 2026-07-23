@@ -1,27 +1,30 @@
 {
-  "version": "2026.07.23.1119",
-  "title": "Cartões no Celular Sem Rolagem Lateral + IA Enxergando Seus Cartões",
+  "version": "2026.07.23.1122",
+  "title": "Cartão de Crédito: Acabamento da Regra do Mês de Vencimento",
   "date": "23/07/2026",
   "benefits": [
     {
-      "title": "Transações do cartão inteiras na tela do celular",
-      "desc": "Na tela de Cartões de Crédito, a lista de transações aparecia como uma tabela larga: no celular você via só Data e Descrição e precisava arrastar para o lado para ver categoria, valor, fatura e botões. Agora cada transação vira um cartãozinho com tudo visível de uma vez — data, valor (com o botão de inverter compra/estorno), descrição, categoria, subcategoria, perfil, fatura do mês, anexo e excluir — sem nenhuma rolagem lateral. No computador a tabela continua igual.",
+      "title": "Relatórios certos já na primeira olhada",
+      "desc": "A tela de Relatórios podia mostrar, no primeiro carregamento, os gastos de cartão contados pelo mês da compra (regra antiga) e só corrigir quando você mexia em algum filtro — era uma corrida interna entre duas buscas de dados. Agora o cálculo espera os dados dos cartões chegarem antes de somar, então o número certo aparece de primeira. O mesmo acerto foi feito no recurso Comparar Períodos da tela de Transações.",
+      "type": "correcao"
+    },
+    {
+      "title": "Cartão arquivado não bagunça mais o histórico",
+      "desc": "Se um dia você arquivar um cartão, as compras antigas dele continuarão contando no mês de vencimento da fatura, como todas as outras — antes elas voltariam silenciosamente a contar pelo mês da compra, recriando a diferença de totais que acabamos de corrigir.",
+      "type": "correcao"
+    },
+    {
+      "title": "Telas de cartão mais rápidas e à prova de mudanças futuras",
+      "desc": "A busca de compras de cartão agora traz só o necessário para o período visível (com folga de segurança), em vez do histórico inteiro — mais leve conforme seus dados crescem. E a regra que decide em qual mês cada compra conta ganhou 18 testes automáticos: se alguém mudar esse cálculo no futuro, o sistema acusa na hora se quebrar.",
       "type": "melhoria"
-    },
-    {
-      "title": "Assistente de IA agora conhece seus cartões de crédito",
-      "desc": "O chat do assistente (no app e no WhatsApp) buscava seus cartões num lugar errado do banco de dados e por isso respondia como se você não tivesse nenhum cartão cadastrado. Corrigido: agora ele enxerga o nome, a bandeira e o limite de cada cartão ativo ao montar as respostas.",
-      "type": "correcao"
-    },
-    {
-      "title": "Cadastro de conta nova voltou a funcionar",
-      "desc": "Um problema no banco de dados impedia qualquer pessoa de criar conta nova (inclusive o modo demonstração). A estrutura foi restaurada, o painel do administrador voltou a listar os usuários com seus planos e uma porta de segurança que permitia comandos no banco sem login foi fechada.",
-      "type": "correcao"
     }
   ],
   "changes": [
-    "components/cards/TransactionList.tsx: nova visão mobile (< md) em formato de card empilhado com todos os campos editáveis (data, valor com botão ±, descrição, categoria, subcategoria, perfil, fatura, anexo, excluir); a grade de 12 colunas com min-w-[900px] ficou restrita a md+ (hidden md:block).",
-    "api/_lib/finvision-chat.ts e api/_lib/whatsapp-webhook.ts: consulta de cartões corrigida de credit_cards (tabela inexistente) para cards, selecionando name/brand/limit_total e filtrando is_archived=false; prompt passa a exibir nome ou bandeira + limite real.",
-    "Supabase: tabelas plans e subscriptions restauradas após colisão de schema externo (migration restore_plans_and_subscriptions_after_kisaro_collision); FKs recriadas subscriptions→profiles (embeds do AdminDashboard), coupons→plans e affiliate_commission_events→subscriptions (migration restore_lost_fks_and_lock_exec_sql); EXECUTE de exec_sql revogado de anon/authenticated, mantido só para service_role."
+    "pages/Reports.tsx: gate filtersLoaded — fetchStats só roda após fetchFilters preencher cards/cardStatements (setFiltersLoaded(true) em finally, para não travar a tela em caso de erro); dropdown de cartões filtra is_archived; query de cards passa a trazer arquivados para o mapa de competência.",
+    "pages/History.tsx: fetchSlotTotals (Comparar Períodos) busca cards + card_statements frescos do Supabase quando online, em vez de depender do estado do componente (que podia estar vazio se o usuário abrisse a comparação antes do fetchData inicial terminar); fallback offline usa novo estado allCardMeta.",
+    "pages/History.tsx: query de cards sem filtro is_archived (competência de cartão arquivado preservada); UI de filtro e filtro padrão (allCardIds) continuam só com ativos; novo estado allCardMeta com todos.",
+    "pages/History.tsx + pages/Reports.tsx: busca de card_transactions limitada à janela [start − 92 dias, end] — o vencimento nunca é anterior à compra e fica no máximo ~62 dias depois, então a folga de 92 dias cobre com sobra sem baixar o histórico inteiro.",
+    "lib/dateUtils.ts: novo DateUtils.addDaysISO(dateStr, delta) com aritmética UTC e preservação das sentinelas 0001-01-01/9999-12-31 dos presets de período.",
+    "tests/historyUtils.competence.test.ts (novo): 18 testes cobrindo getCardCompetenceDate (viradas de mês/ano, due_day < closing_day, configurações reais dos cartões) + invariante da janela de 92 dias + addDaysISO. Suíte total: 85 testes."
   ]
 }

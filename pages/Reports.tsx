@@ -31,6 +31,11 @@ const Reports: React.FC = () => {
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  // Gate: fetchStats só roda depois que cartões/faturas chegaram — sem isso, o
+  // primeiro cálculo da tela rodava com `cards`/`cardStatements` vazios e somava
+  // as compras de cartão pelo mês da COMPRA (comportamento antigo) em vez do mês
+  // de vencimento, corrigindo sozinho só quando o usuário mexia em algum filtro.
+  const [filtersLoaded, setFiltersLoaded] = useState(false);
 
   // Lançamentos mesclados para exportação/impressão
   const [printTxs, setPrintTxs] = useState<any[]>([]);
@@ -40,11 +45,12 @@ const Reports: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!filtersLoaded) return;
     fetchStats();
-  }, [dateRange, selectedAccountId, selectedCategory]);
+  }, [dateRange, selectedAccountId, selectedCategory, filtersLoaded]);
 
   const fetchFilters = async () => {
-    if (!supabase) return;
+    if (!supabase) { setFiltersLoaded(true); return; }
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
@@ -52,7 +58,9 @@ const Reports: React.FC = () => {
 
       const [accRes, cardRes, catRes, stmtRes] = await Promise.all([
         supabase.from('accounts').select('id, institution').eq('user_id', user.id).eq('is_archived', false),
-        supabase.from('cards').select('id, name, closing_day, due_day, is_additional, parent_card_id, sums_into_invoice').eq('user_id', user.id).eq('is_archived', false),
+        // Traz TODOS os cartões (inclusive arquivados): o cálculo de competência
+        // precisa do fechamento/vencimento deles também. O dropdown filtra os ativos.
+        supabase.from('cards').select('id, name, closing_day, due_day, is_additional, parent_card_id, sums_into_invoice, is_archived').eq('user_id', user.id),
         supabase.from('categories').select('name').eq('user_id', user.id).eq('is_archived', false),
         // Vencimento real das faturas — usado pra contar a compra de cartão no mês
         // em que a fatura vence, não no mês da compra.
@@ -68,6 +76,10 @@ const Reports: React.FC = () => {
       }
     } catch (e) {
       console.error('Erro ao buscar filtros:', e);
+    } finally {
+      // Libera o cálculo de stats mesmo se algo falhar — melhor mostrar números
+      // (no pior caso com fallback pela data da compra) do que tela vazia.
+      setFiltersLoaded(true);
     }
   };
 
@@ -123,13 +135,16 @@ const Reports: React.FC = () => {
       // já entram via card_transactions. Se incluíssemos o BILL_PAYMENT junto, a fatura
       // seria contada duas vezes (uma como pagamento + uma via cada compra).
       if (!selectedAccountId || isCard) {
-        // Sem filtro de data aqui: uma compra pode ter sido feita fora do período mas
-        // pertencer à fatura que vence dentro dele (e vice-versa). O recorte certo
-        // (mês de vencimento da fatura) é aplicado depois, em memória.
+        // O recorte certo (mês de vencimento da fatura) é aplicado em memória,
+        // mas dá pra limitar a busca com janela segura: o vencimento nunca é
+        // anterior à compra e fica no máximo ~62 dias depois — 92 dias de folga
+        // cobre com sobra, sem baixar o histórico inteiro.
         let q = supabase
           .from('card_transactions')
           .select('date, description, category, amount, card_id, statement_id')
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          .gte('date', DateUtils.addDaysISO(dateRange.start, -92))
+          .lte('date', dateRange.end);
 
         if (isCard && selectedAccountId) {
           q = q.eq('card_id', selectedAccountId);
@@ -344,7 +359,7 @@ const Reports: React.FC = () => {
                   {accounts.map(a => <option key={a.id} value={a.id}>{a.institution}</option>)}
                 </optgroup>
                 <optgroup label="Cartões de Crédito">
-                  {cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {cards.filter(c => !c.is_archived).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </optgroup>
               </select>
             </div>
