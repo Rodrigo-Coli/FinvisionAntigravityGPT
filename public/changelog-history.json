@@ -1,5 +1,21 @@
 [
   {
+    "version": "2026.07.23.0005",
+    "title": "Notificações Diárias: Causa Raiz Definitiva Corrigida",
+    "date": "23/07/2026",
+    "benefits": [
+      {
+        "title": "Notificações push finalmente estáveis",
+        "desc": "A correção de ontem tratou parte do problema, mas faltava uma peça: o próprio aplicativo instalado no celular guardava em memória (\"cache\") a chave de segurança antiga, e continuava usando ela mesmo depois do servidor já estar com a chave certa — por isso o reparo parecia funcionar e o teste falhava de novo. Agora o app nunca mais guarda essa chave em cache: ele sempre busca a mais atual do servidor, então o conserto automático passa a funcionar de verdade.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "src/sw.js (Service Worker v9): rotas /api/* passam a ir direto para a rede, sem cache — antes caíam no cache-first genérico e serviam respostas antigas (inclusive /api/vapid-public-key, causa do 403 persistente mesmo após reparo). Cache dinâmico renomeado para zyvion-dynamic-v9 com limpeza automática das versões anteriores no evento 'activate'.",
+      "VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY: par de chaves rotacionado no servidor (Vercel) para um par gerado do zero e validado — o par anterior estava inconsistente entre si (chave pública e privada não combinavam), causando falha 403 mesmo em assinaturas recém-criadas."
+    ]
+  },
+  {
     "version": "2026.07.22.2345",
     "title": "Estornos de Cartão Corrigidos + Melhorias na Conciliação",
     "date": "22/07/2026",

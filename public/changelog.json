@@ -1,37 +1,16 @@
 {
-  "version": "2026.07.22.2345",
-  "title": "Estornos de Cartão Corrigidos + Melhorias na Conciliação",
-  "date": "22/07/2026",
+  "version": "2026.07.23.0005",
+  "title": "Notificações Diárias: Causa Raiz Definitiva Corrigida",
+  "date": "23/07/2026",
   "benefits": [
     {
-      "title": "Estornos da fatura agora entram com o sinal certo",
-      "desc": "Bancos brasileiros como o Bradesco marcam estornos com o sinal de menos depois do valor (ex: \"33,28-\"), e a leitura inteligente nem sempre entendia isso — estornos entravam como se fossem compras. Agora o app confere o texto da fatura por conta própria e corrige automaticamente qualquer estorno que a leitura tenha deixado passar. Testado com fatura real: todos os estornos foram identificados.",
+      "title": "Notificações push finalmente estáveis",
+      "desc": "A correção de ontem tratou parte do problema, mas faltava uma peça: o próprio aplicativo instalado no celular guardava em memória (\"cache\") a chave de segurança antiga, e continuava usando ela mesmo depois do servidor já estar com a chave certa — por isso o reparo parecia funcionar e o teste falhava de novo. Agora o app nunca mais guarda essa chave em cache: ele sempre busca a mais atual do servidor, então o conserto automático passa a funcionar de verdade.",
       "type": "correcao"
-    },
-    {
-      "title": "Botão para inverter compra ↔ estorno",
-      "desc": "O teclado numérico do celular não tem a tecla de menos, então não dava para corrigir um valor na mão. Agora há um botão \"±\" ao lado do valor de cada lançamento em Cartões, e um botão \"Inverter sinal\" em cada item da Conciliação: um toque transforma uma compra em estorno (e vice-versa).",
-      "type": "novidade"
-    },
-    {
-      "title": "Categoria alterada na Conciliação não se perde mais",
-      "desc": "Antes, se você mudasse a categoria de uma transação e clicasse em outra para conferir, a alteração era descartada e voltava a sugestão da IA. Agora o app salva automaticamente o que você mudou ao trocar de transação ou sair da tela.",
-      "type": "correcao"
-    },
-    {
-      "title": "Valores da fatura sem cortes no celular",
-      "desc": "Os cartõezinhos de Lançado, Pago e Pendente cortavam o valor com \"...\" quando não cabia (ex: \"R$1.600...\"). Agora o valor aparece sempre completo — se faltar espaço, ele quebra em duas linhas em vez de cortar.",
-      "type": "melhoria"
     }
   ],
   "changes": [
-    "api/_lib/statement-sign-check.ts (novo): extrai o texto do PDF via unpdf, detecta valores com \"menos no final\" (padrão brasileiro de crédito/estorno, ignorando linhas de Total) e corrige o sinal das transações que a IA classificou errado, com consumo de contagens para não afetar compras de valor igual.",
-    "api/_lib/handle-card-reconcile.ts e parse-card-statement.ts: correção determinística de sinal aplicada após o parse + prompt da Gemini reforçado sobre o formato \"74,99-\" e pagamentos de fatura.",
-    "components/cards/TransactionList.tsx: botão ± na coluna Valor para inverter compra ↔ estorno (valor negativo destacado em verde).",
-    "pages/Reconcile.tsx: botão \"Inverter sinal\" na fila de conciliação (handleFlipSign) + persistDraft — o rascunho de edição (categoria, subcategoria, perfil, descrição, data) é salvo automaticamente ao trocar de transação ou sair da tela.",
-    "services/reconciliation.service.ts: novo updateTransactionAmount para inverter o sinal de itens da fila.",
-    "components/cards/StatementSummary.tsx: valores de Lançado/Pago/Pendente sem truncate — quebra de linha natural no lugar do corte com reticências.",
-    "tests/statementSignCheck.test.ts (novo): 5 testes cobrindo a correção de sinal, incluindo o cenário real da fatura Bradesco.",
-    "package.json: nova dependência unpdf (leitura de texto de PDF no servidor)."
+    "src/sw.js (Service Worker v9): rotas /api/* passam a ir direto para a rede, sem cache — antes caíam no cache-first genérico e serviam respostas antigas (inclusive /api/vapid-public-key, causa do 403 persistente mesmo após reparo). Cache dinâmico renomeado para zyvion-dynamic-v9 com limpeza automática das versões anteriores no evento 'activate'.",
+    "VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY: par de chaves rotacionado no servidor (Vercel) para um par gerado do zero e validado — o par anterior estava inconsistente entre si (chave pública e privada não combinavam), causando falha 403 mesmo em assinaturas recém-criadas."
   ]
 }

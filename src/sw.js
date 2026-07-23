@@ -1,8 +1,10 @@
-// Zyvion — Service Worker v8
+// Zyvion — Service Worker v9
 // Compilado pelo vite-plugin-pwa (injectManifest)
 
 import { clientsClaim } from 'workbox-core';
 import { precacheAndRoute, cleanupOutdatedCaches, matchPrecache } from 'workbox-precaching';
+
+const DYNAMIC_CACHE = 'zyvion-dynamic-v9';
 
 // ── Controle ──────────────────────────────────────────────────────────
 self.addEventListener('message', (event) => {
@@ -38,6 +40,18 @@ self.addEventListener('message', (event) => {
 clientsClaim();
 cleanupOutdatedCaches();
 
+// Remove caches dinâmicos de versões anteriores (ex.: respostas de API
+// antigas guardadas por engano, como a chave VAPID pré-correção).
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(
+      keys
+        .filter((k) => k.startsWith('zyvion-dynamic-') && k !== DYNAMIC_CACHE)
+        .map((k) => caches.delete(k))
+    ))
+  );
+});
+
 // ── Precache (assets gerados pelo Vite) ───────────────────────────────
 precacheAndRoute(self.__WB_MANIFEST || []);
 
@@ -51,6 +65,15 @@ self.addEventListener('fetch', (event) => {
   if (url.hostname.includes('supabase.co')) return;
   if (url.hostname.includes('googleapis.com')) return;
 
+  // Nunca cachear respostas de /api/* — são dinâmicas (ex.: chave VAPID,
+  // saldo, etc.). Cachear aqui já causou notificação push quebrada porque o
+  // navegador continuava servindo uma chave VAPID antiga do cache mesmo após
+  // o servidor trocar a chave.
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   // Força network-first para version.json e changelog.json para permitir verificação de versão sem cache
   if (url.pathname.endsWith('version.json') || url.pathname.endsWith('changelog.json')) {
     event.respondWith(
@@ -58,7 +81,7 @@ self.addEventListener('fetch', (event) => {
         .then((response) => {
           if (response && response.status === 200) {
             const clone = response.clone();
-            caches.open('zyvion-dynamic-v8').then((cache) => cache.put(event.request, clone));
+            caches.open(DYNAMIC_CACHE).then((cache) => cache.put(event.request, clone));
           }
           return response;
         })
@@ -84,7 +107,7 @@ self.addEventListener('fetch', (event) => {
       return fetch(event.request).then((response) => {
         if (response && response.status === 200) {
           const clone = response.clone();
-          caches.open('zyvion-dynamic-v8').then((cache) => cache.put(event.request, clone));
+          caches.open(DYNAMIC_CACHE).then((cache) => cache.put(event.request, clone));
         }
         return response;
       }).catch(async () => {
