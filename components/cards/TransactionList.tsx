@@ -205,14 +205,29 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                         </div>
 
                                         {/* Amount */}
-                                        <div className="col-span-1">
+                                        <div className="col-span-1 flex items-center gap-1">
+                                            {/* Teclado numérico do celular não tem o sinal de menos —
+                                                este botão inverte compra ↔ estorno/crédito */}
+                                            <button
+                                                type="button"
+                                                disabled={isLocked}
+                                                title="Inverter sinal (compra ↔ estorno)"
+                                                onClick={() => {
+                                                    const newAmt = -Number(tx.amount || 0);
+                                                    onUpdateTxLocal(tx.id, { amount: newAmt });
+                                                    onSaveTxPatch(tx.id, { amount: newAmt });
+                                                }}
+                                                className={`shrink-0 w-5 h-5 flex items-center justify-center rounded-md border text-[10px] font-black transition-all ${isLocked ? 'text-slate-200 border-slate-100 cursor-not-allowed' : Number(tx.amount || 0) < 0 ? 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100' : 'text-slate-300 border-slate-200 hover:text-brand-600 hover:border-brand-300'}`}
+                                            >
+                                                ±
+                                            </button>
                                             <input
                                                 type="number"
                                                 value={Number(tx.amount || 0)}
                                                 disabled={isLocked}
                                                 onChange={(e) => onUpdateTxLocal(tx.id, { amount: Number(e.target.value) })}
                                                 onBlur={(e) => onSaveTxPatch(tx.id, { amount: Number(e.target.value) })}
-                                                className={`w-full text-[10px] font-black text-right bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm ${isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                className={`w-full text-[10px] font-black text-right bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm ${Number(tx.amount || 0) < 0 ? 'text-emerald-600' : ''} ${isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
                                             />
                                         </div>
 

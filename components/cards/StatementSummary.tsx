@@ -19,13 +19,17 @@ export const StatementSummary: React.FC<StatementSummaryProps> = ({
     statementTotal,
     statementPaid,
     statementOpen,
-    formatCurrency,
+    formatCurrency: formatCurrencyRaw,
     formatDateBR,
     onRefresh,
     onPay,
     onReopen,
     statementBadge
 }) => {
+    // O Intl usa espaço "que não quebra" entre "R$" e o número; trocamos por espaço
+    // normal pra permitir quebrar em duas linhas ("R$" / "1.600,00") quando o card
+    // for estreito no celular — antes o valor era cortado com "…".
+    const formatCurrency = (val: number) => formatCurrencyRaw(val).replace(/ /g, ' ');
     return (
         <div className="bg-white border border-slate-100 rounded-[24px] sm:rounded-[32px] p-5 sm:p-8 shadow-sm space-y-5 sm:space-y-8 animate-in fade-in duration-500">
             {/* TOP INFO & ACTIONS */}
@@ -85,7 +89,7 @@ export const StatementSummary: React.FC<StatementSummaryProps> = ({
                         <span className="inline sm:hidden">Lançado</span>
                         <span className="hidden sm:inline">Total Lançado</span>
                     </p>
-                    <p className="text-xs sm:text-3xl font-extrabold text-slate-900 tracking-tighter truncate">{formatCurrency(statementTotal)}</p>
+                    <p className="text-[11px] sm:text-3xl font-extrabold text-slate-900 tracking-tighter leading-tight break-words">{formatCurrency(statementTotal)}</p>
                 </div>
 
                 <div className="bg-white border border-slate-100 rounded-xl sm:rounded-[24px] p-3 sm:p-6 min-w-0">
@@ -93,14 +97,14 @@ export const StatementSummary: React.FC<StatementSummaryProps> = ({
                         <span className="inline sm:hidden">Pago</span>
                         <span className="hidden sm:inline">Total Pago</span>
                     </p>
-                    <p className="text-xs sm:text-3xl font-extrabold text-emerald-600 tracking-tighter truncate">{formatCurrency(statementPaid)}</p>
+                    <p className="text-[11px] sm:text-3xl font-extrabold text-emerald-600 tracking-tighter leading-tight break-words">{formatCurrency(statementPaid)}</p>
                 </div>
 
                 <div className="bg-rose-50 border border-rose-100 rounded-xl sm:rounded-[24px] p-3 sm:p-6 min-w-0">
                     <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-wider text-rose-600 mb-1 sm:mb-3 leading-none opacity-70">
                         Pendente
                     </p>
-                    <p className="text-xs sm:text-3xl font-extrabold text-rose-600 tracking-tighter truncate">{formatCurrency(statementOpen)}</p>
+                    <p className="text-[11px] sm:text-3xl font-extrabold text-rose-600 tracking-tighter leading-tight break-words">{formatCurrency(statementOpen)}</p>
                 </div>
             </div>
 

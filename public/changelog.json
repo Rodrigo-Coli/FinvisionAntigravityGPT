@@ -1,34 +1,37 @@
 {
-  "version": "2026.07.22.2330",
-  "title": "Notificações Diárias no Celular: Conserto Automático",
+  "version": "2026.07.22.2345",
+  "title": "Estornos de Cartão Corrigidos + Melhorias na Conciliação",
   "date": "22/07/2026",
   "benefits": [
     {
-      "title": "Notificações diárias voltaram a chegar no celular",
-      "desc": "Descobrimos por que os lembretes diários de vencimentos chegavam no WhatsApp mas não como notificação no celular: a \"conexão\" entre o seu aparelho e o servidor tinha ficado desatualizada, e o envio falhava em silêncio todo dia. Agora o app confere essa conexão toda vez que é aberto e, se estiver vencida, renova sozinho — sem você precisar fazer nada.",
+      "title": "Estornos da fatura agora entram com o sinal certo",
+      "desc": "Bancos brasileiros como o Bradesco marcam estornos com o sinal de menos depois do valor (ex: \"33,28-\"), e a leitura inteligente nem sempre entendia isso — estornos entravam como se fossem compras. Agora o app confere o texto da fatura por conta própria e corrige automaticamente qualquer estorno que a leitura tenha deixado passar. Testado com fatura real: todos os estornos foram identificados.",
       "type": "correcao"
     },
     {
-      "title": "Teste de notificação agora é de verdade",
-      "desc": "O botão \"Enviar notificação de teste\" em Ajustes mostrava a notificação direto no aparelho, sem passar pelo servidor — por isso dizia que estava tudo bem mesmo quando os lembretes diários não chegavam. Agora o teste é disparado pelo servidor, pelo mesmo caminho do lembrete diário: se ele chegar, é garantia de que o envio automático também chega.",
+      "title": "Botão para inverter compra ↔ estorno",
+      "desc": "O teclado numérico do celular não tem a tecla de menos, então não dava para corrigir um valor na mão. Agora há um botão \"±\" ao lado do valor de cada lançamento em Cartões, e um botão \"Inverter sinal\" em cada item da Conciliação: um toque transforma uma compra em estorno (e vice-versa).",
+      "type": "novidade"
+    },
+    {
+      "title": "Categoria alterada na Conciliação não se perde mais",
+      "desc": "Antes, se você mudasse a categoria de uma transação e clicasse em outra para conferir, a alteração era descartada e voltava a sugestão da IA. Agora o app salva automaticamente o que você mudou ao trocar de transação ou sair da tela.",
+      "type": "correcao"
+    },
+    {
+      "title": "Valores da fatura sem cortes no celular",
+      "desc": "Os cartõezinhos de Lançado, Pago e Pendente cortavam o valor com \"...\" quando não cabia (ex: \"R$1.600...\"). Agora o valor aparece sempre completo — se faltar espaço, ele quebra em duas linhas em vez de cortar.",
       "type": "melhoria"
-    },
-    {
-      "title": "Check-up de saúde das notificações em Ajustes",
-      "desc": "A tela de Ajustes agora mostra um selo verde quando a conexão de notificações está funcionando, um alerta amarelo com botão \"Reparar agora\" quando dá para consertar com um toque, e um passo a passo quando as notificações estão bloqueadas no navegador (caso que só você consegue desbloquear).",
-      "type": "novidade"
-    },
-    {
-      "title": "Convite para ativar notificações no primeiro uso",
-      "desc": "Quem ainda não ativou as notificações passa a receber um convite discreto dentro do app. Um toque em \"Ativar\" e os lembretes de vencimentos ficam ligados; quem preferir pode tocar em \"Agora não\" e o convite não aparece de novo.",
-      "type": "novidade"
     }
   ],
   "changes": [
-    "lib/pushUtils.ts: nova função ensureFreshPushSubscription — compara a chave VAPID do servidor com a da assinatura atual do navegador e renova silenciosamente quando divergem (auto-conserto).",
-    "components/PushManager.tsx: auto-conserto ao abrir o app (renova assinatura vencida e sincroniza com user_settings) + convite de ativação de notificações no primeiro uso (permission 'default', com dismiss persistido).",
-    "api/_lib/test-push.ts (novo): POST /api/test-push autenticado — envia push real via web-push com a assinatura gravada no banco; devolve reason (invalid_subscription/no_subscription/...) para o front reparar.",
-    "api/index.ts: rota /test-push registrada.",
-    "pages/Settings.tsx: check-up de saúde do push (checking/ok/repaired/off/needs_permission/blocked/broken), botão 'Reparar agora', instruções de desbloqueio, e botão de teste passando pelo servidor com renovação automática + retry em assinatura inválida."
+    "api/_lib/statement-sign-check.ts (novo): extrai o texto do PDF via unpdf, detecta valores com \"menos no final\" (padrão brasileiro de crédito/estorno, ignorando linhas de Total) e corrige o sinal das transações que a IA classificou errado, com consumo de contagens para não afetar compras de valor igual.",
+    "api/_lib/handle-card-reconcile.ts e parse-card-statement.ts: correção determinística de sinal aplicada após o parse + prompt da Gemini reforçado sobre o formato \"74,99-\" e pagamentos de fatura.",
+    "components/cards/TransactionList.tsx: botão ± na coluna Valor para inverter compra ↔ estorno (valor negativo destacado em verde).",
+    "pages/Reconcile.tsx: botão \"Inverter sinal\" na fila de conciliação (handleFlipSign) + persistDraft — o rascunho de edição (categoria, subcategoria, perfil, descrição, data) é salvo automaticamente ao trocar de transação ou sair da tela.",
+    "services/reconciliation.service.ts: novo updateTransactionAmount para inverter o sinal de itens da fila.",
+    "components/cards/StatementSummary.tsx: valores de Lançado/Pago/Pendente sem truncate — quebra de linha natural no lugar do corte com reticências.",
+    "tests/statementSignCheck.test.ts (novo): 5 testes cobrindo a correção de sinal, incluindo o cenário real da fatura Bradesco.",
+    "package.json: nova dependência unpdf (leitura de texto de PDF no servidor)."
   ]
 }

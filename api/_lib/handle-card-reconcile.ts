@@ -4,6 +4,7 @@ import { recordAiUsage } from './ai-usage.js';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { StatementTemplateHelper } from './statement-template-helper.js';
+import { extractTrailingMinusAmounts, applyTrailingMinusCorrection } from './statement-sign-check.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -60,7 +61,7 @@ SE for um arquivo de texto estruturado (como CSV ou Excel/XLSX), identifique a e
   "decimal_separator": "," ou "."
 }
 
-REGRAS: 1. DATA (YYYY-MM-DD). 2. DESCRIÇÃO. 3. VALOR: mantenha o sinal exatamente como aparece no extrato — compras normais são positivas; estornos, reembolsos, cashback ou qualquer crédito que reduza a fatura devem vir NEGATIVOS. PARCELAMENTO: Se '2/5', installment_number=2, installment_total=5.
+REGRAS: 1. DATA (YYYY-MM-DD). 2. DESCRIÇÃO. 3. VALOR: mantenha o sinal exatamente como aparece no extrato — compras normais são positivas; estornos, reembolsos, cashback ou qualquer crédito que reduza a fatura devem vir NEGATIVOS. ATENÇÃO AO FORMATO BRASILEIRO: em faturas de bancos brasileiros (Bradesco, Itaú etc.) o sinal de menos costuma vir DEPOIS do valor (ex: "74,99-") ou isolado na linha/coluna seguinte ao valor — nesses casos o lançamento é um CRÉDITO/ESTORNO e o amount DEVE ser negativo, mesmo que a descrição seja igual à de uma compra normal (ex: estorno do Mercado Livre). Pagamentos da fatura ("PAGTO", "PAGAMENTO") também são créditos negativos. PARCELAMENTO: Se '2/5', installment_number=2, installment_total=5.
 
 RETORNE APENAS JSON NO FORMATO:
 {
@@ -133,6 +134,15 @@ RETORNE APENAS JSON NO FORMATO:
         console.log('[Card Reconcile] Aprendendo e salvando o novo modelo/template...');
         await StatementTemplateHelper.saveTemplate(supabase, imp.user_id, targetAccountId, true, imp.type, templateLearned);
       }
+    }
+
+    // Correção determinística de sinal: lê o texto do PDF e detecta valores com o
+    // "menos no final" ("33,28-", padrão de estorno/crédito em fatura brasileira).
+    // Se a IA tiver deixado algum estorno passar como compra positiva, vira aqui.
+    if (processedTxs.length > 0) {
+      const minusAmounts = await extractTrailingMinusAmounts(buffer, doc.mime_type || '');
+      const fixedCount = applyTrailingMinusCorrection(processedTxs, minusAmounts);
+      if (fixedCount > 0) console.log(`[Card Reconcile] ${fixedCount} lançamento(s) corrigido(s) para crédito/estorno pelo sinal no PDF.`);
     }
 
     const isMobills = import_source === 'smart' || (imp.parse_meta as any)?.is_mobills || imp.notes?.toLowerCase().includes('mobills') || imp.notes?.toLowerCase().includes('smart');

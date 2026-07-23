@@ -3,6 +3,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
+import { extractTrailingMinusAmounts, applyTrailingMinusCorrection } from './statement-sign-check.js';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || 'https://dummy.supabase.co',
@@ -26,7 +27,7 @@ export async function handleParseCardStatement(req: any, res: any) {
     if (!process.env.GEMINI_API_KEY && !process.env.API_KEY) throw new Error('GEMINI_API_KEY não configurada.');
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.API_KEY || '' });
 
-    const prompt = `Você é um especialista em conciliação bancária. Analise o extrato de cartão de crédito. Extraia todas as transações individuais para uma lista estruturada. REGRAS: 1. Campo 'date' deve ser YYYY-MM-DD. 2. Campo 'amount' deve ser um número float MANTENDO O SINAL exatamente como aparece no extrato: compras normais são positivas; estornos, reembolsos, cashback ou qualquer crédito que reduza a fatura devem vir NEGATIVOS. 3. Identifique o merchant e parcelamento se houver. Retorne APENAS um objeto JSON.`;
+    const prompt = `Você é um especialista em conciliação bancária. Analise o extrato de cartão de crédito. Extraia todas as transações individuais para uma lista estruturada. REGRAS: 1. Campo 'date' deve ser YYYY-MM-DD. 2. Campo 'amount' deve ser um número float MANTENDO O SINAL exatamente como aparece no extrato: compras normais são positivas; estornos, reembolsos, cashback ou qualquer crédito que reduza a fatura devem vir NEGATIVOS. ATENÇÃO AO FORMATO BRASILEIRO: em faturas de bancos brasileiros (Bradesco, Itaú etc.) o sinal de menos costuma vir DEPOIS do valor (ex: "74,99-") ou isolado na linha/coluna seguinte ao valor — nesses casos o lançamento é um CRÉDITO/ESTORNO e o amount DEVE ser negativo, mesmo que a descrição seja igual à de uma compra normal. Pagamentos da fatura ("PAGTO", "PAGAMENTO") também são créditos negativos. 3. Identifique o merchant e parcelamento se houver. Retorne APENAS um objeto JSON.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -43,6 +44,14 @@ export async function handleParseCardStatement(req: any, res: any) {
 
     const parsedData = JSON.parse((response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '{"transactions":[]}');
     const processedTxs = parsedData.transactions || [];
+
+    // Correção determinística de sinal: valores com "menos no final" no texto do PDF
+    // ("33,28-") são estornos/créditos — corrige o que a IA deixou passar como compra.
+    if (processedTxs.length > 0) {
+      const minusAmounts = await extractTrailingMinusAmounts(buffer, imp.documents.mime_type || '');
+      const fixedCount = applyTrailingMinusCorrection(processedTxs, minusAmounts);
+      if (fixedCount > 0) console.log(`[Parse Card Statement] ${fixedCount} lançamento(s) corrigido(s) para crédito/estorno pelo sinal no PDF.`);
+    }
 
     const txsToInsert = processedTxs.map((t: any) => {
       const fpData = `${t.date}|${t.amount.toFixed(2)}|${t.description.toLowerCase()}|${card_id || ''}`;

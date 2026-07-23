@@ -341,6 +341,42 @@ const Reconcile: React.FC = () => {
     await attemptUpload(false);
   };
 
+  // Persiste o rascunho de uma edi\u00e7\u00e3o (categoria, subcategoria, perfil, descri\u00e7\u00e3o, data)
+  // no banco e no estado local. Usado ao trocar de transa\u00e7\u00e3o ou sair da tela \u2014 antes,
+  // trocar de transa\u00e7\u00e3o descartava a altera\u00e7\u00e3o e a categoria "voltava" pra sugest\u00e3o da IA.
+  const persistDraft = (id: string, form: any, updateLocal: boolean = true) => {
+    if (!id || !form || !form.id) return;
+    ReconciliationService.updateTransaction(id, {
+      description: form.description,
+      date: form.date,
+      owner_name: form.owner_name,
+      category: form.category,
+      subcategory: form.subcategory,
+      metadata: form.metadata
+    }).catch((e) => console.error('Erro ao salvar rascunho da edi\u00e7\u00e3o:', e));
+    if (updateLocal) {
+      setImported(prev => prev.map(t => t.id === id ? {
+        ...t,
+        description: form.description ?? t.description,
+        date: form.date ?? t.date,
+        owner_name: form.owner_name ?? t.owner_name,
+        category: form.category ?? t.category,
+        subcategory: form.subcategory ?? (t as any).subcategory,
+        metadata: { ...t.metadata, category: form.category, subcategory: form.subcategory }
+      } as any : t));
+    }
+  };
+
+  // Refs espelham o rascunho atual pra conseguir salv\u00e1-lo no desmonte da tela
+  const editingIdRef = useRef<string | null>(null);
+  const editFormRef = useRef<any>({});
+  useEffect(() => { editingIdRef.current = editingId; }, [editingId]);
+  useEffect(() => { editFormRef.current = editForm; }, [editForm]);
+  useEffect(() => () => {
+    // Saiu da tela com uma edi\u00e7\u00e3o aberta \u2192 persiste s\u00f3 no banco (a tela j\u00e1 foi embora)
+    if (editingIdRef.current) persistDraft(editingIdRef.current, editFormRef.current, false);
+  }, []);
+
   const startEditing = (
     item: ImportedTransaction,
     initialCategory?: string,
@@ -348,6 +384,11 @@ const Reconcile: React.FC = () => {
     initialTargetId?: string,
     initialTargetType?: 'bank' | 'card' | 'smart'
   ) => {
+    // Salva automaticamente o rascunho da transa\u00e7\u00e3o que estava sendo editada
+    if (editingId && editingId !== item.id) {
+      persistDraft(editingId, editForm);
+    }
+
     const isTrans = initialCategory?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') ||
       item.category?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
 
@@ -575,6 +616,20 @@ const Reconcile: React.FC = () => {
 
     return true;
   });
+
+  // Inverte o sinal de um item da fila (débito ↔ crédito/estorno). Útil quando a
+  // importação classificou um estorno de cartão como compra (ou vice-versa) — o
+  // teclado numérico do celular não permite digitar o sinal de menos.
+  const handleFlipSign = async (item: any) => {
+    const newAmount = -Number(item.amount);
+    try {
+      await ReconciliationService.updateTransactionAmount(item.id, newAmount);
+      setImported(prev => prev.map(t => t.id === item.id ? { ...t, amount: newAmount, type: newAmount >= 0 ? 'credit' : 'debit' } as any : t));
+      if (editingId === item.id) setEditForm((prev: any) => ({ ...prev, amount: newAmount }));
+    } catch (e) {
+      toast("Erro ao inverter o sinal", 'error');
+    }
+  };
 
   const handleIgnore = async (id: string) => {
     try {
@@ -1314,10 +1369,19 @@ const Reconcile: React.FC = () => {
                           )}
 
                           {/* Col 6: Value */}
-                          <div className="text-right flex flex-col justify-center">
+                          <div className="text-right flex flex-col justify-center items-end gap-1">
                             <span className={`text-lg font-bold font-mono tabular-nums tracking-tighter ${item.amount < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                               {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.amount)}
                             </span>
+                            <button
+                              type="button"
+                              onClick={() => handleFlipSign(item)}
+                              disabled={processingItemId === item.id}
+                              title="Inverter sinal (despesa ↔ crédito/estorno)"
+                              className="inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-widest text-slate-300 hover:text-brand-600 transition-colors bg-transparent border-none p-0 cursor-pointer"
+                            >
+                              <RefreshCw size={9} /> Inverter sinal
+                            </button>
                           </div>
                         </div>
 

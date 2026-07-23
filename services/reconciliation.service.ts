@@ -284,6 +284,16 @@ export const ReconciliationService = {
     if (error) throw error;
   },
 
+  // Inverter sinal na fila de conciliação (despesa ↔ crédito/estorno)
+  async updateTransactionAmount(id: string, amount: number) {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from('imported_transactions')
+      .update({ amount })
+      .eq('id', id);
+    if (error) throw error;
+  },
+
   async updateTransaction(id: string, data: {
     description?: string;
     date?: string;
