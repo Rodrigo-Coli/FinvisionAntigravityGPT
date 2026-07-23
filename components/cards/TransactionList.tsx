@@ -88,7 +88,167 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <p className="text-xs text-slate-300">Use o botão acima para adicionar um gasto manualmente.</p>
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
+                    <>
+                    {/* ════════════════ MOBILE CARD VIEW (< md) ════════════════ */}
+                    <div className="block md:hidden divide-y divide-slate-50">
+                        {transactions.map((tx) => (
+                            <div key={tx.id} className="p-4 space-y-3">
+                                {/* Data + Valor */}
+                                <div className="flex items-center justify-between gap-2">
+                                    <input
+                                        type="date"
+                                        value={String(tx.date).slice(0, 10)}
+                                        onChange={(e) => onUpdateTxLocal(tx.id, { date: e.target.value })}
+                                        onBlur={(e) => onSaveTxPatch(tx.id, { date: e.target.value })}
+                                        className="compact-date-input text-xs font-mono font-bold bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                    />
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                            type="button"
+                                            disabled={isLocked}
+                                            title="Inverter sinal (compra ↔ estorno)"
+                                            onClick={() => {
+                                                const newAmt = -Number(tx.amount || 0);
+                                                onUpdateTxLocal(tx.id, { amount: newAmt });
+                                                onSaveTxPatch(tx.id, { amount: newAmt });
+                                            }}
+                                            className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border text-xs font-black transition-all ${isLocked ? 'text-slate-200 border-slate-100 cursor-not-allowed' : Number(tx.amount || 0) < 0 ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'text-slate-300 border-slate-200'}`}
+                                        >
+                                            ±
+                                        </button>
+                                        <input
+                                            type="number"
+                                            value={Number(tx.amount || 0)}
+                                            disabled={isLocked}
+                                            onChange={(e) => onUpdateTxLocal(tx.id, { amount: Number(e.target.value) })}
+                                            onBlur={(e) => onSaveTxPatch(tx.id, { amount: Number(e.target.value) })}
+                                            className={`w-24 text-sm font-black text-right bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm ${Number(tx.amount || 0) < 0 ? 'text-emerald-600' : ''} ${isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Descrição */}
+                                <input
+                                    type="text"
+                                    value={tx.description || ''}
+                                    onChange={(e) => onUpdateTxLocal(tx.id, { description: e.target.value })}
+                                    onBlur={(e) => onSaveTxPatch(tx.id, { description: e.target.value })}
+                                    className="w-full text-sm font-bold bg-transparent border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                />
+
+                                {/* Categoria + Subcategoria */}
+                                <div className="flex items-center gap-2">
+                                    <div className="relative flex-1 min-w-0">
+                                        <input
+                                            type="text"
+                                            list="card-categories-list"
+                                            value={tx.category ?? ''}
+                                            placeholder="Categoria..."
+                                            onFocus={(e) => e.target.select()}
+                                            onChange={(e) => onUpdateTxLocal(tx.id, { category: e.target.value })}
+                                            onBlur={(e) => onCommitCategory?.(tx.id, e.target.value)}
+                                            className="w-full text-xs font-bold bg-white border border-slate-200 rounded-xl px-2 py-1.5 pl-6 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm truncate"
+                                        />
+                                        <Tags size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <input
+                                            type="text"
+                                            list={`card-subcategories-mobile-${tx.id}`}
+                                            value={tx.subcategory || ''}
+                                            placeholder="Subcategoria..."
+                                            onFocus={(e) => e.target.select()}
+                                            onChange={(e) => onUpdateTxLocal(tx.id, { subcategory: e.target.value })}
+                                            onBlur={(e) => onCommitSubcategory?.(tx.id, e.target.value)}
+                                            className="w-full text-xs font-bold bg-transparent border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all truncate shadow-sm"
+                                        />
+                                        <datalist id={`card-subcategories-mobile-${tx.id}`}>
+                                            {subcategories
+                                                .filter(s => s.category_name === tx.category)
+                                                .sort((a, b) => a.name.localeCompare(b.name))
+                                                .map(s => <option key={s.id} value={s.name} />)}
+                                        </datalist>
+                                    </div>
+                                </div>
+
+                                {/* Perfil + Fatura/Mês */}
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        value={tx.owner_name || 'Pessoal'}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            onUpdateTxLocal(tx.id, { owner_name: val });
+                                            onSaveTxPatch(tx.id, { owner_name: val === 'Pessoal' ? null : val });
+                                        }}
+                                        className="flex-1 min-w-0 text-xs font-bold bg-white border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                    >
+                                        {[...new Set(['Pessoal', ...transactions.map(t => t.owner_name).filter(Boolean)])].map(o => (
+                                            <option key={o} value={o}>{o}</option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        value={tx.statement_id || ''}
+                                        onChange={(e) => {
+                                            const val = e.target.value || null;
+                                            onUpdateTxLocal(tx.id, { statement_id: val });
+                                            onSaveTxPatch(tx.id, { statement_id: val });
+                                        }}
+                                        className="flex-1 min-w-0 text-xs font-black uppercase text-slate-500 bg-white border border-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                    >
+                                        <option value="">Nenhuma Fatura</option>
+                                        {statements.map(s => (
+                                            <option key={s.id} value={s.id}>
+                                                {DateUtils.formatMonthYear(s.year, s.month)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Ações — sempre visíveis no mobile */}
+                                <div className="flex items-center justify-end gap-2 pt-1">
+                                    {tx.document_id ? (
+                                        <button
+                                            onClick={() => onViewAttachment?.(tx.document_id)}
+                                            className="h-9 px-3 flex items-center gap-1.5 bg-brand-50 text-brand-600 rounded-xl text-[10px] font-black uppercase tracking-wider"
+                                        >
+                                            <Paperclip size={12} /> Ver anexo
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => {
+                                                const input = document.createElement('input');
+                                                input.type = 'file';
+                                                input.onchange = (e: any) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) onUploadAttachment?.(tx.id, file);
+                                                };
+                                                input.click();
+                                            }}
+                                            className="h-9 px-3 flex items-center gap-1.5 bg-slate-50 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-wider"
+                                        >
+                                            <Paperclip size={12} /> Anexar
+                                        </button>
+                                    )}
+
+                                    {savingRowId === tx.id ? (
+                                        <Loader2 size={16} className="animate-spin text-brand-600" />
+                                    ) : (
+                                        <button
+                                            onClick={() => !isLocked && onDeleteTx(tx.id)}
+                                            disabled={isLocked}
+                                            className={`h-9 w-9 flex items-center justify-center rounded-xl transition-all shrink-0 ${isLocked ? 'text-slate-200' : 'bg-rose-50 text-rose-500'}`}
+                                            title="Excluir"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* ════════════════ DESKTOP TABLE VIEW (≥ md) ════════════════ */}
+                    <div className="hidden md:block overflow-x-auto">
                         <div className="min-w-[900px]">
                             {/* Adjusted column spans: Data col-span-2, Subcategoria col-span-1 */}
                             <div className="grid grid-cols-12 gap-2 px-6 py-4 bg-slate-50/50 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 italic">
@@ -275,6 +435,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             </div>
                         </div>
                     </div>
+                    </>
                 )}
             </div>
 

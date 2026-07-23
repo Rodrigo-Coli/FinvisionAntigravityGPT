@@ -1057,7 +1057,7 @@ async function handleInteractiveFinancialQuery(
       .lte('date', targetEndDate)
       .order('date', { ascending: false })
       .limit(150),
-    supabase.from('credit_cards').select('brand, limit').eq('user_id', userId),
+    supabase.from('cards').select('name, brand, limit_total').eq('user_id', userId).eq('is_archived', false),
     supabase.from('physical_assets').select('id, name, category, estimated_value').eq('user_id', userId),
     supabase.from('liabilities').select('id, name, type, total_amount, remaining_balance, installment_amount, installments_remaining, interest_rate, metadata').eq('user_id', userId)
   ]);
@@ -1161,7 +1161,7 @@ Hoje é ${dataHoje}.
 • Bens Detalhados: ${assetsData.map((a: any) => `${a.name}(R$${Number(a.estimated_value).toFixed(2)})`).join(', ')}
 • Dívidas Detalhadas:
 - ${liabilitiesSummary || 'Nenhuma registrada'}
-• Cartões Cadastrados: ${creditCards.map((c: any) => `${c.brand}(Lim:R$${c.limit})`).join(', ') || 'Nenhum'}
+• Cartões Cadastrados: ${creditCards.map((c: any) => `${c.name || c.brand}(Lim:R$${c.limit_total})`).join(', ') || 'Nenhum'}
 
 # TRANSAÇÕES DETALHADAS NO PERÍODO SOLICITADO (Máximo 150 lançamentos, mais recentes primeiro):
 ${formattedTransactions || 'Nenhuma transação registrada neste período.'}

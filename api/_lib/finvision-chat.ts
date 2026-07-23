@@ -51,7 +51,7 @@ export async function handleFinvisionChat(req: any, res: any) {
                 .lte('date', filterEnd)
                 .order('date', { ascending: false })
                 .limit(200),
-            supabase.from('credit_cards').select('brand, limit').eq('user_id', userId),
+            supabase.from('cards').select('name, brand, limit_total').eq('user_id', userId).eq('is_archived', false),
             supabase.from('physical_assets').select('estimated_value').eq('user_id', userId),
             supabase.from('liabilities').select('remaining_balance, total_amount, type').eq('user_id', userId),
             supabase.from('transactions')
@@ -164,7 +164,7 @@ Hoje é ${dataHoje}.
 • Médias por Categoria: ${historicalAverages || 'Dados insuficientes'}
 
 • Contas Atuais: ${accounts.map((a: any) => `${a.institution}(R$${Number(a.current_balance).toFixed(2)})`).join(', ')}
-• Cartões Cadastrados: ${creditCards.map((c: any) => `${c.brand}(Lim:R$${c.limit})`).join(', ') || 'Nenhum'}
+• Cartões Cadastrados: ${creditCards.map((c: any) => `${c.name || c.brand}(Lim:R$${c.limit_total})`).join(', ') || 'Nenhum'}
 
 # ÚLTIMAS 50 TRANSAÇÕES
 ${transactions.slice(0, 50).map((t: any) => `- ${t.date.split('T')[0]}|${t.category}|R$${t.amount}|${t.type}`).join('\n')}

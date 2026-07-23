@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.07.23.1119",
+    "title": "Cartões no Celular Sem Rolagem Lateral + IA Enxergando Seus Cartões",
+    "date": "23/07/2026",
+    "benefits": [
+      {
+        "title": "Transações do cartão inteiras na tela do celular",
+        "desc": "Na tela de Cartões de Crédito, a lista de transações aparecia como uma tabela larga: no celular você via só Data e Descrição e precisava arrastar para o lado para ver categoria, valor, fatura e botões. Agora cada transação vira um cartãozinho com tudo visível de uma vez — data, valor (com o botão de inverter compra/estorno), descrição, categoria, subcategoria, perfil, fatura do mês, anexo e excluir — sem nenhuma rolagem lateral. No computador a tabela continua igual.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Assistente de IA agora conhece seus cartões de crédito",
+        "desc": "O chat do assistente (no app e no WhatsApp) buscava seus cartões num lugar errado do banco de dados e por isso respondia como se você não tivesse nenhum cartão cadastrado. Corrigido: agora ele enxerga o nome, a bandeira e o limite de cada cartão ativo ao montar as respostas.",
+        "type": "correcao"
+      },
+      {
+        "title": "Cadastro de conta nova voltou a funcionar",
+        "desc": "Um problema no banco de dados impedia qualquer pessoa de criar conta nova (inclusive o modo demonstração). A estrutura foi restaurada, o painel do administrador voltou a listar os usuários com seus planos e uma porta de segurança que permitia comandos no banco sem login foi fechada.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "components/cards/TransactionList.tsx: nova visão mobile (< md) em formato de card empilhado com todos os campos editáveis (data, valor com botão ±, descrição, categoria, subcategoria, perfil, fatura, anexo, excluir); a grade de 12 colunas com min-w-[900px] ficou restrita a md+ (hidden md:block).",
+      "api/_lib/finvision-chat.ts e api/_lib/whatsapp-webhook.ts: consulta de cartões corrigida de credit_cards (tabela inexistente) para cards, selecionando name/brand/limit_total e filtrando is_archived=false; prompt passa a exibir nome ou bandeira + limite real.",
+      "Supabase: tabelas plans e subscriptions restauradas após colisão de schema externo (migration restore_plans_and_subscriptions_after_kisaro_collision); FKs recriadas subscriptions→profiles (embeds do AdminDashboard), coupons→plans e affiliate_commission_events→subscriptions (migration restore_lost_fks_and_lock_exec_sql); EXECUTE de exec_sql revogado de anon/authenticated, mantido só para service_role."
+    ]
+  },
+  {
     "version": "2026.07.23.0037",
     "title": "Cartão de Crédito: Fatura no Mês Certo e Totais Batendo",
     "date": "23/07/2026",
