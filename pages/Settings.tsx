@@ -45,7 +45,7 @@ import {
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { DateUtils } from '../lib/dateUtils';
-import { requestNotificationPermission, showLocalNotification, subscribeUserToPush } from '../lib/pushUtils';
+import { requestNotificationPermission, showLocalNotification, subscribeUserToPush, ensureFreshPushSubscription } from '../lib/pushUtils';
 import UsageMeter from '../components/subscription/UsageMeter';
 import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 import { useToast } from '../contexts/ToastContext';
@@ -177,6 +177,12 @@ const SettingsPage: React.FC = () => {
   });
   const [editingIof, setEditingIof] = useState(2.38);
   const [editingSpread, setEditingSpread] = useState(4.00);
+
+  // Check-up de saúde das notificações push (assinatura vs. servidor)
+  type PushHealth = 'checking' | 'ok' | 'repaired' | 'off' | 'needs_permission' | 'blocked' | 'broken' | 'unsupported';
+  const [pushHealth, setPushHealth] = useState<PushHealth>('checking');
+  const [repairingPush, setRepairingPush] = useState(false);
+  const [testingPush, setTestingPush] = useState(false);
 
   useEffect(() => {
     setEditingIof(settings.iof_rate);
@@ -605,6 +611,130 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  // ── Check-up de saúde das notificações push ──────────────────────────
+  // Detecta assinatura vencida (ex.: chave do servidor trocada) e conserta
+  // automaticamente quando possível; senão, mostra alerta com a solução.
+  const runPushHealthCheck = async () => {
+    try {
+      if (typeof Notification === 'undefined' || !('serviceWorker' in navigator)) {
+        setPushHealth('unsupported');
+        return;
+      }
+      if (!settings.push_enabled) { setPushHealth('off'); return; }
+      if (Notification.permission === 'denied') { setPushHealth('blocked'); return; }
+      if (Notification.permission === 'default') { setPushHealth('needs_permission'); return; }
+
+      const fresh = await ensureFreshPushSubscription();
+      if (!fresh || !supabase) { setPushHealth('broken'); return; }
+
+      // Sincroniza a assinatura atual com o banco (garante que o cron use a válida)
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) { setPushHealth('broken'); return; }
+      await supabase.from('user_settings').upsert({
+        user_id: user.id,
+        push_subscription: fresh.subscription.toJSON(),
+        updated_at: DateUtils.getNow().toISOString()
+      });
+      setPushHealth(fresh.renewed ? 'repaired' : 'ok');
+    } catch {
+      setPushHealth('broken');
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === 'general') {
+      setPushHealth('checking');
+      runPushHealthCheck();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, settings.push_enabled]);
+
+  // Reparo manual (botão "Reparar agora"): pede permissão se preciso e
+  // recria a assinatura do zero com a chave atual do servidor.
+  const repairPush = async () => {
+    if (!supabase) return;
+    setRepairingPush(true);
+    try {
+      const permission = await requestNotificationPermission();
+      if (permission !== 'granted') {
+        setPushHealth(permission === 'denied' ? 'blocked' : 'needs_permission');
+        return;
+      }
+      const sub = await subscribeUserToPush();
+      if (!sub) { setPushHealth('broken'); toast('Não foi possível renovar a conexão. Tente novamente.', 'error'); return; }
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
+      await supabase.from('user_settings').upsert({
+        user_id: user.id,
+        push_enabled: true,
+        push_subscription: sub.toJSON(),
+        updated_at: DateUtils.getNow().toISOString()
+      });
+      setSettings(prev => ({ ...prev, push_enabled: true }));
+      setPushHealth('repaired');
+      toast('Conexão de notificações renovada com sucesso!', 'success');
+    } catch (err) {
+      console.error('Erro ao reparar push:', err);
+      setPushHealth('broken');
+      toast('Não foi possível renovar a conexão. Tente novamente.', 'error');
+    } finally {
+      setRepairingPush(false);
+    }
+  };
+
+  // Teste REAL: dispara pelo servidor (mesmo caminho do lembrete diário).
+  // Se a assinatura estiver vencida, renova e tenta mais uma vez.
+  const sendServerTestPush = async () => {
+    if (!supabase) return;
+    setTestingPush(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast('Faça login novamente para testar.', 'error'); return; }
+
+      const callTest = () => fetch('/api/test-push', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` }
+      }).then(r => r.json());
+
+      let result = await callTest();
+
+      if (!result.success && (result.reason === 'invalid_subscription' || result.reason === 'no_subscription')) {
+        // Assinatura vencida — renova na hora e tenta de novo
+        const sub = await subscribeUserToPush();
+        if (sub) {
+          await supabase.from('user_settings').upsert({
+            user_id: session.user.id,
+            push_subscription: sub.toJSON(),
+            updated_at: DateUtils.getNow().toISOString()
+          });
+          result = await callTest();
+          if (result.success) {
+            setPushHealth('repaired');
+            toast('Conexão renovada e teste enviado! Deve chegar em instantes.', 'success');
+            return;
+          }
+        }
+        setPushHealth('broken');
+        toast('O servidor não conseguiu entregar. Toque em "Reparar agora".', 'error');
+        return;
+      }
+
+      if (result.success) {
+        toast('Teste enviado pelo servidor! A notificação deve chegar em instantes.', 'success');
+      } else if (result.reason === 'server_keys_missing') {
+        toast('Servidor sem chaves de notificação configuradas. Contate o suporte.', 'error');
+      } else {
+        toast('Falha no envio do teste. Tente novamente mais tarde.', 'error');
+      }
+    } catch {
+      toast('Falha na conexão com o servidor.', 'error');
+    } finally {
+      setTestingPush(false);
+    }
+  };
+
   const addEntity = async () => {
     const trimmed = newEntityName.trim();
     if (!trimmed) {
@@ -999,32 +1129,82 @@ const SettingsPage: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Status da permissão */}
-                  {typeof Notification !== 'undefined' && (
-                    <div className={`flex items-center gap-3 p-3 rounded-2xl text-xs font-bold ${
-                      Notification.permission === 'granted' ? 'bg-emerald-50 text-emerald-700' :
-                      Notification.permission === 'denied' ? 'bg-rose-50 text-rose-700' :
-                      'bg-amber-50 text-amber-700'
-                    }`}>
-                      <div className={`w-2 h-2 rounded-full ${
-                        Notification.permission === 'granted' ? 'bg-emerald-500' :
-                        Notification.permission === 'denied' ? 'bg-rose-500' : 'bg-amber-400'
-                      }`} />
-                      {Notification.permission === 'granted' ? '✓ Permitido — notificações ativas' :
-                       Notification.permission === 'denied' ? '✗ Bloqueado — altere nas configurações do navegador' :
-                       '⚠ Aguardando permissão — toque no toggle para ativar'}
+                  {/* Check-up de saúde das notificações */}
+                  {pushHealth === 'checking' && (
+                    <div className="flex items-center gap-3 p-3 rounded-2xl text-xs font-bold bg-slate-100 text-slate-500">
+                      <Loader2 size={14} className="animate-spin" />
+                      Verificando a conexão de notificações…
                     </div>
                   )}
 
-                  {/* Botão de teste */}
-                  {typeof Notification !== 'undefined' && Notification.permission === 'granted' && (
+                  {(pushHealth === 'ok' || pushHealth === 'repaired') && (
+                    <div className="flex items-center gap-3 p-3 rounded-2xl text-xs font-bold bg-emerald-50 text-emerald-700">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                      {pushHealth === 'repaired'
+                        ? '✓ Conexão renovada automaticamente — notificações funcionando'
+                        : '✓ Notificações funcionando — conexão com o servidor verificada'}
+                    </div>
+                  )}
+
+                  {pushHealth === 'off' && (
+                    <div className="flex items-center gap-3 p-3 rounded-2xl text-xs font-bold bg-slate-100 text-slate-500">
+                      <div className="w-2 h-2 rounded-full bg-slate-400" />
+                      Notificações desativadas — use o botão acima para ativar
+                    </div>
+                  )}
+
+                  {pushHealth === 'needs_permission' && (
+                    <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 space-y-3">
+                      <p className="text-xs font-bold text-amber-700">⚠ Este aparelho ainda não deu permissão para notificações.</p>
+                      <button
+                        onClick={repairPush}
+                        disabled={repairingPush}
+                        className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-60"
+                      >
+                        {repairingPush ? 'Ativando…' : 'Ativar neste aparelho'}
+                      </button>
+                    </div>
+                  )}
+
+                  {pushHealth === 'broken' && (
+                    <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 space-y-3">
+                      <p className="text-xs font-bold text-amber-700">⚠ A conexão de notificações deste aparelho precisa ser renovada. Sem isso, os lembretes diários não chegam.</p>
+                      <button
+                        onClick={repairPush}
+                        disabled={repairingPush}
+                        className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-60"
+                      >
+                        {repairingPush ? 'Reparando…' : 'Reparar agora'}
+                      </button>
+                    </div>
+                  )}
+
+                  {pushHealth === 'blocked' && (
+                    <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100 space-y-2">
+                      <p className="text-xs font-black text-rose-700">✗ Notificações BLOQUEADAS no navegador — só você pode desbloquear:</p>
+                      <ol className="text-[11px] font-bold text-rose-600 space-y-1 list-decimal list-inside">
+                        <li>Toque no cadeado (ou ⋮) na barra de endereços</li>
+                        <li>Abra &quot;Permissões&quot; ou &quot;Configurações do site&quot;</li>
+                        <li>Mude &quot;Notificações&quot; para &quot;Permitir&quot;</li>
+                        <li>Volte aqui e toque em &quot;Verificar novamente&quot;</li>
+                      </ol>
+                      <button
+                        onClick={runPushHealthCheck}
+                        className="w-full py-2.5 mt-1 bg-white border border-rose-200 text-rose-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all"
+                      >
+                        Verificar novamente
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Botão de teste — envia pelo SERVIDOR (mesmo caminho do lembrete diário) */}
+                  {typeof Notification !== 'undefined' && Notification.permission === 'granted' && settings.push_enabled && (
                     <button
-                      onClick={async () => {
-                        await showLocalNotification('Zyvion ✓', 'Notificações funcionando! Você será alertado sobre vencimentos.', { url: '/', tag: 'test' });
-                      }}
-                      className="w-full py-2.5 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-600 transition-all"
+                      onClick={sendServerTestPush}
+                      disabled={testingPush}
+                      className="w-full py-2.5 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:border-brand-500 hover:text-brand-600 transition-all disabled:opacity-60"
                     >
-                      Enviar notificação de teste
+                      {testingPush ? 'Enviando pelo servidor…' : 'Enviar notificação de teste (via servidor)'}
                     </button>
                   )}
 

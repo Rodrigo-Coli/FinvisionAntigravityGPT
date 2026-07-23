@@ -17,6 +17,7 @@ import { handleAsaasWebhook } from './_lib/asaas-webhook.js';
 import { handleWhatsAppWebhook } from './_lib/whatsapp-webhook.js';
 import { handleNotifyBillsDue } from './_lib/notify-bills-due.js';
 import { handleVapidPublicKey } from './_lib/vapid-public-key.js';
+import { handleTestPush } from './_lib/test-push.js';
 import { handleHealth } from './_lib/health.js';
 import { handleReceiptItems } from './_lib/handle-receipt-items.js';
 import { handleAsaasBillingHistory } from './_lib/asaas-billing-history.js';
@@ -81,6 +82,7 @@ export default async function handler(req: any, res: any) {
 
     // --- Utilitários ---
     if (url.includes('/vapid-public-key'))         return handleVapidPublicKey(req, res);
+    if (url.includes('/test-push'))                return handleTestPush(req, res);
     if (url.includes('/health'))                   return handleHealth(req, res);
 
     // --- Fallback (Health Check) ---

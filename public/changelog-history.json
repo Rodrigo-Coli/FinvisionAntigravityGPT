@@ -1,5 +1,39 @@
 [
   {
+    "version": "2026.07.22.2330",
+    "title": "Notificações Diárias no Celular: Conserto Automático",
+    "date": "22/07/2026",
+    "benefits": [
+      {
+        "title": "Notificações diárias voltaram a chegar no celular",
+        "desc": "Descobrimos por que os lembretes diários de vencimentos chegavam no WhatsApp mas não como notificação no celular: a \"conexão\" entre o seu aparelho e o servidor tinha ficado desatualizada, e o envio falhava em silêncio todo dia. Agora o app confere essa conexão toda vez que é aberto e, se estiver vencida, renova sozinho — sem você precisar fazer nada.",
+        "type": "correcao"
+      },
+      {
+        "title": "Teste de notificação agora é de verdade",
+        "desc": "O botão \"Enviar notificação de teste\" em Ajustes mostrava a notificação direto no aparelho, sem passar pelo servidor — por isso dizia que estava tudo bem mesmo quando os lembretes diários não chegavam. Agora o teste é disparado pelo servidor, pelo mesmo caminho do lembrete diário: se ele chegar, é garantia de que o envio automático também chega.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Check-up de saúde das notificações em Ajustes",
+        "desc": "A tela de Ajustes agora mostra um selo verde quando a conexão de notificações está funcionando, um alerta amarelo com botão \"Reparar agora\" quando dá para consertar com um toque, e um passo a passo quando as notificações estão bloqueadas no navegador (caso que só você consegue desbloquear).",
+        "type": "novidade"
+      },
+      {
+        "title": "Convite para ativar notificações no primeiro uso",
+        "desc": "Quem ainda não ativou as notificações passa a receber um convite discreto dentro do app. Um toque em \"Ativar\" e os lembretes de vencimentos ficam ligados; quem preferir pode tocar em \"Agora não\" e o convite não aparece de novo.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "lib/pushUtils.ts: nova função ensureFreshPushSubscription — compara a chave VAPID do servidor com a da assinatura atual do navegador e renova silenciosamente quando divergem (auto-conserto).",
+      "components/PushManager.tsx: auto-conserto ao abrir o app (renova assinatura vencida e sincroniza com user_settings) + convite de ativação de notificações no primeiro uso (permission 'default', com dismiss persistido).",
+      "api/_lib/test-push.ts (novo): POST /api/test-push autenticado — envia push real via web-push com a assinatura gravada no banco; devolve reason (invalid_subscription/no_subscription/...) para o front reparar.",
+      "api/index.ts: rota /test-push registrada.",
+      "pages/Settings.tsx: check-up de saúde do push (checking/ok/repaired/off/needs_permission/blocked/broken), botão 'Reparar agora', instruções de desbloqueio, e botão de teste passando pelo servidor com renovação automática + retry em assinatura inválida."
+    ]
+  },
+  {
     "version": "2026.07.21.1900",
     "title": "Importação \"Diversos\" Agora Aponta Possíveis Duplicados",
     "date": "21/07/2026",

@@ -130,6 +130,55 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
+/**
+ * Auto-conserto da assinatura push: compara a chave VAPID do servidor com a
+ * chave usada na assinatura atual do navegador. Se divergirem (ex.: chaves do
+ * servidor foram trocadas), renova a assinatura silenciosamente.
+ * NÃO pede permissão ao usuário — só age se já foi concedida.
+ */
+export async function ensureFreshPushSubscription(): Promise<{ subscription: PushSubscription; renewed: boolean } | null> {
+  if (getNotificationPermission() !== 'granted') return null;
+
+  try {
+    const sw = await getSwRegistration();
+    if (!sw) return null;
+
+    const res = await fetch('/api/vapid-public-key');
+    if (!res.ok) return null;
+    const { publicKey } = await res.json();
+    if (!publicKey) return null;
+
+    const serverKey = urlBase64ToUint8Array(publicKey);
+    let subscription = await sw.pushManager.getSubscription();
+
+    let needsRenewal = !subscription;
+    if (subscription) {
+      const currentKey = subscription.options?.applicationServerKey;
+      if (currentKey) {
+        const currentBytes = new Uint8Array(currentKey);
+        needsRenewal = currentBytes.length !== serverKey.length
+          || currentBytes.some((b, i) => b !== serverKey[i]);
+      }
+      // Se o navegador não expõe a chave usada, mantém a assinatura como está
+      // (evita renovar sem necessidade a cada abertura do app).
+    }
+
+    if (!needsRenewal && subscription) return { subscription, renewed: false };
+
+    if (subscription) await subscription.unsubscribe();
+    subscription = await sw.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: serverKey as any
+    });
+
+    console.info('[Zyvion Push] Assinatura push renovada (chave do servidor mudou).');
+    return { subscription, renewed: true };
+  } catch (err: any) {
+    console.error('[Zyvion Push] Falha no auto-conserto da assinatura:', err.message || err);
+    return null;
+  }
+}
+
 // Legado — mantido para compatibilidade com Settings.tsx
 export async function subscribeUserToPush(): Promise<PushSubscription | null> {
   const permission = await requestNotificationPermission();
