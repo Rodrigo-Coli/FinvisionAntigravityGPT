@@ -63,7 +63,10 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
     const chartFilteredTransactions = useMemo(() => {
         if (!internalStartDate && !internalEndDate) return transactions;
         return transactions.filter(t => {
-            const d = t.date.split('T')[0];
+            // Cartão: filtra pelo mês de vencimento da fatura (competenceDate), não
+            // pela data da compra — senão uma compra de 28/06 cuja fatura vence em
+            // 05/07 sumiria do período de julho mesmo já tendo entrado nele lá atrás.
+            const d = (t.competenceDate || t.date).split('T')[0];
             if (internalStartDate && d < internalStartDate) return false;
             if (internalEndDate && d > internalEndDate) return false;
             return true;
@@ -163,8 +166,8 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                 const type = (t.type || '').toUpperCase();
                 const amt = Math.abs(Number(t.amount || 0));
 
-                // Robust parsing
-                const datePart = t.date.split('T')[0];
+                // Robust parsing (cartão agrupa pelo mês de vencimento da fatura)
+                const datePart = (t.competenceDate || t.date).split('T')[0];
                 const [yStr, mStr] = datePart.split('-');
                 const y = parseInt(yStr);
                 const m = parseInt(mStr) - 1;
@@ -185,7 +188,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                 let inc = 0; let exp = 0;
                 activeTx.forEach(t => {
                     const type = (t.type || '').toUpperCase();
-                    const ymd = t.date.split('T')[0];
+                    const ymd = (t.competenceDate || t.date).split('T')[0];
 
                     if (ymd >= slot.start && ymd <= slot.end) {
                         const amt = Math.abs(Number(t.amount || 0));
@@ -225,7 +228,8 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                     if (selectedTimelineCategories.length > 0 && !selectedTimelineCategories.includes(t.category)) return;
 
                     const type = (t.type || '').toUpperCase();
-                    const ym = t.date.split('T')[0].substring(0, 7);
+                    // Agrupamento mensal: cartão conta no mês de vencimento da fatura.
+                    const ym = (t.competenceDate || t.date).split('T')[0].substring(0, 7);
                     if (!tMap.has(ym)) tMap.set(ym, { income: 0, expense: 0, balance: 0 });
                     const b = tMap.get(ym);
                     const amt = Math.abs(Number(t.amount || 0));

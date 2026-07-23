@@ -1,16 +1,24 @@
 {
-  "version": "2026.07.23.0005",
-  "title": "Notificações Diárias: Causa Raiz Definitiva Corrigida",
+  "version": "2026.07.23.0037",
+  "title": "Cartão de Crédito: Fatura no Mês Certo e Totais Batendo",
   "date": "23/07/2026",
   "benefits": [
     {
-      "title": "Notificações push finalmente estáveis",
-      "desc": "A correção de ontem tratou parte do problema, mas faltava uma peça: o próprio aplicativo instalado no celular guardava em memória (\"cache\") a chave de segurança antiga, e continuava usando ela mesmo depois do servidor já estar com a chave certa — por isso o reparo parecia funcionar e o teste falhava de novo. Agora o app nunca mais guarda essa chave em cache: ele sempre busca a mais atual do servidor, então o conserto automático passa a funcionar de verdade.",
+      "title": "Fatura não aparece mais misturada em outro mês",
+      "desc": "Uma fatura em aberto (ainda não paga) podia aparecer na lista do mês atual mesmo vencendo só no mês seguinte — por exemplo, uma fatura que vence em agosto aparecia junto com julho. Isso acontecia por causa de uma folga de 60 dias que existia só para você não esquecer de uma fatura próxima do vencimento. Agora cada fatura aparece só no mês exato do seu vencimento.",
+      "type": "correcao"
+    },
+    {
+      "title": "Total de gastos do mês bate igual em toda tela",
+      "desc": "O card \"Despesas\" do topo e o gráfico \"Total Gasto\" da tela de Transações podiam mostrar valores diferentes para o mesmo mês. A causa: uma compra no cartão agora sempre conta no mês em que a fatura dela vence (não no mês em que a compra foi feita) — em todas as telas que somam gasto por categoria (Transações e Relatórios). A data real da compra continua aparecendo e podendo ser editada normalmente em cada lançamento.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "src/sw.js (Service Worker v9): rotas /api/* passam a ir direto para a rede, sem cache — antes caíam no cache-first genérico e serviam respostas antigas (inclusive /api/vapid-public-key, causa do 403 persistente mesmo após reparo). Cache dinâmico renomeado para zyvion-dynamic-v9 com limpeza automática das versões anteriores no evento 'activate'.",
-    "VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY: par de chaves rotacionado no servidor (Vercel) para um par gerado do zero e validado — o par anterior estava inconsistente entre si (chave pública e privada não combinavam), causando falha 403 mesmo em assinaturas recém-criadas."
+    "pages/History.tsx: removida a janela de 60 dias (futureLimit) que deixava faturas is_provision de outros meses vazarem para o mês selecionado; query de card_transactions deixou de filtrar por data de compra e passou a trazer todas as compras do usuário, recortadas em memória pelo mês de vencimento (competenceDate).",
+    "lib/historyUtils.ts: novo helper getCardCompetenceDate(purchaseDate, closingDay, dueDay), espelhando a aritmética de fechamento/vencimento de services/finance.service.ts#getOrCreateStatement, usado para calcular o mês de vencimento quando a compra ainda não tem card_statement vinculado.",
+    "types.ts: campo opcional Transaction.competenceDate — usado só para agrupar/filtrar por mês; nunca sobrescreve `date` (que continua sendo a data real da compra, inclusive para edição inline).",
+    "components/history/HistoryCharts.tsx: agrupamento por categoria, mês-a-mês e timeline mensal passaram a usar competenceDate (com fallback pra date em transações de banco); exibição e ordenação do drill-down por transação continuam usando a data real da compra.",
+    "pages/Reports.tsx: mesma regra de mês de vencimento aplicada à análise por categoria (busca card_statements + closing_day/due_day dos cartões, filtra card_transactions por competência em vez de data de compra)."
   ]
 }

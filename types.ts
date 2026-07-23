@@ -118,6 +118,12 @@ export interface Transaction {
   attachments?: Document[];   // Lista de múltiplos anexos
   notes?: string;
   tags?: string[];
+
+  // Mês/ano em que uma compra de cartão deve ser contabilizada (mês de vencimento
+  // da fatura), diferente de `date` (data real da compra). Só é preenchido para
+  // lançamentos de cartão; usado apenas para agrupar/filtrar por mês nos gráficos
+  // e resumos — nunca sobrescreve `date`, que continua sendo a data real da compra.
+  competenceDate?: string;
 }
 
 export interface Document {

@@ -49,6 +49,35 @@ export const formatDateBR = (d?: string) => {
     }
 };
 
+// Mesma regra de fechamento/vencimento usada em services/finance.service.ts
+// (getOrCreateStatement) para decidir a qual fatura uma compra pertence. Usada
+// para saber em qual MÊS uma compra de cartão deve ser contabilizada (mês de
+// vencimento da fatura), sem depender de já existir um card_statement salvo.
+// Aritmética em UTC (sem `new Date(...).toISOString()`) para não sofrer
+// deslocamento de fuso horário do navegador.
+export const getCardCompetenceDate = (purchaseDateISO: string, closingDay: number, dueDay: number): string => {
+    const datePart = purchaseDateISO.split('T')[0];
+    const [yStr, mStr, dStr] = datePart.split('-');
+    const day = parseInt(dStr, 10);
+    let targetMonth = parseInt(mStr, 10) - 1; // 0-indexed
+    let targetYear = parseInt(yStr, 10);
+
+    if (day > closingDay) {
+        targetMonth++;
+        if (targetMonth > 11) { targetMonth = 0; targetYear++; }
+    }
+
+    let dueMonth = targetMonth;
+    let dueYear = targetYear;
+    if (dueDay < closingDay) {
+        dueMonth++;
+        if (dueMonth > 11) { dueMonth = 0; dueYear++; }
+    }
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${dueYear}-${pad(dueMonth + 1)}-${pad(dueDay)}`;
+};
+
 // Mantendo o objeto HistoryUtils para compatibilidade de importação existente
 export const HistoryUtils = {
     getIsPaid,
@@ -58,5 +87,6 @@ export const HistoryUtils = {
     getRemaining,
     getStatus,
     formatCurrency,
-    formatDateBR
+    formatDateBR,
+    getCardCompetenceDate
 };

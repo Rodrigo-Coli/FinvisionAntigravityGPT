@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FileDown, Calendar, Filter, FileSpreadsheet, FileText, CheckCircle2, Loader2, Tag, Landmark, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase/client';
 import { DateUtils } from '../lib/dateUtils';
+import { HistoryUtils } from '../lib/historyUtils';
 import { useToast } from '../contexts/ToastContext';
 
 const Reports: React.FC = () => {
@@ -26,6 +27,7 @@ const Reports: React.FC = () => {
   // Filtros Avançados
   const [accounts, setAccounts] = useState<any[]>([]);
   const [cards, setCards] = useState<any[]>([]);
+  const [cardStatements, setCardStatements] = useState<any[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -48,14 +50,18 @@ const Reports: React.FC = () => {
       const user = session?.user;
       if (!user) return;
 
-      const [accRes, cardRes, catRes] = await Promise.all([
+      const [accRes, cardRes, catRes, stmtRes] = await Promise.all([
         supabase.from('accounts').select('id, institution').eq('user_id', user.id).eq('is_archived', false),
-        supabase.from('cards').select('id, name').eq('user_id', user.id).eq('is_archived', false),
-        supabase.from('categories').select('name').eq('user_id', user.id).eq('is_archived', false)
+        supabase.from('cards').select('id, name, closing_day, due_day, is_additional, parent_card_id, sums_into_invoice').eq('user_id', user.id).eq('is_archived', false),
+        supabase.from('categories').select('name').eq('user_id', user.id).eq('is_archived', false),
+        // Vencimento real das faturas — usado pra contar a compra de cartão no mês
+        // em que a fatura vence, não no mês da compra.
+        supabase.from('card_statements').select('id, due_date').eq('user_id', user.id)
       ]);
 
       if (accRes.data) setAccounts(accRes.data);
       if (cardRes.data) setCards(cardRes.data);
+      if (stmtRes.data) setCardStatements(stmtRes.data);
       if (catRes.data) {
         const uniqueCats = Array.from(new Set(catRes.data.map((c: any) => c.name as string))) as string[];
         setCategories(uniqueCats.sort());
@@ -117,12 +123,13 @@ const Reports: React.FC = () => {
       // já entram via card_transactions. Se incluíssemos o BILL_PAYMENT junto, a fatura
       // seria contada duas vezes (uma como pagamento + uma via cada compra).
       if (!selectedAccountId || isCard) {
+        // Sem filtro de data aqui: uma compra pode ter sido feita fora do período mas
+        // pertencer à fatura que vence dentro dele (e vice-versa). O recorte certo
+        // (mês de vencimento da fatura) é aplicado depois, em memória.
         let q = supabase
           .from('card_transactions')
-          .select('date, description, category, amount, card_id')
-          .eq('user_id', user.id)
-          .gte('date', dateRange.start)
-          .lte('date', dateRange.end);
+          .select('date, description, category, amount, card_id, statement_id')
+          .eq('user_id', user.id);
 
         if (isCard && selectedAccountId) {
           q = q.eq('card_id', selectedAccountId);
@@ -135,7 +142,43 @@ const Reports: React.FC = () => {
 
       const [txsRes, cardRes] = await Promise.all([txsPromise, cardTxsPromise]);
       const txs = txsRes.data || [];
-      const cardTxs = cardRes.data || [];
+      const allCardTxs = cardRes.data || [];
+
+      // Mês de vencimento da fatura por compra (due_date real, ou recalculado se a
+      // fatura ainda não existe) — mesma regra de pages/History.tsx.
+      const cardMetaById = new Map<string, { closingDay: number; dueDay: number; isAdditional: boolean; parentId?: string; sumsIntoInvoice: boolean }>();
+      cards.forEach((c: any) => {
+        cardMetaById.set(c.id, {
+          closingDay: c.closing_day,
+          dueDay: c.due_day,
+          isAdditional: !!c.is_additional,
+          parentId: c.parent_card_id || undefined,
+          sumsIntoInvoice: c.sums_into_invoice !== false
+        });
+      });
+      const getEffectiveCardMeta = (cardId?: string) => {
+        if (!cardId) return undefined;
+        const meta = cardMetaById.get(cardId);
+        if (!meta) return undefined;
+        if (meta.isAdditional && meta.sumsIntoInvoice && meta.parentId) {
+          return cardMetaById.get(meta.parentId) || meta;
+        }
+        return meta;
+      };
+      const stmtDueById = new Map<string, string>();
+      cardStatements.forEach((s: any) => {
+        if (s?.id && s?.due_date) stmtDueById.set(s.id, String(s.due_date).split('T')[0]);
+      });
+      const getCompetenceDate = (ct: any): string => {
+        if (ct.statement_id && stmtDueById.has(ct.statement_id)) return stmtDueById.get(ct.statement_id)!;
+        const meta = getEffectiveCardMeta(ct.card_id);
+        if (!meta || meta.closingDay == null || meta.dueDay == null) return ct.date;
+        return HistoryUtils.getCardCompetenceDate(ct.date, meta.closingDay, meta.dueDay);
+      };
+      const cardTxs = allCardTxs.filter((ct: any) => {
+        const competence = getCompetenceDate(ct);
+        return competence >= dateRange.start && competence <= dateRange.end;
+      });
 
       // Exclui: capitalizados + BILL_PAYMENT (no modo TUDO, pois compras do cartão já entram via cardTxs)
       const excludeBillPayment = !selectedAccountId;

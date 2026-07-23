@@ -191,7 +191,8 @@ const HistoryPage: React.FC = () => {
   const [chartTransactions, setChartTransactions] = useState<Transaction[]>([]); // full set for charts (no pagination)
   const [chartCategoryTransactions, setChartCategoryTransactions] = useState<Transaction[]>([]); // banco + cartão combinados, só para o gráfico de categorias
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
-  const [cards, setCards] = useState<{ id: string; name: string; last4?: string }[]>([]);
+  const [cards, setCards] = useState<{ id: string; name: string; last4?: string; closingDay?: number; dueDay?: number; isAdditional?: boolean; parentCardId?: string; sumsIntoInvoice?: boolean }[]>([]);
+  const [cardStatements, setCardStatements] = useState<{ id: string; due_date: string }[]>([]);
   const [availableCategories, setAvailableCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [categoryObjects, setCategoryObjects] = useState<{ name: string, type?: 'INCOME' | 'EXPENSE' }[]>(DEFAULT_CATEGORIES.map(c => ({ name: c })));
   const [subcategories, setSubcategories] = useState<{ id: string; name: string; category_name?: string }[]>([]);
@@ -500,10 +501,7 @@ const HistoryPage: React.FC = () => {
       let entityObjsRes: any[] = [];
       let transactionsData: any[] = [];
       let cardTxsData: any[] = [];
-
-      const todayRaw = new Date();
-      const sixtyDaysAhead = new Date(todayRaw.getFullYear(), todayRaw.getMonth(), todayRaw.getDate() + 60);
-      const futureLimit = DateUtils.formatToISODate(sixtyDaysAhead);
+      let cardStatementsData: any[] = [];
 
       const renderData = (
         accs: any[],
@@ -513,7 +511,8 @@ const HistoryPage: React.FC = () => {
         entities: any[],
         entityObjs: any[],
         txs: any[],
-        cardTxs: any[]
+        cardTxs: any[],
+        cardStatements: any[]
       ) => {
         if (requestId !== lastRequestId.current) return;
 
@@ -565,7 +564,17 @@ const HistoryPage: React.FC = () => {
             uniqueCardDefs.push(c);
           }
         }
-        setCards(uniqueCardDefs.map((c: any) => ({ id: c.id, name: c.name || 'Cartão', last4: c.last4 })).sort((a, b) => a.name.localeCompare(b.name)));
+        setCards(uniqueCardDefs.map((c: any) => ({
+          id: c.id,
+          name: c.name || 'Cartão',
+          last4: c.last4,
+          closingDay: c.closing_day,
+          dueDay: c.due_day,
+          isAdditional: !!c.is_additional,
+          parentCardId: c.parent_card_id || undefined,
+          sumsIntoInvoice: c.sums_into_invoice !== false
+        })).sort((a, b) => a.name.localeCompare(b.name)));
+        setCardStatements((cardStatements || []).map((s: any) => ({ id: s.id, due_date: String(s.due_date || '').split('T')[0] })));
 
         const deduplicatedOwners = Array.from(new Set((entities || []).map((o: string) => o.trim()))).filter(Boolean);
         setOwners(deduplicatedOwners.sort((a, b) => a.localeCompare(b)));
@@ -650,10 +659,50 @@ const HistoryPage: React.FC = () => {
           _trueAmount: (t.type === 'EXPENSE' || t.type === 'BILL_PAYMENT' || (t.type === 'TRANSFER' && t.amount > 0)) ? -Math.abs(Number(t.amount || 0)) : Math.abs(Number(t.amount || 0))
         });
 
+        // ── Mês de VENCIMENTO da fatura por compra de cartão ──
+        // Regra pedida pelo usuário: uma compra de cartão deve contar no mês em que
+        // a fatura dela vence (independente do dia da compra em si). Prioridade:
+        // 1) due_date real do card_statements vinculado (statement_id);
+        // 2) se a compra ainda não tem fatura gerada, recalcula com a mesma
+        //    aritmética de fechamento/vencimento usada em getOrCreateStatement
+        //    (services/finance.service.ts), resolvendo cartão adicional pro titular.
+        const cardMetaById = new Map<string, { closingDay: number; dueDay: number; isAdditional: boolean; parentId?: string; sumsIntoInvoice: boolean }>();
+        (cardDefs || []).forEach((c: any) => {
+          cardMetaById.set(c.id, {
+            closingDay: c.closing_day,
+            dueDay: c.due_day,
+            isAdditional: !!c.is_additional,
+            parentId: c.parent_card_id || undefined,
+            sumsIntoInvoice: c.sums_into_invoice !== false
+          });
+        });
+        const getEffectiveCardMeta = (cardId?: string) => {
+          if (!cardId) return undefined;
+          const meta = cardMetaById.get(cardId);
+          if (!meta) return undefined;
+          if (meta.isAdditional && meta.sumsIntoInvoice && meta.parentId) {
+            return cardMetaById.get(meta.parentId) || meta;
+          }
+          return meta;
+        };
+        const stmtDueById = new Map<string, string>();
+        (cardStatements || []).forEach((s: any) => {
+          if (s?.id && s?.due_date) stmtDueById.set(s.id, String(s.due_date).split('T')[0]);
+        });
+        const getCompetenceDate = (ct: any): string => {
+          if (ct.statement_id && stmtDueById.has(ct.statement_id)) {
+            return stmtDueById.get(ct.statement_id)!;
+          }
+          const meta = getEffectiveCardMeta(ct.card_id);
+          if (!meta || meta.closingDay == null || meta.dueDay == null) return ct.date;
+          return HistoryUtils.getCardCompetenceDate(ct.date, meta.closingDay, meta.dueDay);
+        };
+
         // Normalize card transactions
         const normalizedCardTxs = (cardTxs || []).map((ct: any) => ({
           id: ct.id,
           date: ct.date,
+          competenceDate: getCompetenceDate(ct),
           // card_transactions não tem coluna "type": amount negativo é estorno/crédito
           // (abate a fatura), então aqui vira INCOME pra não ser tratado como mais uma despesa.
           type: Number(ct.amount) < 0 ? 'INCOME' : 'EXPENSE',
@@ -686,6 +735,14 @@ const HistoryPage: React.FC = () => {
           }
         }));
 
+        // Recorte por período correto (mês de vencimento) pras compras de cartão —
+        // usado tanto no dataset combinado banco+cartão quanto no "Tudo"/"Cartão".
+        // As transações de banco continuam recortadas pela própria data (já vem
+        // filtrado do banco de dados).
+        const normalizedCardTxsInRange = (startDate && endDate)
+          ? normalizedCardTxs.filter((ct: any) => ct.competenceDate >= startDate && ct.competenceDate <= endDate)
+          : normalizedCardTxs;
+
         // ── Dataset combinado (banco + cartão) só para o GRÁFICO de categorias ──
         // Objetivo: o gráfico deve mostrar o gasto por categoria somando banco e
         // cartão (ex: Mercado do débito + Mercado do cartão), sem contar a fatura
@@ -696,7 +753,7 @@ const HistoryPage: React.FC = () => {
         // topo da página — só o que alimenta o componente HistoryCharts.
         let combinedForChart = [
           ...(txs || []).filter((t: any) => !(t?.metadata?.is_provision === true)),
-          ...normalizedCardTxs
+          ...normalizedCardTxsInRange
         ].map(applyTrueAmount);
         if (filterType !== 'ALL') {
           combinedForChart = combinedForChart.filter((t: any) => t.type === filterType);
@@ -735,6 +792,9 @@ const HistoryPage: React.FC = () => {
           description: t.description || '',
           amount: Number(t.amount || 0),
           date: t.date,
+          // Cartão: agrupa pelo mês de VENCIMENTO da fatura (competenceDate), não
+          // pelo mês da compra. Banco: sem competenceDate, cai no fallback = date.
+          competenceDate: t.competenceDate ?? t.date,
           type: t.type as TransactionType,
           accountId: t.account_id,
           accountName: t.account_name ?? '',
@@ -763,11 +823,11 @@ const HistoryPage: React.FC = () => {
         // então o comportamento entre lista e gráfico ficou consistente.
         // v2026.07.17.1830
         let combined = (
-          filterOrigin === 'CARD' ? normalizedCardTxs :
+          filterOrigin === 'CARD' ? normalizedCardTxsInRange :
           filterOrigin === 'ACCOUNT' ? (txs || []) :
           [
             ...(txs || []).filter((t: any) => !(t?.metadata?.is_provision === true)),
-            ...normalizedCardTxs
+            ...normalizedCardTxsInRange
           ]
         ).map(applyTrueAmount);
         if (filterType !== 'ALL') {
@@ -923,6 +983,7 @@ const HistoryPage: React.FC = () => {
           );
           transactionsData = JSON.parse(cachedRawTxs);
           cardTxsData = JSON.parse(localStorage.getItem(`finvision_cached_raw_card_txs_${user.id}`) || '[]');
+          cardStatementsData = JSON.parse(localStorage.getItem(`finvision_cached_card_statements_${user.id}`) || '[]');
           hasCache = true;
         }
       } catch (cacheErr) {
@@ -930,7 +991,7 @@ const HistoryPage: React.FC = () => {
       }
 
       if (hasCache) {
-        renderData(accData, cardDefsData, catData, subData, dbEntities, entityObjsRes, transactionsData, cardTxsData);
+        renderData(accData, cardDefsData, catData, subData, dbEntities, entityObjsRes, transactionsData, cardTxsData, cardStatementsData);
         setIsLoading(false);
       } else if (!isSilent) {
         setIsLoading(true);
@@ -942,13 +1003,16 @@ const HistoryPage: React.FC = () => {
       }
 
       // 2. Busca online atualizada em segundo plano (silent refresh)
-      const [accRes, cardDefsRes, catRes, subRes, entitiesRes, entityObjs] = await Promise.all([
+      const [accRes, cardDefsRes, catRes, subRes, entitiesRes, entityObjs, cardStatementsRes] = await Promise.all([
         supabase.from('accounts').select('*').eq('is_archived', false),
-        supabase.from('cards').select('id, name, last4').eq('user_id', user.id).eq('is_archived', false),
+        supabase.from('cards').select('id, name, last4, closing_day, due_day, is_additional, parent_card_id, sums_into_invoice').eq('user_id', user.id).eq('is_archived', false),
         supabase.from('categories').select('id, name, type').eq('user_id', user.id).eq('is_archived', false).order('name'),
         supabase.from('subcategories').select('*').eq('user_id', user.id).order('name'),
         FinanceService.getEntities(),
-        FinanceService.getEntityObjects()
+        FinanceService.getEntityObjects(),
+        // Vencimento real de cada fatura já criada — usado pra saber em qual mês
+        // uma compra de cartão deve contar (mês de vencimento, não mês da compra).
+        supabase.from('card_statements').select('id, due_date').eq('user_id', user.id)
       ]);
 
       if (accRes.error) throw accRes.error;
@@ -962,6 +1026,7 @@ const HistoryPage: React.FC = () => {
       subData = subRes.data || [];
       dbEntities = entitiesRes || [];
       entityObjsRes = entityObjs || [];
+      cardStatementsData = cardStatementsRes.data || [];
 
       // Loop fetch de transações em blocos de 1000
       let allTxs: any[] = [];
@@ -976,7 +1041,10 @@ const HistoryPage: React.FC = () => {
           .range(txOffset, txOffset + 999);
 
         if (startDate && endDate) {
-          chunkQuery = chunkQuery.or(`and(date.gte.${startDate},date.lte.${endDate}),and(metadata->>is_provision.eq.true,date.gte.${startDate},date.lte.${futureLimit})`);
+          // Fatura em aberto (is_provision) só entra no mês exato do seu vencimento —
+          // antes havia uma folga de 60 dias que deixava faturas de outros meses
+          // (ex. agosto) aparecerem misturadas na lista/total de julho.
+          chunkQuery = chunkQuery.gte('date', startDate).lte('date', endDate);
         } else {
           if (startDate) chunkQuery = chunkQuery.gte('date', startDate);
           if (endDate) chunkQuery = chunkQuery.lte('date', endDate);
@@ -1003,13 +1071,14 @@ const HistoryPage: React.FC = () => {
       let cardOffset = 0;
 
       while (hasMoreCards) {
+        // Sem filtro de data aqui: uma compra de cartão pode ter sido feita em um mês
+        // mas pertencer à fatura que vence no mês seguinte. O recorte por período
+        // correto (mês de VENCIMENTO da fatura) é aplicado depois, em memória, via
+        // HistoryUtils.getCardCompetenceDate/card_statements — não pela data da compra.
         let chunkQuery = supabase.from('card_transactions')
-          .select('id, date, amount, description, card_id, category_id, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)')
+          .select('id, date, amount, description, card_id, statement_id, category_id, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)')
           .eq('user_id', user.id)
           .range(cardOffset, cardOffset + 999);
-
-        if (startDate) chunkQuery = chunkQuery.gte('date', startDate);
-        if (endDate) chunkQuery = chunkQuery.lte('date', endDate);
 
         const { data, error } = await chunkQuery;
         if (error) {
@@ -1036,12 +1105,13 @@ const HistoryPage: React.FC = () => {
         localStorage.setItem('finvision_cached_owners_objs', JSON.stringify(entityObjsRes));
         localStorage.setItem(`finvision_cached_raw_txs_${user.id}`, JSON.stringify(transactionsData));
         localStorage.setItem(`finvision_cached_raw_card_txs_${user.id}`, JSON.stringify(cardTxsData));
+        localStorage.setItem(`finvision_cached_card_statements_${user.id}`, JSON.stringify(cardStatementsData));
         localStorage.setItem(`finvision_cached_raw_sig_${user.id}`, currentCacheSig);
       } catch (cacheErr) {
         console.warn("Falha ao salvar cache no localStorage:", cacheErr);
       }
 
-      renderData(accData, cardDefsData, catData, subData, dbEntities, entityObjsRes, transactionsData, cardTxsData);
+      renderData(accData, cardDefsData, catData, subData, dbEntities, entityObjsRes, transactionsData, cardTxsData, cardStatementsData);
     } catch (err) {
       console.error(err);
       setError('Erro ao carregar dados.');
@@ -2333,19 +2403,19 @@ const HistoryPage: React.FC = () => {
           .lte('date', end);
         rawTxs = txs || [];
 
+        // Sem filtro de data: uma compra pode pertencer à fatura de outro mês.
+        // Recorte correto (mês de vencimento) é aplicado abaixo, em memória.
         const { data: cardTxs } = await supabase
           .from('card_transactions')
           .select('*, categories(name), cards(account_id, name)')
-          .eq('user_id', userId)
-          .gte('date', start)
-          .lte('date', end);
+          .eq('user_id', userId);
         rawCardTxs = cardTxs || [];
       } catch (err) {
         console.error("Online fetch failed for comparison slot, falling back to cache:", err);
       }
     }
 
-    // Fallback/offline logic: read from local cached full sets and filter by dates
+    // Fallback/offline logic: read from local cached full sets
     if (rawTxs.length === 0 && userId) {
       try {
         const cachedRawTxs = localStorage.getItem(`finvision_cached_raw_txs_${userId}`);
@@ -2359,11 +2429,35 @@ const HistoryPage: React.FC = () => {
       try {
         const cachedCardTxs = localStorage.getItem(`finvision_cached_raw_card_txs_${userId}`);
         if (cachedCardTxs) {
-          const parsed = JSON.parse(cachedCardTxs);
-          rawCardTxs = parsed.filter((t: any) => t.date >= start && t.date <= end);
+          rawCardTxs = JSON.parse(cachedCardTxs);
         }
       } catch (e) {}
     }
+
+    // Mês de vencimento da fatura por compra (mesma regra do fetchData principal).
+    const cardMetaById = new Map<string, { closingDay?: number; dueDay?: number; isAdditional?: boolean; parentCardId?: string; sumsIntoInvoice?: boolean }>();
+    cards.forEach(c => cardMetaById.set(c.id, c));
+    const getEffectiveCardMeta = (cardId?: string) => {
+      if (!cardId) return undefined;
+      const meta = cardMetaById.get(cardId);
+      if (!meta) return undefined;
+      if (meta.isAdditional && meta.sumsIntoInvoice && meta.parentCardId) {
+        return cardMetaById.get(meta.parentCardId) || meta;
+      }
+      return meta;
+    };
+    const stmtDueById = new Map<string, string>();
+    cardStatements.forEach(s => { if (s.id && s.due_date) stmtDueById.set(s.id, s.due_date); });
+    const getCompetenceDate = (ct: any): string => {
+      if (ct.statement_id && stmtDueById.has(ct.statement_id)) return stmtDueById.get(ct.statement_id)!;
+      const meta = getEffectiveCardMeta(ct.card_id);
+      if (!meta || meta.closingDay == null || meta.dueDay == null) return ct.date;
+      return HistoryUtils.getCardCompetenceDate(ct.date, meta.closingDay, meta.dueDay);
+    };
+    rawCardTxs = rawCardTxs.filter((ct: any) => {
+      const competence = getCompetenceDate(ct);
+      return competence >= start && competence <= end;
+    });
 
     const accs = accounts;
     const normalizedCardTxs = rawCardTxs.map((ct: any) => ({
