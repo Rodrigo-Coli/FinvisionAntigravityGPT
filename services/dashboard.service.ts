@@ -60,16 +60,51 @@ export const DashboardService = {
     // Mostra apenas cartões titulares + adicionais com fatura separada.
     // Adicionais que somam na fatura do titular já estão contabilizados no principal.
     const displayCards = cards.filter((c: any) => !c.is_additional || c.sums_into_invoice === false);
-    const creditCardsSummary = displayCards.length > 0 ? await Promise.all(displayCards.map(async (card: any) => {
-      const { data: stmt } = await sb
-        .from('card_statements')
-        .select('total_amount, paid_amount')
-        .eq('card_id', card.id)
-        .in('status', ['OPEN', 'DUE', 'PENDING'])
-        .order('due_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
 
+    // Todas as faturas dos cartões exibidos numa consulta só (antes era uma por
+    // cartão, em Promise.all).
+    const displayCardIds = displayCards.map((c: any) => c.id);
+    const allStatementsRes = displayCardIds.length > 0
+      ? await sb
+        .from('card_statements')
+        .select('card_id, month, year, due_date, status, total_amount, paid_amount')
+        .in('card_id', displayCardIds)
+      : { data: [] as any[] };
+    const allStatements = allStatementsRes.data || [];
+
+    // Qual é a fatura "atual" de um cartão — MESMA regra da tela de Cartões
+    // (loadCardContext em CreditCardsSection): a fatura do período de uso de hoje,
+    // pulando para o mês seguinte quando já passou o dia de fechamento.
+    // Antes aqui era `order('due_date', { ascending: false }).limit(1)`, que pega a
+    // fatura de vencimento MAIS DISTANTE: cartões com faturas futuras já criadas
+    // mostravam no Painel uma fatura de 2028 zerada no lugar da fatura real do mês.
+    const pickCurrentStatement = (card: any) => {
+      const mine = allStatements.filter((s: any) => s.card_id === card.id);
+      if (mine.length === 0) return null;
+
+      const now = new Date();
+      let targetMonth = now.getMonth(); // 0-indexed
+      let targetYear = now.getFullYear();
+      if (card.closing_day && now.getDate() > Number(card.closing_day)) {
+        targetMonth++;
+        if (targetMonth > 11) { targetMonth = 0; targetYear++; }
+      }
+
+      const exact = mine.find((s: any) => Number(s.month) === targetMonth + 1 && Number(s.year) === targetYear);
+      if (exact) return exact;
+
+      // Sem fatura do período: a próxima a vencer entre as abertas.
+      const open = mine
+        .filter((s: any) => ['OPEN', 'DUE', 'PENDING'].includes(s.status))
+        .sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+      if (open.length > 0) return open[0];
+
+      // Último recurso: a fatura mais recente que existir.
+      return [...mine].sort((a: any, b: any) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime())[0];
+    };
+
+    const creditCardsSummary = displayCards.map((card: any) => {
+      const stmt = pickCurrentStatement(card);
       const total = Number(stmt?.total_amount || 0);
       const paid = Number(stmt?.paid_amount || 0);
 
@@ -79,9 +114,9 @@ export const DashboardService = {
         forecasted: total,
         limit: Number(card.limit_total || 0),
         last4: card.last4 || '0000',
-        color: card.brand.toLowerCase().includes('visa') ? 'bg-brand-600' : 'bg-slate-900'
+        color: (card.brand || '').toLowerCase().includes('visa') ? 'bg-brand-600' : 'bg-slate-900'
       };
-    })) : [];
+    });
 
     // 3. Physical Assets mapping
     physicalAssets.forEach((asset: any) => {

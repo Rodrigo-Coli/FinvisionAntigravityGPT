@@ -1,5 +1,38 @@
 [
   {
+    "version": "2026.07.24.0022",
+    "title": "Fatura Certa no Painel e Relatórios com a Categoria Real do Cartão",
+    "date": "24/07/2026",
+    "benefits": [
+      {
+        "title": "O Painel mostra a fatura do mês, não uma de 2028",
+        "desc": "O cartão no Painel estava lendo a fatura de vencimento mais DISTANTE que existisse — como o app já cria faturas futuras, ele mostrava uma fatura de 2028 zerada no lugar da atual. O Bradesco aparecia R\\$ 0,00 quando a fatura real era R\\$ 1.683,91, e o BTG aparecia R\\$ 31,90 no lugar de R\\$ 914,99. Agora o Painel usa exatamente a mesma regra da tela de Cartões, então os dois sempre mostram a mesma fatura.",
+        "type": "correcao"
+      },
+      {
+        "title": "Relatórios enxerga a categoria de verdade das compras do cartão",
+        "desc": "Metade das compras do cartão (85 de 168) aparecia como 'Cartão' no relatório mesmo estando categorizada como Mercado, Alimentação ou Saúde — a tela lia o campo errado. E o filtro por categoria não encontrava nenhuma delas. Agora o relatório mostra a categoria real, o filtro funciona para compras de cartão, e 'Sem categoria' virou uma opção do filtro para você achar rápido o que falta categorizar.",
+        "type": "correcao"
+      },
+      {
+        "title": "Demo já abre com a fatura do cartão preenchida",
+        "desc": "Quem entrava pelo modo demonstração via 4 compras no cartão e a fatura em R\\$ 0,00, porque nenhuma fatura era criada junto com as compras. Agora o demo nasce com a fatura de R\\$ 5.345,90 fechada corretamente e o lançamento dela na lista de Transações, igualzinho a uma conta de verdade.",
+        "type": "correcao"
+      },
+      {
+        "title": "Relatório DRE sem linha repetida",
+        "desc": "O DRE usava 'Sem Categoria' com C maiúsculo enquanto o resto do app usa 'Sem categoria'. Resultado: duas linhas quase idênticas no mesmo relatório. Agora é uma só.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "services/dashboard.service.ts: a fatura exibida por cartão deixou de ser order('due_date', ascending: false).limit(1) (a de vencimento mais distante, que com faturas futuras já materializadas devolvia 2028) e passou a usar a mesma resolução do loadCardContext em CreditCardsSection: fatura do período de uso de hoje (pulando de mês quando passou o closing_day), com fallback para a próxima aberta a vencer e depois para a mais recente. De quebra, as faturas de todos os cartões passaram a vir numa consulta só, no lugar de um maybeSingle por cartão dentro de Promise.all.",
+      "pages/Reports.tsx: a query de card_transactions ganhou o join categories(name). A tela lia só a coluna de texto category, que está vazia em 85 das 168 compras (a categoria real mora em category_id) — compra de Mercado saía como 'Cartão' no relatório e o filtro por categoria não a encontrava. O filtro de categoria do cartão passou a ser aplicado em memória sobre o nome já resolvido, pelo mesmo motivo. Fallback final alinhado em 'Sem categoria' (era 'Cartão' no cartão e 'Geral' no banco), e 'Sem categoria' entrou na lista do filtro, com a busca do lado banco cobrindo também categoria nula/vazia.",
+      "supabase/fix_demo_card_statements.sql: clone_demo_data inseria card_transactions sem statement_id e nunca criava card_statements — o demo abria com fatura zerada. O script acrescenta a criação das faturas (mesma aritmética de FinanceService.getOrCreateStatement), o vínculo das compras e o lançamento espelho em transactions. Aplicado como patch sobre a definição viva da função (ela tem ~200 linhas; reescrevê-la à mão para inserir um bloco seria convite a erro de transcrição) e é idempotente. Validado em transação com rollback: 1 fatura, R\\$ 5.345,90, 0 compras soltas, saldo semeado do Itaú intacto em R\\$ 14.500,80.",
+      "lib/dreUtils.ts: fallback de categoria alinhado em 'Sem categoria' (era 'Sem Categoria'), que é o rótulo único usado em History.tsx, HistoryCharts e Reports."
+    ]
+  },
+  {
     "version": "2026.07.23.2343",
     "title": "Fatura do Cartão com Valor Único e Gráfico sem \"Cartão de Crédito\"",
     "date": "23/07/2026",

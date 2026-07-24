@@ -33,7 +33,10 @@ export const DreUtils = {
             }
 
             const amount = Math.abs(Number(t.amount || 0));
-            const category = t.category || 'Sem Categoria';
+            // 'Sem categoria' com c minúsculo é o rótulo único do app (History.tsx,
+            // HistoryCharts, Reports). Com 'Sem Categoria' aqui, o DRE abria duas
+            // linhas quase idênticas para a mesma coisa.
+            const category = t.category || 'Sem categoria';
             const subcategory = t.subcategory || 'Diversos';
 
             if (t.type === 'INCOME') {

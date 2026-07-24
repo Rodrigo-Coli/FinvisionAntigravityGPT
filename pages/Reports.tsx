@@ -71,7 +71,13 @@ const Reports: React.FC = () => {
       if (cardRes.data) setCards(cardRes.data);
       if (stmtRes.data) setCardStatements(stmtRes.data);
       if (catRes.data) {
-        const uniqueCats = Array.from(new Set(catRes.data.map((c: any) => c.name as string))) as string[];
+        // 'Sem categoria' não é uma linha da tabela de categorias — é o rótulo que o
+        // app dá ao lançamento sem categoria definida. Sem ele na lista, dava para
+        // ver o grupo no relatório mas não dava para filtrar por ele.
+        const uniqueCats = Array.from(new Set([
+          ...catRes.data.map((c: any) => c.name as string),
+          'Sem categoria'
+        ])) as string[];
         setCategories(uniqueCats.sort());
       }
     } catch (e) {
@@ -119,7 +125,12 @@ const Reports: React.FC = () => {
         if (selectedAccountId) {
           q = q.eq('account_id', selectedAccountId);
         }
-        if (selectedCategory) {
+        if (selectedCategory === 'Sem categoria') {
+          // "Sem categoria" é rótulo, não valor gravado: precisa pegar também as
+          // linhas com categoria nula/vazia, senão o filtro devolve menos do que o
+          // próprio relatório mostra agrupado sob esse nome.
+          q = q.or('category.is.null,category.eq.,category.eq.Sem categoria');
+        } else if (selectedCategory) {
           q = q.eq('category', selectedCategory);
         }
         txsPromise = q as any;
@@ -139,18 +150,21 @@ const Reports: React.FC = () => {
         // mas dá pra limitar a busca com janela segura: o vencimento nunca é
         // anterior à compra e fica no máximo ~62 dias depois — 92 dias de folga
         // cobre com sobra, sem baixar o histórico inteiro.
+        // Join com categories(name): a categoria real da compra de cartão mora em
+        // category_id, não na coluna de texto `category` (que fica vazia na maioria
+        // das linhas). Lendo só o texto, compra categorizada como Mercado/Alimentação
+        // aparecia como "Cartão" no relatório — e o filtro por categoria não a
+        // encontrava. Por isso o filtro de categoria do cartão é aplicado em memória
+        // logo abaixo, sobre o nome já resolvido.
         let q = supabase
           .from('card_transactions')
-          .select('date, description, category, amount, card_id, statement_id')
+          .select('date, description, category, amount, card_id, statement_id, categories(name)')
           .eq('user_id', user.id)
           .gte('date', DateUtils.addDaysISO(dateRange.start, -92))
           .lte('date', dateRange.end);
 
         if (isCard && selectedAccountId) {
           q = q.eq('card_id', selectedAccountId);
-        }
-        if (selectedCategory) {
-          q = q.eq('category', selectedCategory);
         }
         cardTxsPromise = q as any;
       }
@@ -190,9 +204,17 @@ const Reports: React.FC = () => {
         if (!meta || meta.closingDay == null || meta.dueDay == null) return ct.date;
         return HistoryUtils.getCardCompetenceDate(ct.date, meta.closingDay, meta.dueDay);
       };
+      // Nome da categoria resolvido uma vez só, na mesma ordem de prioridade do
+      // History: relação categories(name) → coluna de texto → 'Sem categoria'.
+      const cardCategoryName = (ct: any): string =>
+        ct.categories?.name || ct.category || 'Sem categoria';
+
       const cardTxs = allCardTxs.filter((ct: any) => {
         const competence = getCompetenceDate(ct);
-        return competence >= dateRange.start && competence <= dateRange.end;
+        if (competence < dateRange.start || competence > dateRange.end) return false;
+        // Filtro de categoria do cartão em memória (ver comentário na query acima).
+        if (selectedCategory && cardCategoryName(ct) !== selectedCategory) return false;
+        return true;
       });
 
       // Exclui: capitalizados + BILL_PAYMENT (no modo TUDO, pois compras do cartão já entram via cardTxs)
@@ -230,7 +252,7 @@ const Reports: React.FC = () => {
       const formattedTxs = filteredTxs.map((t: any) => ({
         date: t.date,
         description: t.description,
-        category: t.category || 'Geral',
+        category: t.category || 'Sem categoria',
         type: t.type === 'INCOME' ? 'Receita' : (t.type === 'TRANSFER' ? 'Transferência' : 'Despesa'),
         amount: t.amount,
         status: t.is_paid ? 'Pago' : 'Pendente',
@@ -240,7 +262,7 @@ const Reports: React.FC = () => {
       const formattedCardTxs = cardTxs.map((c: any) => ({
         date: c.date,
         description: c.description,
-        category: c.category || 'Cartão',
+        category: cardCategoryName(c),
         type: 'Despesa',
         amount: c.amount,
         status: 'Fatura/Postado',
