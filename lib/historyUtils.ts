@@ -101,3 +101,25 @@ export const HistoryUtils = {
     formatDateBR,
     getCardCompetenceDate
 };
+
+/**
+ * Movimento capitalizado = aquisição de bem, recebimento de empréstimo/financiamento e
+ * afins. É troca de patrimônio, não resultado operacional, então fica fora dos gráficos e
+ * dos totais de receita/despesa. Mesma regra do Painel (services/dashboard.service.ts) e
+ * dos Relatórios (pages/Reports.tsx).
+ */
+export const isCapitalizedMovement = (t: any): boolean =>
+    t?.metadata?.isCapitalized === true || t?.metadata?.type === 'asset_purchase';
+
+/**
+ * Metadata mínimo que o dataset do gráfico de categorias precisa carregar.
+ * ATENÇÃO: `isCapitalized` e `type` são obrigatórios — sem eles
+ * isCapitalizedMovement() nunca dá verdadeiro e o filtro de capitalizados vira código
+ * morto (era exatamente o bug: um recebimento de financiamento de R$ 155 mil aparecia
+ * como 92% das "receitas do mês" no gráfico).
+ */
+export const projectChartMetadata = (t: any) => ({
+    is_card: !!t?.metadata?.is_card,
+    isCapitalized: t?.metadata?.isCapitalized === true,
+    type: t?.metadata?.type
+});

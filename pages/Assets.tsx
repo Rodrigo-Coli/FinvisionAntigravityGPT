@@ -1579,12 +1579,17 @@ const Assets: React.FC = () => {
           const futureTxs = [];
           
           for (let i = 1; i <= installmentsCount; i++) {
-            const txDate = new Date(today.getFullYear(), today.getMonth() + i, dueDate);
+            // buildInstallmentDate prende o vencimento ao último dia do mês quando o dia
+            // não existe (ex.: dia 31 em fevereiro), evitando que a parcela escorregue pro
+            // mês seguinte. monthOffset = i mantém a 1ª parcela no mês que vem, como antes.
+            const txDate = buildInstallmentDate(today.getFullYear(), today.getMonth(), i, dueDate);
             futureTxs.push({
               user_id: userId,
               description: `Recebimento Parcela ${i}/${installmentsCount} - ${asset.name}`,
               amount: monthlyValue,
-              date: txDate.toISOString().split('T')[0],
+              // formatToISODate respeita o fuso do aparelho; toISOString convertia pra UTC
+              // e podia voltar a parcela um dia num fuso negativo (Brasil).
+              date: DateUtils.formatToISODate(txDate),
               type: 'INCOME',
               category: catName,
               category_id: catId,
@@ -11106,7 +11111,7 @@ const Assets: React.FC = () => {
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-bold text-slate-900">{editingLiability ? 'Editar Passivo / Financiamento' : 'Novo Passivo / Financiamento'}</h3>
-              <button onClick={() => setShowLiabilityModal(false)} className="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-50">
+              <button onClick={() => { setShowLiabilityModal(false); setForceRegenSchedule(false); }} className="text-slate-400 hover:text-slate-600 rounded-lg p-1 hover:bg-slate-50">
                 <X size={20} />
               </button>
             </div>
@@ -11522,7 +11527,7 @@ const Assets: React.FC = () => {
               )}
 
               <div className="pt-4 flex gap-3 border-t border-slate-100">
-                <button type="button" onClick={() => setShowLiabilityModal(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancelar</button>
+                <button type="button" onClick={() => { setShowLiabilityModal(false); setForceRegenSchedule(false); }} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancelar</button>
                 <button type="submit" className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg">Salvar Passivo</button>
               </div>
             </form>

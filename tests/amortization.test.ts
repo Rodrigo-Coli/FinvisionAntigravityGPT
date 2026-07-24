@@ -108,3 +108,46 @@ describe('buildInstallmentDate — vencimento não transborda de mês', () => {
     expect(d.getDate()).toBe(29);
   });
 });
+
+describe('computeInstallmentAmount — equivalência com o laço à mão do assistente de imóvel', () => {
+  // Reproduz o cálculo antigo do RealEstateWizardModal e confirma que a função dá o mesmo
+  // (a menos do arredondamento a centavos, que é a melhoria deliberada).
+  const wizardHandMath = (k: number, principal: number, n: number, ratePct: number, reajPct: number, isSAC: boolean) => {
+    const rate = ratePct / 100;
+    const reaj = reajPct / 100;
+    let installmentVal: number;
+    if (isSAC) {
+      const amort = principal / n;
+      const saldoInicio = principal - amort * (k - 1);
+      installmentVal = amort + saldoInicio * rate;
+    } else if (rate === 0) {
+      installmentVal = principal / n;
+    } else {
+      installmentVal = principal * (rate * Math.pow(1 + rate, n)) / (Math.pow(1 + rate, n) - 1);
+    }
+    return installmentVal * Math.pow(1 + reaj, k - 1);
+  };
+
+  const casos: Array<[number, number, number, boolean]> = [
+    [200000, 120, 0.6, true],   // SAC com juros
+    [200000, 120, 0.6, false],  // Price com juros
+    [90000, 60, 0, true],       // sem juros
+  ];
+
+  for (const [principal, n, ratePct, isSAC] of casos) {
+    it(`bate com o cálculo à mão (principal=${principal}, n=${n}, taxa=${ratePct}, SAC=${isSAC})`, () => {
+      for (const k of [1, 2, Math.floor(n / 2), n]) {
+        const daFuncao = computeInstallmentAmount(k, principal, n, ratePct, 0.3, isSAC);
+        const aMao = wizardHandMath(k, principal, n, ratePct, 0.3, isSAC);
+        // Igual a menos de 1 centavo (a função arredonda, o cálculo à mão não).
+        expect(Math.abs(daFuncao - aMao)).toBeLessThan(0.01);
+      }
+    });
+  }
+
+  it('a 1ª parcela sem reajuste é a âncora (SAC): amortização + juros do 1º mês', () => {
+    const principal = 200000, n = 120, ratePct = 0.6;
+    const esperado = Math.round((principal / n + principal * (ratePct / 100)) * 100) / 100;
+    expect(computeInstallmentAmount(1, principal, n, ratePct, 0, true)).toBe(esperado);
+  });
+});

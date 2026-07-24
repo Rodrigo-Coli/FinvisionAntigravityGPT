@@ -1,42 +1,36 @@
 {
-  "version": "2026.07.24.0055",
-  "title": "Parcelas de Financiamento Certas, Visíveis e com a Data Correta",
+  "version": "2026.07.24.0140",
+  "title": "Ajustes Finos no Patrimônio: Gráfico, Datas e Cálculo Unificado",
   "date": "24/07/2026",
   "benefits": [
     {
-      "title": "A parcela que você digita agora é a 1ª parcela de verdade",
-      "desc": "No cadastro de um passivo você informa o Valor Parcela (o valor do boleto). Só que o sistema ignorava esse número e recalculava tudo pelo saldo devedor, gerando parcelas completamente diferentes das reais — o card do imóvel mostrava R$ 1.277,56 e a lista de parcelas começava em R$ 1.704,67. Agora o valor que você digita É a primeira parcela: no SAC as seguintes vão diminuindo a partir dela, no Price ficam todas iguais a ela. O que aparece no card do imóvel, no passivo e na primeira parcela lançada é sempre o mesmo número.",
+      "title": "O gráfico de Categorias em Transações parou de inflar com dinheiro de empréstimo",
+      "desc": "Quando você cadastra um financiamento, o app registra o recebimento (ex.: R$ 155.000 que entraram) como um movimento de patrimônio — não é receita do mês. Esse valor estava aparecendo no gráfico de Categorias da tela de Transações e dominava tudo (aparecia como ~92% das \"receitas\"), distorcendo a leitura. Agora ele fica de fora do gráfico, igual já acontecia no Painel e nos Relatórios. O total de RECEITAS/DESPESAS e o BALANÇO no topo da tela nunca contaram esse valor e continuam exatamente iguais.",
       "type": "correcao"
     },
     {
-      "title": "A parcela do financiamento aparece em Transações",
-      "desc": "As parcelas de dívidas e financiamentos vinculados ao patrimônio nasciam sem conta bancária escolhida, e o filtro de Conta (que já vem preenchido sozinho com as suas contas) as jogava para fora da tela. Resultado: a parcela aparecia no card do imóvel e no passivo, mas sumia da lista de Transações. Agora todo lançamento que não pertence a nenhuma conta nem cartão passa pelo filtro de Conta em vez de ser escondido.",
+      "title": "Parcelas de empréstimos que você concedeu agora caem na data certa",
+      "desc": "Em Patrimônio → Empréstimos Concedidos, quando o vencimento era dia 29, 30 ou 31, a parcela de um mês curto (como fevereiro) escorregava para o início do mês seguinte, e daí o cronograma andava torto. Agora, quando o dia não existe no mês, a parcela vai para o último dia dele (28/29 de fevereiro, 30 de abril). Também corrigimos um deslocamento de fuso que podia mostrar a parcela um dia antes.",
       "type": "correcao"
     },
     {
-      "title": "O extrato do patrimônio mostra a data certa",
-      "desc": "No extrato do imóvel e no extrato do passivo as datas apareciam um dia antes do que estava salvo (parcela do dia 29 aparecia como 28). Era um deslocamento de fuso horário só na hora de exibir — o dado no banco sempre esteve certo, e em Transações já aparecia correto. Agora as duas telas mostram a mesma data.",
-      "type": "correcao"
+      "title": "O assistente de Aquisição Imobiliária passou a usar o mesmo cálculo da tela de Passivos",
+      "desc": "O cadastro de imóvel financiado calculava as parcelas com uma conta própria, separada da usada em Passivos — e era por isso que consertar um lado às vezes deixava o outro para trás. Agora os dois usam exatamente o mesmo motor de cálculo: a 1ª parcela mostrada no card do imóvel é idêntica à primeira parcela lançada, o SAC decresce corretamente e as datas seguem a mesma regra de vencimento. Uma única fonte da verdade, então correção em um lugar vale para os dois. Financiamentos já cadastrados não foram alterados.",
+      "type": "melhoria"
     },
     {
-      "title": "Vencimento dia 29, 30 ou 31 não escorrega mais de mês",
-      "desc": "Uma dívida com vencimento no dia 29 gerava a parcela de fevereiro em 1º de março, e a partir dali o cronograma andava torto. Agora, quando o dia não existe naquele mês, a parcela vai para o último dia do mês (28 ou 29 de fevereiro, 30 de abril).",
-      "type": "correcao"
-    },
-    {
-      "title": "Botão para recalcular as parcelas de uma dívida já cadastrada",
-      "desc": "Ao editar um passivo apareceu a opção \"Recalcular as parcelas futuras ao salvar\". Ela apaga e refaz apenas as parcelas ainda não pagas, de hoje em diante, com o cálculo novo — parcelas já pagas e datas passadas ficam intactas. Serve para acertar de uma vez as dívidas cujo cronograma foi gerado pelas versões antigas do cálculo, sem precisar apagar e cadastrar tudo de novo. Além disso, mexer nos juros, no reajuste, no saldo devedor ou no tipo de amortização agora também oferece o recálculo (antes só valor, quantidade e vencimento faziam isso).",
+      "title": "Detalhe de segurança no botão de recalcular parcelas",
+      "desc": "Ao editar uma dívida existe a opção \"Recalcular as parcelas futuras ao salvar\". Se você marcava e depois clicava em Cancelar, a marcação ficava guardada na memória da tela. Não causava efeito hoje, mas por segurança agora o Cancelar (e o X) sempre desmarcam essa opção — recalcular parcelas apaga e refaz lançamentos, então tem que ser sempre uma escolha consciente.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "lib/amortization.ts (novo): computeInstallmentAmount e buildInstallmentDate saíram de dentro de pages/Assets.tsx para um módulo próprio, coberto por tests/amortization.test.ts (15 casos).",
-    "lib/amortization.ts: computeInstallmentAmount ganhou o parâmetro firstInstallment (âncora). Com valor informado, o SAC deriva a amortização constante de (1ª parcela − juros do 1º mês) em vez de saldo/n, o Price fixa todas as parcelas nesse valor, e o caso sem juros idem. Guarda de coerência: parcela informada menor que os juros do 1º mês é descartada e cai no cálculo teórico antigo. O saldo do período é clampado em 0 para nenhuma parcela ficar negativa no fim do cronograma.",
-    "lib/amortization.ts: o reajuste passou de (1+reaj)^index1 para (1+reaj)^(index1-1) — a 1ª parcela é a âncora e não pode vir corrigida, senão nunca bate com o valor informado. Os dois botões calculadores do formulário de passivo (descobrir valor da parcela / descobrir quantas parcelas faltam) foram alinhados à mesma convenção (removido o *(1+reaj) e o /(1+reaj), respectivamente).",
-    "pages/Assets.tsx: handleSaveLiability passa installmentAmt como âncora nos dois caminhos (criação e regeneração) e usa buildInstallmentDate no lugar de new Date(y, m, dueDay), que transbordava para o mês seguinte quando o dia não existia. A data gravada saiu de txDate.toISOString().split('T')[0] (converte para UTC) para DateUtils.formatToISODate(txDate).",
-    "pages/Assets.tsx: scheduleChanged passou a considerar também saldo devedor, taxa de juros, projeção de reajuste e tipo de amortização, além do novo estado forceRegenSchedule (checkbox exibido só na edição, que dispensa o confirm por já ser opt-in explícito).",
-    "pages/Assets.tsx e components/assets/RealEstateDetailModal.tsx: todas as exibições de data dos extratos de patrimônio (extrato do ativo, extrato do passivo, tabela de amortização de empréstimo concedido, histórico de valorização e os dois exports Excel) trocaram new Date(tx.date).toLocaleDateString('pt-BR') por DateUtils.formatDisplayDate(tx.date). A coluna date é timestamptz e o PostgREST devolve ...T00:00:00+00:00: new Date() convertia para o fuso local (UTC-3) e voltava um dia.",
-    "pages/History.tsx: novo predicado matchesAccountFilter, aplicado nos três pontos que filtravam por conta (lista, gráfico de categorias e slots de comparação). Lançamento sem account_id e sem card_id não pertence a nenhuma conta, então nenhuma seleção o representa — passa sempre. É o que fazia as parcelas de passivo sumirem de Transações assim que o filtro padrão de contas era inicializado.",
-    "components/assets/RealEstateWizardModal.tsx: mesma convenção de âncora aplicada ao financiamento criado pelo assistente (firstInstallmentVal sem reajuste, correção acumulada a partir de k-1), vencimento preso ao último dia do mês, data gravada via DateUtils.formatToISODate e baseStartDate lido com 'T00:00:00' — sem isso o dia de vencimento do passivo saía um dia antes do que o usuário digitou."
+    "lib/historyUtils.ts: isCapitalizedMovement foi extraída para cá (antes era uma const local em pages/History.tsx) e ganhou projectChartMetadata, que carrega isCapitalized/type no dataset do gráfico de categorias. O mapeamento anterior gravava só { is_card }, então o filtro de capitalizados (operationalChartCategoryTxs) nunca dava verdadeiro — era código morto e o recebimento de financiamento (sem conta, que passou a aparecer após a correção do filtro de conta de 2026.07.24.0055) entrava no gráfico. Coberto por tests/capitalizedMovement.test.ts (7 casos).",
+    "pages/History.tsx: passou a importar isCapitalizedMovement/projectChartMetadata de lib/historyUtils.ts; o mapeamento de chartCategoryTransactions usa projectChartMetadata(t). Os mapeamentos de chartTransactions e transactions (que usam detectLegacySeries e já preservavam o metadata) não foram tocados — o resumo do topo continua idêntico.",
+    "pages/Assets.tsx (runAutoTransactionSync, parcelas de empréstimo concedido): a data da parcela passou de new Date(ano, mês + i, dueDate) + toISOString() para buildInstallmentDate(...) + DateUtils.formatToISODate(...), eliminando o transbordo de dia 29-31 e o deslocamento de fuso. Mesmo conserto já aplicado aos passivos em 2026.07.24.0055.",
+    "pages/Assets.tsx: os botões X e Cancelar do modal de Passivo passaram a chamar setForceRegenSchedule(false) junto com setShowLiabilityModal(false), garantindo que a regeneração opcional de parcelas só dispare por opt-in explícito e nunca por estado residual.",
+    "components/assets/RealEstateWizardModal.tsx: a matemática SAC/Price escrita à mão (valor da 1ª parcela + laço de geração) foi substituída por computeInstallmentAmount e buildInstallmentDate de lib/amortization.ts. Variáveis órfãs (outstandingBalance, sacAmortization, monthlyRate, reajusteRate) removidas. Mudança de comportamento deliberada: parcelas agora arredondadas a centavos (a tela de Passivos já fazia). Registros existentes não afetados.",
+    "tests/amortization.test.ts: bloco novo de equivalência prova numericamente que computeInstallmentAmount (sem âncora) reproduz o laço à mão que o assistente usava (SAC com juros, Price com juros, sem juros, âncora da 1ª parcela), a menos do arredondamento — 4 casos novos, total 19 no arquivo. Suíte geral: 120 testes passando.",
+    "Validação em produção-espelho (modo demo): passivo com os números reais do usuário (saldo 91.845,54 / 165x / 0,79% / SAC) e financiamento pelo assistente (200.000 / 120x / 0,6% / SAC / 1ª parcela dia 31) — parcela 1 = valor do card, SAC decrescente correto, datas 31/08→30/09→...→28/02 sem transbordo, recebimento de 155 mil fora do gráfico de categorias e balanço do topo inalterado. Dados de teste removidos após a verificação."
   ]
 }

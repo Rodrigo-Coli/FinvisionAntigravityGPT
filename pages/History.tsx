@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 import { Transaction, TransactionType, BankAccount } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { offlineQueue } from '../lib/offlineQueue.service';
-import { HistoryUtils, EPS } from '../lib/historyUtils';
+import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata } from '../lib/historyUtils';
 import { DateUtils } from '../lib/dateUtils';
 import { FinanceService } from '../services/finance.service';
 import { ReconciliationService } from '../services/reconciliation.service';
@@ -174,11 +174,8 @@ const matchesAccountFilter = (t: any, selected: string[]): boolean => {
   return (!!accountId && selected.includes(accountId)) || (!!cardId && selected.includes(cardId));
 };
 
-// Lançamentos capitalizados (aquisição de bens, financiamento/empréstimo recebido, etc.) são movimentos
-// de patrimônio, não resultado operacional. O Painel (dashboard.service) e os Relatórios já os excluem
-// dos totais; aqui aplicamos a mesma regra para o resumo do Histórico não divergir das outras telas.
-const isCapitalizedMovement = (t: any): boolean =>
-  t?.metadata?.isCapitalized === true || t?.metadata?.type === 'asset_purchase';
+// isCapitalizedMovement (lançamentos de patrimônio que ficam fora dos gráficos/totais) foi
+// movido para lib/historyUtils.ts e é importado no topo — mesma regra do Painel e Relatórios.
 
 const getQueryParam = (name: string): string | null => {
   let search = window.location.search;
@@ -833,7 +830,9 @@ const HistoryPage: React.FC = () => {
           isPaid: !!t.is_paid,
           paidAmount: Number(t.paid_amount || 0),
           is_amortization: !!t.is_amortization,
-          metadata: { is_card: !!t.metadata?.is_card }
+          // projectChartMetadata preserva isCapitalized/type — sem isso o filtro de
+          // movimentos capitalizados (operationalChartCategoryTxs) nunca dá verdadeiro.
+          metadata: projectChartMetadata(t)
         })));
 
         // Origem define qual fonte entra no combined.
