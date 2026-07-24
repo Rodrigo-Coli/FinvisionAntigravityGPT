@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.07.24.0340",
+    "title": "Zyvion AI agora te ajuda a economizar e evoluir — no chat e no WhatsApp",
+    "date": "24/07/2026",
+    "benefits": [
+      {
+        "title": "Peça \"quero gastar menos\" e a IA mostra onde cortar",
+        "desc": "Quando você pedir ajuda para economizar, a assistente vasculha suas despesas reais e compara cada área com percentuais saudáveis de referência (moradia até 30% da renda, transporte até 15%, alimentação 10–15%, lazer até 10%). Ela aponta onde você está acima do ideal e estima quanto dá para economizar em reais, sempre terminando com um próximo passo simples para você fazer já.",
+        "type": "recurso"
+      },
+      {
+        "title": "Aprenda a evoluir seu patrimônio direto na conversa",
+        "desc": "Diga \"quero evoluir\" ou \"quero alavancar\" e a IA ensina os percentuais que os especialistas usam (poupar pelo menos 20% da renda, reserva de emergência de 3 a 6 meses, dívida total até 36% da renda) e analisa a sua situação real — patrimônio, dívidas e liquidez — para te orientar com os seus próprios números.",
+        "type": "recurso"
+      },
+      {
+        "title": "Orientação só quando você pede, e sempre com responsabilidade",
+        "desc": "A assistente não fica te interrompendo com conselhos: ela só entra no modo consultoria quando você pede. E mantém as travas de sempre — nunca fala de concorrentes, nunca sai fazendo pesquisas aleatórias na internet e nunca manda comprar ou vender um investimento específico. Ela ensina, mostra os cenários e deixa a decisão final sempre com você.",
+        "type": "seguranca"
+      }
+    ],
+    "changes": [
+      "api/_lib/finvision-chat.ts: acrescentados os itens 5–7 (Consultoria Sob Demanda reativa, Régua de Referência com percentuais embutidos e Limite Regulatório) à seção de Inteligência Financeira Avançada, sem remover nada. ai_prompts não tem linha para finvision_chat, então o texto do código roda em produção.",
+      "api/_lib/whatsapp-webhook.ts: bloco 'EVOLUÇÃO FINANCEIRA' com a régua no prompt de consulta e uma linha resumida no prompt de conversa casual. Reativo, sem pesquisa na web, sem recomendar ativo específico; blindagem de concorrentes preservada.",
+      "App.tsx: APP_VERSION 6.2.7 → 6.2.8 para o Service Worker exibir o aviso de novidades. tsc --noEmit sem erros."
+    ]
+  },
+  {
     "version": "2026.07.24.0140",
     "title": "Ajustes Finos no Patrimônio: Gráfico, Datas e Cálculo Unificado",
     "date": "24/07/2026",

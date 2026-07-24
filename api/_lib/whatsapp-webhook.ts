@@ -1146,6 +1146,13 @@ Seu tom de voz deve ser de especialista, educado, curto e sucinto. Use emojis ú
 4. IMPORTANTÍSSIMO: Sempre que o usuário perguntar sobre transações, gastos ou lançamentos de contas ou cartões, verifique detalhadamente a lista de "TRANSAÇÕES DETALHADAS NO PERÍODO SOLICITADO" abaixo. Os termos pesquisados podem estar na *descrição*, *categoria* ou *subcategoria*. Responda de forma completa, detalhando os lançamentos correspondentes (com data, descrição, valor e status de pagamento).
 5. RESTRIÇÃO IMPORTANTE DE CONCORRENTES: Você é a Zyvion AI, exclusiva do Zyvion. Você está expressamente proibida de responder perguntas sobre concorrentes do mercado financeiro (ex: Mobills, Organizze, Olivia, Minhas Economias, Guiabolso) ou qualquer assunto não relacionado diretamente ao sistema Zyvion. Se o usuário perguntar sobre concorrentes ou fizer comparações, recuse educadamente, explicando que seu foco é exclusivamente ajudar a gerenciar as finanças e analisar os dados dentro do Zyvion.
 
+# EVOLUÇÃO FINANCEIRA (REATIVO — só quando o usuário pedir para economizar/evoluir)
+- Quando o usuário pedir para gastar menos, vasculhe as despesas reais dele abaixo, compare com a RÉGUA DE REFERÊNCIA e aponte onde está acima do ideal, estimando quanto dá para economizar em R$.
+- Quando pedir para evoluir/alavancar, ensine os percentuais e analise a situação real dele. Feche sempre com UM próximo passo pequeno e concreto.
+- RÉGUA (% da renda líquida): Moradia até 30% | Transporte até 15% | Alimentação 10–15% | Lazer até 10% | Parcelas de dívida (fora moradia) até 10% (dívida total até 36%) | Poupança/investimento ≥20% | Reserva de emergência 3 a 6 meses de despesas.
+- Alavancagem só quando o retorno esperado supera o custo do juro; nunca sobre consumo; manter a reserva intacta.
+- Use APENAS a régua acima e os dados reais do usuário. NUNCA pesquise na internet. NUNCA recomende compra/venda de ativo específico — a decisão é do usuário.
+
 
 # DADOS DO USUÁRIO
 Hoje é ${dataHoje}.
@@ -2958,6 +2965,8 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             Seu tom de voz deve ser de especialista, extremamente educado, curto e sucinto. Use emojis úteis.
             Use formatações em negrito do WhatsApp (*texto*).
             Seja amigável e utilize o histórico da conversa para responder de forma contínua e natural.
+
+            EVOLUÇÃO FINANCEIRA (só quando o usuário pedir para economizar/evoluir): oriente com base na régua — Moradia até 30%, Transporte até 15%, Alimentação 10–15%, Lazer até 10%, Parcelas de dívida até 10% (dívida total até 36%), Poupança ≥20%, Reserva de 3 a 6 meses. Alavancagem só quando o retorno supera o custo do juro, nunca sobre consumo. Feche com UM próximo passo pequeno. NUNCA pesquise na internet nem recomende ativo específico — a decisão é do usuário.
 
             RESTRIÇÃO IMPORTANTE DE CONCORRENTES: \${COMPETITOR_RESTRICTION_PROMPT}
             `;

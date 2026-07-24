@@ -1,36 +1,29 @@
 {
-  "version": "2026.07.24.0140",
-  "title": "Ajustes Finos no Patrimônio: Gráfico, Datas e Cálculo Unificado",
+  "version": "2026.07.24.0340",
+  "title": "Zyvion AI agora te ajuda a economizar e evoluir — no chat e no WhatsApp",
   "date": "24/07/2026",
   "benefits": [
     {
-      "title": "O gráfico de Categorias em Transações parou de inflar com dinheiro de empréstimo",
-      "desc": "Quando você cadastra um financiamento, o app registra o recebimento (ex.: R$ 155.000 que entraram) como um movimento de patrimônio — não é receita do mês. Esse valor estava aparecendo no gráfico de Categorias da tela de Transações e dominava tudo (aparecia como ~92% das \"receitas\"), distorcendo a leitura. Agora ele fica de fora do gráfico, igual já acontecia no Painel e nos Relatórios. O total de RECEITAS/DESPESAS e o BALANÇO no topo da tela nunca contaram esse valor e continuam exatamente iguais.",
-      "type": "correcao"
+      "title": "Peça \"quero gastar menos\" e a IA mostra onde cortar",
+      "desc": "Quando você pedir ajuda para economizar, a assistente vasculha suas despesas reais e compara cada área com percentuais saudáveis de referência (moradia até 30% da renda, transporte até 15%, alimentação 10–15%, lazer até 10%). Ela aponta onde você está acima do ideal e estima quanto dá para economizar em reais, sempre terminando com um próximo passo simples para você fazer já.",
+      "type": "recurso"
     },
     {
-      "title": "Parcelas de empréstimos que você concedeu agora caem na data certa",
-      "desc": "Em Patrimônio → Empréstimos Concedidos, quando o vencimento era dia 29, 30 ou 31, a parcela de um mês curto (como fevereiro) escorregava para o início do mês seguinte, e daí o cronograma andava torto. Agora, quando o dia não existe no mês, a parcela vai para o último dia dele (28/29 de fevereiro, 30 de abril). Também corrigimos um deslocamento de fuso que podia mostrar a parcela um dia antes.",
-      "type": "correcao"
+      "title": "Aprenda a evoluir seu patrimônio direto na conversa",
+      "desc": "Diga \"quero evoluir\" ou \"quero alavancar\" e a IA ensina os percentuais que os especialistas usam (poupar pelo menos 20% da renda, reserva de emergência de 3 a 6 meses, dívida total até 36% da renda) e analisa a sua situação real — patrimônio, dívidas e liquidez — para te orientar com os seus próprios números.",
+      "type": "recurso"
     },
     {
-      "title": "O assistente de Aquisição Imobiliária passou a usar o mesmo cálculo da tela de Passivos",
-      "desc": "O cadastro de imóvel financiado calculava as parcelas com uma conta própria, separada da usada em Passivos — e era por isso que consertar um lado às vezes deixava o outro para trás. Agora os dois usam exatamente o mesmo motor de cálculo: a 1ª parcela mostrada no card do imóvel é idêntica à primeira parcela lançada, o SAC decresce corretamente e as datas seguem a mesma regra de vencimento. Uma única fonte da verdade, então correção em um lugar vale para os dois. Financiamentos já cadastrados não foram alterados.",
-      "type": "melhoria"
-    },
-    {
-      "title": "Detalhe de segurança no botão de recalcular parcelas",
-      "desc": "Ao editar uma dívida existe a opção \"Recalcular as parcelas futuras ao salvar\". Se você marcava e depois clicava em Cancelar, a marcação ficava guardada na memória da tela. Não causava efeito hoje, mas por segurança agora o Cancelar (e o X) sempre desmarcam essa opção — recalcular parcelas apaga e refaz lançamentos, então tem que ser sempre uma escolha consciente.",
-      "type": "melhoria"
+      "title": "Orientação só quando você pede, e sempre com responsabilidade",
+      "desc": "A assistente não fica te interrompendo com conselhos: ela só entra no modo consultoria quando você pede. E mantém as travas de sempre — nunca fala de concorrentes, nunca sai fazendo pesquisas aleatórias na internet e nunca manda comprar ou vender um investimento específico. Ela ensina, mostra os cenários e deixa a decisão final sempre com você.",
+      "type": "seguranca"
     }
   ],
   "changes": [
-    "lib/historyUtils.ts: isCapitalizedMovement foi extraída para cá (antes era uma const local em pages/History.tsx) e ganhou projectChartMetadata, que carrega isCapitalized/type no dataset do gráfico de categorias. O mapeamento anterior gravava só { is_card }, então o filtro de capitalizados (operationalChartCategoryTxs) nunca dava verdadeiro — era código morto e o recebimento de financiamento (sem conta, que passou a aparecer após a correção do filtro de conta de 2026.07.24.0055) entrava no gráfico. Coberto por tests/capitalizedMovement.test.ts (7 casos).",
-    "pages/History.tsx: passou a importar isCapitalizedMovement/projectChartMetadata de lib/historyUtils.ts; o mapeamento de chartCategoryTransactions usa projectChartMetadata(t). Os mapeamentos de chartTransactions e transactions (que usam detectLegacySeries e já preservavam o metadata) não foram tocados — o resumo do topo continua idêntico.",
-    "pages/Assets.tsx (runAutoTransactionSync, parcelas de empréstimo concedido): a data da parcela passou de new Date(ano, mês + i, dueDate) + toISOString() para buildInstallmentDate(...) + DateUtils.formatToISODate(...), eliminando o transbordo de dia 29-31 e o deslocamento de fuso. Mesmo conserto já aplicado aos passivos em 2026.07.24.0055.",
-    "pages/Assets.tsx: os botões X e Cancelar do modal de Passivo passaram a chamar setForceRegenSchedule(false) junto com setShowLiabilityModal(false), garantindo que a regeneração opcional de parcelas só dispare por opt-in explícito e nunca por estado residual.",
-    "components/assets/RealEstateWizardModal.tsx: a matemática SAC/Price escrita à mão (valor da 1ª parcela + laço de geração) foi substituída por computeInstallmentAmount e buildInstallmentDate de lib/amortization.ts. Variáveis órfãs (outstandingBalance, sacAmortization, monthlyRate, reajusteRate) removidas. Mudança de comportamento deliberada: parcelas agora arredondadas a centavos (a tela de Passivos já fazia). Registros existentes não afetados.",
-    "tests/amortization.test.ts: bloco novo de equivalência prova numericamente que computeInstallmentAmount (sem âncora) reproduz o laço à mão que o assistente usava (SAC com juros, Price com juros, sem juros, âncora da 1ª parcela), a menos do arredondamento — 4 casos novos, total 19 no arquivo. Suíte geral: 120 testes passando.",
-    "Validação em produção-espelho (modo demo): passivo com os números reais do usuário (saldo 91.845,54 / 165x / 0,79% / SAC) e financiamento pelo assistente (200.000 / 120x / 0,6% / SAC / 1ª parcela dia 31) — parcela 1 = valor do card, SAC decrescente correto, datas 31/08→30/09→...→28/02 sem transbordo, recebimento de 155 mil fora do gráfico de categorias e balanço do topo inalterado. Dados de teste removidos após a verificação."
+    "api/_lib/finvision-chat.ts (systemPrompt do chat do app): acrescentados os itens 5, 6 e 7 à seção 'Diretrizes de Inteligência Financeira Avançada', sem remover nada — 'Consultoria Sob Demanda' (reativo: só age quando o usuário pede para economizar/evoluir; vasculha despesas reais e compara com a régua; fecha com um próximo passo), 'Régua de Referência' (percentuais embutidos: moradia 30%, transporte 15%, alimentação 10–15%, lazer 10%, parcelas 10%/dívida total 36%, poupança ≥20%, reserva 3–6 meses, critério de alavancagem retorno>custo do juro) e 'Limite Regulatório' (educa e simula, nunca recomenda ativo específico). Reforçado: NUNCA pesquisar na web por benchmarks — a busca segue restrita a macroeconomia pontual (Selic/CDI/IPCA/câmbio) já existente. Confirmado que a tabela ai_prompts não tem linha para o slug finvision_chat, então o texto do código é o que roda em produção.",
+    "api/_lib/whatsapp-webhook.ts (systemPrompt de consulta, ~L1147): adicionado bloco 'EVOLUÇÃO FINANCEIRA' com a régua em versão curta, entre a regra de concorrentes e os dados do usuário. Reativo, sem pesquisa na internet, sem recomendação de ativo específico.",
+    "api/_lib/whatsapp-webhook.ts (systemPromptChat casual, ~L2962): adicionada uma linha com a régua resumida e as travas (sem web, sem recomendar ativo), preservando a blindagem de concorrentes já existente.",
+    "App.tsx: APP_VERSION 6.2.7 → 6.2.8 para que o Service Worker detecte a nova versão e exiba o aviso de novidades (as mudanças de prompt são no backend api/ e não alterariam o bundle do cliente sozinhas).",
+    "Verificação: node tsc -p tsconfig.json --noEmit sem erros. As três alterações são apenas acréscimos em texto de prompt — nenhuma regra existente (escopo financeiro, blindagem de concorrentes, restrição de busca na web) foi removida ou enfraquecida."
   ]
 }
