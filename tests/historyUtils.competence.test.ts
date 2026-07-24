@@ -102,6 +102,129 @@ describe('getCardCompetenceDate', () => {
             }
         });
     });
+
+    describe('vencimento no fim do mês (dias 29, 30 e 31 — a interface permite até 31)', () => {
+        it('cartão que vence dia 31 não gera "31 de fevereiro"', () => {
+            // Regressão: a versão anterior montava a string à mão e devolvia
+            // "2026-02-31" — data inexistente que, na comparação textual do filtro
+            // de período, some de fevereiro E de março (some de todos os meses).
+            expect(getCardCompetenceDate('2026-01-15', 10, 31)).toBe('2026-03-03');
+        });
+
+        it('cartão que vence dia 30 em fevereiro rola para março', () => {
+            expect(getCardCompetenceDate('2026-01-10', 5, 30)).toBe('2026-03-02');
+        });
+
+        it('cartão que vence dia 29 em fevereiro (ano não bissexto) rola para 1º de março', () => {
+            expect(getCardCompetenceDate('2026-01-15', 10, 29)).toBe('2026-03-01');
+        });
+
+        it('cartão que vence dia 29 em fevereiro de ano BISSEXTO cai no próprio dia 29', () => {
+            // 2028 é bissexto — aqui a data existe e não deve rolar.
+            expect(getCardCompetenceDate('2028-01-15', 10, 29)).toBe('2028-02-29');
+        });
+
+        it('mês de 30 dias com vencimento 31 rola para o dia 1º seguinte', () => {
+            expect(getCardCompetenceDate('2026-03-15', 10, 31)).toBe('2026-05-01');
+        });
+
+        it('vencimento 31 em mês de 31 dias fica no próprio dia 31', () => {
+            expect(getCardCompetenceDate('2026-01-05', 10, 31)).toBe('2026-01-31');
+        });
+    });
+});
+
+/**
+ * Réplica fiel da aritmética de getOrCreateStatement
+ * (services/finance.service.ts:169-213), que é quem grava
+ * card_statements.due_date no banco.
+ *
+ * Por que isto existe: getCardCompetenceDate é o FALLBACK usado quando a compra
+ * ainda não tem fatura gerada. Assim que a fatura nasce, o due_date real passa a
+ * ter prioridade. Se as duas contas divergirem, a mesma compra pula de mês no
+ * momento em que a fatura é criada — bug silencioso e difícil de rastrear.
+ * Este bloco trava o contrato entre as duas.
+ */
+function dueDateComoOServicoGrava(dateStr: string, closingDay: number, dueDay: number): string {
+    const txDate = new Date(dateStr + 'T00:00:00Z');
+    const day = txDate.getUTCDate();
+    let targetMonth = txDate.getUTCMonth();
+    let targetYear = txDate.getUTCFullYear();
+    if (day > closingDay) {
+        targetMonth++;
+        if (targetMonth > 11) { targetMonth = 0; targetYear++; }
+    }
+    let dueMonth = targetMonth;
+    let dueYear = targetYear;
+    if (dueDay < closingDay) {
+        dueMonth++;
+        if (dueMonth > 11) { dueMonth = 0; dueYear++; }
+    }
+    return new Date(Date.UTC(dueYear, dueMonth, dueDay)).toISOString().split('T')[0];
+}
+
+describe('getCardCompetenceDate — paridade com o card_statements.due_date do serviço', () => {
+    it('bate com o serviço em TODA combinação de fechamento × vencimento × mês', () => {
+        // 31 fechamentos × 31 vencimentos × 12 meses × 4 dias de compra.
+        // Este é o teste que teria pego o bug do "31 de fevereiro".
+        const divergentes: string[] = [];
+        for (let closing = 1; closing <= 31; closing++) {
+            for (let due = 1; due <= 31; due++) {
+                for (let m = 1; m <= 12; m++) {
+                    for (const d of [1, 10, 20, 28]) {
+                        const compra = `2026-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                        const meu = getCardCompetenceDate(compra, closing, due);
+                        const servico = dueDateComoOServicoGrava(compra, closing, due);
+                        if (meu !== servico) {
+                            divergentes.push(`fecha ${closing}/vence ${due} compra ${compra}: ${meu} ≠ ${servico}`);
+                        }
+                    }
+                }
+            }
+        }
+        expect(divergentes.slice(0, 5).join(' | ')).toBe('');
+        expect(divergentes).toHaveLength(0);
+    });
+
+    it('nunca devolve uma data que não existe no calendário', () => {
+        const invalidas: string[] = [];
+        for (let closing = 1; closing <= 31; closing++) {
+            for (let due = 1; due <= 31; due++) {
+                for (let m = 1; m <= 12; m++) {
+                    const compra = `2026-${String(m).padStart(2, '0')}-15`;
+                    const comp = getCardCompetenceDate(compra, closing, due);
+                    // Se a data existe, o round-trip por Date preserva a string.
+                    const roundTrip = new Date(comp + 'T00:00:00Z').toISOString().split('T')[0];
+                    if (roundTrip !== comp) {
+                        invalidas.push(`fecha ${closing}/vence ${due} compra ${compra} → ${comp}`);
+                    }
+                }
+            }
+        }
+        expect(invalidas.slice(0, 5).join(' | ')).toBe('');
+        expect(invalidas).toHaveLength(0);
+    });
+
+    it('a competência nunca cai fora da janela de busca de 92 dias', () => {
+        // Invariante de que depende a query limitada em History.tsx/Reports.tsx:
+        // se isto quebrar, compras somem da tela por não terem sido buscadas.
+        const fora: string[] = [];
+        for (let closing = 1; closing <= 31; closing++) {
+            for (let due = 1; due <= 31; due++) {
+                for (let m = 1; m <= 12; m++) {
+                    for (const d of [1, 15, 28]) {
+                        const compra = `2026-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                        const comp = getCardCompetenceDate(compra, closing, due);
+                        if (comp < compra || comp > DateUtils.addDaysISO(compra, 92)) {
+                            fora.push(`fecha ${closing}/vence ${due} compra ${compra} → ${comp}`);
+                        }
+                    }
+                }
+            }
+        }
+        expect(fora.slice(0, 5).join(' | ')).toBe('');
+        expect(fora).toHaveLength(0);
+    });
 });
 
 describe('DateUtils.addDaysISO (helper da janela de busca)', () => {

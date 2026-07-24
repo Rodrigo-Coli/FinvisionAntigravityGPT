@@ -74,8 +74,19 @@ export const getCardCompetenceDate = (purchaseDateISO: string, closingDay: numbe
         if (dueMonth > 11) { dueMonth = 0; dueYear++; }
     }
 
+    // IMPORTANTE: montar a string à mão (`${ano}-${mes}-${dueDay}`) produz datas
+    // inexistentes quando dueDay não cabe no mês — ex: cartão que vence dia 31 em
+    // fevereiro viraria "2026-02-31". Como o recorte por período compara texto,
+    // essa data fica acima do fim de fevereiro e abaixo do início de março, e a
+    // compra sumiria de TODOS os meses.
+    // Date.UTC normaliza o excedente (31/02 → 03/03) — que é exatamente o que
+    // getOrCreateStatement (services/finance.service.ts) grava em
+    // card_statements.due_date. As duas contas PRECISAM bater: quando a fatura
+    // real existir, o due_date dela tem prioridade sobre este cálculo, e uma
+    // divergência faria a compra pular de mês ao gerar a fatura.
+    const due = new Date(Date.UTC(dueYear, dueMonth, dueDay));
     const pad = (n: number) => String(n).padStart(2, '0');
-    return `${dueYear}-${pad(dueMonth + 1)}-${pad(dueDay)}`;
+    return `${due.getUTCFullYear()}-${pad(due.getUTCMonth() + 1)}-${pad(due.getUTCDate())}`;
 };
 
 // Mantendo o objeto HistoryUtils para compatibilidade de importação existente

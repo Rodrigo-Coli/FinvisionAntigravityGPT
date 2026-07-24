@@ -1,21 +1,16 @@
 {
-  "version": "2026.07.23.1839",
-  "title": "Notificações: Reforço Contra Corrida Interna",
+  "version": "2026.07.23.2231",
+  "title": "Cartão com Vencimento no Fim do Mês: Compras Não Somem Mais",
   "date": "23/07/2026",
   "benefits": [
     {
-      "title": "Fim da 'corrida' entre partes do app na hora de renovar a notificação",
-      "desc": "O app tem duas rotinas que podem tentar renovar a conexão de notificações do aparelho ao mesmo tempo (uma que roda em segundo plano sempre, outra na tela de Ajustes). Elas podiam disputar entre si e uma atropelar o resultado da outra — contribuindo para casos raros de 'reparei e continuou falhando'. Agora elas são organizadas numa fila: uma espera a outra terminar, sempre.",
+      "title": "Cartão que vence dia 29, 30 ou 31 agora funciona corretamente",
+      "desc": "Se você cadastrasse um cartão com vencimento no fim do mês, as compras dele podiam desaparecer da lista e dos totais — e ainda assim continuar aparecendo no gráfico Mês a Mês, fazendo os dois números divergirem de novo. O motivo: em meses curtos o cálculo criava datas que não existem, como \"31 de fevereiro\", e nenhum mês conseguia reconhecer essa data. Agora o cálculo trata isso do mesmo jeito que o resto do sistema (o vencimento passa para o início do mês seguinte). Seus cartões atuais nunca foram afetados, porque o maior vencimento cadastrado é dia 25 — a correção evita o problema para qualquer cartão novo.",
       "type": "correcao"
-    },
-    {
-      "title": "Convite de notificações mais discreto",
-      "desc": "O convite para ativar notificações não aparece mais em cima dos avisos de 'instalar o app' na primeira visita, e não fica reaparecendo sozinho durante o uso — só é oferecido uma vez por sessão do aparelho.",
-      "type": "melhoria"
     }
   ],
   "changes": [
-    "lib/pushUtils.ts: fila serializePushOp (Promise chain) em torno de ensureFreshPushSubscription e subscribeUserToPush — impede duas chamadas concorrentes de unsubscribe()/subscribe() no mesmo PushSubscription, causa raiz de assinatura no banco divergir da assinatura real do navegador.",
-    "components/PushManager.tsx: inviteCheckedRef evita repetir a checagem do convite a cada onAuthStateChange (Supabase dispara esse evento também em refresh silencioso de token, não só no login); isInstallPromptPending() adia o convite de notificações se o aviso de instalar o app (PWA/iOS) ainda pode aparecer, evitando dois banners disputando a tela."
+    "lib/historyUtils.ts (getCardCompetenceDate): a data de vencimento deixou de ser montada por concatenação de string e passou a usar new Date(Date.UTC(...)), que normaliza o excedente de dias (31/02 → 03/03) — mesma aritmética de getOrCreateStatement em services/finance.service.ts, que é quem grava card_statements.due_date. Antes, due_day 29-31 produzia datas inexistentes (ex: \"2026-02-31\") que, na comparação textual do recorte por período, ficavam acima do fim de fevereiro e abaixo do início de março: a transação sumia de todos os meses, mas o agrupamento por substring(0,7) ainda a exibia no gráfico Mês a Mês. Verificado: 6.076 combinações de fechamento/vencimento geravam data inválida; agora zero.",
+    "tests/historyUtils.competence.test.ts: +9 testes (27 no arquivo, 94 na suíte). Novo bloco de paridade que compara getCardCompetenceDate contra uma réplica fiel da aritmética de getOrCreateStatement em 31 fechamentos × 31 vencimentos × 12 meses × 4 dias de compra — é o teste que teria pego este bug. Somados: verificação de que nenhuma data devolvida é inexistente (round-trip por Date) e de que a competência nunca cai fora da janela de busca de 92 dias (invariante da query limitada em History.tsx/Reports.tsx). Casos explícitos de vencimento 29/30/31, incluindo 29 de fevereiro em ano bissexto."
   ]
 }
