@@ -566,7 +566,27 @@ export const FinanceService = {
       
       if (stmtErr || !stmt) return;
 
-      const amount = Math.abs(Number(stmt.total_amount || 0));
+      // Valor do espelho: soma AO VIVO dos lançamentos da fatura, não a coluna
+      // total_amount (que é um total em cache e pode estar defasada se algum
+      // lançamento foi alterado por fora da tela de Cartões). É essa defasagem que
+      // fazia "Cartões" mostrar um valor e "Transações" outro para a mesma fatura.
+      // Soma COM SINAL: estorno (amount negativo) abate a fatura.
+      const { data: stmtTxs } = await supabase
+        .from('card_transactions')
+        .select('amount')
+        .eq('statement_id', statementId);
+
+      const liveTotal = Array.isArray(stmtTxs)
+        ? stmtTxs.reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0)
+        : Number(stmt.total_amount || 0);
+
+      // Sem lançamentos na fatura ainda: cai no total gravado (faturas ad-hoc/legadas).
+      const rawTotal = (Array.isArray(stmtTxs) && stmtTxs.length > 0)
+        ? liveTotal
+        : Number(stmt.total_amount || 0);
+
+      // Fatura com saldo credor (mais estorno do que compra) não vira despesa a pagar.
+      const amount = Math.round(Math.max(0, rawTotal) * 100) / 100;
 
       // 2. Localizar conta para o lançamento
       let targetAccountId = overrideAccountId;

@@ -30,7 +30,7 @@ const DEFAULT_CATEGORIES = [
   'Alimentação', 'Assinaturas', 'Cartão de Crédito', 'Conciliação',
   'Educação', 'Estorno', 'Extra', 'Farmácia', 'Investimento',
   'Lazer', 'Mercado', 'Moradia', 'Outros', 'Pagamentos',
-  'Restaurante', 'Salário', 'Saúde', 'Transporte', 'Vendas'
+  'Restaurante', 'Salário', 'Saúde', 'Sem categoria', 'Transporte', 'Vendas'
 ].sort();
 
 type PayModalState =
@@ -716,7 +716,11 @@ const HistoryPage: React.FC = () => {
           // (abate a fatura), então aqui vira INCOME pra não ser tratado como mais uma despesa.
           type: Number(ct.amount) < 0 ? 'INCOME' : 'EXPENSE',
           amount: Number(ct.amount),
-          category: ct.categories?.name || 'Cartão de Crédito',
+          // Compra de cartão SEM categoria não pode cair em "Cartão de Crédito": nos
+          // gráficos o cartão não é categoria — o que aparece são as operações feitas
+          // nele (Mercado, Lazer...). Usar o nome do cartão como categoria fazia a
+          // linha "Cartão de Crédito" reaparecer no gráfico de Categorias.
+          category: ct.categories?.name || ct.category || 'Sem categoria',
           subcategory: ct.subcategory || undefined,
           description: ct.description,
           account_id: ct.cards?.account_id || undefined,
@@ -1093,7 +1097,7 @@ const HistoryPage: React.FC = () => {
         // dentro de [start - 92 dias, end] — folga de 92 dias cobre com sobra,
         // sem precisar baixar o histórico inteiro do usuário a cada carga.
         let chunkQuery = supabase.from('card_transactions')
-          .select('id, date, amount, description, card_id, statement_id, category_id, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)')
+          .select('id, date, amount, description, card_id, statement_id, category_id, category, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)')
           .eq('user_id', user.id)
           .range(cardOffset, cardOffset + 999);
 
@@ -2517,7 +2521,7 @@ const HistoryPage: React.FC = () => {
       // Idem ao fetchData principal: amount negativo em card_transactions é estorno/crédito.
       type: Number(ct.amount) < 0 ? 'INCOME' : 'EXPENSE',
       amount: Number(ct.amount),
-      category: ct.categories?.name || ct.category || 'Cartão de Crédito',
+      category: ct.categories?.name || ct.category || 'Sem categoria',
       subcategory: ct.subcategory || undefined,
       description: ct.description,
       account_id: ct.account_id || ct.cards?.account_id || undefined,

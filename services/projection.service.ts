@@ -47,8 +47,11 @@ export const projectionService = {
     (pendingTx || []).forEach((t: any) => {
         if (t.owner_name && excludedSet.has(t.owner_name)) return;
         if (t.metadata?.is_historical === true || t.metadata?.is_historical === 'true') return;
-        // Prevenir dupla contagem de faturas de cartões de crédito
-        if (t.category === 'Cartão de Crédito') return;
+        // Prevenir dupla contagem de faturas de cartão: o lançamento espelho da fatura
+        // (metadata.is_provision) já é projetado no bloco 3, direto de card_statements.
+        // Antes o filtro era por t.category, mas a query não traz essa coluna — o teste
+        // nunca era verdadeiro e toda fatura entrava duas vezes na projeção.
+        if (t.metadata?.is_provision === true) return;
         let key = t.date.substring(0, 7);
         // If overdue, move to current month for projection purposes
         if (key < currentKey) key = currentKey;
@@ -65,8 +68,8 @@ export const projectionService = {
         recurringTx.forEach((t: any) => {
             if (t.owner_name && excludedSet.has(t.owner_name)) return;
             if (t.metadata?.is_historical === true || t.metadata?.is_historical === 'true') return;
-            // Prevenir dupla contagem de faturas de cartões de crédito
-            if (t.category === 'Cartão de Crédito') return;
+            // Idem acima: fatura espelho já entra pelo bloco 3 (card_statements).
+            if (t.metadata?.is_provision === true) return;
             if (!latestByGroup[t.recurrence_group_id] || new Date(t.date) > new Date(latestByGroup[t.recurrence_group_id].date)) {
                 latestByGroup[t.recurrence_group_id] = t;
             }

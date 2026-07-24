@@ -25,7 +25,8 @@ const CATEGORY_COLORS: Record<string, string> = {
     'Mercado': '#f59e0b',
     'Restaurante': '#db2777',
     'Investimento': '#10b981',
-    'Outros': '#94a3b8'
+    'Outros': '#94a3b8',
+    'Sem categoria': '#cbd5e1'
 };
 
 export const HistoryCharts: React.FC<HistoryChartsProps> = ({

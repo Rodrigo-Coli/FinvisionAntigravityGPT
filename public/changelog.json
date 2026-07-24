@@ -1,21 +1,36 @@
 {
-  "version": "2026.07.23.2232",
-  "title": "Cartões: Tablet Sem Rolagem Lateral e Tema Escuro Completo",
+  "version": "2026.07.23.2343",
+  "title": "Fatura do Cartão com Valor Único e Gráfico sem \"Cartão de Crédito\"",
   "date": "23/07/2026",
   "benefits": [
     {
-      "title": "Tablet e janela estreita também mostram o lançamento inteiro",
-      "desc": "A lista de transações do cartão já aparecia inteira no celular, mas em telas médias — tablet em pé, ou a janela do navegador reduzida no computador — a tabela larga voltava e exigia arrastar para o lado. Agora a versão em cartãozinho vale até 1024px de largura, cobrindo essa faixa: em nenhum tamanho de tela você precisa mais rolar para os lados para ver categoria, valor ou os botões.",
+      "title": "A fatura do cartão mostra o mesmo valor em todas as telas",
+      "desc": "A tela de Cartões dizia um valor de fatura e a lista de Transações dizia outro para a mesma fatura. Duas coisas causavam isso: um estorno (compra devolvida) era SOMADO à fatura em vez de descontado, e o lançamento da fatura em Transações só era atualizado quando você mexia pela tela de Cartões — alterou o lançamento por Transações, Conciliação ou importação e ele ficava com o valor velho. Agora o valor é recalculado no próprio banco de dados a cada mudança, venha de onde vier, e o lançamento da fatura acompanha sozinho. As faturas que já estavam divergentes foram acertadas.",
       "type": "correcao"
     },
     {
-      "title": "Lista de transações do cartão enxerga o tema escuro",
-      "desc": "Com o tema escuro ligado, a lista de lançamentos do cartão continuava branca no meio de uma tela escura, com os campos difíceis de ler. Agora ela acompanha o tema: fundo escuro, texto claro e bordas suaves, tanto na visão de celular/tablet quanto na tabela do computador.",
+      "title": "\"Cartão de Crédito\" não aparece mais como categoria nos gráficos",
+      "desc": "Uma compra de cartão sem categoria definida estava sendo rotulada como \"Cartão de Crédito\" no gráfico de Categorias — e o cartão não é um gasto, é onde o gasto aconteceu. Agora essas compras aparecem como \"Sem categoria\", em cinza claro, e ao clicar você vê exatamente quais são para categorizar. Os gráficos voltam a mostrar só o que você comprou de verdade (Mercado, Lazer, Saúde...).",
+      "type": "correcao"
+    },
+    {
+      "title": "Faturas antigas do extrato também viraram \"Sem categoria\"",
+      "desc": "Os 47 lançamentos antigos que vieram do extrato do banco (\"GASTOS CARTAO DE CREDITO\", \"PAGTO ELETRON COBRANCA...\") estavam na categoria \"Cartão de Crédito\" e faziam essa linha aparecer nos gráficos de 2024 a 2025. Passaram para \"Sem categoria\": o valor, a data e o saldo continuam exatamente iguais, só o rótulo mudou. Assim dá para filtrar por \"Sem categoria\" e ver tudo o que ainda falta detalhar quando você cadastrar as dívidas antigas de cartão.",
+      "type": "melhoria"
+    },
+    {
+      "title": "Previsão de caixa deixa de contar a fatura duas vezes",
+      "desc": "Na projeção de fluxo de caixa, cada fatura em aberto era somada duas vezes — uma vez como fatura e outra como o lançamento dela em Transações — inflando a despesa prevista dos próximos meses. Agora cada fatura conta uma vez só, então a previsão de saldo ficou realista.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "components/cards/TransactionList.tsx: breakpoint da visão em card corrigido de md (768px) para lg (1024px) — a tabela desktop tem min-w-[900px], então entre 768px e 899px ela ainda forçava rolagem horizontal, exatamente o que a visão em card existe para evitar; comentário no código registra o porquê para evitar regressão.",
-    "components/cards/TransactionList.tsx: suporte a dark mode em todo o componente (31 pontos), seguindo a convenção já usada em CreditCardsSection — container bg-white/dark:bg-slate-800, bordas dark:border-slate-700, campos bg-white/dark:bg-brand-900, textos dark:text-slate-100/200 e estados (± de estorno, anexo, excluir) com variantes dark. Verificado em 375/768/899/1280px e com contraste de texto de 11,9:1 e 13,4:1 sobre o fundo escuro (WCAG AA exige 4,5:1)."
+    "supabase/fix_card_statement_total_signed.sql: recalculate_card_statement_total voltou a somar COM SINAL. O fix_security_warnings.sql (endurecimento de search_path) tinha reescrito a função com SUM(ABS(amount)), fazendo cada estorno somar em vez de abater — a mesma leva de scripts que já havia trocado as funções de saldo de conta e foi consertada pelo fix_security_warnings_3_emergency.sql, mas esta ficou para trás. É a origem da regressão.",
+    "supabase/fix_card_statement_total_signed.sql: a função passou a atualizar também o lançamento espelho da fatura em transactions (metadata.card_statement_id) enquanto ele não estiver pago, tornando impossível Cartões e Transações divergirem de novo, independentemente da tela que alterou o lançamento. Faturas pagas não são tocadas para não mexer no saldo da conta. Backfill aplicado: 1 fatura e 33 espelhos acertados; verificação pós-fix retorna 0 divergências.",
+    "services/finance.service.ts: syncStatementToHistory calcula o valor do espelho pela soma ao vivo dos card_transactions da fatura em vez de confiar na coluna total_amount (total em cache), e usa max(0, total) no lugar de abs(total) para que fatura com saldo credor não vire despesa a pagar.",
+    "pages/History.tsx: compra de cartão sem categoria passou a cair em 'Sem categoria' (com fallback para a coluna de texto category antes disso) em vez de 'Cartão de Crédito', nos dois pontos de normalização (fetchData e slots de comparação); coluna category incluída no select de card_transactions. HistoryCharts.tsx ganhou a cor cinza clara para o novo rótulo.",
+    "supabase/relabel_legacy_card_category.sql: os 47 lançamentos legados de extrato com category='Cartão de Crédito' e type='EXPENSE' passaram para 'Sem categoria', guardando o valor antigo em metadata.previous_category (reversível com um UPDATE, documentado no próprio arquivo). Os 30 BILL_PAYMENT não foram tocados: são os espelhos de fatura, a categoria deles vem de cards.default_category e é reescrita a cada sync, e eles já ficam fora dos gráficos pelo filtro metadata.is_provision. Todos os 47 já estavam pagos, então não há efeito em projeção nem em contas a pagar; saldos conferidos sem alteração (o trigger de saldo só dispara quando muda valor/conta/tipo/pagamento).",
+    "pages/History.tsx: 'Sem categoria' entrou em DEFAULT_CATEGORIES para virar opção válida no seletor e no filtro de categoria — sem isso o novo rótulo aparecia na lista mas não dava para filtrar por ele.",
+    "services/projection.service.ts: o filtro anti-dupla-contagem de fatura testava t.category === 'Cartão de Crédito', mas a query nunca traz a coluna category — o teste jamais era verdadeiro e toda fatura entrava duas vezes na projeção (uma via card_statements, outra via transactions). Trocado por metadata.is_provision, que é o campo realmente carregado."
   ]
 }
