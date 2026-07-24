@@ -1,16 +1,21 @@
 {
-  "version": "2026.07.23.2231",
-  "title": "Cartão com Vencimento no Fim do Mês: Compras Não Somem Mais",
+  "version": "2026.07.23.2232",
+  "title": "Cartões: Tablet Sem Rolagem Lateral e Tema Escuro Completo",
   "date": "23/07/2026",
   "benefits": [
     {
-      "title": "Cartão que vence dia 29, 30 ou 31 agora funciona corretamente",
-      "desc": "Se você cadastrasse um cartão com vencimento no fim do mês, as compras dele podiam desaparecer da lista e dos totais — e ainda assim continuar aparecendo no gráfico Mês a Mês, fazendo os dois números divergirem de novo. O motivo: em meses curtos o cálculo criava datas que não existem, como \"31 de fevereiro\", e nenhum mês conseguia reconhecer essa data. Agora o cálculo trata isso do mesmo jeito que o resto do sistema (o vencimento passa para o início do mês seguinte). Seus cartões atuais nunca foram afetados, porque o maior vencimento cadastrado é dia 25 — a correção evita o problema para qualquer cartão novo.",
+      "title": "Tablet e janela estreita também mostram o lançamento inteiro",
+      "desc": "A lista de transações do cartão já aparecia inteira no celular, mas em telas médias — tablet em pé, ou a janela do navegador reduzida no computador — a tabela larga voltava e exigia arrastar para o lado. Agora a versão em cartãozinho vale até 1024px de largura, cobrindo essa faixa: em nenhum tamanho de tela você precisa mais rolar para os lados para ver categoria, valor ou os botões.",
+      "type": "correcao"
+    },
+    {
+      "title": "Lista de transações do cartão enxerga o tema escuro",
+      "desc": "Com o tema escuro ligado, a lista de lançamentos do cartão continuava branca no meio de uma tela escura, com os campos difíceis de ler. Agora ela acompanha o tema: fundo escuro, texto claro e bordas suaves, tanto na visão de celular/tablet quanto na tabela do computador.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "lib/historyUtils.ts (getCardCompetenceDate): a data de vencimento deixou de ser montada por concatenação de string e passou a usar new Date(Date.UTC(...)), que normaliza o excedente de dias (31/02 → 03/03) — mesma aritmética de getOrCreateStatement em services/finance.service.ts, que é quem grava card_statements.due_date. Antes, due_day 29-31 produzia datas inexistentes (ex: \"2026-02-31\") que, na comparação textual do recorte por período, ficavam acima do fim de fevereiro e abaixo do início de março: a transação sumia de todos os meses, mas o agrupamento por substring(0,7) ainda a exibia no gráfico Mês a Mês. Verificado: 6.076 combinações de fechamento/vencimento geravam data inválida; agora zero.",
-    "tests/historyUtils.competence.test.ts: +9 testes (27 no arquivo, 94 na suíte). Novo bloco de paridade que compara getCardCompetenceDate contra uma réplica fiel da aritmética de getOrCreateStatement em 31 fechamentos × 31 vencimentos × 12 meses × 4 dias de compra — é o teste que teria pego este bug. Somados: verificação de que nenhuma data devolvida é inexistente (round-trip por Date) e de que a competência nunca cai fora da janela de busca de 92 dias (invariante da query limitada em History.tsx/Reports.tsx). Casos explícitos de vencimento 29/30/31, incluindo 29 de fevereiro em ano bissexto."
+    "components/cards/TransactionList.tsx: breakpoint da visão em card corrigido de md (768px) para lg (1024px) — a tabela desktop tem min-w-[900px], então entre 768px e 899px ela ainda forçava rolagem horizontal, exatamente o que a visão em card existe para evitar; comentário no código registra o porquê para evitar regressão.",
+    "components/cards/TransactionList.tsx: suporte a dark mode em todo o componente (31 pontos), seguindo a convenção já usada em CreditCardsSection — container bg-white/dark:bg-slate-800, bordas dark:border-slate-700, campos bg-white/dark:bg-brand-900, textos dark:text-slate-100/200 e estados (± de estorno, anexo, excluir) com variantes dark. Verificado em 375/768/899/1280px e com contraste de texto de 11,9:1 e 13,4:1 sobre o fundo escuro (WCAG AA exige 4,5:1)."
   ]
 }
