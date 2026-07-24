@@ -58,6 +58,7 @@ import { syncRentalTransactions as sharedSyncRentalTransactions, syncCondoIptuTr
 import ConsortiumSection from '../components/assets/ConsortiumSection';
 import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
+import { computeInstallmentAmount, buildInstallmentDate } from '../lib/amortization';
 import { useToast } from '../contexts/ToastContext';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
@@ -68,36 +69,6 @@ let autoSyncInFlight = false;
 // múltiplos disparos do form, etc.) — sem isso, funções como syncRentalTransactions
 // leem "o que já existe" antes da gravação anterior terminar e geram parcelas em dobro.
 let saveAssetInFlight = false;
-
-// Cálculo AUTORITATIVO do valor de uma parcela (índice 1-based), a partir dos detalhes do financiamento.
-// - SAC + juros: amortização constante + juros sobre o saldo restante → parcela DECRESCE.
-// - Price + juros: parcela FIXA (fórmula Price).
-// - Sem juros: base linear (saldo / nº parcelas).
-// - Correção (reajuste) é aplicada por cima, acumulada por período.
-// Fica LINEAR (todas iguais) somente quando juros E reajuste estão zerados.
-const computeInstallmentAmount = (
-  index1: number,
-  principal: number,
-  n: number,
-  ratePct: number,
-  reajPct: number,
-  isSAC: boolean
-): number => {
-  if (n <= 0 || principal <= 0) return 0;
-  const rate = ratePct / 100;
-  const reaj = reajPct / 100;
-  const baseAmort = principal / n;
-  let parcela: number;
-  if (rate <= 0) {
-    parcela = baseAmort; // sem juros → base linear (iguais antes da correção)
-  } else if (isSAC) {
-    const outstandingStart = principal - baseAmort * (index1 - 1); // saldo no início do período
-    parcela = baseAmort + outstandingStart * rate; // SAC decrescente
-  } else {
-    parcela = principal * (rate * Math.pow(1 + rate, n)) / (Math.pow(1 + rate, n) - 1); // Price fixo
-  }
-  return Math.round(parcela * Math.pow(1 + reaj, index1) * 100) / 100;
-};
 
 type AssetView = 'overview' | 'realestate' | 'vehicles' | 'physical' | 'investments' | 'loans' | 'liabilities' | 'consortiums';
 const ASSET_VIEWS: AssetView[] = ['overview', 'realestate', 'vehicles', 'physical', 'investments', 'loans', 'liabilities', 'consortiums'];
@@ -312,6 +283,10 @@ const Assets: React.FC = () => {
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [showWizardModal, setShowWizardModal] = useState(false);
   const [showLiabilityModal, setShowLiabilityModal] = useState(false);
+  // Marcado pelo usuário na edição de um passivo: força regerar as parcelas futuras mesmo
+  // que nenhum campo tenha mudado (serve para consertar cronogramas gerados por versões
+  // antigas do cálculo, sem precisar apagar e recadastrar a dívida).
+  const [forceRegenSchedule, setForceRegenSchedule] = useState(false);
   const [showRealEstateManageModal, setShowRealEstateManageModal] = useState(false);
   const [selectedAssetForExtrato, setSelectedAssetForExtrato] = useState<PhysicalAsset | null>(null);
   const [selectedLiabilityForExtrato, setSelectedLiabilityForExtrato] = useState<Liability | null>(null);
@@ -3994,7 +3969,7 @@ const Assets: React.FC = () => {
       '#': idx + 1,
       'Descrição': t.description,
       'Valor (R$)': t.amount,
-      'Data': new Date(t.date).toLocaleDateString('pt-BR'),
+      'Data': DateUtils.formatDisplayDate(t.date),
       'Categoria': t.category,
       'Subcategoria': t.subcategory || '-',
       'Situação': t.isPaid ? 'Pago' : 'Pendente'
@@ -4024,7 +3999,7 @@ const Assets: React.FC = () => {
       '#': idx + 1,
       'Descrição': t.description,
       'Valor (R$)': t.amount,
-      'Data': new Date(t.date).toLocaleDateString('pt-BR'),
+      'Data': DateUtils.formatDisplayDate(t.date),
       'Categoria': t.category,
       'Situação': t.is_paid ? 'Pago' : 'Pendente',
       'Amortização': t.is_amortization ? 'Sim' : 'Não'
@@ -4462,15 +4437,29 @@ const Assets: React.FC = () => {
         const oldInstallmentAmt = Number(editingLiability.installmentAmount) || 0;
         const oldInstallmentsLeft = Number(editingLiability.installmentsRemaining) || 0;
         const oldDueDay = Number(editingLiability.dueDay) || 0;
+        const oldRemainingBal = Number(editingLiability.remainingBalance) || 0;
+        const oldRatePct = Number(editingLiability.interestRate) || 0;
+        const oldReajPct = Number(editingLiability.metadata?.indexationRate) || 0;
+        const oldAmortType = editingLiability.metadata?.amortizationType || 'SAC';
+        // Qualquer campo que entra no cálculo da parcela conta como mudança de cronograma —
+        // antes só valor/quantidade/vencimento contavam, e mexer na taxa de juros, no
+        // reajuste, no saldo devedor ou no tipo de amortização deixava as parcelas antigas
+        // (calculadas com os números velhos) para trás.
         const scheduleChanged =
+          forceRegenSchedule ||
           Math.abs(oldInstallmentAmt - installmentAmt) > 0.001 ||
           oldInstallmentsLeft !== installmentsLeft ||
-          oldDueDay !== dueDay;
+          oldDueDay !== dueDay ||
+          Math.abs(oldRemainingBal - remainingBal) > 0.001 ||
+          Math.abs(oldRatePct - (parseFloat(liabilityFormData.interestRate) || 0)) > 0.0001 ||
+          Math.abs(oldReajPct - (parseFloat(liabilityFormData.indexationRate) || 0)) > 0.0001 ||
+          oldAmortType !== liabilityFormData.amortizationType;
 
         if (scheduleChanged && installmentAmt > 0 && installmentsLeft > 0) {
-          const confirmRegen = window.confirm(
-            'Você alterou o valor, a quantidade ou o vencimento das parcelas.\n\n' +
-            'Deseja REGENERAR as parcelas FUTURAS ainda não pagas com os novos valores?\n' +
+          // Se o usuário pediu explicitamente pelo checkbox, não precisa perguntar de novo.
+          const confirmRegen = forceRegenSchedule || window.confirm(
+            'Você alterou dados que definem as parcelas (valor, quantidade, vencimento, saldo, juros ou tipo de amortização).\n\n' +
+            'Deseja REGERAR as parcelas FUTURAS ainda não pagas com os novos valores?\n' +
             '(As parcelas já pagas e as de datas passadas são mantidas.)'
           );
           if (confirmRegen) {
@@ -4521,17 +4510,19 @@ const Assets: React.FC = () => {
             // mês; senão, cai no mês seguinte (antes pulava sempre pro mês seguinte).
             const regenFirstMonthOffset = dueDay > today.getDate() ? 0 : 1;
             for (let i = 1; i <= MAX_REGEN; i++) {
-              const txDate = new Date(today.getFullYear(), today.getMonth() + regenFirstMonthOffset + (i - 1), dueDay);
+              const txDate = buildInstallmentDate(today.getFullYear(), today.getMonth(), regenFirstMonthOffset + (i - 1), dueDay);
               const parcelaAmt = regenNoDetails
                 ? (installmentAmt > 0 ? installmentAmt : Math.round((regenPrincipal / installmentsLeft) * 100) / 100)
-                : computeInstallmentAmount(i, regenPrincipal, installmentsLeft, regenRatePct, regenReajPct, regenIsSAC);
+                : computeInstallmentAmount(i, regenPrincipal, installmentsLeft, regenRatePct, regenReajPct, regenIsSAC, installmentAmt);
               regenTxs.push({
                 user_id: user.id,
                 description: isLinkedRealEstateFinancing
                   ? `Parcela Financiamento ${i}/${installmentsLeft} (${liabilityFormData.amortizationType}) - ${liabilityFormData.name}`
                   : `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
                 amount: parcelaAmt,
-                date: txDate.toISOString().split('T')[0],
+                // toISOString() converte pro fuso UTC e podia jogar a parcela pro dia
+                // anterior/seguinte; formatToISODate respeita o fuso do aparelho.
+                date: DateUtils.formatToISODate(txDate),
                 type: 'EXPENSE',
                 category: categoryName,
                 subcategory: isLinkedRealEstateFinancing ? 'Financiamento' : undefined,
@@ -4635,18 +4626,21 @@ const Assets: React.FC = () => {
             // dívida cadastrada antes do vencimento do mês "sumia" até o mês seguinte).
             const firstMonthOffset = dueDay > today.getDate() ? 0 : 1;
             for (let i = 1; i <= MAX_GENERATE; i++) {
-              const txDate = new Date(today.getFullYear(), today.getMonth() + firstMonthOffset + (i - 1), dueDay);
-              // Se não há juros nem reajuste, usa o valor informado (linear). Senão, calcula pelos detalhes.
+              const txDate = buildInstallmentDate(today.getFullYear(), today.getMonth(), firstMonthOffset + (i - 1), dueDay);
+              // Se não há juros nem reajuste, usa o valor informado (linear). Senão, calcula pelos
+              // detalhes ANCORADO no valor da parcela informado (ver computeInstallmentAmount).
               const parcelaAmt = noDetails
                 ? (installmentAmt > 0 ? installmentAmt : Math.round((principalForSchedule / installmentsLeft) * 100) / 100)
-                : computeInstallmentAmount(i, principalForSchedule, installmentsLeft, scheduleRatePct, scheduleReajPct, isSAC);
+                : computeInstallmentAmount(i, principalForSchedule, installmentsLeft, scheduleRatePct, scheduleReajPct, isSAC, installmentAmt);
               futureTransactions.push({
                 user_id: user.id,
                 description: isLinkedRealEstateFinancing
                   ? `Parcela Financiamento ${i}/${installmentsLeft} (${liabilityFormData.amortizationType}) - ${liabilityFormData.name}`
                   : `Parcela ${i}/${installmentsLeft} - ${liabilityFormData.name}`,
                 amount: parcelaAmt,
-                date: txDate.toISOString().split('T')[0],
+                // toISOString() converte pro fuso UTC e podia jogar a parcela pro dia
+                // anterior/seguinte; formatToISODate respeita o fuso do aparelho.
+                date: DateUtils.formatToISODate(txDate),
                 type: 'EXPENSE',
                 category: categoryName,
                 subcategory: isLinkedRealEstateFinancing ? 'Financiamento' : undefined,
@@ -4677,6 +4671,7 @@ const Assets: React.FC = () => {
 
       setShowLiabilityModal(false);
       setEditingLiability(null);
+      setForceRegenSchedule(false);
       setLiabilityFormData({
         name: '',
         type: 'PERSONAL_LOAN',
@@ -4736,6 +4731,7 @@ const Assets: React.FC = () => {
       historicalInstallmentValue: liability.metadata?.historicalInstallmentValue ? String(liability.metadata.historicalInstallmentValue) : '',
       historicalPaidAmount: liability.metadata?.historicalPaidAmount ? String(liability.metadata.historicalPaidAmount) : ''
     });
+    setForceRegenSchedule(false);
     setShowLiabilityModal(true);
   };
 
@@ -7943,7 +7939,7 @@ const Assets: React.FC = () => {
                                 <div className="space-y-1.5 max-h-24 overflow-y-auto">
                                   {loanPayments.map((p: any, i: number) => (
                                     <div key={i} className="flex justify-between text-[10px]">
-                                      <span className="text-slate-400">{new Date(p.date).toLocaleDateString('pt-BR')}</span>
+                                      <span className="text-slate-400">{DateUtils.formatDisplayDate(p.date)}</span>
                                       <span className="font-bold text-emerald-600">+{formatCurrency(Number(p.amount))}</span>
                                     </div>
                                   ))}
@@ -10909,7 +10905,7 @@ const Assets: React.FC = () => {
                             <tbody className="divide-y divide-slate-100">
                               {schedule.map(({ tx, interest, principalPaid, balance }) => (
                                 <tr key={tx.id} className="hover:bg-slate-50/50">
-                                  <td className="px-3 py-2 text-slate-600">{new Date(tx.date).toLocaleDateString('pt-BR')}</td>
+                                  <td className="px-3 py-2 text-slate-600">{DateUtils.formatDisplayDate(tx.date)}</td>
                                   <td className="px-3 py-2 text-right font-bold text-emerald-600">{formatCurrency(Number(tx.amount))}</td>
                                   <td className="px-3 py-2 text-right text-amber-600">{formatCurrency(interest)}</td>
                                   <td className="px-3 py-2 text-right text-indigo-600">{formatCurrency(principalPaid)}</td>
@@ -11075,7 +11071,7 @@ const Assets: React.FC = () => {
                           )}
                         </p>
                         <p className="text-xs text-slate-400 font-medium">
-                          {new Date(tx.date).toLocaleDateString('pt-BR')} • {tx.category}
+                          {DateUtils.formatDisplayDate(tx.date)} • {tx.category}
                         </p>
                       </div>
                       <div className="flex items-center gap-4">
@@ -11428,7 +11424,6 @@ const Assets: React.FC = () => {
                       const principal = parseFloat(liabilityFormData.remainingBalance) || 0;
                       const n = parseInt(liabilityFormData.installmentsRemaining, 10) || 0;
                       const i = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
-                      const reaj = (parseFloat(liabilityFormData.indexationRate) || 0) / 100;
                       if (principal <= 0 || n <= 0) {
                         toast('Preencha o Saldo Devedor e a quantidade de Parcelas Restantes.', 'warning');
                         return;
@@ -11442,7 +11437,8 @@ const Assets: React.FC = () => {
                       } else {
                         first = principal * (i * Math.pow(1 + i, n)) / (Math.pow(1 + i, n) - 1); // Price (iguais)
                       }
-                      first = first * (1 + reaj);
+                      // O campo guarda a 1ª parcela SEM reajuste aplicado: ela é a âncora do
+                      // cronograma, e a correção só incide a partir da 2ª parcela.
                       setLiabilityFormData(prev => ({ ...prev, installmentAmount: (Math.round(first * 100) / 100).toString() }));
                     }}
                     className="w-full py-2 rounded-xl bg-brand-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-brand-500 transition-colors"
@@ -11456,8 +11452,9 @@ const Assets: React.FC = () => {
                     onClick={() => {
                       // Base = SALDO DEVEDOR; a partir do valor da 1ª parcela, descobre o nº de parcelas.
                       const principal = parseFloat(liabilityFormData.remainingBalance) || 0;
-                      const reaj = (parseFloat(liabilityFormData.indexationRate) || 0) / 100;
-                      const parcela = (parseFloat(liabilityFormData.installmentAmount) || 0) / (1 + reaj); // remove o reajuste da 1ª
+                      // A 1ª parcela é a âncora e já vem sem reajuste (a correção só incide
+                      // da 2ª em diante), então entra direto no cálculo.
+                      const parcela = parseFloat(liabilityFormData.installmentAmount) || 0;
                       const i = (parseFloat(liabilityFormData.interestRate) || 0) / 100;
                       if (principal <= 0 || parcela <= 0) {
                         toast('Preencha o Saldo Devedor e o Valor da Parcela.', 'warning');
@@ -11486,8 +11483,26 @@ const Assets: React.FC = () => {
                   </button>
                 </div>
                 <p className="text-[9px] text-slate-400 leading-normal">
-                  As parcelas são geradas em Transações ao salvar. No SAC elas decrescem a partir da 1ª; sem juros ficam lineares (iguais).
+                  As parcelas são geradas em Transações ao salvar. O <strong>Valor Parcela</strong> acima é a 1ª parcela:
+                  no SAC as seguintes decrescem a partir dela; no Price ficam todas iguais a ela; sem juros ficam lineares.
                 </p>
+
+                {editingLiability && (
+                  <label className="flex items-start gap-2 cursor-pointer bg-white border border-slate-200 rounded-xl p-3">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={forceRegenSchedule}
+                      onChange={(e) => setForceRegenSchedule(e.target.checked)}
+                    />
+                    <span className="text-[10px] font-bold text-slate-500 leading-normal">
+                      Recalcular as parcelas futuras ao salvar
+                      <span className="block font-medium text-slate-400">
+                        Apaga e recria só as parcelas ainda não pagas com data de hoje em diante. Parcelas já pagas e datas passadas ficam intactas.
+                      </span>
+                    </span>
+                  </label>
+                )}
               </div>
 
               {activePhysicalAssets.length > 0 && (
@@ -11762,7 +11777,7 @@ const Assets: React.FC = () => {
                               <div key={tx.id} className="flex justify-between items-center bg-slate-50 border border-slate-100 p-3 rounded-xl group hover:border-slate-200 transition-all mb-2">
                                 <div className="space-y-0.5">
                                   <p className="text-xs font-bold text-slate-600">{tx.description}</p>
-                                  <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('pt-BR')} • Contrato anterior</p>
+                                  <p className="text-[10px] text-slate-400">{DateUtils.formatDisplayDate(tx.date)} • Contrato anterior</p>
                                 </div>
                                 <span className="text-xs font-black text-slate-500">{formatCurrency(tx.amount)}</span>
                               </div>
@@ -11784,7 +11799,7 @@ const Assets: React.FC = () => {
                               <div key={tx.id} className="flex justify-between items-center bg-emerald-50/50 border border-emerald-100 p-3 rounded-xl group hover:border-emerald-200 transition-all mb-2">
                                 <div className="space-y-0.5">
                                   <p className="text-xs font-bold text-slate-800">{tx.description}</p>
-                                  <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('pt-BR')} • {tx.category}</p>
+                                  <p className="text-[10px] text-slate-400">{DateUtils.formatDisplayDate(tx.date)} • {tx.category}</p>
                                 </div>
                                 <div className="flex items-center gap-3">
                                   <span className="text-xs font-black text-rose-500">-{formatCurrency(tx.amount)}</span>
@@ -11811,7 +11826,7 @@ const Assets: React.FC = () => {
                               <div key={tx.id} className="flex justify-between items-center bg-white border border-slate-100 p-3 rounded-xl group hover:border-slate-200 transition-all mb-2">
                                 <div className="space-y-0.5">
                                   <p className="text-xs font-bold text-slate-800">{tx.description}</p>
-                                  <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('pt-BR')} • Vencimento</p>
+                                  <p className="text-[10px] text-slate-400">{DateUtils.formatDisplayDate(tx.date)} • Vencimento</p>
                                 </div>
                                 <div className="flex items-center gap-3">
                                   <span className="text-xs font-black text-slate-500">-{formatCurrency(tx.amount)}</span>

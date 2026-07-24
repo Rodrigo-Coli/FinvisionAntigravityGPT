@@ -162,6 +162,18 @@ const buildSeriesFilter = (query: any, tx: any) => {
   return query;
 };
 
+// Filtro de CONTA. Um lançamento sem conta e sem cartão (ex.: parcelas de passivo /
+// financiamento geradas em Patrimônio, que nascem sem conta vinculada) não pertence a
+// nenhuma conta — então nenhum conjunto de contas selecionadas o representa e ele sumia
+// da tela assim que o filtro padrão de contas era inicializado. Regra: quem não tem
+// conta nem cartão passa sempre; quem tem, só passa se estiver na seleção.
+const matchesAccountFilter = (t: any, selected: string[]): boolean => {
+  const accountId = t?.account_id;
+  const cardId = t?.metadata?.card_id || t?.card_id;
+  if (!accountId && !cardId) return true;
+  return (!!accountId && selected.includes(accountId)) || (!!cardId && selected.includes(cardId));
+};
+
 // Lançamentos capitalizados (aquisição de bens, financiamento/empréstimo recebido, etc.) são movimentos
 // de patrimônio, não resultado operacional. O Painel (dashboard.service) e os Relatórios já os excluem
 // dos totais; aqui aplicamos a mesma regra para o resumo do Histórico não divergir das outras telas.
@@ -774,7 +786,7 @@ const HistoryPage: React.FC = () => {
         if (filterAccount.length > 0) {
           // Compras de cartão são identificadas pelo card_id (metadata), não pelo
           // account_id (que é a conta bancária vinculada ao cartão, quando existe).
-          combinedForChart = combinedForChart.filter((t: any) => filterAccount.includes(t.account_id) || (t?.metadata?.card_id && filterAccount.includes(t.metadata.card_id)));
+          combinedForChart = combinedForChart.filter((t: any) => matchesAccountFilter(t, filterAccount));
         }
         if (filterSubcategory.length > 0) {
           combinedForChart = combinedForChart.filter((t: any) => filterSubcategory.includes(t.subcategory));
@@ -848,7 +860,7 @@ const HistoryPage: React.FC = () => {
         }
         if (filterAccount.length > 0) {
           // Idem: compras de cartão casam pelo card_id, não pelo account_id.
-          combined = combined.filter((t: any) => filterAccount.includes(t.account_id) || (t?.metadata?.card_id && filterAccount.includes(t.metadata.card_id)));
+          combined = combined.filter((t: any) => matchesAccountFilter(t, filterAccount));
         }
         if (filterCategory.length > 0) {
           combined = combined.filter((t: any) => filterCategory.includes(t.category));
@@ -2543,7 +2555,7 @@ const HistoryPage: React.FC = () => {
     if (filterAccount.length > 0) {
       // Compras de cartão casam pelo card_id, não pelo account_id (que é a conta
       // bancária vinculada ao cartão, quando existe).
-      combined = combined.filter((t: any) => filterAccount.includes(t.account_id) || (t.card_id && filterAccount.includes(t.card_id)));
+      combined = combined.filter((t: any) => matchesAccountFilter(t, filterAccount));
     }
     if (filterCategory.length > 0) {
       combined = combined.filter((t: any) => filterCategory.includes(t.category));

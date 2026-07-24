@@ -999,7 +999,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       '#': idx + 1,
       'Descrição': t.description,
       'Valor (R$)': t.amount,
-      'Data': new Date(t.date).toLocaleDateString('pt-BR'),
+      'Data': DateUtils.formatDisplayDate(t.date),
       'Categoria': t.category,
       'Subcategoria': t.subcategory || '-',
       'Situação': t.isPaid ? 'Pago' : (new Date(t.date) < new Date() ? 'Atrasado' : 'A Vencer')
@@ -1101,7 +1101,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                     <div className="max-h-24 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
                       {asset.metadata.valuationHistory.map((item: any, idx: number) => (
                         <div key={idx} className="flex justify-between text-[9px] text-slate-500">
-                          <span>{item.date ? new Date(item.date).toLocaleDateString('pt-BR') : ''} ({item.label || 'Atualização'}):</span>
+                          <span>{item.date ? DateUtils.formatDisplayDate(item.date) : ''} ({item.label || 'Atualização'}):</span>
                           <span className="font-bold text-slate-800">{formatCurrency(item.value)}</span>
                         </div>
                       ))}
@@ -1861,7 +1861,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                                 </span>
                               </td>
                               <td className={`p-4 font-bold ${colorClass}`}>{tx.description}</td>
-                              <td className="p-4 text-slate-400 font-medium">{new Date(tx.date).toLocaleDateString('pt-BR')}</td>
+                              <td className="p-4 text-slate-400 font-medium">{DateUtils.formatDisplayDate(tx.date)}</td>
                               <td className="p-4"><span className="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{tx.subcategory || '-'}</span></td>
                               <td className={`p-4 text-right font-black ${colorClass}`}>
                                 {tx.type === 'INCOME' ? '+' : '-'}{formatCurrency(tx.amount * ratio)}

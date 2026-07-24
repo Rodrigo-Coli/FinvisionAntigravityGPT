@@ -248,16 +248,18 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
       if (financingOption === 'A' && fundingAmount > 0) {
         const n = parseInt(financingInstallmentsCount, 10) || 12;
         const monthlyRate = (parseFloat(financingInterestRate) || 0) / 100;
-        const reajusteRate = (parseFloat(financingIndexRate) || 0) / 100;
+        // A 1ª parcela é a ÂNCORA do cronograma: é o valor que aparece no card do imóvel
+        // e no passivo, e tem que ser exatamente igual à parcela 1 lançada em Transações.
+        // Por isso ela NÃO leva reajuste — a correção só incide da 2ª parcela em diante.
         if (amortizationType === 'SAC') {
           const interest = fundingAmount * monthlyRate;
           const sacAmortization = fundingAmount / n;
-          firstInstallmentVal = (sacAmortization + interest) * (1 + reajusteRate);
+          firstInstallmentVal = sacAmortization + interest;
         } else {
           if (monthlyRate === 0) {
-            firstInstallmentVal = (fundingAmount / n) * (1 + reajusteRate);
+            firstInstallmentVal = fundingAmount / n;
           } else {
-            firstInstallmentVal = (fundingAmount * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1)) * (1 + reajusteRate);
+            firstInstallmentVal = fundingAmount * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1);
           }
         }
       }
@@ -509,7 +511,10 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
           const n = parseInt(financingInstallmentsCount, 10) || 12;
           const monthlyRate = (parseFloat(financingInterestRate) || 0) / 100;
           const reajusteRate = (parseFloat(financingIndexRate) || 0) / 100;
-          const baseStartDate = new Date(financingStartDate);
+          // 'T00:00:00' força leitura no fuso local: sem isso "2026-07-29" era lido como
+          // meia-noite UTC e virava dia 28 no Brasil — o dia de vencimento do passivo saía
+          // um dia antes do que o usuário digitou (e diferente do financingDueDay do imóvel).
+          const baseStartDate = new Date(financingStartDate + 'T00:00:00');
           const financingGroupId = generateUUID();
 
           // Cria um Passivo/Dívida (financiamento) vinculado ao imóvel: é a "fonte da verdade".
@@ -568,12 +573,16 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
               }
             }
 
-            // Apply cumulative correction rate
-            const adjustedVal = installmentVal * Math.pow(1 + reajusteRate, k);
+            // Correção acumulada — a 1ª parcela é a âncora e não leva reajuste.
+            const adjustedVal = installmentVal * Math.pow(1 + reajusteRate, k - 1);
 
-            const txDate = new Date(baseStartDate);
-            txDate.setMonth(baseStartDate.getMonth() + (k - 1));
-            const dateStr = txDate.toISOString().split('T')[0];
+            // Vencimento preso ao último dia do mês quando o dia não existe (ex.: 31 em
+            // fevereiro); setMonth sozinho "transbordava" a parcela pro mês seguinte.
+            const dueDayOfMonth = baseStartDate.getDate();
+            const targetMonth = baseStartDate.getMonth() + (k - 1);
+            const lastDayOfTargetMonth = new Date(baseStartDate.getFullYear(), targetMonth + 1, 0).getDate();
+            const txDate = new Date(baseStartDate.getFullYear(), targetMonth, Math.min(dueDayOfMonth, lastDayOfTargetMonth));
+            const dateStr = DateUtils.formatToISODate(txDate);
 
             futureTransactions.push({
               user_id: user.id,
