@@ -1,16 +1,23 @@
 {
-  "version": "2026.07.25.1702",
-  "title": "Ajuste fino: nome do índice aparecendo certinho no Saldo a Definir",
+  "version": "2026.07.25.2015",
+  "title": "Detalhamento do Fluxo Mensal, e limpeza de parcelas fantasma do Financiamento a Definir",
   "date": "25/07/2026",
   "benefits": [
     {
-      "title": "Nome do índice (INCC/IPCA/IGP-M) aparece corretamente na nota do passivo",
-      "desc": "Fiz uma auditoria em tudo que mexemos hoje pra garantir que nada mais foi afetado — encontrei só esse detalhe: a nota 'Financiamento a Definir' não mostrava o nome do índice em passivos mais antigos (cadastrados pelo assistente de imóvel). Agora mostra certinho.",
+      "title": "Clique no card Fluxo Mensal para ver o que está sendo calculado",
+      "desc": "Agora o card 'Fluxo Mensal' (na Visão Geral do Patrimônio) abre um detalhamento completo ao ser clicado: cada receita (aluguéis, rendimento de investimentos) e cada despesa (financiamentos, condomínio/IPTU, consórcios, veículos, imóveis na planta) que compõem o saldo mostrado.",
+      "type": "recurso"
+    },
+    {
+      "title": "Financiamento a Definir não deixa mais parcela fantasma em Transações",
+      "desc": "Encontramos um bug: ao marcar um financiamento como 'a Definir', as parcelas que já tinham sido lançadas em Transações (de quando o financiamento ainda não era 'a definir') continuavam lá, mesmo não sendo mais reais. Corrigido — agora, ao marcar como 'a Definir', essas parcelas futuras e não pagas são removidas automaticamente. Suas duas dívidas de imóvel na planta já foram limpas (121 parcelas fantasma removidas).",
       "type": "correção"
     }
   ],
   "changes": [
-    "pages/Assets.tsx: nota de 'Financiamento a Definir' passou a aceitar metadata.indexType OU o nome legado metadata.indexationType (mesmo fallback já usado na edição do passivo), em vez de só o primeiro.",
-    "Verificação: auditoria completa do diff dos 8 commits de hoje (c781a90..b3c84ea, ~1.470 linhas) confirmando que nenhuma outra funcionalidade foi afetada; tsc -p tsconfig.json --noEmit sem erros."
+    "pages/Assets.tsx: sustainabilitySummary passou a expor vehicleRents/otherRents; card 'Fluxo Mensal' virou botão que abre um modal com o detalhamento de Receitas e Despesas.",
+    "pages/Assets.tsx (handleSaveLiability): ao salvar um passivo MORTGAGE com 'Financiamento a Definir' marcado, as transações futuras não pagas vinculadas a ele são marcadas is_deleted=true; a geração/regeneração automática de cronograma de parcelas passou a ser pulada enquanto 'a Definir' estiver marcado (tanto na criação quanto na edição do passivo).",
+    "Correção de dados: 121 transações fantasma (1 do Wave Beach Prime + 120 do Solina) marcadas como excluídas no banco.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; modal de detalhamento testado no modo demo (abriu com Receitas/Despesas corretas); bug de parcelas confirmado e corrigido por consulta direta ao banco (121 registros antes → 0 depois)."
   ]
 }

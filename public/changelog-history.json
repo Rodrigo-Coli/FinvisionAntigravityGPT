@@ -1,5 +1,26 @@
 [
   {
+    "version": "2026.07.25.2015",
+    "title": "Detalhamento do Fluxo Mensal, e limpeza de parcelas fantasma do Financiamento a Definir",
+    "date": "25/07/2026",
+    "benefits": [
+      {
+        "title": "Clique no card Fluxo Mensal para ver o detalhamento",
+        "desc": "Mostra cada receita e despesa que compõe o saldo.",
+        "type": "recurso"
+      },
+      {
+        "title": "Financiamento a Definir não deixa mais parcela fantasma",
+        "desc": "Parcelas futuras não pagas são removidas ao marcar como 'a Definir'; 121 parcelas fantasma já limpas.",
+        "type": "correção"
+      }
+    ],
+    "changes": [
+      "pages/Assets.tsx: card Fluxo Mensal virou botão com modal de detalhamento (Receitas/Despesas).",
+      "pages/Assets.tsx (handleSaveLiability): remove parcelas futuras não pagas e pula geração de cronograma quando 'Financiamento a Definir' está marcado."
+    ]
+  },
+  {
     "version": "2026.07.25.1702",
     "title": "Ajuste fino: nome do índice aparecendo certinho no Saldo a Definir",
     "date": "25/07/2026",

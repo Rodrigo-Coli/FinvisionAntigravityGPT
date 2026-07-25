@@ -299,6 +299,7 @@ const Assets: React.FC = () => {
   // Quando um período é escolhido: soma rendimento mensal (caixa) + acumulado, ou só o
   // que efetivamente caiu na conta (rendimento mensal), sem contar o acumulado/reinvestido.
   const [fluxoYieldMode, setFluxoYieldMode] = useState<'TOTAL' | 'SO_CAIXA'>('TOTAL');
+  const [showFluxoMensalDetail, setShowFluxoMensalDetail] = useState(false);
 
   // Active subtabs
   const [activeSubTab, setActiveSubTab] = useState<'portfolio' | 'simulator'>('portfolio');
@@ -1244,6 +1245,8 @@ const Assets: React.FC = () => {
       realizedYield,
       isEstimatedMode,
       totalInflow,
+      vehicleRents,
+      otherRents,
       totalMortgageInstallments,
       totalOperatingCosts,
       totalConsortiumInstallments,
@@ -4716,6 +4719,10 @@ const Assets: React.FC = () => {
         return;
       }
 
+      // "Financiamento a Definir": ainda não é uma parcela real, então não deve gerar nem
+      // manter parcelas futuras lançadas em Transações (ver os dois usos abaixo).
+      const isPendingFinancingNow = liabilityFormData.type === 'MORTGAGE' && !!liabilityFormData.pendingFinancing;
+
       // Base para corrigir o "saldo a definir" pelo índice do contrato (ver activeLiabilities):
       // só reinicia a data-base quando o saldo é de fato alterado nesta edição (ou a marcação
       // acabou de ser ligada) — assim a correção acumulada não é perdida a cada save.
@@ -4758,6 +4765,18 @@ const Assets: React.FC = () => {
           }
         }).eq('id', editingLiability.id);
         if (error) throw error;
+
+        // "Financiamento a Definir" não tem parcela real ainda — remove qualquer parcela
+        // futura/não paga já lançada em Transações antes de marcar como a definir (ex.:
+        // veio do assistente de imóvel com cronograma pronto). Nunca mexe em parcela paga.
+        if (isPendingFinancingNow) {
+          await supabase
+            .from('transactions')
+            .update({ is_deleted: true })
+            .eq('liability_id', editingLiability.id)
+            .eq('is_paid', false)
+            .eq('is_deleted', false);
+        }
 
         // Sync historical transaction
         const hasHistory = liabilityFormData.hasHistoricalPayments;
@@ -4808,7 +4827,7 @@ const Assets: React.FC = () => {
           Math.abs(oldReajPct - (parseFloat(liabilityFormData.indexationRate) || 0)) > 0.0001 ||
           oldAmortType !== liabilityFormData.amortizationType;
 
-        if (scheduleChanged && installmentAmt > 0 && installmentsLeft > 0) {
+        if (scheduleChanged && installmentAmt > 0 && installmentsLeft > 0 && !isPendingFinancingNow) {
           // Se o usuário pediu explicitamente pelo checkbox, não precisa perguntar de novo.
           const confirmRegen = forceRegenSchedule || window.confirm(
             'Você alterou dados que definem as parcelas (valor, quantidade, vencimento, saldo, juros ou tipo de amortização).\n\n' +
@@ -4940,8 +4959,9 @@ const Assets: React.FC = () => {
           const paidAmount = parseFloat(liabilityFormData.historicalPaidAmount) || 0;
           await syncHistoricalTransaction(liabilityId, liabilityFormData.name, hasHistory, paidAmount, user.id);
 
-          // Auto-generate future pending cash flow transactions
-          if (installmentAmt > 0 && installmentsLeft > 0) {
+          // Auto-generate future pending cash flow transactions — nunca para "Financiamento
+          // a Definir": ainda não é uma parcela real, não deve virar lançamento em Transações.
+          if (installmentAmt > 0 && installmentsLeft > 0 && !isPendingFinancingNow) {
             const today = new Date();
             // Financiamento de imóvel vinculado usa a MESMA categoria/rótulo do
             // assistente de Ativo Imobiliário — antes ficava com nome diferente
@@ -6044,8 +6064,9 @@ const Assets: React.FC = () => {
               <div className={getGridClass(visibleOverviewCount)}>
                 {/* Fluxo Mensal */}
                 {visibleCards.fluxo && (
-                  <div
-                    className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group col-span-2 md:col-span-1 text-left w-full"
+                  <button
+                    onClick={() => setShowFluxoMensalDetail(true)}
+                    className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[110px] relative overflow-hidden group col-span-2 md:col-span-1 text-left w-full hover:scale-[1.02] transition-all focus:outline-none focus:ring-2 focus:ring-brand-500"
                   >
                     <div className="absolute -right-4 -bottom-4 w-12 h-12 bg-white/5 rounded-full pointer-events-none" />
                     <div className="flex justify-between items-start">
@@ -6072,7 +6093,7 @@ const Assets: React.FC = () => {
                         </span>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 )}
 
                 {/* Patrimônio Líquido */}
@@ -11316,6 +11337,87 @@ const Assets: React.FC = () => {
                 <button onClick={() => setShowRealEstateManageModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest">Cancelar</button>
                 <button onClick={saveRealEstateManage} className="flex-1 py-3 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg">Salvar Ajustes</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DETALHAMENTO DO FLUXO MENSAL */}
+      {showFluxoMensalDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 flex flex-col max-h-[85vh]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="font-black text-slate-900 uppercase tracking-tight text-sm">Detalhamento do Fluxo Mensal</h3>
+                <p className="text-xs text-slate-400 font-medium">
+                  {sustainabilitySummary.isEstimatedMode ? 'Modo Estimado (taxa/parcela configurada)' : 'Período selecionado no filtro acima'}
+                </p>
+              </div>
+              <button onClick={() => setShowFluxoMensalDetail(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-50">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5 overflow-y-auto">
+              <div>
+                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-2">Receitas</p>
+                <div className="space-y-1.5 text-xs">
+                  {sustainabilitySummary.realEstateRents > 0 && (
+                    <div className="flex justify-between"><span className="text-slate-500">Aluguéis de Imóveis</span><span className="font-bold text-slate-800">{formatCurrency(sustainabilitySummary.realEstateRents)}</span></div>
+                  )}
+                  {sustainabilitySummary.vehicleRents > 0 && (
+                    <div className="flex justify-between"><span className="text-slate-500">Aluguéis de Veículos</span><span className="font-bold text-slate-800">{formatCurrency(sustainabilitySummary.vehicleRents)}</span></div>
+                  )}
+                  {sustainabilitySummary.otherRents > 0 && (
+                    <div className="flex justify-between"><span className="text-slate-500">Aluguéis de Outros Bens</span><span className="font-bold text-slate-800">{formatCurrency(sustainabilitySummary.otherRents)}</span></div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Rendimento de Investimentos ({sustainabilitySummary.isEstimatedMode ? 'estimado' : 'realizado'})</span>
+                    <span className="font-bold text-slate-800">{formatCurrency(sustainabilitySummary.isEstimatedMode ? sustainabilitySummary.estimatedMonthlyYield : sustainabilitySummary.realizedYield)}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-slate-100 pt-1.5 mt-1 font-black text-emerald-600">
+                    <span>Total Receitas</span><span>{formatCurrency(sustainabilitySummary.totalInflow)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-black text-rose-600 uppercase tracking-widest mb-2">Despesas</p>
+                <div className="space-y-1.5 text-xs">
+                  {sustainabilitySummary.totalMortgageInstallments > 0 && (
+                    <div className="flex justify-between"><span className="text-slate-500">Financiamento Imobiliário</span><span className="font-bold text-slate-800">{formatCurrency(sustainabilitySummary.totalMortgageInstallments)}</span></div>
+                  )}
+                  {sustainabilitySummary.totalOperatingCosts > 0 && (
+                    <div className="flex justify-between"><span className="text-slate-500">Condomínio / IPTU</span><span className="font-bold text-slate-800">{formatCurrency(sustainabilitySummary.totalOperatingCosts)}</span></div>
+                  )}
+                  {sustainabilitySummary.totalConsortiumInstallments > 0 && (
+                    <div className="flex justify-between"><span className="text-slate-500">Parcelas de Consórcio</span><span className="font-bold text-slate-800">{formatCurrency(sustainabilitySummary.totalConsortiumInstallments)}</span></div>
+                  )}
+                  {sustainabilitySummary.totalOtherInstallments > 0 && (
+                    <div className="flex justify-between"><span className="text-slate-500">Outras Dívidas / Financiamentos</span><span className="font-bold text-slate-800">{formatCurrency(sustainabilitySummary.totalOtherInstallments)}</span></div>
+                  )}
+                  {sustainabilitySummary.vehicleRecurringExpenses > 0 && (
+                    <div className="flex justify-between"><span className="text-slate-500">Veículos (IPVA/Seguro/Manutenção)</span><span className="font-bold text-slate-800">{formatCurrency(sustainabilitySummary.vehicleRecurringExpenses)}</span></div>
+                  )}
+                  {sustainabilitySummary.plantaInstallments > 0 && (
+                    <div className="flex justify-between"><span className="text-slate-500">Imóveis na Planta (construtora + financiamento)</span><span className="font-bold text-slate-800">{formatCurrency(sustainabilitySummary.plantaInstallments)}</span></div>
+                  )}
+                  <div className="flex justify-between border-t border-slate-100 pt-1.5 mt-1 font-black text-rose-600">
+                    <span>Total Despesas</span><span>{formatCurrency(sustainabilitySummary.totalOutflow)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-900 rounded-2xl p-4 flex justify-between items-center">
+                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Saldo</span>
+                <span className={`text-lg font-black ${sustainabilitySummary.netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {sustainabilitySummary.netFlow >= 0 ? '+' : ''}{formatCurrency(sustainabilitySummary.netFlow)}
+                </span>
+              </div>
+
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                Financiamentos marcados como "Financiamento a Definir" não entram nas Despesas acima — o saldo devedor deles continua contando em Dívidas, mas a parcela ainda não é real.
+              </p>
             </div>
           </div>
         </div>
