@@ -1,5 +1,38 @@
 [
   {
+    "version": "2026.07.25.1610",
+    "title": "Fluxo Mensal corrigido: achamos o gasto fantasma de quase R$ 400 mil",
+    "date": "25/07/2026",
+    "benefits": [
+      {
+        "title": "Card 'Fluxo Mensal' parou de somar financiamento em dobro",
+        "desc": "Parcela de financiamento de imóvel na planta era somada duas vezes; agora conta só uma.",
+        "type": "correção"
+      },
+      {
+        "title": "Novo campo 'Financiamento a Definir' nos passivos",
+        "desc": "Marque quando o financiamento ainda não foi formalizado — conta em Dívidas, mas não no Fluxo Mensal.",
+        "type": "recurso"
+      },
+      {
+        "title": "Cards de resumo não cortam mais com zoom",
+        "desc": "Grade limitada a 4 colunas; com mais cards, quebra em novas fileiras em vez de espremer.",
+        "type": "correção"
+      },
+      {
+        "title": "Liquidez sem opção pré-marcada",
+        "desc": "'Também no Vencimento' não vem mais marcado sozinho ao criar um investimento.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "pages/Assets.tsx: liabilities MORTGAGE vinculadas a imóvel PLANTA excluídas de totalMortgageInstallments (já contadas em plantaInstallments) — corrige contagem dupla.",
+      "pages/Assets.tsx: novo metadata.isPendingFinancing + checkbox 'Financiamento a Definir'.",
+      "pages/Assets.tsx (getGridClass): grade de cards do resumo limitada a 4 colunas.",
+      "pages/Assets.tsx: liquidityAtMaturity passou a vir desmarcado por padrão."
+    ]
+  },
+  {
     "version": "2026.07.25.1529",
     "title": "IA agora responde sobre seus investimentos, e mais avisos importantes",
     "date": "25/07/2026",

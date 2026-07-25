@@ -454,7 +454,7 @@ const Assets: React.FC = () => {
     payoutType: 'ACUMULADO' as 'ACUMULADO' | 'MENSAL',
     brokerAccountId: '',
     vencimentoDate: '',
-    liquidityAtMaturity: true,
+    liquidityAtMaturity: false,
     liquidityDays: '',
     status: 'ATIVO' as 'ATIVO' | 'RESGATADO',
     isTaxExempt: false,
@@ -514,6 +514,7 @@ const Assets: React.FC = () => {
     balloonAmount: '',
     balloons: [] as { month: number; year: number; amount: number }[],
     propertyType: 'PLANTA' as 'PLANTA' | 'PRONTO',
+    pendingFinancing: false,
     hasHistoricalPayments: false,
     historicalCalculationType: 'calculated' as 'calculated' | 'direct',
     historicalInstallmentsPaid: '',
@@ -1037,10 +1038,23 @@ const Assets: React.FC = () => {
   const sustainabilitySummary = useMemo(() => {
     const activePhysImob = activePhysicalAssets.filter(p => p.category === 'REAL_ESTATE' && !excludedAssetIds.includes(p.id));
     
+    // Imóveis na planta já entram no cálculo abaixo (plantaInstallments), incluindo o
+    // financiamento vinculado a eles — por isso precisam ficar de fora daqui, senão a
+    // parcela do financiamento é somada duas vezes no Fluxo Mensal.
+    const plantaAssetIdsForFluxo = new Set(
+      activePhysicalAssets
+        .filter(p => p.category === 'REAL_ESTATE' && p.metadata?.propertyStage === 'PLANTA' && !excludedAssetIds.includes(p.id))
+        .map(p => p.id)
+    );
+
     // Regular liabilities monthly payments
     const mortgageLiabs = activeLiabilities.filter(l => {
       if (l.type !== 'MORTGAGE' && !l.metadata?.isRealEstate) return false;
       if (l.linkedAssetId && excludedAssetIds.includes(l.linkedAssetId)) return false;
+      if (l.linkedAssetId && plantaAssetIdsForFluxo.has(l.linkedAssetId)) return false;
+      // "Saldo a financiar" (financiamento ainda não formalizado, ex.: imóvel na planta
+      // aguardando entrega): não é uma parcela mensal de verdade, não entra no Fluxo Mensal.
+      if (l.metadata?.isPendingFinancing) return false;
       return true;
     });
 
@@ -1138,8 +1152,10 @@ const Assets: React.FC = () => {
 
       const linkedLiab = activeLiabilities.find(l => l.linkedAssetId === p.id);
       const allocationRatio = meta.consortiumAllocationRatio !== undefined ? (Number(meta.consortiumAllocationRatio) / 100) : 1;
-      const financingInstallment = linkedLiab 
-        ? (Number(linkedLiab.installmentAmount) * allocationRatio) 
+      // "Saldo a financiar" ainda não é uma parcela mensal real — não entra no Fluxo Mensal
+      // até o financiamento ser formalizado (ver checkbox "Saldo a Financiar" no passivo).
+      const financingInstallment = linkedLiab
+        ? (linkedLiab.metadata?.isPendingFinancing ? 0 : Number(linkedLiab.installmentAmount) * allocationRatio)
         : (Number(meta.financingInstallment) || 0);
 
       return sum + constructorInstallment + financingInstallment;
@@ -3895,7 +3911,7 @@ const Assets: React.FC = () => {
       payoutType: 'ACUMULADO',
       brokerAccountId: '',
       vencimentoDate: '',
-      liquidityAtMaturity: true,
+      liquidityAtMaturity: false,
       liquidityDays: '',
       status: 'ATIVO',
       isTaxExempt: false,
@@ -3956,6 +3972,7 @@ const Assets: React.FC = () => {
         balloonAmount: '',
         balloons: [],
         propertyType: 'PLANTA',
+        pendingFinancing: false,
         hasHistoricalPayments: false,
         historicalCalculationType: 'calculated',
         historicalInstallmentsPaid: '',
@@ -4659,6 +4676,7 @@ const Assets: React.FC = () => {
             balloons: liabilityFormData.balloons,
             propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
             isRealEstate: liabilityFormData.type === 'MORTGAGE' ? true : undefined,
+            isPendingFinancing: liabilityFormData.type === 'MORTGAGE' ? !!liabilityFormData.pendingFinancing : undefined,
             historicalCalculationType: liabilityFormData.hasHistoricalPayments ? liabilityFormData.historicalCalculationType : undefined,
             historicalInstallmentsPaid: liabilityFormData.hasHistoricalPayments && liabilityFormData.historicalCalculationType === 'calculated' ? (parseInt(liabilityFormData.historicalInstallmentsPaid, 10) || undefined) : undefined,
             historicalInstallmentValue: liabilityFormData.hasHistoricalPayments && liabilityFormData.historicalCalculationType === 'calculated' ? (parseFloat(liabilityFormData.historicalInstallmentValue) || undefined) : undefined,
@@ -4831,6 +4849,7 @@ const Assets: React.FC = () => {
             balloons: liabilityFormData.balloons,
             propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
             isRealEstate: liabilityFormData.type === 'MORTGAGE' ? true : undefined,
+            isPendingFinancing: liabilityFormData.type === 'MORTGAGE' ? !!liabilityFormData.pendingFinancing : undefined,
             historicalCalculationType: liabilityFormData.hasHistoricalPayments ? liabilityFormData.historicalCalculationType : undefined,
             historicalInstallmentsPaid: liabilityFormData.hasHistoricalPayments && liabilityFormData.historicalCalculationType === 'calculated' ? (parseInt(liabilityFormData.historicalInstallmentsPaid, 10) || undefined) : undefined,
             historicalInstallmentValue: liabilityFormData.hasHistoricalPayments && liabilityFormData.historicalCalculationType === 'calculated' ? (parseFloat(liabilityFormData.historicalInstallmentValue) || undefined) : undefined,
@@ -4952,6 +4971,7 @@ const Assets: React.FC = () => {
         balloonAmount: '',
         balloons: [],
         propertyType: 'PLANTA',
+        pendingFinancing: false,
         hasHistoricalPayments: false,
         historicalCalculationType: 'calculated',
         historicalInstallmentsPaid: '',
@@ -4986,6 +5006,7 @@ const Assets: React.FC = () => {
       balloonAmount: '',
       balloons: liability.metadata?.balloons || [],
       propertyType: liability.metadata?.propertyType || 'PLANTA',
+      pendingFinancing: !!liability.metadata?.isPendingFinancing,
       hasHistoricalPayments: hasHistory,
       historicalCalculationType: liability.metadata?.historicalCalculationType || 'calculated',
       historicalInstallmentsPaid: liability.metadata?.historicalInstallmentsPaid ? String(liability.metadata.historicalInstallmentsPaid) : '',
@@ -5831,6 +5852,9 @@ const Assets: React.FC = () => {
   ].filter(Boolean).length;
 
   const getGridClass = (count: number) => {
+    // Nunca deixa a grade passar de 4 colunas — acima disso os valores em R$ ficam
+    // espremidos e cortados (fica pior ainda com zoom da tela). Com mais de 4 cards
+    // visíveis, os extras quebram para uma segunda linha em vez de espremer tudo numa só.
     switch (count) {
       case 1:
         return 'grid grid-cols-1 gap-4';
@@ -5839,16 +5863,8 @@ const Assets: React.FC = () => {
       case 3:
         return 'grid grid-cols-2 md:grid-cols-3 gap-4';
       case 4:
-        return 'grid grid-cols-2 md:grid-cols-4 gap-4';
-      case 5:
-        return 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-4';
-      case 6:
-        return 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4';
-      case 7:
-        return 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4';
-      case 8:
       default:
-        return 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4';
+        return 'grid grid-cols-2 md:grid-cols-4 gap-4';
     }
   };
 
@@ -6587,6 +6603,7 @@ const Assets: React.FC = () => {
                           balloonAmount: '',
                           balloons: [],
                           propertyType: 'PLANTA',
+                          pendingFinancing: false,
                           hasHistoricalPayments: false,
                           historicalCalculationType: 'calculated',
                           historicalInstallmentsPaid: '',
@@ -9084,6 +9101,7 @@ const Assets: React.FC = () => {
                     balloonAmount: '',
                     balloons: [],
                     propertyType: 'PLANTA',
+                    pendingFinancing: false,
                     hasHistoricalPayments: false,
                     historicalCalculationType: 'calculated',
                     historicalInstallmentsPaid: '',
@@ -11914,6 +11932,20 @@ const Assets: React.FC = () => {
                 </div>
               </div>
 
+              {liabilityFormData.type === 'MORTGAGE' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-amber-700">
+                    <input
+                      type="checkbox"
+                      checked={liabilityFormData.pendingFinancing}
+                      onChange={(e) => setLiabilityFormData({ ...liabilityFormData, pendingFinancing: e.target.checked })}
+                    />
+                    Financiamento a Definir (ainda não é uma parcela mensal)
+                  </label>
+                  <p className="text-[10px] text-amber-600 font-medium mt-1 ml-6">Marque quando o financiamento ainda não foi escolhido/formalizado (ex: imóvel na planta aguardando entrega) e "Valor Parcela" for só o saldo total a financiar, não uma parcela mensal já ativa. Assim ele conta em Dívidas, mas não entra no Fluxo Mensal até virar parcela de verdade.</p>
+                </div>
+              )}
+
               {/* Detalhes de Financiamento (juros, amortização, índice) — imagem 2 migrada para o passivo */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-3">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Detalhes de Financiamento (opcional)</p>
@@ -12559,6 +12591,7 @@ const Assets: React.FC = () => {
                     balloonAmount: '',
                     balloons: [],
                     propertyType: 'PLANTA',
+                    pendingFinancing: false,
                     hasHistoricalPayments: false,
                     historicalCalculationType: 'calculated',
                     historicalInstallmentsPaid: '',

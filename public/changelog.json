@@ -1,29 +1,35 @@
 {
-  "version": "2026.07.25.1529",
-  "title": "IA agora responde sobre seus investimentos, e mais avisos importantes",
+  "version": "2026.07.25.1610",
+  "title": "Fluxo Mensal corrigido: achamos o gasto fantasma de quase R$ 400 mil",
   "date": "25/07/2026",
   "benefits": [
     {
-      "title": "Pergunte à IA qualquer coisa sobre seus investimentos",
-      "desc": "No chat do app e no WhatsApp, agora você pode perguntar 'quanto tenho investido', 'quando vence meu CDB' ou 'de onde tiro dinheiro pra pagar uma conta no dia 10' — a IA cruza saldo, vencimento e liquidez (D+) de cada investimento pra te responder, incluindo a nota de plano que você deixou.",
+      "title": "Card 'Fluxo Mensal' parou de somar financiamento em dobro",
+      "desc": "Quando um imóvel na planta tinha um financiamento vinculado, a parcela dele era somada duas vezes no Fluxo Mensal — uma no cálculo geral de financiamentos, outra no cálculo específico de imóveis na planta. Corrigido: agora conta só uma vez.",
+      "type": "correção"
+    },
+    {
+      "title": "Novo campo 'Financiamento a Definir' nos passivos",
+      "desc": "Quando um financiamento de imóvel na planta ainda não foi escolhido/formalizado (o valor cadastrado é só o saldo total que será financiado no futuro, não uma parcela mensal), marque essa opção: ele continua contando em Dívidas, mas some do Fluxo Mensal até virar parcela de verdade.",
       "type": "recurso"
     },
     {
-      "title": "Liquidez agora aceita as duas opções ao mesmo tempo",
-      "desc": "Dá pra marcar que um investimento tem prazo de resgate antecipado (D+) e também fica liberado no vencimento — antes era só uma opção ou outra.",
+      "title": "Cards de resumo não ficam mais cortados em telas com zoom",
+      "desc": "Os 8 cards do topo (Fluxo Mensal, Patrimônio, Imobiliário etc.) tentavam caber numa única fileira em telas largas, o que espremia os valores em R$ e cortava os números ao aumentar o zoom. Agora nunca passa de 4 colunas — com 8 cards, quebra em 2 fileiras, com espaço de sobra sempre.",
+      "type": "correção"
+    },
+    {
+      "title": "Liquidez de investimento sem opção marcada por padrão",
+      "desc": "Ao criar um investimento novo, a opção 'Também no Vencimento' não vem mais pré-marcada sozinha — fica em branco até você escolher o que realmente se aplica.",
       "type": "melhoria"
-    },
-    {
-      "title": "Aviso de receitas pendentes",
-      "desc": "Assim como já acontecia com contas a pagar, agora você também recebe aviso na véspera, no dia e quando uma receita pendente vence, no WhatsApp e no celular.",
-      "type": "recurso"
     }
   ],
   "changes": [
-    "api/_lib/investments-context.ts (novo): monta o resumo detalhado de investimentos (saldo, vencimento, liquidez, IR estimado, nota de plano) reaproveitando o padrão de carregar tudo antes da chamada ao Gemini (sem function calling nativo).",
-    "api/_lib/finvision-chat.ts e api/_lib/whatsapp-webhook.ts: injetam a nova seção '# INVESTIMENTOS DETALHADOS' no prompt; classificador do WhatsApp passou a rotear perguntas sobre investimento como QUERY.",
-    "pages/Assets.tsx: campo Liquidez — D+ numérico e checkbox 'Também no Vencimento' deixaram de ser mutuamente exclusivos; metadata.liquidityDays é salvo independente de metadata.liquidityAtMaturity.",
-    "api/_lib/notify-bills-due.ts: passou a buscar também transações de receita pendente (type=INCOME, is_paid=false) na mesma janela de datas, com seção própria na mensagem.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; liquidez dupla testada no modo demo (D+30 + também no vencimento simultâneos); a injeção no prompt da IA foi verificada por leitura/compilação — não testada com chamada real ao Gemini (depende da chave de produção)."
+    "pages/Assets.tsx (sustainabilitySummary): liabilities do tipo MORTGAGE vinculadas a imóveis com propertyStage='PLANTA' passaram a ser excluídas de totalMortgageInstallments (já são contadas dentro de plantaInstallments) — corrige a contagem dupla.",
+    "pages/Assets.tsx: novo campo liabilities.metadata.isPendingFinancing (checkbox 'Financiamento a Definir' no formulário de passivo, tipo MORTGAGE); exclui a parcela do Fluxo Mensal (tanto em totalMortgageInstallments quanto no financingInstallment de plantaInstallments) sem afetar o saldo devedor total.",
+    "pages/Assets.tsx (getGridClass): grade de cards do resumo do Patrimônio limitada a no máximo 4 colunas (antes ia até 8), evitando corte de valores em telas largas com zoom.",
+    "pages/Assets.tsx: liquidityAtMaturity (checkbox 'Também no Vencimento') passou a vir desmarcado por padrão ao criar um investimento novo.",
+    "Correção de dados: dois passivos do usuário (financiamentos de imóveis na planta com saldo total lançado como parcela) marcados como 'Financiamento a Definir' via banco de dados, a pedido do usuário.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; reproduzido e confirmado no modo demo (card Fluxo Mensal saiu de R$6.800 de despesa para R$0 ao marcar 'Financiamento a Definir'; grade de 8 cards confirmada em 4 colunas fixas)."
   ]
 }
