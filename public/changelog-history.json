@@ -1,5 +1,33 @@
 [
   {
+    "version": "2026.07.25.1414",
+    "title": "Investimentos: seu saldo real deixou de ser sobrescrito, e chegou o COE",
+    "date": "25/07/2026",
+    "benefits": [
+      {
+        "title": "O valor que você atualiza no investimento agora é o que aparece",
+        "desc": "Antes, para CDB, CRI, Tesouro, Debênture e produtos parecidos, o app recalculava sozinho um valor projetado por cima do que você tinha digitado como saldo atual. Agora o número que você informa é sempre o que fica na tela.",
+        "type": "correção"
+      },
+      {
+        "title": "COE agora tem tipo próprio, com Imposto de Renda calculado de verdade",
+        "desc": "Antes, um COE só podia ser lançado como 'Outros', e nessa categoria o Imposto de Renda estimado sempre aparecia zerado. Agora o COE é um tipo específico, com o imposto calculado pela regra de renda fixa.",
+        "type": "correção"
+      },
+      {
+        "title": "Campo de taxa de rentabilidade mais simples",
+        "desc": "Só aceita números agora, e o texto ao lado já avisa se é '% do CDI', '% acima do IPCA' ou '% ao ano'.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "pages/Assets.tsx: saldo bruto de renda fixa deixou de ser sobrescrito pela projeção 'na curva'; passa a usar sempre o valor real salvo pelo usuário.",
+      "pages/Assets.tsx: removido 'OUTROS' da lista isVariableIncome (tinha IR fixo em 0%); agora usa a tabela regressiva padrão.",
+      "pages/Assets.tsx: novo tipo de investimento 'COE'.",
+      "pages/Assets.tsx: campo Taxa Rentabilidade numérico com rótulo dinâmico por indexador; rótulo de alíquota de IR no card corrigido para mostrar o percentual real."
+    ]
+  },
+  {
     "version": "2026.07.25.0033",
     "title": "Cancelar assinatura agora respeita o que você já pagou",
     "date": "25/07/2026",

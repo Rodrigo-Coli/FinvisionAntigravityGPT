@@ -850,7 +850,7 @@ const Assets: React.FC = () => {
       if (p.category === 'INVESTMENT') {
         const meta = p.metadata || {};
         const purchase = Number(meta.purchaseValue) || Number(meta.initialInvestmentAmount) || Number(p.estimatedValue) || 0;
-        const isVariableIncome = ['ACOES', 'FIIS', 'CRIPTO', 'OUTROS'].includes(meta.investmentType);
+        const isVariableIncome = ['ACOES', 'FIIS', 'CRIPTO'].includes(meta.investmentType);
         
         if (isVariableIncome) {
           const grossValue = Number(p.estimatedValue || 0);
@@ -881,7 +881,11 @@ const Assets: React.FC = () => {
           const acqDate = p.acquisitionDate || DateUtils.formatToISODate();
           const parsedAnnualRate = FinancialEngine.parseYieldRate(meta.yieldRate || '', meta.interestType || 'PRE');
           const isExempt = !!meta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'POUPANCA'].includes(meta.investmentType);
-          
+
+          // calculateFixedIncomeYield projeta o valor "na curva" (o que o contrato prometeria).
+          // Usamos essa projeção só para saber há quantos dias o título está em carteira
+          // (define a alíquota regressiva de IR) — o saldo bruto exibido continua sendo
+          // o que o usuário informa/atualiza manualmente (marcação a mercado), nunca a projeção.
           const calcs = FinancialEngine.calculateFixedIncomeYield(
             purchase,
             parsedAnnualRate,
@@ -889,17 +893,24 @@ const Assets: React.FC = () => {
             meta.payoutType === 'MENSAL' ? 'MENSAL' : 'ACUMULADO',
             isExempt
           );
-          
+
+          const grossValue = Number(p.estimatedValue || 0);
+          const grossYield = Math.max(0, grossValue - purchase);
+          const taxRate = FinancialEngine.calculateRegressiveTaxRate(calcs.daysElapsed, isExempt);
+          const taxAmount = Math.round(grossYield * taxRate * 100) / 100;
+          const netValue = Math.round((grossValue - taxAmount) * 100) / 100;
+
           return {
             ...p,
-            estimatedValue: calcs.grossValue,
-            netValue: calcs.netValue,
-            grossYield: calcs.grossYield,
-            taxRate: calcs.taxRate,
-            taxAmount: calcs.taxAmount,
+            estimatedValue: grossValue,
+            netValue,
+            grossYield,
+            taxRate,
+            taxAmount,
             daysElapsed: calcs.daysElapsed,
             monthsElapsed: calcs.monthsElapsed,
-            parsedAnnualRate
+            parsedAnnualRate,
+            curveProjectedValue: calcs.grossValue
           };
         }
       }
@@ -8157,7 +8168,7 @@ const Assets: React.FC = () => {
                             const invMeta = inv.metadata || {};
                             const investTypeLabel: Record<string, string> = {
                               'CDB': 'CDB', 'LCI_LCA': 'LCI/LCA', 'TESOURO': 'Tesouro',
-                              'DEBENTURES': 'Debêntures', 'CRI_CRA': 'CRI/CRA',
+                              'DEBENTURES': 'Debêntures', 'CRI_CRA': 'CRI/CRA', 'COE': 'COE',
                               'ACOES': 'Ações', 'FIIS': 'FIIs', 'FUNDOS': 'Fundos',
                               'CRIPTO': 'Cripto', 'PREVIDENCIA': 'Previdência', 'POUPANCA': 'Poupança', 'OUTROS': 'Outros'
                             };
@@ -8269,7 +8280,7 @@ const Assets: React.FC = () => {
                                             <span className="font-black">
                                               - {formatCurrency(taxAmt)} 
                                               <span className="text-[10px] font-normal text-slate-400 ml-1">
-                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : '20% a 22.5% sobre lucro'})
+                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : `${taxRatePercent}% sobre lucro`})
                                               </span>
                                             </span>
                                           </div>
@@ -8351,7 +8362,7 @@ const Assets: React.FC = () => {
                             const invMeta = inv.metadata || {};
                             const investTypeLabel: Record<string, string> = {
                               'CDB': 'CDB', 'LCI_LCA': 'LCI/LCA', 'TESOURO': 'Tesouro',
-                              'DEBENTURES': 'Debêntures', 'CRI_CRA': 'CRI/CRA',
+                              'DEBENTURES': 'Debêntures', 'CRI_CRA': 'CRI/CRA', 'COE': 'COE',
                               'ACOES': 'Ações', 'FIIS': 'FIIs', 'FUNDOS': 'Fundos',
                               'CRIPTO': 'Cripto', 'PREVIDENCIA': 'Previdência', 'POUPANCA': 'Poupança', 'OUTROS': 'Outros'
                             };
@@ -8449,7 +8460,7 @@ const Assets: React.FC = () => {
                                             <span className="font-black">
                                               - {formatCurrency(taxAmt)} 
                                               <span className="text-[10px] font-normal text-slate-400 ml-1">
-                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : '20% a 22.5% sobre lucro'})
+                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : `${taxRatePercent}% sobre lucro`})
                                               </span>
                                             </span>
                                           </div>
@@ -10124,6 +10135,7 @@ const Assets: React.FC = () => {
                           <option value="TESOURO">Tesouro Direto</option>
                           <option value="DEBENTURES">Debêntures</option>
                           <option value="CRI_CRA">CRI / CRA</option>
+                          <option value="COE">COE</option>
                           <option value="ACOES">Ações</option>
                           <option value="FIIS">FIIs (Fundos Imobiliários)</option>
                           <option value="FUNDOS">Fundos de Investimento</option>
@@ -10134,7 +10146,7 @@ const Assets: React.FC = () => {
                       </div>
                     </div>
 
-                    {!['ACOES', 'FIIS', 'CRIPTO', 'OUTROS'].includes(formData.investmentType) && (
+                    {!['ACOES', 'FIIS', 'CRIPTO'].includes(formData.investmentType) && (
                       <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
                         <div>
                           <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Indexador</label>
@@ -10150,13 +10162,14 @@ const Assets: React.FC = () => {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Taxa Rentabilidade (ex: 102% CDI)</label>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Taxa Rentabilidade {formData.interestType === 'CDI' ? '(% do CDI)' : formData.interestType === 'IPCA' ? '(% acima do IPCA)' : '(% a.a.)'}</label>
                           <input
                             type="text"
+                            inputMode="decimal"
                             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
-                            placeholder="Ex: 102% CDI ou 12.5% a.a."
+                            placeholder={formData.interestType === 'CDI' ? 'Ex: 102' : formData.interestType === 'IPCA' ? 'Ex: 6,50' : 'Ex: 12,60'}
                             value={formData.yieldRate}
-                            onChange={(e) => setFormData({ ...formData, yieldRate: e.target.value })}
+                            onChange={(e) => setFormData({ ...formData, yieldRate: e.target.value.replace(/[^0-9.,]/g, '') })}
                           />
                         </div>
                       </div>
@@ -10174,7 +10187,7 @@ const Assets: React.FC = () => {
                           <option value="MENSAL">Mensal (Cai na Conta / Cupom)</option>
                         </select>
                       </div>
-                      {!['ACOES', 'FIIS', 'CRIPTO', 'OUTROS'].includes(formData.investmentType) && (
+                      {!['ACOES', 'FIIS', 'CRIPTO'].includes(formData.investmentType) && (
                         <div className="animate-in slide-in-from-top-2">
                           <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Liquidez</label>
                           <select
@@ -10193,7 +10206,7 @@ const Assets: React.FC = () => {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      {!['ACOES', 'FIIS', 'CRIPTO', 'OUTROS'].includes(formData.investmentType) ? (
+                      {!['ACOES', 'FIIS', 'CRIPTO'].includes(formData.investmentType) ? (
                         <div className="animate-in slide-in-from-top-2">
                           <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Data de Vencimento (Opcional)</label>
                           <input
@@ -10204,7 +10217,7 @@ const Assets: React.FC = () => {
                           />
                         </div>
                       ) : null}
-                      <div className={['ACOES', 'FIIS', 'CRIPTO', 'OUTROS'].includes(formData.investmentType) ? 'col-span-2' : ''}>
+                      <div className={['ACOES', 'FIIS', 'CRIPTO'].includes(formData.investmentType) ? 'col-span-2' : ''}>
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Status</label>
                         <select
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"

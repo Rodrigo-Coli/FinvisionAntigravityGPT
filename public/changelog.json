@@ -1,31 +1,30 @@
 {
-  "version": "2026.07.25.0033",
-  "title": "Cancelar assinatura agora respeita o que você já pagou",
+  "version": "2026.07.25.1414",
+  "title": "Investimentos: seu saldo real deixou de ser sobrescrito, e chegou o COE",
   "date": "25/07/2026",
   "benefits": [
     {
-      "title": "Cancelar não é perder o acesso na hora",
-      "desc": "Se você cancelar sua assinatura, para de ser cobrado imediatamente, mas continua com acesso completo ao seu plano até a data que seria a próxima renovação. Só depois dessa data a conta volta para o plano gratuito — e mesmo assim, todo o seu histórico de transações, contas e cartões continua salvo e acessível.",
-      "type": "recurso"
+      "title": "O valor que você atualiza no investimento agora é o que aparece",
+      "desc": "Antes, para CDB, CRI, Tesouro, Debênture e produtos parecidos, o app recalculava sozinho um valor projetado por cima do que você tinha digitado como saldo atual — então o saldo podia aparecer bem diferente do extrato real da corretora. Agora o número que você informa é sempre o que fica na tela.",
+      "type": "correção"
     },
     {
-      "title": "Mudou de ideia? Reative com um clique, sem perder a data",
-      "desc": "Enquanto sua assinatura cancelada ainda estiver dentro do período pago, um aviso no topo do app deixa você reativar na hora — e a cobrança volta a cair exatamente na mesma data de sempre, sem cobrar nada extra agora.",
-      "type": "recurso"
+      "title": "COE agora tem tipo próprio, com Imposto de Renda calculado de verdade",
+      "desc": "Antes, um COE só podia ser lançado como 'Outros', e nessa categoria o Imposto de Renda estimado sempre aparecia zerado, mesmo quando havia imposto a pagar. Agora o COE é um tipo específico no formulário, e o imposto é calculado pela mesma regra da Receita usada para renda fixa.",
+      "type": "correção"
     },
     {
-      "title": "Voltou depois do prazo? Vira uma assinatura nova, começando hoje",
-      "desc": "Se o período pago já tiver acabado e você decidir assinar de novo, o FinVision trata como uma assinatura nova: a cobrança passa a contar a partir do dia em que você reativa.",
-      "type": "recurso"
+      "title": "Campo de taxa de rentabilidade mais simples",
+      "desc": "O campo agora só aceita números, e o texto ao lado já avisa se é '% do CDI', '% acima do IPCA' ou '% ao ano', conforme o indexador que você escolheu.",
+      "type": "melhoria"
     }
   ],
   "changes": [
-    "supabase/cancel_at_period_end_migration.sql: novo campo subscriptions.cancel_at_period_end (boolean, default false).",
-    "api/_lib/asaas-cancel-subscription.ts (endpoint novo): cancela a cobrança recorrente no Asaas e marca cancel_at_period_end=true, sem tocar em status nem current_period_end — o acesso continua até lá.",
-    "api/_lib/asaas-create-subscription.ts: detecta reativação dentro do período já pago (cancel_at_period_end=true + current_period_end no futuro) e preserva a data de cobrança e o ciclo original em vez de recriar do zero; fora dessa janela, segue o fluxo normal (assinatura nova a partir de hoje).",
-    "api/_lib/asaas-webhook.ts: removidos subscription_deleted e payment_deleted do mapeamento de status — esses eventos disparam quando cancelamos a assinatura no Asaas e antes rebaixavam o usuário na hora, o que quebrava a regra de 'continua ativo até o fim do período'.",
-    "api/_lib/maintenance.ts (cron diário): novo passo que rebaixa para 'canceled' apenas quando current_period_end já passou e cancel_at_period_end=true.",
-    "contexts/SubscriptionContext.tsx, components/subscription/CancelPendingBanner.tsx, components/subscription/CancelSubscriptionModal.tsx, App.tsx, pages/Settings.tsx: botão de cancelar, modal de confirmação e banner de reativação.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros."
+    "pages/Assets.tsx (enrichedPhysicalAssets): saldo bruto de investimentos de renda fixa deixou de ser sobrescrito pela projeção 'na curva' (FinancialEngine.calculateFixedIncomeYield) — passa a usar sempre o estimated_value real salvo pelo usuário; IR calculado sobre esse valor real via FinancialEngine.calculateRegressiveTaxRate.",
+    "pages/Assets.tsx: removido 'OUTROS' da lista isVariableIncome — antes ficava com alíquota de IR fixa em 0%; agora usa a tabela regressiva padrão (22.5% a 15% conforme dias de carência).",
+    "pages/Assets.tsx: novo tipo de investimento 'COE' no formulário e nos rótulos do card (segue as mesmas regras de renda fixa, não isento).",
+    "pages/Assets.tsx: campo Taxa Rentabilidade agora filtra para número/vírgula/ponto; rótulo e placeholder dinâmicos por indexador (CDI/IPCA/Pré).",
+    "pages/Assets.tsx: rótulo da alíquota de IR no card do investimento passou a mostrar o percentual real calculado em vez de texto fixo '20% a 22.5%'.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (cenário CRI e cenário COE) reproduzindo valores reais de extrato de corretora."
   ]
 }
