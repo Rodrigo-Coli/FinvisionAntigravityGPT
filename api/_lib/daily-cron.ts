@@ -1,4 +1,5 @@
 import { handleNotifyBillsDue } from './notify-bills-due.js';
+import { handleNotifyInvestmentsDue } from './notify-investments-due.js';
 import { handleNotifyReferralEngagement } from './notify-referral-engagement.js';
 import { handleMaintenance } from './maintenance.js';
 
@@ -23,6 +24,9 @@ export async function handleDailyCron(req: any, res: any) {
   const bills = captureRes();
   await handleNotifyBillsDue(req, bills.res as any);
 
+  const investments = captureRes();
+  await handleNotifyInvestmentsDue(req, investments.res as any);
+
   const referral = captureRes();
   await handleNotifyReferralEngagement(req, referral.res as any);
 
@@ -33,6 +37,7 @@ export async function handleDailyCron(req: any, res: any) {
   return res.status(200).json({
     success: true,
     billsDue: bills.get(),
+    investmentsDue: investments.get(),
     referralEngagement: referral.get(),
     maintenance: maintenance.get(),
   });

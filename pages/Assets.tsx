@@ -91,6 +91,22 @@ const Assets: React.FC = () => {
     amount: '',
     destinationAccountId: ''
   });
+  // Extrato de movimentações do investimento (investment_movements)
+  const [showInvestmentLedgerModal, setShowInvestmentLedgerModal] = useState(false);
+  const [selectedInvestmentForLedger, setSelectedInvestmentForLedger] = useState<any | null>(null);
+  const [investmentMovements, setInvestmentMovements] = useState<any[]>([]);
+  const [loadingInvestmentMovements, setLoadingInvestmentMovements] = useState(false);
+  const [newMovementForm, setNewMovementForm] = useState({
+    movement_type: 'RENDIMENTO_MENSAL',
+    amount: '',
+    movement_date: DateUtils.formatToISODate(),
+    notes: ''
+  });
+  const [editingMovementId, setEditingMovementId] = useState<string | null>(null);
+  const [editingMovementDraft, setEditingMovementDraft] = useState<{ amount: string; movement_date: string } | null>(null);
+  // Nota de plano (investment_reminders)
+  const [investmentReminder, setInvestmentReminder] = useState<any | null>(null);
+  const [reminderDraft, setReminderDraft] = useState('');
   const [showAllDetails, setShowAllDetails] = useState(false);
   const [inccRate, setInccRate] = useState<number | null>(null);
   const [loadingIncc, setLoadingIncc] = useState<boolean>(false);
@@ -2532,7 +2548,7 @@ const Assets: React.FC = () => {
         ? `Resgate Total Investimento - ${asset.name}` 
         : `Resgate Parcial Investimento - ${asset.name}`;
 
-      const { error: txErr } = await supabase.from('transactions').insert([{
+      const { data: redemptionTx, error: txErr } = await supabase.from('transactions').insert([{
         user_id: user.id,
         description: desc,
         amount: amountToRedeem,
@@ -2552,9 +2568,19 @@ const Assets: React.FC = () => {
           redeemed_amount: amountToRedeem,
           isCapitalized: true
         }
-      }]);
+      }]).select('id').single();
 
       if (txErr) throw txErr;
+
+      // Extrato do investimento: registra o resgate como movimentação própria
+      await supabase.from('investment_movements').insert([{
+        user_id: user.id,
+        asset_id: asset.id,
+        movement_type: isTotal ? 'RESGATE_TOTAL' : 'RESGATE_PARCIAL',
+        amount: amountToRedeem,
+        movement_date: todayStr,
+        linked_transaction_id: redemptionTx?.id || null
+      }]);
 
       // 4. Sincronizar o saldo consolidado (current_balance) para as contas envolvidas
       const originAccountId = asset.metadata?.brokerAccountId;
@@ -2604,6 +2630,143 @@ const Assets: React.FC = () => {
     } catch (err: any) {
       toast(`Erro ao resgatar investimento: ${err.message}`, 'error');
     }
+  };
+
+  const loadInvestmentMovements = async (assetId: string) => {
+    if (!supabase) return;
+    setLoadingInvestmentMovements(true);
+    const { data } = await supabase
+      .from('investment_movements')
+      .select('*')
+      .eq('asset_id', assetId)
+      .order('movement_date', { ascending: false });
+    setInvestmentMovements(data || []);
+    setLoadingInvestmentMovements(false);
+  };
+
+  const loadInvestmentReminder = async (assetId: string) => {
+    if (!supabase) return;
+    const { data } = await supabase
+      .from('investment_reminders')
+      .select('*')
+      .eq('asset_id', assetId)
+      .maybeSingle();
+    setInvestmentReminder(data || null);
+    setReminderDraft(data?.note || '');
+  };
+
+  const openInvestmentLedger = (asset: any) => {
+    setSelectedInvestmentForLedger(asset);
+    setNewMovementForm({
+      movement_type: 'RENDIMENTO_MENSAL',
+      amount: '',
+      movement_date: DateUtils.formatToISODate(),
+      notes: ''
+    });
+    setShowInvestmentLedgerModal(true);
+    loadInvestmentMovements(asset.id);
+    loadInvestmentReminder(asset.id);
+  };
+
+  const handleAddMovement = async () => {
+    if (!supabase || !selectedInvestmentForLedger) return;
+    const amt = parseFloat(newMovementForm.amount);
+    if (!amt) {
+      toast('Informe um valor para a movimentação.', 'warning');
+      return;
+    }
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) return;
+
+    const isNegativeType = ['RESGATE_PARCIAL', 'RESGATE_TOTAL'].includes(newMovementForm.movement_type);
+    const { error } = await supabase.from('investment_movements').insert([{
+      user_id: user.id,
+      asset_id: selectedInvestmentForLedger.id,
+      movement_type: newMovementForm.movement_type,
+      amount: isNegativeType ? -Math.abs(amt) : amt,
+      movement_date: newMovementForm.movement_date,
+      notes: newMovementForm.notes || null
+    }]);
+
+    if (error) {
+      toast(`Erro ao registrar movimentação: ${error.message}`, 'error');
+      return;
+    }
+
+    setNewMovementForm({ movement_type: 'RENDIMENTO_MENSAL', amount: '', movement_date: DateUtils.formatToISODate(), notes: '' });
+    loadInvestmentMovements(selectedInvestmentForLedger.id);
+    toast('Movimentação registrada.', 'success');
+  };
+
+  const handleUpdateMovement = async (id: string) => {
+    if (!supabase || !editingMovementDraft) return;
+    const amt = parseFloat(editingMovementDraft.amount);
+    if (!amt) {
+      toast('Informe um valor válido.', 'warning');
+      return;
+    }
+    const { error } = await supabase
+      .from('investment_movements')
+      .update({ amount: amt, movement_date: editingMovementDraft.movement_date, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (error) {
+      toast(`Erro ao atualizar movimentação: ${error.message}`, 'error');
+      return;
+    }
+    setEditingMovementId(null);
+    setEditingMovementDraft(null);
+    if (selectedInvestmentForLedger) loadInvestmentMovements(selectedInvestmentForLedger.id);
+  };
+
+  const handleDeleteMovement = async (id: string) => {
+    if (!supabase) return;
+    const { error } = await supabase.from('investment_movements').delete().eq('id', id);
+    if (error) {
+      toast(`Erro ao excluir movimentação: ${error.message}`, 'error');
+      return;
+    }
+    if (selectedInvestmentForLedger) loadInvestmentMovements(selectedInvestmentForLedger.id);
+  };
+
+  const handleSaveReminder = async () => {
+    if (!supabase || !selectedInvestmentForLedger) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) return;
+
+    if (!reminderDraft.trim()) {
+      if (investmentReminder) {
+        await supabase.from('investment_reminders').delete().eq('id', investmentReminder.id);
+        setInvestmentReminder(null);
+      }
+      return;
+    }
+
+    if (investmentReminder) {
+      await supabase
+        .from('investment_reminders')
+        .update({ note: reminderDraft.trim(), updated_at: new Date().toISOString() })
+        .eq('id', investmentReminder.id);
+    } else {
+      await supabase.from('investment_reminders').insert([{
+        user_id: user.id,
+        asset_id: selectedInvestmentForLedger.id,
+        note: reminderDraft.trim()
+      }]);
+    }
+    loadInvestmentReminder(selectedInvestmentForLedger.id);
+    toast('Nota de plano salva.', 'success');
+  };
+
+  const movementTypeLabel: Record<string, string> = {
+    APORTE: 'Aporte',
+    RENDIMENTO_MENSAL: 'Rendimento Mensal',
+    RENDIMENTO_ACUMULADO: 'Rendimento Acumulado',
+    RESGATE_PARCIAL: 'Resgate Parcial',
+    RESGATE_TOTAL: 'Resgate Total',
+    AJUSTE_MANUAL: 'Ajuste Manual'
   };
 
   // Trava contra salvamento concorrente (duplo-clique, duplo-submit do form) — ver
@@ -2935,7 +3098,7 @@ const Assets: React.FC = () => {
             }
 
             const todayStr = DateUtils.formatToISODate();
-            await supabase.from('transactions').insert([{
+            const { data: yieldTx } = await supabase.from('transactions').insert([{
               user_id: user.id,
               description: `Rendimento automático - ${formData.name}`,
               amount: delta,
@@ -2954,6 +3117,25 @@ const Assets: React.FC = () => {
                 type: 'investment_yield',
                 payout_type: formData.payoutType
               }
+            }]).select('id').single();
+
+            await supabase.from('investment_movements').insert([{
+              user_id: user.id,
+              asset_id: editingAsset.id,
+              movement_type: isAcumulado ? 'RENDIMENTO_ACUMULADO' : 'RENDIMENTO_MENSAL',
+              amount: delta,
+              movement_date: todayStr,
+              linked_transaction_id: yieldTx?.id || null
+            }]);
+          } else if (delta < 0) {
+            // Ajuste manual (ex.: correção de marcação a mercado) — não mexe em caixa, só registra no extrato.
+            await supabase.from('investment_movements').insert([{
+              user_id: user.id,
+              asset_id: editingAsset.id,
+              movement_type: 'AJUSTE_MANUAL',
+              amount: delta,
+              movement_date: DateUtils.formatToISODate(),
+              notes: 'Ajuste manual do saldo bruto atual'
             }]);
           }
         }
@@ -3144,6 +3326,16 @@ const Assets: React.FC = () => {
 
         if (error) throw error;
         if (newAsset) assetId = newAsset.id;
+
+        if (formData.category === 'INVESTMENT' && newAsset && !isNewInvestmentRedemption && purchaseVal > 0) {
+          await supabase.from('investment_movements').insert([{
+            user_id: user.id,
+            asset_id: newAsset.id,
+            movement_type: 'APORTE',
+            amount: purchaseVal,
+            movement_date: acqDate || DateUtils.formatToISODate()
+          }]);
+        }
 
         if (isNewInvestmentRedemption && newAsset && value > 0) {
           let catId = null;
@@ -8358,6 +8550,14 @@ const Assets: React.FC = () => {
                                         <span className="hidden sm:inline">Resgatar</span>
                                       </button>
                                       <button
+                                        onClick={() => openInvestmentLedger(inv)}
+                                        className="p-1 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
+                                        title="Extrato do Investimento"
+                                      >
+                                        <History size={11} />
+                                        <span className="hidden sm:inline">Extrato</span>
+                                      </button>
+                                      <button
                                         onClick={() => openEditAsset(inv)}
                                         className="p-1 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
                                         title="Editar Ativo"
@@ -8565,6 +8765,14 @@ const Assets: React.FC = () => {
                                       >
                                         <HandCoins size={11} />
                                         <span className="hidden sm:inline">Resgatar</span>
+                                      </button>
+                                      <button
+                                        onClick={() => openInvestmentLedger(inv)}
+                                        className="p-1 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
+                                        title="Extrato do Investimento"
+                                      >
+                                        <History size={11} />
+                                        <span className="hidden sm:inline">Extrato</span>
                                       </button>
                                       <button onClick={() => openEditAsset(inv)} className="p-1 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"><Pencil size={11} /><span className="hidden sm:inline">Editar</span></button>
                                       <button onClick={() => handleDeleteAsset(inv)} className="p-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"><Trash2 size={11} /><span className="hidden sm:inline">Excluir</span></button>
@@ -10971,6 +11179,148 @@ const Assets: React.FC = () => {
               <div className="pt-4 flex gap-3 border-t border-slate-100">
                 <button onClick={() => setShowRealEstateManageModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest">Cancelar</button>
                 <button onClick={saveRealEstateManage} className="flex-1 py-3 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg">Salvar Ajustes</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EXTRATO DE MOVIMENTAÇÕES DO INVESTIMENTO */}
+      {showInvestmentLedgerModal && selectedInvestmentForLedger && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 flex flex-col max-h-[85vh]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="font-black text-slate-900 uppercase tracking-tight text-sm">Extrato do Investimento</h3>
+                <p className="text-xs text-slate-400 font-medium">{selectedInvestmentForLedger.name}</p>
+              </div>
+              <button
+                onClick={() => { setShowInvestmentLedgerModal(false); setSelectedInvestmentForLedger(null); setEditingMovementId(null); }}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6 overflow-y-auto">
+              {/* Nota de plano */}
+              <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100 space-y-2">
+                <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest">Nota de Plano (o que fazer no vencimento/resgate)</label>
+                <textarea
+                  className="w-full bg-white border border-indigo-100 rounded-xl px-3 py-2 text-xs font-semibold"
+                  rows={2}
+                  placeholder="Ex: usar para pagar a parcela do apê, não reinvestir"
+                  value={reminderDraft}
+                  onChange={(e) => setReminderDraft(e.target.value)}
+                />
+                <button
+                  onClick={handleSaveReminder}
+                  className="text-[10px] font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-widest"
+                >
+                  Salvar Nota
+                </button>
+              </div>
+
+              {/* Nova movimentação */}
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Adicionar Movimentação</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    className="bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold col-span-2"
+                    value={newMovementForm.movement_type}
+                    onChange={(e) => setNewMovementForm({ ...newMovementForm, movement_type: e.target.value })}
+                  >
+                    <option value="APORTE">Aporte</option>
+                    <option value="RENDIMENTO_MENSAL">Rendimento Mensal</option>
+                    <option value="RENDIMENTO_ACUMULADO">Rendimento Acumulado</option>
+                    <option value="RESGATE_PARCIAL">Resgate Parcial</option>
+                    <option value="RESGATE_TOTAL">Resgate Total</option>
+                    <option value="AJUSTE_MANUAL">Ajuste Manual</option>
+                  </select>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Valor (R$)"
+                    className="bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold"
+                    value={newMovementForm.amount}
+                    onChange={(e) => setNewMovementForm({ ...newMovementForm, amount: e.target.value })}
+                  />
+                  <input
+                    type="date"
+                    className="bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold"
+                    value={newMovementForm.movement_date}
+                    onChange={(e) => setNewMovementForm({ ...newMovementForm, movement_date: e.target.value })}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Observação (opcional)"
+                    className="bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold col-span-2"
+                    value={newMovementForm.notes}
+                    onChange={(e) => setNewMovementForm({ ...newMovementForm, notes: e.target.value })}
+                  />
+                </div>
+                <button
+                  onClick={handleAddMovement}
+                  className="w-full py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700"
+                >
+                  Adicionar
+                </button>
+              </div>
+
+              {/* Lista de movimentações */}
+              <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Histórico</label>
+                {loadingInvestmentMovements && <p className="text-xs text-slate-400 font-semibold">Carregando...</p>}
+                {!loadingInvestmentMovements && investmentMovements.length === 0 && (
+                  <p className="text-xs text-slate-400 font-semibold">Nenhuma movimentação registrada ainda.</p>
+                )}
+                {investmentMovements.map((mv) => (
+                  <div key={mv.id} className="flex items-center justify-between gap-2 bg-white border border-slate-100 rounded-xl px-3 py-2">
+                    {editingMovementId === mv.id ? (
+                      <div className="flex items-center gap-2 flex-1">
+                        <input
+                          type="date"
+                          className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold w-32"
+                          value={editingMovementDraft?.movement_date || ''}
+                          onChange={(e) => setEditingMovementDraft(d => d ? { ...d, movement_date: e.target.value } : d)}
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold w-24"
+                          value={editingMovementDraft?.amount || ''}
+                          onChange={(e) => setEditingMovementDraft(d => d ? { ...d, amount: e.target.value } : d)}
+                        />
+                        <button onClick={() => handleUpdateMovement(mv.id)} className="text-emerald-600 hover:text-emerald-800"><Check size={14} /></button>
+                        <button onClick={() => { setEditingMovementId(null); setEditingMovementDraft(null); }} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold text-slate-700">{movementTypeLabel[mv.movement_type] || mv.movement_type}</p>
+                          <p className="text-[10px] text-slate-400 font-semibold">
+                            {new Date(mv.movement_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                            {mv.notes ? ` · ${mv.notes}` : ''}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`text-xs font-black ${Number(mv.amount) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {Number(mv.amount) >= 0 ? '+' : ''}{formatCurrency(Number(mv.amount))}
+                          </span>
+                          <button
+                            onClick={() => { setEditingMovementId(mv.id); setEditingMovementDraft({ amount: String(mv.amount), movement_date: mv.movement_date }); }}
+                            className="text-slate-400 hover:text-slate-700"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                          <button onClick={() => handleDeleteMovement(mv.id)} className="text-rose-400 hover:text-rose-700">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           </div>

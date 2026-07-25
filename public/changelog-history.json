@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.07.25.1500",
+    "title": "Investimentos: extrato de movimentações, nota de plano e aviso de vencimento",
+    "date": "25/07/2026",
+    "benefits": [
+      {
+        "title": "Extrato completo de cada investimento",
+        "desc": "Aportes, rendimentos, resgates e ajustes com data — automáticos ou lançados na mão, editáveis.",
+        "type": "recurso"
+      },
+      {
+        "title": "Nota de plano para o vencimento",
+        "desc": "Escreva o que fazer quando o investimento vencer e receba isso destacado no aviso.",
+        "type": "recurso"
+      },
+      {
+        "title": "Aviso de vencimento de investimento",
+        "desc": "Véspera/dia/vencimento no WhatsApp e no celular, igual já acontece com contas a pagar.",
+        "type": "recurso"
+      }
+    ],
+    "changes": [
+      "supabase: novas tabelas investment_movements e investment_reminders, com RLS por usuário.",
+      "pages/Assets.tsx: aporte/rendimento/resgate/ajuste passaram a gerar movimentação real; novo modal de Extrato com nota de plano.",
+      "api/_lib/notify-investments-due.ts (novo) + daily-cron.ts: aviso de vencimento de investimento reaproveitando a régua das contas a pagar."
+    ]
+  },
+  {
     "version": "2026.07.25.1443",
     "title": "Investimentos: busca inteligente, vencimento no card, D+ e COE completo",
     "date": "25/07/2026",

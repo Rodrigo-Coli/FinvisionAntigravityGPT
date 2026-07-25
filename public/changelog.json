@@ -1,37 +1,30 @@
 {
-  "version": "2026.07.25.1443",
-  "title": "Investimentos: busca inteligente, vencimento no card, D+ e COE completo",
+  "version": "2026.07.25.1500",
+  "title": "Investimentos: extrato de movimentações, nota de plano e aviso de vencimento",
   "date": "25/07/2026",
   "benefits": [
     {
-      "title": "Filtro de busca para achar o investimento certo na hora",
-      "desc": "Agora dá para buscar por nome e filtrar seus investimentos por tipo, corretora, prazo de liquidez (D+) e faixa de vencimento, direto na tela de Investimentos.",
+      "title": "Extrato completo de cada investimento",
+      "desc": "Toque em 'Extrato' no card do investimento para ver todo o histórico dele: aportes, rendimentos, resgates e ajustes, cada um com sua data. Aportes e resgates agora são registrados automaticamente, e você pode lançar rendimentos na mão, corrigir data/valor de qualquer lançamento ou apagar um registro errado.",
       "type": "recurso"
     },
     {
-      "title": "Card mostra vencimento e prazo de resgate",
-      "desc": "Cada investimento passa a exibir a data de vencimento e o D+ (quantos dias até poder resgatar) direto no card, sem precisar abrir para editar.",
+      "title": "Nota de plano: diga o que fazer quando o investimento vencer",
+      "desc": "Dentro do extrato, escreva uma instrução para você mesmo (ex: 'usar para pagar a parcela do apê, não reinvestir'). Essa nota some com o resto e volta a aparecer destacada no aviso de vencimento.",
       "type": "recurso"
     },
     {
-      "title": "Campo de Tipo de Ativo agora se digita e filtra",
-      "desc": "Em vez de rolar uma lista fixa, você digita parte do nome (ex: 'cri') e o campo já mostra só as opções que combinam.",
-      "type": "melhoria"
-    },
-    {
-      "title": "COE ganhou campo de Capital Protegido, e você pode corrigir a isenção de IR na mão",
-      "desc": "Novo campo para marcar se o COE tem capital protegido, e uma opção para você mesmo marcar um investimento como isento de Imposto de Renda quando souber que é o caso.",
+      "title": "Aviso de vencimento de investimento no WhatsApp e no celular",
+      "desc": "Agora você recebe aviso na véspera, no dia e quando um investimento vence, do mesmo jeito que já acontece com as contas a pagar — incluindo a nota de plano, se você tiver deixado uma.",
       "type": "recurso"
     }
   ],
   "changes": [
-    "components/common/SearchableSelect.tsx (novo): combobox pesquisável reutilizável; aplicado no campo Tipo de Ativo/Alocação do formulário de investimentos.",
-    "pages/Assets.tsx: metadata.investmentLiquidity (texto fixo) substituído por metadata.liquidityDays (número) + metadata.liquidityAtMaturity (boolean); getLiquidityInfo() lê os dois formatos, com fallback para registros antigos.",
-    "pages/Assets.tsx: getFilteredInvestments() (existia mas nunca era chamada) agora é aplicada de fato à lista, e ganhou busca por nome, filtro por tipo e por corretora; getFilteredInvestments tornou-se genérica para preservar os campos calculados (netValue, taxAmount etc.) no retorno.",
-    "pages/Assets.tsx: nova barra de filtro na tela de Investimentos (busca, tipo, corretora, liquidez, vencimento).",
-    "pages/Assets.tsx: card do investimento agora mostra 'Vence em DD/MM/AAAA · D+N' quando aplicável.",
-    "pages/Assets.tsx: metadata.isTaxExempt (já existia no estado mas nunca era salvo) agora é persistido, com checkbox no formulário para o usuário sobrepor o cálculo automático de isenção.",
-    "pages/Assets.tsx: metadata.coeCapitalProtected (novo campo) exibido no formulário e no detalhe do card quando o tipo é COE.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (COE com D+30/vencimento/isenção manual/capital protegido, filtro por tipo, combobox pesquisável)."
+    "supabase (novas tabelas): investment_movements (extrato: aporte/rendimento mensal/rendimento acumulado/resgate parcial/resgate total/ajuste manual, com RLS por usuário) e investment_reminders (nota de plano por investimento, com RLS por usuário).",
+    "pages/Assets.tsx: criação de investimento grava movimento APORTE automaticamente; edição com aumento de saldo grava RENDIMENTO_MENSAL/RENDIMENTO_ACUMULADO; edição com redução grava AJUSTE_MANUAL; handleRedeemInvestment grava RESGATE_PARCIAL/RESGATE_TOTAL vinculado à transação criada.",
+    "pages/Assets.tsx: novo botão 'Extrato' no card do investimento, abrindo modal com histórico, edição/exclusão de movimentações, lançamento manual e a nota de plano.",
+    "api/_lib/notify-investments-due.ts (novo): estende a régua de véspera/dia/vencimento já usada para contas a pagar aos investimentos com Data de Vencimento cadastrada, incluindo a nota de plano na mensagem.",
+    "api/_lib/daily-cron.ts: passou a chamar handleNotifyInvestmentsDue junto dos outros avisos diários.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (criação com aporte automático, lançamento manual de rendimento, nota de plano persistindo após fechar/reabrir, resgate total gravando RESGATE_TOTAL vinculado à transação); Supabase Advisors (security) sem novos alertas nas tabelas criadas."
   ]
 }
