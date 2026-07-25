@@ -1,5 +1,38 @@
 [
   {
+    "version": "2026.07.25.1443",
+    "title": "Investimentos: busca inteligente, vencimento no card, D+ e COE completo",
+    "date": "25/07/2026",
+    "benefits": [
+      {
+        "title": "Filtro de busca para achar o investimento certo na hora",
+        "desc": "Busca por nome e filtro por tipo, corretora, D+ e faixa de vencimento na tela de Investimentos.",
+        "type": "recurso"
+      },
+      {
+        "title": "Card mostra vencimento e prazo de resgate",
+        "desc": "Data de vencimento e D+ aparecem direto no card.",
+        "type": "recurso"
+      },
+      {
+        "title": "Campo de Tipo de Ativo agora se digita e filtra",
+        "desc": "Digite parte do nome e o campo já filtra as opções.",
+        "type": "melhoria"
+      },
+      {
+        "title": "COE ganhou Capital Protegido, e IR isento pode ser marcado na mão",
+        "desc": "Novo campo para COE, e opção de sobrepor manualmente o cálculo automático de isenção de IR.",
+        "type": "recurso"
+      }
+    ],
+    "changes": [
+      "components/common/SearchableSelect.tsx (novo): combobox pesquisável reutilizável.",
+      "pages/Assets.tsx: Liquidez virou D+ numérico (metadata.liquidityDays/liquidityAtMaturity), com compatibilidade para registros antigos.",
+      "pages/Assets.tsx: filtro de investimentos (busca, tipo, corretora, liquidez, vencimento) passou a ser aplicado de verdade à lista.",
+      "pages/Assets.tsx: card mostra vencimento e D+; isTaxExempt e coeCapitalProtected passaram a ser persistidos e exibidos."
+    ]
+  },
+  {
     "version": "2026.07.25.1414",
     "title": "Investimentos: seu saldo real deixou de ser sobrescrito, e chegou o COE",
     "date": "25/07/2026",

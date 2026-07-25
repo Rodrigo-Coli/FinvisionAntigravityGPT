@@ -56,6 +56,7 @@ import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModa
 import { RealEstateDetailModal } from '../components/assets/RealEstateDetailModal';
 import { syncRentalTransactions as sharedSyncRentalTransactions, syncCondoIptuTransactions, PayerOption } from '../components/assets/realEstatePropertySync';
 import ConsortiumSection from '../components/assets/ConsortiumSection';
+import SearchableSelect from '../components/common/SearchableSelect';
 import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
 import { computeInstallmentAmount, buildInstallmentDate } from '../lib/amortization';
@@ -277,6 +278,9 @@ const Assets: React.FC = () => {
   // Liquidity and Maturity filters for investments
   const [liquidityFilter, setLiquidityFilter] = useState<string>('ALL');
   const [maturityFilter, setMaturityFilter] = useState<string>('ALL');
+  const [investmentSearchQuery, setInvestmentSearchQuery] = useState<string>('');
+  const [investmentTypeFilter, setInvestmentTypeFilter] = useState<string>('ALL');
+  const [investmentBrokerFilter, setInvestmentBrokerFilter] = useState<string>('ALL');
 
   // Modals & Wizards States
   const [showModal, setShowModal] = useState(false);
@@ -434,9 +438,11 @@ const Assets: React.FC = () => {
     payoutType: 'ACUMULADO' as 'ACUMULADO' | 'MENSAL',
     brokerAccountId: '',
     vencimentoDate: '',
-    investmentLiquidity: 'No Vencimento',
+    liquidityAtMaturity: true,
+    liquidityDays: '',
     status: 'ATIVO' as 'ATIVO' | 'RESGATADO',
     isTaxExempt: false,
+    coeCapitalProtected: false,
     iconKey: '',
     brandModel: '',
     serialNumber: '',
@@ -1219,17 +1225,47 @@ const Assets: React.FC = () => {
     };
   };
 
-  const getFilteredInvestments = (investments: PhysicalAsset[]) => {
+  // Lê o D+ de liquidez de um investimento, com compatibilidade para registros antigos
+  // que só tinham o menu de texto (Diária/D+1/D+30/No Vencimento/Outra).
+  const getLiquidityInfo = (meta: any): { days: number | null; atMaturity: boolean } => {
+    if (meta.liquidityAtMaturity !== undefined || meta.liquidityDays !== undefined) {
+      return { days: meta.liquidityDays ?? null, atMaturity: !!meta.liquidityAtMaturity };
+    }
+    const legacy = meta.investmentLiquidity || '';
+    if (legacy === 'No Vencimento') return { days: null, atMaturity: true };
+    if (legacy === 'Diária') return { days: 0, atMaturity: false };
+    const match = /^D\+(\d+)$/.exec(legacy);
+    if (match) return { days: parseInt(match[1], 10), atMaturity: false };
+    return { days: null, atMaturity: false };
+  };
+
+  const getFilteredInvestments = <T extends PhysicalAsset>(investments: T[]): T[] => {
     return investments.filter(inv => {
       const meta = inv.metadata || {};
-      
-      // 1. Liquidity Filter
+
+      // 0. Busca por nome
+      if (investmentSearchQuery.trim()) {
+        const q = investmentSearchQuery.trim().toLowerCase();
+        if (!inv.name?.toLowerCase().includes(q)) return false;
+      }
+
+      // 0.1 Filtro por tipo de ativo
+      if (investmentTypeFilter !== 'ALL' && meta.investmentType !== investmentTypeFilter) return false;
+
+      // 0.2 Filtro por corretora
+      if (investmentBrokerFilter !== 'ALL') {
+        if (investmentBrokerFilter === 'SEM_CORRETORA') {
+          if (meta.brokerAccountId) return false;
+        } else if (meta.brokerAccountId !== investmentBrokerFilter) return false;
+      }
+
+      // 1. Liquidity Filter (D+ dias, com compatibilidade com registros antigos)
       if (liquidityFilter !== 'ALL') {
-        const liq = meta.investmentLiquidity || '';
-        if (liquidityFilter === 'DIARIA' && liq !== 'Diária') return false;
-        if (liquidityFilter === 'D+1' && liq !== 'D+1') return false;
-        if (liquidityFilter === 'D+30' && liq !== 'D+30') return false;
-        if (liquidityFilter === 'VENCIMENTO' && liq !== 'No Vencimento') return false;
+        const { days, atMaturity } = getLiquidityInfo(meta);
+        if (liquidityFilter === 'DIARIA' && days !== 0) return false;
+        if (liquidityFilter === 'ATE_30' && (atMaturity || days === null || days > 30)) return false;
+        if (liquidityFilter === 'ACIMA_30' && (atMaturity || days === null || days <= 30)) return false;
+        if (liquidityFilter === 'VENCIMENTO' && !atMaturity) return false;
       }
 
       // 2. Maturity Filter
@@ -2745,8 +2781,13 @@ const Assets: React.FC = () => {
         payoutType: formData.category === 'INVESTMENT' ? formData.payoutType : undefined,
         brokerAccountId: formData.category === 'INVESTMENT' ? formData.brokerAccountId : undefined,
         vencimentoDate: formData.category === 'INVESTMENT' ? formData.vencimentoDate : undefined,
-        investmentLiquidity: formData.category === 'INVESTMENT' ? formData.investmentLiquidity : undefined,
+        liquidityAtMaturity: formData.category === 'INVESTMENT' ? !!formData.liquidityAtMaturity : undefined,
+        liquidityDays: formData.category === 'INVESTMENT' && !formData.liquidityAtMaturity
+          ? (formData.liquidityDays === '' ? null : (parseInt(formData.liquidityDays, 10) || 0))
+          : undefined,
         status: formData.category === 'INVESTMENT' ? (formData.status || 'ATIVO') : undefined,
+        isTaxExempt: formData.category === 'INVESTMENT' ? !!formData.isTaxExempt : undefined,
+        coeCapitalProtected: formData.category === 'INVESTMENT' && formData.investmentType === 'COE' ? !!formData.coeCapitalProtected : undefined,
       };
 
       // Preserve existing real estate evolution details if editing — condo/IPTU/
@@ -3654,9 +3695,11 @@ const Assets: React.FC = () => {
       payoutType: 'ACUMULADO',
       brokerAccountId: '',
       vencimentoDate: '',
-      investmentLiquidity: 'No Vencimento',
+      liquidityAtMaturity: true,
+      liquidityDays: '',
       status: 'ATIVO',
       isTaxExempt: false,
+      coeCapitalProtected: false,
       iconKey: '',
       brandModel: '',
       serialNumber: '',
@@ -3856,9 +3899,11 @@ const Assets: React.FC = () => {
       payoutType: meta.payoutType || 'ACUMULADO',
       brokerAccountId: meta.brokerAccountId || '',
       vencimentoDate: meta.vencimentoDate || '',
-      investmentLiquidity: meta.investmentLiquidity || 'No Vencimento',
+      liquidityAtMaturity: getLiquidityInfo(meta).atMaturity,
+      liquidityDays: getLiquidityInfo(meta).days !== null ? String(getLiquidityInfo(meta).days) : '',
       status: meta.status || 'ATIVO',
       isTaxExempt: !!meta.isTaxExempt,
+      coeCapitalProtected: !!meta.coeCapitalProtected,
       iconKey: meta.iconKey || '',
       brandModel: meta.brandModel || '',
       serialNumber: meta.serialNumber || '',
@@ -8117,11 +8162,89 @@ const Assets: React.FC = () => {
                 </button>
               </div>
 
+              {/* Filtro de busca inteligente */}
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 flex flex-wrap gap-3 items-center">
+                <input
+                  type="text"
+                  placeholder="Buscar por nome..."
+                  value={investmentSearchQuery}
+                  onChange={(e) => setInvestmentSearchQuery(e.target.value)}
+                  className="flex-1 min-w-[160px] bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-indigo-400"
+                />
+                <select
+                  value={investmentTypeFilter}
+                  onChange={(e) => setInvestmentTypeFilter(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                >
+                  <option value="ALL">Todos os Tipos</option>
+                  <option value="CDB">CDB</option>
+                  <option value="POUPANCA">Poupança</option>
+                  <option value="LCI_LCA">LCI / LCA</option>
+                  <option value="TESOURO">Tesouro Direto</option>
+                  <option value="DEBENTURES">Debêntures</option>
+                  <option value="CRI_CRA">CRI / CRA</option>
+                  <option value="COE">COE</option>
+                  <option value="ACOES">Ações</option>
+                  <option value="FIIS">FIIs</option>
+                  <option value="FUNDOS">Fundos de Investimento</option>
+                  <option value="CRIPTO">Criptoativos</option>
+                  <option value="PREVIDENCIA">Previdência Privada</option>
+                  <option value="OUTROS">Outros</option>
+                </select>
+                <select
+                  value={investmentBrokerFilter}
+                  onChange={(e) => setInvestmentBrokerFilter(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                >
+                  <option value="ALL">Todas as Corretoras</option>
+                  <option value="SEM_CORRETORA">Sem Corretora</option>
+                  {brokers.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+                <select
+                  value={liquidityFilter}
+                  onChange={(e) => setLiquidityFilter(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                >
+                  <option value="ALL">Qualquer Liquidez</option>
+                  <option value="DIARIA">Diária</option>
+                  <option value="ATE_30">Até D+30</option>
+                  <option value="ACIMA_30">Acima de D+30</option>
+                  <option value="VENCIMENTO">Só no Vencimento</option>
+                </select>
+                <select
+                  value={maturityFilter}
+                  onChange={(e) => setMaturityFilter(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                >
+                  <option value="ALL">Qualquer Vencimento</option>
+                  <option value="VENCIDOS">Vencidos</option>
+                  <option value="CURTO_PRAZO">Até 180 dias</option>
+                  <option value="LONGO_PRAZO">Acima de 180 dias</option>
+                  <option value="SEM_DATA">Sem Data de Vencimento</option>
+                </select>
+                {(investmentSearchQuery || investmentTypeFilter !== 'ALL' || investmentBrokerFilter !== 'ALL' || liquidityFilter !== 'ALL' || maturityFilter !== 'ALL') && (
+                  <button
+                    onClick={() => {
+                      setInvestmentSearchQuery('');
+                      setInvestmentTypeFilter('ALL');
+                      setInvestmentBrokerFilter('ALL');
+                      setLiquidityFilter('ALL');
+                      setMaturityFilter('ALL');
+                    }}
+                    className="text-[10px] font-black text-indigo-500 hover:text-indigo-700 uppercase tracking-widest"
+                  >
+                    Limpar Filtros
+                  </button>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {dynamicBrokers.map(broker => {
-                  const brokerInvestments = enrichedPhysicalAssets.filter(
+                  const brokerInvestments = getFilteredInvestments(enrichedPhysicalAssets.filter(
                     p => p.category === 'INVESTMENT' && p.metadata?.brokerAccountId === broker.id && p.metadata?.status !== 'RESGATADO'
-                  );
+                  ));
                   const totalInvested = brokerInvestments.reduce((sum, inv) => sum + Number(inv.netValue || 0), 0);
                   const isCollapsed = !!collapsedBrokers[broker.id];
 
@@ -8181,6 +8304,8 @@ const Assets: React.FC = () => {
                             const taxRatePercent = (inv.taxRate || 0) * 100;
                             const days = inv.daysElapsed || 0;
                             const netVal = inv.netValue || Number(inv.estimatedValue || 0);
+                            const liqInfo = getLiquidityInfo(invMeta);
+                            const showMaturityRow = !['ACOES', 'FIIS', 'CRIPTO'].includes(invMeta.investmentType) && (invMeta.vencimentoDate || liqInfo.atMaturity || liqInfo.days !== null);
 
                             return (
                               <div key={inv.id} className="px-8 py-4 flex flex-col hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => toggleExpandIR(inv.id)}>
@@ -8197,6 +8322,13 @@ const Assets: React.FC = () => {
                                           {isAcumulado ? '🔒 Acumulado' : '💰 Mensal'}
                                         </span>
                                       </p>
+                                      {showMaturityRow && (
+                                        <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                          {invMeta.vencimentoDate ? `Vence em ${new Date(invMeta.vencimentoDate + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
+                                          {invMeta.vencimentoDate && (liqInfo.atMaturity || liqInfo.days !== null) ? ' · ' : ''}
+                                          {liqInfo.atMaturity ? 'Liquidez no vencimento' : (liqInfo.days !== null ? (liqInfo.days === 0 ? 'Liquidez diária' : `D+${liqInfo.days}`) : '')}
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-4 shrink-0">
@@ -8255,6 +8387,12 @@ const Assets: React.FC = () => {
                                       <span>Valor Aplicado (Custo):</span>
                                       <span className="font-bold text-slate-700">{formatCurrency(purchase)}</span>
                                     </div>
+                                    {invMeta.investmentType === 'COE' && (
+                                      <div className="flex justify-between">
+                                        <span>Capital Protegido:</span>
+                                        <span className="font-bold text-slate-700">{invMeta.coeCapitalProtected ? 'Sim' : 'Não'}</span>
+                                      </div>
+                                    )}
                                     <div className="flex justify-between">
                                       <span>Rendimento Bruto:</span>
                                       <span className={`font-bold ${profit >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
@@ -8328,9 +8466,9 @@ const Assets: React.FC = () => {
                 {/* Card for investments without a broker */}
                 {(() => {
                   const activeBrokerIds = new Set(brokers.map(b => b.id));
-                  const unboundInvestments = enrichedPhysicalAssets.filter(
+                  const unboundInvestments = getFilteredInvestments(enrichedPhysicalAssets.filter(
                     p => p.category === 'INVESTMENT' && (!p.metadata?.brokerAccountId || !activeBrokerIds.has(p.metadata.brokerAccountId)) && p.metadata?.status !== 'RESGATADO'
-                  );
+                  ));
                   if (unboundInvestments.length === 0 && brokers.length > 0) return null;
                   const isCollapsed = !!collapsedBrokers.unbound;
 
@@ -8375,6 +8513,8 @@ const Assets: React.FC = () => {
                             const taxRatePercent = (inv.taxRate || 0) * 100;
                             const days = inv.daysElapsed || 0;
                             const netVal = inv.netValue || Number(inv.estimatedValue || 0);
+                            const liqInfo = getLiquidityInfo(invMeta);
+                            const showMaturityRow = !['ACOES', 'FIIS', 'CRIPTO'].includes(invMeta.investmentType) && (invMeta.vencimentoDate || liqInfo.atMaturity || liqInfo.days !== null);
 
                             return (
                               <div key={inv.id} className="px-8 py-4 flex flex-col hover:bg-slate-50/50 transition-colors group cursor-pointer" onClick={() => toggleExpandIR(inv.id)}>
@@ -8391,6 +8531,13 @@ const Assets: React.FC = () => {
                                           {isAcumulado ? '🔒 Acumulado' : '💰 Mensal'}
                                         </span>
                                       </p>
+                                      {showMaturityRow && (
+                                        <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                          {invMeta.vencimentoDate ? `Vence em ${new Date(invMeta.vencimentoDate + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
+                                          {invMeta.vencimentoDate && (liqInfo.atMaturity || liqInfo.days !== null) ? ' · ' : ''}
+                                          {liqInfo.atMaturity ? 'Liquidez no vencimento' : (liqInfo.days !== null ? (liqInfo.days === 0 ? 'Liquidez diária' : `D+${liqInfo.days}`) : '')}
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-4 shrink-0">
@@ -8435,6 +8582,12 @@ const Assets: React.FC = () => {
                                       <span>Valor Aplicado (Custo):</span>
                                       <span className="font-bold text-slate-700">{formatCurrency(purchase)}</span>
                                     </div>
+                                    {invMeta.investmentType === 'COE' && (
+                                      <div className="flex justify-between">
+                                        <span>Capital Protegido:</span>
+                                        <span className="font-bold text-slate-700">{invMeta.coeCapitalProtected ? 'Sim' : 'Não'}</span>
+                                      </div>
+                                    )}
                                     <div className="flex justify-between">
                                       <span>Rendimento Bruto:</span>
                                       <span className={`font-bold ${profit >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
@@ -10124,25 +10277,25 @@ const Assets: React.FC = () => {
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Tipo de Ativo / Alocação</label>
-                        <select
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                        <SearchableSelect
                           value={formData.investmentType}
-                          onChange={(e) => setFormData({ ...formData, investmentType: e.target.value })}
-                        >
-                          <option value="CDB">CDB</option>
-                          <option value="POUPANCA">Poupança</option>
-                          <option value="LCI_LCA">LCI / LCA</option>
-                          <option value="TESOURO">Tesouro Direto</option>
-                          <option value="DEBENTURES">Debêntures</option>
-                          <option value="CRI_CRA">CRI / CRA</option>
-                          <option value="COE">COE</option>
-                          <option value="ACOES">Ações</option>
-                          <option value="FIIS">FIIs (Fundos Imobiliários)</option>
-                          <option value="FUNDOS">Fundos de Investimento</option>
-                          <option value="CRIPTO">Criptoativos</option>
-                          <option value="PREVIDENCIA">Previdência Privada</option>
-                          <option value="OUTROS">Outros</option>
-                        </select>
+                          onChange={(v) => setFormData({ ...formData, investmentType: v })}
+                          options={[
+                            { value: 'CDB', label: 'CDB' },
+                            { value: 'POUPANCA', label: 'Poupança' },
+                            { value: 'LCI_LCA', label: 'LCI / LCA' },
+                            { value: 'TESOURO', label: 'Tesouro Direto' },
+                            { value: 'DEBENTURES', label: 'Debêntures' },
+                            { value: 'CRI_CRA', label: 'CRI / CRA' },
+                            { value: 'COE', label: 'COE' },
+                            { value: 'ACOES', label: 'Ações' },
+                            { value: 'FIIS', label: 'FIIs (Fundos Imobiliários)' },
+                            { value: 'FUNDOS', label: 'Fundos de Investimento' },
+                            { value: 'CRIPTO', label: 'Criptoativos' },
+                            { value: 'PREVIDENCIA', label: 'Previdência Privada' },
+                            { value: 'OUTROS', label: 'Outros' },
+                          ]}
+                        />
                       </div>
                     </div>
 
@@ -10190,19 +10343,52 @@ const Assets: React.FC = () => {
                       {!['ACOES', 'FIIS', 'CRIPTO'].includes(formData.investmentType) && (
                         <div className="animate-in slide-in-from-top-2">
                           <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Liquidez</label>
-                          <select
-                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
-                            value={formData.investmentLiquidity}
-                            onChange={(e) => setFormData({ ...formData, investmentLiquidity: e.target.value })}
-                          >
-                            <option value="Diária">Diária</option>
-                            <option value="No Vencimento">No Vencimento</option>
-                            <option value="D+1">D+1</option>
-                            <option value="D+30">D+30</option>
-                            <option value="Outra">Outra</option>
-                          </select>
+                          <div className="flex items-center gap-2">
+                            <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-slate-600 shrink-0">
+                              <input
+                                type="checkbox"
+                                checked={formData.liquidityAtMaturity}
+                                onChange={(e) => setFormData({ ...formData, liquidityAtMaturity: e.target.checked })}
+                              />
+                              Só no Vencimento
+                            </label>
+                            {!formData.liquidityAtMaturity && (
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="D+ dias"
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                                value={formData.liquidityDays}
+                                onChange={(e) => setFormData({ ...formData, liquidityDays: e.target.value })}
+                              />
+                            )}
+                          </div>
                         </div>
                       )}
+                    </div>
+
+                    {formData.investmentType === 'COE' && (
+                      <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={formData.coeCapitalProtected}
+                            onChange={(e) => setFormData({ ...formData, coeCapitalProtected: e.target.checked })}
+                          />
+                          Capital Protegido
+                        </label>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={formData.isTaxExempt}
+                          onChange={(e) => setFormData({ ...formData, isTaxExempt: e.target.checked })}
+                        />
+                        Isento de Imposto de Renda (marque para sobrepor o cálculo automático)
+                      </label>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">

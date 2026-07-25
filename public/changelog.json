@@ -1,30 +1,37 @@
 {
-  "version": "2026.07.25.1414",
-  "title": "Investimentos: seu saldo real deixou de ser sobrescrito, e chegou o COE",
+  "version": "2026.07.25.1443",
+  "title": "Investimentos: busca inteligente, vencimento no card, D+ e COE completo",
   "date": "25/07/2026",
   "benefits": [
     {
-      "title": "O valor que você atualiza no investimento agora é o que aparece",
-      "desc": "Antes, para CDB, CRI, Tesouro, Debênture e produtos parecidos, o app recalculava sozinho um valor projetado por cima do que você tinha digitado como saldo atual — então o saldo podia aparecer bem diferente do extrato real da corretora. Agora o número que você informa é sempre o que fica na tela.",
-      "type": "correção"
+      "title": "Filtro de busca para achar o investimento certo na hora",
+      "desc": "Agora dá para buscar por nome e filtrar seus investimentos por tipo, corretora, prazo de liquidez (D+) e faixa de vencimento, direto na tela de Investimentos.",
+      "type": "recurso"
     },
     {
-      "title": "COE agora tem tipo próprio, com Imposto de Renda calculado de verdade",
-      "desc": "Antes, um COE só podia ser lançado como 'Outros', e nessa categoria o Imposto de Renda estimado sempre aparecia zerado, mesmo quando havia imposto a pagar. Agora o COE é um tipo específico no formulário, e o imposto é calculado pela mesma regra da Receita usada para renda fixa.",
-      "type": "correção"
+      "title": "Card mostra vencimento e prazo de resgate",
+      "desc": "Cada investimento passa a exibir a data de vencimento e o D+ (quantos dias até poder resgatar) direto no card, sem precisar abrir para editar.",
+      "type": "recurso"
     },
     {
-      "title": "Campo de taxa de rentabilidade mais simples",
-      "desc": "O campo agora só aceita números, e o texto ao lado já avisa se é '% do CDI', '% acima do IPCA' ou '% ao ano', conforme o indexador que você escolheu.",
+      "title": "Campo de Tipo de Ativo agora se digita e filtra",
+      "desc": "Em vez de rolar uma lista fixa, você digita parte do nome (ex: 'cri') e o campo já mostra só as opções que combinam.",
       "type": "melhoria"
+    },
+    {
+      "title": "COE ganhou campo de Capital Protegido, e você pode corrigir a isenção de IR na mão",
+      "desc": "Novo campo para marcar se o COE tem capital protegido, e uma opção para você mesmo marcar um investimento como isento de Imposto de Renda quando souber que é o caso.",
+      "type": "recurso"
     }
   ],
   "changes": [
-    "pages/Assets.tsx (enrichedPhysicalAssets): saldo bruto de investimentos de renda fixa deixou de ser sobrescrito pela projeção 'na curva' (FinancialEngine.calculateFixedIncomeYield) — passa a usar sempre o estimated_value real salvo pelo usuário; IR calculado sobre esse valor real via FinancialEngine.calculateRegressiveTaxRate.",
-    "pages/Assets.tsx: removido 'OUTROS' da lista isVariableIncome — antes ficava com alíquota de IR fixa em 0%; agora usa a tabela regressiva padrão (22.5% a 15% conforme dias de carência).",
-    "pages/Assets.tsx: novo tipo de investimento 'COE' no formulário e nos rótulos do card (segue as mesmas regras de renda fixa, não isento).",
-    "pages/Assets.tsx: campo Taxa Rentabilidade agora filtra para número/vírgula/ponto; rótulo e placeholder dinâmicos por indexador (CDI/IPCA/Pré).",
-    "pages/Assets.tsx: rótulo da alíquota de IR no card do investimento passou a mostrar o percentual real calculado em vez de texto fixo '20% a 22.5%'.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (cenário CRI e cenário COE) reproduzindo valores reais de extrato de corretora."
+    "components/common/SearchableSelect.tsx (novo): combobox pesquisável reutilizável; aplicado no campo Tipo de Ativo/Alocação do formulário de investimentos.",
+    "pages/Assets.tsx: metadata.investmentLiquidity (texto fixo) substituído por metadata.liquidityDays (número) + metadata.liquidityAtMaturity (boolean); getLiquidityInfo() lê os dois formatos, com fallback para registros antigos.",
+    "pages/Assets.tsx: getFilteredInvestments() (existia mas nunca era chamada) agora é aplicada de fato à lista, e ganhou busca por nome, filtro por tipo e por corretora; getFilteredInvestments tornou-se genérica para preservar os campos calculados (netValue, taxAmount etc.) no retorno.",
+    "pages/Assets.tsx: nova barra de filtro na tela de Investimentos (busca, tipo, corretora, liquidez, vencimento).",
+    "pages/Assets.tsx: card do investimento agora mostra 'Vence em DD/MM/AAAA · D+N' quando aplicável.",
+    "pages/Assets.tsx: metadata.isTaxExempt (já existia no estado mas nunca era salvo) agora é persistido, com checkbox no formulário para o usuário sobrepor o cálculo automático de isenção.",
+    "pages/Assets.tsx: metadata.coeCapitalProtected (novo campo) exibido no formulário e no detalhe do card quando o tipo é COE.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (COE com D+30/vencimento/isenção manual/capital protegido, filtro por tipo, combobox pesquisável)."
   ]
 }
