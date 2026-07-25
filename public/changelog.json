@@ -1,30 +1,29 @@
 {
-  "version": "2026.07.25.1500",
-  "title": "Investimentos: extrato de movimentações, nota de plano e aviso de vencimento",
+  "version": "2026.07.25.1529",
+  "title": "IA agora responde sobre seus investimentos, e mais avisos importantes",
   "date": "25/07/2026",
   "benefits": [
     {
-      "title": "Extrato completo de cada investimento",
-      "desc": "Toque em 'Extrato' no card do investimento para ver todo o histórico dele: aportes, rendimentos, resgates e ajustes, cada um com sua data. Aportes e resgates agora são registrados automaticamente, e você pode lançar rendimentos na mão, corrigir data/valor de qualquer lançamento ou apagar um registro errado.",
+      "title": "Pergunte à IA qualquer coisa sobre seus investimentos",
+      "desc": "No chat do app e no WhatsApp, agora você pode perguntar 'quanto tenho investido', 'quando vence meu CDB' ou 'de onde tiro dinheiro pra pagar uma conta no dia 10' — a IA cruza saldo, vencimento e liquidez (D+) de cada investimento pra te responder, incluindo a nota de plano que você deixou.",
       "type": "recurso"
     },
     {
-      "title": "Nota de plano: diga o que fazer quando o investimento vencer",
-      "desc": "Dentro do extrato, escreva uma instrução para você mesmo (ex: 'usar para pagar a parcela do apê, não reinvestir'). Essa nota some com o resto e volta a aparecer destacada no aviso de vencimento.",
-      "type": "recurso"
+      "title": "Liquidez agora aceita as duas opções ao mesmo tempo",
+      "desc": "Dá pra marcar que um investimento tem prazo de resgate antecipado (D+) e também fica liberado no vencimento — antes era só uma opção ou outra.",
+      "type": "melhoria"
     },
     {
-      "title": "Aviso de vencimento de investimento no WhatsApp e no celular",
-      "desc": "Agora você recebe aviso na véspera, no dia e quando um investimento vence, do mesmo jeito que já acontece com as contas a pagar — incluindo a nota de plano, se você tiver deixado uma.",
+      "title": "Aviso de receitas pendentes",
+      "desc": "Assim como já acontecia com contas a pagar, agora você também recebe aviso na véspera, no dia e quando uma receita pendente vence, no WhatsApp e no celular.",
       "type": "recurso"
     }
   ],
   "changes": [
-    "supabase (novas tabelas): investment_movements (extrato: aporte/rendimento mensal/rendimento acumulado/resgate parcial/resgate total/ajuste manual, com RLS por usuário) e investment_reminders (nota de plano por investimento, com RLS por usuário).",
-    "pages/Assets.tsx: criação de investimento grava movimento APORTE automaticamente; edição com aumento de saldo grava RENDIMENTO_MENSAL/RENDIMENTO_ACUMULADO; edição com redução grava AJUSTE_MANUAL; handleRedeemInvestment grava RESGATE_PARCIAL/RESGATE_TOTAL vinculado à transação criada.",
-    "pages/Assets.tsx: novo botão 'Extrato' no card do investimento, abrindo modal com histórico, edição/exclusão de movimentações, lançamento manual e a nota de plano.",
-    "api/_lib/notify-investments-due.ts (novo): estende a régua de véspera/dia/vencimento já usada para contas a pagar aos investimentos com Data de Vencimento cadastrada, incluindo a nota de plano na mensagem.",
-    "api/_lib/daily-cron.ts: passou a chamar handleNotifyInvestmentsDue junto dos outros avisos diários.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (criação com aporte automático, lançamento manual de rendimento, nota de plano persistindo após fechar/reabrir, resgate total gravando RESGATE_TOTAL vinculado à transação); Supabase Advisors (security) sem novos alertas nas tabelas criadas."
+    "api/_lib/investments-context.ts (novo): monta o resumo detalhado de investimentos (saldo, vencimento, liquidez, IR estimado, nota de plano) reaproveitando o padrão de carregar tudo antes da chamada ao Gemini (sem function calling nativo).",
+    "api/_lib/finvision-chat.ts e api/_lib/whatsapp-webhook.ts: injetam a nova seção '# INVESTIMENTOS DETALHADOS' no prompt; classificador do WhatsApp passou a rotear perguntas sobre investimento como QUERY.",
+    "pages/Assets.tsx: campo Liquidez — D+ numérico e checkbox 'Também no Vencimento' deixaram de ser mutuamente exclusivos; metadata.liquidityDays é salvo independente de metadata.liquidityAtMaturity.",
+    "api/_lib/notify-bills-due.ts: passou a buscar também transações de receita pendente (type=INCOME, is_paid=false) na mesma janela de datas, com seção própria na mensagem.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; liquidez dupla testada no modo demo (D+30 + também no vencimento simultâneos); a injeção no prompt da IA foi verificada por leitura/compilação — não testada com chamada real ao Gemini (depende da chave de produção)."
   ]
 }

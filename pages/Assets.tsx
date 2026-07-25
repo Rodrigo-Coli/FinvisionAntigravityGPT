@@ -1255,6 +1255,14 @@ const Assets: React.FC = () => {
     return { days: null, atMaturity: false };
   };
 
+  const formatLiquidityLabel = (liqInfo: { days: number | null; atMaturity: boolean }): string => {
+    const daysLabel = liqInfo.days !== null ? (liqInfo.days === 0 ? 'Liquidez diária' : `D+${liqInfo.days}`) : '';
+    if (daysLabel && liqInfo.atMaturity) return `${daysLabel} · também no vencimento`;
+    if (daysLabel) return daysLabel;
+    if (liqInfo.atMaturity) return 'Liquidez no vencimento';
+    return '';
+  };
+
   const getFilteredInvestments = <T extends PhysicalAsset>(investments: T[]): T[] => {
     return investments.filter(inv => {
       const meta = inv.metadata || {};
@@ -2945,7 +2953,7 @@ const Assets: React.FC = () => {
         brokerAccountId: formData.category === 'INVESTMENT' ? formData.brokerAccountId : undefined,
         vencimentoDate: formData.category === 'INVESTMENT' ? formData.vencimentoDate : undefined,
         liquidityAtMaturity: formData.category === 'INVESTMENT' ? !!formData.liquidityAtMaturity : undefined,
-        liquidityDays: formData.category === 'INVESTMENT' && !formData.liquidityAtMaturity
+        liquidityDays: formData.category === 'INVESTMENT'
           ? (formData.liquidityDays === '' ? null : (parseInt(formData.liquidityDays, 10) || 0))
           : undefined,
         status: formData.category === 'INVESTMENT' ? (formData.status || 'ATIVO') : undefined,
@@ -8518,7 +8526,7 @@ const Assets: React.FC = () => {
                                         <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
                                           {invMeta.vencimentoDate ? `Vence em ${new Date(invMeta.vencimentoDate + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
                                           {invMeta.vencimentoDate && (liqInfo.atMaturity || liqInfo.days !== null) ? ' · ' : ''}
-                                          {liqInfo.atMaturity ? 'Liquidez no vencimento' : (liqInfo.days !== null ? (liqInfo.days === 0 ? 'Liquidez diária' : `D+${liqInfo.days}`) : '')}
+                                          {formatLiquidityLabel(liqInfo)}
                                         </p>
                                       )}
                                     </div>
@@ -8735,7 +8743,7 @@ const Assets: React.FC = () => {
                                         <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
                                           {invMeta.vencimentoDate ? `Vence em ${new Date(invMeta.vencimentoDate + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
                                           {invMeta.vencimentoDate && (liqInfo.atMaturity || liqInfo.days !== null) ? ' · ' : ''}
-                                          {liqInfo.atMaturity ? 'Liquidez no vencimento' : (liqInfo.days !== null ? (liqInfo.days === 0 ? 'Liquidez diária' : `D+${liqInfo.days}`) : '')}
+                                          {formatLiquidityLabel(liqInfo)}
                                         </p>
                                       )}
                                     </div>
@@ -10552,25 +10560,24 @@ const Assets: React.FC = () => {
                         <div className="animate-in slide-in-from-top-2">
                           <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Liquidez</label>
                           <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="D+ dias (opcional)"
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                              value={formData.liquidityDays}
+                              onChange={(e) => setFormData({ ...formData, liquidityDays: e.target.value })}
+                            />
                             <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-slate-600 shrink-0">
                               <input
                                 type="checkbox"
                                 checked={formData.liquidityAtMaturity}
                                 onChange={(e) => setFormData({ ...formData, liquidityAtMaturity: e.target.checked })}
                               />
-                              Só no Vencimento
+                              Também no Vencimento
                             </label>
-                            {!formData.liquidityAtMaturity && (
-                              <input
-                                type="number"
-                                min="0"
-                                placeholder="D+ dias"
-                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
-                                value={formData.liquidityDays}
-                                onChange={(e) => setFormData({ ...formData, liquidityDays: e.target.value })}
-                              />
-                            )}
                           </div>
+                          <p className="text-[10px] text-slate-400 font-medium mt-1">Pode ter os dois: um prazo de resgate antecipado (D+) e ficar liberado no vencimento também.</p>
                         </div>
                       )}
                     </div>

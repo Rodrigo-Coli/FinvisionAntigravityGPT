@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.07.25.1529",
+    "title": "IA agora responde sobre seus investimentos, e mais avisos importantes",
+    "date": "25/07/2026",
+    "benefits": [
+      {
+        "title": "Pergunte à IA qualquer coisa sobre seus investimentos",
+        "desc": "Chat do app e WhatsApp cruzam saldo, vencimento e liquidez pra responder de onde tirar dinheiro ou quanto você tem investido.",
+        "type": "recurso"
+      },
+      {
+        "title": "Liquidez aceita as duas opções ao mesmo tempo",
+        "desc": "D+ e 'também no vencimento' podem ser marcados juntos.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Aviso de receitas pendentes",
+        "desc": "Mesma régua de véspera/dia/vencimento das contas a pagar, agora também para receitas.",
+        "type": "recurso"
+      }
+    ],
+    "changes": [
+      "api/_lib/investments-context.ts (novo) injetado em finvision-chat.ts e whatsapp-webhook.ts.",
+      "pages/Assets.tsx: liquidityDays e liquidityAtMaturity deixaram de ser mutuamente exclusivos.",
+      "api/_lib/notify-bills-due.ts: passou a incluir receitas pendentes na mesma janela de aviso."
+    ]
+  },
+  {
     "version": "2026.07.25.1500",
     "title": "Investimentos: extrato de movimentações, nota de plano e aviso de vencimento",
     "date": "25/07/2026",

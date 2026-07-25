@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
+import { buildInvestmentsContextSection } from './investments-context.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -1124,6 +1125,8 @@ async function handleInteractiveFinancialQuery(
     return `${l.name} (${l.type}) ${propertyStatus}: Saldo Devedor R$ ${Number(l.remaining_balance).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}, ${ir}, ${parcelas}${atosSummary}${baloesSummary}`;
   }).join('\n- ');
 
+  const investmentsSection = await buildInvestmentsContextSection(supabase, userId);
+
   const accountMap = new Map(accounts.map((a: any) => [a.id, a.institution]));
 
   const formattedTransactions = transactions.map((t: any) => {
@@ -1144,7 +1147,8 @@ Seu tom de voz deve ser de especialista, educado, curto e sucinto. Use emojis ú
 2. Use formatações em negrito do WhatsApp (*texto*).
 3. Nunca invente dados. Use as métricas reais fornecidas abaixo para responder à dúvida.
 4. IMPORTANTÍSSIMO: Sempre que o usuário perguntar sobre transações, gastos ou lançamentos de contas ou cartões, verifique detalhadamente a lista de "TRANSAÇÕES DETALHADAS NO PERÍODO SOLICITADO" abaixo. Os termos pesquisados podem estar na *descrição*, *categoria* ou *subcategoria*. Responda de forma completa, detalhando os lançamentos correspondentes (com data, descrição, valor e status de pagamento).
-5. RESTRIÇÃO IMPORTANTE DE CONCORRENTES: Você é a Zyvion AI, exclusiva do Zyvion. Você está expressamente proibida de responder perguntas sobre concorrentes do mercado financeiro (ex: Mobills, Organizze, Olivia, Minhas Economias, Guiabolso) ou qualquer assunto não relacionado diretamente ao sistema Zyvion. Se o usuário perguntar sobre concorrentes ou fizer comparações, recuse educadamente, explicando que seu foco é exclusivamente ajudar a gerenciar as finanças e analisar os dados dentro do Zyvion.
+5. IMPORTANTÍSSIMO: Sempre que o usuário perguntar sobre investimentos (saldo, vencimento, liquidez/D+, IR, ou "de onde tiro dinheiro para pagar algo"), use a seção "# INVESTIMENTOS DETALHADOS" abaixo. Cruze a data pedida com o "Vencimento"/"Liquidez" de cada item para dizer quais já estariam disponíveis naquela data.
+6. RESTRIÇÃO IMPORTANTE DE CONCORRENTES: Você é a Zyvion AI, exclusiva do Zyvion. Você está expressamente proibida de responder perguntas sobre concorrentes do mercado financeiro (ex: Mobills, Organizze, Olivia, Minhas Economias, Guiabolso) ou qualquer assunto não relacionado diretamente ao sistema Zyvion. Se o usuário perguntar sobre concorrentes ou fizer comparações, recuse educadamente, explicando que seu foco é exclusivamente ajudar a gerenciar as finanças e analisar os dados dentro do Zyvion.
 
 # EVOLUÇÃO FINANCEIRA (REATIVO — só quando o usuário pedir para economizar/evoluir)
 - Quando o usuário pedir para gastar menos, vasculhe as despesas reais dele abaixo, compare com a RÉGUA DE REFERÊNCIA e aponte onde está acima do ideal, estimando quanto dá para economizar em R$.
@@ -1169,7 +1173,7 @@ Hoje é ${dataHoje}.
 • Dívidas Detalhadas:
 - ${liabilitiesSummary || 'Nenhuma registrada'}
 • Cartões Cadastrados: ${creditCards.map((c: any) => `${c.name || c.brand}(Lim:R$${c.limit_total})`).join(', ') || 'Nenhum'}
-
+${investmentsSection}
 # TRANSAÇÕES DETALHADAS NO PERÍODO SOLICITADO (Máximo 150 lançamentos, mais recentes primeiro):
 ${formattedTransactions || 'Nenhuma transação registrada neste período.'}
 `;
@@ -2856,6 +2860,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       - Se for marcar como pago, use "PAY" e preencha "payFilters".
       - Se for alterar/corrigir um lançamento existente, use "UPDATE", preencha "updateFilters" e as alterações desejadas em "updatePatch".
       - Se for consulta de dados ("saldo", "gastos do mês", "quais os lançamentos"), use "QUERY".
+      - Perguntas sobre investimentos também são "QUERY" (ex: "quanto tenho investido", "quando vence meu CDB", "de onde tiro dinheiro pra pagar uma conta", "quanto vou resgatar nos próximos dias") — o assistente tem acesso à lista detalhada de investimentos do usuário para responder.
       - Se for conversa casual, use "CHAT".
       `;
 

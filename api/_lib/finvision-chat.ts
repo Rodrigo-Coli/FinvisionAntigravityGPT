@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
+import { buildInvestmentsContextSection } from './investments-context.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -118,6 +119,8 @@ export async function handleFinvisionChat(req: any, res: any) {
             .map(([cat, total]) => `${cat}: R$${(total / numMonths).toFixed(2)}/mês`)
             .slice(0, 10).join(' | ');
 
+        const investmentsSection = await buildInvestmentsContextSection(supabase, userId);
+
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
         if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
         const ai = new GoogleGenAI({ apiKey: geminiKey });
@@ -159,6 +162,7 @@ Hoje é ${dataHoje}.
 • Bens/Ativos: R$ ${totalPhysicalAssets.toFixed(2)}
 • Dívidas (Passivos): R$ ${totalDebt.toFixed(2)}
 • Patrimônio Líquido: R$ ${netWorth.toFixed(2)}
+${investmentsSection}
 
 # TENDÊNCIAS (Médias dos últimos ${numMonths} meses)
 • Médias por Categoria: ${historicalAverages || 'Dados insuficientes'}
@@ -204,7 +208,10 @@ ${goals.length > 0 ? goals.map((g: any) => `- Meta: "${g.name}" | Alvo: R$ ${Num
    - Alavancagem: só quando o retorno esperado > custo do juro (após imposto); nunca sobre consumo; manter a reserva de emergência intacta.
    - Os percentuais acima já estão fornecidos aqui. NUNCA pesquise na internet para obter benchmarks, dicas genéricas ou comparações — use apenas esta régua e os dados reais do usuário. A busca na web continua restrita a macroeconomia pontual (Selic, CDI, IPCA, câmbio) quando o usuário pedir cotação atual.
 7. **Limite Regulatório (OBRIGATÓRIO)**:
-   - Você educa, compara e simula, mas NUNCA dá recomendação personalizada de compra/venda de ativos específicos (ações, cripto, fundos). Apresente tipos, critérios e trade-offs e devolva a decisão final ao usuário.`;
+   - Você educa, compara e simula, mas NUNCA dá recomendação personalizada de compra/venda de ativos específicos (ações, cripto, fundos). Apresente tipos, critérios e trade-offs e devolva a decisão final ao usuário.
+8. **Interação com Investimentos**:
+   - Use a seção "# INVESTIMENTOS DETALHADOS" para responder qualquer pergunta sobre os investimentos do usuário: saldo total, saldo por ativo, vencimento, liquidez (D+), IR estimado e a nota de plano que ele deixou.
+   - Se o usuário perguntar de onde tirar dinheiro para pagar algo em uma data futura, cruze a data pedida com o "Vencimento" e a "Liquidez" de cada investimento para indicar quais já estariam disponíveis (ou perto de vencer) naquela data.`;
 
         const contents: any[] = [];
         if (history && history.length > 0) {

@@ -73,51 +73,77 @@ export async function handleNotifyBillsDue(req: any, res: any) {
     const filteredUsers = users?.filter(u => (u.whatsapp_enabled && u.whatsapp_number) || (u.push_enabled && u.push_subscription)) || [];
     if (filteredUsers.length === 0) return res.status(200).json({ message: 'No users.' });
     const userIds = filteredUsers.map(u => u.user_id);
-    const { data: expenses } = await supabase
-      .from('transactions')
-      .select('description, amount, date, user_id, accounts(institution)')
-      .in('type', ['EXPENSE', 'BILL_PAYMENT', 'expense', 'bill_payment'])
-      .eq('is_paid', false)
-      .eq('is_deleted', false)
-      .in('user_id', userIds)
-      .gte('date', sevenDaysAgoStr)
-      .lte('date', tomorrowStr)
-      .order('date', { ascending: true });
-    
+    const [{ data: expenses }, { data: incomes }] = await Promise.all([
+      supabase
+        .from('transactions')
+        .select('description, amount, date, user_id, accounts(institution)')
+        .in('type', ['EXPENSE', 'BILL_PAYMENT', 'expense', 'bill_payment'])
+        .eq('is_paid', false)
+        .eq('is_deleted', false)
+        .in('user_id', userIds)
+        .gte('date', sevenDaysAgoStr)
+        .lte('date', tomorrowStr)
+        .order('date', { ascending: true }),
+      supabase
+        .from('transactions')
+        .select('description, amount, date, user_id, accounts(institution)')
+        .in('type', ['INCOME', 'income'])
+        .eq('is_paid', false)
+        .eq('is_deleted', false)
+        .in('user_id', userIds)
+        .gte('date', sevenDaysAgoStr)
+        .lte('date', tomorrowStr)
+        .order('date', { ascending: true })
+    ]);
+
+    const statusLabelFor = (dateStr: string) => {
+      const cleanDate = dateStr ? dateStr.split('T')[0] : '';
+      const dateFmt = cleanDate ? cleanDate.split('-').reverse().join('/') : 'Sem data';
+      if (cleanDate === yesterdayStr) return `🚨 Vencida em ${dateFmt} (Ontem)`;
+      if (cleanDate === todayStr) return `📅 Vence Hoje - ${dateFmt}`;
+      if (cleanDate === tomorrowStr) return `📅 Vence Amanhã - ${dateFmt}`;
+      if (cleanDate < todayStr) return `🚨 Vencida em ${dateFmt}`;
+      return `📅 Venc: ${dateFmt}`;
+    };
+
     for (const u of filteredUsers) {
       const bills = expenses?.filter(e => e.user_id === u.user_id) || [];
-      if (bills.length === 0) continue;
-      
-      let msg = `*Zyvion* 🔔\nVocê tem *${bills.length}* contas pendentes:\n\n`;
-      bills.forEach((b: any) => {
-        const cleanBillDate = b.date ? b.date.split('T')[0] : '';
-        const dateFmt = cleanBillDate ? cleanBillDate.split('-').reverse().join('/') : 'Sem data';
-        
-        let statusLabel = '';
-        if (cleanBillDate === yesterdayStr) {
-          statusLabel = `🚨 Vencida em ${dateFmt} (Ontem)`;
-        } else if (cleanBillDate === todayStr) {
-          statusLabel = `📅 Vence Hoje - ${dateFmt}`;
-        } else if (cleanBillDate === tomorrowStr) {
-          statusLabel = `📅 Vence Amanhã - ${dateFmt}`;
-        } else if (cleanBillDate < todayStr) {
-          statusLabel = `🚨 Vencida em ${dateFmt}`;
-        } else {
-          statusLabel = `📅 Venc: ${dateFmt}`;
-        }
-        
-        msg += `• *${b.description}*\n  └─ Valor: *R$ ${Number(b.amount).toFixed(2)}*\n  └─ Status: *${statusLabel}*\n\n`;
-      });
+      const receivables = incomes?.filter(i => i.user_id === u.user_id) || [];
+      if (bills.length === 0 && receivables.length === 0) continue;
+
+      let msg = `*Zyvion* 🔔\n`;
+      const parts: string[] = [];
+      if (bills.length > 0) parts.push(`*${bills.length}* conta${bills.length !== 1 ? 's' : ''} pendente${bills.length !== 1 ? 's' : ''}`);
+      if (receivables.length > 0) parts.push(`*${receivables.length}* receita${receivables.length !== 1 ? 's' : ''} a receber`);
+      msg += `Você tem ${parts.join(' e ')}:\n\n`;
+
+      if (bills.length > 0) {
+        msg += `*💸 Contas a Pagar*\n`;
+        bills.forEach((b: any) => {
+          msg += `• *${b.description}*\n  └─ Valor: *R$ ${Number(b.amount).toFixed(2)}*\n  └─ Status: *${statusLabelFor(b.date)}*\n\n`;
+        });
+      }
+
+      if (receivables.length > 0) {
+        msg += `*💰 Receitas a Receber*\n`;
+        receivables.forEach((r: any) => {
+          msg += `• *${r.description}*\n  └─ Valor: *R$ ${Number(r.amount).toFixed(2)}*\n  └─ Status: *${statusLabelFor(r.date)}*\n\n`;
+        });
+      }
+
       msg += `Organize suas finanças com tranquilidade! 🚀`;
 
       if (u.whatsapp_enabled && u.whatsapp_number) await sendWhatsApp(u.whatsapp_number, msg);
       if (u.push_enabled && u.push_subscription) {
-        try { 
-          await webpush.sendNotification(u.push_subscription, JSON.stringify({ 
+        try {
+          const bodyParts: string[] = [];
+          if (bills.length > 0) bodyParts.push(`${bills.length} conta${bills.length !== 1 ? 's' : ''} pendente${bills.length !== 1 ? 's' : ''}`);
+          if (receivables.length > 0) bodyParts.push(`${receivables.length} receita${receivables.length !== 1 ? 's' : ''} a receber`);
+          await webpush.sendNotification(u.push_subscription, JSON.stringify({
             title: 'Zyvion 🔔',
-            body: `Você tem ${bills.length} contas pendentes.`,
+            body: `Você tem ${bodyParts.join(' e ')}.`,
             url: '/#/history?status=PENDING'
-          })); 
+          }));
         } catch (pushErr: any) {
           console.error(`[WebPush Error] Falha ao enviar para o usuário ${u.user_id}:`, pushErr.message || pushErr);
         }
