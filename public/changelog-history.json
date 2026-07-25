@@ -1,5 +1,21 @@
 [
   {
+    "version": "2026.07.25.1648",
+    "title": "Saldo a Definir agora corrige sozinho pelo índice do contrato",
+    "date": "25/07/2026",
+    "benefits": [
+      {
+        "title": "Financiamento a Definir corrige o saldo automaticamente todo mês",
+        "desc": "Corrigido mês a mês pelo índice do contrato (INCC/IPCA/IGP-M), sem editar na mão.",
+        "type": "recurso"
+      }
+    ],
+    "changes": [
+      "pages/Assets.tsx (activeLiabilities): correção mensal em memória por metadata.indexationRate desde pendingFinancingBaseDate.",
+      "pages/Assets.tsx (handleSaveLiability): base da correção só reinicia quando o saldo muda de verdade."
+    ]
+  },
+  {
     "version": "2026.07.25.1629",
     "title": "Fluxo Mensal ganha filtro de período, e a Projeção de Fluxo pode começar de outro mês",
     "date": "25/07/2026",

@@ -878,7 +878,29 @@ const Assets: React.FC = () => {
       return showArchivedPhysical ? true : !p.is_archived;
     });
   }, [physicalAssets, showArchivedPhysical]);
-  const activeLiabilities = useMemo(() => liabilities.filter(l => !l.is_archived), [liabilities]);
+  // "Saldo a Financiar" (financiamento a definir) não tem parcela ativa, mas o valor
+  // segue corrigido monetariamente pelo índice do contrato (INCC/IPCA/IGP-M) enquanto
+  // não vira financiamento de verdade — por isso é corrigido aqui, no ponto único de
+  // onde toda a tela lê o saldo devedor (Dívidas, LTV, cards do imóvel etc.).
+  const activeLiabilities = useMemo(() => {
+    return liabilities.filter(l => !l.is_archived).map(l => {
+      if (!l.metadata?.isPendingFinancing) return l;
+      const baseValue = Number(l.metadata?.pendingFinancingBaseValue ?? l.remainingBalance) || 0;
+      const baseDateStr = l.metadata?.pendingFinancingBaseDate;
+      if (!baseDateStr || baseValue <= 0) return l;
+
+      const baseDate = new Date(baseDateStr);
+      const today = new Date();
+      let monthsElapsed = (today.getFullYear() - baseDate.getFullYear()) * 12 + (today.getMonth() - baseDate.getMonth());
+      if (today.getDate() < baseDate.getDate()) monthsElapsed -= 1;
+      monthsElapsed = Math.max(0, monthsElapsed);
+
+      const monthlyRate = (Number(l.metadata?.indexationRate) || 0) / 100;
+      const correctedBalance = Math.round(baseValue * Math.pow(1 + monthlyRate, monthsElapsed) * 100) / 100;
+
+      return { ...l, remainingBalance: correctedBalance, totalAmount: correctedBalance };
+    });
+  }, [liabilities]);
 
   const enrichedPhysicalAssets = useMemo(() => {
     return activePhysicalAssets.map(p => {
@@ -4694,6 +4716,19 @@ const Assets: React.FC = () => {
         return;
       }
 
+      // Base para corrigir o "saldo a definir" pelo índice do contrato (ver activeLiabilities):
+      // só reinicia a data-base quando o saldo é de fato alterado nesta edição (ou a marcação
+      // acabou de ser ligada) — assim a correção acumulada não é perdida a cada save.
+      let pendingFinancingMeta: { pendingFinancingBaseValue?: number; pendingFinancingBaseDate?: string } = {};
+      if (liabilityFormData.type === 'MORTGAGE' && liabilityFormData.pendingFinancing) {
+        const wasAlreadyPending = !!editingLiability?.metadata?.isPendingFinancing;
+        const oldBaseValue = Number(editingLiability?.metadata?.pendingFinancingBaseValue);
+        const balanceChanged = !wasAlreadyPending || Math.abs((oldBaseValue || 0) - remainingBal) > 0.001;
+        pendingFinancingMeta = balanceChanged
+          ? { pendingFinancingBaseValue: remainingBal, pendingFinancingBaseDate: DateUtils.formatToISODate() }
+          : { pendingFinancingBaseValue: editingLiability.metadata.pendingFinancingBaseValue, pendingFinancingBaseDate: editingLiability.metadata.pendingFinancingBaseDate };
+      }
+
       if (editingLiability) {
         const { error } = await supabase.from('liabilities').update({
           name: liabilityFormData.name,
@@ -4715,6 +4750,7 @@ const Assets: React.FC = () => {
             propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
             isRealEstate: liabilityFormData.type === 'MORTGAGE' ? true : undefined,
             isPendingFinancing: liabilityFormData.type === 'MORTGAGE' ? !!liabilityFormData.pendingFinancing : undefined,
+            ...pendingFinancingMeta,
             historicalCalculationType: liabilityFormData.hasHistoricalPayments ? liabilityFormData.historicalCalculationType : undefined,
             historicalInstallmentsPaid: liabilityFormData.hasHistoricalPayments && liabilityFormData.historicalCalculationType === 'calculated' ? (parseInt(liabilityFormData.historicalInstallmentsPaid, 10) || undefined) : undefined,
             historicalInstallmentValue: liabilityFormData.hasHistoricalPayments && liabilityFormData.historicalCalculationType === 'calculated' ? (parseFloat(liabilityFormData.historicalInstallmentValue) || undefined) : undefined,
@@ -4888,6 +4924,7 @@ const Assets: React.FC = () => {
             propertyType: liabilityFormData.type === 'MORTGAGE' ? (liabilityFormData.propertyType || 'PLANTA') : undefined,
             isRealEstate: liabilityFormData.type === 'MORTGAGE' ? true : undefined,
             isPendingFinancing: liabilityFormData.type === 'MORTGAGE' ? !!liabilityFormData.pendingFinancing : undefined,
+            ...pendingFinancingMeta,
             historicalCalculationType: liabilityFormData.hasHistoricalPayments ? liabilityFormData.historicalCalculationType : undefined,
             historicalInstallmentsPaid: liabilityFormData.hasHistoricalPayments && liabilityFormData.historicalCalculationType === 'calculated' ? (parseInt(liabilityFormData.historicalInstallmentsPaid, 10) || undefined) : undefined,
             historicalInstallmentValue: liabilityFormData.hasHistoricalPayments && liabilityFormData.historicalCalculationType === 'calculated' ? (parseFloat(liabilityFormData.historicalInstallmentValue) || undefined) : undefined,
@@ -9025,6 +9062,11 @@ const Assets: React.FC = () => {
                           <p className="text-xs text-slate-400 font-black uppercase tracking-widest">Saldo Devedor Atual:</p>
                           <p className={`text-sm font-black ${liability.remainingBalance === 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(liability.remainingBalance)}</p>
                         </div>
+                        {liability.metadata?.isPendingFinancing && (
+                          <p className="text-[10px] text-amber-600 font-semibold mt-1 flex items-center gap-1">
+                            <span aria-hidden="true">↻</span> Financiamento a Definir — saldo corrigido mensalmente por {liability.metadata?.indexationRate || 0}% ({liability.metadata?.indexType || 'índice do contrato'}), não conta no Fluxo Mensal.
+                          </p>
+                        )}
                       </div>
 
                       <div className="space-y-4 text-[11px] text-slate-500">

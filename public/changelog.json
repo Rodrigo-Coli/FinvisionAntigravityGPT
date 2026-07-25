@@ -1,29 +1,19 @@
 {
-  "version": "2026.07.25.1629",
-  "title": "Fluxo Mensal ganha filtro de período, e a Projeção de Fluxo pode começar de outro mês",
+  "version": "2026.07.25.1648",
+  "title": "Saldo a Definir agora corrige sozinho pelo índice do contrato",
   "date": "25/07/2026",
   "benefits": [
     {
-      "title": "Filtro de período no Fluxo Mensal (igual em Ativos Imobiliários)",
-      "desc": "Escolha entre Estimado (a taxa/parcela configurada), Mês Atual, Mês Anterior, Anual ou Personalizado. Ao escolher um período, dá pra ver o rendimento Total (rendimento mensal + acumulado) ou só o que efetivamente caiu na conta (sem contar o acumulado/reinvestido).",
-      "type": "recurso"
-    },
-    {
-      "title": "Segundo lugar com a mesma conta em dobro, corrigido",
-      "desc": "O card 'Na Planta / Em Obras' (dentro de Investimento Imobiliário) tinha o mesmo problema do Fluxo Mensal: mostrava a parcela do financiamento mesmo quando ela era 'Financiamento a Definir'. Agora respeita a marcação corretamente, igual ao Fluxo Mensal.",
-      "type": "correção"
-    },
-    {
-      "title": "Projeção Avançada de Fluxo pode começar de outro mês",
-      "desc": "Além de escolher quantos meses ver (3/6/12/24), agora dá para escolher o mês em que a projeção começa a contar — útil pra revisar um mês passado ou planejar a partir de um mês futuro específico.",
+      "title": "Financiamento a Definir corrige o saldo automaticamente todo mês",
+      "desc": "Aquele saldo que ainda vai virar financiamento (ex: imóvel na planta aguardando entrega) agora é corrigido sozinho, mês a mês, pelo índice que você configurou no contrato (INCC, IPCA, IGP-M etc.) — sem precisar editar na mão. Continua fora do Fluxo Mensal, mas aparece corrigido em Dívidas, no card do passivo e no imóvel.",
       "type": "recurso"
     }
   ],
   "changes": [
-    "pages/Assets.tsx (sustainabilitySummary): novo filtro de período (fluxoPeriodMode/fluxoStartDate/fluxoEndDate/fluxoYieldMode) reaproveitando o padrão de datas já usado no 'Acompanhamento de Caixa' de Ativos Imobiliários; realizedYield agora filtra por metadata.payout_type quando o modo é 'Só o que Caiu na Conta'.",
-    "pages/Assets.tsx (overviewData): segunda ocorrência duplicada do cálculo de financiamento de imóvel na planta também passou a respeitar metadata.isPendingFinancing (mesma correção aplicada ao Fluxo Mensal).",
-    "services/projection.service.ts: getProjectedCashFlow ganhou parâmetro opcional anchorMonth para começar a projeção de um mês diferente do atual.",
-    "components/CashFlowProjection.tsx + pages/Home.tsx: novo seletor 'Começa em' (setas de mês anterior/próximo + input de mês) na Projeção Avançada de Fluxo.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (filtro Estimado→Mês Atual mudou Rec. de R$100 para R$850 corretamente; Projeção Avançada mudando de jul/26 para jun/26 ao clicar em mês anterior)."
+    "pages/Assets.tsx (activeLiabilities): passivos com metadata.isPendingFinancing passam a ter remaining_balance/total_amount corrigidos em memória, mês a mês, por metadata.indexationRate desde metadata.pendingFinancingBaseDate — sem sobrescrever o valor salvo no banco.",
+    "pages/Assets.tsx (handleSaveLiability): pendingFinancingBaseValue/pendingFinancingBaseDate são gravados quando o saldo é alterado (ou a marcação é ligada agora) e preservados nas edições seguintes, para não perder a correção acumulada.",
+    "pages/Assets.tsx: nota de transparência no card do passivo mostrando a taxa/índice usados na correção quando 'Financiamento a Definir' está marcado.",
+    "Correção de dados: definida a data-base de hoje para os dois passivos do usuário já marcados como 'Financiamento a Definir' (Wave Beach Prime e Solina), para a correção começar a contar a partir de agora.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (nota de correção aparece corretamente ao marcar/desmarcar o passivo)."
   ]
 }
