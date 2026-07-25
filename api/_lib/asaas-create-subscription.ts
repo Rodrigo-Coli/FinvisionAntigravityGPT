@@ -62,7 +62,7 @@ export default async function handler(req: any, res: any) {
     // 4. Check existing subscription and trial
     const { data: existingSub } = await supabase
       .from('subscriptions')
-      .select('trial_ends_at, status')
+      .select('trial_ends_at, status, cancel_at_period_end, current_period_start, current_period_end')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -70,7 +70,22 @@ export default async function handler(req: any, res: any) {
     let nextDue: string;
     let trialEndsAt: string | null = null;
 
-    if (existingSub && existingSub.status === 'trialing' && existingSub.trial_ends_at && new Date(existingSub.trial_ends_at) > now) {
+    // Reativação dentro do prazo já pago: o usuário cancelou (cancel_at_period_end=true)
+    // mas ainda está dentro do período que já tinha pago (current_period_end no futuro).
+    // Nesse caso a próxima cobrança acontece na MESMA data que já estava marcada para
+    // renovar — não hoje — e o ciclo atual (period_start/period_end) é preservado.
+    const isResumeWithinPeriod = !!(
+      existingSub &&
+      existingSub.cancel_at_period_end &&
+      ['active', 'trialing'].includes(existingSub.status) &&
+      existingSub.current_period_end &&
+      new Date(existingSub.current_period_end) > now
+    );
+
+    if (isResumeWithinPeriod) {
+      nextDue = new Date(existingSub!.current_period_end as string).toISOString().split('T')[0];
+      if (existingSub!.status === 'trialing' && existingSub!.trial_ends_at) trialEndsAt = existingSub!.trial_ends_at;
+    } else if (existingSub && existingSub.status === 'trialing' && existingSub.trial_ends_at && new Date(existingSub.trial_ends_at) > now) {
       trialEndsAt = existingSub.trial_ends_at;
       nextDue = new Date(existingSub.trial_ends_at).toISOString().split('T')[0];
     } else {
@@ -139,8 +154,16 @@ export default async function handler(req: any, res: any) {
     // (evento payment_confirmed) promove para 'active', quando o pagamento é confirmado
     // de verdade. Até lá, fica 'past_due' (mesmo tratamento de "fatura pendente" que já
     // existe na tela — não libera os limites do plano pago).
-    const initialStatus = trialEndsAt ? 'trialing' : 'past_due';
-    await upsertSubscription(userId, plan.id, initialStatus, result.gatewaySubscriptionId, p, trialEndsAt, gateway.name);
+    // Exceção: reativação dentro do prazo já pago. A cobrança só vai acontecer na data
+    // futura já agendada (nextDue = current_period_end), não hoje — então não há nada
+    // "pendente" agora. Mantém o status que a assinatura já tinha (active/trialing).
+    const initialStatus = isResumeWithinPeriod
+      ? (existingSub!.status as string)
+      : (trialEndsAt ? 'trialing' : 'past_due');
+    await upsertSubscription(
+      userId, plan.id, initialStatus, result.gatewaySubscriptionId, p, trialEndsAt, gateway.name,
+      isResumeWithinPeriod ? { start: existingSub!.current_period_start as string, end: existingSub!.current_period_end as string } : undefined
+    );
 
     return res.status(200).json({
       success: true,
@@ -158,19 +181,37 @@ export default async function handler(req: any, res: any) {
   }
 }
 
-async function upsertSubscription(userId: string, planId: string, status: string, asaasId: string | null, period: Period, trialEndsAt: string | null, paymentGateway?: string) {
+async function upsertSubscription(
+  userId: string, planId: string, status: string, asaasId: string | null, period: Period, trialEndsAt: string | null,
+  paymentGateway?: string,
+  // Presente apenas na reativação dentro do prazo já pago: preserva o ciclo atual
+  // em vez de abrir um novo current_period_start/current_period_end a partir de hoje.
+  preserveExistingPeriod?: { start: string; end: string }
+) {
   const now = new Date();
-  const months = PERIOD_MONTHS[period];
-  const periodEnd = new Date(now);
-  periodEnd.setMonth(periodEnd.getMonth() + months);
+  let periodStartIso: string;
+  let periodEndIso: string;
+  if (preserveExistingPeriod) {
+    periodStartIso = preserveExistingPeriod.start;
+    periodEndIso = preserveExistingPeriod.end;
+  } else {
+    const months = PERIOD_MONTHS[period];
+    const periodEnd = new Date(now);
+    periodEnd.setMonth(periodEnd.getMonth() + months);
+    periodStartIso = now.toISOString();
+    periodEndIso = periodEnd.toISOString();
+  }
 
   const payload: any = {
     user_id: userId,
     plan_id: planId,
     status,
-    current_period_start: now.toISOString(),
-    current_period_end: periodEnd.toISOString(),
+    current_period_start: periodStartIso,
+    current_period_end: periodEndIso,
     trial_ends_at: trialEndsAt,
+    // Qualquer criação/reativação bem-sucedida limpa um cancelamento pendente.
+    cancel_at_period_end: false,
+    canceled_at: null,
     updated_at: now.toISOString(),
   };
   if (asaasId) payload.asaas_subscription_id = asaasId;

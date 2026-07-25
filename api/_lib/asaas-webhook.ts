@@ -8,13 +8,18 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy'
 );
 
+// payment_deleted e subscription_deleted NÃO entram aqui de propósito: o
+// endpoint asaas-cancel-subscription já deleta a assinatura no Asaas para
+// parar as próximas cobranças, e isso dispara esses dois eventos de volta.
+// Se eles rebaixassem o status na hora, o "cancelar mas continuar até o fim
+// do período pago" quebraria — o usuário perderia o acesso no mesmo instante
+// em que clicasse em cancelar. Quem decide quando o status vira 'canceled'
+// de fato é o cron diário (ver maintenance.ts), comparando current_period_end.
 const STATUS_MAP: Partial<Record<NormalizedWebhookEventType, string>> = {
   payment_confirmed: 'active',
   payment_overdue: 'past_due',
   payment_refunded: 'past_due',
   payment_chargeback: 'past_due',
-  payment_deleted: 'canceled',
-  subscription_deleted: 'canceled',
 };
 
 export async function handleAsaasWebhook(req: any, res: any) {

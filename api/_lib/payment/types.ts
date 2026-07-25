@@ -70,6 +70,7 @@ export interface NormalizedWebhookEvent {
 export interface PaymentGateway {
   readonly name: string;
   createSubscription(params: CreateSubscriptionParams): Promise<CreateSubscriptionResult>;
+  cancelSubscription(gatewaySubscriptionId: string): Promise<void>;
   normalizeWebhookEvent(payload: any): NormalizedWebhookEvent;
   verifyWebhookAuth(req: any): boolean;
 }

@@ -1,29 +1,31 @@
 {
-  "version": "2026.07.24.0340",
-  "title": "Zyvion AI agora te ajuda a economizar e evoluir — no chat e no WhatsApp",
-  "date": "24/07/2026",
+  "version": "2026.07.25.0033",
+  "title": "Cancelar assinatura agora respeita o que você já pagou",
+  "date": "25/07/2026",
   "benefits": [
     {
-      "title": "Peça \"quero gastar menos\" e a IA mostra onde cortar",
-      "desc": "Quando você pedir ajuda para economizar, a assistente vasculha suas despesas reais e compara cada área com percentuais saudáveis de referência (moradia até 30% da renda, transporte até 15%, alimentação 10–15%, lazer até 10%). Ela aponta onde você está acima do ideal e estima quanto dá para economizar em reais, sempre terminando com um próximo passo simples para você fazer já.",
+      "title": "Cancelar não é perder o acesso na hora",
+      "desc": "Se você cancelar sua assinatura, para de ser cobrado imediatamente, mas continua com acesso completo ao seu plano até a data que seria a próxima renovação. Só depois dessa data a conta volta para o plano gratuito — e mesmo assim, todo o seu histórico de transações, contas e cartões continua salvo e acessível.",
       "type": "recurso"
     },
     {
-      "title": "Aprenda a evoluir seu patrimônio direto na conversa",
-      "desc": "Diga \"quero evoluir\" ou \"quero alavancar\" e a IA ensina os percentuais que os especialistas usam (poupar pelo menos 20% da renda, reserva de emergência de 3 a 6 meses, dívida total até 36% da renda) e analisa a sua situação real — patrimônio, dívidas e liquidez — para te orientar com os seus próprios números.",
+      "title": "Mudou de ideia? Reative com um clique, sem perder a data",
+      "desc": "Enquanto sua assinatura cancelada ainda estiver dentro do período pago, um aviso no topo do app deixa você reativar na hora — e a cobrança volta a cair exatamente na mesma data de sempre, sem cobrar nada extra agora.",
       "type": "recurso"
     },
     {
-      "title": "Orientação só quando você pede, e sempre com responsabilidade",
-      "desc": "A assistente não fica te interrompendo com conselhos: ela só entra no modo consultoria quando você pede. E mantém as travas de sempre — nunca fala de concorrentes, nunca sai fazendo pesquisas aleatórias na internet e nunca manda comprar ou vender um investimento específico. Ela ensina, mostra os cenários e deixa a decisão final sempre com você.",
-      "type": "seguranca"
+      "title": "Voltou depois do prazo? Vira uma assinatura nova, começando hoje",
+      "desc": "Se o período pago já tiver acabado e você decidir assinar de novo, o FinVision trata como uma assinatura nova: a cobrança passa a contar a partir do dia em que você reativa.",
+      "type": "recurso"
     }
   ],
   "changes": [
-    "api/_lib/finvision-chat.ts (systemPrompt do chat do app): acrescentados os itens 5, 6 e 7 à seção 'Diretrizes de Inteligência Financeira Avançada', sem remover nada — 'Consultoria Sob Demanda' (reativo: só age quando o usuário pede para economizar/evoluir; vasculha despesas reais e compara com a régua; fecha com um próximo passo), 'Régua de Referência' (percentuais embutidos: moradia 30%, transporte 15%, alimentação 10–15%, lazer 10%, parcelas 10%/dívida total 36%, poupança ≥20%, reserva 3–6 meses, critério de alavancagem retorno>custo do juro) e 'Limite Regulatório' (educa e simula, nunca recomenda ativo específico). Reforçado: NUNCA pesquisar na web por benchmarks — a busca segue restrita a macroeconomia pontual (Selic/CDI/IPCA/câmbio) já existente. Confirmado que a tabela ai_prompts não tem linha para o slug finvision_chat, então o texto do código é o que roda em produção.",
-    "api/_lib/whatsapp-webhook.ts (systemPrompt de consulta, ~L1147): adicionado bloco 'EVOLUÇÃO FINANCEIRA' com a régua em versão curta, entre a regra de concorrentes e os dados do usuário. Reativo, sem pesquisa na internet, sem recomendação de ativo específico.",
-    "api/_lib/whatsapp-webhook.ts (systemPromptChat casual, ~L2962): adicionada uma linha com a régua resumida e as travas (sem web, sem recomendar ativo), preservando a blindagem de concorrentes já existente.",
-    "App.tsx: APP_VERSION 6.2.7 → 6.2.8 para que o Service Worker detecte a nova versão e exiba o aviso de novidades (as mudanças de prompt são no backend api/ e não alterariam o bundle do cliente sozinhas).",
-    "Verificação: node tsc -p tsconfig.json --noEmit sem erros. As três alterações são apenas acréscimos em texto de prompt — nenhuma regra existente (escopo financeiro, blindagem de concorrentes, restrição de busca na web) foi removida ou enfraquecida."
+    "supabase/cancel_at_period_end_migration.sql: novo campo subscriptions.cancel_at_period_end (boolean, default false).",
+    "api/_lib/asaas-cancel-subscription.ts (endpoint novo): cancela a cobrança recorrente no Asaas e marca cancel_at_period_end=true, sem tocar em status nem current_period_end — o acesso continua até lá.",
+    "api/_lib/asaas-create-subscription.ts: detecta reativação dentro do período já pago (cancel_at_period_end=true + current_period_end no futuro) e preserva a data de cobrança e o ciclo original em vez de recriar do zero; fora dessa janela, segue o fluxo normal (assinatura nova a partir de hoje).",
+    "api/_lib/asaas-webhook.ts: removidos subscription_deleted e payment_deleted do mapeamento de status — esses eventos disparam quando cancelamos a assinatura no Asaas e antes rebaixavam o usuário na hora, o que quebrava a regra de 'continua ativo até o fim do período'.",
+    "api/_lib/maintenance.ts (cron diário): novo passo que rebaixa para 'canceled' apenas quando current_period_end já passou e cancel_at_period_end=true.",
+    "contexts/SubscriptionContext.tsx, components/subscription/CancelPendingBanner.tsx, components/subscription/CancelSubscriptionModal.tsx, App.tsx, pages/Settings.tsx: botão de cancelar, modal de confirmação e banner de reativação.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros."
   ]
 }

@@ -1,5 +1,34 @@
 [
   {
+    "version": "2026.07.25.0033",
+    "title": "Cancelar assinatura agora respeita o que você já pagou",
+    "date": "25/07/2026",
+    "benefits": [
+      {
+        "title": "Cancelar não é perder o acesso na hora",
+        "desc": "Se você cancelar sua assinatura, para de ser cobrado imediatamente, mas continua com acesso completo ao seu plano até a data que seria a próxima renovação. Só depois dessa data a conta volta para o plano gratuito — e mesmo assim, todo o seu histórico de transações, contas e cartões continua salvo e acessível.",
+        "type": "recurso"
+      },
+      {
+        "title": "Mudou de ideia? Reative com um clique, sem perder a data",
+        "desc": "Enquanto sua assinatura cancelada ainda estiver dentro do período pago, um aviso no topo do app deixa você reativar na hora — e a cobrança volta a cair exatamente na mesma data de sempre, sem cobrar nada extra agora.",
+        "type": "recurso"
+      },
+      {
+        "title": "Voltou depois do prazo? Vira uma assinatura nova, começando hoje",
+        "desc": "Se o período pago já tiver acabado e você decidir assinar de novo, o FinVision trata como uma assinatura nova: a cobrança passa a contar a partir do dia em que você reativa.",
+        "type": "recurso"
+      }
+    ],
+    "changes": [
+      "api/_lib/asaas-cancel-subscription.ts (endpoint novo): cancela a cobrança recorrente no Asaas e marca cancel_at_period_end=true, sem tocar em status nem current_period_end.",
+      "api/_lib/asaas-create-subscription.ts: reativação dentro do período preserva data de cobrança e ciclo original; fora da janela, assinatura nova a partir de hoje.",
+      "api/_lib/asaas-webhook.ts: removidos subscription_deleted/payment_deleted do STATUS_MAP para não rebaixar na hora do cancelamento.",
+      "api/_lib/maintenance.ts (cron diário): rebaixa para 'canceled' só quando current_period_end já passou.",
+      "UI: botão cancelar + modal de confirmação + banner de reativação em Settings/App."
+    ]
+  },
+  {
     "version": "2026.07.24.0340",
     "title": "Zyvion AI agora te ajuda a economizar e evoluir — no chat e no WhatsApp",
     "date": "24/07/2026",

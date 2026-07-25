@@ -22,6 +22,7 @@ import { handleHealth } from './_lib/health.js';
 import { handleReceiptItems } from './_lib/handle-receipt-items.js';
 import { handleAsaasBillingHistory } from './_lib/asaas-billing-history.js';
 import handleAsaasCreateSubscription from './_lib/asaas-create-subscription.js';
+import handleAsaasCancelSubscription from './_lib/asaas-cancel-subscription.js';
 import { handlePromoteDemo } from './_lib/promote-demo.js';
 import { handleAttachReferral } from './_lib/attach-referral.js';
 import { handleAffiliateMe, handleAffiliateUpdatePix, handleAffiliateRequestPayout, handleAffiliateRedeemCredit } from './_lib/affiliate.js';
@@ -60,6 +61,7 @@ export default async function handler(req: any, res: any) {
     // --- Webhooks ---
     if (url.includes('/asaas-webhook'))            return handleAsaasWebhook(req, res);
     if (url.includes('/asaas-create-subscription')) return handleAsaasCreateSubscription(req, res);
+    if (url.includes('/asaas-cancel-subscription')) return handleAsaasCancelSubscription(req, res);
     if (url.includes('/asaas-billing-history'))    return handleAsaasBillingHistory(req, res);
     if (url.includes('/whatsapp-webhook'))         return handleWhatsAppWebhook(req, res);
 

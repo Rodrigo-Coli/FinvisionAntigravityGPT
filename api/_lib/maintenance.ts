@@ -33,5 +33,22 @@ export async function handleMaintenance(req: any, res: any) {
     results.cleanupDemos = { error: err?.message || 'unknown' };
   }
 
+  // Cancelamentos agendados: quem clicou em "cancelar assinatura" continua com o
+  // plano pago até current_period_end (ver asaas-cancel-subscription.ts). Só agora,
+  // quando essa data efetivamente chega, o status vira 'canceled' de verdade e o
+  // usuário é rebaixado para o Starter (via SubscriptionContext).
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('subscriptions')
+      .update({ status: 'canceled', updated_at: new Date().toISOString() })
+      .eq('cancel_at_period_end', true)
+      .in('status', ['active', 'trialing'])
+      .lte('current_period_end', new Date().toISOString())
+      .select('id');
+    results.expireCanceledSubscriptions = error ? { error: error.message } : { downgraded: data?.length || 0 };
+  } catch (err: any) {
+    results.expireCanceledSubscriptions = { error: err?.message || 'unknown' };
+  }
+
   return res.status(200).json({ success: true, ...results });
 }

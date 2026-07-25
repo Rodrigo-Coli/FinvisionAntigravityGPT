@@ -20,6 +20,7 @@ import OfflineBanner from './components/OfflineBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import TrialBanner from './components/TrialBanner';
 import GracefulDowngradeBanner from './components/subscription/GracefulDowngradeBanner';
+import CancelPendingBanner from './components/subscription/CancelPendingBanner';
 import AccountSelectionModal from './components/subscription/AccountSelectionModal';
 import UpgradeModal from './components/UpgradeModal';
 import PlanUpsellNudge from './components/PlanUpsellNudge';
@@ -52,7 +53,7 @@ if (window.location.pathname === '/demo' || window.location.pathname === '/demo/
   window.location.replace('/#/demo');
 }
 
-const APP_VERSION = '6.2.8';
+const APP_VERSION = '6.2.9';
 
 // Spinner reutilizado pelo Suspense e pelo carregamento de auth
 const PageSpinner: React.FC = () => (
@@ -185,6 +186,7 @@ const App: React.FC = () => {
             <OfflineBanner />
             <TrialBanner />
             <GracefulDowngradeBanner />
+            <CancelPendingBanner />
             <AccountSelectionModal />
             <UpgradeModal />
             <PlanUpsellNudge />

@@ -108,6 +108,14 @@ export class AsaasGateway implements PaymentGateway {
     };
   }
 
+  async cancelSubscription(gatewaySubscriptionId: string): Promise<void> {
+    // Deleta a assinatura no Asaas: para as próximas cobranças, mas não afeta
+    // pagamentos já confirmados. O acesso do usuário ao plano continua sendo
+    // controlado pelo nosso banco (cancel_at_period_end + current_period_end),
+    // não por este DELETE.
+    await asaasRequest(`/subscriptions/${gatewaySubscriptionId}`, 'DELETE');
+  }
+
   normalizeWebhookEvent(payload: any): NormalizedWebhookEvent {
     const { event, payment, subscription } = payload || {};
     const type = ASAAS_STATUS_MAP[event] || 'ignored';

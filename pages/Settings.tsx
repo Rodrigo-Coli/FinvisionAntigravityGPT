@@ -48,6 +48,7 @@ import { DateUtils } from '../lib/dateUtils';
 import { requestNotificationPermission, showLocalNotification, subscribeUserToPush, ensureFreshPushSubscription } from '../lib/pushUtils';
 import UsageMeter from '../components/subscription/UsageMeter';
 import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
+import CancelSubscriptionModal from '../components/subscription/CancelSubscriptionModal';
 import { useToast } from '../contexts/ToastContext';
 
 export const ensureInvestmentCategoriesAndSubcategories = async (userId: string) => {
@@ -147,6 +148,7 @@ const SettingsPage: React.FC = () => {
   const SETTINGS_SECTIONS: SettingsSection[] = ['general', 'navigation', 'categories', 'establishments', 'products', 'backup', 'currencies', 'rates', 'entities', 'subscription', 'changelog'];
   const { subscription, loadingSub } = useSubscription();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const activeSection: SettingsSection = resolveTabParam(searchParams.get('section'), SETTINGS_SECTIONS, 'general');
   const setActiveSection = (section: SettingsSection) => {
@@ -1042,6 +1044,16 @@ const SettingsPage: React.FC = () => {
                     >
                       Ver Opcoes de Upgrade
                     </button>
+                    {!!subscription?.plans?.price_cents && subscription.plans.price_cents > 0 &&
+                      !subscription.cancel_at_period_end &&
+                      ['active', 'trialing'].includes(subscription.status) && (
+                      <button
+                        onClick={() => setShowCancelModal(true)}
+                        className="w-full py-2 text-slate-400 dark:text-slate-500 font-bold text-[10px] uppercase tracking-widest hover:text-orange-500 transition-colors"
+                      >
+                        Cancelar assinatura
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1053,6 +1065,11 @@ const SettingsPage: React.FC = () => {
                   currentPlanSlug={subscription?.plans?.name?.toLowerCase()}
                   onClose={() => setShowUpgradeModal(false)}
                 />
+              )}
+
+              {/* MODAL DE CANCELAMENTO */}
+              {showCancelModal && (
+                <CancelSubscriptionModal onClose={() => setShowCancelModal(false)} />
               )}
             </div>
           )}

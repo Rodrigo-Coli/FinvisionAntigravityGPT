@@ -6,13 +6,19 @@ export interface SubscriptionData {
   id: string;
   plan_id: string;
   status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'admin_granted';
+  billing_period?: 'monthly' | 'semiannual' | 'annual';
   trial_ends_at: string | null;
   current_period_end: string | null;
+  cancel_at_period_end?: boolean;
+  canceled_at?: string | null;
   metadata?: any;
   plans?: {
     name: string;
+    slug?: string;
     features: any;
     price_cents: number;
+    price_cents_annual?: number;
+    price_cents_semiannual?: number;
     ai_scans_limit: number;
     max_cards?: number;
     max_accounts?: number;
