@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { CashFlowProjectionItem } from '../types';
-import { Activity, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { Activity, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Info } from 'lucide-react';
 import { formatCurrency } from '../lib/historyUtils';
 
 interface CashFlowProjectionProps {
@@ -10,6 +10,8 @@ interface CashFlowProjectionProps {
   showBalance?: boolean;
   months?: number;
   onMonthsChange?: (months: number) => void;
+  startMonth?: string;
+  onStartMonthChange?: (month: string) => void;
 }
 
 export default function CashFlowProjection({
@@ -18,7 +20,9 @@ export default function CashFlowProjection({
   onMonthClick,
   showBalance = true,
   months = 12,
-  onMonthsChange
+  onMonthsChange,
+  startMonth,
+  onStartMonthChange
 }: CashFlowProjectionProps) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -79,6 +83,41 @@ export default function CashFlowProjection({
           </div>
         </div>
         <div className="flex items-center gap-3 sm:gap-5 flex-wrap">
+          {/* Start Month Selector */}
+          {startMonth && onStartMonthChange && (
+            <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Começa em:</span>
+              <button
+                onClick={() => {
+                  const [y, m] = startMonth.split('-').map(Number);
+                  const d = new Date(y, m - 2, 1);
+                  onStartMonthChange(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                }}
+                className="p-1 rounded hover:bg-slate-100 text-slate-400"
+                title="Mês anterior"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <input
+                type="month"
+                value={startMonth}
+                onChange={e => onStartMonthChange(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-indigo-400"
+              />
+              <button
+                onClick={() => {
+                  const [y, m] = startMonth.split('-').map(Number);
+                  const d = new Date(y, m, 1);
+                  onStartMonthChange(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                }}
+                className="p-1 rounded hover:bg-slate-100 text-slate-400"
+                title="Próximo mês"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
+
           {/* Months Filter Selector */}
           <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Período:</span>

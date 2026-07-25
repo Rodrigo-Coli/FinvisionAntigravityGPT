@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.07.25.1629",
+    "title": "Fluxo Mensal ganha filtro de período, e a Projeção de Fluxo pode começar de outro mês",
+    "date": "25/07/2026",
+    "benefits": [
+      {
+        "title": "Filtro de período no Fluxo Mensal",
+        "desc": "Estimado, Mês Atual, Mês Anterior, Anual ou Personalizado, com opção de contar só o rendimento que caiu na conta.",
+        "type": "recurso"
+      },
+      {
+        "title": "Segundo lugar com a mesma conta em dobro, corrigido",
+        "desc": "Card 'Na Planta / Em Obras' agora também respeita 'Financiamento a Definir'.",
+        "type": "correção"
+      },
+      {
+        "title": "Projeção Avançada de Fluxo pode começar de outro mês",
+        "desc": "Novo seletor 'Começa em' além do período de 3/6/12/24 meses.",
+        "type": "recurso"
+      }
+    ],
+    "changes": [
+      "pages/Assets.tsx: filtro de período no Fluxo Mensal (fluxoPeriodMode/fluxoYieldMode).",
+      "pages/Assets.tsx (overviewData): segunda duplicata do cálculo de planta corrigida.",
+      "services/projection.service.ts + components/CashFlowProjection.tsx + pages/Home.tsx: seletor de mês inicial na Projeção Avançada."
+    ]
+  },
+  {
     "version": "2026.07.25.1610",
     "title": "Fluxo Mensal corrigido: achamos o gasto fantasma de quase R$ 400 mil",
     "date": "25/07/2026",

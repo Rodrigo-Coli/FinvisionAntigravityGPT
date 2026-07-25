@@ -91,6 +91,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
     } catch (e) {}
   };
 
+  // Mês a partir do qual a Projeção Avançada de Fluxo começa a contar — por padrão o
+  // mês atual, mas dá pra "voltar no tempo" ou começar de um mês futuro específico.
+  const [projectionStartMonth, setProjectionStartMonth] = useState(() => new Date().toISOString().substring(0, 7));
+
   const [pendingIncome, setPendingIncome] = useState(() => {
     return Number(localStorage.getItem('finvision_cached_pending_income') || 0);
   });
@@ -154,7 +158,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           if (!cachedProj) {
             setIsProjecting(true);
           }
-          const proj = await projectionService.getProjectedCashFlow(user.id, dashboardData.consolidatedBalance, projectionMonths);
+          const proj = await projectionService.getProjectedCashFlow(user.id, dashboardData.consolidatedBalance, projectionMonths, projectionStartMonth);
           setProjectedData(proj);
           localStorage.setItem(`finvision_cached_projections_${user.id}`, JSON.stringify(proj));
           setIsProjecting(false);
@@ -296,7 +300,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
   useEffect(() => {
     if (user?.id) loadData();
-  }, [user, startDate, endDate, projectionMonths]);
+  }, [user, startDate, endDate, projectionMonths, projectionStartMonth]);
 
   useEffect(() => {
     const handleSyncCompleted = () => {
@@ -512,13 +516,15 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
       {/* CASH FLOW PROJECTION (CONSOLIDATED GRAPHS) */}
       <div id="tour-cash-flow">
-        <CashFlowProjection 
-          data={projectedData} 
-          isLoading={isProjecting} 
-          onMonthClick={handleMonthClick} 
+        <CashFlowProjection
+          data={projectedData}
+          isLoading={isProjecting}
+          onMonthClick={handleMonthClick}
           showBalance={showBalance}
           months={projectionMonths}
           onMonthsChange={handleProjectionMonthsChange}
+          startMonth={projectionStartMonth}
+          onStartMonthChange={setProjectionStartMonth}
         />
       </div>
 

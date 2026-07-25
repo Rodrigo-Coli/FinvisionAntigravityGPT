@@ -1,35 +1,29 @@
 {
-  "version": "2026.07.25.1610",
-  "title": "Fluxo Mensal corrigido: achamos o gasto fantasma de quase R$ 400 mil",
+  "version": "2026.07.25.1629",
+  "title": "Fluxo Mensal ganha filtro de período, e a Projeção de Fluxo pode começar de outro mês",
   "date": "25/07/2026",
   "benefits": [
     {
-      "title": "Card 'Fluxo Mensal' parou de somar financiamento em dobro",
-      "desc": "Quando um imóvel na planta tinha um financiamento vinculado, a parcela dele era somada duas vezes no Fluxo Mensal — uma no cálculo geral de financiamentos, outra no cálculo específico de imóveis na planta. Corrigido: agora conta só uma vez.",
-      "type": "correção"
-    },
-    {
-      "title": "Novo campo 'Financiamento a Definir' nos passivos",
-      "desc": "Quando um financiamento de imóvel na planta ainda não foi escolhido/formalizado (o valor cadastrado é só o saldo total que será financiado no futuro, não uma parcela mensal), marque essa opção: ele continua contando em Dívidas, mas some do Fluxo Mensal até virar parcela de verdade.",
+      "title": "Filtro de período no Fluxo Mensal (igual em Ativos Imobiliários)",
+      "desc": "Escolha entre Estimado (a taxa/parcela configurada), Mês Atual, Mês Anterior, Anual ou Personalizado. Ao escolher um período, dá pra ver o rendimento Total (rendimento mensal + acumulado) ou só o que efetivamente caiu na conta (sem contar o acumulado/reinvestido).",
       "type": "recurso"
     },
     {
-      "title": "Cards de resumo não ficam mais cortados em telas com zoom",
-      "desc": "Os 8 cards do topo (Fluxo Mensal, Patrimônio, Imobiliário etc.) tentavam caber numa única fileira em telas largas, o que espremia os valores em R$ e cortava os números ao aumentar o zoom. Agora nunca passa de 4 colunas — com 8 cards, quebra em 2 fileiras, com espaço de sobra sempre.",
+      "title": "Segundo lugar com a mesma conta em dobro, corrigido",
+      "desc": "O card 'Na Planta / Em Obras' (dentro de Investimento Imobiliário) tinha o mesmo problema do Fluxo Mensal: mostrava a parcela do financiamento mesmo quando ela era 'Financiamento a Definir'. Agora respeita a marcação corretamente, igual ao Fluxo Mensal.",
       "type": "correção"
     },
     {
-      "title": "Liquidez de investimento sem opção marcada por padrão",
-      "desc": "Ao criar um investimento novo, a opção 'Também no Vencimento' não vem mais pré-marcada sozinha — fica em branco até você escolher o que realmente se aplica.",
-      "type": "melhoria"
+      "title": "Projeção Avançada de Fluxo pode começar de outro mês",
+      "desc": "Além de escolher quantos meses ver (3/6/12/24), agora dá para escolher o mês em que a projeção começa a contar — útil pra revisar um mês passado ou planejar a partir de um mês futuro específico.",
+      "type": "recurso"
     }
   ],
   "changes": [
-    "pages/Assets.tsx (sustainabilitySummary): liabilities do tipo MORTGAGE vinculadas a imóveis com propertyStage='PLANTA' passaram a ser excluídas de totalMortgageInstallments (já são contadas dentro de plantaInstallments) — corrige a contagem dupla.",
-    "pages/Assets.tsx: novo campo liabilities.metadata.isPendingFinancing (checkbox 'Financiamento a Definir' no formulário de passivo, tipo MORTGAGE); exclui a parcela do Fluxo Mensal (tanto em totalMortgageInstallments quanto no financingInstallment de plantaInstallments) sem afetar o saldo devedor total.",
-    "pages/Assets.tsx (getGridClass): grade de cards do resumo do Patrimônio limitada a no máximo 4 colunas (antes ia até 8), evitando corte de valores em telas largas com zoom.",
-    "pages/Assets.tsx: liquidityAtMaturity (checkbox 'Também no Vencimento') passou a vir desmarcado por padrão ao criar um investimento novo.",
-    "Correção de dados: dois passivos do usuário (financiamentos de imóveis na planta com saldo total lançado como parcela) marcados como 'Financiamento a Definir' via banco de dados, a pedido do usuário.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; reproduzido e confirmado no modo demo (card Fluxo Mensal saiu de R$6.800 de despesa para R$0 ao marcar 'Financiamento a Definir'; grade de 8 cards confirmada em 4 colunas fixas)."
+    "pages/Assets.tsx (sustainabilitySummary): novo filtro de período (fluxoPeriodMode/fluxoStartDate/fluxoEndDate/fluxoYieldMode) reaproveitando o padrão de datas já usado no 'Acompanhamento de Caixa' de Ativos Imobiliários; realizedYield agora filtra por metadata.payout_type quando o modo é 'Só o que Caiu na Conta'.",
+    "pages/Assets.tsx (overviewData): segunda ocorrência duplicada do cálculo de financiamento de imóvel na planta também passou a respeitar metadata.isPendingFinancing (mesma correção aplicada ao Fluxo Mensal).",
+    "services/projection.service.ts: getProjectedCashFlow ganhou parâmetro opcional anchorMonth para começar a projeção de um mês diferente do atual.",
+    "components/CashFlowProjection.tsx + pages/Home.tsx: novo seletor 'Começa em' (setas de mês anterior/próximo + input de mês) na Projeção Avançada de Fluxo.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (filtro Estimado→Mês Atual mudou Rec. de R$100 para R$850 corretamente; Projeção Avançada mudando de jul/26 para jun/26 ao clicar em mês anterior)."
   ]
 }

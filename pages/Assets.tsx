@@ -287,6 +287,18 @@ const Assets: React.FC = () => {
   const [excludedBrokerIds, setExcludedBrokerIds] = useState<string[]>([]);
   const [showAnalysisSettings, setShowAnalysisSettings] = useState(false);
   const [estimatedYieldRate, setEstimatedYieldRate] = useState<number>(0.8);
+  // Filtro de período do Fluxo Mensal — mesmo padrão do "Acompanhamento de Caixa" de
+  // Ativos Imobiliários (ESTIMADO aqui equivale ao "Contrato" de lá: usa a taxa/parcela
+  // configurada em vez de transações realizadas de um período específico).
+  const [fluxoPeriodMode, setFluxoPeriodMode] = useState<'ESTIMADO' | 'CURRENT_MONTH' | 'PREVIOUS_MONTH' | 'CURRENT_YEAR' | 'CUSTOM'>('ESTIMADO');
+  const [fluxoStartDate, setFluxoStartDate] = useState(() => {
+    const d = new Date(); d.setDate(1);
+    return DateUtils.formatToISODate(d);
+  });
+  const [fluxoEndDate, setFluxoEndDate] = useState(() => DateUtils.formatToISODate(new Date()));
+  // Quando um período é escolhido: soma rendimento mensal (caixa) + acumulado, ou só o
+  // que efetivamente caiu na conta (rendimento mensal), sem contar o acumulado/reinvestido.
+  const [fluxoYieldMode, setFluxoYieldMode] = useState<'TOTAL' | 'SO_CAIXA'>('TOTAL');
 
   // Active subtabs
   const [activeSubTab, setActiveSubTab] = useState<'portfolio' | 'simulator'>('portfolio');
@@ -1161,18 +1173,42 @@ const Assets: React.FC = () => {
       return sum + constructorInstallment + financingInstallment;
     }, 0);
 
-    const currentMonthStr = new Date().toISOString().substring(0, 7);
-    const realizedYield = transactions.filter(t => 
-      t.type === 'INCOME' && 
-      t.is_paid !== false && 
-      t.date.substring(0, 7) === currentMonthStr &&
+    // Janela de datas do período escolhido (mesmo padrão do "Acompanhamento de Caixa"
+    // de Ativos Imobiliários: mês atual, mês anterior, ano corrente ou personalizado).
+    const nowLocal = new Date();
+    const currentMonthStrLocal = DateUtils.formatToISODate(nowLocal).substring(0, 7);
+    const previousMonthDateLocal = new Date(nowLocal.getFullYear(), nowLocal.getMonth() - 1, 1);
+    const previousMonthStrLocal = DateUtils.formatToISODate(previousMonthDateLocal).substring(0, 7);
+    const currentYearStrLocal = DateUtils.formatToISODate(nowLocal).substring(0, 4);
+
+    const matchesFluxoPeriod = (dateStr: string) => {
+      const cleanDateStr = dateStr.substring(0, 10);
+      const cleanMonthStr = dateStr.substring(0, 7);
+      const cleanYearStr = dateStr.substring(0, 4);
+      if (fluxoPeriodMode === 'CURRENT_MONTH') return cleanMonthStr === currentMonthStrLocal;
+      if (fluxoPeriodMode === 'PREVIOUS_MONTH') return cleanMonthStr === previousMonthStrLocal;
+      if (fluxoPeriodMode === 'CURRENT_YEAR') return cleanYearStr === currentYearStrLocal;
+      if (fluxoPeriodMode === 'CUSTOM') return cleanDateStr >= fluxoStartDate && cleanDateStr <= fluxoEndDate;
+      return false;
+    };
+
+    // Rendimento de investimento realmente recebido/registrado no período escolhido.
+    // "Só Caixa" conta só o que caiu na conta (rendimento mensal/cupom); "Total" também
+    // inclui o rendimento acumulado/reinvestido no próprio ativo (não é caixa disponível).
+    const realizedYield = transactions.filter(t =>
+      t.type === 'INCOME' &&
+      t.is_paid !== false &&
+      matchesFluxoPeriod(t.date) &&
       t.subcategory !== 'Resgate' &&
       t.metadata?.type !== 'investment_redemption_total' &&
       t.metadata?.type !== 'investment_redemption_partial' &&
-      (t.category === 'Rendimentos' || t.category === 'Investimentos' || t.metadata?.type === 'investment_yield')
+      (t.category === 'Rendimentos' || t.category === 'Investimentos' || t.metadata?.type === 'investment_yield') &&
+      (fluxoYieldMode === 'TOTAL' || t.metadata?.payout_type !== 'ACUMULADO')
     ).reduce((sum, t) => sum + t.amount, 0);
 
-    const totalInflow = totalRents + estimatedMonthlyYield;
+    const isEstimatedMode = fluxoPeriodMode === 'ESTIMADO';
+    const displayYield = isEstimatedMode ? estimatedMonthlyYield : realizedYield;
+    const totalInflow = totalRents + displayYield;
     const realizedInflow = totalRents + realizedYield;
     const totalOutflow = totalMortgageInstallments + totalOperatingCosts + totalConsortiumInstallments + totalOtherInstallments + vehicleRecurringExpenses + plantaInstallments;
     const netFlow = totalInflow - totalOutflow;
@@ -1183,6 +1219,8 @@ const Assets: React.FC = () => {
       totalRents,
       realEstateRents,
       estimatedMonthlyYield,
+      realizedYield,
+      isEstimatedMode,
       totalInflow,
       totalMortgageInstallments,
       totalOperatingCosts,
@@ -1196,7 +1234,7 @@ const Assets: React.FC = () => {
       realizedSelfSustainabilityPercent,
       totalInvestedBalance
     };
-  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, linkedTransactionsMap, transactions]);
+  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, linkedTransactionsMap, transactions, fluxoPeriodMode, fluxoStartDate, fluxoEndDate, fluxoYieldMode]);
 
   // Asset helpers
   const getAssetLinkedTransactions = (assetId: string) => {
@@ -5513,8 +5551,9 @@ const Assets: React.FC = () => {
 
       const linkedLiab = activeLiab.find(l => l.linkedAssetId === p.id);
       const allocationRatio = meta.consortiumAllocationRatio !== undefined ? (Number(meta.consortiumAllocationRatio) / 100) : 1;
-      const financingInstallment = linkedLiab 
-        ? (Number(linkedLiab.installmentAmount) * allocationRatio) 
+      // "Saldo a financiar" (financiamento a definir) ainda não é parcela mensal — não soma aqui.
+      const financingInstallment = linkedLiab
+        ? (linkedLiab.metadata?.isPendingFinancing ? 0 : Number(linkedLiab.installmentAmount) * allocationRatio)
         : (Number(meta.financingInstallment) || 0);
 
       return sum + constructorInstallment + financingInstallment;
@@ -5933,6 +5972,36 @@ const Assets: React.FC = () => {
         {/* OVERVIEW VIEW */}
         {activeView === 'overview' && (
           <div className="space-y-8 animate-in fade-in duration-500">
+            {/* Filtro de período do Fluxo Mensal — mesmo padrão do Acompanhamento de Caixa de Ativos Imobiliários */}
+            <div className="bg-slate-50 p-4 rounded-[25px] border border-slate-100 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Fluxo Mensal:</span>
+                <div className="flex overflow-x-auto scrollbar-hide bg-slate-200/50 p-0.5 rounded-lg border w-full sm:w-auto max-w-[calc(100vw-48px)] sm:max-w-none">
+                  <button onClick={() => setFluxoPeriodMode('ESTIMADO')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${fluxoPeriodMode === 'ESTIMADO' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Estimado</button>
+                  <button onClick={() => setFluxoPeriodMode('CURRENT_MONTH')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${fluxoPeriodMode === 'CURRENT_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Atual</button>
+                  <button onClick={() => setFluxoPeriodMode('PREVIOUS_MONTH')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${fluxoPeriodMode === 'PREVIOUS_MONTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Mês Anterior</button>
+                  <button onClick={() => setFluxoPeriodMode('CURRENT_YEAR')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${fluxoPeriodMode === 'CURRENT_YEAR' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Anual</button>
+                  <button onClick={() => setFluxoPeriodMode('CUSTOM')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all flex-shrink-0 ${fluxoPeriodMode === 'CUSTOM' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Personalizado</button>
+                </div>
+                {fluxoPeriodMode === 'CUSTOM' && (
+                  <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
+                    <input type="date" className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" value={fluxoStartDate} onChange={e => setFluxoStartDate(e.target.value)} />
+                    <span className="text-slate-400 text-xs">até</span>
+                    <input type="date" className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" value={fluxoEndDate} onChange={e => setFluxoEndDate(e.target.value)} />
+                  </div>
+                )}
+              </div>
+              {fluxoPeriodMode !== 'ESTIMADO' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rendimento:</span>
+                  <div className="flex bg-slate-200/50 p-0.5 rounded-lg border">
+                    <button onClick={() => setFluxoYieldMode('TOTAL')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all ${fluxoYieldMode === 'TOTAL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Total (+ Acumulado)</button>
+                    <button onClick={() => setFluxoYieldMode('SO_CAIXA')} className={`px-3 py-1 rounded text-xs font-black uppercase tracking-wider transition-all ${fluxoYieldMode === 'SO_CAIXA' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Só o que Caiu na Conta</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* COMPACT TOTALS GRID (8 Cards) */}
             {visibleOverviewCount > 0 && (
               <div className={getGridClass(visibleOverviewCount)}>
@@ -6418,7 +6487,7 @@ const Assets: React.FC = () => {
 
                     {/* Monthly Yield comparison */}
                     <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-3">
-                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center">
+                      <p className="text-xs sm:text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 pb-1.5 flex justify-between items-center gap-2">
                         <span><span aria-hidden="true" className="mr-1">💵</span>Rendimentos da Carteira</span>
                         <button
                           onClick={() => setActiveView('investments')}
@@ -6439,7 +6508,7 @@ const Assets: React.FC = () => {
                         <div className="flex justify-between text-xs border-t border-slate-200 pt-1.5 mt-1">
                           <span className="text-slate-600 font-bold flex items-center">
                             Autossuficiência (Projetada vs. Realizada)
-                            <InfoTooltip content="Percentual de cobertura das despesas patrimoniais (parcelas de consórcios, financiamentos, condomínios, IPVA/IPTU) pelas receitas de aluguéis e investimentos." />
+                            <InfoTooltip content="Percentual de cobertura das despesas patrimoniais (parcelas de consórcios, financiamentos, condomínios, IPVA/IPTU) pelas receitas de aluguéis e investimentos. O 'Realizado' usa o mês escolhido no seletor acima." />
                           </span>
                           <span className="font-black text-slate-900">
                             {sustainabilitySummary.selfSustainabilityPercent}% <span className="text-slate-400 font-medium text-[10px]">({sustainabilitySummary.realizedSelfSustainabilityPercent}% Realiz.)</span>

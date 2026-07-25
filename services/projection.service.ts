@@ -3,11 +3,15 @@ import { CashFlowProjectionItem } from '../types';
 
 export const projectionService = {
   // Novo método async para o Dashboard
-  getProjectedCashFlow: async (userId: string, currentBalance: number, monthsAhead: number = 12): Promise<CashFlowProjectionItem[]> => {
+  getProjectedCashFlow: async (userId: string, currentBalance: number, monthsAhead: number = 12, anchorMonth?: string): Promise<CashFlowProjectionItem[]> => {
     if (!supabase) return [];
 
-    const today = new Date();
-    const futureEnd = new Date(today.getFullYear(), today.getMonth() + monthsAhead + 1, 0); 
+    // anchorMonth (formato "YYYY-MM") permite ver a projeção começando de um mês
+    // diferente do atual, em vez de sempre partir de hoje.
+    const today = anchorMonth
+      ? new Date(Number(anchorMonth.split('-')[0]), Number(anchorMonth.split('-')[1]) - 1, 1)
+      : new Date();
+    const futureEnd = new Date(today.getFullYear(), today.getMonth() + monthsAhead + 1, 0);
     
     // Obter todos os dados em paralelo usando Promise.all
     const [
