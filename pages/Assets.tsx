@@ -9064,7 +9064,7 @@ const Assets: React.FC = () => {
                         </div>
                         {liability.metadata?.isPendingFinancing && (
                           <p className="text-[10px] text-amber-600 font-semibold mt-1 flex items-center gap-1">
-                            <span aria-hidden="true">↻</span> Financiamento a Definir — saldo corrigido mensalmente por {liability.metadata?.indexationRate || 0}% ({liability.metadata?.indexType || 'índice do contrato'}), não conta no Fluxo Mensal.
+                            <span aria-hidden="true">↻</span> Financiamento a Definir — saldo corrigido mensalmente por {liability.metadata?.indexationRate || 0}% ({liability.metadata?.indexType || liability.metadata?.indexationType || 'índice do contrato'}), não conta no Fluxo Mensal.
                           </p>
                         )}
                       </div>

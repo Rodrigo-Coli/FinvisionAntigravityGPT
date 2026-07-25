@@ -1,5 +1,20 @@
 [
   {
+    "version": "2026.07.25.1702",
+    "title": "Ajuste fino: nome do índice aparecendo certinho no Saldo a Definir",
+    "date": "25/07/2026",
+    "benefits": [
+      {
+        "title": "Nome do índice (INCC/IPCA/IGP-M) aparece corretamente na nota do passivo",
+        "desc": "Corrigido após auditoria dos commits de hoje — passivos mais antigos agora mostram o nome do índice certinho.",
+        "type": "correção"
+      }
+    ],
+    "changes": [
+      "pages/Assets.tsx: nota de 'Financiamento a Definir' aceita metadata.indexType ou o legado metadata.indexationType."
+    ]
+  },
+  {
     "version": "2026.07.25.1648",
     "title": "Saldo a Definir agora corrige sozinho pelo índice do contrato",
     "date": "25/07/2026",

@@ -1,19 +1,16 @@
 {
-  "version": "2026.07.25.1648",
-  "title": "Saldo a Definir agora corrige sozinho pelo índice do contrato",
+  "version": "2026.07.25.1702",
+  "title": "Ajuste fino: nome do índice aparecendo certinho no Saldo a Definir",
   "date": "25/07/2026",
   "benefits": [
     {
-      "title": "Financiamento a Definir corrige o saldo automaticamente todo mês",
-      "desc": "Aquele saldo que ainda vai virar financiamento (ex: imóvel na planta aguardando entrega) agora é corrigido sozinho, mês a mês, pelo índice que você configurou no contrato (INCC, IPCA, IGP-M etc.) — sem precisar editar na mão. Continua fora do Fluxo Mensal, mas aparece corrigido em Dívidas, no card do passivo e no imóvel.",
-      "type": "recurso"
+      "title": "Nome do índice (INCC/IPCA/IGP-M) aparece corretamente na nota do passivo",
+      "desc": "Fiz uma auditoria em tudo que mexemos hoje pra garantir que nada mais foi afetado — encontrei só esse detalhe: a nota 'Financiamento a Definir' não mostrava o nome do índice em passivos mais antigos (cadastrados pelo assistente de imóvel). Agora mostra certinho.",
+      "type": "correção"
     }
   ],
   "changes": [
-    "pages/Assets.tsx (activeLiabilities): passivos com metadata.isPendingFinancing passam a ter remaining_balance/total_amount corrigidos em memória, mês a mês, por metadata.indexationRate desde metadata.pendingFinancingBaseDate — sem sobrescrever o valor salvo no banco.",
-    "pages/Assets.tsx (handleSaveLiability): pendingFinancingBaseValue/pendingFinancingBaseDate são gravados quando o saldo é alterado (ou a marcação é ligada agora) e preservados nas edições seguintes, para não perder a correção acumulada.",
-    "pages/Assets.tsx: nota de transparência no card do passivo mostrando a taxa/índice usados na correção quando 'Financiamento a Definir' está marcado.",
-    "Correção de dados: definida a data-base de hoje para os dois passivos do usuário já marcados como 'Financiamento a Definir' (Wave Beach Prime e Solina), para a correção começar a contar a partir de agora.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (nota de correção aparece corretamente ao marcar/desmarcar o passivo)."
+    "pages/Assets.tsx: nota de 'Financiamento a Definir' passou a aceitar metadata.indexType OU o nome legado metadata.indexationType (mesmo fallback já usado na edição do passivo), em vez de só o primeiro.",
+    "Verificação: auditoria completa do diff dos 8 commits de hoje (c781a90..b3c84ea, ~1.470 linhas) confirmando que nenhuma outra funcionalidade foi afetada; tsc -p tsconfig.json --noEmit sem erros."
   ]
 }
