@@ -1,5 +1,21 @@
 [
   {
+    "version": "2026.07.25.2038",
+    "title": "Regra geral: editar um financiamento nunca mais duplica parcelas",
+    "date": "25/07/2026",
+    "benefits": [
+      {
+        "title": "Corrigida a causa raiz das parcelas fantasma",
+        "desc": "A limpeza de parcelas ao editar um financiamento agora vale pra qualquer parcela futura não paga, não só as marcadas de um jeito específico.",
+        "type": "correção"
+      }
+    ],
+    "changes": [
+      "pages/Assets.tsx (handleSaveLiability): limpeza de parcelas antes de regerar cronograma não exige mais metadata.auto_generated=true.",
+      "components/assets/RealEstateWizardModal.tsx: parcelas do assistente de imóvel passaram a marcar metadata.auto_generated=true."
+    ]
+  },
+  {
     "version": "2026.07.25.2015",
     "title": "Detalhamento do Fluxo Mensal, e limpeza de parcelas fantasma do Financiamento a Definir",
     "date": "25/07/2026",

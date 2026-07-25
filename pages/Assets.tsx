@@ -4836,14 +4836,17 @@ const Assets: React.FC = () => {
           );
           if (confirmRegen) {
             const todayStr = DateUtils.formatToISODate();
-            // Apaga apenas parcelas futuras, não pagas, geradas automaticamente para este passivo.
+            // Apaga parcelas futuras não pagas vinculadas a este passivo — sem exigir
+            // metadata.auto_generated=true, pois nem todo fluxo que gera parcela marca essa
+            // flag (ex.: assistente de imóvel). Qualquer parcela futura/não paga vinculada ao
+            // passivo é, por definição, regenerável; a mesma regra já vale em excluir/arquivar
+            // passivo (handleDeleteLiability/handleArchiveLiability) — aqui só faltava igualar.
             const { data: futureParcels } = await supabase
               .from('transactions')
               .select('id')
               .eq('liability_id', editingLiability.id)
               .eq('is_paid', false)
-              .gte('date', todayStr)
-              .eq('metadata->>auto_generated', 'true');
+              .gte('date', todayStr);
             if (futureParcels && futureParcels.length > 0) {
               await supabase.from('transactions').delete().in('id', futureParcels.map((t: any) => t.id));
             }

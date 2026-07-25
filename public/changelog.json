@@ -1,23 +1,17 @@
 {
-  "version": "2026.07.25.2015",
-  "title": "Detalhamento do Fluxo Mensal, e limpeza de parcelas fantasma do Financiamento a Definir",
+  "version": "2026.07.25.2038",
+  "title": "Regra geral: editar um financiamento nunca mais duplica parcelas",
   "date": "25/07/2026",
   "benefits": [
     {
-      "title": "Clique no card Fluxo Mensal para ver o que está sendo calculado",
-      "desc": "Agora o card 'Fluxo Mensal' (na Visão Geral do Patrimônio) abre um detalhamento completo ao ser clicado: cada receita (aluguéis, rendimento de investimentos) e cada despesa (financiamentos, condomínio/IPTU, consórcios, veículos, imóveis na planta) que compõem o saldo mostrado.",
-      "type": "recurso"
-    },
-    {
-      "title": "Financiamento a Definir não deixa mais parcela fantasma em Transações",
-      "desc": "Encontramos um bug: ao marcar um financiamento como 'a Definir', as parcelas que já tinham sido lançadas em Transações (de quando o financiamento ainda não era 'a definir') continuavam lá, mesmo não sendo mais reais. Corrigido — agora, ao marcar como 'a Definir', essas parcelas futuras e não pagas são removidas automaticamente. Suas duas dívidas de imóvel na planta já foram limpas (121 parcelas fantasma removidas).",
+      "title": "Corrigida a causa raiz das parcelas fantasma",
+      "desc": "A limpeza de parcelas antigas ao editar um financiamento (taxa, tipo de amortização etc.) só funcionava se a parcela tivesse uma marcação interna específica — mas o assistente de compra de imóvel nunca colocava essa marcação. Resultado: editar um financiamento vindo do assistente de imóvel podia duplicar todas as parcelas futuras em vez de substituí-las. Agora a limpeza vale para qualquer parcela futura não paga do financiamento, não importa como ela foi criada — a mesma regra já usada ao excluir ou arquivar um passivo.",
       "type": "correção"
     }
   ],
   "changes": [
-    "pages/Assets.tsx: sustainabilitySummary passou a expor vehicleRents/otherRents; card 'Fluxo Mensal' virou botão que abre um modal com o detalhamento de Receitas e Despesas.",
-    "pages/Assets.tsx (handleSaveLiability): ao salvar um passivo MORTGAGE com 'Financiamento a Definir' marcado, as transações futuras não pagas vinculadas a ele são marcadas is_deleted=true; a geração/regeneração automática de cronograma de parcelas passou a ser pulada enquanto 'a Definir' estiver marcado (tanto na criação quanto na edição do passivo).",
-    "Correção de dados: 121 transações fantasma (1 do Wave Beach Prime + 120 do Solina) marcadas como excluídas no banco.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; modal de detalhamento testado no modo demo (abriu com Receitas/Despesas corretas); bug de parcelas confirmado e corrigido por consulta direta ao banco (121 registros antes → 0 depois)."
+    "pages/Assets.tsx (handleSaveLiability): a limpeza de parcelas antes de regerar o cronograma deixou de exigir metadata.auto_generated=true — agora remove qualquer parcela futura não paga vinculada ao passivo, igual ao já feito em handleDeleteLiability e handleArchiveLiability.",
+    "components/assets/RealEstateWizardModal.tsx: parcelas de financiamento criadas pelo assistente de imóvel passaram a receber metadata.auto_generated=true, por consistência com o restante do sistema.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; confirmado por leitura de código que handleDeleteAsset (exclusão de ativo), handleDeleteLiability e handleArchiveLiability (exclusão/arquivamento de passivo) já limpavam corretamente as transações vinculadas antes desta mudança — a lacuna era só na edição de passivo com troca de cronograma."
   ]
 }

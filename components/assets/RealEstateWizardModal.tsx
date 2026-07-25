@@ -588,6 +588,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
               liability_id: financingLiabilityId,
               is_amortization: true,
               metadata: {
+                auto_generated: true,
                 linked_asset_id: assetId,
                 liability_id: financingLiabilityId,
                 property_tx_type: 'FINANCING',
