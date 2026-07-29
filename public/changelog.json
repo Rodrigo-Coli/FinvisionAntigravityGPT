@@ -1,72 +1,23 @@
 {
-  "version": "2026.07.26.0245",
-  "title": "Conciliação no lugar certo, investimentos com custo e IR corretos",
+  "version": "2026.07.26.0330",
+  "title": "Contas da mesma instituição agora aparecem como uma só",
   "date": "26/07/2026",
   "benefits": [
     {
-      "title": "Extrato importado em Banco não some mais para Diversos",
-      "desc": "A aba da fila era decidida por 'essa linha tem uma conta cadastrada?'. Quem importava um extrato de banco sem escolher a conta antes via tudo cair em Diversos, mesmo tendo clicado em Banco. Agora a origem fica carimbada na importação e a fila respeita o botão que você usou.",
-      "type": "correção"
-    },
-    {
-      "title": "Escolher Banco ou Cartão em lote não troca mais de tela",
-      "desc": "Ao selecionar vários lançamentos em Diversos e clicar em Banco ou Cartão para dizer o destino, a tela inteira trocava de aba e os itens selecionados sumiam. Agora esses botões escolhem só o destino da operação e você continua exatamente onde estava.",
-      "type": "correção"
-    },
-    {
-      "title": "Conferência de duplicidade na hora de gravar",
-      "desc": "A checagem só rodava na importação e comparava com todos os seus lançamentos. Agora, ao confirmar (uma ou várias), o app confere na conta ou cartão de destino se já existe algo de mesma data e valor. No individual ele pergunta; em lote ele segura os repetidos na fila e avisa quantos foram.",
+      "title": "Corrente, poupança e investimento num card só",
+      "desc": "Você vincula as contas da mesma instituição com um nome de grupo (ex.: 'Safra Rodrigo') e elas passam a aparecer como uma conta única, com o saldo total em destaque e a divisão por tipo logo abaixo. A lista de contas encolhe sem que nada seja apagado.",
       "type": "novidade"
     },
     {
-      "title": "Resgate e juros de investimento não geram mais dinheiro do nada",
-      "desc": "Resgatar somava o valor no saldo inicial da conta — e quando o mesmo crédito chegava pelo extrato do banco, contava duas vezes. Agora resgate é troca de bolso: sai do investimento e entra no caixa da conta, sem virar receita. Juros e cupons entram como receita de verdade, na conta que você escolher.",
-      "type": "correção"
-    },
-    {
-      "title": "Aporte novo agora entra no custo e o IR é calculado por aporte",
-      "desc": "Registrar um aporte no extrato não mexia no 'Valor Aplicado', então o app achava que tudo era lucro e cobrava IR demais. Agora o custo é a soma dos aportes e cada um recebe a alíquota do seu próprio prazo (22,5% / 20% / 17,5% / 15%) — igual ao que a corretora faz. O detalhe do IR mostra a conta aporte a aporte.",
-      "type": "correção"
-    },
-    {
-      "title": "O valor que aparece na lista é o líquido",
-      "desc": "As linhas mostravam o valor bruto e o topo do card mostrava o líquido, então os números nunca fechavam. Agora cada investimento mostra o líquido (o que sobra depois do IR) em destaque, o bruto logo abaixo, e o total do card é a soma do que está listado. Nomes longos deixaram de ser cortados.",
-      "type": "melhoria"
-    },
-    {
-      "title": "Campo de Liquidez utilizável no celular",
-      "desc": "No celular o campo era espremido até virar uma bolinha e não dava para digitar o D+0. Virou um seletor claro: liquidez diária, resgate em D+ dias ou só no vencimento — com a opção de também liberar no vencimento.",
-      "type": "correção"
-    },
-    {
-      "title": "CRI, CRA e CDI + spread finalmente cabem no cadastro",
-      "desc": "Faltava a opção CDI + spread (o clássico 'CDI + 3,50') e o IGP-M. Agora dá para cadastrar pré, % do CDI, CDI + spread, IPCA + spread e IGP-M + spread, e o app mostra na hora quanto isso dá em % ao ano. Índice + spread passou a compor pela convenção de mercado, não somar.",
-      "type": "novidade"
-    },
-    {
-      "title": "CDI e IPCA agora são seus, não do código",
-      "desc": "As taxas estavam fixas em 10,4% e 4% desde sempre, então todo título pós-fixado rendia pelo cenário de outra época. Em Ajustes › Taxas e Conversão você mantém CDI, IPCA e IGP-M atualizados e todos os cálculos de renda fixa passam a usar os seus números.",
-      "type": "novidade"
-    },
-    {
-      "title": "Data do próximo pagamento de juros no card",
-      "desc": "Dá para cadastrar a frequência (mensal, trimestral, semestral, anual) e a data do próximo pagamento de juros. O card avisa quando cai. Na hora que o dinheiro entrar, você registra no Extrato do investimento e ele credita a conta escolhida.",
-      "type": "novidade"
-    },
-    {
-      "title": "Transferir entre corrente, poupança e investimento",
-      "desc": "Botão Transferir na tela de Contas: o valor sai de uma conta e entra na outra em um passo só, sem contar como receita nem como despesa nos relatórios. É o jeito certo de mover dinheiro entre os bolsos da mesma instituição.",
+      "title": "Cada bolso continua com extrato e saldo próprios",
+      "desc": "Vincular é só um rótulo: nenhuma transação é movida e nenhuma conta é apagada. Dentro do card, cada conta mantém seu extrato, seu ajuste de saldo e sua edição — e você desvincula em um clique quando quiser. É o que garante que dá para continuar vendo quanto está em conta corrente e quanto está investido.",
       "type": "novidade"
     }
   ],
   "changes": [
-    "api/_lib/handle-bank-reconcile.ts e handle-card-reconcile.ts: imported_transactions passa a gravar metadata.source_type ('bank'/'card').",
-    "pages/Reconcile.tsx: filteredImported filtra pela origem carimbada (fallback pela conta para linhas antigas); barra de lote ganhou bulkTargetType e datalist próprios, sem mexer em importSource; handleTargetChange recebeu typeHint/keepTab; novo findDuplicateAtTarget usado em handleConfirm, com relato agregado em handleBulkConfirm e handleSyncAll.",
-    "pages/Assets.tsx: allInvestmentMovements carregado junto da página; novo investmentLotsByAsset e computeLotBasedTax (IR por aporte com alíquota regressiva de cada data); custo do ativo = soma dos APORTEs; handleRedeemInvestment deixou de somar em initial_balance e de recalcular current_balance por conta própria (usa a RPC recalculate_account_balance); resgate parcial encolhe os aportes na mesma proporção; novo applyMovementSideEffects liga o extrato ao saldo (APORTE, RENDIMENTO_MENSAL, RENDIMENTO_ACUMULADO, AMORTIZACAO, RESGATE_*, AJUSTE_MANUAL); handleSaveAssetInner mantém o aporte inicial alinhado ao Valor Aplicado; campo de liquidez virou seletor; novos campos couponFrequency e couponNextDate.",
-    "lib/financialEngine.ts: MARKET_INDEXES configurável (setMarketIndexes), indexadores CDI_PLUS e IGPM, composição índice+spread pela convenção de mercado e novo describeYieldRate.",
-    "pages/Settings.tsx: bloco Índices de Mercado em Taxas e Conversão, gravando em user_settings.market_indexes. App.tsx aplica os índices no início da sessão (cache local + confirmação no servidor).",
-    "components/banking/AccountsSection.tsx: modal de transferência entre contas gerando as duas pernas (SOURCE/DESTINATION) com affects_balance e isCapitalized.",
-    "supabase/investments_transfers_and_indexes.sql: recalculate_account_balance passou a contar TRANSFER marcada com affects_balance (lançamentos antigos seguem neutros de propósito); coluna user_settings.market_indexes; backfill do aporte inicial para investimentos criados antes do extrato.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; 120 testes passando (o caso de IPCA+ em tests/financial.test.ts foi atualizado de soma para composição, junto com casos novos de CDI+spread e IGP-M)."
+    "supabase/account_groups.sql: nova coluna accounts.group_key (rótulo do grupo) com índice parcial por usuário. Optamos por vincular em vez de fundir contas: fundir seria irreversível e apagaria a separação entre saldo em conta e saldo investido.",
+    "types.ts: BankAccount ganhou groupKey.",
+    "components/banking/AccountsSection.tsx: contas agrupadas por group_key num card único (bolsos ordenados corrente → poupança → investimento), com ações por bolso (extrato, ajustar, editar, desvincular) e botões de vincular/renomear grupo.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; 120 testes passando."
   ]
 }

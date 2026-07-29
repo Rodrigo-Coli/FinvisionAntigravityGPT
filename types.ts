@@ -71,6 +71,13 @@ export interface BankAccount {
   isArchived: boolean;
   includeInDashboard: boolean;
   lastSync?: string;
+  /**
+   * Rótulo do grupo de contas da mesma instituição (ex.: "Safra Rodrigo" cobrindo a
+   * conta corrente e a conta de investimento). Contas com o mesmo rótulo aparecem
+   * como um card único, mas continuam separadas por baixo — cada uma mantém saldo,
+   * extrato e tributação próprios.
+   */
+  groupKey?: string | null;
 }
 
 export type TransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'BILL_PAYMENT' | 'ADJUSTMENT';

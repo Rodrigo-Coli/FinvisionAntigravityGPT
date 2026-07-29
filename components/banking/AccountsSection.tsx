@@ -21,7 +21,8 @@ import {
   CreditCard,
   Building2,
   RefreshCw,
-  Zap
+  Zap,
+  Link as LinkIcon
 } from 'lucide-react';
 import { BankAccount, AccountType } from '../../types';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
@@ -149,7 +150,11 @@ const AccountsSection: React.FC = () => {
             limit: Number(acc.limit || acc.overdraft_limit || 0),
             color: acc.color,
             isArchived: acc.is_archived || acc.status === 'archived',
-            includeInDashboard: acc.include_in_dashboard !== false
+            includeInDashboard: acc.include_in_dashboard !== false,
+            // Rótulo do grupo. Contas com o mesmo group_key são bolsos da mesma
+            // instituição (corrente + poupança + investimento) e aparecem como um
+            // card só, com os saldos discriminados por tipo.
+            groupKey: acc.group_key || null
           }));
 
         // Deduplica por ID (não por nome do banco): é normal ter mais de uma conta
@@ -431,6 +436,41 @@ const AccountsSection: React.FC = () => {
     }
   };
 
+  // Vincular / desvincular uma conta a um grupo. É só um rótulo: nada de dado é
+  // movido, nenhuma conta é apagada, e desvincular devolve tudo ao estado anterior.
+  const setAccountGroup = async (accountId: string, groupLabel: string | null) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase
+        .from('accounts')
+        .update({ group_key: groupLabel })
+        .eq('id', accountId);
+      if (error) throw error;
+      await fetchAccounts(true);
+      toast(groupLabel ? `Conta vinculada a "${groupLabel}".` : 'Conta desvinculada do grupo.', 'success');
+    } catch (err: any) {
+      console.error('Erro ao vincular conta:', err);
+      toast('Não foi possível vincular a conta: ' + err.message, 'error');
+    }
+  };
+
+  const promptLinkAccount = (acc: BankAccount) => {
+    const suggestions = Array.from(new Set(
+      accounts.filter(a => a.groupKey && a.id !== acc.id).map(a => a.groupKey as string)
+    ));
+    const hint = suggestions.length > 0
+      ? `\n\nGrupos que já existem: ${suggestions.join(', ')}`
+      : '';
+    const label = window.prompt(
+      `Nome do grupo para "${acc.institution}".\n\n` +
+      `Contas com o mesmo nome de grupo aparecem como um card só, mantendo os saldos ` +
+      `separados por tipo. Deixe em branco para desvincular.${hint}`,
+      acc.groupKey || acc.institution
+    );
+    if (label === null) return;
+    setAccountGroup(acc.id, label.trim() || null);
+  };
+
   const openTransferModal = (fromId: string = '') => {
     setTransferFrom(fromId);
     setTransferTo('');
@@ -531,6 +571,27 @@ const AccountsSection: React.FC = () => {
     const matchesDashboard = filterDashboard === 'ALL' || (filterDashboard === 'YES' ? acc.includeInDashboard : !acc.includeInDashboard);
     return matchesSearch && matchesType && matchesStatus && matchesCurrency && matchesDashboard;
   });
+
+  // Agrupa os bolsos da mesma instituição num card só. Contas sem grupo continuam
+  // sozinhas — o agrupamento é sempre explícito (você escolhe o rótulo), nunca
+  // adivinhado pelo nome: "Safra Rodrigo" e "Safra Fátima" começam igual e são de
+  // titulares diferentes.
+  const accountGroups = (() => {
+    const groups = new Map<string, { key: string; label: string; accounts: BankAccount[] }>();
+    for (const acc of filteredAccounts) {
+      const key = acc.groupKey ? `g:${acc.groupKey}` : `solo:${acc.id}`;
+      const label = acc.groupKey || acc.institution;
+      const existing = groups.get(key);
+      if (existing) existing.accounts.push(acc);
+      else groups.set(key, { key, label, accounts: [acc] });
+    }
+    // Dentro do grupo: corrente primeiro, depois poupança, depois investimento.
+    const order: Record<string, number> = { CHECKING: 0, SAVINGS: 1, INVESTMENT: 2 };
+    for (const g of groups.values()) {
+      g.accounts.sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9));
+    }
+    return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label));
+  })();
 
   const totalBalance = filteredAccounts
     .filter(acc => acc.includeInDashboard && !acc.isArchived)
@@ -661,88 +722,176 @@ const AccountsSection: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-          {filteredAccounts.map((acc) => (
+          {accountGroups.map((grupo) => {
+            const isGrouped = grupo.accounts.length > 1;
+            const groupTotal = grupo.accounts.reduce((s, a) => s + a.currentBalance, 0);
+            const principal = grupo.accounts[0];
+            const allArchived = grupo.accounts.every(a => a.isArchived);
+
+            return (
             <div
-              key={acc.id}
-              className={`bg-white rounded-[24px] border border-slate-100 p-5 shadow-sm group hover:border-brand-200 transition-all duration-300 relative overflow-hidden ${acc.isArchived ? 'opacity-70 grayscale' : ''}`}
+              key={grupo.key}
+              className={`bg-white rounded-[24px] border border-slate-100 p-5 shadow-sm group hover:border-brand-200 transition-all duration-300 relative overflow-hidden ${allArchived ? 'opacity-70 grayscale' : ''}`}
             >
               <div className="absolute top-0 right-0 w-20 h-20 bg-slate-50 rounded-bl-[80px] -translate-y-5 translate-x-5 opacity-0 group-hover:opacity-100 transition-all" />
 
               <div className="relative z-10 space-y-4">
                 <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg shadow-current/20"
-                      style={{ backgroundColor: acc.color }}
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg shadow-current/20 shrink-0"
+                      style={{ backgroundColor: principal.color }}
                     >
-                      {acc.type === 'CHECKING' ? <Building2 size={20} /> : <Wallet size={20} />}
+                      {principal.type === 'CHECKING' ? <Building2 size={20} /> : <Wallet size={20} />}
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-bold text-sm text-slate-900 group-hover:text-brand-600 transition-colors uppercase tracking-tight truncate max-w-[150px]">{acc.institution}</h3>
-                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{getTypeLabel(acc.type)}</p>
+                      <h3 className="font-bold text-sm text-slate-900 group-hover:text-brand-600 transition-colors uppercase tracking-tight break-words">{grupo.label}</h3>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                        {isGrouped
+                          ? `${grupo.accounts.length} contas vinculadas`
+                          : getTypeLabel(principal.type)}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => handleEditAccount(acc)}
-                      className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
-                      aria-label={`Editar conta do ${acc.institution}`}
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleArchiveAccount(acc.id, acc.isArchived)}
-                      className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
-                      aria-label={`${acc.isArchived ? 'Desarquivar' : 'Arquivar'} conta do ${acc.institution}`}
-                    >
-                      <Archive size={14} />
-                    </button>
-                  </div>
+                  {!isGrouped && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                      <button
+                        onClick={() => promptLinkAccount(principal)}
+                        className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
+                        title="Vincular a outra conta da mesma instituição"
+                        aria-label={`Vincular a conta do ${principal.institution} a um grupo`}
+                      >
+                        <LinkIcon size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleEditAccount(principal)}
+                        className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
+                        aria-label={`Editar conta do ${principal.institution}`}
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleArchiveAccount(principal.id, principal.isArchived)}
+                        className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                        aria-label={`${principal.isArchived ? 'Desarquivar' : 'Arquivar'} conta do ${principal.institution}`}
+                      >
+                        <Archive size={14} />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-0.5">
-                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Saldo Atual</p>
-                  <p className={`text-xl font-black tracking-tight ${acc.currentBalance < 0 ? 'text-rose-500' : 'text-slate-900'}`}>
-                    {formatCurrency(acc.currentBalance)}
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                    {isGrouped ? 'Saldo Total do Grupo' : 'Saldo Atual'}
+                  </p>
+                  <p className={`text-xl font-black tracking-tight ${groupTotal < 0 ? 'text-rose-500' : 'text-slate-900'}`}>
+                    {formatCurrency(groupTotal)}
                   </p>
                 </div>
 
+                {/* Bolsos do grupo: cada conta continua separada, com saldo e ações
+                    próprias. É o que evita perder de vista quanto está em conta
+                    corrente e quanto está investido. */}
+                {isGrouped && (
+                  <div className="space-y-2 pt-1">
+                    {grupo.accounts.map(acc => (
+                      <div key={acc.id} className="flex items-center justify-between gap-2 p-2.5 bg-slate-50 rounded-xl">
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{getTypeLabel(acc.type)}</p>
+                          <p className="text-[10px] font-medium text-slate-400 break-words leading-tight">{acc.institution}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`text-xs font-black tabular-nums ${acc.currentBalance < 0 ? 'text-rose-500' : 'text-slate-800'}`}>
+                            {formatCurrency(acc.currentBalance)}
+                          </span>
+                          <button
+                            onClick={() => navigate(`/history?account=${acc.id}`)}
+                            className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-white rounded-lg transition-all"
+                            title={`Extrato de ${acc.institution}`}
+                            aria-label={`Ver extrato da conta do ${acc.institution}`}
+                          >
+                            <HistoryIcon size={11} />
+                          </button>
+                          <button
+                            onClick={() => { setAdjustAccount(acc); setAdjustValue(acc.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
+                            className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-white rounded-lg transition-all"
+                            title={`Ajustar saldo de ${acc.institution}`}
+                            aria-label={`Ajustar saldo da conta do ${acc.institution}`}
+                          >
+                            <RefreshCw size={11} />
+                          </button>
+                          <button
+                            onClick={() => handleEditAccount(acc)}
+                            className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-white rounded-lg transition-all"
+                            title={`Editar ${acc.institution}`}
+                            aria-label={`Editar conta do ${acc.institution}`}
+                          >
+                            <Edit2 size={11} />
+                          </button>
+                          <button
+                            onClick={() => setAccountGroup(acc.id, null)}
+                            className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-white rounded-lg transition-all"
+                            title={`Desvincular ${acc.institution} do grupo`}
+                            aria-label={`Desvincular a conta do ${acc.institution} do grupo`}
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
-                    <div className={`w-1.5 h-1.5 rounded-full ${acc.includeInDashboard ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                    <div className={`w-1.5 h-1.5 rounded-full ${principal.includeInDashboard ? 'bg-emerald-500' : 'bg-slate-300'}`} />
                     <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
-                      {acc.includeInDashboard ? 'No Dashboard' : 'Privada'}
+                      {principal.includeInDashboard ? 'No Dashboard' : 'Privada'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
+                    {!isGrouped && (
+                      <button
+                        onClick={() => navigate(`/history?account=${principal.id}`)}
+                        className="flex items-center justify-center p-2 bg-brand-50 hover:bg-brand-600 text-brand-600 hover:text-white rounded-lg transition-all shadow-sm"
+                        title="Ver Extrato"
+                        aria-label={`Ver extrato da conta do ${principal.institution}`}
+                      >
+                        <HistoryIcon size={12} />
+                      </button>
+                    )}
                     <button
-                      onClick={() => navigate(`/history?account=${acc.id}`)}
-                      className="flex items-center justify-center p-2 bg-brand-50 hover:bg-brand-600 text-brand-600 hover:text-white rounded-lg transition-all shadow-sm"
-                      title="Ver Extrato"
-                      aria-label={`Ver extrato da conta do ${acc.institution}`}
-                    >
-                      <HistoryIcon size={12} />
-                    </button>
-                    <button
-                      onClick={() => openTransferModal(acc.id)}
+                      onClick={() => openTransferModal(principal.id)}
                       className="flex items-center justify-center p-2 bg-slate-50 hover:bg-brand-900 hover:text-white text-slate-500 rounded-lg transition-all"
-                      title="Transferir desta conta para outra"
-                      aria-label={`Transferir da conta do ${acc.institution} para outra conta`}
+                      title="Transferir para outra conta"
+                      aria-label={`Transferir da conta do ${principal.institution} para outra conta`}
                     >
                       <ArrowRight size={12} />
                     </button>
-                    <button
-                      onClick={() => { setAdjustAccount(acc); setAdjustValue(acc.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-brand-900 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
-                      aria-label={`Ajustar saldo da conta do ${acc.institution}`}
-                    >
-                      <RefreshCw size={10} /> Ajustar Saldo
-                    </button>
+                    {isGrouped ? (
+                      <button
+                        onClick={() => promptLinkAccount(principal)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-brand-900 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
+                        aria-label={`Renomear o grupo ${grupo.label}`}
+                      >
+                        <LinkIcon size={10} /> Grupo
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => { setAdjustAccount(principal); setAdjustValue(principal.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-brand-900 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
+                        aria-label={`Ajustar saldo da conta do ${principal.institution}`}
+                      >
+                        <RefreshCw size={10} /> Ajustar Saldo
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
 
           {/* ADD CARD BUTTON (MOCK) */}
           <button

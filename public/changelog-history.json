@@ -1,5 +1,25 @@
 [
   {
+    "version": "2026.07.26.0330",
+    "title": "Contas da mesma instituição agora aparecem como uma só",
+    "date": "26/07/2026",
+    "benefits": [
+      {
+        "title": "Corrente, poupança e investimento num card só",
+        "desc": "Contas vinculadas por um nome de grupo aparecem como uma conta única, com o total em destaque e a divisão por tipo abaixo.",
+        "type": "novidade"
+      },
+      {
+        "title": "Cada bolso continua com extrato e saldo próprios",
+        "desc": "Vincular é só um rótulo: nada é movido nem apagado, e dá para desvincular em um clique.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "Nova coluna accounts.group_key e card agrupado na tela de Contas, com ações por bolso e vincular/desvincular."
+    ]
+  },
+  {
     "version": "2026.07.26.0245",
     "title": "Conciliação no lugar certo, investimentos com custo e IR corretos",
     "date": "26/07/2026",
