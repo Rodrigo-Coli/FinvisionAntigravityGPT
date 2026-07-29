@@ -96,11 +96,19 @@ const Assets: React.FC = () => {
   const [selectedInvestmentForLedger, setSelectedInvestmentForLedger] = useState<any | null>(null);
   const [investmentMovements, setInvestmentMovements] = useState<any[]>([]);
   const [loadingInvestmentMovements, setLoadingInvestmentMovements] = useState(false);
+  // Extrato de TODOS os investimentos, carregado junto com a página. É o que permite
+  // somar os aportes no custo e calcular o IR aporte a aporte — antes o extrato só era
+  // lido quando você abria o modal de um ativo, então o custo exibido no card ignorava
+  // qualquer aporte posterior ao cadastro.
+  const [allInvestmentMovements, setAllInvestmentMovements] = useState<any[]>([]);
   const [newMovementForm, setNewMovementForm] = useState({
     movement_type: 'RENDIMENTO_MENSAL',
     amount: '',
     movement_date: DateUtils.formatToISODate(),
-    notes: ''
+    notes: '',
+    // Conta onde o dinheiro cai (juros/cupom/amortização) ou de onde sai (aporte).
+    // Vazio = só registra no extrato do ativo, sem mexer em conta nenhuma.
+    accountId: ''
   });
   const [editingMovementId, setEditingMovementId] = useState<string | null>(null);
   const [editingMovementDraft, setEditingMovementDraft] = useState<{ amount: string; movement_date: string } | null>(null);
@@ -469,6 +477,10 @@ const Assets: React.FC = () => {
     vencimentoDate: '',
     liquidityAtMaturity: false,
     liquidityDays: '',
+    // Cronograma de pagamento de juros/cupom (CRI, CRA, debêntures e afins pagam em
+    // datas fixas). Serve para o card avisar quando o próximo pagamento cai.
+    couponFrequency: 'NONE' as 'NONE' | 'MENSAL' | 'TRIMESTRAL' | 'SEMESTRAL' | 'ANUAL',
+    couponNextDate: '',
     status: 'ATIVO' as 'ATIVO' | 'RESGATADO',
     isTaxExempt: false,
     coeCapitalProtected: false,
@@ -660,7 +672,7 @@ const Assets: React.FC = () => {
 
     // --- 2. BUSCA ONLINE ATUALIZADA EM PARALELO (SILENT REFRESH) ---
     try {
-      const [physRes, accsRes, liabsRes, budgetsRes, goalsRes] = await Promise.all([
+      const [physRes, accsRes, liabsRes, budgetsRes, goalsRes, movsRes] = await Promise.all([
         supabase
           .from('physical_assets')
           .select('*')
@@ -683,8 +695,15 @@ const Assets: React.FC = () => {
         supabase
           .from('goals')
           .select('*')
+          .eq('user_id', userId),
+        supabase
+          .from('investment_movements')
+          .select('id, asset_id, movement_type, amount, movement_date, notes, linked_transaction_id')
           .eq('user_id', userId)
+          .order('movement_date', { ascending: true })
       ]);
+
+      if (movsRes?.data) setAllInvestmentMovements(movsRes.data);
 
       if (physRes.error) throw physRes.error;
       if (accsRes.error) throw accsRes.error;
@@ -903,13 +922,82 @@ const Assets: React.FC = () => {
     });
   }, [liabilities]);
 
+  // Aportes de cada ativo, em ordem cronológica. Cada aporte é um "lote" com data
+  // própria — é isso que permite cobrar a alíquota certa de IR em cada pedaço: no
+  // Brasil o prazo de custódia (22,5% / 20% / 17,5% / 15%) conta a partir da data de
+  // CADA aplicação, não da primeira. Antes o app usava só a data de aquisição do ativo.
+  const investmentLotsByAsset = useMemo(() => {
+    const map = new Map<string, { amount: number; date: string }[]>();
+    for (const mv of allInvestmentMovements) {
+      if (mv.movement_type !== 'APORTE') continue;
+      const amount = Number(mv.amount || 0);
+      if (amount <= 0) continue;
+      const list = map.get(mv.asset_id) || [];
+      list.push({ amount, date: mv.movement_date });
+      map.set(mv.asset_id, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    }
+    return map;
+  }, [allInvestmentMovements]);
+
+  // Reparte o ganho do ativo entre os aportes (proporcional ao valor de cada um) e
+  // aplica a alíquota do prazo de custódia de cada aporte. Devolve o imposto total e a
+  // alíquota efetiva resultante, que é a que faz sentido mostrar na tela.
+  const computeLotBasedTax = (
+    lots: { amount: number; date: string }[],
+    totalCost: number,
+    totalGain: number,
+    isExempt: boolean
+  ) => {
+    const today = new Date();
+    const daysSince = (dateStr: string) => {
+      const d = new Date(`${(dateStr || '').substring(0, 10)}T12:00:00`);
+      if (isNaN(d.getTime())) return 0;
+      return Math.max(0, Math.floor((today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24)));
+    };
+
+    if (totalCost <= 0 || lots.length === 0) {
+      return { taxAmount: 0, effectiveRate: 0, weightedDays: 0, breakdown: [] as any[] };
+    }
+
+    let taxAmount = 0;
+    let weightedDays = 0;
+    const breakdown: { amount: number; date: string; days: number; rate: number; gain: number; tax: number }[] = [];
+
+    for (const lot of lots) {
+      const share = lot.amount / totalCost;
+      const days = daysSince(lot.date);
+      const rate = FinancialEngine.calculateRegressiveTaxRate(days, isExempt);
+      const gain = totalGain * share;
+      const tax = gain > 0 ? gain * rate : 0;
+      taxAmount += tax;
+      weightedDays += days * share;
+      breakdown.push({ amount: lot.amount, date: lot.date, days, rate, gain, tax });
+    }
+
+    taxAmount = Math.round(taxAmount * 100) / 100;
+    const effectiveRate = totalGain > 0 ? taxAmount / totalGain : 0;
+    return { taxAmount, effectiveRate, weightedDays: Math.round(weightedDays), breakdown };
+  };
+
   const enrichedPhysicalAssets = useMemo(() => {
     return activePhysicalAssets.map(p => {
       if (p.category === 'INVESTMENT') {
         const meta = p.metadata || {};
-        const purchase = Number(meta.purchaseValue) || Number(meta.initialInvestmentAmount) || Number(p.estimatedValue) || 0;
+        const declaredPurchase = Number(meta.purchaseValue) || Number(meta.initialInvestmentAmount) || Number(p.estimatedValue) || 0;
+        // Custo = soma dos aportes do extrato. Quando o ativo ainda não tem extrato
+        // (cadastro antigo), cai no valor declarado no cadastro.
+        const ledgerLots = investmentLotsByAsset.get(p.id) || [];
+        const ledgerTotal = ledgerLots.reduce((s, l) => s + l.amount, 0);
+        const purchase = ledgerTotal > 0 ? Math.round(ledgerTotal * 100) / 100 : declaredPurchase;
+        const lots = ledgerTotal > 0
+          ? ledgerLots
+          : [{ amount: declaredPurchase, date: p.acquisitionDate || DateUtils.formatToISODate() }];
+        const hasLedgerLots = ledgerTotal > 0;
         const isVariableIncome = ['ACOES', 'FIIS', 'CRIPTO'].includes(meta.investmentType);
-        
+
         if (isVariableIncome) {
           const grossValue = Number(p.estimatedValue || 0);
           const grossYield = grossValue - purchase;
@@ -929,6 +1017,10 @@ const Assets: React.FC = () => {
             estimatedValue: grossValue,
             netValue: netValue,
             grossYield: grossYield,
+            costBasis: purchase,
+            lots,
+            hasLedgerLots,
+            taxBreakdown: [] as any[],
             taxRate: taxRate,
             taxAmount: taxAmount,
             daysElapsed: 0,
@@ -936,7 +1028,7 @@ const Assets: React.FC = () => {
             parsedAnnualRate: 0
           };
         } else {
-          const acqDate = p.acquisitionDate || DateUtils.formatToISODate();
+          const acqDate = lots[0]?.date || p.acquisitionDate || DateUtils.formatToISODate();
           const parsedAnnualRate = FinancialEngine.parseYieldRate(meta.yieldRate || '', meta.interestType || 'PRE');
           const isExempt = !!meta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'POUPANCA'].includes(meta.investmentType);
 
@@ -954,8 +1046,10 @@ const Assets: React.FC = () => {
 
           const grossValue = Number(p.estimatedValue || 0);
           const grossYield = Math.max(0, grossValue - purchase);
-          const taxRate = FinancialEngine.calculateRegressiveTaxRate(calcs.daysElapsed, isExempt);
-          const taxAmount = Math.round(grossYield * taxRate * 100) / 100;
+          // IR aporte a aporte: cada aplicação carrega a alíquota do seu próprio prazo.
+          const lotTax = computeLotBasedTax(lots, purchase, grossYield, isExempt);
+          const taxAmount = lotTax.taxAmount;
+          const taxRate = lotTax.effectiveRate;
           const netValue = Math.round((grossValue - taxAmount) * 100) / 100;
 
           return {
@@ -963,9 +1057,13 @@ const Assets: React.FC = () => {
             estimatedValue: grossValue,
             netValue,
             grossYield,
+            costBasis: purchase,
+            lots,
+            hasLedgerLots,
+            taxBreakdown: lotTax.breakdown,
             taxRate,
             taxAmount,
-            daysElapsed: calcs.daysElapsed,
+            daysElapsed: lots.length > 1 ? lotTax.weightedDays : calcs.daysElapsed,
             monthsElapsed: calcs.monthsElapsed,
             parsedAnnualRate,
             curveProjectedValue: calcs.grossValue
@@ -976,6 +1074,10 @@ const Assets: React.FC = () => {
         ...p,
         netValue: p.estimatedValue,
         grossYield: 0,
+        costBasis: Number(p.metadata?.purchaseValue) || 0,
+        lots: [] as { amount: number; date: string }[],
+        hasLedgerLots: false,
+        taxBreakdown: [] as any[],
         taxRate: 0,
         taxAmount: 0,
         daysElapsed: 0,
@@ -983,7 +1085,7 @@ const Assets: React.FC = () => {
         parsedAnnualRate: 0
       };
     });
-  }, [activePhysicalAssets]);
+  }, [activePhysicalAssets, investmentLotsByAsset]);
 
   const dynamicBrokers = useMemo(() => {
     return brokers.map(b => {
@@ -2565,10 +2667,14 @@ const Assets: React.FC = () => {
         
         if (assetErr) throw assetErr;
       } else {
-        // Resgate Parcial: Reduzir estimated_value e purchaseValue proporcionalmente
+        // Resgate Parcial: reduzir estimated_value e encolher os aportes na mesma
+        // proporção. Os aportes são o custo do ativo — se eles não encolhessem, o app
+        // passaria a achar que o que sobrou custou o mesmo que o total original e o
+        // rendimento (e o IR) sairiam errados daí em diante.
+        const ratio = (currentEstimated - amountToRedeem) / currentEstimated;
         const newEstimatedValue = Math.max(0, currentEstimated - amountToRedeem);
         const oldPurchase = Number(asset.metadata?.purchaseValue || asset.metadata?.initialInvestmentAmount || currentEstimated);
-        const newPurchaseValue = Math.max(0, oldPurchase * (newEstimatedValue / currentEstimated));
+        const newPurchaseValue = Math.max(0, oldPurchase * ratio);
 
         const { error: assetErr } = await supabase
           .from('physical_assets')
@@ -2583,28 +2689,27 @@ const Assets: React.FC = () => {
           .eq('id', asset.id);
 
         if (assetErr) throw assetErr;
+
+        const { data: aportes } = await supabase
+          .from('investment_movements')
+          .select('id, amount')
+          .eq('asset_id', asset.id)
+          .eq('movement_type', 'APORTE');
+
+        for (const ap of aportes || []) {
+          await supabase
+            .from('investment_movements')
+            .update({ amount: Math.round(Number(ap.amount) * ratio * 100) / 100 })
+            .eq('id', ap.id);
+        }
       }
 
-      // 2. Se houver conta destino, somar o dinheiro ao caixa livre (initial_balance)
-      if (targetAccountId) {
-        const { data: accRes, error: accGetErr } = await supabase
-          .from('accounts')
-          .select('initial_balance, current_balance')
-          .eq('id', targetAccountId)
-          .single();
-
-        if (accGetErr) throw accGetErr;
-
-        const currentInitial = Number(accRes?.initial_balance || 0);
-        const newInitial = currentInitial + amountToRedeem;
-
-        const { error: accUpdErr } = await supabase
-          .from('accounts')
-          .update({ initial_balance: newInitial })
-          .eq('id', targetAccountId);
-
-        if (accUpdErr) throw accUpdErr;
-      }
+      // 2. O dinheiro NÃO é crédito novo: ele sai do bolso "investido" e entra no bolso
+      // "caixa". Quem tira do investido é a própria queda do estimated_value acima (o
+      // gatilho do banco recalcula a corretora sozinho). Aqui só entra a perna que
+      // credita a conta de destino, mais abaixo, como TRANSFER marcada.
+      // Antes esta etapa somava o valor no saldo INICIAL da conta destino — e aí, quando
+      // o mesmo crédito chegava pelo extrato e era conciliado, o dinheiro contava duas vezes.
 
       // 3. Criar Transação de Receita
       let catId = null;
@@ -2653,7 +2758,13 @@ const Assets: React.FC = () => {
           linked_asset_id: asset.id,
           type: isTotal ? 'investment_redemption_total' : 'investment_redemption_partial',
           redeemed_amount: amountToRedeem,
-          isCapitalized: true
+          // isCapitalized mantém o resgate fora do fluxo de caixa dos relatórios (não é
+          // receita); transfer_side + affects_balance fazem o dinheiro efetivamente
+          // entrar no saldo da conta destino, sem mexer no saldo inicial dela.
+          isCapitalized: true,
+          transfer_side: 'DESTINATION',
+          affects_balance: !!targetAccountId,
+          counter_asset_id: asset.id
         }
       }]).select('id').single();
 
@@ -2669,54 +2780,49 @@ const Assets: React.FC = () => {
         linked_transaction_id: redemptionTx?.id || null
       }]);
 
-      // 4. Sincronizar o saldo consolidado (current_balance) para as contas envolvidas
+      // 4. Sincronizar o saldo consolidado das contas envolvidas.
+      // Antes daqui saía um cálculo próprio que gravava current_balance = caixa +
+      // investido, ignorando as transações da conta — era isso que deixava o saldo da
+      // corretora diferente do que a tela de Contas mostrava. Agora quem calcula é a
+      // mesma função do banco que todo o resto do app usa.
       const originAccountId = asset.metadata?.brokerAccountId;
-      
-      const syncBroker = async (brokerId: string) => {
-        if (!brokerId) return;
-        const [allInvestsRes, brokerAccRes] = await Promise.all([
-          supabase
-            .from('physical_assets')
-            .select('estimated_value, metadata')
-            .eq('user_id', user.id)
-            .eq('category', 'INVESTMENT')
-            .eq('is_archived', false),
-          supabase
-            .from('accounts')
-            .select('initial_balance')
-            .eq('id', brokerId)
-            .eq('user_id', user.id)
-            .maybeSingle()
-        ]);
-
-        const brokerCash = Number(brokerAccRes.data?.initial_balance || 0);
-        const investedTotal = (allInvestsRes.data || [])
-          .filter((inv: any) =>
-            inv.metadata?.brokerAccountId === brokerId &&
-            inv.metadata?.status !== 'RESGATADO'
-          )
-          .reduce((sum: number, inv: any) => sum + Number(inv.estimated_value || 0), 0);
-
-        await supabase
-          .from('accounts')
-          .update({ current_balance: brokerCash + investedTotal })
-          .eq('id', brokerId)
-          .eq('user_id', user.id);
-      };
-
-      await syncBroker(originAccountId);
+      if (originAccountId) {
+        await supabase.rpc('recalculate_account_balance', { p_account_id: originAccountId });
+      }
       if (targetAccountId && targetAccountId !== originAccountId) {
-        await syncBroker(targetAccountId);
+        await supabase.rpc('recalculate_account_balance', { p_account_id: targetAccountId });
       }
 
       setShowResgateModal(false);
       setSelectedAssetForResgate(null);
       setResgateForm({ type: 'TOTAL', amount: '', destinationAccountId: '' });
+      await reloadAllInvestmentMovements();
       fetchData();
-      toast('Resgate processado com sucesso!', 'success');
+      toast(
+        targetAccountId
+          ? 'Resgate processado: o valor saiu do investimento e entrou no caixa da conta escolhida.'
+          : 'Resgate processado. Nenhuma conta de destino foi escolhida, então o valor só baixou do investimento.',
+        'success'
+      );
     } catch (err: any) {
       toast(`Erro ao resgatar investimento: ${err.message}`, 'error');
     }
+  };
+
+  // Recarrega o extrato de todos os investimentos. Precisa ser chamado sempre que uma
+  // movimentação é criada/alterada/excluída, senão o custo e o IR do card ficam
+  // mostrando o valor anterior até a próxima recarga da página.
+  const reloadAllInvestmentMovements = async () => {
+    if (!supabase) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) return;
+    const { data } = await supabase
+      .from('investment_movements')
+      .select('id, asset_id, movement_type, amount, movement_date, notes, linked_transaction_id')
+      .eq('user_id', user.id)
+      .order('movement_date', { ascending: true });
+    setAllInvestmentMovements(data || []);
   };
 
   const loadInvestmentMovements = async (assetId: string) => {
@@ -2748,11 +2854,129 @@ const Assets: React.FC = () => {
       movement_type: 'RENDIMENTO_MENSAL',
       amount: '',
       movement_date: DateUtils.formatToISODate(),
-      notes: ''
+      notes: '',
+      // Já sugere a corretora do ativo como conta onde os juros caem.
+      accountId: asset?.metadata?.brokerAccountId || ''
     });
     setShowInvestmentLedgerModal(true);
     loadInvestmentMovements(asset.id);
     loadInvestmentReminder(asset.id);
+  };
+
+  // Garante que a categoria "Investimentos" existe e devolve o id.
+  const ensureInvestmentCategory = async (userId: string): Promise<string | null> => {
+    if (!supabase) return null;
+    const { data: existing } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', 'Investimentos')
+      .maybeSingle();
+    if (existing) return existing.id;
+    const { data: created } = await supabase
+      .from('categories')
+      .insert({ user_id: userId, name: 'Investimentos', type: 'INCOME', color: 'bg-indigo-50 text-indigo-600' })
+      .select('id')
+      .maybeSingle();
+    return created?.id || null;
+  };
+
+  // Faz a movimentação do extrato mexer de verdade no ativo e na conta.
+  // Até aqui o extrato era só uma lista: registrar "juros recebidos" não creditava
+  // nada em conta nenhuma, e registrar um aporte não aumentava o custo do ativo.
+  //
+  // Regras (decisão do produto):
+  //  · APORTE            → sai dinheiro da conta e entra no investimento (bolso → bolso).
+  //  · RENDIMENTO_MENSAL → juros/cupom são renda de verdade: entram como INCOME na conta
+  //                        e NÃO aumentam o valor do ativo (o dinheiro saiu de lá).
+  //  · RENDIMENTO_ACUMULADO → o rendimento fica dentro do ativo: aumenta o valor bruto e
+  //                        não toca em conta nenhuma.
+  //  · AMORTIZACAO       → devolução de principal (típico de CRI/CRA): baixa o valor do
+  //                        ativo e credita a conta, sem virar receita.
+  //  · RESGATE_*         → mesma lógica da amortização.
+  //  · AJUSTE_MANUAL     → só marcação a mercado: mexe no valor do ativo, nunca em caixa.
+  const applyMovementSideEffects = async (params: {
+    movementId: string | null;
+    userId: string;
+    asset: any;
+    type: string;
+    amount: number;
+    dateStr: string;
+    accountId: string;
+  }) => {
+    if (!supabase) return;
+    const { movementId, userId, asset, type, amount, dateStr, accountId } = params;
+
+    const assetDelta =
+      type === 'APORTE' || type === 'RENDIMENTO_ACUMULADO' || type === 'AJUSTE_MANUAL' ? amount
+      : type === 'AMORTIZACAO' || type === 'RESGATE_PARCIAL' || type === 'RESGATE_TOTAL' ? -amount
+      : 0; // RENDIMENTO_MENSAL sai do ativo para a conta, então não muda o valor bruto
+
+    if (assetDelta !== 0) {
+      const newValue = Math.max(0, Math.round((Number(asset.estimatedValue || 0) + assetDelta) * 100) / 100);
+      const { error: assetErr } = await supabase
+        .from('physical_assets')
+        .update({ estimated_value: newValue })
+        .eq('id', asset.id);
+      if (assetErr) throw assetErr;
+    }
+
+    if (!accountId) return;
+
+    const categoryId = await ensureInvestmentCategory(userId);
+    const accountName = allAccounts.find((a: any) => a.id === accountId)?.institution
+      || allAccounts.find((a: any) => a.id === accountId)?.name
+      || null;
+
+    const isIncome = type === 'RENDIMENTO_MENSAL';
+    const isCashOut = type === 'APORTE';
+
+    const description =
+      isIncome ? `Juros/Rendimento recebido - ${asset.name}`
+      : isCashOut ? `Aplicação em ${asset.name}`
+      : type === 'AMORTIZACAO' ? `Amortização recebida - ${asset.name}`
+      : `Resgate - ${asset.name}`;
+
+    const { data: tx, error: txErr } = await supabase.from('transactions').insert([{
+      user_id: userId,
+      description,
+      amount,
+      date: dateStr,
+      // Juros são receita (aparecem no fluxo de caixa). Aporte, amortização e resgate
+      // são troca de bolso: entram como TRANSFER marcada, mexem no saldo mas ficam fora
+      // do fluxo de caixa dos relatórios.
+      type: isIncome ? 'INCOME' : 'TRANSFER',
+      category: 'Investimentos',
+      subcategory: isIncome ? 'Juros Recebidos' : isCashOut ? 'Aplicações' : 'Resgate de Capital',
+      category_id: categoryId,
+      is_paid: true,
+      paid_amount: amount,
+      paid_at: dateStr,
+      account_id: accountId,
+      account_name: accountName,
+      metadata: {
+        linked_asset_id: asset.id,
+        investment_movement_id: movementId,
+        type: `investment_${type.toLowerCase()}`,
+        ...(isIncome ? {} : {
+          isCapitalized: true,
+          affects_balance: true,
+          transfer_side: isCashOut ? 'SOURCE' : 'DESTINATION'
+        })
+      }
+    }]).select('id').single();
+
+    if (txErr) throw txErr;
+
+    if (movementId && tx?.id) {
+      await supabase.from('investment_movements').update({ linked_transaction_id: tx.id }).eq('id', movementId);
+    }
+
+    await supabase.rpc('recalculate_account_balance', { p_account_id: accountId });
+    const brokerId = asset.metadata?.brokerAccountId;
+    if (brokerId && brokerId !== accountId) {
+      await supabase.rpc('recalculate_account_balance', { p_account_id: brokerId });
+    }
   };
 
   const handleAddMovement = async () => {
@@ -2766,24 +2990,71 @@ const Assets: React.FC = () => {
     const user = session?.user;
     if (!user) return;
 
-    const isNegativeType = ['RESGATE_PARCIAL', 'RESGATE_TOTAL'].includes(newMovementForm.movement_type);
-    const { error } = await supabase.from('investment_movements').insert([{
+    const type = newMovementForm.movement_type;
+    const isNegativeType = ['RESGATE_PARCIAL', 'RESGATE_TOTAL', 'AMORTIZACAO'].includes(type);
+    const asset = selectedInvestmentForLedger;
+    const accountId = newMovementForm.accountId || '';
+    const dateStr = newMovementForm.movement_date;
+    const signedAmount = isNegativeType ? -Math.abs(amt) : amt;
+
+    // Conferência de duplicidade: se a conta escolhida já tem um lançamento de mesma
+    // data e mesmo valor, provavelmente esse dinheiro já entrou pelo extrato importado.
+    if (accountId) {
+      const { data: sameDay } = await supabase
+        .from('transactions')
+        .select('description, amount')
+        .eq('account_id', accountId)
+        .eq('is_deleted', false)
+        .eq('date', dateStr);
+      const clash = (sameDay || []).find((t: any) => Math.abs(Number(t.amount)).toFixed(2) === Math.abs(amt).toFixed(2));
+      if (clash) {
+        const ok = window.confirm(
+          `Essa conta já tem um lançamento de ${dateStr.split('-').reverse().join('/')} ` +
+          `no mesmo valor ("${clash.description}").\n\n` +
+          `Registrar assim mesmo pode contar o dinheiro duas vezes. Continuar?`
+        );
+        if (!ok) return;
+      }
+    }
+
+    const { data: movement, error } = await supabase.from('investment_movements').insert([{
       user_id: user.id,
-      asset_id: selectedInvestmentForLedger.id,
-      movement_type: newMovementForm.movement_type,
-      amount: isNegativeType ? -Math.abs(amt) : amt,
-      movement_date: newMovementForm.movement_date,
+      asset_id: asset.id,
+      movement_type: type,
+      amount: signedAmount,
+      movement_date: dateStr,
       notes: newMovementForm.notes || null
-    }]);
+    }]).select('id').single();
 
     if (error) {
       toast(`Erro ao registrar movimentação: ${error.message}`, 'error');
       return;
     }
 
-    setNewMovementForm({ movement_type: 'RENDIMENTO_MENSAL', amount: '', movement_date: DateUtils.formatToISODate(), notes: '' });
+    try {
+      await applyMovementSideEffects({
+        movementId: movement?.id || null,
+        userId: user.id,
+        asset,
+        type,
+        amount: Math.abs(amt),
+        dateStr,
+        accountId
+      });
+    } catch (sideErr: any) {
+      toast(`Movimentação registrada, mas houve erro ao refletir no saldo: ${sideErr.message}`, 'warning');
+    }
+
+    setNewMovementForm({ movement_type: 'RENDIMENTO_MENSAL', amount: '', movement_date: DateUtils.formatToISODate(), notes: '', accountId: '' });
     loadInvestmentMovements(selectedInvestmentForLedger.id);
-    toast('Movimentação registrada.', 'success');
+    await reloadAllInvestmentMovements();
+    fetchData();
+    toast(
+      accountId
+        ? 'Movimentação registrada e refletida no saldo da conta escolhida.'
+        : 'Movimentação registrada no extrato do investimento.',
+      'success'
+    );
   };
 
   const handleUpdateMovement = async (id: string) => {
@@ -2805,6 +3076,7 @@ const Assets: React.FC = () => {
     setEditingMovementId(null);
     setEditingMovementDraft(null);
     if (selectedInvestmentForLedger) loadInvestmentMovements(selectedInvestmentForLedger.id);
+    await reloadAllInvestmentMovements();
   };
 
   const handleDeleteMovement = async (id: string) => {
@@ -2815,6 +3087,7 @@ const Assets: React.FC = () => {
       return;
     }
     if (selectedInvestmentForLedger) loadInvestmentMovements(selectedInvestmentForLedger.id);
+    await reloadAllInvestmentMovements();
   };
 
   const handleSaveReminder = async () => {
@@ -2849,8 +3122,9 @@ const Assets: React.FC = () => {
 
   const movementTypeLabel: Record<string, string> = {
     APORTE: 'Aporte',
-    RENDIMENTO_MENSAL: 'Rendimento Mensal',
+    RENDIMENTO_MENSAL: 'Juros / Cupom Recebido',
     RENDIMENTO_ACUMULADO: 'Rendimento Acumulado',
+    AMORTIZACAO: 'Amortização',
     RESGATE_PARCIAL: 'Resgate Parcial',
     RESGATE_TOTAL: 'Resgate Total',
     AJUSTE_MANUAL: 'Ajuste Manual'
@@ -3035,6 +3309,8 @@ const Assets: React.FC = () => {
         liquidityDays: formData.category === 'INVESTMENT'
           ? (formData.liquidityDays === '' ? null : (parseInt(formData.liquidityDays, 10) || 0))
           : undefined,
+        couponFrequency: formData.category === 'INVESTMENT' ? (formData.couponFrequency || 'NONE') : undefined,
+        couponNextDate: formData.category === 'INVESTMENT' ? (formData.couponNextDate || '') : undefined,
         status: formData.category === 'INVESTMENT' ? (formData.status || 'ATIVO') : undefined,
         isTaxExempt: formData.category === 'INVESTMENT' ? !!formData.isTaxExempt : undefined,
         coeCapitalProtected: formData.category === 'INVESTMENT' && formData.investmentType === 'COE' ? !!formData.coeCapitalProtected : undefined,
@@ -3149,6 +3425,36 @@ const Assets: React.FC = () => {
 
         if (error) throw error;
         assetId = editingAsset.id;
+
+        // Mantém o aporte inicial do extrato alinhado com o "Valor Aplicado (Custo)" do
+        // cadastro. Sem isso, o custo do cadastro e a soma dos aportes divergiam — e é a
+        // soma dos aportes que agora manda no cálculo de custo e de IR.
+        if (formData.category === 'INVESTMENT' && purchaseVal > 0) {
+          const { data: existingAportes } = await supabase
+            .from('investment_movements')
+            .select('id, amount, movement_date')
+            .eq('asset_id', editingAsset.id)
+            .eq('movement_type', 'APORTE')
+            .order('movement_date', { ascending: true });
+
+          if (!existingAportes || existingAportes.length === 0) {
+            await supabase.from('investment_movements').insert([{
+              user_id: user.id,
+              asset_id: editingAsset.id,
+              movement_type: 'APORTE',
+              amount: purchaseVal,
+              movement_date: acqDate || DateUtils.formatToISODate(),
+              notes: 'Aporte inicial (cadastro)'
+            }]);
+          } else if (existingAportes.length === 1 && Number(existingAportes[0].amount) !== purchaseVal) {
+            // Um aporte só: ele É o inicial, então acompanha o cadastro. Com vários
+            // aportes o extrato passa a ser a verdade e não mexemos em nada.
+            await supabase
+              .from('investment_movements')
+              .update({ amount: purchaseVal, movement_date: acqDate || existingAportes[0].movement_date })
+              .eq('id', existingAportes[0].id);
+          }
+        }
 
         // Auto-generate yield transaction on value increases for investments
         if (formData.category === 'INVESTMENT') {
@@ -3976,6 +4282,8 @@ const Assets: React.FC = () => {
       vencimentoDate: '',
       liquidityAtMaturity: false,
       liquidityDays: '',
+      couponFrequency: 'NONE',
+      couponNextDate: '',
       status: 'ATIVO',
       isTaxExempt: false,
       coeCapitalProtected: false,
@@ -4181,6 +4489,8 @@ const Assets: React.FC = () => {
       vencimentoDate: meta.vencimentoDate || '',
       liquidityAtMaturity: getLiquidityInfo(meta).atMaturity,
       liquidityDays: getLiquidityInfo(meta).days !== null ? String(getLiquidityInfo(meta).days) : '',
+      couponFrequency: meta.couponFrequency || 'NONE',
+      couponNextDate: meta.couponNextDate || '',
       status: meta.status || 'ATIVO',
       isTaxExempt: !!meta.isTaxExempt,
       coeCapitalProtected: !!meta.coeCapitalProtected,
@@ -8592,7 +8902,15 @@ const Assets: React.FC = () => {
                   const brokerInvestments = getFilteredInvestments(enrichedPhysicalAssets.filter(
                     p => p.category === 'INVESTMENT' && p.metadata?.brokerAccountId === broker.id && p.metadata?.status !== 'RESGATADO'
                   ));
+                  // Somas do que está de fato listado abaixo, para o topo do card sempre
+                  // fechar com a soma das linhas. Antes o topo usava o total de TODOS os
+                  // ativos da corretora e as linhas mostravam o bruto, então bastava ligar
+                  // um filtro (ou abrir a conta) para os números não baterem.
                   const totalInvested = brokerInvestments.reduce((sum, inv) => sum + Number(inv.netValue || 0), 0);
+                  const totalGross = brokerInvestments.reduce((sum, inv) => sum + Number(inv.estimatedValue || 0), 0);
+                  const totalTax = brokerInvestments.reduce((sum, inv) => sum + Number(inv.taxAmount || 0), 0);
+                  const brokerCash = Number(broker.initial_balance || 0);
+                  const displayedTotal = brokerCash + totalInvested;
                   const isCollapsed = !!collapsedBrokers[broker.id];
 
                   return (
@@ -8616,17 +8934,24 @@ const Assets: React.FC = () => {
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="text-xs font-black text-emerald-600">{formatCurrency(broker.balance)}</p>
-                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Saldo Total</p>
+                            <p className="text-xs font-black text-emerald-600">{formatCurrency(displayedTotal)}</p>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Saldo Líquido</p>
                           </div>
                         </div>
 
                         {totalInvested > 0 && !isCollapsed && (
-                          <div className="flex items-center gap-2 p-3 bg-indigo-50 rounded-xl border border-indigo-100 animate-in fade-in duration-200">
-                            <Check size={13} className="text-indigo-500 shrink-0" />
-                            <span className="text-xs font-semibold text-indigo-700">
-                              {formatCurrency(totalInvested)} em ativos líquidos (pós-impostos)
-                            </span>
+                          <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-100 animate-in fade-in duration-200 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Check size={13} className="text-indigo-500 shrink-0" />
+                              <span className="text-xs font-semibold text-indigo-700">
+                                {formatCurrency(totalInvested)} em ativos líquidos (pós-impostos)
+                              </span>
+                            </div>
+                            <div className="pl-[21px] text-[11px] text-indigo-400 font-medium leading-relaxed">
+                              Bruto {formatCurrency(totalGross)}
+                              {totalTax > 0 ? ` − IR estimado ${formatCurrency(totalTax)}` : ''}
+                              {brokerCash !== 0 ? ` + caixa livre ${formatCurrency(brokerCash)}` : ''}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -8644,8 +8969,13 @@ const Assets: React.FC = () => {
                             };
                             const isAcumulado = invMeta.payoutType === 'ACUMULADO';
                             const isExpanded = !!expandedAssetIR[inv.id];
-                            const purchase = Number(invMeta.purchaseValue) || Number(invMeta.initialInvestmentAmount) || Number(inv.estimatedValue || 0);
+                            // Custo = soma dos aportes do extrato (calculado em enrichedPhysicalAssets).
+                            const purchase = inv.costBasis !== undefined && inv.costBasis > 0
+                              ? inv.costBasis
+                              : (Number(invMeta.purchaseValue) || Number(invMeta.initialInvestmentAmount) || Number(inv.estimatedValue || 0));
                             const profit = inv.grossYield !== undefined ? inv.grossYield : (Number(inv.estimatedValue || 0) - purchase);
+                            const aporteCount = (inv.lots || []).length;
+                            const taxBreakdown = (inv.taxBreakdown || []) as { amount: number; date: string; days: number; rate: number; tax: number }[];
                             const isExempt = !!invMeta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'POUPANCA'].includes(invMeta.investmentType);
                             const taxAmt = inv.taxAmount || 0;
                             const taxRatePercent = (inv.taxRate || 0) * 100;
@@ -8660,10 +8990,10 @@ const Assets: React.FC = () => {
                                   <div className="flex items-center gap-3 min-w-0">
                                     <div className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
                                     <div className="min-w-0 text-left">
-                                      <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
+                                      <p className="text-xs font-bold text-slate-800 break-words leading-snug" title={inv.name}>{inv.name}</p>
                                       <p className="text-xs text-slate-400 font-medium">
                                         {investTypeLabel[invMeta.investmentType] || invMeta.investmentType || 'Investimento'}
-                                        {invMeta.yieldRate ? ` · ${invMeta.yieldRate}` : ''}
+                                        {invMeta.yieldRate ? ` · ${FinancialEngine.describeYieldRate(invMeta.yieldRate, invMeta.interestType)}` : ''}
                                         {' · '}
                                         <span className={isAcumulado ? 'text-indigo-500' : 'text-emerald-500'}>
                                           {isAcumulado ? '🔒 Acumulado' : '💰 Mensal'}
@@ -8676,11 +9006,24 @@ const Assets: React.FC = () => {
                                           {formatLiquidityLabel(liqInfo)}
                                         </p>
                                       )}
+                                      {invMeta.couponNextDate && (
+                                        <p className="text-[10px] text-emerald-600 font-bold mt-0.5">
+                                          Próximo juros em {new Date(invMeta.couponNextDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                          {invMeta.couponFrequency && invMeta.couponFrequency !== 'NONE'
+                                            ? ` · ${String(invMeta.couponFrequency).toLowerCase()}`
+                                            : ''}
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-4 shrink-0">
                                     <div className="text-right">
-                                      <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
+                                      {/* Número principal é o LÍQUIDO (o que sobra depois do IR).
+                                          O bruto fica logo abaixo, para bater com o app da corretora. */}
+                                      <p className="text-xs font-black text-slate-900 whitespace-nowrap">{formatCurrency(netVal)}</p>
+                                      {Math.abs(netVal - Number(inv.estimatedValue || 0)) >= 0.01 && (
+                                        <p className="text-[10px] text-slate-400 font-semibold whitespace-nowrap">Bruto: {formatCurrency(Number(inv.estimatedValue || 0))}</p>
+                                      )}
                                       {isExpanded ? (
                                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Ocultar IR <ChevronUp size={8} /></span>
                                       ) : (
@@ -8742,6 +9085,14 @@ const Assets: React.FC = () => {
                                       <span>Valor Aplicado (Custo):</span>
                                       <span className="font-bold text-slate-700">{formatCurrency(purchase)}</span>
                                     </div>
+                                    {aporteCount > 1 && (
+                                      <div className="flex justify-between text-[11px] text-slate-400">
+                                        <span>Soma de {aporteCount} aportes:</span>
+                                        <span className="font-semibold">
+                                          {(inv.lots || []).map((l: any) => formatCurrency(l.amount)).join(' + ')}
+                                        </span>
+                                      </div>
+                                    )}
                                     {invMeta.investmentType === 'COE' && (
                                       <div className="flex justify-between">
                                         <span>Capital Protegido:</span>
@@ -8762,10 +9113,28 @@ const Assets: React.FC = () => {
                                             <span className="font-bold">{invMeta.investmentType === 'FIIS' ? '20% (FIIs)' : '15% (Ações/Cripto)'}</span>
                                           </div>
                                         ) : (
+                                          <>
                                           <div className="flex justify-between">
                                             <span>Prazo de Custódia:</span>
-                                            <span className="font-bold text-slate-700">{days} dias (Alíquota de {taxRatePercent}%)</span>
+                                            <span className="font-bold text-slate-700">
+                                              {days} dias {aporteCount > 1 ? '(média)' : ''} (Alíquota de {taxRatePercent.toFixed(2).replace(/\.?0+$/, '')}%)
+                                            </span>
                                           </div>
+                                          {aporteCount > 1 && taxBreakdown.length > 0 && (
+                                            <div className="pl-3 border-l-2 border-slate-200 space-y-0.5">
+                                              {taxBreakdown.map((b, i) => (
+                                                <div key={i} className="flex justify-between text-[11px] text-slate-400">
+                                                  <span>
+                                                    Aporte {new Date(b.date + 'T12:00:00').toLocaleDateString('pt-BR')} · {formatCurrency(b.amount)} · {b.days} dias
+                                                  </span>
+                                                  <span className="font-semibold">
+                                                    {(b.rate * 100).toFixed(1).replace('.0', '')}% → {formatCurrency(b.tax)}
+                                                  </span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                          </>
                                         )}
                                         {profit > 0 && (
                                           <div className="flex justify-between text-rose-600 font-bold">
@@ -8773,7 +9142,7 @@ const Assets: React.FC = () => {
                                             <span className="font-black">
                                               - {formatCurrency(taxAmt)} 
                                               <span className="text-[10px] font-normal text-slate-400 ml-1">
-                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : `${taxRatePercent}% sobre lucro`})
+                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : `${taxRatePercent.toFixed(2).replace(/\.?0+$/, '')}% sobre lucro${aporteCount > 1 ? ' (média dos aportes)' : ''}`})
                                               </span>
                                             </span>
                                           </div>
@@ -8861,8 +9230,13 @@ const Assets: React.FC = () => {
                             };
                             const isAcumulado = invMeta.payoutType === 'ACUMULADO';
                             const isExpanded = !!expandedAssetIR[inv.id];
-                            const purchase = Number(invMeta.purchaseValue) || Number(invMeta.initialInvestmentAmount) || Number(inv.estimatedValue || 0);
+                            // Custo = soma dos aportes do extrato (calculado em enrichedPhysicalAssets).
+                            const purchase = inv.costBasis !== undefined && inv.costBasis > 0
+                              ? inv.costBasis
+                              : (Number(invMeta.purchaseValue) || Number(invMeta.initialInvestmentAmount) || Number(inv.estimatedValue || 0));
                             const profit = inv.grossYield !== undefined ? inv.grossYield : (Number(inv.estimatedValue || 0) - purchase);
+                            const aporteCount = (inv.lots || []).length;
+                            const taxBreakdown = (inv.taxBreakdown || []) as { amount: number; date: string; days: number; rate: number; tax: number }[];
                             const isExempt = !!invMeta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'POUPANCA'].includes(invMeta.investmentType);
                             const taxAmt = inv.taxAmount || 0;
                             const taxRatePercent = (inv.taxRate || 0) * 100;
@@ -8877,10 +9251,10 @@ const Assets: React.FC = () => {
                                   <div className="flex items-center gap-3 min-w-0">
                                     <div className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />
                                     <div className="min-w-0 text-left">
-                                      <p className="text-xs font-bold text-slate-800 truncate">{inv.name}</p>
+                                      <p className="text-xs font-bold text-slate-800 break-words leading-snug" title={inv.name}>{inv.name}</p>
                                       <p className="text-xs text-slate-400 font-medium">
                                         {investTypeLabel[invMeta.investmentType] || invMeta.investmentType || 'Investimento'}
-                                        {invMeta.yieldRate ? ` · ${invMeta.yieldRate}` : ''}
+                                        {invMeta.yieldRate ? ` · ${FinancialEngine.describeYieldRate(invMeta.yieldRate, invMeta.interestType)}` : ''}
                                         {' · '}
                                         <span className={isAcumulado ? 'text-indigo-500' : 'text-emerald-500'}>
                                           {isAcumulado ? '🔒 Acumulado' : '💰 Mensal'}
@@ -8893,11 +9267,24 @@ const Assets: React.FC = () => {
                                           {formatLiquidityLabel(liqInfo)}
                                         </p>
                                       )}
+                                      {invMeta.couponNextDate && (
+                                        <p className="text-[10px] text-emerald-600 font-bold mt-0.5">
+                                          Próximo juros em {new Date(invMeta.couponNextDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                          {invMeta.couponFrequency && invMeta.couponFrequency !== 'NONE'
+                                            ? ` · ${String(invMeta.couponFrequency).toLowerCase()}`
+                                            : ''}
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-4 shrink-0">
                                     <div className="text-right">
-                                      <p className="text-xs font-black text-slate-900">{formatCurrency(Number(inv.estimatedValue || 0))}</p>
+                                      {/* Número principal é o LÍQUIDO (o que sobra depois do IR).
+                                          O bruto fica logo abaixo, para bater com o app da corretora. */}
+                                      <p className="text-xs font-black text-slate-900 whitespace-nowrap">{formatCurrency(netVal)}</p>
+                                      {Math.abs(netVal - Number(inv.estimatedValue || 0)) >= 0.01 && (
+                                        <p className="text-[10px] text-slate-400 font-semibold whitespace-nowrap">Bruto: {formatCurrency(Number(inv.estimatedValue || 0))}</p>
+                                      )}
                                       {isExpanded ? (
                                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-0.5 justify-end mt-0.5">Ocultar IR <ChevronUp size={8} /></span>
                                       ) : (
@@ -8945,6 +9332,14 @@ const Assets: React.FC = () => {
                                       <span>Valor Aplicado (Custo):</span>
                                       <span className="font-bold text-slate-700">{formatCurrency(purchase)}</span>
                                     </div>
+                                    {aporteCount > 1 && (
+                                      <div className="flex justify-between text-[11px] text-slate-400">
+                                        <span>Soma de {aporteCount} aportes:</span>
+                                        <span className="font-semibold">
+                                          {(inv.lots || []).map((l: any) => formatCurrency(l.amount)).join(' + ')}
+                                        </span>
+                                      </div>
+                                    )}
                                     {invMeta.investmentType === 'COE' && (
                                       <div className="flex justify-between">
                                         <span>Capital Protegido:</span>
@@ -8965,10 +9360,28 @@ const Assets: React.FC = () => {
                                             <span className="font-bold">{invMeta.investmentType === 'FIIS' ? '20% (FIIs)' : '15% (Ações/Cripto)'}</span>
                                           </div>
                                         ) : (
+                                          <>
                                           <div className="flex justify-between">
                                             <span>Prazo de Custódia:</span>
-                                            <span className="font-bold text-slate-700">{days} dias (Alíquota de {taxRatePercent}%)</span>
+                                            <span className="font-bold text-slate-700">
+                                              {days} dias {aporteCount > 1 ? '(média)' : ''} (Alíquota de {taxRatePercent.toFixed(2).replace(/\.?0+$/, '')}%)
+                                            </span>
                                           </div>
+                                          {aporteCount > 1 && taxBreakdown.length > 0 && (
+                                            <div className="pl-3 border-l-2 border-slate-200 space-y-0.5">
+                                              {taxBreakdown.map((b, i) => (
+                                                <div key={i} className="flex justify-between text-[11px] text-slate-400">
+                                                  <span>
+                                                    Aporte {new Date(b.date + 'T12:00:00').toLocaleDateString('pt-BR')} · {formatCurrency(b.amount)} · {b.days} dias
+                                                  </span>
+                                                  <span className="font-semibold">
+                                                    {(b.rate * 100).toFixed(1).replace('.0', '')}% → {formatCurrency(b.tax)}
+                                                  </span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                          </>
                                         )}
                                         {profit > 0 && (
                                           <div className="flex justify-between text-rose-600 font-bold">
@@ -8976,7 +9389,7 @@ const Assets: React.FC = () => {
                                             <span className="font-black">
                                               - {formatCurrency(taxAmt)} 
                                               <span className="text-[10px] font-normal text-slate-400 ml-1">
-                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : `${taxRatePercent}% sobre lucro`})
+                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : `${taxRatePercent.toFixed(2).replace(/\.?0+$/, '')}% sobre lucro${aporteCount > 1 ? ' (média dos aportes)' : ''}`})
                                               </span>
                                             </span>
                                           </div>
@@ -10677,22 +11090,46 @@ const Assets: React.FC = () => {
                             value={formData.interestType}
                             onChange={(e) => setFormData({ ...formData, interestType: e.target.value })}
                           >
-                            <option value="CDI">Pós-fixado (CDI)</option>
-                            <option value="PRE">Pré-fixado</option>
-                            <option value="IPCA">Inflação (IPCA+)</option>
+                            <option value="PRE">Pré-fixado (taxa fixa ao ano)</option>
+                            <option value="CDI">Pós-fixado — % do CDI (ex.: 105% do CDI)</option>
+                            <option value="CDI_PLUS">CDI + spread (ex.: CDI + 3,50)</option>
+                            <option value="IPCA">IPCA + spread (ex.: IPCA + 9,23)</option>
+                            <option value="IGPM">IGP-M + spread</option>
                             <option value="OUTROS">Outros</option>
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Taxa Rentabilidade {formData.interestType === 'CDI' ? '(% do CDI)' : formData.interestType === 'IPCA' ? '(% acima do IPCA)' : '(% a.a.)'}</label>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">
+                            Taxa Rentabilidade {
+                              formData.interestType === 'CDI' ? '(% do CDI)'
+                              : formData.interestType === 'CDI_PLUS' ? '(% acima do CDI)'
+                              : formData.interestType === 'IPCA' ? '(% acima do IPCA)'
+                              : formData.interestType === 'IGPM' ? '(% acima do IGP-M)'
+                              : '(% a.a.)'
+                            }
+                          </label>
                           <input
                             type="text"
                             inputMode="decimal"
                             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
-                            placeholder={formData.interestType === 'CDI' ? 'Ex: 102' : formData.interestType === 'IPCA' ? 'Ex: 6,50' : 'Ex: 12,60'}
+                            placeholder={
+                              formData.interestType === 'CDI' ? 'Ex: 105'
+                              : formData.interestType === 'CDI_PLUS' ? 'Ex: 3,50'
+                              : formData.interestType === 'IPCA' ? 'Ex: 9,23'
+                              : formData.interestType === 'IGPM' ? 'Ex: 6,00'
+                              : 'Ex: 12,60'
+                            }
                             value={formData.yieldRate}
                             onChange={(e) => setFormData({ ...formData, yieldRate: e.target.value.replace(/[^0-9.,]/g, '') })}
                           />
+                          {formData.yieldRate && ['CDI', 'CDI_PLUS', 'IPCA', 'IGPM'].includes(formData.interestType) && (
+                            <p className="text-[10px] text-slate-400 font-medium mt-1">
+                              {FinancialEngine.describeYieldRate(formData.yieldRate, formData.interestType)}
+                              {' → '}
+                              {FinancialEngine.parseYieldRate(formData.yieldRate, formData.interestType).toFixed(2).replace('.', ',')}% a.a.
+                              {' '}com os índices dos Ajustes (CDI {String(FinancialEngine.MARKET_INDEXES.cdi).replace('.', ',')}% · IPCA {String(FinancialEngine.MARKET_INDEXES.ipca).replace('.', ',')}%)
+                            </p>
+                          )}
                         </div>
                       </div>
                     )}
@@ -10709,31 +11146,107 @@ const Assets: React.FC = () => {
                           <option value="MENSAL">Mensal (Cai na Conta / Cupom)</option>
                         </select>
                       </div>
+                      {/* Liquidez: antes era um campo numérico solto ao lado de um texto
+                          longo. No celular o input era espremido até virar uma bolinha e
+                          não dava para digitar o D+0. Agora é um seletor empilhado. */}
                       {!['ACOES', 'FIIS', 'CRIPTO'].includes(formData.investmentType) && (
-                        <div className="animate-in slide-in-from-top-2">
-                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Liquidez</label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              min="0"
-                              placeholder="D+ dias (opcional)"
-                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
-                              value={formData.liquidityDays}
-                              onChange={(e) => setFormData({ ...formData, liquidityDays: e.target.value })}
-                            />
-                            <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-slate-600 shrink-0">
-                              <input
-                                type="checkbox"
-                                checked={formData.liquidityAtMaturity}
-                                onChange={(e) => setFormData({ ...formData, liquidityAtMaturity: e.target.checked })}
-                              />
-                              Também no Vencimento
-                            </label>
-                          </div>
-                          <p className="text-[10px] text-slate-400 font-medium mt-1">Pode ter os dois: um prazo de resgate antecipado (D+) e ficar liberado no vencimento também.</p>
-                        </div>
+                        (() => {
+                          const liqDaysStr = String(formData.liquidityDays ?? '');
+                          const liqMode = liqDaysStr === '0'
+                            ? 'DIARIA'
+                            : liqDaysStr !== ''
+                              ? 'DPLUS'
+                              : formData.liquidityAtMaturity
+                                ? 'VENCIMENTO'
+                                : '';
+                          return (
+                            <div className="animate-in slide-in-from-top-2">
+                              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Liquidez</label>
+                              <div className="flex flex-col gap-2">
+                                <select
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                                  value={liqMode}
+                                  onChange={(e) => {
+                                    const mode = e.target.value;
+                                    if (mode === 'DIARIA') setFormData({ ...formData, liquidityDays: '0', liquidityAtMaturity: false });
+                                    else if (mode === 'DPLUS') setFormData({ ...formData, liquidityDays: '30', liquidityAtMaturity: false });
+                                    else if (mode === 'VENCIMENTO') setFormData({ ...formData, liquidityDays: '', liquidityAtMaturity: true });
+                                    else setFormData({ ...formData, liquidityDays: '', liquidityAtMaturity: false });
+                                  }}
+                                >
+                                  <option value="">Não informado</option>
+                                  <option value="DIARIA">Diária — resgato quando quiser (D+0)</option>
+                                  <option value="DPLUS">Resgate antecipado em D+ dias</option>
+                                  <option value="VENCIMENTO">Só no vencimento</option>
+                                </select>
+
+                                {liqMode === 'DPLUS' && (
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    inputMode="numeric"
+                                    placeholder="Em quantos dias o dinheiro cai? Ex: 30"
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                                    value={formData.liquidityDays}
+                                    onChange={(e) => setFormData({ ...formData, liquidityDays: e.target.value })}
+                                  />
+                                )}
+
+                                {(liqMode === 'DIARIA' || liqMode === 'DPLUS') && (
+                                  <label className="flex items-start gap-2 cursor-pointer text-[11px] font-bold text-slate-600">
+                                    <input
+                                      type="checkbox"
+                                      className="mt-0.5 shrink-0"
+                                      checked={formData.liquidityAtMaturity}
+                                      onChange={(e) => setFormData({ ...formData, liquidityAtMaturity: e.target.checked })}
+                                    />
+                                    <span>Também fica liberado no vencimento</span>
+                                  </label>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-slate-400 font-medium mt-1">
+                                Liquidez é em quantos dias o dinheiro cai se você resgatar antes. É diferente da Data de Vencimento, que é quando o título acaba.
+                              </p>
+                            </div>
+                          );
+                        })()
                       )}
                     </div>
+
+                    {/* Cronograma de juros/cupom. Só faz sentido para quem paga na conta
+                        (CRI, CRA, debêntures, alguns CDBs). Serve para o card avisar quando
+                        cai o próximo pagamento — na hora que cair, você registra no Extrato
+                        do investimento e ele credita a conta. */}
+                    {formData.payoutType === 'MENSAL' && !['ACOES', 'FIIS', 'CRIPTO'].includes(formData.investmentType) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in slide-in-from-top-2">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Frequência dos Juros</label>
+                          <select
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                            value={formData.couponFrequency}
+                            onChange={(e) => setFormData({ ...formData, couponFrequency: e.target.value as any })}
+                          >
+                            <option value="NONE">Não sei / irregular</option>
+                            <option value="MENSAL">Mensal</option>
+                            <option value="TRIMESTRAL">Trimestral</option>
+                            <option value="SEMESTRAL">Semestral</option>
+                            <option value="ANUAL">Anual</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Próximo Pagamento</label>
+                          <input
+                            type="date"
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                            value={formData.couponNextDate}
+                            onChange={(e) => setFormData({ ...formData, couponNextDate: e.target.value })}
+                          />
+                        </div>
+                        <p className="sm:col-span-2 text-[10px] text-slate-400 font-medium">
+                          O card mostra essa data. Quando o dinheiro cair, registre em "Extrato" como Juros / Cupom recebido: o valor entra como receita na conta e o app avisa se aquele mesmo valor já tiver vindo pelo extrato do banco.
+                        </p>
+                      </div>
+                    )}
 
                     {formData.investmentType === 'COE' && (
                       <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
@@ -11471,12 +11984,13 @@ const Assets: React.FC = () => {
                     value={newMovementForm.movement_type}
                     onChange={(e) => setNewMovementForm({ ...newMovementForm, movement_type: e.target.value })}
                   >
-                    <option value="APORTE">Aporte</option>
-                    <option value="RENDIMENTO_MENSAL">Rendimento Mensal</option>
-                    <option value="RENDIMENTO_ACUMULADO">Rendimento Acumulado</option>
+                    <option value="APORTE">Aporte (dinheiro entrando no investimento)</option>
+                    <option value="RENDIMENTO_MENSAL">Juros / Cupom recebido (cai na conta)</option>
+                    <option value="RENDIMENTO_ACUMULADO">Rendimento acumulado (fica no ativo)</option>
+                    <option value="AMORTIZACAO">Amortização (devolução de principal)</option>
                     <option value="RESGATE_PARCIAL">Resgate Parcial</option>
                     <option value="RESGATE_TOTAL">Resgate Total</option>
-                    <option value="AJUSTE_MANUAL">Ajuste Manual</option>
+                    <option value="AJUSTE_MANUAL">Ajuste Manual (só corrige o valor bruto)</option>
                   </select>
                   <input
                     type="number"
@@ -11492,6 +12006,26 @@ const Assets: React.FC = () => {
                     value={newMovementForm.movement_date}
                     onChange={(e) => setNewMovementForm({ ...newMovementForm, movement_date: e.target.value })}
                   />
+
+                  {newMovementForm.movement_type !== 'RENDIMENTO_ACUMULADO' && newMovementForm.movement_type !== 'AJUSTE_MANUAL' && (
+                    <select
+                      className="bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold col-span-2"
+                      value={newMovementForm.accountId}
+                      onChange={(e) => setNewMovementForm({ ...newMovementForm, accountId: e.target.value })}
+                    >
+                      <option value="">
+                        {newMovementForm.movement_type === 'APORTE'
+                          ? 'De onde saiu o dinheiro? (opcional — só registrar)'
+                          : 'Em qual conta o dinheiro caiu? (opcional — só registrar)'}
+                      </option>
+                      {allAccounts
+                        .filter((a: any) => !a.is_archived)
+                        .map((a: any) => (
+                          <option key={a.id} value={a.id}>{a.institution || a.name}</option>
+                        ))}
+                    </select>
+                  )}
+
                   <input
                     type="text"
                     placeholder="Observação (opcional)"
@@ -11500,6 +12034,15 @@ const Assets: React.FC = () => {
                     onChange={(e) => setNewMovementForm({ ...newMovementForm, notes: e.target.value })}
                   />
                 </div>
+
+                <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
+                  {newMovementForm.movement_type === 'RENDIMENTO_MENSAL' && 'Juros e cupons são renda: entram como receita na conta escolhida (Investimentos › Juros Recebidos) e não aumentam o valor do título.'}
+                  {newMovementForm.movement_type === 'RENDIMENTO_ACUMULADO' && 'O rendimento fica dentro do título: aumenta o valor bruto e não passa por conta nenhuma.'}
+                  {newMovementForm.movement_type === 'APORTE' && 'Sai da conta escolhida e entra no investimento. O custo do ativo aumenta — é ele que define o IR.'}
+                  {newMovementForm.movement_type === 'AMORTIZACAO' && 'Devolução de parte do principal (comum em CRI/CRA): baixa o valor do título e credita a conta, sem virar receita.'}
+                  {(newMovementForm.movement_type === 'RESGATE_PARCIAL' || newMovementForm.movement_type === 'RESGATE_TOTAL') && 'Baixa o valor do título e credita a conta escolhida. Não é receita nova — é troca de bolso.'}
+                  {newMovementForm.movement_type === 'AJUSTE_MANUAL' && 'Só corrige o valor bruto do título (marcação a mercado). Não mexe em conta nenhuma.'}
+                </p>
                 <button
                   onClick={handleAddMovement}
                   className="w-full py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700"

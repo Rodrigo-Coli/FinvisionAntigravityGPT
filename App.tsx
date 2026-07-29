@@ -5,6 +5,7 @@ import { Profile, UserRole } from './types';
 import { isAdmin } from './lib/authUtils';
 import { captureReferralCodeFromUrl, attachPendingReferral } from './lib/referralUtils';
 import { safeStorage } from './lib/safeStorage';
+import { FinancialEngine } from './lib/financialEngine';
 import Nav from './components/Nav';
 import BottomNav from './components/BottomNav';
 import { PushManager } from './components/PushManager';
@@ -96,6 +97,34 @@ const App: React.FC = () => {
     );
     mediaQuery.addEventListener('change', handleChange);
     return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
+  // Índices de mercado (CDI, IPCA, IGP-M) que alimentam todo o cálculo de renda fixa.
+  // Aplica na hora o valor que já está no aparelho e, em seguida, confirma com o que
+  // está salvo na conta. Sem isso, quem mudasse os índices em Ajustes só veria efeito
+  // nas telas depois de passar pela própria tela de Ajustes.
+  useEffect(() => {
+    try {
+      const cached = safeStorage.getItem('finvision_market_indexes');
+      if (cached) FinancialEngine.setMarketIndexes(JSON.parse(cached));
+    } catch { /* cache inválido: segue com os padrões */ }
+
+    if (!supabase) return;
+    let cancelled = false;
+    (async () => {
+      const { data: { session } } = await supabase!.auth.getSession();
+      const uid = session?.user?.id;
+      if (!uid || cancelled) return;
+      const { data } = await supabase!
+        .from('user_settings')
+        .select('market_indexes')
+        .eq('user_id', uid)
+        .maybeSingle();
+      if (cancelled || !data?.market_indexes) return;
+      FinancialEngine.setMarketIndexes(data.market_indexes);
+      safeStorage.setItem('finvision_market_indexes', JSON.stringify(data.market_indexes));
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {

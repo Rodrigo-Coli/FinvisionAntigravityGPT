@@ -213,9 +213,14 @@ RETORNE APENAS JSON NO FORMATO:
             fingerprint,
             potential_duplicate: t.potential_duplicate || false,
             duplicate_reason: t.duplicate_reason || null,
-            metadata: { 
+            metadata: {
               category_suggested: t.category,
-              duplicate_tx: t.duplicate_tx || null
+              duplicate_tx: t.duplicate_tx || null,
+              // Carimba a aba de onde a importação saiu. Antes disso a fila decidia a aba
+              // olhando se a linha tinha uma conta cadastrada: quem importava um extrato de
+              // banco SEM escolher a conta antes caía com account_id nulo e a transação
+              // aparecia em "Diversos", mesmo tendo clicado em Banco.
+              source_type: 'bank'
             }
           };
         });

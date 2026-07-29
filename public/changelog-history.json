@@ -1,5 +1,72 @@
 [
   {
+    "version": "2026.07.26.0245",
+    "title": "Conciliação no lugar certo, investimentos com custo e IR corretos",
+    "date": "26/07/2026",
+    "benefits": [
+      {
+        "title": "Extrato importado em Banco não some mais para Diversos",
+        "desc": "A origem fica carimbada na importação e a fila respeita o botão que você usou.",
+        "type": "correção"
+      },
+      {
+        "title": "Escolher Banco ou Cartão em lote não troca mais de tela",
+        "desc": "Os botões escolhem só o destino da operação; os itens selecionados continuam à vista.",
+        "type": "correção"
+      },
+      {
+        "title": "Conferência de duplicidade na hora de gravar",
+        "desc": "Ao confirmar, o app checa na conta ou cartão de destino se já existe algo de mesma data e valor.",
+        "type": "novidade"
+      },
+      {
+        "title": "Resgate e juros de investimento não geram mais dinheiro do nada",
+        "desc": "Resgate virou troca de bolso; juros e cupons entram como receita na conta escolhida.",
+        "type": "correção"
+      },
+      {
+        "title": "Aporte novo entra no custo e o IR é calculado por aporte",
+        "desc": "Cada aporte recebe a alíquota do seu próprio prazo, como a corretora faz.",
+        "type": "correção"
+      },
+      {
+        "title": "O valor que aparece na lista é o líquido",
+        "desc": "Líquido em destaque, bruto abaixo, e o total do card fecha com a soma das linhas.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Campo de Liquidez utilizável no celular",
+        "desc": "Virou seletor: diária, D+ dias ou só no vencimento.",
+        "type": "correção"
+      },
+      {
+        "title": "CRI, CRA e CDI + spread cabem no cadastro",
+        "desc": "Pré, % do CDI, CDI + spread, IPCA + spread e IGP-M + spread, com a conta em % ao ano na hora.",
+        "type": "novidade"
+      },
+      {
+        "title": "CDI e IPCA configuráveis em Ajustes",
+        "desc": "Estavam fixos em 10,4% e 4% no código; agora são seus e valem para todos os cálculos.",
+        "type": "novidade"
+      },
+      {
+        "title": "Data do próximo pagamento de juros no card",
+        "desc": "Frequência e data do próximo cupom ficam visíveis no investimento.",
+        "type": "novidade"
+      },
+      {
+        "title": "Transferir entre corrente, poupança e investimento",
+        "desc": "Move dinheiro entre bolsos sem contar como receita nem despesa.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "Conciliação: metadata.source_type carimbado na importação e usado no filtro de abas; destino em lote separado da aba; verificação de duplicidade no destino ao confirmar.",
+      "Investimentos: custo = soma dos aportes, IR por aporte, líquido como número principal, extrato ligado ao saldo das contas, indexadores CDI+spread/IGP-M e cronograma de juros.",
+      "Contas: transferência entre contas com as duas pernas; recalculate_account_balance passou a contar transferências marcadas."
+    ]
+  },
+  {
     "version": "2026.07.25.2038",
     "title": "Regra geral: editar um financiamento nunca mais duplica parcelas",
     "date": "25/07/2026",

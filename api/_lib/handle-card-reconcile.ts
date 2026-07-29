@@ -217,6 +217,9 @@ RETORNE APENAS JSON NO FORMATO:
             duplicate_reason: t.duplicate_reason || null,
             metadata: {
               is_card: true,
+              // Ver comentário equivalente em handle-bank-reconcile: a aba da fila vem da
+              // origem carimbada aqui, não de adivinhar pela conta vinculada.
+              source_type: 'card',
               merchant_normalized: t.merchant_normalized || t.description,
               installment_info: { number: t.installment_number || null, total: t.installment_total || null },
               duplicate_tx: t.duplicate_tx || null

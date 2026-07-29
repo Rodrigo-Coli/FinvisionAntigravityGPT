@@ -75,6 +75,19 @@ const AccountsSection: React.FC = () => {
   const [color, setColor] = useState('#3b82f6');
   const [includeInDashboard, setIncludeInDashboard] = useState(true);
 
+  // Transferência entre contas ("mover entre bolsos"). Corrente, poupança e conta de
+  // investimento da mesma instituição são contas separadas de propósito — cada uma tem
+  // saldo, extrato e tributação próprios. O que faltava era um jeito simples de mover
+  // dinheiro entre elas sem inventar receita nem despesa: é o que este fluxo faz, com
+  // as duas pernas da transferência (sai de uma, entra na outra).
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferFrom, setTransferFrom] = useState('');
+  const [transferTo, setTransferTo] = useState('');
+  const [transferAmount, setTransferAmount] = useState<number | string>('');
+  const [transferDate, setTransferDate] = useState(DateUtils.formatToISODate());
+  const [transferDesc, setTransferDesc] = useState('Transferência entre contas');
+  const [isSavingTransfer, setIsSavingTransfer] = useState(false);
+
   // States for Filters
   const [filterType, setFilterType] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<'ACTIVE' | 'ARCHIVED' | 'ALL'>('ACTIVE');
@@ -418,6 +431,98 @@ const AccountsSection: React.FC = () => {
     }
   };
 
+  const openTransferModal = (fromId: string = '') => {
+    setTransferFrom(fromId);
+    setTransferTo('');
+    setTransferAmount('');
+    setTransferDate(DateUtils.formatToISODate());
+    setTransferDesc('Transferência entre contas');
+    setShowTransferModal(true);
+  };
+
+  const handleTransferBetweenAccounts = async () => {
+    if (!supabase) return;
+    const amount = Number(transferAmount);
+    if (!transferFrom || !transferTo) {
+      toast('Escolha a conta de origem e a de destino.', 'warning');
+      return;
+    }
+    if (transferFrom === transferTo) {
+      toast('A conta de origem e a de destino precisam ser diferentes.', 'warning');
+      return;
+    }
+    if (!amount || amount <= 0) {
+      toast('Informe um valor maior que zero.', 'warning');
+      return;
+    }
+
+    setIsSavingTransfer(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
+
+      const fromAcc = accounts.find(a => a.id === transferFrom);
+      const toAcc = accounts.find(a => a.id === transferTo);
+
+      // As duas pernas carregam isCapitalized (fica fora do fluxo de caixa dos
+      // relatórios — transferência não é receita nem despesa) e affects_balance
+      // (mexe no saldo das duas contas).
+      const baseMeta = {
+        isCapitalized: true,
+        affects_balance: true,
+        is_transfer: true
+      };
+
+      const { error } = await supabase.from('transactions').insert([
+        {
+          user_id: user.id,
+          description: transferDesc || 'Transferência entre contas',
+          amount,
+          date: transferDate,
+          type: 'TRANSFER',
+          category: 'Transferência',
+          subcategory: 'Entre Contas',
+          is_paid: true,
+          paid_amount: amount,
+          paid_at: transferDate,
+          account_id: transferFrom,
+          account_name: fromAcc?.institution || null,
+          metadata: { ...baseMeta, transfer_side: 'SOURCE', counter_account_id: transferTo }
+        },
+        {
+          user_id: user.id,
+          description: transferDesc || 'Transferência entre contas',
+          amount,
+          date: transferDate,
+          type: 'TRANSFER',
+          category: 'Transferência',
+          subcategory: 'Entre Contas',
+          is_paid: true,
+          paid_amount: amount,
+          paid_at: transferDate,
+          account_id: transferTo,
+          account_name: toAcc?.institution || null,
+          metadata: { ...baseMeta, transfer_side: 'DESTINATION', counter_account_id: transferFrom }
+        }
+      ]);
+
+      if (error) throw error;
+
+      await supabase.rpc('recalculate_account_balance', { p_account_id: transferFrom });
+      await supabase.rpc('recalculate_account_balance', { p_account_id: transferTo });
+
+      setShowTransferModal(false);
+      await fetchAccounts(true);
+      toast(`Transferência registrada: saiu de ${fromAcc?.institution} e entrou em ${toAcc?.institution}.`, 'success');
+    } catch (err: any) {
+      console.error('Erro na transferência entre contas:', err);
+      toast(`Não foi possível registrar a transferência: ${err.message}`, 'error');
+    } finally {
+      setIsSavingTransfer(false);
+    }
+  };
+
   const filteredAccounts = accounts.filter(acc => {
     const matchesSearch = acc.institution.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = filterType === 'ALL' || acc.type === filterType;
@@ -455,12 +560,20 @@ const AccountsSection: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Contas e Carteiras</h1>
           <p className="text-sm text-slate-400 font-medium">Gerencie suas instituições financeiras e saldos.</p>
         </div>
-        <button
-          onClick={() => { resetForm(); setShowModal(true); }}
-          className="flex w-full sm:w-auto items-center justify-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95 whitespace-nowrap"
-        >
-          <Plus size={18} /> Nova Conta
-        </button>
+        <div className="flex w-full sm:w-auto items-center gap-3">
+          <button
+            onClick={() => openTransferModal()}
+            className="flex flex-1 sm:flex-none items-center justify-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:border-brand-300 hover:text-brand-600 transition-all active:scale-95 whitespace-nowrap"
+          >
+            <ArrowRight size={18} /> Transferir
+          </button>
+          <button
+            onClick={() => { resetForm(); setShowModal(true); }}
+            className="flex flex-1 sm:flex-none items-center justify-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 hover:scale-105 transition-transform active:scale-95 whitespace-nowrap"
+          >
+            <Plus size={18} /> Nova Conta
+          </button>
+        </div>
       </div>
 
       {/* SUMMARY METRICS */}
@@ -611,6 +724,14 @@ const AccountsSection: React.FC = () => {
                       <HistoryIcon size={12} />
                     </button>
                     <button
+                      onClick={() => openTransferModal(acc.id)}
+                      className="flex items-center justify-center p-2 bg-slate-50 hover:bg-brand-900 hover:text-white text-slate-500 rounded-lg transition-all"
+                      title="Transferir desta conta para outra"
+                      aria-label={`Transferir da conta do ${acc.institution} para outra conta`}
+                    >
+                      <ArrowRight size={12} />
+                    </button>
+                    <button
                       onClick={() => { setAdjustAccount(acc); setAdjustValue(acc.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-brand-900 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
                       aria-label={`Ajustar saldo da conta do ${acc.institution}`}
@@ -636,6 +757,114 @@ const AccountsSection: React.FC = () => {
               <p className="text-[8px] font-medium uppercase tracking-widest">Conectar Banco ou Carteira</p>
             </div>
           </button>
+        </div>
+      )}
+
+      {/* TRANSFER MODAL */}
+      {showTransferModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-brand-900/40 backdrop-blur-sm" onClick={() => setShowTransferModal(false)} />
+          <div className="bg-white rounded-[32px] w-full max-w-md shadow-2xl relative overflow-hidden animate-in zoom-in duration-300">
+            <div className="p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">Transferir entre contas</h2>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mover dinheiro sem criar receita</p>
+                </div>
+                <button onClick={() => setShowTransferModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-all"><X size={24} /></button>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 bg-brand-50 border border-brand-100 rounded-2xl">
+                <Info size={16} className="text-brand-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-brand-700 font-medium leading-relaxed">
+                  Use isto para mover entre corrente, poupança e conta de investimento da mesma
+                  instituição. O valor sai de uma e entra na outra — não conta como receita nem
+                  como despesa nos relatórios.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Sai de</label>
+                  <select
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold outline-none focus:border-brand-500"
+                    value={transferFrom}
+                    onChange={(e) => setTransferFrom(e.target.value)}
+                  >
+                    <option value="">Escolha a conta de origem...</option>
+                    {accounts.filter(a => !a.isArchived).map(a => (
+                      <option key={a.id} value={a.id}>{a.institution} · {getTypeLabel(a.type)} · {formatCurrency(a.currentBalance)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Entra em</label>
+                  <select
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold outline-none focus:border-brand-500"
+                    value={transferTo}
+                    onChange={(e) => setTransferTo(e.target.value)}
+                  >
+                    <option value="">Escolha a conta de destino...</option>
+                    {accounts.filter(a => !a.isArchived && a.id !== transferFrom).map(a => (
+                      <option key={a.id} value={a.id}>{a.institution} · {getTypeLabel(a.type)} · {formatCurrency(a.currentBalance)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Valor</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold outline-none focus:border-brand-500"
+                      value={transferAmount}
+                      onChange={(e) => setTransferAmount(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data</label>
+                    <input
+                      type="date"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold outline-none focus:border-brand-500"
+                      value={transferDate}
+                      onChange={(e) => setTransferDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Descrição</label>
+                  <input
+                    type="text"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold outline-none focus:border-brand-500"
+                    value={transferDesc}
+                    onChange={(e) => setTransferDesc(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowTransferModal(false)}
+                  className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleTransferBetweenAccounts}
+                  disabled={isSavingTransfer}
+                  className="flex-1 py-3 bg-brand-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-brand-500/20 hover:bg-brand-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isSavingTransfer ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+                  {isSavingTransfer ? 'Registrando...' : 'Transferir'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

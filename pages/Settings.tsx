@@ -40,9 +40,11 @@ import {
   History as HistoryIcon,
   FileCheck,
   Target,
-  PieChart
+  PieChart,
+  TrendingUp
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
+import { FinancialEngine } from '../lib/financialEngine';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { DateUtils } from '../lib/dateUtils';
 import { requestNotificationPermission, showLocalNotification, subscribeUserToPush, ensureFreshPushSubscription } from '../lib/pushUtils';
@@ -180,6 +182,32 @@ const SettingsPage: React.FC = () => {
   const [editingIof, setEditingIof] = useState(2.38);
   const [editingSpread, setEditingSpread] = useState(4.00);
 
+  // Índices de mercado que alimentam o cálculo de renda fixa (CDI, IPCA, IGP-M).
+  const [marketIndexes, setMarketIndexes] = useState({ cdi: 10.4, ipca: 4.0, igpm: 4.0 });
+  const [editingIndexes, setEditingIndexes] = useState({ cdi: 10.4, ipca: 4.0, igpm: 4.0 });
+
+  const saveMarketIndexes = async () => {
+    if (!supabase) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
+      const { error } = await supabase.from('user_settings').upsert({
+        user_id: user.id,
+        market_indexes: editingIndexes,
+        updated_at: DateUtils.getNow().toISOString()
+      });
+      if (error) throw error;
+      setMarketIndexes(editingIndexes);
+      FinancialEngine.setMarketIndexes(editingIndexes);
+      localStorage.setItem('finvision_market_indexes', JSON.stringify(editingIndexes));
+      toast('Índices atualizados. Os cálculos de renda fixa já usam os novos valores.', 'success');
+    } catch (err) {
+      console.error('Erro ao salvar índices de mercado:', err);
+      toast('Não foi possível salvar os índices. Verifique sua conexão.', 'error');
+    }
+  };
+
   // Check-up de saúde das notificações push (assinatura vs. servidor)
   type PushHealth = 'checking' | 'ok' | 'repaired' | 'off' | 'needs_permission' | 'blocked' | 'broken' | 'unsupported';
   const [pushHealth, setPushHealth] = useState<PushHealth>('checking');
@@ -260,6 +288,15 @@ const SettingsPage: React.FC = () => {
             whatsapp_number: data.whatsapp_number || '',
             push_enabled: data.push_enabled || false
           });
+          const idx = {
+            cdi: Number(data.market_indexes?.cdi ?? 10.4),
+            ipca: Number(data.market_indexes?.ipca ?? 4.0),
+            igpm: Number(data.market_indexes?.igpm ?? 4.0)
+          };
+          setMarketIndexes(idx);
+          setEditingIndexes(idx);
+          FinancialEngine.setMarketIndexes(idx);
+          localStorage.setItem('finvision_market_indexes', JSON.stringify(idx));
           // Cache and apply theme on load
           const forceMode = data.dark_mode_force || false;
           const autoDark = data.auto_dark_mode || false;
@@ -1567,6 +1604,57 @@ const SettingsPage: React.FC = () => {
                       className="w-full py-4 bg-brand-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-brand-700 transition-all shadow-lg shadow-brand-500/20"
                     >
                       Salvar Taxas
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Índices de mercado: antes o CDI (10,4%) e o IPCA (4%) estavam fixos no
+                  código, então todo título pós-fixado rendia pela taxa de um cenário
+                  antigo. Agora você mantém esses números atualizados aqui e todos os
+                  cálculos de renda fixa passam a usá-los. */}
+              <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm p-10 space-y-8">
+                <div className="space-y-4">
+                  <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-[24px] flex items-center justify-center border border-indigo-100"><TrendingUp size={32} /></div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-900 italic">Índices de Mercado</h2>
+                    <p className="text-sm text-slate-500 font-medium">
+                      Usados para projetar quanto rendem seus títulos atrelados a CDI, IPCA e IGP-M.
+                      Atualize quando o cenário mudar.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {([
+                    { key: 'cdi', label: 'CDI (ao ano)' },
+                    { key: 'ipca', label: 'IPCA (ao ano)' },
+                    { key: 'igpm', label: 'IGP-M (ao ano)' }
+                  ] as const).map(idx => (
+                    <div key={idx.key} className="p-6 bg-slate-50 rounded-[24px] border border-slate-50">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block">{idx.label}</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          step="0.01"
+                          className="bg-transparent font-bold text-3xl text-slate-900 w-28 outline-none"
+                          value={editingIndexes[idx.key]}
+                          onChange={e => setEditingIndexes(prev => ({ ...prev, [idx.key]: parseFloat(e.target.value) || 0 }))}
+                        />
+                        <span className="text-xl font-bold text-slate-500">%</span>
+                      </div>
+                    </div>
+                  ))}
+
+                  {(editingIndexes.cdi !== marketIndexes.cdi
+                    || editingIndexes.ipca !== marketIndexes.ipca
+                    || editingIndexes.igpm !== marketIndexes.igpm) && (
+                    <button
+                      onClick={saveMarketIndexes}
+                      className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20"
+                    >
+                      Salvar Índices
                     </button>
                   )}
                 </div>

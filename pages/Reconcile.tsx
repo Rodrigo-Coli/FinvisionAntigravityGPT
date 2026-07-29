@@ -73,6 +73,11 @@ const Reconcile: React.FC = () => {
   const [bulkSubcategory, setBulkSubcategory] = useState('');
   const [bulkOwner, setBulkOwner] = useState('');
   const [bulkTarget, setBulkTarget] = useState('');
+  // Tipo do destino escolhido na barra de seleção em lote. É separado de importSource
+  // de propósito: antes esses dois botões trocavam a aba inteira, então quem estava em
+  // Diversos e clicava em "Banco" só para dizer o destino via os itens selecionados
+  // sumirem da tela (a aba passava a filtrar outra fila).
+  const [bulkTargetType, setBulkTargetType] = useState<'bank' | 'card'>('bank');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -441,13 +446,22 @@ const Reconcile: React.FC = () => {
 
     setIsProcessing(true);
     setProgressStep("Sincronizando tudo...");
+    bulkSkippedRef.current = [];
 
     try {
       const itemsToSync = [...imported];
       for (const item of itemsToSync) {
         await handleConfirm(item, true);
       }
-      toast("Sincronização concluída com sucesso!", 'success');
+      const skipped = bulkSkippedRef.current;
+      if (skipped.length > 0) {
+        toast(
+          `Sincronização concluída. ${skipped.length} lançamento(s) ficaram na fila por já existirem no destino.`,
+          'warning'
+        );
+      } else {
+        toast("Sincronização concluída com sucesso!", 'success');
+      }
     } catch (e) {
       console.error("Erro na sincronização em lote:", e);
       toast("Houve um erro em algumas transações. Verifique a fila.", 'error');
@@ -522,10 +536,18 @@ const Reconcile: React.FC = () => {
     return '';
   };
 
-  const handleTargetChange = (name: string, isEdit: boolean, item?: any) => {
+  // typeHint: força o tipo a procurar (usado pela barra de lote, que tem o próprio
+  // seletor Banco/Cartão). keepTab: não deixa a escolha do destino trocar a aba ativa.
+  const handleTargetChange = (
+    name: string,
+    isEdit: boolean,
+    item?: any,
+    typeHint?: 'bank' | 'card',
+    keepTab: boolean = false
+  ) => {
     let foundId = '';
-    let foundType: 'bank' | 'card' | 'smart' = isEdit ? editForm.targetType : importSource;
-    
+    let foundType: 'bank' | 'card' | 'smart' = isEdit ? editForm.targetType : (typeHint || importSource);
+
     // Tenta no tipo atual primeiro
     if (foundType === 'bank' || foundType === 'smart') {
       const match = realAccounts.find(a => a.institution === name);
@@ -569,8 +591,10 @@ const Reconcile: React.FC = () => {
       setSelectedTargetName(name);
       if (foundId) {
         setSelectedTargetId(foundId);
-        // Se mudou o tipo globalmente, atualizamos o importSource para refletir no datalist (apenas se não estivermos na aba smart/diversos)
-        if (importSource !== 'smart' && foundType !== importSource) setImportSource(foundType);
+        if (foundType === 'bank' || foundType === 'card') setBulkTargetType(foundType);
+        // Se mudou o tipo globalmente, atualizamos o importSource para refletir no datalist
+        // (apenas se não estivermos na aba smart/diversos e se quem chamou permitir).
+        if (!keepTab && importSource !== 'smart' && foundType !== importSource) setImportSource(foundType);
       }
     }
   };
@@ -600,7 +624,17 @@ const Reconcile: React.FC = () => {
     const matchesDuplicate = showOnlyDuplicates ? item.potential_duplicate : true;
     if (!matchesSearch || !matchesDuplicate) return false;
 
-    // Segregação de filas de conciliação
+    // Segregação de filas de conciliação.
+    // A origem é carimbada na importação (metadata.source_type). Antes a aba era deduzida
+    // de "a linha tem uma conta cadastrada?", então um extrato de banco importado sem
+    // escolher a conta antes nascia com account_id nulo e ia parar em Diversos mesmo tendo
+    // sido importado pela aba Banco. Linhas antigas (sem carimbo) continuam caindo na
+    // dedução antiga, para não sumirem da fila de quem já tinha itens pendentes.
+    const stamped = item.metadata?.source_type as 'bank' | 'card' | undefined;
+    if (stamped === 'bank' || stamped === 'card') {
+      return importSource === stamped;
+    }
+
     const isItemCard = realCards.some(c => c.id === item.account_id) || item.metadata?.is_card === true;
     const isItemBank = realAccounts.some(a => a.id === item.account_id) && !isItemCard;
 
@@ -676,13 +710,22 @@ const Reconcile: React.FC = () => {
 
     setIsProcessing(true);
     setProgressStep(`Confirmando ${selectedIds.size} itens...`);
+    bulkSkippedRef.current = [];
 
     try {
-      const idsArray = Array.from(selectedIds);
       const itemsToConfirm = imported.filter(t => selectedIds.has(t.id));
 
       for (const item of itemsToConfirm) {
         await handleConfirm(item, true); // true = silent/bulk
+      }
+
+      const skipped = bulkSkippedRef.current;
+      if (skipped.length > 0) {
+        toast(
+          `${skipped.length} lançamento(s) não foram gravados por já existirem no destino. ` +
+          `Eles continuam na fila para você conferir.`,
+          'warning'
+        );
       }
 
       setBulkCategory(''); setBulkSubcategory(''); setBulkOwner(''); setBulkTarget('');
@@ -695,6 +738,46 @@ const Reconcile: React.FC = () => {
       fetchData(); // Recarrega para garantir saldos e lista limpa
     }
   };
+
+  // Procura, no destino escolhido (conta ou cartão), um lançamento de mesma data e mesmo
+  // valor absoluto. A checagem que existia rodava só uma vez, na importação, e comparava
+  // com TODAS as transações do usuário — não com o destino. Isso deixava passar o caso
+  // clássico: mandar a mesma leva de Diversos para uma conta que já tinha aqueles
+  // lançamentos. Aqui a comparação é feita no momento de gravar, contra o destino real.
+  const findDuplicateAtTarget = async (
+    targetId: string,
+    isCard: boolean,
+    date: string,
+    amount: number
+  ): Promise<{ description: string; date: string; amount: number } | null> => {
+    if (!supabase || !targetId || !date) return null;
+    const target = Math.abs(Number(amount)).toFixed(2);
+    try {
+      if (isCard) {
+        const { data } = await supabase
+          .from('card_transactions')
+          .select('description, date, amount')
+          .eq('card_id', targetId)
+          .eq('date', date);
+        const hit = (data || []).find((t: any) => Math.abs(Number(t.amount)).toFixed(2) === target);
+        return hit ? { description: hit.description, date: hit.date, amount: Number(hit.amount) } : null;
+      }
+      const { data } = await supabase
+        .from('transactions')
+        .select('description, date, amount')
+        .eq('account_id', targetId)
+        .eq('is_deleted', false)
+        .eq('date', date);
+      const hit = (data || []).find((t: any) => Math.abs(Number(t.amount)).toFixed(2) === target);
+      return hit ? { description: hit.description, date: hit.date, amount: Number(hit.amount) } : null;
+    } catch (e) {
+      console.error('Erro na verificação de duplicidade no destino:', e);
+      return null;
+    }
+  };
+
+  // Itens que a conferência de duplicidade barrou durante uma confirmação em lote.
+  const bulkSkippedRef = useRef<{ description: string; date: string }[]>([]);
 
   const handleConfirm = async (item: any, isBulk: boolean = false) => {
     if (!supabase) return;
@@ -718,6 +801,23 @@ const Reconcile: React.FC = () => {
 
     if (!targetId && !isBulk) return toast("Selecione um destino (Banco/Cartão)", 'warning');
     if (!targetId) return; // Pula em bulk se não tiver destino
+
+    // Conferência de duplicidade no destino, antes de gravar qualquer coisa.
+    const existing = await findDuplicateAtTarget(targetId, effectiveIsCard, finalDate, item.amount);
+    if (existing) {
+      const targetLabel = getTargetName(targetId, effectiveIsCard ? 'card' : 'bank') || 'destino';
+      if (isBulk) {
+        bulkSkippedRef.current.push({ description: finalDescription, date: finalDate });
+        return;
+      }
+      const ok = window.confirm(
+        `Possível duplicidade em ${targetLabel}.\n\n` +
+        `Já existe lá: ${existing.date.split('-').reverse().join('/')} — ${existing.description} ` +
+        `(R$ ${Math.abs(existing.amount).toFixed(2)})\n\n` +
+        `Confirmar mesmo assim?`
+      );
+      if (!ok) return;
+    }
 
     setProcessingItemId(item.id);
     try {
@@ -1004,30 +1104,36 @@ const Reconcile: React.FC = () => {
                   </datalist>
 
                   <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
-                    <button 
-                      onClick={() => setImportSource('bank')} 
-                      className={`px-3 py-1.5 rounded-md text-[8px] font-black uppercase transition-all ${importSource === 'bank' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}
+                    <button
+                      onClick={() => { setBulkTargetType('bank'); setBulkTarget(''); }}
+                      className={`px-3 py-1.5 rounded-md text-[8px] font-black uppercase transition-all ${bulkTargetType === 'bank' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}
                     >
                       Banco
                     </button>
-                    <button 
-                      onClick={() => setImportSource('card')} 
-                      className={`px-3 py-1.5 rounded-md text-[8px] font-black uppercase transition-all ${importSource === 'card' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}
+                    <button
+                      onClick={() => { setBulkTargetType('card'); setBulkTarget(''); }}
+                      className={`px-3 py-1.5 rounded-md text-[8px] font-black uppercase transition-all ${bulkTargetType === 'card' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}
                     >
                       Cartão
                     </button>
                   </div>
 
                   <input
-                    list="targets-list"
+                    list="bulk-targets-list"
                     value={bulkTarget}
                     className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[150px] placeholder:text-slate-500"
                     onChange={(e) => {
                       setBulkTarget(e.target.value);
-                      handleTargetChange(e.target.value, false);
+                      handleTargetChange(e.target.value, false, undefined, bulkTargetType, true);
                     }}
-                    placeholder={`Destino (${importSource === 'bank' ? 'Banco' : 'Cartão'})...`}
+                    placeholder={`Destino (${bulkTargetType === 'bank' ? 'Banco' : 'Cartão'})...`}
                   />
+
+                  <datalist id="bulk-targets-list">
+                    {bulkTargetType === 'bank'
+                      ? realAccounts.map(a => <option key={a.id} value={a.institution} />)
+                      : realCards.map(c => <option key={c.id} value={`${c.name}${c.last4 ? ` - ${c.last4}` : ''}`} />)}
+                  </datalist>
 
                   <input
                     list="entities-list"

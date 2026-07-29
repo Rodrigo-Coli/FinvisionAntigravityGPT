@@ -227,7 +227,12 @@ describe('Cálculos Financeiros', () => {
         it('deve extrair taxa anualizada de strings em diferentes formatos', () => {
             expect(FinancialEngine.parseYieldRate('12.5% a.a.', 'PRE')).toBe(12.5);
             expect(FinancialEngine.parseYieldRate('102% CDI', 'CDI')).toBeCloseTo(10.608, 3); // 1.02 * 10.4
-            expect(FinancialEngine.parseYieldRate('IPCA + 6.5%', 'IPCA')).toBeCloseTo(10.5, 1); // 4.0 + 6.5
+            // Índice + spread compõe (convenção de mercado), não soma:
+            // (1 + 0.04) * (1 + 0.065) - 1 = 10.76% a.a. Antes o motor somava (10.5%),
+            // o que subestimava todo título de IPCA+ e CRI/CRA.
+            expect(FinancialEngine.parseYieldRate('IPCA + 6.5%', 'IPCA')).toBeCloseTo(10.76, 2);
+            expect(FinancialEngine.parseYieldRate('3.5', 'CDI_PLUS')).toBeCloseTo(14.26, 2); // (1.104 * 1.035) - 1
+            expect(FinancialEngine.parseYieldRate('6', 'IGPM')).toBeCloseTo(10.24, 2);       // (1.04 * 1.06) - 1
         });
 
         it('deve calcular a alíquota de IR regressivo com base nos dias', () => {

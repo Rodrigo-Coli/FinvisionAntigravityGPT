@@ -310,28 +310,85 @@ export class FinancialEngine {
   }
 
   /**
+   * Índices de mercado usados como referência para os títulos pós-fixados e indexados.
+   * Vinham chumbados no código (CDI 10,4% e IPCA 4%), o que fazia todo título atrelado
+   * a CDI ou IPCA render pela taxa de um cenário antigo. Agora são configuráveis em
+   * Ajustes e ficam guardados por usuário em user_settings.market_indexes.
+   */
+  static MARKET_INDEXES: { cdi: number; ipca: number; igpm: number } = {
+    cdi: 10.4,
+    ipca: 4.0,
+    igpm: 4.0
+  };
+
+  static setMarketIndexes(indexes: Partial<{ cdi: number; ipca: number; igpm: number }>) {
+    this.MARKET_INDEXES = {
+      cdi: Number(indexes.cdi ?? this.MARKET_INDEXES.cdi) || 0,
+      ipca: Number(indexes.ipca ?? this.MARKET_INDEXES.ipca) || 0,
+      igpm: Number(indexes.igpm ?? this.MARKET_INDEXES.igpm) || 0
+    };
+  }
+
+  /**
+   * Junta um índice com o spread do título pela convenção de mercado (composição, não
+   * soma): "IPCA + 6%" com IPCA de 4% rende (1,04 × 1,06) − 1 = 10,24% a.a., e não 10%.
+   */
+  private static compoundRates(indexPercent: number, spreadPercent: number): number {
+    return ((1 + indexPercent / 100) * (1 + spreadPercent / 100) - 1) * 100;
+  }
+
+  /**
    * Parses annual yield rate text and index type into a flat annual percentage rate.
+   *
+   * Indexadores suportados:
+   *  · PRE       → a taxa digitada já é a rentabilidade ao ano.
+   *  · CDI       → percentual do CDI (ex.: 105 = 105% do CDI).
+   *  · CDI_PLUS  → CDI mais um spread (ex.: "CDI + 3,50").
+   *  · IPCA      → IPCA mais um spread (ex.: "IPCA + 9,23").
+   *  · IGPM      → IGP-M mais um spread.
    */
   static parseYieldRate(yieldRateStr: string, indexType: string): number {
     const rawVal = parseFloat((yieldRateStr || '').replace(/[^0-9.,]/g, '').replace(',', '.')) || 0;
-    
-    // Default benchmarks
-    const BENCHMARK_CDI = 10.4;
-    const BENCHMARK_IPCA = 4.0;
-    
+
+    const { cdi, ipca, igpm } = this.MARKET_INDEXES;
+
     const indexUpper = (indexType || '').toUpperCase();
     const rateUpper = (yieldRateStr || '').toUpperCase();
-    
+
+    if (indexUpper === 'CDI_PLUS' || /CDI\s*\+/.test(rateUpper)) {
+      return this.compoundRates(cdi, rawVal);
+    }
+
+    if (indexUpper === 'IGPM' || rateUpper.includes('IGP')) {
+      return this.compoundRates(igpm, rawVal);
+    }
+
     if (rateUpper.includes('CDI') || indexUpper === 'CDI') {
       const percentage = yieldRateStr.includes('%') ? (rawVal / 100) : (rawVal > 2 ? rawVal / 100 : rawVal);
-      return (percentage || 1) * BENCHMARK_CDI;
+      return (percentage || 1) * cdi;
     }
-    
+
     if (rateUpper.includes('IPCA') || indexUpper === 'IPCA') {
-      return BENCHMARK_IPCA + rawVal;
+      return this.compoundRates(ipca, rawVal);
     }
-    
+
     return rawVal;
+  }
+
+  /**
+   * Texto legível do indexador + taxa, para mostrar no card do investimento.
+   */
+  static describeYieldRate(yieldRateStr: string, indexType: string): string {
+    const rate = (yieldRateStr || '').trim();
+    if (!rate) return '';
+    switch ((indexType || '').toUpperCase()) {
+      case 'CDI': return `${rate}% do CDI`;
+      case 'CDI_PLUS': return `CDI + ${rate}%`;
+      case 'IPCA': return `IPCA + ${rate}%`;
+      case 'IGPM': return `IGP-M + ${rate}%`;
+      case 'PRE': return `${rate}% a.a.`;
+      default: return rate;
+    }
   }
 
   /**
