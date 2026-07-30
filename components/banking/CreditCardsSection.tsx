@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Loader2, Edit2, Archive, Trash2, Info, Filter, X as XIcon } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
@@ -198,12 +198,33 @@ const CreditCardsSection: React.FC = () => {
     }
   }, [location.search]);
 
+  // Guarda o cartão que estava aberto para distinguir "troquei de cartão" de "o mesmo
+  // cartão foi recarregado". Só a troca de verdade zera a fatura escolhida — num
+  // recarregamento (depois de salvar um lançamento, por exemplo) a sua escolha fica.
+  const prevCardIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (selectedCard) {
-      setTxCardId(selectedCard.id);
+    if (!selectedCard) return;
+
+    const cardChanged = prevCardIdRef.current !== null && prevCardIdRef.current !== selectedCard.id;
+    prevCardIdRef.current = selectedCard.id;
+
+    setTxCardId(selectedCard.id);
+    if (cardChanged) {
+      // Volta para "Fatura Atual" do cartão novo. O forcedStatementId é necessário
+      // porque setSelectedStatementId só vale no próximo render — sem ele,
+      // loadCardContext ainda leria a fatura do cartão anterior.
+      setSelectedStatementId('CURRENT');
+      // Zera o que está na tela: enquanto a busca do cartão novo não volta, os
+      // lançamentos e o total do cartão anterior continuariam visíveis, dando a
+      // impressão de que a fatura do outro cartão "grudou".
+      setTransactions([]);
+      setCurrentStatement(null);
+      loadCardContext(selectedCard.id, 'CURRENT');
+    } else {
       loadCardContext(selectedCard.id);
-      fetchRecentTxs();
     }
+    fetchRecentTxs();
   }, [selectedCard]);
 
   const formatCurrency = (val: number) =>
@@ -629,7 +650,10 @@ const CreditCardsSection: React.FC = () => {
     return a.institution || a.name || a.bank_name || `Conta ${a.id.slice(0, 6)}`;
   };
 
-  const loadCardContext = async (cardId: string) => {
+  // forcedStatementId: usado ao TROCAR de cartão, para ignorar a fatura que estava
+  // selecionada no cartão anterior. Sem isso o valor antigo continuava valendo e a
+  // tela do novo cartão carregava a fatura do cartão que você acabou de deixar.
+  const loadCardContext = async (cardId: string, forcedStatementId?: string) => {
     try {
       const allStatements = await fetchStatements(cardId);
       setStatements(allStatements);
@@ -678,7 +702,8 @@ const CreditCardsSection: React.FC = () => {
       setRealCurrentStatement(current || null);
 
       // Se não houver seleção manual, focar na atual
-      const targetId = selectedStatementId === 'CURRENT' ? current?.id : selectedStatementId;
+      const effectiveSelection = forcedStatementId ?? selectedStatementId;
+      const targetId = effectiveSelection === 'CURRENT' ? current?.id : effectiveSelection;
       await fetchTransactions(cardId, targetId === 'ALL' ? null : targetId);
     } catch (e) {
       console.error('Erro ao carregar contexto do cartão:', e);
@@ -787,8 +812,13 @@ const CreditCardsSection: React.FC = () => {
       // é category_id) e tanto o campo de categoria quanto a sugestão de subcategoria
       // (filtrada por tx.category) ficam sem nada pra mostrar depois de todo recarregamento.
       let query = supabase.from('card_transactions').select('*, categories(name)').eq('user_id', user.id).order('date', { ascending: false });
+      // O filtro por cartão vale SEMPRE, inclusive quando há uma fatura escolhida.
+      // Antes, com fatura selecionada, a busca ia só pelo statement_id — então uma
+      // seleção que sobrasse de outro cartão trazia os lançamentos daquele outro
+      // cartão para a tela do atual. Como a fatura pertence a um cartão só, somar o
+      // filtro de cartão não muda o resultado legítimo e fecha essa porta.
+      query = query.in('card_id', cardIdsForInvoice);
       if (statementId) query = query.eq('statement_id', statementId);
-      else query = query.in('card_id', cardIdsForInvoice);
       const { data, error } = await query;
       if (error) throw error;
 

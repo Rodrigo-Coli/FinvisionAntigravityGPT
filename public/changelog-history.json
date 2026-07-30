@@ -1,5 +1,25 @@
 [
   {
+    "version": "2026.07.30.0210",
+    "title": "Trocar de cartão não mostra mais a fatura do cartão anterior",
+    "date": "30/07/2026",
+    "benefits": [
+      {
+        "title": "A fatura de um cartão não aparece mais em outro",
+        "desc": "A fatura escolhida não era zerada ao trocar de cartão, e a busca não exigia que os lançamentos fossem do cartão aberto. Os dois pontos foram corrigidos.",
+        "type": "correção"
+      },
+      {
+        "title": "Sem valores antigos piscando na troca",
+        "desc": "A tela é limpa ao trocar de cartão, em vez de manter a lista do cartão anterior até a nova busca responder.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "CreditCardsSection: filtro por card_id aplicado sempre em fetchTransactions; loadCardContext com forcedStatementId; prevCardIdRef distingue troca de cartão de recarregamento e só a troca reseta a fatura selecionada."
+    ]
+  },
+  {
     "version": "2026.07.30.0120",
     "title": "Garantia de que a lista de lançamentos carrega tudo",
     "date": "30/07/2026",

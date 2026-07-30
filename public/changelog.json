@@ -1,27 +1,24 @@
 {
-  "version": "2026.07.30.0120",
-  "title": "Garantia de que a lista de lançamentos carrega tudo",
+  "version": "2026.07.30.0210",
+  "title": "Trocar de cartão não mostra mais a fatura do cartão anterior",
   "date": "30/07/2026",
   "benefits": [
     {
-      "title": "Nenhum lançamento pode ficar de fora da lista",
-      "desc": "A tela de Transações busca os dados em blocos. O código decidia que 'acabou' quando um bloco vinha com menos linhas do que o pedido — um chute que funcionava por sorte. Se o servidor devolvesse menos linhas do que o esperado, a busca parava no primeiro bloco e o resto do histórico desaparecia da tela sem aviso. Agora o app recebe do servidor a contagem exata de registros, sabe quantos blocos pedir e confere no final se veio tudo. Se faltar algo, ele refaz a busca do jeito conservador em vez de mostrar a tela incompleta.",
+      "title": "A fatura de um cartão não aparece mais em outro",
+      "desc": "Se você escolhia uma fatura específica num cartão e depois trocava para outro, a tela do cartão novo continuava mostrando os lançamentos e o total do cartão anterior. Eram duas falhas somadas: a fatura escolhida não era zerada ao trocar de cartão, e a busca de lançamentos filtrava só pela fatura, sem exigir que ela fosse daquele cartão. Agora, ao trocar de cartão, a tela volta para a Fatura Atual do cartão escolhido, e a busca sempre exige que os lançamentos sejam do cartão aberto.",
       "type": "correção"
     },
     {
-      "title": "Ordem definida na busca por blocos",
-      "desc": "As consultas não diziam em que ordem os dados deviam vir, e sem isso o banco não garante a mesma ordem entre duas requisições — a mesma linha podia cair em dois blocos ou em nenhum. Esse risco existia desde antes e aumentou quando os blocos passaram a ser buscados em paralelo. Agora a ordem é explícita (data e identificador), o que torna a paginação previsível.",
-      "type": "correção"
-    },
-    {
-      "title": "Uma requisição a menos no carregamento",
-      "desc": "A contagem total vem junto com o primeiro bloco, no mesmo pedido. No filtro 'Tudo', com quase 5 mil lançamentos, são 1 requisição inicial e 4 em paralelo, no lugar das 5 em fila de antes.",
+      "title": "Sem valores antigos piscando na troca",
+      "desc": "A lista e o total do cartão anterior ficavam visíveis até a busca do novo cartão responder, o que dava a impressão de que a fatura tinha 'grudado'. Agora a tela é limpa na hora da troca.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "pages/History.tsx: fetchAllChunks substituído por fetchAllRows. O primeiro bloco é pedido com { count: 'exact' }, então o total vem no mesmo round-trip e também revela o tamanho de página que o servidor realmente devolve (o código antigo assumia 1000 fixo). Os blocos restantes são derivados do total e buscados em paralelo de 4 em 4. Conferência final out.length === total com fallback sequencial e aviso no console.",
-    "pages/History.tsx: as consultas de transactions e card_transactions ganharam .order('date', desc).order('id', asc) — paginação por range sem ORDER BY não é determinística, defeito que já existia no while sequencial original.",
+    "components/banking/CreditCardsSection.tsx (fetchTransactions): o filtro .in('card_id', cardIdsForInvoice) passou a ser aplicado SEMPRE, inclusive quando há statement_id. Antes, com fatura selecionada, a consulta ia só por statement_id — sem nenhuma amarração com o cartão em tela.",
+    "components/banking/CreditCardsSection.tsx (loadCardContext): novo parâmetro forcedStatementId, necessário porque setSelectedStatementId só vale no render seguinte; sem ele a função ainda leria a fatura do cartão anterior.",
+    "components/banking/CreditCardsSection.tsx (efeito de selectedCard): prevCardIdRef distingue troca real de cartão de recarregamento do mesmo cartão. Só a troca reseta selectedStatementId para CURRENT e limpa transactions/currentStatement — assim a sua escolha de fatura sobrevive a um recarregamento após salvar um lançamento.",
+    "Nota: este defeito é anterior à mudança de rótulo da fatura por vencimento (v2026.07.29.2350), que alterou apenas texto exibido.",
     "Verificação: tsc -p tsconfig.json --noEmit sem erros; 127 testes passando."
   ]
 }
