@@ -13,7 +13,7 @@ interface MultiSelectProps {
     icon: React.ReactNode;
 }
 
-const SearchableMultiSelect: React.FC<MultiSelectProps> = ({ label, placeholder, searchPlaceholder, options, selected, onChange, icon }) => {
+export const SearchableMultiSelect: React.FC<MultiSelectProps> = ({ label, placeholder, searchPlaceholder, options, selected, onChange, icon }) => {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
     const ref = useRef<HTMLDivElement>(null);

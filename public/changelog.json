@@ -1,24 +1,28 @@
 {
-  "version": "2026.07.30.0210",
-  "title": "Trocar de cartão não mostra mais a fatura do cartão anterior",
+  "version": "2026.07.30.1239",
+  "title": "DRE completo: gastos de cartão certos e novos filtros",
   "date": "30/07/2026",
   "benefits": [
     {
-      "title": "A fatura de um cartão não aparece mais em outro",
-      "desc": "Se você escolhia uma fatura específica num cartão e depois trocava para outro, a tela do cartão novo continuava mostrando os lançamentos e o total do cartão anterior. Eram duas falhas somadas: a fatura escolhida não era zerada ao trocar de cartão, e a busca de lançamentos filtrava só pela fatura, sem exigir que ela fosse daquele cartão. Agora, ao trocar de cartão, a tela volta para a Fatura Atual do cartão escolhido, e a busca sempre exige que os lançamentos sejam do cartão aberto.",
+      "title": "Gastos de cartão aparecem certinho no DRE",
+      "desc": "O relatório de Receitas x Despesas (DRE) tinha dois problemas: ele só olhava para a 'página' da tabela que estava aberta na tela, e herdava um filtro que, por padrão, resume o cartão numa única linha de fatura em vez de detalhar cada compra por categoria. Agora o DRE sempre parte do período inteiro e sempre detalha as compras de cartão por categoria (Mercado, Lazer, etc.), não importa o que estiver selecionado na tela de Transações.",
       "type": "correção"
     },
     {
-      "title": "Sem valores antigos piscando na troca",
-      "desc": "A lista e o total do cartão anterior ficavam visíveis até a busca do novo cartão responder, o que dava a impressão de que a fatura tinha 'grudado'. Agora a tela é limpa na hora da troca.",
+      "title": "Filtro de Receita, Despesa, Categoria e Subcategoria dentro do DRE",
+      "desc": "O DRE ganhou um botão 'Filtros' próprio: dá pra ver só receitas, só despesas, ou escolher categorias e subcategorias específicas — sem precisar mexer nos filtros da tela de Transações.",
+      "type": "melhoria"
+    },
+    {
+      "title": "Botões do DRE maiores no celular",
+      "desc": "Imprimir/PDF, Baixar Excel e Fechar estavam pequenos demais para identificar no celular. Agora ficam em botões largos, sempre com o texto visível, também na tela do celular.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "components/banking/CreditCardsSection.tsx (fetchTransactions): o filtro .in('card_id', cardIdsForInvoice) passou a ser aplicado SEMPRE, inclusive quando há statement_id. Antes, com fatura selecionada, a consulta ia só por statement_id — sem nenhuma amarração com o cartão em tela.",
-    "components/banking/CreditCardsSection.tsx (loadCardContext): novo parâmetro forcedStatementId, necessário porque setSelectedStatementId só vale no render seguinte; sem ele a função ainda leria a fatura do cartão anterior.",
-    "components/banking/CreditCardsSection.tsx (efeito de selectedCard): prevCardIdRef distingue troca real de cartão de recarregamento do mesmo cartão. Só a troca reseta selectedStatementId para CURRENT e limpa transactions/currentStatement — assim a sua escolha de fatura sobrevive a um recarregamento após salvar um lançamento.",
-    "Nota: este defeito é anterior à mudança de rótulo da fatura por vencimento (v2026.07.29.2350), que alterou apenas texto exibido.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; 127 testes passando."
+    "pages/History.tsx: nova base dreSourceTransactions (banco + cartão sempre itemizado, sem paginação e sem os filtros de tela) alimentando o DRE; handleGenerateDre só abre o modal, que agora calcula o relatório internamente.",
+    "components/history/DreReportModal.tsx: recebe transactions/startDate/endDate em vez de um report pronto; filtros próprios de Tipo/Categoria/Subcategoria com recálculo via useMemo; cabeçalho redesenhado com botões maiores e rótulo sempre visível no celular.",
+    "components/history/HistoryFilters.tsx: SearchableMultiSelect exportado para reuso no DreReportModal.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (filtros de tipo/categoria conferidos batendo o total, DRE completo mesmo trocando a Origem da tela para 'Conta')."
   ]
 }

@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.07.30.1239",
+    "title": "DRE completo: gastos de cartão certos e novos filtros",
+    "date": "30/07/2026",
+    "benefits": [
+      {
+        "title": "Gastos de cartão aparecem certinho no DRE",
+        "desc": "O DRE agora sempre parte do período inteiro e sempre detalha as compras de cartão por categoria, não importa o filtro selecionado na tela de Transações.",
+        "type": "correção"
+      },
+      {
+        "title": "Filtro de Receita, Despesa, Categoria e Subcategoria dentro do DRE",
+        "desc": "Botão 'Filtros' próprio no relatório: só receitas, só despesas, ou categorias/subcategorias específicas.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Botões do DRE maiores no celular",
+        "desc": "Imprimir/PDF, Baixar Excel e Fechar agora em botões largos com texto sempre visível no celular.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "History.tsx: base dreSourceTransactions (banco + cartão itemizado, sem paginação/filtros de tela) alimentando o DRE.",
+      "DreReportModal.tsx: filtros próprios de Tipo/Categoria/Subcategoria com recálculo via useMemo; cabeçalho com botões maiores no celular.",
+      "HistoryFilters.tsx: SearchableMultiSelect exportado para reuso."
+    ]
+  },
+  {
     "version": "2026.07.30.0210",
     "title": "Trocar de cartão não mostra mais a fatura do cartão anterior",
     "date": "30/07/2026",

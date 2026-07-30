@@ -21,7 +21,6 @@ import { AddTransactionModal } from '../components/history/AddTransactionModal';
 import { SeriesScopeModal, SeriesScope } from '../components/SeriesScopeModal';
 import { HistoryCharts } from '../components/history/HistoryCharts';
 import { DreReportModal } from '../components/history/DreReportModal';
-import { DreUtils, DreReport } from '../lib/dreUtils';
 import ContextualHelp from '../components/ContextualHelp';
 import { ArrowDownRight, ArrowUpRight, Wallet, Building2 } from 'lucide-react';
 
@@ -199,6 +198,10 @@ const HistoryPage: React.FC = () => {
   const [isComparing, setIsComparing] = useState(false);
   const [chartTransactions, setChartTransactions] = useState<Transaction[]>([]); // full set for charts (no pagination)
   const [chartCategoryTransactions, setChartCategoryTransactions] = useState<Transaction[]>([]); // banco + cartão combinados, só para o gráfico de categorias
+  // Base completa (banco + compras de cartão sempre itemizadas, nunca a fatura resumida) do
+  // período selecionado, sem paginação e sem os filtros da tela (tipo/conta/categoria/etc) —
+  // o DRE tem seus próprios filtros (ver DreReportModal) e precisa sempre partir do total real.
+  const [dreSourceTransactions, setDreSourceTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [cards, setCards] = useState<{ id: string; name: string; last4?: string; closingDay?: number; dueDay?: number; isAdditional?: boolean; parentCardId?: string; sumsIntoInvoice?: boolean; isArchived?: boolean }[]>([]);
   // Todos os cartões (inclusive arquivados) — só para o cálculo de competência.
@@ -228,7 +231,6 @@ const HistoryPage: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [showOnlyDuplicates, setShowOnlyDuplicates] = useState(false);
   const [showDreModal, setShowDreModal] = useState(false);
-  const [dreReport, setDreReport] = useState<DreReport | null>(null);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<string>(() => {
     const typeParam = getQueryParam('type');
@@ -765,18 +767,45 @@ const HistoryPage: React.FC = () => {
           ? normalizedCardTxs.filter((ct: any) => ct.competenceDate >= startDate && ct.competenceDate <= endDate)
           : normalizedCardTxs;
 
-        // ── Dataset combinado (banco + cartão) só para o GRÁFICO de categorias ──
-        // Objetivo: o gráfico deve mostrar o gasto por categoria somando banco e
-        // cartão (ex: Mercado do débito + Mercado do cartão), sem contar a fatura
-        // como um gasto duplicado. Por isso excluímos aqui só o lançamento de
-        // "pagamento de fatura" (metadata.is_provision === true, criado em
-        // syncStatementToHistory) e somamos as compras individuais do cartão no
-        // lugar dele. Isso NÃO altera a tabela de lançamentos nem os totais do
-        // topo da página — só o que alimenta o componente HistoryCharts.
-        let combinedForChart = [
+        // ── Base banco + cartão sempre itemizada (nunca a fatura resumida) ──
+        // Objetivo: banco + cartão somados por categoria (ex: Mercado do débito +
+        // Mercado do cartão), sem contar a fatura como um gasto duplicado. Por isso
+        // excluímos aqui só o lançamento de "pagamento de fatura" (metadata.is_provision
+        // === true, criado em syncStatementToHistory) e somamos as compras individuais
+        // do cartão no lugar dele. Isso NÃO altera a tabela de lançamentos nem os totais
+        // do topo da página — alimenta o gráfico de categorias E o DRE.
+        const dreRaw = [
           ...(txs || []).filter((t: any) => !(t?.metadata?.is_provision === true)),
           ...normalizedCardTxsInRange
         ].map(applyTrueAmount);
+
+        // DRE: sempre a base completa do período (banco + cartão itemizado), sem os
+        // filtros da tela de Transações — o DRE tem seus próprios filtros de Tipo/
+        // Categoria/Subcategoria (ver DreReportModal), e não pode ser cortado pela
+        // paginação nem pelo filtro de Origem (que por padrão esconde compras
+        // individuais de cartão em favor da linha resumida "Fatura Cartão").
+        setDreSourceTransactions(dreRaw.map((t: any) => ({
+          id: t.id,
+          description: t.description || '',
+          amount: Number(t.amount || 0),
+          date: t.date,
+          type: t.type as TransactionType,
+          accountId: t.account_id,
+          accountName: t.account_name ?? '',
+          category: t.category ?? 'Sem categoria',
+          subcategory: t.subcategory ?? undefined,
+          owner_name: t.owner_name ?? 'Pessoal',
+          notes: t.notes ?? '',
+          tags: t.tags ?? [],
+          isDeleted: !!t.is_deleted,
+          isReconciled: !!t.is_reconciled,
+          isPaid: !!t.is_paid,
+          paidAmount: Number(t.paid_amount || 0),
+          is_amortization: !!t.is_amortization,
+          metadata: t.metadata
+        })));
+
+        let combinedForChart = [...dreRaw];
         if (filterType !== 'ALL') {
           combinedForChart = combinedForChart.filter((t: any) => t.type === filterType);
         }
@@ -2066,9 +2095,6 @@ const HistoryPage: React.FC = () => {
   };
 
   const handleGenerateDre = () => {
-    // Generate the DRE report using the currently filtered transactions mapped
-    const report = DreUtils.generateDreFromTransactions(transactions, startDate, endDate);
-    setDreReport(report);
     setShowDreModal(true);
   };
 
@@ -3324,9 +3350,11 @@ const HistoryPage: React.FC = () => {
         type={seriesModal.tx?.metadata?.recurrence_group_id ? 'RECURRING' : 'INSTALLMENT'}
       />
 
-      {showDreModal && dreReport && (
+      {showDreModal && (
         <DreReportModal
-          report={dreReport}
+          transactions={dreSourceTransactions}
+          startDate={startDate}
+          endDate={endDate}
           onClose={() => setShowDreModal(false)}
         />
       )}
