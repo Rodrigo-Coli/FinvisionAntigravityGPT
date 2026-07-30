@@ -259,6 +259,16 @@ export default function CashFlowProjection({
                     >
                       <td className="px-4 py-3 font-bold text-slate-700">
                         {item.label}
+                        {/* Deixa explícito quando o mês carrega atraso de meses anteriores:
+                            sem esse aviso, a linha parecia dizer que aquele dinheiro era
+                            daquele mês. */}
+                        {((item.overdueIncome || 0) > 0 || (item.overdueExpense || 0) > 0) && (
+                          <span className="block text-[9px] font-semibold text-amber-600 mt-0.5 normal-case">
+                            inclui atrasados
+                            {(item.overdueIncome || 0) > 0 ? ` · a receber ${showBalance ? formatCurrency(item.overdueIncome || 0) : 'R$ ••••'}` : ''}
+                            {(item.overdueExpense || 0) > 0 ? ` · a pagar ${showBalance ? formatCurrency(item.overdueExpense || 0) : 'R$ ••••'}` : ''}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-emerald-600">
                         {showBalance ? formatCurrency(totalInc) : 'R$ ••••'}
@@ -278,7 +288,11 @@ export default function CashFlowProjection({
 
           <div className="mt-6 pt-4 border-t border-slate-50 flex items-center text-[10px] text-slate-400 gap-2 font-medium">
             <Info className="w-4.5 h-4.5 text-brand-400 shrink-0" />
-            <p>A projeção avançada consolida faturas de cartão e parcelas extras de imóveis nas barras de despesa.</p>
+            <p>
+              A projeção avançada consolida faturas de cartão e parcelas extras de imóveis nas barras de despesa.
+              Lançamentos vencidos e ainda não quitados entram no mês atual (é quando você precisa resolvê-los) e
+              vêm marcados como "inclui atrasados" — nunca no primeiro mês da janela que você escolheu.
+            </p>
           </div>
         </div>
       )}

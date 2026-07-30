@@ -48,12 +48,20 @@ export const DateUtils = {
     /**
      * Formata data e hora para exibição amigável.
      */
-    formatDateTime: (date: Date): string => {
+    /**
+     * Formata data + hora. Devolve '—' quando a data é inválida em vez de estourar.
+     * O Intl.DateTimeFormat lança "Invalid time value" ao receber um Date inválido, e
+     * como isso acontecia dentro do render, a tela inteira caía no "Ops! Algo deu
+     * errado" — foi o que ocorria ao importar um comprovante sem data legível.
+     */
+    formatDateTime: (date: Date | string | null | undefined): string => {
+        const d = date instanceof Date ? date : (date ? new Date(date) : null);
+        if (!d || isNaN(d.getTime())) return '—';
         return new Intl.DateTimeFormat('pt-BR', {
             dateStyle: 'short',
             timeStyle: 'short',
             timeZone: DateUtils.getTimeZone()
-        }).format(date);
+        }).format(d);
     },
 
     /**

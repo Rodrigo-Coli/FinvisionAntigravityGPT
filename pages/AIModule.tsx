@@ -371,7 +371,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                     <div>
                       <h2 className="text-2xl font-bold text-slate-900 tracking-tight uppercase italic">{receipt.merchant}</h2>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                        {DateUtils.formatDateTime(new Date(receipt.date))} • {receipt.currency || 'BRL'}
+                        {DateUtils.formatDateTime(receipt.date)} • {receipt.currency || 'BRL'}
                       </p>
                     </div>
                     <div className="text-right">

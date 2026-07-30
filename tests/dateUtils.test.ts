@@ -2,6 +2,23 @@ import { describe, it, expect } from 'vitest';
 import { DateUtils } from '../lib/dateUtils';
 
 describe('DateUtils', () => {
+    // Regressão: um comprovante importado sem data legível fazia o Intl estourar
+    // "Invalid time value" durante o render, e a tela caía no "Ops! Algo deu errado".
+    describe('formatDateTime', () => {
+        it('nao deve estourar com data invalida ou ausente', () => {
+            expect(DateUtils.formatDateTime(new Date('nao-e-data'))).toBe('—');
+            expect(DateUtils.formatDateTime('')).toBe('—');
+            expect(DateUtils.formatDateTime(null)).toBe('—');
+            expect(DateUtils.formatDateTime(undefined)).toBe('—');
+            expect(DateUtils.formatDateTime('texto qualquer')).toBe('—');
+        });
+
+        it('deve formatar uma data valida', () => {
+            const out = DateUtils.formatDateTime(new Date(Date.UTC(2026, 6, 26, 15, 30)));
+            expect(out).toMatch(/\d{2}\/\d{2}\/\d{4}/);
+        });
+    });
+
     describe('formatToISODate', () => {
         it('deve retornar data no formato YYYY-MM-DD', () => {
             const date = new Date(2026, 2, 6); // 6 de março de 2026

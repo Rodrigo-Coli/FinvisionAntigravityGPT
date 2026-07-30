@@ -1,8 +1,34 @@
 [
   {
+    "version": "2026.07.29.2240",
+    "title": "Projeção da Home agora bate com a realidade do mês",
+    "date": "29/07/2026",
+    "benefits": [
+      {
+        "title": "Escolher o mês inicial não infla mais a primeira barra",
+        "desc": "Atraso acumulado ia para o começo da janela escolhida; agora vai para o mês corrente, onde ele realmente está.",
+        "type": "correção"
+      },
+      {
+        "title": "Fica visível quanto de um mês é atraso acumulado",
+        "desc": "A linha do mês mostra 'inclui atrasados' com os valores a receber e a pagar separados.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Importar comprovante sem data legível não derruba mais a tela",
+        "desc": "O 'Invalid time value' em Insights IA era crash de exibição; agora mostra '—' e segue funcionando.",
+        "type": "correção"
+      }
+    ],
+    "changes": [
+      "projection.service.ts: consolidação de vencidos usa o mês corrente real, não o anchorMonth; novos campos overdueIncome/overdueExpense expostos na tabela.",
+      "dateUtils.formatDateTime tolera data inválida/ausente (2 testes de regressão)."
+    ]
+  },
+  {
     "version": "2026.07.26.0330",
     "title": "Contas da mesma instituição agora aparecem como uma só",
-    "date": "26/07/2026",
+    "date": "29/07/2026",
     "benefits": [
       {
         "title": "Corrente, poupança e investimento num card só",
@@ -22,7 +48,7 @@
   {
     "version": "2026.07.26.0245",
     "title": "Conciliação no lugar certo, investimentos com custo e IR corretos",
-    "date": "26/07/2026",
+    "date": "29/07/2026",
     "benefits": [
       {
         "title": "Extrato importado em Banco não some mais para Diversos",

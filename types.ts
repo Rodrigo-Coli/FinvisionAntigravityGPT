@@ -331,6 +331,14 @@ export interface CashFlowProjectionItem {
   balloonPayments: number;
   netCashFlow: number;
   endingBalance: number;
+  /**
+   * Parcela do mês que na verdade é atraso acumulado de meses anteriores, consolidada
+   * aqui porque é agora que ela precisa ser resolvida. Fica separada para a tela poder
+   * avisar — sem isso o primeiro mês da projeção parecia ter uma receita/despesa que
+   * não era daquele mês.
+   */
+  overdueIncome?: number;
+  overdueExpense?: number;
 }
 
 export interface Goal {

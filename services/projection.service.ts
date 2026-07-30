@@ -36,16 +36,31 @@ export const projectionService = {
 
     const excludedSet = new Set(excludedEntities.map((e: any) => e.name));
 
-    const monthlyData: Record<string, { income: number; expense: number }> = {};
+    const monthlyData: Record<string, { income: number; expense: number; overdueIncome: number; overdueExpense: number }> = {};
     const generatedRecurrences = new Set<string>();
 
-    const currentKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    // Mês corrente DE VERDADE (o de hoje), que é onde o atraso acumulado deve ser
+    // consolidado. Antes esta chave era derivada de `today`, que passa a ser o mês
+    // escolhido no seletor "Começa em": escolher setembro fazia o app tratar TUDO
+    // anterior a setembro como atraso e empilhar julho + agosto + setembro na primeira
+    // barra. Era por isso que o primeiro mês da projeção nunca batia com a realidade.
+    const realNow = new Date();
+    const realCurrentKey = `${realNow.getFullYear()}-${String(realNow.getMonth() + 1).padStart(2, '0')}`;
 
     for (let i = 0; i < monthsAhead; i++) {
         const dt = new Date(today.getFullYear(), today.getMonth() + i, 1);
         const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-        monthlyData[key] = { income: 0, expense: 0 };
+        monthlyData[key] = { income: 0, expense: 0, overdueIncome: 0, overdueExpense: 0 };
     }
+
+    // Resolve em qual mês da projeção um item vencido deve entrar. Vencido vai para o
+    // mês corrente real (é quando você precisa lidar com ele). Se a janela em exibição
+    // começa depois do mês corrente, o item simplesmente não aparece — em vez de ser
+    // jogado no primeiro mês visível e inflar a barra.
+    const resolveKey = (rawKey: string): { key: string | null; isOverdue: boolean } => {
+        if (rawKey >= realCurrentKey) return { key: rawKey, isOverdue: false };
+        return { key: realCurrentKey, isOverdue: true };
+    };
 
     // 1. Pending Transactions (Including Overdue)
     (pendingTx || []).forEach((t: any) => {
@@ -56,13 +71,16 @@ export const projectionService = {
         // Antes o filtro era por t.category, mas a query não traz essa coluna — o teste
         // nunca era verdadeiro e toda fatura entrava duas vezes na projeção.
         if (t.metadata?.is_provision === true) return;
-        let key = t.date.substring(0, 7);
-        // If overdue, move to current month for projection purposes
-        if (key < currentKey) key = currentKey;
-        
-        if (!monthlyData[key]) return;
-        if (t.type === 'INCOME') monthlyData[key].income += Number(t.amount);
-        else monthlyData[key].expense += Number(t.amount);
+        const { key, isOverdue } = resolveKey(t.date.substring(0, 7));
+
+        if (!key || !monthlyData[key]) return;
+        if (t.type === 'INCOME') {
+            monthlyData[key].income += Number(t.amount);
+            if (isOverdue) monthlyData[key].overdueIncome += Number(t.amount);
+        } else {
+            monthlyData[key].expense += Number(t.amount);
+            if (isOverdue) monthlyData[key].overdueExpense += Number(t.amount);
+        }
         if (t.recurrence_group_id) generatedRecurrences.add(`${t.recurrence_group_id}_${key}`);
     });
 
@@ -104,12 +122,13 @@ export const projectionService = {
 
     // 3. Card Statements (Including Overdue)
     (cardStatements || []).forEach((stmt: any) => {
-        let key = stmt.due_date.substring(0, 7);
-        if (key < currentKey) key = currentKey;
+        const { key, isOverdue } = resolveKey(stmt.due_date.substring(0, 7));
+        if (!key || !monthlyData[key]) return;
 
-        if (monthlyData[key]) {
-            const remaining = Number(stmt.total_amount) - Number(stmt.paid_amount || 0);
-            if (remaining > 0) monthlyData[key].expense += remaining;
+        const remaining = Number(stmt.total_amount) - Number(stmt.paid_amount || 0);
+        if (remaining > 0) {
+            monthlyData[key].expense += remaining;
+            if (isOverdue) monthlyData[key].overdueExpense += remaining;
         }
     });
 
@@ -125,12 +144,11 @@ export const projectionService = {
 
         // Balloon payments
         balloons.forEach(b => {
-            let key = `${b.year}-${String(b.month).padStart(2, '0')}`;
-            if (key < currentKey) key = currentKey; // Balloon missed? Consolidate now.
+            const { key, isOverdue } = resolveKey(`${b.year}-${String(b.month).padStart(2, '0')}`);
+            if (!key || !monthlyData[key]) return;
 
-            if (monthlyData[key]) {
-                monthlyData[key].expense += Number(b.amount);
-            }
+            monthlyData[key].expense += Number(b.amount);
+            if (isOverdue) monthlyData[key].overdueExpense += Number(b.amount);
         });
     });
 
@@ -141,8 +159,8 @@ export const projectionService = {
         const dt = new Date(today.getFullYear(), today.getMonth() + i, 1);
         const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
         const label = dt.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/').replace(' de ', '/');
-        const md = monthlyData[key] || { income: 0, expense: 0 };
-        
+        const md = monthlyData[key] || { income: 0, expense: 0, overdueIncome: 0, overdueExpense: 0 };
+
         const startingBalance = rollingBalance;
         const netCashFlow = md.income - md.expense;
         rollingBalance = rollingBalance + netCashFlow;
@@ -158,7 +176,9 @@ export const projectionService = {
             liabilityPayments: 0, 
             balloonPayments: 0, 
             netCashFlow,
-            endingBalance: rollingBalance
+            endingBalance: rollingBalance,
+            overdueIncome: md.overdueIncome,
+            overdueExpense: md.overdueExpense
         });
     }
     return result;

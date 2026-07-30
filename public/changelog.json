@@ -1,23 +1,30 @@
 {
-  "version": "2026.07.26.0330",
-  "title": "Contas da mesma instituição agora aparecem como uma só",
-  "date": "26/07/2026",
+  "version": "2026.07.29.2240",
+  "title": "Projeção da Home agora bate com a realidade do mês",
+  "date": "29/07/2026",
   "benefits": [
     {
-      "title": "Corrente, poupança e investimento num card só",
-      "desc": "Você vincula as contas da mesma instituição com um nome de grupo (ex.: 'Safra Rodrigo') e elas passam a aparecer como uma conta única, com o saldo total em destaque e a divisão por tipo logo abaixo. A lista de contas encolhe sem que nada seja apagado.",
-      "type": "novidade"
+      "title": "Escolher o mês inicial não infla mais a primeira barra",
+      "desc": "O seletor 'Começa em' estava fazendo o app tratar tudo anterior ao mês escolhido como atraso e empilhar na primeira barra. Escolhendo setembro, a barra de setembro somava julho + agosto + setembro (R$ 136.762 em vez de R$ 32.835). Agora atraso é atraso de verdade — vai para o mês corrente, não para o começo da janela que você escolheu.",
+      "type": "correção"
     },
     {
-      "title": "Cada bolso continua com extrato e saldo próprios",
-      "desc": "Vincular é só um rótulo: nenhuma transação é movida e nenhuma conta é apagada. Dentro do card, cada conta mantém seu extrato, seu ajuste de saldo e sua edição — e você desvincula em um clique quando quiser. É o que garante que dá para continuar vendo quanto está em conta corrente e quanto está investido.",
-      "type": "novidade"
+      "title": "Fica visível quanto de um mês é atraso acumulado",
+      "desc": "Lançamentos vencidos e não quitados continuam entrando no mês atual, porque é agora que você precisa resolvê-los — mas a linha passa a mostrar 'inclui atrasados' com o valor a receber e a pagar separados. Antes esse dinheiro se misturava ao mês e dava a impressão de uma receita que não era daquele mês.",
+      "type": "melhoria"
+    },
+    {
+      "title": "Importar comprovante sem data legível não derruba mais a tela",
+      "desc": "Em Insights IA, quando a leitura do comprovante não conseguia identificar a data, a tela caía no 'Ops! Algo deu errado' com 'Invalid time value'. A importação em si funcionava — quebrava só na hora de exibir o resultado. Agora aparece '—' no lugar da data e o resto do comprovante continua utilizável.",
+      "type": "correção"
     }
   ],
   "changes": [
-    "supabase/account_groups.sql: nova coluna accounts.group_key (rótulo do grupo) com índice parcial por usuário. Optamos por vincular em vez de fundir contas: fundir seria irreversível e apagaria a separação entre saldo em conta e saldo investido.",
-    "types.ts: BankAccount ganhou groupKey.",
-    "components/banking/AccountsSection.tsx: contas agrupadas por group_key num card único (bolsos ordenados corrente → poupança → investimento), com ações por bolso (extrato, ajustar, editar, desvincular) e botões de vincular/renomear grupo.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; 120 testes passando."
+    "services/projection.service.ts: a consolidação de vencidos passou a usar o mês corrente REAL em vez de derivá-lo de anchorMonth. Novo resolveKey aplicado aos três blocos (pendências, faturas de cartão e parcelas balão); itens anteriores à janela exibida deixam de ser empilhados no primeiro mês. Confirmado nos dados: receitas 'jul/26' de R$ 71.092,29 eram 100% atraso de antes de julho, e 'set/26' de R$ 136.762,67 era exatamente 71.092,29 + 32.835,19 + 32.835,19.",
+    "types.ts: CashFlowProjectionItem ganhou overdueIncome/overdueExpense.",
+    "components/CashFlowProjection.tsx: selo 'inclui atrasados' por mês e nota de rodapé explicando a regra.",
+    "lib/dateUtils.ts: formatDateTime aceita Date, string, null ou undefined e devolve '—' em data inválida, em vez de deixar o Intl lançar 'Invalid time value' dentro do render.",
+    "pages/AIModule.tsx: passa receipt.date direto para formatDateTime, sem new Date() intermediário.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; 122 testes passando (2 novos de regressão para formatDateTime). Transferência entre contas validada no banco em ciclo insere → confere → desfaz: −500 na origem, +500 no destino, perna antiga sem affects_balance permanece neutra."
   ]
 }
