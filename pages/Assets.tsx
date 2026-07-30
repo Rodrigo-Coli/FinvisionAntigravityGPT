@@ -45,6 +45,8 @@ import {
   ArrowRightLeft,
   Sparkles,
   FileSpreadsheet,
+  FileText,
+  Download,
   Printer,
   HandCoins,
   SlidersHorizontal
@@ -335,6 +337,12 @@ const Assets: React.FC = () => {
   const [liabilityExtratoLoading, setLiabilityExtratoLoading] = useState(false);
   const [showExtratoModal, setShowExtratoModal] = useState(false);
   const [isAddingExtratoTx, setIsAddingExtratoTx] = useState(false);
+  // Edição inline de um lançamento já registrado no extrato.
+  const [editingExtratoTxId, setEditingExtratoTxId] = useState<string | null>(null);
+  const [editingExtratoDraft, setEditingExtratoDraft] = useState<{ description: string; amount: string; date: string } | null>(null);
+  const [savingExtratoTx, setSavingExtratoTx] = useState(false);
+  const [showExtratoExportMenu, setShowExtratoExportMenu] = useState(false);
+  const [whatsAppMenuLoanId, setWhatsAppMenuLoanId] = useState<string | null>(null);
   const [isAddingLiabilityTx, setIsAddingLiabilityTx] = useState(false);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
@@ -4614,6 +4622,252 @@ const Assets: React.FC = () => {
     }
   };
 
+  // Resumo financeiro de um empréstimo concedido, calculado num lugar só.
+  // Serve o extrato na tela, o Excel, o PDF e o texto do WhatsApp — antes cada um
+  // fazia a sua própria conta e podiam divergir.
+  const getLoanSummary = (asset: PhysicalAsset) => {
+    const meta: any = asset.metadata || {};
+    const principal = Number(meta.loanPrincipal) || 0;
+    const monthlyRate = (Number(meta.loanInterestRate) || 0) / 100;
+    const isCompound = meta.loanInterestType === 'COMPOUND';
+
+    const payments = getAssetLinkedTransactions(asset.id)
+      .filter((t: any) => t.type === 'INCOME' && t.isPaid)
+      .sort((a: any, b: any) => a.date.localeCompare(b.date));
+
+    const concessionDate = asset.acquisitionDate || DateUtils.formatToISODate();
+    const dailyRate = isCompound ? Math.pow(1 + monthlyRate, 1 / 30) - 1 : monthlyRate / 30;
+
+    let balance = principal;
+    let totalInterest = 0;
+    let lastDate = concessionDate;
+
+    const schedule = payments.map((tx: any) => {
+      const pmtDate = (tx.date || '').split('T')[0];
+      const days = Math.max(0, Math.round(
+        (new Date(pmtDate + 'T12:00:00').getTime() - new Date(lastDate + 'T12:00:00').getTime()) / 86400000
+      ));
+      const interest = isCompound
+        ? balance * (Math.pow(1 + dailyRate, days) - 1)
+        : balance * dailyRate * days;
+      totalInterest += interest;
+      const received = Number(tx.amount) || 0;
+      const interestPaid = Math.min(interest, received);
+      const principalPaid = Math.max(0, received - interestPaid);
+      balance = Math.max(0, balance + interest - received);
+      lastDate = pmtDate;
+      return {
+        id: tx.id,
+        date: pmtDate,
+        received,
+        days,
+        interest: Math.round(interestPaid * 100) / 100,
+        principalPaid: Math.round(principalPaid * 100) / 100,
+        balance: Math.round(balance * 100) / 100
+      };
+    });
+
+    // Juros corridos desde o último pagamento até hoje (parte "em aberto").
+    const today = DateUtils.formatToISODate();
+    const daysSinceLast = Math.max(0, Math.round(
+      (new Date(today + 'T12:00:00').getTime() - new Date(lastDate + 'T12:00:00').getTime()) / 86400000
+    ));
+    const accruedInterest = isCompound
+      ? balance * (Math.pow(1 + dailyRate, daysSinceLast) - 1)
+      : balance * dailyRate * daysSinceLast;
+
+    const totalReceived = payments.reduce((s: number, t: any) => s + Number(t.amount), 0);
+    const principalReturned = schedule.reduce((s, r) => s + r.principalPaid, 0);
+    const interestReceived = schedule.reduce((s, r) => s + r.interest, 0);
+    const openBalance = Math.round((balance + accruedInterest) * 100) / 100;
+
+    return {
+      meta,
+      principal,
+      monthlyRate: Number(meta.loanInterestRate) || 0,
+      isCompound,
+      concessionDate,
+      schedule,
+      totalReceived: Math.round(totalReceived * 100) / 100,
+      principalReturned: Math.round(principalReturned * 100) / 100,
+      interestReceived: Math.round(interestReceived * 100) / 100,
+      accruedInterest: Math.round(accruedInterest * 100) / 100,
+      daysSinceLast,
+      openBalance,
+      progressPct: principal > 0 ? Math.min(100, Math.round((principalReturned / principal) * 100)) : 0
+    };
+  };
+
+  // Abre o extrato numa aba nova, formatado para impressão. O navegador oferece
+  // "Salvar como PDF" no diálogo de impressão. Antes o botão chamava window.print()
+  // na página inteira, o que imprimia toda a tela de Patrimônio junto.
+  const exportExtratoToPDF = (asset: PhysicalAsset) => {
+    const isLoan = !!asset.metadata?.isLoan;
+    const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+    const esc = (s: any) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+
+    let resumoHtml = '';
+    let tabelaHtml = '';
+
+    if (isLoan) {
+      const s = getLoanSummary(asset);
+      resumoHtml = `
+        <div class="cards">
+          <div class="card"><div class="lbl">Principal</div><div class="val">${fmt(s.principal)}</div></div>
+          <div class="card"><div class="lbl">Total recebido</div><div class="val">${fmt(s.totalReceived)}</div></div>
+          <div class="card"><div class="lbl">Juros recebidos</div><div class="val">${fmt(s.interestReceived)}</div></div>
+          <div class="card"><div class="lbl">Saldo em aberto</div><div class="val warn">${fmt(s.openBalance)}</div></div>
+        </div>
+        <p class="meta">
+          Devedor: <strong>${esc(s.meta.loanDebtor || '—')}</strong> ·
+          Taxa: <strong>${s.monthlyRate}% a.m. (${s.isCompound ? 'compostos' : 'simples'})</strong> ·
+          Concessão: <strong>${DateUtils.formatDisplayDate(s.concessionDate)}</strong> ·
+          Principal devolvido: <strong>${s.progressPct}%</strong>
+        </p>`;
+      tabelaHtml = `
+        <table>
+          <thead><tr><th>Data</th><th>Dias</th><th>Recebido</th><th>Juros</th><th>Principal</th><th>Saldo</th></tr></thead>
+          <tbody>
+            ${s.schedule.map(r => `
+              <tr>
+                <td>${DateUtils.formatDisplayDate(r.date)}</td>
+                <td class="r">${r.days}</td>
+                <td class="r ok">${fmt(r.received)}</td>
+                <td class="r warn">${fmt(r.interest)}</td>
+                <td class="r">${fmt(r.principalPaid)}</td>
+                <td class="r b">${fmt(r.balance)}</td>
+              </tr>`).join('')}
+            ${s.accruedInterest > 0 ? `
+              <tr class="accrued">
+                <td>${DateUtils.formatDisplayDate(DateUtils.formatToISODate())}</td>
+                <td class="r">${s.daysSinceLast}</td>
+                <td class="r">—</td>
+                <td class="r warn">${fmt(s.accruedInterest)}</td>
+                <td class="r">—</td>
+                <td class="r b">${fmt(s.openBalance)}</td>
+              </tr>
+              <tr><td colspan="6" class="note">Última linha: juros corridos desde o último pagamento, ainda não recebidos.</td></tr>` : ''}
+          </tbody>
+        </table>`;
+    } else {
+      const info = getAssetFinancialHistory(asset);
+      resumoHtml = `
+        <div class="cards">
+          <div class="card"><div class="lbl">Valor estimado</div><div class="val">${fmt(Number(asset.estimatedValue || 0))}</div></div>
+          <div class="card"><div class="lbl">Total receitas</div><div class="val ok">${fmt(info.totalIncome)}</div></div>
+          <div class="card"><div class="lbl">Gastos extras</div><div class="val warn">${fmt(info.totalExtraExpenses)}</div></div>
+          <div class="card"><div class="lbl">Saldo consolidado</div><div class="val">${fmt(info.totalIncome - info.totalExtraExpenses)}</div></div>
+        </div>`;
+      const txs = getAssetLinkedTransactions(asset.id);
+      tabelaHtml = `
+        <table>
+          <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Situação</th><th>Valor</th></tr></thead>
+          <tbody>
+            ${txs.map((t: any) => `
+              <tr>
+                <td>${DateUtils.formatDisplayDate(t.date)}</td>
+                <td>${esc(t.description)}</td>
+                <td>${esc(t.category || '—')}</td>
+                <td>${t.isPaid ? 'Pago' : 'Pendente'}</td>
+                <td class="r ${t.type === 'INCOME' ? 'ok' : 'warn'}">${t.type === 'INCOME' ? '+' : '-'}${fmt(Number(t.amount))}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>${isLoan ? 'Extrato de Empréstimo' : 'Extrato do Bem'} — ${esc(asset.name)}</title>
+<style>
+  @page { margin: 16mm; size: A4; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1e293b; font-size: 12px; line-height: 1.5; background: #fff; }
+  @media screen { body { max-width: 900px; margin: 0 auto; padding: 28px; } }
+  h1 { font-size: 20px; text-transform: uppercase; letter-spacing: .04em; }
+  .sub { color: #64748b; font-size: 12px; margin-top: 2px; }
+  .hdr { border-bottom: 3px solid #1e293b; padding-bottom: 14px; margin-bottom: 20px; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; }
+  .lbl { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: #94a3b8; }
+  .val { font-size: 14px; font-weight: 800; margin-top: 3px; }
+  .meta { color: #64748b; font-size: 11px; margin-bottom: 18px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: #1e293b; color: #fff; padding: 8px 10px; text-align: left; font-size: 10px;
+             text-transform: uppercase; letter-spacing: .08em; }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; }
+  .r { text-align: right; }
+  .b { font-weight: 800; }
+  .ok { color: #059669; }
+  .warn { color: #b45309; }
+  .accrued td { background: #fffbeb; }
+  .note { color: #94a3b8; font-size: 10px; font-style: italic; }
+  .ft { margin-top: 20px; padding-top: 12px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 10px;
+        display: flex; justify-content: space-between; }
+  @media print { .noprint { display: none; } }
+  .noprint { margin-bottom: 18px; }
+  .btn { padding: 10px 18px; background: #1e293b; color: #fff; border: 0; border-radius: 8px;
+         font-weight: 800; font-size: 12px; cursor: pointer; }
+</style></head><body>
+<div class="noprint"><button class="btn" onclick="window.print()">Imprimir / Salvar como PDF</button></div>
+<div class="hdr">
+  <h1>Zyvion — ${isLoan ? 'Extrato de Empréstimo Concedido' : 'Extrato do Bem'}</h1>
+  <p class="sub">${esc(asset.name)} · Emitido em ${new Date().toLocaleDateString('pt-BR')}</p>
+</div>
+${resumoHtml}
+${tabelaHtml}
+<div class="ft"><span>Gerado pelo Zyvion</span><span>${new Date().toLocaleString('pt-BR')}</span></div>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) {
+      toast('O navegador bloqueou a janela. Libere os pop-ups para este site e tente de novo.', 'warning');
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+  };
+
+  // Manda o extrato do empréstimo pelo WhatsApp.
+  //
+  // Limitação real da plataforma: o link wa.me só carrega TEXTO — não existe como
+  // anexar arquivo por ele. Então "resumo + PDF" abre o extrato numa aba (você salva
+  // como PDF pelo diálogo de impressão) e em seguida abre a conversa com o texto,
+  // para você anexar o arquivo salvo. O texto em si passou a trazer o resumo completo:
+  // recebido, juros já recebidos, juros acumulados em aberto e o saldo devedor.
+  const sendLoanStatementToWhatsApp = (loan: PhysicalAsset, withPdf: boolean) => {
+    const s = getLoanSummary(loan);
+    const fmtW = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+    const linhas = [
+      `🔔 *Zyvion — Extrato de Empréstimo*`,
+      ``,
+      `Olá, ${s.meta.loanDebtor || 'prezado(a)'}!`,
+      ``,
+      `📋 *${loan.name}*`,
+      `💰 Principal emprestado: ${fmtW(s.principal)}`,
+      `📈 Taxa: ${s.monthlyRate}% a.m. (${s.isCompound ? 'compostos' : 'simples'})`,
+      `📅 Concessão: ${DateUtils.formatDisplayDate(s.concessionDate)}`,
+      ``,
+      `*Já recebido*`,
+      `✅ Total recebido: ${fmtW(s.totalReceived)}`,
+      `   ↳ principal devolvido: ${fmtW(s.principalReturned)} (${s.progressPct}%)`,
+      `   ↳ juros recebidos: ${fmtW(s.interestReceived)}`,
+      ``,
+      `*Em aberto*`,
+      `⏳ Juros acumulados${s.daysSinceLast > 0 ? ` nos últimos ${s.daysSinceLast} dias` : ''}: ${fmtW(s.accruedInterest)}`,
+      `🧾 Saldo devedor total hoje: ${fmtW(s.openBalance)}`,
+      ``,
+      `Atualizado em ${new Date().toLocaleDateString('pt-BR')}`,
+      `_Extrato gerado pelo Zyvion_`
+    ];
+
+    if (withPdf) {
+      exportExtratoToPDF(loan);
+      toast('Extrato aberto em outra aba: salve como PDF e anexe na conversa do WhatsApp.', 'info');
+    }
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(linhas.join('\n'))}`, '_blank');
+  };
+
   const exportExtratoToExcel = (asset: PhysicalAsset) => {
     const txs = getAssetLinkedTransactions(asset.id);
     const rows = txs.map((t, idx) => ({
@@ -5808,6 +6062,47 @@ const Assets: React.FC = () => {
       fetchData();
     } catch (err: any) {
       toast(`Erro ao deletar lançamento: ${err.message}`, 'error');
+    }
+  };
+
+  // Edição de um lançamento do extrato (recebimento de empréstimo, gasto de um bem).
+  // Antes só existia excluir — para corrigir um valor digitado errado era preciso
+  // apagar e lançar de novo, o que fazia a tabela de amortização recalcular tudo.
+  const handleUpdateExtratoTransaction = async () => {
+    if (!supabase || !editingExtratoTxId || !editingExtratoDraft) return;
+    const amt = parseFloat(editingExtratoDraft.amount);
+    if (!amt || amt <= 0) {
+      toast('Informe um valor maior que zero.', 'warning');
+      return;
+    }
+    if (!editingExtratoDraft.date) {
+      toast('Informe a data do lançamento.', 'warning');
+      return;
+    }
+    setSavingExtratoTx(true);
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          description: editingExtratoDraft.description || 'Lançamento',
+          amount: amt,
+          date: editingExtratoDraft.date,
+          // Mantém pago/valor pago coerentes: o saldo da conta soma paid_amount, não
+          // amount — sem isso, corrigir o valor aqui não mexeria no saldo.
+          paid_amount: amt,
+          paid_at: editingExtratoDraft.date
+        })
+        .eq('id', editingExtratoTxId);
+      if (error) throw error;
+
+      setEditingExtratoTxId(null);
+      setEditingExtratoDraft(null);
+      fetchData();
+      toast('Lançamento atualizado.', 'success');
+    } catch (err: any) {
+      toast(`Erro ao atualizar lançamento: ${err.message}`, 'error');
+    } finally {
+      setSavingExtratoTx(false);
     }
   };
 
@@ -8730,30 +9025,34 @@ const Assets: React.FC = () => {
                             >
                               <FileSpreadsheet size={12} /> Extrato PDF
                             </button>
-                            <button
-                              onClick={() => {
-                                // Calcula saldo atual para a mensagem do WhatsApp
-                                const pmts = getAssetLinkedTransactions(loan.id).filter((t: any) => t.type === 'INCOME');
-                                const totalPaid = pmts.reduce((s: number, p: any) => s + Number(p.amount), 0);
-                                const fmtW = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-                                const msg = encodeURIComponent(
-                                  `🔔 *Zyvion — Extrato de Empréstimo*\n\n` +
-                                  `Olá, ${meta.loanDebtor || 'prezado(a)'}!\n\n` +
-                                  `Segue o resumo do seu empréstimo:\n` +
-                                  `📋 *${loan.name}*\n` +
-                                  `💰 Principal: ${fmtW(principal)}\n` +
-                                  `📈 Taxa: ${rate}% a.m. (${meta.loanInterestType === 'COMPOUND' ? 'Compostos' : 'Simples'})\n` +
-                                  `✅ Total pago: ${fmtW(totalPaid)}\n` +
-                                  `📅 Atualizado em: ${new Date().toLocaleDateString('pt-BR')}\n\n` +
-                                  `_Extrato gerado pelo Zyvion_`
-                                );
-                                window.open(`https://wa.me/?text=${msg}`, '_blank');
-                              }}
-                              className="py-2.5 bg-[#25D366] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#128C7E] transition-colors flex items-center justify-center gap-1.5"
-                              title="Enviar resumo por WhatsApp"
-                            >
-                              <HandCoins size={12} /> WhatsApp
-                            </button>
+                            <div className="relative">
+                              <button
+                                onClick={() => setWhatsAppMenuLoanId(prev => prev === loan.id ? null : loan.id)}
+                                className="w-full py-2.5 bg-[#25D366] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#128C7E] transition-colors flex items-center justify-center gap-1.5"
+                                title="Enviar extrato por WhatsApp"
+                              >
+                                <HandCoins size={12} /> WhatsApp
+                              </button>
+                              {whatsAppMenuLoanId === loan.id && (
+                                <div className="absolute right-0 bottom-full mb-1 z-[60] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[230px] animate-in fade-in slide-in-from-bottom-1 duration-150">
+                                  <button
+                                    onClick={() => { setWhatsAppMenuLoanId(null); sendLoanStatementToWhatsApp(loan, false); }}
+                                    className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                                  >
+                                    Só o resumo em texto
+                                  </button>
+                                  <button
+                                    onClick={() => { setWhatsAppMenuLoanId(null); sendLoanStatementToWhatsApp(loan, true); }}
+                                    className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors border-t border-slate-50"
+                                  >
+                                    Resumo + extrato em PDF
+                                    <span className="block text-[9px] font-medium text-slate-400 normal-case mt-0.5">
+                                      Abre o PDF para salvar e anexar na conversa
+                                    </span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
 
@@ -12116,21 +12415,45 @@ const Assets: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 flex flex-col max-h-[85vh]">
             {/* Header - hidden during print */}
-            <div className="px-8 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 print:hidden">
-              <div className="flex items-center gap-4">
-                <div>
-                  <h3 className="font-black text-slate-900 uppercase tracking-tight text-lg">
-                    {selectedAssetForExtrato.metadata?.isLoan ? 'Extrato de Empréstimo Concedido' : 'Extrato e Lançamentos do Card'}
-                  </h3>
-                  <p className="text-xs text-slate-400 font-medium">{selectedAssetForExtrato.name}</p>
-                </div>
+            {/* Cabeçalho: no celular o título e os botões empilham em vez de brigar pelo
+                mesmo espaço, e todos os botões têm o MESMO tamanho (36px, ícone 15) —
+                antes o X era 40px e os outros 38, o que deixava a fileira desalinhada. */}
+            <div className="px-5 sm:px-8 py-4 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-50/50 print:hidden">
+              <div className="min-w-0">
+                <h3 className="font-black text-slate-900 uppercase tracking-tight text-base sm:text-lg leading-tight">
+                  {selectedAssetForExtrato.metadata?.isLoan ? 'Extrato de Empréstimo Concedido' : 'Extrato e Lançamentos do Card'}
+                </h3>
+                <p className="text-xs text-slate-400 font-medium break-words">{selectedAssetForExtrato.name}</p>
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => exportExtratoToExcel(selectedAssetForExtrato)} className="p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-brand-600 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Exportar Excel"><FileSpreadsheet size={16} /></button>
-                <button onClick={() => window.print()} className="p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-brand-600 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Imprimir PDF"><Printer size={16} /></button>
-                <button onClick={() => handleArchiveAssetFromExtrato(selectedAssetForExtrato)} className="p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-rose-600 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Arquivar / Marcar como Vendido"><Archive size={16} /></button>
-                <button onClick={async () => { await handleDeleteAsset(selectedAssetForExtrato); setShowExtratoModal(false); }} className="p-2.5 bg-white border border-slate-200 text-rose-500 hover:bg-rose-50 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Excluir Lançamento do Bem"><Trash2 size={16} /></button>
-                <button onClick={() => { setShowExtratoModal(false); setIsAddingExtratoTx(false); }} className="w-10 h-10 bg-white border border-slate-100 text-slate-400 hover:text-rose-500 rounded-xl flex items-center justify-center transition-all shadow-sm ml-1"><X size={18} /></button>
+              <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+                <div className="relative">
+                  <button
+                    onClick={() => setShowExtratoExportMenu(v => !v)}
+                    className="h-9 px-3 bg-white border border-slate-200 text-slate-500 hover:text-brand-600 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm text-[10px] font-black uppercase tracking-widest"
+                    title="Exportar extrato"
+                  >
+                    <Download size={15} /> Exportar
+                  </button>
+                  {showExtratoExportMenu && (
+                    <div className="absolute right-0 top-full mt-1 z-[60] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[172px] animate-in fade-in slide-in-from-top-1 duration-150">
+                      <button
+                        onClick={() => { setShowExtratoExportMenu(false); exportExtratoToExcel(selectedAssetForExtrato); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                      >
+                        <FileSpreadsheet size={14} className="text-emerald-600" /> Excel (.xlsx)
+                      </button>
+                      <button
+                        onClick={() => { setShowExtratoExportMenu(false); exportExtratoToPDF(selectedAssetForExtrato); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors border-t border-slate-50"
+                      >
+                        <FileText size={14} className="text-rose-500" /> PDF
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => handleArchiveAssetFromExtrato(selectedAssetForExtrato)} className="w-9 h-9 bg-white border border-slate-200 text-slate-500 hover:text-amber-600 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Arquivar / Marcar como Vendido" aria-label="Arquivar"><Archive size={15} /></button>
+                <button onClick={async () => { await handleDeleteAsset(selectedAssetForExtrato); setShowExtratoModal(false); }} className="w-9 h-9 bg-white border border-slate-200 text-rose-500 hover:bg-rose-50 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Excluir este bem" aria-label="Excluir"><Trash2 size={15} /></button>
+                <button onClick={() => { setShowExtratoModal(false); setIsAddingExtratoTx(false); setShowExtratoExportMenu(false); setEditingExtratoTxId(null); }} className="w-9 h-9 bg-white border border-slate-200 text-slate-400 hover:text-rose-500 rounded-xl flex items-center justify-center transition-all shadow-sm" title="Fechar" aria-label="Fechar"><X size={15} /></button>
               </div>
             </div>
 
@@ -12191,19 +12514,21 @@ const Assets: React.FC = () => {
 
                 return (
                   <div className="space-y-4">
-                    {/* Summary Cards */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
-                        <p className="text-[10px] font-black uppercase text-emerald-500 tracking-widest">Principal</p>
-                        <p className="text-sm font-black text-emerald-700">{formatCurrency(principal)}</p>
+                    {/* Cards de resumo. No celular vão a 1 por linha: com 3 colunas fixas
+                        o rótulo "Saldo Devedor" quebrava em duas linhas e o valor
+                        estourava a largura do card (era o que aparecia na imagem 1). */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 min-w-0">
+                        <p className="text-[10px] font-black uppercase text-emerald-500 tracking-widest leading-tight">Principal</p>
+                        <p className="text-sm font-black text-emerald-700 mt-1 break-words">{formatCurrency(principal)}</p>
                       </div>
-                      <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
-                        <p className="text-[10px] font-black uppercase text-amber-500 tracking-widest">Saldo Devedor</p>
-                        <p className="text-sm font-black text-amber-700">{formatCurrency(currentBalance)}</p>
+                      <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 min-w-0">
+                        <p className="text-[10px] font-black uppercase text-amber-500 tracking-widest leading-tight">Saldo Devedor</p>
+                        <p className="text-sm font-black text-amber-700 mt-1 break-words">{formatCurrency(currentBalance)}</p>
                       </div>
-                      <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
-                        <p className="text-[10px] font-black uppercase text-indigo-500 tracking-widest">Recebido</p>
-                        <p className="text-sm font-black text-indigo-700">{formatCurrency(totalReceived)}</p>
+                      <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 min-w-0">
+                        <p className="text-[10px] font-black uppercase text-indigo-500 tracking-widest leading-tight">Recebido</p>
+                        <p className="text-sm font-black text-indigo-700 mt-1 break-words">{formatCurrency(totalReceived)}</p>
                       </div>
                     </div>
 
@@ -12229,8 +12554,10 @@ const Assets: React.FC = () => {
                     {schedule.length > 0 && (
                       <div>
                         <p className="text-xs font-black uppercase text-slate-400 tracking-widest mb-2">Tabela de Amortização</p>
-                        <div className="rounded-xl border border-slate-200 overflow-hidden">
-                          <table className="w-full text-xs font-medium">
+                        {/* overflow-x-auto: a tabela tem 5 colunas de valor e no celular
+                            as últimas ficavam cortadas fora do card, sem como alcançá-las. */}
+                        <div className="rounded-xl border border-slate-200 overflow-x-auto">
+                          <table className="w-full min-w-[520px] text-xs font-medium">
                             <thead className="bg-slate-50">
                               <tr>
                                 <th className="text-left px-3 py-2 font-black uppercase text-slate-400 tracking-wider">Data</th>
@@ -12399,32 +12726,111 @@ const Assets: React.FC = () => {
                 )}
 
                 <div className="space-y-3">
-                  {getAssetLinkedTransactions(selectedAssetForExtrato.id).map(tx => (
-                    <div key={tx.id} className="flex justify-between items-center bg-slate-50 border border-slate-100 p-4 rounded-xl group hover:border-slate-200 transition-all">
-                      <div className="space-y-1">
-                        <p className="text-xs font-bold text-slate-800 flex items-center gap-2">
-                          {tx.description}
+                  {getAssetLinkedTransactions(selectedAssetForExtrato.id).map(tx => {
+                    const isEditingTx = editingExtratoTxId === tx.id;
+                    if (isEditingTx && editingExtratoDraft) {
+                      return (
+                        <div key={tx.id} className="bg-white border-2 border-brand-200 p-4 rounded-xl space-y-3 animate-in fade-in duration-150">
+                          <div>
+                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Descrição</label>
+                            <input
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                              value={editingExtratoDraft.description}
+                              onChange={e => setEditingExtratoDraft({ ...editingExtratoDraft, description: e.target.value })}
+                            />
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Valor (R$)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                inputMode="decimal"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                                value={editingExtratoDraft.amount}
+                                onChange={e => setEditingExtratoDraft({ ...editingExtratoDraft, amount: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Data</label>
+                              <input
+                                type="date"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                                value={editingExtratoDraft.date}
+                                onChange={e => setEditingExtratoDraft({ ...editingExtratoDraft, date: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              type="button"
+                              onClick={() => { setEditingExtratoTxId(null); setEditingExtratoDraft(null); }}
+                              className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-black uppercase"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              disabled={savingExtratoTx}
+                              onClick={handleUpdateExtratoTransaction}
+                              className="px-3 py-2 bg-brand-600 text-white rounded-lg text-xs font-black uppercase disabled:opacity-50"
+                            >
+                              {savingExtratoTx ? 'Salvando...' : 'Salvar'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                    <div key={tx.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 bg-slate-50 border border-slate-100 p-4 rounded-xl hover:border-slate-200 transition-all">
+                      <div className="space-y-1 min-w-0">
+                        <p className="text-xs font-bold text-slate-800 flex items-center gap-2 flex-wrap">
+                          <span className="break-words">{tx.description}</span>
                           {tx.metadata?.is_historical && (
-                            <span className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-[7px] font-black uppercase tracking-wider">Histórico</span>
+                            <span className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-[7px] font-black uppercase tracking-wider shrink-0">Histórico</span>
                           )}
                         </p>
                         <p className="text-xs text-slate-400 font-medium">
                           {DateUtils.formatDisplayDate(tx.date)} • {tx.category}
                         </p>
                       </div>
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                         <span className={`text-xs font-black ${tx.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-500'}`}>
                           {tx.type === 'INCOME' ? '+' : '-'}{formatCurrency(tx.amount)}
                         </span>
-                        <button
-                          onClick={() => handleDeleteCardTransaction(tx.id)}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-600 transition-all"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {/* Botões sempre visíveis: antes ficavam com opacity-0 e só apareciam
+                            no hover — no celular, que não tem hover, era impossível editar
+                            ou excluir um lançamento. */}
+                        <div className="flex items-center gap-1 print:hidden">
+                          <button
+                            onClick={() => {
+                              setEditingExtratoTxId(tx.id);
+                              setEditingExtratoDraft({
+                                description: tx.description || '',
+                                amount: String(tx.amount ?? ''),
+                                date: (tx.date || '').substring(0, 10)
+                              });
+                            }}
+                            title="Editar lançamento"
+                            aria-label={`Editar lançamento ${tx.description}`}
+                            className="p-2 text-slate-400 hover:text-brand-600 hover:bg-white rounded-lg transition-all"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCardTransaction(tx.id)}
+                            title="Excluir lançamento"
+                            aria-label={`Excluir lançamento ${tx.description}`}
+                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-white rounded-lg transition-all"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
 
                   {getAssetLinkedTransactions(selectedAssetForExtrato.id).length === 0 && (
                     <div className="py-8 text-center text-slate-400 italic text-[11px]">

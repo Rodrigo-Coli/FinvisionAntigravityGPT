@@ -63,7 +63,7 @@ export const StatementPicker: React.FC<StatementPickerProps> = ({ statements, va
 
     const matchesSearch = (s: Statement) => {
         if (!search.trim()) return true;
-        return normalize(DateUtils.formatFullMonthYear(s.year, s.month)).includes(normalize(search));
+        return normalize(DateUtils.formatStatementLabel(s)).includes(normalize(search));
     };
 
     const filteredPrev = previous.filter(matchesSearch);
@@ -73,7 +73,7 @@ export const StatementPicker: React.FC<StatementPickerProps> = ({ statements, va
         if (value === 'CURRENT') return 'Fatura Atual';
         if (value === 'ALL') return 'Todo o Histórico';
         const s = statements.find(st => st.id === value);
-        return s ? DateUtils.formatFullMonthYear(s.year, s.month) : 'Fatura Atual';
+        return s ? DateUtils.formatStatementLabel(s) : 'Fatura Atual';
     })();
 
     const select = (val: string) => {
@@ -131,7 +131,7 @@ export const StatementPicker: React.FC<StatementPickerProps> = ({ statements, va
                             <>
                                 <p className="px-4 pt-2 pb-1 text-[9px] font-black text-slate-300 uppercase tracking-widest">Anteriores</p>
                                 {filteredPrev.map(s => (
-                                    <Row key={s.id} label={DateUtils.formatFullMonthYear(s.year, s.month)} selected={value === s.id} onClick={() => select(s.id)} />
+                                    <Row key={s.id} label={DateUtils.formatStatementLabel(s)} selected={value === s.id} onClick={() => select(s.id)} />
                                 ))}
                             </>
                         )}
@@ -140,7 +140,7 @@ export const StatementPicker: React.FC<StatementPickerProps> = ({ statements, va
                             <>
                                 <p className="px-4 pt-2 pb-1 text-[9px] font-black text-slate-300 uppercase tracking-widest">Próximas</p>
                                 {filteredUp.map(s => (
-                                    <Row key={s.id} label={DateUtils.formatFullMonthYear(s.year, s.month)} selected={value === s.id} onClick={() => select(s.id)} />
+                                    <Row key={s.id} label={DateUtils.formatStatementLabel(s)} selected={value === s.id} onClick={() => select(s.id)} />
                                 ))}
                             </>
                         )}

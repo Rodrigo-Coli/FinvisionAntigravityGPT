@@ -1698,7 +1698,7 @@ const CreditCardsSection: React.FC = () => {
                     <div className="space-y-1">
                       <p className="text-xs font-black uppercase tracking-wider text-amber-600">Atenção: Faturas Anteriores Pendentes</p>
                       <p className="text-[11px] font-bold text-amber-600/90 leading-relaxed">
-                        Existem faturas de períodos passados com saldos em aberto (por exemplo, {DateUtils.formatFullMonthYear(otherOpenStatements[0].year, otherOpenStatements[0].month)}). 
+                        Existem faturas de períodos passados com saldos em aberto (por exemplo, {DateUtils.formatStatementLabel(otherOpenStatements[0])}).
                         Você pode alternar o seletor de <strong>Período</strong> abaixo para visualizar e pagar essas faturas.
                       </p>
                     </div>

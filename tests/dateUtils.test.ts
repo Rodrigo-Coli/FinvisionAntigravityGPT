@@ -19,6 +19,35 @@ describe('DateUtils', () => {
         });
     });
 
+    // O rótulo da fatura tem que seguir o VENCIMENTO, não o ciclo de fechamento.
+    // Caso real: BTG fecha dia 25 e vence dia 1 — a fatura gravada como month=7
+    // vence em 01/08 e era exibida como "JULHO".
+    describe('formatStatementLabel', () => {
+        it('usa o mes de vencimento quando ele cai no mes seguinte ao fechamento', () => {
+            const btg = { month: 7, year: 2026, due_date: '2026-08-01T00:00:00.000Z' };
+            expect(DateUtils.formatStatementLabel(btg)).toBe('AGOSTO / 2026');
+        });
+
+        it('mantem o mes quando fechamento e vencimento caem no mesmo mes', () => {
+            const bradesco = { month: 7, year: 2026, due_date: '2026-07-25T00:00:00.000Z' };
+            expect(DateUtils.formatStatementLabel(bradesco)).toBe('JULHO / 2026');
+        });
+
+        it('vira o ano na fatura de dezembro que vence em janeiro', () => {
+            const dez = { month: 12, year: 2026, due_date: '2027-01-01T00:00:00.000Z' };
+            expect(DateUtils.formatStatementLabel(dez)).toBe('JANEIRO / 2027');
+        });
+
+        it('cai para month/year quando nao ha due_date', () => {
+            expect(DateUtils.formatStatementLabel({ month: 3, year: 2026 })).toBe('MARÇO / 2026');
+        });
+
+        it('nao estoura com fatura nula ou due_date invalido', () => {
+            expect(DateUtils.formatStatementLabel(null)).toBe('');
+            expect(DateUtils.formatStatementLabel({ month: 5, year: 2026, due_date: 'xxx' })).toBe('MAIO / 2026');
+        });
+    });
+
     describe('formatToISODate', () => {
         it('deve retornar data no formato YYYY-MM-DD', () => {
             const date = new Date(2026, 2, 6); // 6 de março de 2026

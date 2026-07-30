@@ -1,30 +1,44 @@
 {
-  "version": "2026.07.29.2240",
-  "title": "Projeção da Home agora bate com a realidade do mês",
+  "version": "2026.07.29.2350",
+  "title": "Fatura pelo mês de vencimento, extrato de empréstimo completo e app mais rápido",
   "date": "29/07/2026",
   "benefits": [
     {
-      "title": "Escolher o mês inicial não infla mais a primeira barra",
-      "desc": "O seletor 'Começa em' estava fazendo o app tratar tudo anterior ao mês escolhido como atraso e empilhar na primeira barra. Escolhendo setembro, a barra de setembro somava julho + agosto + setembro (R$ 136.762 em vez de R$ 32.835). Agora atraso é atraso de verdade — vai para o mês corrente, não para o começo da janela que você escolheu.",
+      "title": "A fatura aparece no mês em que ela vence",
+      "desc": "Cartão que fecha num mês e vence no seguinte (como o BTG, que fecha dia 25 e vence dia 1) mostrava a fatura com o nome do mês do fechamento: a que vence em 01/08 aparecia como 'julho'. Agora o nome segue o vencimento, igual à regra que já valia para o mês em que a compra conta. Nenhum dado foi alterado — só a forma de exibir.",
       "type": "correção"
     },
     {
-      "title": "Fica visível quanto de um mês é atraso acumulado",
-      "desc": "Lançamentos vencidos e não quitados continuam entrando no mês atual, porque é agora que você precisa resolvê-los — mas a linha passa a mostrar 'inclui atrasados' com o valor a receber e a pagar separados. Antes esse dinheiro se misturava ao mês e dava a impressão de uma receita que não era daquele mês.",
+      "title": "Editar e excluir lançamentos de empréstimo direto no extrato",
+      "desc": "Dava para excluir só passando o mouse por cima — no celular, que não tem esse gesto, era impossível. Agora os botões de editar e excluir estão sempre visíveis, e editar permite corrigir descrição, valor e data sem precisar apagar e lançar de novo (o que refazia toda a tabela de amortização).",
+      "type": "novidade"
+    },
+    {
+      "title": "Exportar o extrato em Excel ou PDF num botão só",
+      "desc": "Um botão 'Exportar' com as duas opções, no lugar dos dois ícones separados. O botão de impressão saiu: ele mandava a página inteira para a impressora. O PDF agora abre só o extrato, formatado em A4, com resumo e tabela — e o próprio navegador oferece salvar como PDF.",
       "type": "melhoria"
     },
     {
-      "title": "Importar comprovante sem data legível não derruba mais a tela",
-      "desc": "Em Insights IA, quando a leitura do comprovante não conseguia identificar a data, a tela caía no 'Ops! Algo deu errado' com 'Invalid time value'. A importação em si funcionava — quebrava só na hora de exibir o resultado. Agora aparece '—' no lugar da data e o resto do comprovante continua utilizável.",
+      "title": "Extrato de empréstimo caber na tela do celular",
+      "desc": "Os cards Principal / Saldo Devedor / Recebido ficavam apertados em três colunas e o valor estourava a borda. Agora vão um por linha no celular. A tabela de amortização ganhou rolagem lateral, então as colunas Principal e Saldo deixaram de ficar cortadas fora do card. Os ícones do topo ficaram todos do mesmo tamanho.",
       "type": "correção"
+    },
+    {
+      "title": "WhatsApp com o resumo completo do empréstimo",
+      "desc": "O texto agora traz total recebido, quanto disso foi principal devolvido, quanto foi juros, os juros acumulados desde o último pagamento e o saldo devedor de hoje. E dá para escolher entre mandar só o texto ou abrir o extrato em PDF junto, para anexar na conversa.",
+      "type": "novidade"
+    },
+    {
+      "title": "Lançamentos e listas carregando bem mais rápido",
+      "desc": "Duas causas. No banco, faltava um índice na coluna de conta: como o saldo é recalculado a cada lançamento, cada um varria a tabela inteira de transações — e ao criar uma série de parcelas isso acontecia uma vez por parcela. Na tela de Transações, os blocos de dados eram buscados um depois do outro, em fila; agora vão quatro em paralelo e as transações de conta e de cartão são buscadas ao mesmo tempo.",
+      "type": "melhoria"
     }
   ],
   "changes": [
-    "services/projection.service.ts: a consolidação de vencidos passou a usar o mês corrente REAL em vez de derivá-lo de anchorMonth. Novo resolveKey aplicado aos três blocos (pendências, faturas de cartão e parcelas balão); itens anteriores à janela exibida deixam de ser empilhados no primeiro mês. Confirmado nos dados: receitas 'jul/26' de R$ 71.092,29 eram 100% atraso de antes de julho, e 'set/26' de R$ 136.762,67 era exatamente 71.092,29 + 32.835,19 + 32.835,19.",
-    "types.ts: CashFlowProjectionItem ganhou overdueIncome/overdueExpense.",
-    "components/CashFlowProjection.tsx: selo 'inclui atrasados' por mês e nota de rodapé explicando a regra.",
-    "lib/dateUtils.ts: formatDateTime aceita Date, string, null ou undefined e devolve '—' em data inválida, em vez de deixar o Intl lançar 'Invalid time value' dentro do render.",
-    "pages/AIModule.tsx: passa receipt.date direto para formatDateTime, sem new Date() intermediário.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; 122 testes passando (2 novos de regressão para formatDateTime). Transferência entre contas validada no banco em ciclo insere → confere → desfaz: −500 na origem, +500 no destino, perna antiga sem affects_balance permanece neutra."
+    "lib/dateUtils.ts: novo formatStatementLabel(stmt) deriva o rótulo da fatura do due_date (com fallback para month/year e proteção contra due_date inválido). Aplicado em components/cards/StatementPicker.tsx (3 pontos) e components/banking/CreditCardsSection.tsx. As colunas month/year da fatura continuam guardando o ciclo de fechamento — sem migração de dados. 5 testes novos.",
+    "pages/Assets.tsx: novo getLoanSummary() centraliza o cálculo do empréstimo (principal devolvido, juros recebidos, juros acumulados, saldo em aberto) e alimenta tela, Excel, PDF e WhatsApp; novo exportExtratoToPDF() abre só o extrato em A4 numa aba; novo sendLoanStatementToWhatsApp() com menu de texto ou texto+PDF; handleUpdateExtratoTransaction() permite editar lançamento (mantendo paid_amount/paid_at coerentes com o saldo); botões de editar/excluir sem depender de hover; cards de resumo 1 coluna no celular e tabela com overflow-x-auto; cabeçalho do modal empilha no celular com ícones de tamanho uniforme.",
+    "pages/History.tsx: a paginação de transactions e card_transactions deixou de ser um while sequencial — novo fetchAllChunks() busca 4 blocos em paralelo e as duas tabelas são carregadas concorrentemente via Promise.all.",
+    "supabase/performance_indexes.sql: 10 índices novos, com destaque para idx_transactions_account_active (transactions.account_id não tinha índice e recalculate_account_balance filtra por ele em todo insert/update/delete). Confirmado por EXPLAIN ANALYZE: Seq Scan descartando 4.484 linhas → Bitmap Index Scan.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; 127 testes passando."
   ]
 }

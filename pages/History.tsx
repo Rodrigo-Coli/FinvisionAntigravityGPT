@@ -1056,78 +1056,92 @@ const HistoryPage: React.FC = () => {
       entityObjsRes = entityObjs || [];
       cardStatementsData = cardStatementsRes.data || [];
 
-      // Loop fetch de transações em blocos de 1000
-      let allTxs: any[] = [];
-      let hasMoreTxs = true;
-      let txOffset = 0;
+      // Busca paginada em blocos de 1000 (limite do Supabase por requisição).
+      //
+      // Antes: um `while` que pedia um bloco, ESPERAVA a resposta, pedia o próximo.
+      // Com ~5 mil lançamentos isso virava 5 idas e voltas em fila, e a lista de
+      // transações só aparecia depois da última — no celular, vários segundos. Pior:
+      // o bloco de cartão só começava depois de TODO o de transações terminar.
+      //
+      // Agora os blocos vão em paralelo, de 4 em 4, e as duas tabelas são buscadas ao
+      // mesmo tempo. O resultado é idêntico; só o tempo de espera muda.
+      const PAGE = 1000;
+      const PARALLEL = 4;
 
-      while (hasMoreTxs) {
-        let chunkQuery = supabase.from('transactions')
-          .select('*, attachments:documents!documents_transaction_id_fkey(*)')
-          .eq('user_id', user.id)
-          .eq('is_deleted', false)
-          .range(txOffset, txOffset + 999);
+      const fetchAllChunks = async (
+        label: string,
+        buildQuery: (from: number, to: number) => any
+      ): Promise<any[]> => {
+        const out: any[] = [];
+        let offset = 0;
+        let keepGoing = true;
 
-        if (startDate && endDate) {
-          // Fatura em aberto (is_provision) só entra no mês exato do seu vencimento —
-          // antes havia uma folga de 60 dias que deixava faturas de outros meses
-          // (ex. agosto) aparecerem misturadas na lista/total de julho.
-          chunkQuery = chunkQuery.gte('date', startDate).lte('date', endDate);
-        } else {
-          if (startDate) chunkQuery = chunkQuery.gte('date', startDate);
-          if (endDate) chunkQuery = chunkQuery.lte('date', endDate);
+        while (keepGoing) {
+          const batch = Array.from({ length: PARALLEL }, (_, i) => {
+            const from = offset + i * PAGE;
+            return buildQuery(from, from + PAGE - 1);
+          });
+
+          const results = await Promise.all(batch);
+          keepGoing = false;
+
+          for (const res of results) {
+            if (res.error) {
+              console.error(`Erro na query de ${label}:`, res.error);
+              throw res.error;
+            }
+            const rows = res.data || [];
+            out.push(...rows);
+            // Só continua se ESTE bloco veio cheio: bloco incompleto significa fim.
+            if (rows.length === PAGE) keepGoing = true;
+            else { keepGoing = false; break; }
+          }
+
+          offset += PARALLEL * PAGE;
         }
+        return out;
+      };
 
-        const { data, error } = await chunkQuery;
-        if (error) {
-          console.error("Erro na query de transactions:", error);
-          throw error;
-        }
+      const [allTxs, allCardTxs] = await Promise.all([
+        fetchAllChunks('transactions', (from, to) => {
+          let q = supabase!.from('transactions')
+            .select('*, attachments:documents!documents_transaction_id_fkey(*)')
+            .eq('user_id', user.id)
+            .eq('is_deleted', false)
+            .range(from, to);
 
-        allTxs = [...allTxs, ...(data || [])];
-        if (!data || data.length < 1000) {
-          hasMoreTxs = false;
-        } else {
-          txOffset += 1000;
-        }
-      }
+          if (startDate && endDate) {
+            // Fatura em aberto (is_provision) só entra no mês exato do seu vencimento —
+            // antes havia uma folga de 60 dias que deixava faturas de outros meses
+            // (ex. agosto) aparecerem misturadas na lista/total de julho.
+            q = q.gte('date', startDate).lte('date', endDate);
+          } else {
+            if (startDate) q = q.gte('date', startDate);
+            if (endDate) q = q.lte('date', endDate);
+          }
+          return q;
+        }),
+        fetchAllChunks('card_transactions', (from, to) => {
+          // O recorte por período correto (mês de VENCIMENTO da fatura) é aplicado
+          // em memória via HistoryUtils.getCardCompetenceDate/card_statements — não
+          // pela data da compra. Mas dá pra limitar a busca com uma janela segura:
+          // o vencimento nunca é anterior à compra e fica no máximo ~62 dias depois
+          // (compra logo após o fechamento + due_day < closing_day vira 2 meses).
+          // Então compras com vencimento dentro de [start, end] têm data de compra
+          // dentro de [start - 92 dias, end] — folga de 92 dias cobre com sobra,
+          // sem precisar baixar o histórico inteiro do usuário a cada carga.
+          let q = supabase!.from('card_transactions')
+            .select('id, date, amount, description, card_id, statement_id, category_id, category, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)')
+            .eq('user_id', user.id)
+            .range(from, to);
+
+          if (startDate) q = q.gte('date', DateUtils.addDaysISO(startDate, -92));
+          if (endDate) q = q.lte('date', endDate);
+          return q;
+        })
+      ]);
+
       transactionsData = allTxs;
-
-      // Loop fetch de transações de cartão em blocos de 1000
-      let allCardTxs: any[] = [];
-      let hasMoreCards = true;
-      let cardOffset = 0;
-
-      while (hasMoreCards) {
-        // O recorte por período correto (mês de VENCIMENTO da fatura) é aplicado
-        // em memória via HistoryUtils.getCardCompetenceDate/card_statements — não
-        // pela data da compra. Mas dá pra limitar a busca com uma janela segura:
-        // o vencimento nunca é anterior à compra e fica no máximo ~62 dias depois
-        // (compra logo após o fechamento + due_day < closing_day vira 2 meses).
-        // Então compras com vencimento dentro de [start, end] têm data de compra
-        // dentro de [start - 92 dias, end] — folga de 92 dias cobre com sobra,
-        // sem precisar baixar o histórico inteiro do usuário a cada carga.
-        let chunkQuery = supabase.from('card_transactions')
-          .select('id, date, amount, description, card_id, statement_id, category_id, category, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)')
-          .eq('user_id', user.id)
-          .range(cardOffset, cardOffset + 999);
-
-        if (startDate) chunkQuery = chunkQuery.gte('date', DateUtils.addDaysISO(startDate, -92));
-        if (endDate) chunkQuery = chunkQuery.lte('date', endDate);
-
-        const { data, error } = await chunkQuery;
-        if (error) {
-          console.error("Erro na query de card_transactions:", error);
-          throw error;
-        }
-
-        allCardTxs = [...allCardTxs, ...(data || [])];
-        if (!data || data.length < 1000) {
-          hasMoreCards = false;
-        } else {
-          cardOffset += 1000;
-        }
-      }
       cardTxsData = allCardTxs;
 
       // Salvar caches atualizados de forma segura

@@ -1,5 +1,48 @@
 [
   {
+    "version": "2026.07.29.2350",
+    "title": "Fatura pelo mês de vencimento, extrato de empréstimo completo e app mais rápido",
+    "date": "29/07/2026",
+    "benefits": [
+      {
+        "title": "A fatura aparece no mês em que ela vence",
+        "desc": "Cartão que fecha num mês e vence no seguinte deixou de mostrar o nome do mês de fechamento.",
+        "type": "correção"
+      },
+      {
+        "title": "Editar e excluir lançamentos de empréstimo no extrato",
+        "desc": "Botões sempre visíveis (funcionam no celular) e edição de descrição, valor e data.",
+        "type": "novidade"
+      },
+      {
+        "title": "Exportar o extrato em Excel ou PDF num botão só",
+        "desc": "O PDF abre só o extrato em A4; o botão de impressão da página inteira saiu.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Extrato de empréstimo caber na tela do celular",
+        "desc": "Cards um por linha, tabela com rolagem lateral e ícones do topo padronizados.",
+        "type": "correção"
+      },
+      {
+        "title": "WhatsApp com o resumo completo do empréstimo",
+        "desc": "Recebido, principal devolvido, juros recebidos, juros acumulados e saldo em aberto — com opção de anexar o PDF.",
+        "type": "novidade"
+      },
+      {
+        "title": "Lançamentos e listas carregando bem mais rápido",
+        "desc": "Índice que faltava na coluna de conta e busca de dados em paralelo em vez de em fila.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "dateUtils.formatStatementLabel deriva o rótulo da fatura do due_date (5 testes novos), aplicado no StatementPicker e no CreditCardsSection.",
+      "Assets.tsx: getLoanSummary centraliza o cálculo do empréstimo; exportExtratoToPDF; sendLoanStatementToWhatsApp; edição de lançamento do extrato; responsividade do modal.",
+      "History.tsx: fetchAllChunks busca 4 blocos em paralelo e as duas tabelas concorrentemente.",
+      "supabase/performance_indexes.sql: 10 índices, com destaque para transactions.account_id (não existia e o gatilho de saldo filtra por ele)."
+    ]
+  },
+  {
     "version": "2026.07.29.2240",
     "title": "Projeção da Home agora bate com a realidade do mês",
     "date": "29/07/2026",

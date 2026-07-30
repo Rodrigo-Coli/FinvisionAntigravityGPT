@@ -97,6 +97,39 @@ export const DateUtils = {
     },
 
     /**
+     * Rótulo de uma fatura de cartão, sempre pelo MÊS DE VENCIMENTO.
+     *
+     * As colunas month/year da fatura guardam o ciclo de FECHAMENTO. Em cartão que
+     * fecha num mês e vence no seguinte (ex.: BTG, fecha dia 25 e vence dia 1), o
+     * ciclo e o vencimento caem em meses diferentes — a fatura que fecha em 25/07
+     * vence em 01/08, e era rotulada "JULHO". Como a regra do app é que a compra
+     * conta no mês em que a fatura vence, o rótulo tem que seguir o vencimento.
+     *
+     * Não mexe no dado gravado: só na forma de exibir.
+     */
+    formatStatementLabel: (
+        stmt: { due_date?: string | null; month?: number; year?: number } | null | undefined,
+        withSlash: boolean = true
+    ): string => {
+        if (!stmt) return '';
+        const due = stmt.due_date ? new Date(stmt.due_date) : null;
+        if (due && !isNaN(due.getTime())) {
+            // due_date é gravado em UTC (meia-noite); lemos em UTC para não voltar um dia.
+            const y = due.getUTCFullYear();
+            const m = due.getUTCMonth() + 1;
+            return withSlash
+                ? DateUtils.formatFullMonthYear(y, m)
+                : DateUtils.formatFullMonthYearNoSlash(y, m);
+        }
+        if (stmt.year && stmt.month) {
+            return withSlash
+                ? DateUtils.formatFullMonthYear(stmt.year, stmt.month)
+                : DateUtils.formatFullMonthYearNoSlash(stmt.year, stmt.month);
+        }
+        return '';
+    },
+
+    /**
      * Formata mês por extenso e ano sem barra (Ex: FEVEREIRO 2026)
      */
     formatFullMonthYearNoSlash: (year: number, month: number): string => {
