@@ -1,44 +1,27 @@
 {
-  "version": "2026.07.29.2350",
-  "title": "Fatura pelo mês de vencimento, extrato de empréstimo completo e app mais rápido",
-  "date": "29/07/2026",
+  "version": "2026.07.30.0120",
+  "title": "Garantia de que a lista de lançamentos carrega tudo",
+  "date": "30/07/2026",
   "benefits": [
     {
-      "title": "A fatura aparece no mês em que ela vence",
-      "desc": "Cartão que fecha num mês e vence no seguinte (como o BTG, que fecha dia 25 e vence dia 1) mostrava a fatura com o nome do mês do fechamento: a que vence em 01/08 aparecia como 'julho'. Agora o nome segue o vencimento, igual à regra que já valia para o mês em que a compra conta. Nenhum dado foi alterado — só a forma de exibir.",
+      "title": "Nenhum lançamento pode ficar de fora da lista",
+      "desc": "A tela de Transações busca os dados em blocos. O código decidia que 'acabou' quando um bloco vinha com menos linhas do que o pedido — um chute que funcionava por sorte. Se o servidor devolvesse menos linhas do que o esperado, a busca parava no primeiro bloco e o resto do histórico desaparecia da tela sem aviso. Agora o app recebe do servidor a contagem exata de registros, sabe quantos blocos pedir e confere no final se veio tudo. Se faltar algo, ele refaz a busca do jeito conservador em vez de mostrar a tela incompleta.",
       "type": "correção"
     },
     {
-      "title": "Editar e excluir lançamentos de empréstimo direto no extrato",
-      "desc": "Dava para excluir só passando o mouse por cima — no celular, que não tem esse gesto, era impossível. Agora os botões de editar e excluir estão sempre visíveis, e editar permite corrigir descrição, valor e data sem precisar apagar e lançar de novo (o que refazia toda a tabela de amortização).",
-      "type": "novidade"
-    },
-    {
-      "title": "Exportar o extrato em Excel ou PDF num botão só",
-      "desc": "Um botão 'Exportar' com as duas opções, no lugar dos dois ícones separados. O botão de impressão saiu: ele mandava a página inteira para a impressora. O PDF agora abre só o extrato, formatado em A4, com resumo e tabela — e o próprio navegador oferece salvar como PDF.",
-      "type": "melhoria"
-    },
-    {
-      "title": "Extrato de empréstimo caber na tela do celular",
-      "desc": "Os cards Principal / Saldo Devedor / Recebido ficavam apertados em três colunas e o valor estourava a borda. Agora vão um por linha no celular. A tabela de amortização ganhou rolagem lateral, então as colunas Principal e Saldo deixaram de ficar cortadas fora do card. Os ícones do topo ficaram todos do mesmo tamanho.",
+      "title": "Ordem definida na busca por blocos",
+      "desc": "As consultas não diziam em que ordem os dados deviam vir, e sem isso o banco não garante a mesma ordem entre duas requisições — a mesma linha podia cair em dois blocos ou em nenhum. Esse risco existia desde antes e aumentou quando os blocos passaram a ser buscados em paralelo. Agora a ordem é explícita (data e identificador), o que torna a paginação previsível.",
       "type": "correção"
     },
     {
-      "title": "WhatsApp com o resumo completo do empréstimo",
-      "desc": "O texto agora traz total recebido, quanto disso foi principal devolvido, quanto foi juros, os juros acumulados desde o último pagamento e o saldo devedor de hoje. E dá para escolher entre mandar só o texto ou abrir o extrato em PDF junto, para anexar na conversa.",
-      "type": "novidade"
-    },
-    {
-      "title": "Lançamentos e listas carregando bem mais rápido",
-      "desc": "Duas causas. No banco, faltava um índice na coluna de conta: como o saldo é recalculado a cada lançamento, cada um varria a tabela inteira de transações — e ao criar uma série de parcelas isso acontecia uma vez por parcela. Na tela de Transações, os blocos de dados eram buscados um depois do outro, em fila; agora vão quatro em paralelo e as transações de conta e de cartão são buscadas ao mesmo tempo.",
+      "title": "Uma requisição a menos no carregamento",
+      "desc": "A contagem total vem junto com o primeiro bloco, no mesmo pedido. No filtro 'Tudo', com quase 5 mil lançamentos, são 1 requisição inicial e 4 em paralelo, no lugar das 5 em fila de antes.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "lib/dateUtils.ts: novo formatStatementLabel(stmt) deriva o rótulo da fatura do due_date (com fallback para month/year e proteção contra due_date inválido). Aplicado em components/cards/StatementPicker.tsx (3 pontos) e components/banking/CreditCardsSection.tsx. As colunas month/year da fatura continuam guardando o ciclo de fechamento — sem migração de dados. 5 testes novos.",
-    "pages/Assets.tsx: novo getLoanSummary() centraliza o cálculo do empréstimo (principal devolvido, juros recebidos, juros acumulados, saldo em aberto) e alimenta tela, Excel, PDF e WhatsApp; novo exportExtratoToPDF() abre só o extrato em A4 numa aba; novo sendLoanStatementToWhatsApp() com menu de texto ou texto+PDF; handleUpdateExtratoTransaction() permite editar lançamento (mantendo paid_amount/paid_at coerentes com o saldo); botões de editar/excluir sem depender de hover; cards de resumo 1 coluna no celular e tabela com overflow-x-auto; cabeçalho do modal empilha no celular com ícones de tamanho uniforme.",
-    "pages/History.tsx: a paginação de transactions e card_transactions deixou de ser um while sequencial — novo fetchAllChunks() busca 4 blocos em paralelo e as duas tabelas são carregadas concorrentemente via Promise.all.",
-    "supabase/performance_indexes.sql: 10 índices novos, com destaque para idx_transactions_account_active (transactions.account_id não tinha índice e recalculate_account_balance filtra por ele em todo insert/update/delete). Confirmado por EXPLAIN ANALYZE: Seq Scan descartando 4.484 linhas → Bitmap Index Scan.",
+    "pages/History.tsx: fetchAllChunks substituído por fetchAllRows. O primeiro bloco é pedido com { count: 'exact' }, então o total vem no mesmo round-trip e também revela o tamanho de página que o servidor realmente devolve (o código antigo assumia 1000 fixo). Os blocos restantes são derivados do total e buscados em paralelo de 4 em 4. Conferência final out.length === total com fallback sequencial e aviso no console.",
+    "pages/History.tsx: as consultas de transactions e card_transactions ganharam .order('date', desc).order('id', asc) — paginação por range sem ORDER BY não é determinística, defeito que já existia no while sequencial original.",
     "Verificação: tsc -p tsconfig.json --noEmit sem erros; 127 testes passando."
   ]
 }

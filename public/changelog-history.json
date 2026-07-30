@@ -1,5 +1,31 @@
 [
   {
+    "version": "2026.07.30.0120",
+    "title": "Garantia de que a lista de lançamentos carrega tudo",
+    "date": "30/07/2026",
+    "benefits": [
+      {
+        "title": "Nenhum lançamento pode ficar de fora da lista",
+        "desc": "A busca por blocos deixou de adivinhar onde termina: o app recebe a contagem exata do servidor e confere no final se veio tudo.",
+        "type": "correção"
+      },
+      {
+        "title": "Ordem definida na busca por blocos",
+        "desc": "Sem ordem explícita, a mesma linha podia cair em dois blocos ou em nenhum. Agora a paginação é previsível.",
+        "type": "correção"
+      },
+      {
+        "title": "Uma requisição a menos no carregamento",
+        "desc": "A contagem vem junto com o primeiro bloco, no mesmo pedido.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "History.tsx: fetchAllRows usa { count: 'exact' } no primeiro bloco, deriva os demais do total, busca em paralelo e confere out.length === total com fallback sequencial.",
+      "History.tsx: consultas de transactions e card_transactions com .order('date').order('id') — paginação por range exige ordem explícita."
+    ]
+  },
+  {
     "version": "2026.07.29.2350",
     "title": "Fatura pelo mês de vencimento, extrato de empréstimo completo e app mais rápido",
     "date": "29/07/2026",

@@ -1056,59 +1056,101 @@ const HistoryPage: React.FC = () => {
       entityObjsRes = entityObjs || [];
       cardStatementsData = cardStatementsRes.data || [];
 
-      // Busca paginada em blocos de 1000 (limite do Supabase por requisição).
+      // Busca paginada (o Supabase limita o número de linhas por requisição).
       //
-      // Antes: um `while` que pedia um bloco, ESPERAVA a resposta, pedia o próximo.
-      // Com ~5 mil lançamentos isso virava 5 idas e voltas em fila, e a lista de
-      // transações só aparecia depois da última — no celular, vários segundos. Pior:
-      // o bloco de cartão só começava depois de TODO o de transações terminar.
-      //
-      // Agora os blocos vão em paralelo, de 4 em 4, e as duas tabelas são buscadas ao
-      // mesmo tempo. O resultado é idêntico; só o tempo de espera muda.
+      // Antes: um `while` que pedia um bloco, ESPERAVA a resposta, pedia o próximo. Com
+      // ~5 mil lançamentos isso virava 5 idas e voltas em fila, e a lista só aparecia
+      // depois da última. Pior: o bloco de cartão só começava depois de TODO o de
+      // transações terminar. Agora os blocos restantes vão em paralelo e as duas
+      // tabelas são carregadas ao mesmo tempo.
       const PAGE = 1000;
       const PARALLEL = 4;
 
-      const fetchAllChunks = async (
+      // Busca TODAS as linhas, com a contagem do servidor como referência e conferência
+      // no fim. O ganho é só de tempo: o conjunto de dados devolvido é o completo.
+      //
+      // Três motivos para não confiar na heurística de "parou de vir bloco cheio":
+      //
+      // 1) Paginação por faixa (range) só é determinística com ordem explícita. Sem
+      //    ORDER BY, o banco não promete a mesma ordem entre duas requisições, então
+      //    uma linha pode aparecer em dois blocos ou em nenhum. Por isso toda consulta
+      //    aqui ordena por (date, id) — id é a chave primária e serve de critério de
+      //    desempate estável.
+      // 2) Se um bloco do meio voltasse incompleto, parar ali descartaria os blocos
+      //    seguintes junto com os dados deles.
+      // 3) Se o servidor limitar a resposta a menos linhas do que pedimos, TODO bloco
+      //    chega "incompleto" e a busca terminaria no primeiro — perdendo o resto do
+      //    histórico silenciosamente.
+      //
+      // Com a contagem exata em mãos sabemos quantas linhas têm de chegar, quantos
+      // blocos pedir e, no fim, se veio tudo. Nada é inferido.
+      const fetchAllRows = async (
         label: string,
-        buildQuery: (from: number, to: number) => any
+        buildQuery: (opts: { from: number; to: number; withCount?: boolean }) => any
       ): Promise<any[]> => {
-        const out: any[] = [];
-        let offset = 0;
-        let keepGoing = true;
+        // O primeiro bloco já vem com a contagem total no cabeçalho da resposta, então
+        // saber o total NÃO custa uma requisição extra. Ele também revela o tamanho de
+        // página que o servidor de fato devolve, caso haja um teto menor que o pedido.
+        const firstRes = await buildQuery({ from: 0, to: PAGE - 1, withCount: true });
+        if (firstRes.error) {
+          console.error(`Erro na query de ${label}:`, firstRes.error);
+          throw firstRes.error;
+        }
+        const first = firstRes.data || [];
+        const total = firstRes.count ?? first.length;
+        const out: any[] = [...first];
 
-        while (keepGoing) {
-          const batch = Array.from({ length: PARALLEL }, (_, i) => {
-            const from = offset + i * PAGE;
-            return buildQuery(from, from + PAGE - 1);
-          });
+        const effectivePage = first.length;
+        if (total === 0 || effectivePage === 0 || out.length >= total) return out;
 
-          const results = await Promise.all(batch);
-          keepGoing = false;
+        const pages: number[] = [];
+        for (let from = effectivePage; from < total; from += effectivePage) pages.push(from);
 
+        // Os blocos restantes vão em paralelo, de PARALLEL em PARALLEL.
+        for (let i = 0; i < pages.length; i += PARALLEL) {
+          const slice = pages.slice(i, i + PARALLEL);
+          const results = await Promise.all(
+            slice.map((from: number) => buildQuery({ from, to: from + effectivePage - 1 }))
+          );
           for (const res of results) {
             if (res.error) {
               console.error(`Erro na query de ${label}:`, res.error);
               throw res.error;
             }
-            const rows = res.data || [];
-            out.push(...rows);
-            // Só continua se ESTE bloco veio cheio: bloco incompleto significa fim.
-            if (rows.length === PAGE) keepGoing = true;
-            else { keepGoing = false; break; }
+            out.push(...(res.data || []));
           }
-
-          offset += PARALLEL * PAGE;
         }
+
+        // Conferência final. Divergência aqui significa dado faltando ou repetido —
+        // preferimos avisar no console a seguir em silêncio com a tela errada.
+        if (out.length !== total) {
+          console.warn(
+            `[History] ${label}: esperado ${total} registro(s), recebido ${out.length}. ` +
+            `Refazendo a busca em sequência para garantir que nada ficou de fora.`
+          );
+          const fallback: any[] = [];
+          for (let from = 0; from < total; from += effectivePage) {
+            const res = await buildQuery({ from, to: from + effectivePage - 1 });
+            if (res.error) throw res.error;
+            const rows = res.data || [];
+            if (rows.length === 0) break;
+            fallback.push(...rows);
+          }
+          return fallback;
+        }
+
         return out;
       };
 
       const [allTxs, allCardTxs] = await Promise.all([
-        fetchAllChunks('transactions', (from, to) => {
+        fetchAllRows('transactions', ({ from, to, withCount }) => {
           let q = supabase!.from('transactions')
-            .select('*, attachments:documents!documents_transaction_id_fkey(*)')
+            .select(
+              '*, attachments:documents!documents_transaction_id_fkey(*)',
+              withCount ? { count: 'exact' } : undefined
+            )
             .eq('user_id', user.id)
-            .eq('is_deleted', false)
-            .range(from, to);
+            .eq('is_deleted', false);
 
           if (startDate && endDate) {
             // Fatura em aberto (is_provision) só entra no mês exato do seu vencimento —
@@ -1119,9 +1161,13 @@ const HistoryPage: React.FC = () => {
             if (startDate) q = q.gte('date', startDate);
             if (endDate) q = q.lte('date', endDate);
           }
-          return q;
+
+          // Ordem explícita: sem ela a paginação por faixa não é determinística e uma
+          // linha pode se repetir num bloco ou não aparecer em nenhum.
+          return q.order('date', { ascending: false }).order('id', { ascending: true })
+                  .range(from, to);
         }),
-        fetchAllChunks('card_transactions', (from, to) => {
+        fetchAllRows('card_transactions', ({ from, to, withCount }) => {
           // O recorte por período correto (mês de VENCIMENTO da fatura) é aplicado
           // em memória via HistoryUtils.getCardCompetenceDate/card_statements — não
           // pela data da compra. Mas dá pra limitar a busca com uma janela segura:
@@ -1131,13 +1177,17 @@ const HistoryPage: React.FC = () => {
           // dentro de [start - 92 dias, end] — folga de 92 dias cobre com sobra,
           // sem precisar baixar o histórico inteiro do usuário a cada carga.
           let q = supabase!.from('card_transactions')
-            .select('id, date, amount, description, card_id, statement_id, category_id, category, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)')
-            .eq('user_id', user.id)
-            .range(from, to);
+            .select(
+              'id, date, amount, description, card_id, statement_id, category_id, category, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)',
+              withCount ? { count: 'exact' } : undefined
+            )
+            .eq('user_id', user.id);
 
           if (startDate) q = q.gte('date', DateUtils.addDaysISO(startDate, -92));
           if (endDate) q = q.lte('date', endDate);
-          return q;
+
+          return q.order('date', { ascending: false }).order('id', { ascending: true })
+                  .range(from, to);
         })
       ]);
 
