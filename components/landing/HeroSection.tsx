@@ -1,10 +1,30 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Brain } from 'lucide-react';
 import { trackEvent, withUtmParams } from '../../lib/analytics';
+import { LandingService } from '../../services/landing.service';
 import FoundingBar from './FoundingBar';
 
+// Copy padrão — usada até o banco responder, e sempre que o admin deixar o campo vazio.
+const DEFAULT_HEADLINE = 'Você só descobre para onde foi o seu dinheiro depois que ele já foi.';
+const DEFAULT_SUBHEADLINE = 'O Zyvion consolida contas, cartões, investimentos, imóveis e dívidas em uma única tela — com conciliação bancária por Inteligência Artificial e sem que você precise entregar a senha do seu banco.';
+
 export default function HeroSection() {
+  const [loading, setLoading] = useState(true);
+  const [headline, setHeadline] = useState<string | null>(null);
+  const [subheadline, setSubheadline] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    LandingService.getSettings().then((settings) => {
+      if (!mounted) return;
+      setHeadline(settings?.hero_headline || null);
+      setSubheadline(settings?.hero_subheadline || null);
+      setLoading(false);
+    });
+    return () => { mounted = false; };
+  }, []);
+
   return (
     <section className="relative pt-24 pb-16 md:pt-32 md:pb-24 lg:pt-40 lg:pb-32 overflow-hidden">
       <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
@@ -19,13 +39,27 @@ export default function HeroSection() {
           <Brain size={14} /> Introduzindo o Advisor Patrimonial Autônomo
         </div>
 
-        <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white/90 to-slate-500 mb-8 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-1000 leading-[1.05]">
-          Você só descobre para onde foi o seu dinheiro <br className="hidden md:block" /> depois que ele já foi.
-        </h1>
+        {loading ? (
+          <div className="max-w-4xl mx-auto mb-8 space-y-4" aria-hidden="true">
+            <div className="h-10 md:h-16 bg-white/10 rounded-2xl animate-pulse w-full" />
+            <div className="h-10 md:h-16 bg-white/10 rounded-2xl animate-pulse w-3/4 mx-auto" />
+          </div>
+        ) : (
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white/90 to-slate-500 mb-8 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-1000 leading-[1.05]">
+            {headline || DEFAULT_HEADLINE}
+          </h1>
+        )}
 
-        <p className="text-sm sm:text-base md:text-xl text-slate-400 font-medium mb-10 max-w-2xl mx-auto leading-relaxed animate-in fade-in slide-in-from-bottom-10 duration-1000 delay-150">
-          O Zyvion consolida contas, cartões, investimentos, imóveis e dívidas em uma única tela — com conciliação bancária por Inteligência Artificial e sem que você precise entregar a senha do seu banco.
-        </p>
+        {loading ? (
+          <div className="max-w-2xl mx-auto mb-10 space-y-3" aria-hidden="true">
+            <div className="h-4 bg-white/10 rounded-lg animate-pulse w-full" />
+            <div className="h-4 bg-white/10 rounded-lg animate-pulse w-5/6 mx-auto" />
+          </div>
+        ) : (
+          <p className="text-sm sm:text-base md:text-xl text-slate-400 font-medium mb-10 max-w-2xl mx-auto leading-relaxed animate-in fade-in slide-in-from-bottom-10 duration-1000 delay-150">
+            {subheadline || DEFAULT_SUBHEADLINE}
+          </p>
+        )}
 
         <div className="flex flex-col items-center justify-center gap-6 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-300">
           <Link

@@ -8,6 +8,7 @@ export interface Profile {
   email: string;
   role: UserRole;
   is_approved: boolean;
+  is_superadmin?: boolean;
   preferences?: {
     bottom_nav_items?: string[];
     show_bottom_nav?: boolean;

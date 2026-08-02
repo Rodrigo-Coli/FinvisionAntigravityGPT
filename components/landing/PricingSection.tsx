@@ -27,14 +27,25 @@ const FEAT_LABELS: Record<string, string> = {
   ai_shopping_list: 'Lista de Compras',
 };
 
-function getPlanSegment(slug: string) {
-  if (slug === 'essential' || slug === 'essencial') return 'Ideal para organizar as primeiras contas';
-  if (slug === 'plus' || slug === 'familia') return 'Recomendado para famílias e investidores ativos';
-  if (slug === 'pro') return 'Ideal para patrimônios complexos e holdings';
-  return '';
-}
-
 const currency = (value: number) => value.toFixed(2).replace('.', ',');
+
+// Deriva tudo do que veio do banco — nunca inventa um "preço cheio" ou um percentual fixo.
+// O desconto da Turma Fundadora vem de public.landing_settings.founding_discount_pct,
+// configurado pelo superadmin em Admin > Landing > Oferta (ver lib/foundingOffer.ts).
+function computePlanPricing(plan: any, annualBilling: boolean, foundingActive: boolean) {
+  const hasAnnualPrice = plan.price_cents_annual !== null && plan.price_cents_annual !== undefined;
+  const showAnnualView = annualBilling && hasAnnualPrice;
+
+  const baseMonthlyCents = showAnnualView ? Math.round(plan.price_cents_annual / 12) : plan.price_cents;
+  const annualSavingsCents = hasAnnualPrice ? Math.max(0, plan.price_cents * 12 - plan.price_cents_annual) : 0;
+
+  // A promoção só existe em valor mensal — não inventamos uma versão anual dela — e não
+  // faz sentido "descontar" um plano gratuito.
+  const showFoundingLayer = foundingActive && !showAnnualView && plan.price_cents > 0;
+  const foundingCents = showFoundingLayer ? applyFoundingDiscount(baseMonthlyCents) : null;
+
+  return { hasAnnualPrice, showAnnualView, baseMonthlyCents, annualSavingsCents, showFoundingLayer, foundingCents };
+}
 
 interface PricingSectionProps {
   plans: any[];
@@ -45,6 +56,9 @@ interface PricingSectionProps {
 export default function PricingSection({ plans, annualBilling, onToggleBilling }: PricingSectionProps) {
   const founding = useFoundingCountdown();
 
+  const gridColsClass = plans.length >= 4 ? 'md:grid-cols-2 lg:grid-cols-4' : 'md:grid-cols-3';
+  const gridMaxWidthClass = plans.length >= 4 ? 'max-w-7xl' : 'max-w-6xl';
+
   return (
     <section id="pricing" className="py-32 relative z-10 bg-brand-900 border-t border-white/5">
       <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
@@ -54,7 +68,7 @@ export default function PricingSection({ plans, annualBilling, onToggleBilling }
 
           <div className="inline-flex bg-[#020617] p-2 rounded-2xl border border-white/10 relative shadow-inner mb-6">
             <button onClick={() => onToggleBilling(false)} className={`px-10 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-colors relative z-10 min-h-[44px] ${!annualBilling ? 'text-slate-900 bg-white shadow-md' : 'text-slate-500 hover:text-white'}`}>Mensal</button>
-            <button onClick={() => onToggleBilling(true)} className={`px-10 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-colors relative z-10 min-h-[44px] ${annualBilling ? 'text-slate-900 bg-white shadow-md' : 'text-slate-500 hover:text-white'}`}>Anual <span className="text-emerald-500 ml-1">(-20%)</span></button>
+            <button onClick={() => onToggleBilling(true)} className={`px-10 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-colors relative z-10 min-h-[44px] ${annualBilling ? 'text-slate-900 bg-white shadow-md' : 'text-slate-500 hover:text-white'}`}>Anual</button>
           </div>
 
           {founding.active && (
@@ -64,20 +78,12 @@ export default function PricingSection({ plans, annualBilling, onToggleBilling }
           )}
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8 items-stretch max-w-6xl mx-auto">
+        <div className={`grid ${gridColsClass} gap-8 items-stretch ${gridMaxWidthClass} mx-auto`}>
           {plans.map((plan: any, i: number) => {
-            const fullMonthlyPrice = annualBilling
-              ? (plan.price_cents_annual || plan.price_cents * 10) / 12 / 100
-              : plan.price_cents / 100;
-            const fullMonthlyCents = annualBilling
-              ? (plan.price_cents_annual || plan.price_cents * 10) / 12
-              : plan.price_cents;
-            const foundingMonthlyCents = founding.active ? applyFoundingDiscount(fullMonthlyCents) : fullMonthlyCents;
-            const annualTotal = (plan.price_cents_annual || plan.price_cents * 10) / 100;
-            const annualSavings = (plan.price_cents * 12 - (plan.price_cents_annual || plan.price_cents * 10)) / 100;
+            const pricing = computePlanPricing(plan, annualBilling, founding.active);
 
             return (
-              <div key={i} className={`relative rounded-[40px] p-10 flex flex-col justify-between ${plan.featured ? 'bg-gradient-to-b from-brand-900 to-slate-900 border-2 border-brand-500 shadow-[0_0_80px_rgba(79,70,229,0.2)] transform md:-translate-y-6 z-20' : 'bg-white/5 border border-white/10 z-10'}`}>
+              <div key={plan.id ?? i} className={`relative rounded-[40px] p-10 flex flex-col justify-between ${plan.featured ? 'bg-gradient-to-b from-brand-900 to-slate-900 border-2 border-brand-500 shadow-[0_0_80px_rgba(79,70,229,0.2)] transform md:-translate-y-6 z-20' : 'bg-white/5 border border-white/10 z-10'}`}>
                 {plan.featured && (
                   <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-5 py-2 bg-brand-500 text-white text-[9px] font-black uppercase tracking-[0.3em] rounded-full shadow-lg">
                     RECOMENDADO
@@ -85,32 +91,52 @@ export default function PricingSection({ plans, annualBilling, onToggleBilling }
                 )}
 
                 <div>
-                  <span className="text-[9px] font-black text-brand-400 uppercase tracking-widest block mb-2">
-                    {getPlanSegment(plan.slug)}
-                  </span>
+                  {plan.description && (
+                    <p className="text-xs font-semibold text-brand-300/90 leading-snug mb-3 min-h-[2.5em]">
+                      {plan.description}
+                    </p>
+                  )}
                   <h3 className={`text-3xl font-black tracking-tight mb-2 ${plan.featured ? 'text-white' : 'text-slate-300'}`}>{plan.name}</h3>
 
                   <div className="mb-2">
-                    {founding.active ? (
+                    {pricing.showFoundingLayer && pricing.foundingCents !== null ? (
                       <div className="flex items-baseline gap-3 flex-wrap">
-                        <span className="text-5xl font-black tracking-tighter text-emerald-400">R${currency(foundingMonthlyCents / 100)}</span>
-                        <span className="text-lg font-bold text-slate-500 line-through">R${currency(fullMonthlyPrice)}</span>
+                        <span className="text-5xl font-black tracking-tighter text-emerald-400">R${currency(pricing.foundingCents / 100)}</span>
+                        <span className="text-lg font-bold text-slate-500 line-through">R${currency(pricing.baseMonthlyCents / 100)}</span>
+                        <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">/mês</span>
+                      </div>
+                    ) : pricing.showAnnualView ? (
+                      <div className="flex items-baseline gap-3 flex-wrap">
+                        <span className="text-5xl font-black tracking-tighter">R${currency(pricing.baseMonthlyCents / 100)}</span>
+                        {pricing.annualSavingsCents > 0 && (
+                          <span className="text-lg font-bold text-slate-500 line-through">R${currency(plan.price_cents / 100)}</span>
+                        )}
                         <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">/mês</span>
                       </div>
                     ) : (
                       <div className="flex items-baseline gap-2">
-                        <span className="text-5xl font-black tracking-tighter">R${currency(fullMonthlyPrice)}</span>
+                        <span className="text-5xl font-black tracking-tighter">R${currency(pricing.baseMonthlyCents / 100)}</span>
                         <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">/mês</span>
                       </div>
                     )}
                   </div>
-                  {founding.active && (
+
+                  {pricing.showFoundingLayer && (
                     <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-6">Preço da Turma Fundadora — travado enquanto sua assinatura estiver ativa</p>
+                  )}
+                  {!pricing.showFoundingLayer && pricing.showAnnualView && pricing.annualSavingsCents > 0 && (
+                    <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-6">Economize R${currency(pricing.annualSavingsCents / 100)} por ano</p>
+                  )}
+                  {!pricing.showFoundingLayer && !pricing.showAnnualView && annualBilling && !pricing.hasAnnualPrice && (
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-6">Somente cobrança mensal</p>
+                  )}
+                  {!pricing.showFoundingLayer && !pricing.showAnnualView && !(annualBilling && !pricing.hasAnnualPrice) && (
+                    <div className="mb-6" />
                   )}
 
                   <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-8 border-b border-white/10 pb-8">
-                    {annualBilling
-                      ? `R$${currency(annualTotal)} faturado 1x por ano (economia de R$${currency(annualSavings)}).`
+                    {pricing.showAnnualView
+                      ? `R$${currency(plan.price_cents_annual / 100)} faturado 1x por ano.`
                       : 'Faturado mensalmente. Cancele quando quiser.'}
                   </p>
 

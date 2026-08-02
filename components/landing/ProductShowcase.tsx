@@ -1,22 +1,25 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ImageOff, PlayCircle } from 'lucide-react';
 import { trackEvent, withUtmParams } from '../../lib/analytics';
+import { LandingService } from '../../services/landing.service';
 
 interface Screen {
+  slug: string;
   src: string;
   alt: string;
   title: string;
   benefit: string;
 }
 
-// TROCAR AQUI: suba os prints reais em /public/screenshots/ mantendo estes nomes de arquivo,
-// ou ajuste o campo "src" para o caminho definitivo de cada print.
-const SCREENS: Screen[] = [
-  { src: '/screenshots/dashboard.png', alt: 'Dashboard consolidado do Zyvion', title: 'Dashboard Consolidado', benefit: 'Saldo total, patrimônio líquido e alertas em uma única tela.' },
-  { src: '/screenshots/dre.png', alt: 'DRE pessoal e empresarial no Zyvion', title: 'DRE Completo', benefit: 'Receitas x despesas por categoria, exportável em PDF e Excel.' },
-  { src: '/screenshots/conciliacao.png', alt: 'Conciliação bancária assistida por IA no Zyvion', title: 'Conciliação por IA', benefit: 'Importe o extrato e a IA classifica tudo automaticamente.' },
-  { src: '/screenshots/patrimonio.png', alt: 'Patrimônio físico e investimentos no Zyvion', title: 'Patrimônio Completo', benefit: 'Imóveis, veículos, investimentos e dívidas no mesmo lugar.' },
+// Fallback estático — usado até o banco responder, e por slug sempre que o admin ainda
+// não tiver cadastrado (ou tiver removido) aquele print em Admin > Landing > Imagens.
+// Para trocar os prints padrão, suba os arquivos em /public/screenshots/ com estes nomes.
+const DEFAULT_SCREENS: Screen[] = [
+  { slug: 'dashboard', src: '/screenshots/dashboard.png', alt: 'Dashboard consolidado do Zyvion', title: 'Dashboard Consolidado', benefit: 'Saldo total, patrimônio líquido e alertas em uma única tela.' },
+  { slug: 'dre', src: '/screenshots/dre.png', alt: 'DRE pessoal e empresarial no Zyvion', title: 'DRE Completo', benefit: 'Receitas x despesas por categoria, exportável em PDF e Excel.' },
+  { slug: 'conciliacao', src: '/screenshots/conciliacao.png', alt: 'Conciliação bancária assistida por IA no Zyvion', title: 'Conciliação por IA', benefit: 'Importe o extrato e a IA classifica tudo automaticamente.' },
+  { slug: 'patrimonio', src: '/screenshots/patrimonio.png', alt: 'Patrimônio físico e investimentos no Zyvion', title: 'Patrimônio Completo', benefit: 'Imóveis, veículos, investimentos e dívidas no mesmo lugar.' },
 ];
 
 function ScreenshotCard({ screen, index }: { screen: Screen; index: number }) {
@@ -48,7 +51,55 @@ function ScreenshotCard({ screen, index }: { screen: Screen; index: number }) {
   );
 }
 
+function ShowcaseSkeleton() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10" aria-hidden="true">
+      {DEFAULT_SCREENS.map((s) => (
+        <div key={s.slug} className="bg-slate-900/60 border border-white/10 rounded-[32px] overflow-hidden animate-pulse">
+          <div className="aspect-[16/10] bg-white/5" />
+          <div className="p-6 space-y-2">
+            <div className="h-4 bg-white/10 rounded-md w-1/2" />
+            <div className="h-3 bg-white/5 rounded-md w-3/4" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function isVideoFile(url: string): boolean {
+  return /\.(mp4|webm|mov)$/i.test(url);
+}
+
 export default function ProductShowcase() {
+  const [loading, setLoading] = useState(true);
+  const [screens, setScreens] = useState<Screen[]>(DEFAULT_SCREENS);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([LandingService.getActiveScreenshots(), LandingService.getSettings()]).then(([dbScreens, settings]) => {
+      if (!mounted) return;
+      if (dbScreens.length > 0) {
+        const merged = DEFAULT_SCREENS.map((fallback) => {
+          const dbRow = dbScreens.find((s) => s.slug === fallback.slug);
+          if (!dbRow) return fallback;
+          return {
+            slug: fallback.slug,
+            src: dbRow.image_url || fallback.src,
+            alt: fallback.alt,
+            title: dbRow.title || fallback.title,
+            benefit: dbRow.benefit || fallback.benefit,
+          };
+        });
+        setScreens(merged);
+      }
+      setVideoUrl(settings?.video_url || null);
+      setLoading(false);
+    });
+    return () => { mounted = false; };
+  }, []);
+
   return (
     <section id="produto" className="py-24 md:py-32 relative z-10 bg-slate-950/50 border-y border-white/5">
       <div className="max-w-[1400px] mx-auto px-6 lg:px-12">
@@ -58,21 +109,35 @@ export default function ProductShowcase() {
           <p className="text-slate-400 font-medium text-lg max-w-2xl mx-auto">Quatro telas reais do Zyvion — sem enrolação, sem mockup genérico.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-          {SCREENS.map((screen, i) => (
-            <ScreenshotCard key={screen.src} screen={screen} index={i} />
-          ))}
-        </div>
-
-        {/* TROCAR AQUI: substitua este bloco por um <video> ou <img> apontando para o GIF/vídeo
-            de demonstração da conciliação por IA quando estiver gravado. */}
-        <div className="rounded-[32px] border border-dashed border-white/15 bg-slate-950/40 p-10 md:p-14 flex flex-col items-center justify-center text-center mb-14">
-          <div className="w-16 h-16 rounded-2xl bg-brand-500/10 border border-brand-500/30 text-brand-400 flex items-center justify-center mb-5">
-            <PlayCircle size={32} />
+        {loading ? (
+          <ShowcaseSkeleton />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+            {screens.map((screen, i) => (
+              <ScreenshotCard key={screen.slug} screen={screen} index={i} />
+            ))}
           </div>
-          <h3 className="text-xl font-black tracking-tight text-white mb-2">Vídeo: conciliação por IA em ação</h3>
-          <p className="text-slate-500 text-sm max-w-md">Espaço reservado para o vídeo/GIF mostrando um extrato sendo importado e classificado automaticamente. Substitua este placeholder pelo arquivo real.</p>
-        </div>
+        )}
+
+        {loading ? (
+          <div className="rounded-[32px] border border-dashed border-white/15 bg-slate-950/40 h-52 mb-14 animate-pulse" aria-hidden="true" />
+        ) : videoUrl ? (
+          <div className="rounded-[32px] border border-white/10 bg-slate-950/40 overflow-hidden mb-14">
+            {isVideoFile(videoUrl) ? (
+              <video src={videoUrl} controls className="w-full max-h-[480px] bg-black" />
+            ) : (
+              <img src={videoUrl} alt="Demonstração da conciliação por IA" className="w-full max-h-[480px] object-cover" loading="lazy" />
+            )}
+          </div>
+        ) : (
+          <div className="rounded-[32px] border border-dashed border-white/15 bg-slate-950/40 p-10 md:p-14 flex flex-col items-center justify-center text-center mb-14">
+            <div className="w-16 h-16 rounded-2xl bg-brand-500/10 border border-brand-500/30 text-brand-400 flex items-center justify-center mb-5">
+              <PlayCircle size={32} />
+            </div>
+            <h3 className="text-xl font-black tracking-tight text-white mb-2">Vídeo: conciliação por IA em ação</h3>
+            <p className="text-slate-500 text-sm max-w-md">Espaço reservado para o vídeo/GIF mostrando um extrato sendo importado e classificado automaticamente. Suba o arquivo em Admin &gt; Landing &gt; Imagens.</p>
+          </div>
+        )}
 
         <div className="text-center">
           <Link

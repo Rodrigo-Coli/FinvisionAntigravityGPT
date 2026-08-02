@@ -21,7 +21,10 @@ export default function Landing() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [annualBilling, setAnnualBilling] = useState(false);
 
-  // Robust state initialization with fallbacks
+  // FALLBACK, não fonte de verdade: só é usado se a busca ao Supabase abaixo falhar
+  // (rede fora do ar, cliente sem sessão, etc). Os preços e planos reais SEMPRE vêm de
+  // public.plans no Supabase, em tempo real — editar aqui não muda o que é cobrado nem o
+  // que aparece quando a busca funciona.
   const [plans, setPlans] = useState<any[]>([
     { id: '1', name: 'Essencial', slug: 'essential', price_cents: 1990, price_cents_annual: 19900, ai_scans_limit: 60, features: ['1 Gestão de Conta', '60 Ações IA/mês', 'Suporte Básico'] },
     { id: '2', name: 'Plus', slug: 'plus', price_cents: 3990, price_cents_annual: 39900, ai_scans_limit: 125, features: ['Contas Ilimitadas', '125 Ações IA/mês', 'Diagnóstico Patrimonial', 'Fila de Conciliação'], featured: true },
@@ -44,31 +47,29 @@ export default function Landing() {
     window.addEventListener('scroll', handleScroll);
     const stopScrollDepthTracking = initScrollDepthTracking();
 
+    // Busca TODOS os planos ativos, na ordem definida no banco (sort_order) — nenhum plano
+    // é escolhido a dedo por slug aqui. Ativar/desativar/criar um plano no Supabase reflete
+    // na landing sozinho, sem precisar de novo deploy.
     const fetchPlans = async () => {
       if (!supabase) return;
       try {
         const { data } = await supabase.from('plans').select('*').eq('is_active', true).order('sort_order', { ascending: true });
         if (data && data.length > 0) {
-          const essentialPlan = data.find((p: any) => p.slug === 'essential') || data.find((p: any) => p.slug === 'essencial');
-          const plusPlan = data.find((p: any) => p.slug === 'plus') || data.find((p: any) => p.slug === 'familia');
-          const proPlan = data.find((p: any) => p.slug === 'pro');
-
-          const filtered = [essentialPlan, plusPlan, proPlan].filter(Boolean);
-          if (filtered.length > 0) {
-            const hasFeatured = filtered.some((p: any) => p.featured);
-            const mappedPlans = filtered.map((p: any) => {
-              let feats = p.features;
-              if (p.slug === 'pro' && Array.isArray(feats)) {
-                feats = feats.map((f: any) => f === 'Wealth Advisor Dedicado' ? 'Advisor Patrimonial Inteligente (IA)' : f);
-              }
-              const planItem = { ...p, features: feats };
-              if (!hasFeatured && p.slug === 'plus') {
-                planItem.featured = true;
-              }
-              return planItem;
-            });
-            setPlans(mappedPlans);
-          }
+          const hasFeatured = data.some((p: any) => p.featured);
+          const mappedPlans = data.map((p: any) => {
+            let feats = p.features;
+            if (p.slug === 'pro' && Array.isArray(feats)) {
+              feats = feats.map((f: any) => f === 'Wealth Advisor Dedicado' ? 'Advisor Patrimonial Inteligente (IA)' : f);
+            }
+            const planItem = { ...p, features: feats };
+            // A tabela plans não tem uma coluna "featured" — na ausência dela, o Plus é
+            // destacado por padrão. Se você adicionar essa coluna no banco, ela assume.
+            if (!hasFeatured && p.slug === 'plus') {
+              planItem.featured = true;
+            }
+            return planItem;
+          });
+          setPlans(mappedPlans);
         }
       } catch (e) {}
     };

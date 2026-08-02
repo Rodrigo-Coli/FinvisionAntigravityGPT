@@ -124,6 +124,26 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    // 5.5 Turma Fundadora: desconto configurado pelo painel Admin > Landing > Oferta
+    // (public.landing_settings), o mesmo que a landing exibe. Só aplicado se nenhum
+    // cupom específico já resolveu o desconto acima — cupom tem prioridade, evita
+    // empilhar dois descontos ao mesmo tempo. Isso mantém o preço que a landing anuncia
+    // igual ao que é cobrado de verdade aqui.
+    if (!validCouponCode) {
+      const { data: landingSettings } = await supabase
+        .from('landing_settings')
+        .select('founding_enabled, founding_ends_at, founding_discount_pct')
+        .maybeSingle();
+      if (
+        landingSettings?.founding_enabled &&
+        landingSettings.founding_ends_at &&
+        new Date(landingSettings.founding_ends_at) > now &&
+        landingSettings.founding_discount_pct > 0
+      ) {
+        discountPercent = landingSettings.founding_discount_pct;
+      }
+    }
+
     // 6. Apply discount to total price
     const priceInReais = (totalPrice / 100) * (1 - discountPercent / 100);
 

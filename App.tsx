@@ -271,9 +271,9 @@ const App: React.FC = () => {
                           <Route path="/referrals" element={<Referrals />} />
                           {isAdmin(profile) && (
                             <>
-                              <Route path="/admin" element={<AdminDashboard />} />
-                              <Route path="/admin/usuarios" element={<AdminDashboard />} />
-                              <Route path="/admin/planos" element={<AdminDashboard />} />
+                              <Route path="/admin" element={<AdminDashboard user={profile} />} />
+                              <Route path="/admin/usuarios" element={<AdminDashboard user={profile} />} />
+                              <Route path="/admin/planos" element={<AdminDashboard user={profile} />} />
                             </>
                           )}
                           <Route path="*" element={<Navigate to="/" replace />} />

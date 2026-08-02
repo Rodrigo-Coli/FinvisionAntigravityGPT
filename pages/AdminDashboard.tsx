@@ -9,11 +9,14 @@ import {
   Gem, Brain, TrendingUp, BarChart3, ChevronDown, Copy,
   Megaphone, Gift, AlertTriangle, ToggleLeft, ToggleRight,
   Eye, EyeOff, Calendar, DollarSign, Star, Palette,
-  RefreshCw, ArrowUpRight, XCircle
+  RefreshCw, ArrowUpRight, XCircle, Globe
 } from 'lucide-react';
 import TokenCalculator from '../components/admin/TokenCalculator';
 import ReferralAdminPanel from '../components/admin/ReferralAdminPanel';
+import LandingSettingsPanel from '../components/admin/LandingSettingsPanel';
 import { useToast } from '../contexts/ToastContext';
+import { isSuperadmin } from '../lib/authUtils';
+import { Profile } from '../types';
 
 // ─── Catálogo de features dos planos ────────────────────────────────────────
 const FEATURE_CATALOG = [
@@ -44,7 +47,7 @@ const FEATURE_CATALOG = [
 const LIMIT_FEATURES = ['accounts', 'cards', 'multi_user', 'ai_scanner', 'ai_shopping_list'];
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
-type Tab = 'overview' | 'plans' | 'users' | 'campaigns' | 'coupons' | 'prompts' | 'audit' | 'referrals';
+type Tab = 'overview' | 'plans' | 'users' | 'campaigns' | 'coupons' | 'prompts' | 'audit' | 'referrals' | 'landing';
 
 // ─── Componente de confirmação inline ────────────────────────────────────────
 const ConfirmAction: React.FC<{
@@ -75,9 +78,13 @@ const ConfirmAction: React.FC<{
 );
 
 // ─── Componente principal ────────────────────────────────────────────────────
-export default function AdminDashboard() {
+export default function AdminDashboard({ user }: { user?: Profile | null }) {
   const { toast } = useToast();
-  const ADMIN_TABS: Tab[] = ['overview', 'plans', 'users', 'campaigns', 'coupons', 'prompts', 'audit', 'referrals'];
+  const canSeeLanding = isSuperadmin(user);
+  const ADMIN_TABS: Tab[] = [
+    'overview', 'plans', 'users', 'campaigns', 'coupons', 'prompts', 'audit', 'referrals',
+    ...(canSeeLanding ? (['landing'] as Tab[]) : []),
+  ];
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab: Tab = resolveTabParam(searchParams.get('view'), ADMIN_TABS, 'overview');
   const setActiveTab = (tab: Tab) => {
@@ -152,6 +159,7 @@ export default function AdminDashboard() {
     { id: 'referrals',  label: 'Indicações',            icon: <Gift size={15} />,        short: 'Indicações' },
     { id: 'prompts',    label: 'IA & Custos',           icon: <Brain size={15} />,       short: 'IA' },
     { id: 'audit',      label: 'Auditoria',             icon: <ShieldCheck size={15} />, short: 'Audit' },
+    ...(canSeeLanding ? [{ id: 'landing' as Tab, label: 'Landing',  icon: <Globe size={15} />,       short: 'Landing' }] : []),
   ];
 
   useEffect(() => {
@@ -1351,6 +1359,19 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* TAB: LANDING PAGE (superadmin) — escondida no front, garantida por RLS */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'landing' && canSeeLanding && (
+        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+          <div>
+            <h2 className="font-black text-slate-900 dark:text-white text-lg">Landing Page</h2>
+            <p className="text-[11px] font-bold text-slate-400 mt-0.5">Oferta, textos, imagens e depoimentos — mudanças aqui aparecem no site sem precisar de deploy.</p>
+          </div>
+          <LandingSettingsPanel />
         </div>
       )}
     </div>

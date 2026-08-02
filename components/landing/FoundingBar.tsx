@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Clock } from 'lucide-react';
-import { FOUNDING_OFFER, isFoundingOfferActive, getFoundingOfferMsRemaining } from '../../lib/foundingOffer';
+import { isFoundingOfferActive, getFoundingOfferMsRemaining, loadFoundingOfferFromDB, getFoundingHeadline } from '../../lib/foundingOffer';
 
 interface Countdown {
   active: boolean;
@@ -23,14 +23,19 @@ function computeCountdown(): Countdown {
   };
 }
 
-// Contagem sempre derivada de FOUNDING_OFFER.endsAt (nunca localStorage / primeira visita).
+// Contagem sempre derivada de public.landing_settings (nunca localStorage / primeira
+// visita). Enquanto a busca ao banco não resolve, active fica false por padrão — nunca
+// mostra a oferta antes de confirmar que ela está realmente ligada.
 export function useFoundingCountdown(): Countdown {
   const [countdown, setCountdown] = useState<Countdown>(computeCountdown);
 
   useEffect(() => {
-    if (!FOUNDING_OFFER.enabled) return;
+    let mounted = true;
+    loadFoundingOfferFromDB().finally(() => {
+      if (mounted) setCountdown(computeCountdown());
+    });
     const interval = setInterval(() => setCountdown(computeCountdown()), 1000);
-    return () => clearInterval(interval);
+    return () => { mounted = false; clearInterval(interval); };
   }, []);
 
   return countdown;
@@ -48,7 +53,7 @@ export default function FoundingBar() {
   return (
     <div className="inline-flex flex-wrap items-center justify-center gap-3 px-5 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 backdrop-blur-md">
       <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em]">
-        <Clock size={14} /> Turma Fundadora — preço travado para sempre
+        <Clock size={14} /> {getFoundingHeadline() || 'Turma Fundadora — preço travado para sempre'}
       </span>
       <span className="flex items-center gap-1.5 font-mono text-sm font-bold text-white" aria-live="polite">
         <span className="px-2 py-0.5 bg-black/30 rounded-md">{countdown.days}d</span>
