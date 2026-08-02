@@ -34,25 +34,24 @@
   <meta name="twitter:description" content="Consolide contas, cartões, investimentos, imóveis e dívidas em uma única tela, com conciliação por IA e sem entregar a senha do seu banco." />
   <meta name="twitter:image" content="/logo.png" />
   <!--
-    TRÁFEGO PAGO — inserir aqui os scripts de Meta Pixel e Google Tag (GA4) quando os IDs
-    estiverem disponíveis. Não commitar IDs de produção antes de configurar.
+    TRAFEGO PAGO: inserir aqui os scripts de Meta Pixel e Google Tag (GA4) quando os IDs
+    estiverem disponiveis. Nao commitar IDs de producao antes de configurar.
+    ATENCAO: manter este comentario sem a sequencia de caracteres "fecha colchete angulo,
+    barra, head, fecha colchete angulo" dentro do texto - o Vite usa essa sequencia para
+    decidir onde injetar o script principal do app, e ela ja quebrou o site uma vez.
 
-    Meta Pixel (colar antes do </head>, substituindo SEU_PIXEL_ID):
-    <script>
+    Meta Pixel, ID substituido por SEU_PIXEL_ID, script colado logo acima desta linha:
       !function(f,b,e,v,n,t,s){...}(window, document,'script',
       'https://connect.facebook.net/en_US/fbevents.js');
       fbq('init', 'SEU_PIXEL_ID');
       fbq('track', 'PageView');
-    </script>
 
-    Google Tag / GA4 (colar antes do </head>, substituindo SEU_MEASUREMENT_ID):
-    <script async src="https://www.googletagmanager.com/gtag/js?id=SEU_MEASUREMENT_ID"></script>
-    <script>
+    Google Tag / GA4, ID substituido por SEU_MEASUREMENT_ID, script colado logo acima desta linha:
+      src="https://www.googletagmanager.com/gtag/js?id=SEU_MEASUREMENT_ID" (async)
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
       gtag('config', 'SEU_MEASUREMENT_ID');
-    </script>
   -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
