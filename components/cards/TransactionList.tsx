@@ -174,6 +174,26 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                     </div>
                                 </div>
 
+                                {/* Observações + Tags */}
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        value={tx.notes || ''}
+                                        placeholder="Observações..."
+                                        onChange={(e) => onUpdateTxLocal(tx.id, { notes: e.target.value })}
+                                        onBlur={(e) => onSaveTxPatch(tx.id, { notes: e.target.value })}
+                                        className="flex-1 min-w-0 text-xs font-medium bg-transparent dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all truncate shadow-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={Array.isArray(tx.tags) ? tx.tags.join(', ') : (tx.tags || '')}
+                                        placeholder="Tags..."
+                                        onChange={(e) => onUpdateTxLocal(tx.id, { tags: e.target.value })}
+                                        onBlur={(e) => onSaveTxPatch(tx.id, { tags: e.target.value })}
+                                        className="flex-1 min-w-0 text-xs font-bold bg-transparent dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all truncate shadow-sm"
+                                    />
+                                </div>
+
                                 {/* Perfil + Fatura/Mês */}
                                 <div className="flex items-center gap-2">
                                     <select
@@ -269,8 +289,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                 {transactions.map((tx) => (
                                     <div
                                         key={tx.id}
-                                        className="grid grid-cols-12 gap-2 px-6 py-4 items-center hover:bg-slate-50/30 dark:hover:bg-brand-900/30 transition-colors"
+                                        className="hover:bg-slate-50/30 dark:hover:bg-brand-900/30 transition-colors"
                                     >
+                                    <div className="grid grid-cols-12 gap-2 px-6 py-4 items-center">
                                         {/* Date (col-span-2 with hidden calendar icon indicator) */}
                                         <div className="col-span-2">
                                             <input
@@ -433,6 +454,27 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                 </button>
                                             )}
                                         </div>
+                                    </div>
+
+                                    {/* Observações + Tags */}
+                                    <div className="px-6 pb-3 -mt-1 flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={tx.notes || ''}
+                                            placeholder="Observações..."
+                                            onChange={(e) => onUpdateTxLocal(tx.id, { notes: e.target.value })}
+                                            onBlur={(e) => onSaveTxPatch(tx.id, { notes: e.target.value })}
+                                            className="flex-1 min-w-0 text-[10px] font-medium bg-transparent dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all truncate shadow-sm"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={Array.isArray(tx.tags) ? tx.tags.join(', ') : (tx.tags || '')}
+                                            placeholder="Tags separadas por vírgula..."
+                                            onChange={(e) => onUpdateTxLocal(tx.id, { tags: e.target.value })}
+                                            onBlur={(e) => onSaveTxPatch(tx.id, { tags: e.target.value })}
+                                            className="flex-1 min-w-0 text-[10px] font-bold bg-transparent dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all truncate shadow-sm"
+                                        />
+                                    </div>
                                     </div>
                                 ))}
                             </div>
