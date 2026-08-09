@@ -127,20 +127,9 @@ const Reports: React.FC = () => {
         if (selectedAccountId) {
           q = q.eq('account_id', selectedAccountId);
         }
-        // Nota: este filtro roda ANTES da explosão dos lançamentos divididos (ver
-        // flatMap mais abaixo) e usa a categoria do lançamento PAI. Um lançamento
-        // dividido em Veículo+Alimentação cuja categoria original seja "Veículo"
-        // não vai aparecer se o usuário filtrar por "Alimentação" aqui. Escopo
-        // aceito por ora - filtrar Relatórios por categoria de um pedaço específico
-        // de um lançamento dividido é um caso raro comparado ao relatório sem filtro.
-        if (selectedCategory === 'Sem categoria') {
-          // "Sem categoria" é rótulo, não valor gravado: precisa pegar também as
-          // linhas com categoria nula/vazia, senão o filtro devolve menos do que o
-          // próprio relatório mostra agrupado sob esse nome.
-          q = q.or('category.is.null,category.eq.,category.eq.Sem categoria');
-        } else if (selectedCategory) {
-          q = q.eq('category', selectedCategory);
-        }
+        // O filtro de categoria NÃO roda aqui na query - é aplicado em memória mais
+        // abaixo (categoryMatches), depois de olhar tanto a categoria do lançamento
+        // quanto a de cada pedaço de lançamentos divididos (has_splits).
         txsPromise = q as any;
       }
 
@@ -217,33 +206,77 @@ const Reports: React.FC = () => {
       const cardCategoryName = (ct: any): string =>
         ct.categories?.name || ct.category || 'Sem categoria';
 
-      const cardTxs = allCardTxs.filter((ct: any) => {
+      const cardTxsInRange = allCardTxs.filter((ct: any) => {
         const competence = getCompetenceDate(ct);
-        if (competence < dateRange.start || competence > dateRange.end) return false;
-        // Filtro de categoria do cartão em memória (ver comentário na query acima).
-        if (selectedCategory && cardCategoryName(ct) !== selectedCategory) return false;
-        return true;
+        return competence >= dateRange.start && competence <= dateRange.end;
       });
 
       // Exclui: capitalizados + BILL_PAYMENT (no modo TUDO, pois compras do cartão já entram via cardTxs)
       const excludeBillPayment = !selectedAccountId;
-      const filteredTxs = txs.filter((t: any) =>
+      const txsInRange = txs.filter((t: any) =>
         !(t.metadata?.isCapitalized === true || t.metadata?.type === 'asset_purchase') &&
         !(excludeBillPayment && t.type === 'BILL_PAYMENT')
       );
+
+      // Lançamentos divididos (has_splits) - carrega os pedaços ANTES de aplicar o
+      // filtro de categoria, pra poder casar tanto pela categoria do lançamento pai
+      // quanto pela de cada pedaço (um dividido em Veículo+Alimentação precisa
+      // aparecer ao filtrar por "Alimentação" mesmo com categoria original "Veículo").
+      const splitBankIds = txsInRange.filter((t: any) => t.has_splits).map((t: any) => t.id);
+      const splitCardIds = cardTxsInRange.filter((c: any) => c.has_splits).map((c: any) => c.id);
+      const [bankSplitsMap, cardSplitsMap]: [Record<string, TransactionSplit[]>, Record<string, TransactionSplit[]>] = await Promise.all([
+        splitBankIds.length ? SplitTransactionService.getSplitsForSources('transaction', splitBankIds) : Promise.resolve({}),
+        splitCardIds.length ? SplitTransactionService.getSplitsForSources('card_transaction', splitCardIds) : Promise.resolve({})
+      ]);
+
+      const categoryMatches = (cat: string): boolean => {
+        if (!selectedCategory) return true;
+        if (selectedCategory === 'Sem categoria') return !cat || cat === 'Sem categoria';
+        return cat === selectedCategory;
+      };
+      // Um lançamento entra no filtro se a categoria dele (ou de QUALQUER pedaço,
+      // quando dividido) bater com a categoria escolhida.
+      const bankMatchesCategory = (t: any) => t.has_splits
+        ? (bankSplitsMap[t.id] || []).some(p => categoryMatches(p.category || 'Sem categoria'))
+        : categoryMatches(t.category || 'Sem categoria');
+      const cardMatchesCategory = (c: any) => c.has_splits
+        ? (cardSplitsMap[c.id] || []).some(p => categoryMatches(p.category || 'Sem categoria'))
+        : categoryMatches(cardCategoryName(c));
+
+      const filteredTxs = txsInRange.filter(bankMatchesCategory);
+      const cardTxs = cardTxsInRange.filter(cardMatchesCategory);
+
+      // Valor que efetivamente conta pra esse lançamento dentro do filtro atual: se
+      // não há filtro de categoria, é o valor total (comportamento de sempre). Com
+      // filtro ativo e lançamento dividido, é a soma só dos pedaços que baterem -
+      // senão um gasto de R$500 filtrado por "Alimentação" (R$300 do pedaço)
+      // apareceria com R$500 no total da categoria.
+      const bankFilteredAmount = (t: any): number => {
+        if (!selectedCategory || !t.has_splits) return Number(t.amount || 0);
+        return (bankSplitsMap[t.id] || [])
+          .filter(p => categoryMatches(p.category || 'Sem categoria'))
+          .reduce((sum, p) => sum + Number(p.amount), 0);
+      };
+      const cardFilteredAmount = (c: any): number => {
+        if (!selectedCategory || !c.has_splits) return Number(c.amount || 0);
+        return (cardSplitsMap[c.id] || [])
+          .filter(p => categoryMatches(p.category || 'Sem categoria'))
+          .reduce((sum, p) => sum + Number(p.amount), 0);
+      };
 
       let income = 0;
       let expense = 0;
       let pending = 0;
 
       filteredTxs.forEach((t: any) => {
-        if (t.type === 'INCOME') income += t.amount;
-        else if (t.type === 'EXPENSE') expense += t.amount;
+        const amt = bankFilteredAmount(t);
+        if (t.type === 'INCOME') income += amt;
+        else if (t.type === 'EXPENSE') expense += amt;
         if (!t.is_paid && t.type === 'EXPENSE') pending++;
       });
 
       cardTxs.forEach((c: any) => {
-        expense += c.amount;
+        expense += cardFilteredAmount(c);
       });
 
       setStats({
@@ -257,18 +290,13 @@ const Reports: React.FC = () => {
       const accountsMap = new Map(accounts.map((a: any) => [a.id, a.institution]));
       const cardsMap = new Map(cards.map((c: any) => [c.id, c.name]));
 
-      // Lançamentos divididos (has_splits) viram uma linha por pedaço no
-      // relatório/exportação, cada uma com sua própria categoria e valor -
-      // senão a exportação mostraria só a categoria única do lançamento pai.
-      const splitBankIds = filteredTxs.filter((t: any) => t.has_splits).map((t: any) => t.id);
-      const splitCardIds = cardTxs.filter((c: any) => c.has_splits).map((c: any) => c.id);
-      const [bankSplitsMap, cardSplitsMap]: [Record<string, TransactionSplit[]>, Record<string, TransactionSplit[]>] = await Promise.all([
-        splitBankIds.length ? SplitTransactionService.getSplitsForSources('transaction', splitBankIds) : Promise.resolve({}),
-        splitCardIds.length ? SplitTransactionService.getSplitsForSources('card_transaction', splitCardIds) : Promise.resolve({})
-      ]);
-
+      // Lançamentos divididos viram uma linha por pedaço na exportação/impressão,
+      // cada uma com sua própria categoria e valor. Quando há filtro de categoria
+      // ativo, só os pedaços que baterem entram (senão pedaços de outra categoria
+      // apareceriam num relatório filtrado por uma categoria específica).
       const formattedTxs = filteredTxs.flatMap((t: any) => {
-        const pieces = t.has_splits ? bankSplitsMap[t.id] : undefined;
+        const allPieces = t.has_splits ? (bankSplitsMap[t.id] || []) : undefined;
+        const pieces = selectedCategory && allPieces ? allPieces.filter(p => categoryMatches(p.category || 'Sem categoria')) : allPieces;
         const base = {
           date: t.date,
           description: t.description,
@@ -283,7 +311,8 @@ const Reports: React.FC = () => {
       });
 
       const formattedCardTxs = cardTxs.flatMap((c: any) => {
-        const pieces = c.has_splits ? cardSplitsMap[c.id] : undefined;
+        const allPieces = c.has_splits ? (cardSplitsMap[c.id] || []) : undefined;
+        const pieces = selectedCategory && allPieces ? allPieces.filter(p => categoryMatches(p.category || 'Sem categoria')) : allPieces;
         const base = {
           date: c.date,
           description: c.description,

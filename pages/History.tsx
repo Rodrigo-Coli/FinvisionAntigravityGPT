@@ -3,13 +3,14 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, FileDown, Loader2, AlertCircle, Check, RefreshCw, Calendar, Tag, Landmark, User, ArrowRight, Trash, X, Sparkles, Clock } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
-import { Transaction, TransactionType, BankAccount } from '../types';
+import { Transaction, TransactionType, BankAccount, TransactionSplit } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { offlineQueue } from '../lib/offlineQueue.service';
 import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata } from '../lib/historyUtils';
 import { DateUtils } from '../lib/dateUtils';
 import { FinanceService } from '../services/finance.service';
 import { ReconciliationService } from '../services/reconciliation.service';
+import { SplitTransactionService } from '../services/splitTransaction.service';
 import { findCloseMatch } from '../lib/stringUtils';
 import { useToast } from '../contexts/ToastContext';
 
@@ -516,7 +517,7 @@ const HistoryPage: React.FC = () => {
       let cardTxsData: any[] = [];
       let cardStatementsData: any[] = [];
 
-      const renderData = (
+      const renderData = async (
         accs: any[],
         cardDefs: any[],
         cats: any[],
@@ -768,6 +769,29 @@ const HistoryPage: React.FC = () => {
           ? normalizedCardTxs.filter((ct: any) => ct.competenceDate >= startDate && ct.competenceDate <= endDate)
           : normalizedCardTxs;
 
+        // Pedaços dos lançamentos divididos (has_splits) visíveis nesta carga -
+        // usados para o filtro de categoria/subcategoria da tela enxergar cada
+        // pedaço, não só a categoria única do lançamento pai. Sem isso, um
+        // lançamento dividido em Veículo+Alimentação sumia da lista ao filtrar
+        // por "Alimentação" se a categoria original dele fosse "Veículo".
+        const splitBankIds = (txs || []).filter((t: any) => t.has_splits).map((t: any) => t.id);
+        const splitCardIds = normalizedCardTxsInRange.filter((ct: any) => ct.has_splits).map((ct: any) => ct.id);
+        const [bankSplitsMap, cardSplitsMap]: [Record<string, TransactionSplit[]>, Record<string, TransactionSplit[]>] = await Promise.all([
+          splitBankIds.length ? SplitTransactionService.getSplitsForSources('transaction', splitBankIds) : Promise.resolve({}),
+          splitCardIds.length ? SplitTransactionService.getSplitsForSources('card_transaction', splitCardIds) : Promise.resolve({})
+        ]);
+        const splitsMap: Record<string, TransactionSplit[]> = { ...bankSplitsMap, ...cardSplitsMap };
+        if (requestId !== lastRequestId.current) return;
+
+        const matchesSplitAwareFilter = (t: any, list: string[], field: 'category' | 'subcategory') => {
+          if (list.length === 0) return true;
+          if (t.has_splits) {
+            const pieces = splitsMap[t.id] || [];
+            return pieces.some(p => list.includes((p[field] as string) || (field === 'subcategory' ? 'Diversos' : 'Sem categoria')));
+          }
+          return list.includes(t[field]);
+        };
+
         // ── Base banco + cartão sempre itemizada (nunca a fatura resumida) ──
         // Objetivo: banco + cartão somados por categoria (ex: Mercado do débito +
         // Mercado do cartão), sem contar a fatura como um gasto duplicado. Por isso
@@ -803,6 +827,7 @@ const HistoryPage: React.FC = () => {
           isPaid: !!t.is_paid,
           paidAmount: Number(t.paid_amount || 0),
           is_amortization: !!t.is_amortization,
+          hasSplits: !!t.has_splits,
           metadata: t.metadata
         })));
 
@@ -816,7 +841,7 @@ const HistoryPage: React.FC = () => {
           combinedForChart = combinedForChart.filter((t: any) => matchesAccountFilter(t, filterAccount));
         }
         if (filterSubcategory.length > 0) {
-          combinedForChart = combinedForChart.filter((t: any) => filterSubcategory.includes(t.subcategory));
+          combinedForChart = combinedForChart.filter((t: any) => matchesSplitAwareFilter(t, filterSubcategory, 'subcategory'));
         }
         if (filterOwner.length > 0) {
           combinedForChart = combinedForChart.filter((t: any) => filterOwner.includes(t.owner_name));
@@ -893,10 +918,10 @@ const HistoryPage: React.FC = () => {
           combined = combined.filter((t: any) => matchesAccountFilter(t, filterAccount));
         }
         if (filterCategory.length > 0) {
-          combined = combined.filter((t: any) => filterCategory.includes(t.category));
+          combined = combined.filter((t: any) => matchesSplitAwareFilter(t, filterCategory, 'category'));
         }
         if (filterSubcategory.length > 0) {
-          combined = combined.filter((t: any) => filterSubcategory.includes(t.subcategory));
+          combined = combined.filter((t: any) => matchesSplitAwareFilter(t, filterSubcategory, 'subcategory'));
         }
         if (filterOwner.length > 0) {
           combined = combined.filter((t: any) => filterOwner.includes(t.owner_name));

@@ -1,5 +1,26 @@
 [
   {
+    "version": "2026.08.09.2037",
+    "title": "Filtro de categoria já enxerga lançamentos divididos",
+    "date": "09/08/2026",
+    "benefits": [
+      {
+        "title": "Filtrar por categoria encontra os pedaços certos",
+        "desc": "Em Transações e Relatórios, filtrar por categoria agora acha lançamentos divididos que têm um pedaço nela, mesmo com categoria principal diferente.",
+        "type": "correção"
+      },
+      {
+        "title": "Valores e contagens do Relatório batem certinho",
+        "desc": "Filtro de categoria em Relatórios mostra só o valor do pedaço, e conta o lançamento uma vez só.",
+        "type": "correção"
+      }
+    ],
+    "changes": [
+      "History.tsx: renderData busca os pedaços antes de filtrar por categoria/subcategoria (Tudo/Conta/Cartão).",
+      "Reports.tsx: filtro de categoria movido para depois de considerar os pedaços; valor e contagem exatos."
+    ]
+  },
+  {
     "version": "2026.08.09.1952",
     "title": "Divida um lançamento em várias categorias",
     "date": "09/08/2026",
