@@ -1,28 +1,31 @@
 {
-  "version": "2026.07.30.1239",
-  "title": "DRE completo: gastos de cartão certos e novos filtros",
-  "date": "30/07/2026",
+  "version": "2026.08.09.1952",
+  "title": "Divida um lançamento em várias categorias",
+  "date": "09/08/2026",
   "benefits": [
     {
-      "title": "Gastos de cartão aparecem certinho no DRE",
-      "desc": "O relatório de Receitas x Despesas (DRE) tinha dois problemas: ele só olhava para a 'página' da tabela que estava aberta na tela, e herdava um filtro que, por padrão, resume o cartão numa única linha de fatura em vez de detalhar cada compra por categoria. Agora o DRE sempre parte do período inteiro e sempre detalha as compras de cartão por categoria (Mercado, Lazer, etc.), não importa o que estiver selecionado na tela de Transações.",
-      "type": "correção"
+      "title": "Uma compra, várias categorias",
+      "desc": "Fez uma compra de R$500 no cartão onde R$200 foi Veículo/Pneu e R$300 foi Alimentação/Restaurante? Agora dá pra dividir esse lançamento em pedaços, cada um com sua própria categoria e subcategoria — sem mudar o valor total que aparece na fatura ou no extrato.",
+      "type": "novidade"
     },
     {
-      "title": "Filtro de Receita, Despesa, Categoria e Subcategoria dentro do DRE",
-      "desc": "O DRE ganhou um botão 'Filtros' próprio: dá pra ver só receitas, só despesas, ou escolher categorias e subcategorias específicas — sem precisar mexer nos filtros da tela de Transações.",
-      "type": "melhoria"
+      "title": "Divisão fica marcada no lançamento e pode ser editada depois",
+      "desc": "Lançamentos divididos ganham um selo 'Dividido' na lista de Transações e nos Cartões. Clicando nele, dá pra ver e ajustar os pedaços a qualquer momento, ou remover a divisão e voltar ao normal.",
+      "type": "novidade"
     },
     {
-      "title": "Botões do DRE maiores no celular",
-      "desc": "Imprimir/PDF, Baixar Excel e Fechar estavam pequenos demais para identificar no celular. Agora ficam em botões largos, sempre com o texto visível, também na tela do celular.",
+      "title": "Relatórios e gráficos já contam certo",
+      "desc": "O DRE, os gráficos de categoria em Transações e o orçamento em Planejamento agora somam cada pedaço na categoria certa, em vez de jogar a compra inteira numa categoria só.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "pages/History.tsx: nova base dreSourceTransactions (banco + cartão sempre itemizado, sem paginação e sem os filtros de tela) alimentando o DRE; handleGenerateDre só abre o modal, que agora calcula o relatório internamente.",
-    "components/history/DreReportModal.tsx: recebe transactions/startDate/endDate em vez de um report pronto; filtros próprios de Tipo/Categoria/Subcategoria com recálculo via useMemo; cabeçalho redesenhado com botões maiores e rótulo sempre visível no celular.",
-    "components/history/HistoryFilters.tsx: SearchableMultiSelect exportado para reuso no DreReportModal.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (filtros de tipo/categoria conferidos batendo o total, DRE completo mesmo trocando a Origem da tela para 'Conta')."
+    "supabase/add_transaction_splits.sql: nova tabela transaction_splits + coluna has_splits em transactions/card_transactions + função save_transaction_splits (grava/valida/remove de forma atômica, sem tocar no amount da linha pai).",
+    "services/splitTransaction.service.ts (novo): busca e gravação dos pedaços de um lançamento.",
+    "lib/transactionSplitUtils.ts (novo): explode lançamentos divididos em linhas por categoria para agregações.",
+    "components/history/SplitTransactionModal.tsx (novo): tela de divisão, reusada em Transações e Cartões.",
+    "components/history/TransactionTable.tsx, components/cards/TransactionList.tsx: botão Dividir e selo Dividido nas linhas.",
+    "components/history/DreReportModal.tsx, components/history/HistoryCharts.tsx, pages/Planning.tsx, pages/Reports.tsx: somas por categoria agora consideram os pedaços dos lançamentos divididos.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo (banco e cartão) - divisão criada, editada e removida, valor total do lançamento e da fatura conferidos intactos no banco de dados em cada passo."
   ]
 }

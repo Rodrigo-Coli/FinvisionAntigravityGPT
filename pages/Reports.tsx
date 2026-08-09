@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase/client';
 import { DateUtils } from '../lib/dateUtils';
 import { HistoryUtils } from '../lib/historyUtils';
 import { useToast } from '../contexts/ToastContext';
+import { SplitTransactionService } from '../services/splitTransaction.service';
+import { TransactionSplit } from '../types';
 
 const Reports: React.FC = () => {
   const { toast } = useToast();
@@ -116,7 +118,7 @@ const Reports: React.FC = () => {
       if (!selectedAccountId || isBank) {
         let q = supabase
           .from('transactions')
-          .select('date, description, category, type, amount, is_paid, account_id, metadata')
+          .select('id, date, description, category, type, amount, is_paid, account_id, metadata, has_splits')
           .eq('user_id', user.id)
           .eq('is_deleted', false)
           .gte('date', dateRange.start)
@@ -125,6 +127,12 @@ const Reports: React.FC = () => {
         if (selectedAccountId) {
           q = q.eq('account_id', selectedAccountId);
         }
+        // Nota: este filtro roda ANTES da explosão dos lançamentos divididos (ver
+        // flatMap mais abaixo) e usa a categoria do lançamento PAI. Um lançamento
+        // dividido em Veículo+Alimentação cuja categoria original seja "Veículo"
+        // não vai aparecer se o usuário filtrar por "Alimentação" aqui. Escopo
+        // aceito por ora - filtrar Relatórios por categoria de um pedaço específico
+        // de um lançamento dividido é um caso raro comparado ao relatório sem filtro.
         if (selectedCategory === 'Sem categoria') {
           // "Sem categoria" é rótulo, não valor gravado: precisa pegar também as
           // linhas com categoria nula/vazia, senão o filtro devolve menos do que o
@@ -158,7 +166,7 @@ const Reports: React.FC = () => {
         // logo abaixo, sobre o nome já resolvido.
         let q = supabase
           .from('card_transactions')
-          .select('date, description, category, amount, card_id, statement_id, categories(name)')
+          .select('id, date, description, category, amount, card_id, statement_id, has_splits, categories(name)')
           .eq('user_id', user.id)
           .gte('date', DateUtils.addDaysISO(dateRange.start, -92))
           .lte('date', dateRange.end);
@@ -249,25 +257,45 @@ const Reports: React.FC = () => {
       const accountsMap = new Map(accounts.map((a: any) => [a.id, a.institution]));
       const cardsMap = new Map(cards.map((c: any) => [c.id, c.name]));
 
-      const formattedTxs = filteredTxs.map((t: any) => ({
-        date: t.date,
-        description: t.description,
-        category: t.category || 'Sem categoria',
-        type: t.type === 'INCOME' ? 'Receita' : (t.type === 'TRANSFER' ? 'Transferência' : 'Despesa'),
-        amount: t.amount,
-        status: t.is_paid ? 'Pago' : 'Pendente',
-        origin: accountsMap.get(t.account_id) || 'Conta'
-      }));
+      // Lançamentos divididos (has_splits) viram uma linha por pedaço no
+      // relatório/exportação, cada uma com sua própria categoria e valor -
+      // senão a exportação mostraria só a categoria única do lançamento pai.
+      const splitBankIds = filteredTxs.filter((t: any) => t.has_splits).map((t: any) => t.id);
+      const splitCardIds = cardTxs.filter((c: any) => c.has_splits).map((c: any) => c.id);
+      const [bankSplitsMap, cardSplitsMap]: [Record<string, TransactionSplit[]>, Record<string, TransactionSplit[]>] = await Promise.all([
+        splitBankIds.length ? SplitTransactionService.getSplitsForSources('transaction', splitBankIds) : Promise.resolve({}),
+        splitCardIds.length ? SplitTransactionService.getSplitsForSources('card_transaction', splitCardIds) : Promise.resolve({})
+      ]);
 
-      const formattedCardTxs = cardTxs.map((c: any) => ({
-        date: c.date,
-        description: c.description,
-        category: cardCategoryName(c),
-        type: 'Despesa',
-        amount: c.amount,
-        status: 'Fatura/Postado',
-        origin: cardsMap.get(c.card_id) || 'Cartão'
-      }));
+      const formattedTxs = filteredTxs.flatMap((t: any) => {
+        const pieces = t.has_splits ? bankSplitsMap[t.id] : undefined;
+        const base = {
+          date: t.date,
+          description: t.description,
+          type: t.type === 'INCOME' ? 'Receita' : (t.type === 'TRANSFER' ? 'Transferência' : 'Despesa'),
+          status: t.is_paid ? 'Pago' : 'Pendente',
+          origin: accountsMap.get(t.account_id) || 'Conta'
+        };
+        if (pieces && pieces.length > 0) {
+          return pieces.map(p => ({ ...base, category: p.category || 'Sem categoria', amount: p.amount }));
+        }
+        return [{ ...base, category: t.category || 'Sem categoria', amount: t.amount }];
+      });
+
+      const formattedCardTxs = cardTxs.flatMap((c: any) => {
+        const pieces = c.has_splits ? cardSplitsMap[c.id] : undefined;
+        const base = {
+          date: c.date,
+          description: c.description,
+          type: 'Despesa',
+          status: 'Fatura/Postado',
+          origin: cardsMap.get(c.card_id) || 'Cartão'
+        };
+        if (pieces && pieces.length > 0) {
+          return pieces.map(p => ({ ...base, category: p.category || 'Sem categoria', amount: p.amount }));
+        }
+        return [{ ...base, category: cardCategoryName(c), amount: c.amount }];
+      });
 
       const merged = [...formattedTxs, ...formattedCardTxs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setPrintTxs(merged);

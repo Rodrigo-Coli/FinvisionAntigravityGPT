@@ -1,5 +1,33 @@
 [
   {
+    "version": "2026.08.09.1952",
+    "title": "Divida um lançamento em várias categorias",
+    "date": "09/08/2026",
+    "benefits": [
+      {
+        "title": "Uma compra, várias categorias",
+        "desc": "Divida um lançamento (banco ou cartão) em pedaços com categoria/subcategoria próprias, sem mudar o valor total que aparece na fatura ou no extrato.",
+        "type": "novidade"
+      },
+      {
+        "title": "Divisão fica marcada no lançamento e pode ser editada depois",
+        "desc": "Selo 'Dividido' na lista de Transações e Cartões; dá pra ajustar os pedaços a qualquer momento ou remover a divisão.",
+        "type": "novidade"
+      },
+      {
+        "title": "Relatórios e gráficos já contam certo",
+        "desc": "DRE, gráficos de categoria e orçamento em Planejamento somam cada pedaço na categoria certa.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "supabase/add_transaction_splits.sql: tabela transaction_splits + has_splits + função save_transaction_splits.",
+      "services/splitTransaction.service.ts, lib/transactionSplitUtils.ts (novos).",
+      "components/history/SplitTransactionModal.tsx (novo), TransactionTable.tsx, components/cards/TransactionList.tsx.",
+      "DreReportModal.tsx, HistoryCharts.tsx, pages/Planning.tsx, pages/Reports.tsx: agregações por categoria consideram splits."
+    ]
+  },
+  {
     "version": "2026.07.30.1239",
     "title": "DRE completo: gastos de cartão certos e novos filtros",
     "date": "30/07/2026",

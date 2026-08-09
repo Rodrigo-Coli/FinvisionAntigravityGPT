@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, Printer, Download, TrendingUp, TrendingDown, Building2, Tag, ArrowUpRight, ArrowDownRight, SlidersHorizontal } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Transaction } from '../../types';
+import { Transaction, TransactionSplit } from '../../types';
 import { DreUtils } from '../../lib/dreUtils';
+import { explodeTransactionsForCategoryAgg } from '../../lib/transactionSplitUtils';
+import { SplitTransactionService } from '../../services/splitTransaction.service';
 import { SearchableMultiSelect } from './HistoryFilters';
 
 interface DreReportModalProps {
@@ -30,7 +32,35 @@ export const DreReportModal: React.FC<DreReportModalProps> = ({ transactions, st
     const [subcategoryFilter, setSubcategoryFilter] = useState<string[]>([]);
     const [showFilters, setShowFilters] = useState(false);
 
-    const cleanTxs = useMemo(() => transactions.filter(t => !isNoise(t)), [transactions]);
+    // Pedaços dos lançamentos divididos (hasSplits) - carregados uma vez por
+    // lista de transações e usados para "explodir" cada um em suas categorias
+    // reais antes de qualquer soma/filtro por categoria neste relatório.
+    const [splitsMap, setSplitsMap] = useState<Record<string, TransactionSplit[]>>({});
+
+    useEffect(() => {
+        const splitTxs = transactions.filter(t => t.hasSplits);
+        if (splitTxs.length === 0) {
+            setSplitsMap({});
+            return;
+        }
+        const bankIds = splitTxs.filter(t => !(t as any).metadata?.is_card).map(t => t.id);
+        const cardIds = splitTxs.filter(t => (t as any).metadata?.is_card).map(t => t.id);
+        let cancelled = false;
+        Promise.all([
+            bankIds.length ? SplitTransactionService.getSplitsForSources('transaction', bankIds) : Promise.resolve({}),
+            cardIds.length ? SplitTransactionService.getSplitsForSources('card_transaction', cardIds) : Promise.resolve({})
+        ]).then(([bankMap, cardMap]) => {
+            if (!cancelled) setSplitsMap({ ...bankMap, ...cardMap });
+        });
+        return () => { cancelled = true; };
+    }, [transactions]);
+
+    const explodedTransactions = useMemo(
+        () => explodeTransactionsForCategoryAgg(transactions, splitsMap),
+        [transactions, splitsMap]
+    );
+
+    const cleanTxs = useMemo(() => explodedTransactions.filter(t => !isNoise(t)), [explodedTransactions]);
 
     const typeScoped = useMemo(
         () => cleanTxs.filter(t => matchesTypeFilter(t, typeFilter)),

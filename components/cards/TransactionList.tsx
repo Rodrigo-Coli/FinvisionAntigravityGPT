@@ -1,6 +1,7 @@
-import React from 'react';
-import { Clock, Plus, Loader2, Tags, Trash2, Paperclip } from 'lucide-react';
+import React, { useState } from 'react';
+import { Clock, Plus, Loader2, Tags, Trash2, Paperclip, SplitSquareHorizontal } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
+import { SplitTransactionModal } from '../history/SplitTransactionModal';
 
 interface TransactionListProps {
     transactions: any[];
@@ -20,6 +21,7 @@ interface TransactionListProps {
     onUploadAttachment?: (id: string, file: File) => Promise<void>;
     onDeleteAttachment?: (documentId: string, transactionId: string) => Promise<void>;
     onViewAttachment?: (documentId: string) => Promise<void>;
+    onSplitChanged?: (id: string, hasSplits: boolean) => void;
 }
 
 export const TransactionList: React.FC<TransactionListProps> = ({
@@ -39,8 +41,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     isLocked = false,
     onUploadAttachment,
     onDeleteAttachment,
-    onViewAttachment
+    onViewAttachment,
+    onSplitChanged
 }) => {
+    const [splitTx, setSplitTx] = useState<any | null>(null);
+    const categoryObjects = categories.map(c => ({ name: c.name }));
+
     return (
         <div className="mt-8">
             {/* Inline CSS style to hide mobile browser native date picker icons inside the narrow column */}
@@ -140,6 +146,15 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                 />
 
                                 {/* Categoria + Subcategoria */}
+                                {tx.has_splits ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSplitTx(tx)}
+                                        className="w-full flex items-center gap-1.5 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-100 dark:border-violet-500/20 rounded-xl px-3 py-2 text-xs font-black uppercase tracking-wider"
+                                    >
+                                        <SplitSquareHorizontal size={12} /> Dividido em várias categorias
+                                    </button>
+                                ) : (
                                 <div className="flex items-center gap-2">
                                     <div className="relative flex-1 min-w-0">
                                         <input
@@ -173,6 +188,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                         </datalist>
                                     </div>
                                 </div>
+                                )}
 
                                 {/* Observações + Tags */}
                                 <div className="flex items-center gap-2">
@@ -256,6 +272,15 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                     {savingRowId === tx.id ? (
                                         <Loader2 size={16} className="animate-spin text-brand-600" />
                                     ) : (
+                                        <>
+                                        <button
+                                            onClick={() => !isLocked && setSplitTx(tx)}
+                                            disabled={isLocked}
+                                            className={`h-9 w-9 flex items-center justify-center rounded-xl transition-all shrink-0 ${isLocked ? 'text-slate-200 dark:text-slate-600' : 'bg-violet-50 dark:bg-violet-500/10 text-violet-500 dark:text-violet-400'}`}
+                                            title="Dividir lançamento"
+                                        >
+                                            <SplitSquareHorizontal size={14} />
+                                        </button>
                                         <button
                                             onClick={() => !isLocked && onDeleteTx(tx.id)}
                                             disabled={isLocked}
@@ -264,6 +289,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                         >
                                             <Trash2 size={14} />
                                         </button>
+                                        </>
                                     )}
                                 </div>
                             </div>
@@ -316,6 +342,15 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
                                         {/* Category */}
                                         <div className="col-span-2">
+                                            {tx.has_splits ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSplitTx(tx)}
+                                                    className="w-full flex items-center gap-1 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-100 dark:border-violet-500/20 rounded-xl px-2 py-1.5 text-[10px] font-black uppercase tracking-wider truncate"
+                                                >
+                                                    <SplitSquareHorizontal size={10} /> Dividido
+                                                </button>
+                                            ) : (
                                             <div className="relative">
                                                 <input
                                                     type="text"
@@ -329,10 +364,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                 />
                                                 <Tags size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-500 pointer-events-none" />
                                             </div>
+                                            )}
                                         </div>
 
                                         {/* Subcategory (col-span-1) */}
                                         <div className="col-span-1">
+                                            {!tx.has_splits && (
+                                            <>
                                             <input
                                                 type="text"
                                                 list={`card-subcategories-${tx.id}`}
@@ -349,6 +387,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                     .sort((a, b) => a.name.localeCompare(b.name))
                                                     .map(s => <option key={s.id} value={s.name} />)}
                                             </datalist>
+                                            </>
+                                            )}
                                         </div>
 
                                         {/* Entity */}
@@ -445,6 +485,15 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                             {savingRowId === tx.id ? (
                                                 <Loader2 size={12} className="animate-spin text-brand-600" />
                                             ) : (
+                                                <>
+                                                <button
+                                                    onClick={() => !isLocked && setSplitTx(tx)}
+                                                    disabled={isLocked}
+                                                    title="Dividir lançamento"
+                                                    className={`p-1 px-1.5 rounded-lg transition-all ${isLocked ? 'text-slate-200 dark:text-slate-600' : 'text-slate-300 dark:text-slate-500 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-500/10'}`}
+                                                >
+                                                    <SplitSquareHorizontal size={12} />
+                                                </button>
                                                 <button
                                                     onClick={() => !isLocked && onDeleteTx(tx.id)}
                                                     disabled={isLocked}
@@ -452,6 +501,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                 >
                                                     <Trash2 size={12} />
                                                 </button>
+                                                </>
                                             )}
                                         </div>
                                     </div>
@@ -487,6 +537,27 @@ export const TransactionList: React.FC<TransactionListProps> = ({
             <datalist id="card-categories-list">
                 {categories.map((c) => <option key={c.id} value={c.name} />)}
             </datalist>
+
+            {splitTx && (
+                <SplitTransactionModal
+                    show={!!splitTx}
+                    onClose={() => setSplitTx(null)}
+                    onSaved={(hasSplits) => {
+                        onUpdateTxLocal(splitTx.id, { has_splits: hasSplits });
+                        onSplitChanged?.(splitTx.id, hasSplits);
+                    }}
+                    sourceType="card_transaction"
+                    transaction={{
+                        id: splitTx.id,
+                        description: splitTx.description,
+                        amount: Number(splitTx.amount || 0),
+                        category: splitTx.category,
+                        subcategory: splitTx.subcategory
+                    }}
+                    categoryObjects={categoryObjects}
+                    subcategories={subcategories}
+                />
+            )}
         </div>
     );
 };

@@ -749,6 +749,7 @@ const HistoryPage: React.FC = () => {
           is_recurring: ct.is_recurring,
           recurrence_period: ct.recurrence_period,
           recurrence_group_id: ct.recurrence_group_id,
+          has_splits: !!ct.has_splits,
           metadata: {
             is_card: true,
             card_id: ct.card_id,
@@ -859,6 +860,7 @@ const HistoryPage: React.FC = () => {
           isPaid: !!t.is_paid,
           paidAmount: Number(t.paid_amount || 0),
           is_amortization: !!t.is_amortization,
+          hasSplits: !!t.has_splits,
           // projectChartMetadata preserva isCapitalized/type — sem isso o filtro de
           // movimentos capitalizados (operationalChartCategoryTxs) nunca dá verdadeiro.
           metadata: projectChartMetadata(t)
@@ -960,6 +962,7 @@ const HistoryPage: React.FC = () => {
           isPaid: !!t.is_paid,
           paidAmount: Number(t.paid_amount || 0),
           is_amortization: !!t.is_amortization,
+          hasSplits: !!t.has_splits,
           metadata: detectLegacySeries(t)
         })));
 
@@ -992,6 +995,7 @@ const HistoryPage: React.FC = () => {
             parentId: t.parent_id ?? null,
             is_incomplete: isIncomplete,
             attachments: t.attachments || [],
+            hasSplits: !!t.has_splits,
             metadata: detectLegacySeries(t)
           };
         }));
@@ -1207,7 +1211,7 @@ const HistoryPage: React.FC = () => {
           // sem precisar baixar o histórico inteiro do usuário a cada carga.
           let q = supabase!.from('card_transactions')
             .select(
-              'id, date, amount, description, card_id, statement_id, category_id, category, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, categories(name), cards(account_id, name)',
+              'id, date, amount, description, card_id, statement_id, category_id, category, subcategory, owner_name, notes, tags, is_installment, installment_number, installment_total, installment_group_id, is_recurring, recurrence_period, recurrence_group_id, has_splits, categories(name), cards(account_id, name)',
               withCount ? { count: 'exact' } : undefined
             )
             .eq('user_id', user.id);
@@ -3261,6 +3265,11 @@ const HistoryPage: React.FC = () => {
         onUploadAttachment={handleUploadAttachment}
         onDeleteAttachment={handleDeleteAttachment}
         onViewAttachment={handleViewAttachment}
+        onSplitChanged={(id, hasSplits) => {
+          setTransactions(prev => prev.map(t => t.id === id ? { ...t, hasSplits } : t));
+          setChartTransactions(prev => prev.map(t => t.id === id ? { ...t, hasSplits } : t));
+          setChartCategoryTransactions(prev => prev.map(t => t.id === id ? { ...t, hasSplits } : t));
+        }}
         reopenTransaction={async (t) => {
           if (!supabase || !window.confirm('Deseja reabrir este lançamento?')) return;
           try {

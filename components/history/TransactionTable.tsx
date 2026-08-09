@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, Trash2, RotateCcw, Check, ChevronUp, ChevronDown, Search, Plus, X, Paperclip, Eye, Download, Upload, Pencil, Copy } from 'lucide-react';
+import { Loader2, Trash2, RotateCcw, Check, ChevronUp, ChevronDown, Search, Plus, X, Paperclip, Eye, Download, Upload, Pencil, Copy, SplitSquareHorizontal } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 import { Transaction, BankAccount } from '../../types';
+import { SplitTransactionModal } from './SplitTransactionModal';
 
 interface TransactionTableProps {
     transactions: Transaction[];
@@ -36,6 +37,7 @@ interface TransactionTableProps {
     onUploadAttachment: (id: string, file: File) => Promise<void>;
     onDeleteAttachment: (id: string, documentId: string) => Promise<void>;
     onViewAttachment: (documentId: string) => Promise<void>;
+    onSplitChanged?: (id: string, hasSplits: boolean) => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -503,10 +505,12 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
     sortField, sortDirection, onSort,
     owners,
     selectedIds, onToggleSelect, onSelectAll,
-    onUploadAttachment, onDeleteAttachment, onViewAttachment
+    onUploadAttachment, onDeleteAttachment, onViewAttachment,
+    onSplitChanged
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [uploadingForId, setUploadingForId] = useState<string | null>(null);
+    const [splitTx, setSplitTx] = useState<Transaction | null>(null);
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -812,19 +816,31 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     onSelect={accId => handleUpdate(t.id, 'account_id', accId)}
                                                 />
                                                 <div className="flex items-center gap-1 flex-wrap">
-                                                    <CategoryPicker
-                                                        value={t.category}
-                                                        transactionType={t.type}
-                                                        categoryObjects={categoryObjects}
-                                                        onSelect={cat => handleUpdate(t.id, 'category', cat)}
-                                                        onCreateCategory={onCreateCategory}
-                                                    />
-                                                    <SubcategoryPicker
-                                                        value={t.subcategory}
-                                                        parentCategory={t.category}
-                                                        subcategories={subcategories}
-                                                        onSelect={sub => handleUpdate(t.id, 'subcategory', sub)}
-                                                    />
+                                                    {t.hasSplits ? (
+                                                        <button
+                                                            onClick={() => setSplitTx(t)}
+                                                            className="flex items-center gap-1 bg-violet-50 text-violet-600 hover:bg-violet-100 transition-colors border border-violet-100 rounded-full pl-1.5 pr-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider"
+                                                            title="Ver/editar divis\u00e3o do lan\u00e7amento"
+                                                        >
+                                                            <SplitSquareHorizontal size={10} /> Dividido
+                                                        </button>
+                                                    ) : (
+                                                        <>
+                                                            <CategoryPicker
+                                                                value={t.category}
+                                                                transactionType={t.type}
+                                                                categoryObjects={categoryObjects}
+                                                                onSelect={cat => handleUpdate(t.id, 'category', cat)}
+                                                                onCreateCategory={onCreateCategory}
+                                                            />
+                                                            <SubcategoryPicker
+                                                                value={t.subcategory}
+                                                                parentCategory={t.category}
+                                                                subcategories={subcategories}
+                                                                onSelect={sub => handleUpdate(t.id, 'subcategory', sub)}
+                                                            />
+                                                        </>
+                                                    )}
                                                     {(t.category?.toLowerCase() || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
                                                         <AccountPicker
                                                             compact
@@ -908,6 +924,13 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                         <RotateCcw size={14} /> Reabrir
                                                     </button>
                                                 )}
+                                                <button
+                                                    onClick={() => setSplitTx(t)}
+                                                    className="h-11 w-11 flex items-center justify-center rounded-xl bg-violet-50 text-violet-500 active:bg-violet-100 transition-all shrink-0"
+                                                    title="Dividir lançamento"
+                                                >
+                                                    <SplitSquareHorizontal size={14} />
+                                                </button>
                                                 <button
                                                     onClick={() => handleDelete(t.id)}
                                                     className="h-11 w-11 flex items-center justify-center rounded-xl bg-rose-50 text-rose-500 active:bg-rose-100 transition-all shrink-0"
@@ -1129,19 +1152,31 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                 onSelect={accId => handleUpdate(t.id, 'account_id', accId)}
                                             />
                                             <div className="flex items-center gap-1 flex-wrap">
-                                                <CategoryPicker
-                                                    value={t.category}
-                                                    transactionType={t.type}
-                                                    categoryObjects={categoryObjects}
-                                                    onSelect={cat => handleUpdate(t.id, 'category', cat)}
-                                                    onCreateCategory={onCreateCategory}
-                                                />
-                                                <SubcategoryPicker
-                                                    value={t.subcategory}
-                                                    parentCategory={t.category}
-                                                    subcategories={subcategories}
-                                                    onSelect={sub => handleUpdate(t.id, 'subcategory', sub)}
-                                                />
+                                                {t.hasSplits ? (
+                                                    <button
+                                                        onClick={() => setSplitTx(t)}
+                                                        className="flex items-center gap-1 bg-violet-50 text-violet-600 hover:bg-violet-100 transition-colors border border-violet-100 rounded-full pl-1.5 pr-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider"
+                                                        title="Ver/editar divis\u00e3o do lan\u00e7amento"
+                                                    >
+                                                        <SplitSquareHorizontal size={10} /> Dividido
+                                                    </button>
+                                                ) : (
+                                                    <>
+                                                        <CategoryPicker
+                                                            value={t.category}
+                                                            transactionType={t.type}
+                                                            categoryObjects={categoryObjects}
+                                                            onSelect={cat => handleUpdate(t.id, 'category', cat)}
+                                                            onCreateCategory={onCreateCategory}
+                                                        />
+                                                        <SubcategoryPicker
+                                                            value={t.subcategory}
+                                                            parentCategory={t.category}
+                                                            subcategories={subcategories}
+                                                            onSelect={sub => handleUpdate(t.id, 'subcategory', sub)}
+                                                        />
+                                                    </>
+                                                )}
                                             </div>
                                             {(t.category?.toLowerCase() || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') && (
                                                 <AccountPicker
@@ -1278,6 +1313,10 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                             <RotateCcw size={16} />
                                                         </button>
                                                     )}
+                                                    <button onClick={() => setSplitTx(t)} title="Dividir lançamento"
+                                                        className="p-2.5 text-slate-300 hover:text-violet-500 hover:bg-violet-50 rounded-lg transition-all">
+                                                        <SplitSquareHorizontal size={16} />
+                                                    </button>
                                                     <button onClick={() => handleDelete(t.id)} title="Excluir"
                                                         className="p-2.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all">
                                                         <Trash2 size={16} />
@@ -1318,6 +1357,24 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                 onChange={handleFileChange}
                 accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip"
             />
+
+            {splitTx && (
+                <SplitTransactionModal
+                    show={!!splitTx}
+                    onClose={() => setSplitTx(null)}
+                    onSaved={(hasSplits) => onSplitChanged?.(splitTx.id, hasSplits)}
+                    sourceType={(splitTx as any).metadata?.is_card ? 'card_transaction' : 'transaction'}
+                    transaction={{
+                        id: splitTx.id,
+                        description: splitTx.description,
+                        amount: splitTx.amount,
+                        category: splitTx.category,
+                        subcategory: splitTx.subcategory
+                    }}
+                    categoryObjects={categoryObjects}
+                    subcategories={subcategories}
+                />
+            )}
         </div>
     );
 };

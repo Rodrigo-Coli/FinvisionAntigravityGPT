@@ -5,6 +5,7 @@ import { Plus, X, Loader2, AlertTriangle, Check, TrendingDown, Target, Trash2, C
 import { supabase } from '../lib/supabase/client';
 import { Budget, Goal } from '../types';
 import { useToast } from '../contexts/ToastContext';
+import { SplitTransactionService } from '../services/splitTransaction.service';
 
 const BUDGET_COLORS = [
   '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'
@@ -122,7 +123,7 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
         const [budgetsRes, txCurrentMonthRes, goalsRes, txSavingsRes] = await Promise.all([
           sb.from('budgets').select('*').eq('user_id', u.id).eq('is_active', true),
           sb.from('transactions')
-            .select('amount, category, type')
+            .select('id, amount, category, type, has_splits')
             .eq('user_id', u.id)
             .eq('type', 'EXPENSE')
             .eq('is_amortization', false)
@@ -137,12 +138,30 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
         ]);
 
         // Process Budgets & Current Month Spent
+        // Lançamentos divididos (has_splits) contam pelo valor de cada pedaço na
+        // categoria do pedaço, não pela categoria única do lançamento - senão um
+        // gasto de R$500 dividido em Veículo+Alimentação inflaria só uma das duas.
+        const currentMonthTxs = txCurrentMonthRes.data || [];
+        const splitTxIds = currentMonthTxs.filter((t: any) => t.has_splits).map((t: any) => t.id);
+        const splitsMap = splitTxIds.length > 0
+          ? await SplitTransactionService.getSplitsForSources('transaction', splitTxIds)
+          : {};
+
         const spendingByCategory: Record<string, number> = {};
         let monthTotal = 0;
-        (txCurrentMonthRes.data || []).forEach((t: any) => {
-          const cat = t.category || 'Outros';
-          spendingByCategory[cat] = (spendingByCategory[cat] || 0) + Number(t.amount);
-          monthTotal += Number(t.amount);
+        currentMonthTxs.forEach((t: any) => {
+          const pieces = t.has_splits ? splitsMap[t.id] : undefined;
+          if (pieces && pieces.length > 0) {
+            pieces.forEach(p => {
+              const cat = p.category || 'Outros';
+              spendingByCategory[cat] = (spendingByCategory[cat] || 0) + Math.abs(Number(p.amount));
+              monthTotal += Math.abs(Number(p.amount));
+            });
+          } else {
+            const cat = t.category || 'Outros';
+            spendingByCategory[cat] = (spendingByCategory[cat] || 0) + Number(t.amount);
+            monthTotal += Number(t.amount);
+          }
         });
         setTotalMonthly(monthTotal);
         localStorage.setItem('finvision_cached_budget_spending', JSON.stringify({ totalMonthly: monthTotal, spendingByCategory }));

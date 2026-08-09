@@ -1,7 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, PieChart, BarChart3, Activity, Filter, Plus, Trash2, Calendar, Settings } from 'lucide-react';
-import { Transaction } from '../../types';
+import { Transaction, TransactionSplit } from '../../types';
 import { HistoryUtils } from '../../lib/historyUtils';
+import { explodeTransactionsForCategoryAgg } from '../../lib/transactionSplitUtils';
+import { SplitTransactionService } from '../../services/splitTransaction.service';
 
 interface HistoryChartsProps {
     transactions: Transaction[];
@@ -61,9 +63,37 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
         { id: '1', label: 'Slot 1', start: propStartDate || '', end: propEndDate || '' }
     ]);
 
+    // Pedaços dos lançamentos divididos (hasSplits) - carrega uma vez por lista
+    // recebida e "explode" cada dividido em suas categorias reais antes de
+    // qualquer agrupamento por categoria neste painel de gráficos.
+    const [splitsMap, setSplitsMap] = useState<Record<string, TransactionSplit[]>>({});
+
+    useEffect(() => {
+        const splitTxs = transactions.filter(t => t.hasSplits);
+        if (splitTxs.length === 0) {
+            setSplitsMap({});
+            return;
+        }
+        const bankIds = splitTxs.filter(t => !(t as any).metadata?.is_card).map(t => t.id);
+        const cardIds = splitTxs.filter(t => (t as any).metadata?.is_card).map(t => t.id);
+        let cancelled = false;
+        Promise.all([
+            bankIds.length ? SplitTransactionService.getSplitsForSources('transaction', bankIds) : Promise.resolve({}),
+            cardIds.length ? SplitTransactionService.getSplitsForSources('card_transaction', cardIds) : Promise.resolve({})
+        ]).then(([bankMap, cardMap]) => {
+            if (!cancelled) setSplitsMap({ ...bankMap, ...cardMap });
+        });
+        return () => { cancelled = true; };
+    }, [transactions]);
+
+    const explodedTransactions = useMemo(
+        () => explodeTransactionsForCategoryAgg(transactions, splitsMap),
+        [transactions, splitsMap]
+    );
+
     const chartFilteredTransactions = useMemo(() => {
-        if (!internalStartDate && !internalEndDate) return transactions;
-        return transactions.filter(t => {
+        if (!internalStartDate && !internalEndDate) return explodedTransactions;
+        return explodedTransactions.filter(t => {
             // Cartão: filtra pelo mês de vencimento da fatura (competenceDate), não
             // pela data da compra — senão uma compra de 28/06 cuja fatura vence em
             // 05/07 sumiria do período de julho mesmo já tendo entrado nele lá atrás.
@@ -72,7 +102,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             if (internalEndDate && d > internalEndDate) return false;
             return true;
         });
-    }, [transactions, internalStartDate, internalEndDate]);
+    }, [explodedTransactions, internalStartDate, internalEndDate]);
 
     const availableTimelineCategories = useMemo(() => {
         const cats = new Set<string>();

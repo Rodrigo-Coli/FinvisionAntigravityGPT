@@ -132,6 +132,27 @@ export interface Transaction {
   // lançamentos de cartão; usado apenas para agrupar/filtrar por mês nos gráficos
   // e resumos — nunca sobrescreve `date`, que continua sendo a data real da compra.
   competenceDate?: string;
+
+  // True quando o lançamento foi dividido em pedaços com categorias diferentes
+  // (ver TransactionSplit). O `amount`/`category` da linha continuam intactos;
+  // os pedaços ficam em `transaction_splits` e são carregados à parte.
+  hasSplits?: boolean;
+}
+
+// Um "pedaço" de um lançamento dividido (ver services/splitTransaction.service.ts).
+// A soma dos `amount` de todos os pedaços de um mesmo lançamento é sempre igual
+// ao `amount` da transação/compra de cartão original.
+export interface TransactionSplit {
+  id: string;
+  user_id?: string;
+  sourceType: 'transaction' | 'card_transaction';
+  sourceId: string;
+  category: string;
+  subcategory?: string;
+  categoryId?: string;
+  amount: number;
+  notes?: string;
+  createdAt?: string;
 }
 
 export interface Document {
