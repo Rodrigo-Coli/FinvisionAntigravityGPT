@@ -4,7 +4,15 @@ import { CreditCard, CornerDownRight } from 'lucide-react';
 interface CardListProps {
     cards: any[];
     selectedCardId: string | null;
-    onSelectCard: (card: any) => void;
+    // true quando a tela está mostrando a soma consolidada (titular + adicionais)
+    // do cartão ativo, em vez dos dados de um cartão específico.
+    isCombinedView: boolean;
+    // Clique no cartão do topo: entra na visão consolidada dessa família (ou vai
+    // direto pro individual se o cartão não tiver adicionais).
+    onSelectFamily: (mainCard: any) => void;
+    // Clique num item da lista de baixo (titular ou adicional específico): mostra
+    // só os dados daquele cartão.
+    onSelectIndividual: (card: any) => void;
     getCardColor: (brand: string) => string;
     formatCurrency: (val: number) => string;
 }
@@ -12,32 +20,44 @@ interface CardListProps {
 export const CardList: React.FC<CardListProps> = ({
     cards,
     selectedCardId,
-    onSelectCard,
+    isCombinedView,
+    onSelectFamily,
+    onSelectIndividual,
     getCardColor,
     formatCurrency
 }) => {
     // 1. Separate main cards from additional ones
     const mainCards = cards.filter((c) => !c.is_additional);
-    
+
     // 2. Identify the active main card (if an additional is selected, find its parent)
     const selectedDirectCard = cards.find((c) => c.id === selectedCardId);
-    const activeMainCardId = selectedDirectCard?.is_additional 
-        ? selectedDirectCard.parent_card_id 
+    const activeMainCardId = selectedDirectCard?.is_additional
+        ? selectedDirectCard.parent_card_id
         : selectedCardId;
 
     // 3. Find additional cards linked to the active main card
     const activeAdditionalCards = cards.filter(
         (c) => c.is_additional && c.parent_card_id === activeMainCardId
     );
+    // 4. Titular + adicionais, pra listar como opções individuais abaixo do consolidado
+    const activeFamilyMembers = activeMainCardId
+        ? [cards.find(c => c.id === activeMainCardId), ...activeAdditionalCards].filter(Boolean)
+        : [];
 
-    // 4. Desktop unified vertical stack
+    // 5. Desktop unified vertical stack. Cartão sem adicional: um item, clique =
+    // individual direto. Cartão COM adicional: o item do topo é o consolidado
+    // ("Tudo"), seguido do titular e de cada adicional como opções individuais.
     const groupedCardsDesktop: any[] = [];
     mainCards.forEach((main) => {
-        groupedCardsDesktop.push({ ...main, level: 0 });
         const children = cards.filter((c) => c.parent_card_id === main.id);
-        children.forEach((child) => {
-            groupedCardsDesktop.push({ ...child, level: 1 });
-        });
+        const hasChildren = children.length > 0;
+        groupedCardsDesktop.push({ ...main, level: 0, mode: hasChildren ? 'family' : 'individual' });
+        if (hasChildren) {
+            groupedCardsDesktop.push({ ...main, level: 1, mode: 'individual', isTitularRow: true });
+            children.forEach((child) => {
+                groupedCardsDesktop.push({ ...child, level: 1, mode: 'individual' });
+            });
+        }
     });
 
     const getCardLogo = (brand: string, isSelected: boolean) => {
@@ -63,7 +83,7 @@ export const CardList: React.FC<CardListProps> = ({
                         return (
                             <button
                                 key={card.id}
-                                onClick={() => onSelectCard(card)}
+                                onClick={() => onSelectFamily(card)}
                                 className={`min-w-[250px] text-left p-4 rounded-[20px] transition-all duration-300 shrink-0 relative flex flex-col justify-between h-[135px] snap-center border ${
                                     isSelected
                                         ? 'border-slate-900 bg-slate-900 text-white shadow-xl shadow-slate-950/20 scale-[1.01]'
@@ -110,52 +130,52 @@ export const CardList: React.FC<CardListProps> = ({
                     })}
                 </div>
 
-                {/* Additional Cards List for the Selected Main Card */}
+                {/* Cartões da família (titular + adicionais) para ver cada um individualmente */}
                 {activeAdditionalCards.length > 0 && (
                     <div className="bg-slate-50/50 border border-slate-100/70 rounded-2xl p-4 space-y-2.5 animate-in fade-in duration-300">
                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest px-0.5">
-                            Cartões Adicionais Vinculados
+                            Ver Individualmente
                         </p>
                         <div className="space-y-2">
-                            {activeAdditionalCards.map((child) => {
-                                const isChildSelected = selectedCardId === child.id;
+                            {activeFamilyMembers.map((member) => {
+                                const isMemberSelected = !isCombinedView && selectedCardId === member.id;
                                 return (
                                     <button
-                                        key={child.id}
-                                        onClick={() => onSelectCard(child)}
+                                        key={member.id}
+                                        onClick={() => onSelectIndividual(member)}
                                         className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all text-left ${
-                                            isChildSelected
+                                            isMemberSelected
                                                 ? 'bg-slate-900 border-slate-900 text-white shadow-md shadow-slate-950/20'
                                                 : 'bg-white border-slate-100 hover:bg-slate-50 text-slate-900'
                                         }`}
                                     >
                                         <div className="flex items-center gap-3">
-                                            <div className={isChildSelected ? "text-white/50" : "text-slate-300"}>
+                                            <div className={isMemberSelected ? "text-white/50" : "text-slate-300"}>
                                                 <CornerDownRight size={13} className="stroke-[2.5]" />
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <h5 className={`font-bold text-xs truncate max-w-[130px] ${isChildSelected ? 'text-white' : 'text-slate-800'}`}>
-                                                        {child.name}
+                                                    <h5 className={`font-bold text-xs truncate max-w-[130px] ${isMemberSelected ? 'text-white' : 'text-slate-800'}`}>
+                                                        {member.name}
                                                     </h5>
-                                                    <span className={`text-[7px] font-black px-1.5 py-0.2 rounded uppercase ${isChildSelected ? 'bg-white/10 text-white' : 'bg-brand-50 text-brand-600'}`}>
-                                                        Adic
+                                                    <span className={`text-[7px] font-black px-1.5 py-0.2 rounded uppercase ${isMemberSelected ? 'bg-white/10 text-white' : member.is_additional ? 'bg-brand-50 text-brand-600' : 'bg-slate-100 text-slate-500'}`}>
+                                                        {member.is_additional ? 'Adic' : 'Titular'}
                                                     </span>
                                                 </div>
-                                                {child.additional_label && (
-                                                    <p className={`text-[9px] font-medium truncate mt-0.5 ${isChildSelected ? 'text-white/50' : 'text-slate-400'}`}>
-                                                        {child.additional_label}
+                                                {member.additional_label && (
+                                                    <p className={`text-[9px] font-medium truncate mt-0.5 ${isMemberSelected ? 'text-white/50' : 'text-slate-400'}`}>
+                                                        {member.additional_label}
                                                     </p>
                                                 )}
                                             </div>
                                         </div>
 
                                         <div className="text-right">
-                                            <p className={`text-[9px] font-mono tracking-wider ${isChildSelected ? 'text-white/50' : 'text-slate-400'}`}>
-                                                •••• {child.last4}
+                                            <p className={`text-[9px] font-mono tracking-wider ${isMemberSelected ? 'text-white/50' : 'text-slate-400'}`}>
+                                                •••• {member.last4}
                                             </p>
-                                            <p className={`text-xs font-bold mt-0.5 ${isChildSelected ? 'text-white' : 'text-slate-900'}`}>
-                                                {formatCurrency(child.limit_total)}
+                                            <p className={`text-xs font-bold mt-0.5 ${isMemberSelected ? 'text-white' : 'text-slate-900'}`}>
+                                                {formatCurrency(member.limit_total)}
                                             </p>
                                         </div>
                                     </button>
@@ -169,13 +189,16 @@ export const CardList: React.FC<CardListProps> = ({
             {/* DESKTOP VIEW (Unified list with indentations) */}
             <div className="hidden lg:flex flex-col gap-3.5 overflow-visible">
                 {groupedCardsDesktop.map((card) => {
-                    const isSelected = selectedCardId === card.id;
+                    const rowKey = card.isTitularRow ? `${card.id}-titular` : card.id;
+                    const isSelected = card.mode === 'family'
+                        ? (isCombinedView && activeMainCardId === card.id)
+                        : (!isCombinedView && selectedCardId === card.id && !(card.isTitularRow && selectedCardId !== card.id));
                     const isAdditional = card.level > 0;
 
                     return (
                         <button
-                            key={card.id}
-                            onClick={() => onSelectCard(card)}
+                            key={rowKey}
+                            onClick={() => card.mode === 'family' ? onSelectFamily(card) : onSelectIndividual(card)}
                             className={`text-left p-5 rounded-[20px] border transition-all duration-300 relative flex flex-col justify-between h-auto min-w-0 ${
                                 isSelected
                                     ? 'border-slate-900 bg-slate-900 text-white shadow-xl shadow-slate-950/20'
@@ -195,7 +218,13 @@ export const CardList: React.FC<CardListProps> = ({
                                     <p className={`text-[10px] font-mono tracking-widest leading-none ${isSelected ? 'text-white/50' : 'text-slate-400'}`}>
                                         •••• {card.last4}
                                     </p>
-                                    {isAdditional && (
+                                    {card.mode === 'family' && card.level === 0 && cards.some((c: any) => c.parent_card_id === card.id) && (
+                                        <p className={`text-[8px] font-black uppercase mt-1.5 ${isSelected ? 'text-violet-300' : 'text-violet-600'}`}>Tudo</p>
+                                    )}
+                                    {card.isTitularRow && (
+                                        <p className={`text-[8px] font-black uppercase mt-1.5 ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>Titular</p>
+                                    )}
+                                    {isAdditional && !card.isTitularRow && (
                                         <p className={`text-[8px] font-black uppercase mt-1.5 ${isSelected ? 'text-brand-300' : 'text-brand-600'}`}>Adicional</p>
                                     )}
                                 </div>

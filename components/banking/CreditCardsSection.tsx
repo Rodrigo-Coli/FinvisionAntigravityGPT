@@ -47,6 +47,11 @@ const CreditCardsSection: React.FC = () => {
   });
   const [statements, setStatements] = useState<any[]>([]);
   const [selectedStatementId, setSelectedStatementId] = useState<string | 'ALL'>('CURRENT');
+  // Quando não-nulo, estamos na visão consolidada (titular + adicionais somados) de
+  // uma "família" de cartões. selectedCard continua sendo o cartão titular (usado
+  // para editar/arquivar/etc.), mas statements/transactions passam a agregar todos
+  // os ids desta lista, ignorando o antigo sums_into_invoice.
+  const [combinedCardIds, setCombinedCardIds] = useState<string[] | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   // Histórico recente de lançamentos do cartão (para sugestões de descrição que preenchem categoria/subcategoria)
   const [recentTxs, setRecentTxs] = useState<any[]>([]);
@@ -205,22 +210,30 @@ const CreditCardsSection: React.FC = () => {
   // cartão foi recarregado". Só a troca de verdade zera a fatura escolhida — num
   // recarregamento (depois de salvar um lançamento, por exemplo) a sua escolha fica.
   const prevCardIdRef = useRef<string | null>(null);
+  // Idem para o modo consolidado: alternar entre "Tudo" e um cartão individual da
+  // mesma família também conta como troca de contexto (zera fatura escolhida).
+  const prevCombinedKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!selectedCard) return;
 
-    const cardChanged = prevCardIdRef.current !== null && prevCardIdRef.current !== selectedCard.id;
+    const combinedKey = combinedCardIds ? [...combinedCardIds].sort().join(',') : null;
+    const cardChanged =
+      (prevCardIdRef.current !== null && prevCardIdRef.current !== selectedCard.id) ||
+      (prevCombinedKeyRef.current !== null && prevCombinedKeyRef.current !== combinedKey) ||
+      (prevCombinedKeyRef.current === null && combinedKey !== null && prevCardIdRef.current !== null);
     prevCardIdRef.current = selectedCard.id;
+    prevCombinedKeyRef.current = combinedKey;
 
     setTxCardId(selectedCard.id);
     if (cardChanged) {
-      // Volta para "Fatura Atual" do cartão novo. O forcedStatementId é necessário
-      // porque setSelectedStatementId só vale no próximo render — sem ele,
-      // loadCardContext ainda leria a fatura do cartão anterior.
+      // Volta para "Fatura Atual" do cartão/família novo(a). O forcedStatementId é
+      // necessário porque setSelectedStatementId só vale no próximo render — sem
+      // ele, loadCardContext ainda leria a fatura do contexto anterior.
       setSelectedStatementId('CURRENT');
-      // Zera o que está na tela: enquanto a busca do cartão novo não volta, os
-      // lançamentos e o total do cartão anterior continuariam visíveis, dando a
-      // impressão de que a fatura do outro cartão "grudou".
+      // Zera o que está na tela: enquanto a busca do contexto novo não volta, os
+      // lançamentos e o total do contexto anterior continuariam visíveis, dando a
+      // impressão de que a fatura de outro cartão/família "grudou".
       setTransactions([]);
       setCurrentStatement(null);
       loadCardContext(selectedCard.id, 'CURRENT');
@@ -228,7 +241,22 @@ const CreditCardsSection: React.FC = () => {
       loadCardContext(selectedCard.id);
     }
     fetchRecentTxs();
-  }, [selectedCard]);
+  }, [selectedCard, combinedCardIds]);
+
+  // Clique no cartão titular no topo da carteira: entra na visão "Tudo" (titular +
+  // todos os adicionais somados). Cartão sem adicional cai direto na visão individual.
+  const handleSelectFamily = (mainCard: any) => {
+    const additionalIds = cards.filter((c: any) => c.is_additional && c.parent_card_id === mainCard.id).map((c: any) => c.id);
+    setSelectedCard(mainCard);
+    setCombinedCardIds(additionalIds.length > 0 ? [mainCard.id, ...additionalIds] : null);
+  };
+
+  // Clique num cartão específico da família (titular ou um adicional) na lista de
+  // baixo: sai do consolidado e mostra só as operações/valor daquele cartão.
+  const handleSelectIndividual = (card: any) => {
+    setSelectedCard(card);
+    setCombinedCardIds(null);
+  };
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val || 0));
@@ -707,7 +735,7 @@ const CreditCardsSection: React.FC = () => {
       // Se não houver seleção manual, focar na atual
       const effectiveSelection = forcedStatementId ?? selectedStatementId;
       const targetId = effectiveSelection === 'CURRENT' ? current?.id : effectiveSelection;
-      await fetchTransactions(cardId, targetId === 'ALL' ? null : targetId);
+      await fetchTransactions(cardId, targetId === 'ALL' ? null : targetId, allStatements);
     } catch (e) {
       console.error('Erro ao carregar contexto do cartão:', e);
       setCurrentStatement(null);
@@ -715,8 +743,47 @@ const CreditCardsSection: React.FC = () => {
     }
   };
 
+  // Agrupa faturas de vários cartões (titular + adicionais) por mês/ano numa fatura
+  // "virtual" só de soma - nunca é gravada no banco, existe só pra tela consolidada.
+  const buildCombinedStatements = (rows: any[], rootCardId: string) => {
+    const groups = new Map<string, any>();
+    for (const s of rows) {
+      const key = `${s.year}-${s.month}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          id: `combined:${key}`,
+          card_id: null,
+          month: s.month,
+          year: s.year,
+          due_date: s.due_date,
+          closing_date: s.closing_date,
+          total_amount: 0,
+          paid_amount: 0,
+          status: 'OPEN',
+          is_combined: true,
+          memberStatementIds: [] as string[]
+        });
+      }
+      const g = groups.get(key);
+      g.total_amount = Math.round((g.total_amount + Number(s.total_amount || 0)) * 100) / 100;
+      g.paid_amount = Math.round((g.paid_amount + Number(s.paid_amount || 0)) * 100) / 100;
+      g.memberStatementIds.push(s.id);
+      // Preferir data/vencimento do cartão titular quando disponível (ele é quem
+      // "manda" no período consolidado, já que os adicionais seguem o mesmo ciclo).
+      if (s.card_id === rootCardId) {
+        g.due_date = s.due_date;
+        g.closing_date = s.closing_date;
+      }
+    }
+    return Array.from(groups.values())
+      .map(g => ({ ...g, status: g.total_amount > 0 && g.paid_amount >= g.total_amount ? 'PAID' : 'OPEN' }))
+      .sort((a, b) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime());
+  };
+
   const fetchStatements = async (cardId: string) => {
-    const cached = localStorage.getItem(`finvision_cached_statements_${cardId}`);
+    const familyIds = combinedCardIds;
+    const cacheKey = familyIds ? `finvision_cached_statements_combined_${[...familyIds].sort().join('-')}` : `finvision_cached_statements_${cardId}`;
+    const cached = localStorage.getItem(cacheKey);
     const cachedData = cached ? JSON.parse(cached) : [];
     if (cachedData.length > 0) {
       setStatements(cachedData);
@@ -728,17 +795,15 @@ const CreditCardsSection: React.FC = () => {
       const user = session?.user;
       if (!user) return cachedData;
 
-      const { data, error } = await supabase
-        .from('card_statements')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('card_id', cardId)
-        .order('due_date', { ascending: false });
+      let query = supabase.from('card_statements').select('*').eq('user_id', user.id).order('due_date', { ascending: false });
+      query = familyIds ? query.in('card_id', familyIds) : query.eq('card_id', cardId);
+      const { data, error } = await query;
 
       if (error) throw error;
-      localStorage.setItem(`finvision_cached_statements_${cardId}`, JSON.stringify(data || []));
-      setStatements(data || []);
-      return data || [];
+      const result = familyIds ? buildCombinedStatements(data || [], cardId) : (data || []);
+      localStorage.setItem(cacheKey, JSON.stringify(result));
+      setStatements(result);
+      return result;
     } catch (err) {
       console.error('Erro ao buscar faturas, fallback cache:', err);
       return cachedData;
@@ -782,8 +847,11 @@ const CreditCardsSection: React.FC = () => {
     }
   };
 
-  const fetchTransactions = async (cardId: string, statementId?: string | null) => {
-    const dynamicKey = `finvision_cached_card_transactions_${cardId}_${statementId || 'all'}`;
+  const fetchTransactions = async (cardId: string, statementId?: string | null, statementsOverride?: any[]) => {
+    const familyIds = combinedCardIds;
+    const dynamicKey = familyIds
+      ? `finvision_cached_card_transactions_combined_${[...familyIds].sort().join('-')}_${statementId || 'all'}`
+      : `finvision_cached_card_transactions_${cardId}_${statementId || 'all'}`;
     const cached = localStorage.getItem(dynamicKey);
     const cachedData = cached ? JSON.parse(cached) : [];
     if (cachedData.length > 0) {
@@ -795,7 +863,8 @@ const CreditCardsSection: React.FC = () => {
 
     // Update currentStatement to the one being viewed if it's a specific one
     if (statementId) {
-      const selected = statements.find(s => s.id === statementId);
+      const pool = statementsOverride || statements;
+      const selected = pool.find(s => s.id === statementId);
       if (selected) setCurrentStatement(selected);
     }
 
@@ -805,23 +874,31 @@ const CreditCardsSection: React.FC = () => {
       const user = session?.user;
       if (!user) return;
 
-      // Cartões adicionais que SOMAM na fatura deste titular entram na mesma visão
-      const additionalThatSum = cards
-        .filter((c: any) => c.is_additional && c.parent_card_id === cardId && c.sums_into_invoice !== false)
-        .map((c: any) => c.id);
-      const cardIdsForInvoice = [cardId, ...additionalThatSum];
-
       // Join com categories(name): sem isso, tx.category vem undefined (a coluna real
       // é category_id) e tanto o campo de categoria quanto a sugestão de subcategoria
       // (filtrada por tx.category) ficam sem nada pra mostrar depois de todo recarregamento.
       let query = supabase.from('card_transactions').select('*, categories(name)').eq('user_id', user.id).order('date', { ascending: false });
-      // O filtro por cartão vale SEMPRE, inclusive quando há uma fatura escolhida.
-      // Antes, com fatura selecionada, a busca ia só pelo statement_id — então uma
-      // seleção que sobrasse de outro cartão trazia os lançamentos daquele outro
-      // cartão para a tela do atual. Como a fatura pertence a um cartão só, somar o
-      // filtro de cartão não muda o resultado legítimo e fecha essa porta.
-      query = query.in('card_id', cardIdsForInvoice);
-      if (statementId) query = query.eq('statement_id', statementId);
+
+      if (familyIds) {
+        // Visão consolidada: titular + TODOS os adicionais da família, sem olhar
+        // sums_into_invoice (que só valia pro cálculo antigo, por cartão isolado).
+        query = query.in('card_id', familyIds);
+        if (statementId) {
+          const pool = statementsOverride || statements;
+          const combinedStmt = pool.find(s => s.id === statementId);
+          const memberIds = combinedStmt?.memberStatementIds;
+          query = memberIds && memberIds.length > 0 ? query.in('statement_id', memberIds) : query.eq('statement_id', statementId);
+        }
+      } else {
+        // O filtro por cartão vale SEMPRE, inclusive quando há uma fatura escolhida.
+        // Antes, com fatura selecionada, a busca ia só pelo statement_id — então uma
+        // seleção que sobrasse de outro cartão trazia os lançamentos daquele outro
+        // cartão para a tela do atual. Como a fatura pertence a um cartão só, somar o
+        // filtro de cartão não muda o resultado legítimo e fecha essa porta.
+        query = query.eq('card_id', cardId);
+        if (statementId) query = query.eq('statement_id', statementId);
+      }
+
       const { data, error } = await query;
       if (error) throw error;
 
@@ -1443,15 +1520,94 @@ const CreditCardsSection: React.FC = () => {
     navigate('/banking?tab=accounts', { state: { openModal: true } });
   };
 
+  // Paga, numa tacada só, todas as faturas de uma família (titular + adicionais) do
+  // período consolidado que está na tela. O valor digitado é distribuído entre os
+  // cartões proporcionalmente ao que cada um tem em aberto; pagando o valor cheio
+  // (ou mais), cada fatura membro é quitada integralmente.
+  const handlePayCombinedStatement = async () => {
+    if (!supabase || !currentStatement?.is_combined) return;
+    const memberIds: string[] = currentStatement.memberStatementIds || [];
+    if (memberIds.length === 0) return;
+
+    const cleanPayAmount = Math.round(Number(payAmount || 0) * 100) / 100;
+    if (isNaN(cleanPayAmount) || cleanPayAmount <= 0) {
+      toast("Por favor, insira um valor de pagamento válido maior que zero.", 'warning');
+      return;
+    }
+    if (!payAccountId) {
+      toast("Por favor, selecione uma conta bancária para o pagamento.", 'warning');
+      return;
+    }
+
+    setIsPaying(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) throw new Error("Usuário não autenticado.");
+
+      const { data: members, error: fetchErr } = await supabase
+        .from('card_statements')
+        .select('id, total_amount, paid_amount')
+        .in('id', memberIds)
+        .eq('user_id', user.id);
+      if (fetchErr) throw fetchErr;
+      if (!members || members.length === 0) throw new Error("Faturas da família não encontradas.");
+
+      const opens: { id: string; total: number; paid: number; open: number }[] = members.map((m: any) => ({
+        id: m.id,
+        total: Number(m.total_amount || 0),
+        paid: Number(m.paid_amount || 0),
+        open: Math.max(0, Math.round((Number(m.total_amount || 0) - Number(m.paid_amount || 0)) * 100) / 100)
+      }));
+      const totalOpen = opens.reduce((s: number, o) => s + o.open, 0);
+
+      // Distribui o valor pago proporcionalmente ao que cada fatura membro tem em
+      // aberto. Pagando o total (ou mais), cada uma recebe exatamente o seu aberto.
+      let remaining = cleanPayAmount;
+      const payments: { id: string; pay: number }[] = opens.map((o, idx) => {
+        if (idx === opens.length - 1) return { id: o.id, pay: Math.round(remaining * 100) / 100 };
+        const share = totalOpen > 0 ? Math.round((cleanPayAmount * (o.open / totalOpen)) * 100) / 100 : 0;
+        const capped = cleanPayAmount >= totalOpen ? o.open : Math.min(share, remaining);
+        remaining = Math.round((remaining - capped) * 100) / 100;
+        return { id: o.id, pay: capped };
+      });
+
+      for (const o of opens) {
+        const p = payments.find((x: { id: string; pay: number }) => x.id === o.id)!;
+        const nextPaid = Math.round((o.paid + p.pay) * 100) / 100;
+        const newStatus = nextPaid >= o.total ? 'PAID' : 'OPEN';
+        const { error: upErr } = await supabase
+          .from('card_statements')
+          .update({ paid_amount: nextPaid, status: newStatus })
+          .eq('id', o.id)
+          .eq('user_id', user.id);
+        if (upErr) throw upErr;
+        await FinanceService.syncStatementToHistory(o.id, payAccountId, true);
+      }
+
+      await supabase.rpc('recalculate_account_balance', { p_account_id: payAccountId });
+
+      setShowPayModal(false);
+      navigate('/history');
+      if (selectedCard?.id) loadCardContext(selectedCard.id);
+    } catch (err: any) {
+      console.error('Erro ao pagar faturas consolidadas:', err);
+      toast("Erro ao processar pagamento: " + (err.message || "Erro desconhecido"), 'error');
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
   const handlePayStatement = async () => {
+    if (currentStatement?.is_combined) { await handlePayCombinedStatement(); return; }
     if (!supabase || !selectedCard?.id) return;
-    
+
     const amount = Number(payAmount);
     if (isNaN(amount) || amount <= 0) {
       toast("Por favor, insira um valor de pagamento válido maior que zero.", 'warning');
       return;
     }
-    
+
     if (!payAccountId) {
       toast("Por favor, selecione uma conta bancária para o pagamento.", 'warning');
       return;
@@ -1541,9 +1697,48 @@ const CreditCardsSection: React.FC = () => {
     }
   };
 
+  // Reabre de uma vez todas as faturas membro de um período consolidado.
+  const handleReopenCombinedStatement = async () => {
+    if (!supabase || !currentStatement?.is_combined) return;
+    const memberIds: string[] = currentStatement.memberStatementIds || [];
+    if (memberIds.length === 0) return;
+    if (!window.confirm("Deseja reabrir todas as faturas desta família (titular + adicionais)? Isso reverterá os pagamentos no histórico.")) return;
+
+    setIsPaying(true);
+    try {
+      for (const statementId of memberIds) {
+        const { error: upErr } = await supabase
+          .from('card_statements')
+          .update({ status: 'OPEN', paid_amount: 0 })
+          .eq('id', statementId);
+        if (upErr) throw upErr;
+
+        await FinanceService.syncStatementToHistory(statementId, undefined, false);
+
+        const { data: tx } = await supabase
+          .from('transactions')
+          .select('account_id')
+          .eq('metadata->>card_statement_id', statementId)
+          .eq('is_deleted', false)
+          .maybeSingle();
+        if (tx?.account_id) {
+          await supabase.rpc('recalculate_account_balance', { p_account_id: tx.account_id });
+        }
+      }
+
+      if (selectedCard?.id) await loadCardContext(selectedCard.id);
+      toast("Faturas reabertas com sucesso!", 'success');
+    } catch (err: any) {
+      console.error('Erro ao reabrir faturas consolidadas:', err);
+      toast("Erro ao reabrir faturas: " + (err.message || "Erro desconhecido"), 'error');
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
   const handleReopenStatement = async (statementId: string) => {
     if (!supabase || !window.confirm("Deseja reabrir esta fatura? Isso reverterá o pagamento no histórico.")) return;
-    
+
     setIsPaying(true);
     try {
       // 1. Resetar status e valor pago na fatura
@@ -1673,7 +1868,9 @@ const CreditCardsSection: React.FC = () => {
             <CardList
               cards={cards}
               selectedCardId={selectedCard?.id}
-              onSelectCard={setSelectedCard}
+              isCombinedView={!!combinedCardIds}
+              onSelectFamily={handleSelectFamily}
+              onSelectIndividual={handleSelectIndividual}
               getCardColor={getCardColor}
               formatCurrency={formatCurrency}
             />
@@ -1689,6 +1886,11 @@ const CreditCardsSection: React.FC = () => {
                       {selectedCard.is_additional && (
                         <span className="px-2.5 py-1 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-lg text-[9px] font-black uppercase border border-brand-100 dark:border-brand-500/20">
                           Adicional
+                        </span>
+                      )}
+                      {combinedCardIds && (
+                        <span className="px-2.5 py-1 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 rounded-lg text-[9px] font-black uppercase border border-violet-100 dark:border-violet-500/20">
+                          Consolidado (titular + adicionais)
                         </span>
                       )}
                     </div>
@@ -1735,7 +1937,10 @@ const CreditCardsSection: React.FC = () => {
                   formatDateBR={formatDateBR}
                   onRefresh={() => loadCardContext(selectedCard.id)}
                   onPay={() => { setPayAmount(statementOpen); setShowPayModal(true); }}
-                  onReopen={() => currentStatement?.id && handleReopenStatement(currentStatement.id)}
+                  onReopen={() => {
+                    if (currentStatement?.is_combined) handleReopenCombinedStatement();
+                    else if (currentStatement?.id) handleReopenStatement(currentStatement.id);
+                  }}
                   statementBadge={statementBadge}
                 />
 

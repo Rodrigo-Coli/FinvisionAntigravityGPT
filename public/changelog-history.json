@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.08.09.2326",
+    "title": "Visão consolidada de cartão com adicionais",
+    "date": "09/08/2026",
+    "benefits": [
+      {
+        "title": "Titular + adicionais somados numa fatura só",
+        "desc": "Clicar no cartão no topo da carteira mostra o total e lançamentos de titular+adicionais juntos; abaixo, cada um separado.",
+        "type": "novidade"
+      },
+      {
+        "title": "Pagar tudo de uma vez",
+        "desc": "Na visão consolidada, Pagar Agora quita todas as faturas da família numa única confirmação.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "CardList.tsx: cartão do topo = consolidado; lista abaixo = titular + adicionais individuais.",
+      "CreditCardsSection.tsx: agregação por família (ignora sums_into_invoice) e pagamento/reabertura consolidados.",
+      "Auditoria: confirmado que divisão de lançamento não duplica valor na fatura."
+    ]
+  },
+  {
     "version": "2026.08.09.2151",
     "title": "Observação por pedaço na divisão de lançamento",
     "date": "09/08/2026",

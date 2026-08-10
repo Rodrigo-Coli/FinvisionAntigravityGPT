@@ -1,17 +1,23 @@
 {
-  "version": "2026.08.09.2151",
-  "title": "Observação por pedaço na divisão de lançamento",
+  "version": "2026.08.09.2326",
+  "title": "Visão consolidada de cartão com adicionais",
   "date": "09/08/2026",
   "benefits": [
     {
-      "title": "Cada pedaço com sua própria observação",
-      "desc": "Ao dividir um lançamento em várias categorias, agora dá pra anotar um detalhe específico em cada pedaço (ex: \"2 pijamas Matteo\" num pedaço e \"Aspirador\" em outro), em vez de uma única observação genérica para o lançamento inteiro.",
+      "title": "Titular + adicionais somados numa fatura só",
+      "desc": "Cartões com adicional (ex: você e seu cônjuge) agora mostram, ao clicar no cartão no topo da carteira, o total e os lançamentos de todos juntos. Logo abaixo aparece o titular e cada adicional separadamente — clique em qualquer um pra ver só os lançamentos e o valor daquela pessoa.",
+      "type": "novidade"
+    },
+    {
+      "title": "Pagar tudo de uma vez",
+      "desc": "Na visão consolidada, 'Pagar Agora' quita a fatura do titular e de todos os adicionais numa única confirmação, debitando o total certo de uma conta só.",
       "type": "novidade"
     }
   ],
   "changes": [
-    "components/history/SplitFieldsInline.tsx e SplitTransactionModal.tsx: campo de observação por pedaço (já existia no banco, faltava na tela).",
-    "AddTransactionModal.tsx e ManualTransactionModal.tsx: campo de observação geral some quando a divisão está ativa, dando lugar às observações por pedaço.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo criando lançamento dividido com observação em cada pedaço e reabrindo a divisão pra confirmar que carregam certo."
+    "components/cards/CardList.tsx: cartão do topo entra na visão consolidada (titular+adicionais); lista abaixo passa a incluir o titular junto dos adicionais para visão individual.",
+    "components/banking/CreditCardsSection.tsx: fetchStatements/fetchTransactions agregam por família de cartões quando consolidado (ignora sums_into_invoice); handlePayCombinedStatement/handleReopenCombinedStatement pagam/reabrem todas as faturas membro numa tacada, distribuindo o valor proporcionalmente ao aberto de cada uma.",
+    "Auditoria: confirmado por cálculo manual e pela função recalculate_card_statement_total que a divisão de lançamento em categorias NÃO soma duas vezes no valor da fatura (soma só o amount da linha pai, nunca tocado pela divisão).",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo com cartão titular + adicional simulados - consolidado bateu exatamente titular+adicional, individual de cada um bateu certo, pagamento consolidado quitou as duas faturas com o valor exato de cada uma, reabertura consolidada reverteu as duas."
   ]
 }
