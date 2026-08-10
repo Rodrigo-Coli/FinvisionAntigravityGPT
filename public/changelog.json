@@ -1,18 +1,17 @@
 {
-  "version": "2026.08.09.2139",
-  "title": "Dividir em categorias já no cadastro do lançamento",
+  "version": "2026.08.09.2151",
+  "title": "Observação por pedaço na divisão de lançamento",
   "date": "09/08/2026",
   "benefits": [
     {
-      "title": "Dividir direto ao criar o lançamento",
-      "desc": "Agora dá pra dividir um lançamento em várias categorias já na hora de cadastrar, tanto em Novo Lançamento (conta bancária) quanto em Novo Gasto (cartão) — sem precisar criar primeiro e depois ir até a lista dividir.",
+      "title": "Cada pedaço com sua própria observação",
+      "desc": "Ao dividir um lançamento em várias categorias, agora dá pra anotar um detalhe específico em cada pedaço (ex: \"2 pijamas Matteo\" num pedaço e \"Aspirador\" em outro), em vez de uma única observação genérica para o lançamento inteiro.",
       "type": "novidade"
     }
   ],
   "changes": [
-    "components/history/SplitFieldsInline.tsx (novo): editor de pedaços (categoria/subcategoria/valor) embutido nos formulários de criação.",
-    "components/history/AddTransactionModal.tsx: toggle 'Dividir em várias categorias' (some quando Parcelado/Recorrente); History.tsx salva os pedaços logo após criar a transação.",
-    "components/cards/ManualTransactionModal.tsx: mesmo toggle no Novo Gasto; CreditCardsSection.tsx salva os pedaços após criar o lançamento do cartão.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo criando lançamento dividido em conta bancária e em cartão, conferido no banco de dados que os pedaços gravaram certo e o valor total não mudou."
+    "components/history/SplitFieldsInline.tsx e SplitTransactionModal.tsx: campo de observação por pedaço (já existia no banco, faltava na tela).",
+    "AddTransactionModal.tsx e ManualTransactionModal.tsx: campo de observação geral some quando a divisão está ativa, dando lugar às observações por pedaço.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo criando lançamento dividido com observação em cada pedaço e reabrindo a divisão pra confirmar que carregam certo."
   ]
 }

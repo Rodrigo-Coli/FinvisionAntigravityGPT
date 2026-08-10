@@ -434,8 +434,9 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                         </div>
                         )}
 
-                        {/* Observações e Tags */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Observações (some quando dividido - cada pedaço tem a sua) e Tags */}
+                        <div className={`grid grid-cols-1 ${txIsDividing ? '' : 'sm:grid-cols-2'} gap-4`}>
+                            {!txIsDividing && (
                             <div>
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Observações</label>
                                 <textarea
@@ -446,6 +447,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                     className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300 resize-none text-xs"
                                 />
                             </div>
+                            )}
                             <div>
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Tags (Separadas por vírgula)</label>
                                 <input

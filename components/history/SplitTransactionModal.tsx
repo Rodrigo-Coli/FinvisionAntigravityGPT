@@ -9,6 +9,7 @@ interface SplitRow {
     category: string;
     subcategory: string;
     amountText: string; // valor digitado (sempre positivo do ponto de vista do usuário)
+    notes: string;
 }
 
 interface SplitTransactionModalProps {
@@ -58,15 +59,16 @@ export const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({
                         key: newRowKey(),
                         category: s.category,
                         subcategory: s.subcategory || '',
-                        amountText: Math.abs(s.amount).toFixed(2).replace('.', ',')
+                        amountText: Math.abs(s.amount).toFixed(2).replace('.', ','),
+                        notes: s.notes || ''
                     })));
                 } else {
                     // Começa com 2 pedaços: um pré-preenchido com a categoria atual e
                     // valor total, outro em branco - facilita o caso comum de "tirar
                     // um pedaço" de um lançamento já categorizado.
                     setRows([
-                        { key: newRowKey(), category: transaction.category || '', subcategory: transaction.subcategory || '', amountText: totalAbs.toFixed(2).replace('.', ',') },
-                        { key: newRowKey(), category: '', subcategory: '', amountText: '' }
+                        { key: newRowKey(), category: transaction.category || '', subcategory: transaction.subcategory || '', amountText: totalAbs.toFixed(2).replace('.', ','), notes: '' },
+                        { key: newRowKey(), category: '', subcategory: '', amountText: '', notes: '' }
                     ]);
                 }
             })
@@ -92,7 +94,7 @@ export const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({
         setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r));
     };
 
-    const addRow = () => setRows(prev => [...prev, { key: newRowKey(), category: '', subcategory: '', amountText: '' }]);
+    const addRow = () => setRows(prev => [...prev, { key: newRowKey(), category: '', subcategory: '', amountText: '', notes: '' }]);
     const removeRow = (key: string) => setRows(prev => prev.filter(r => r.key !== key));
 
     const handleSave = async () => {
@@ -111,7 +113,8 @@ export const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({
                     category: r.category.trim(),
                     subcategory: r.subcategory.trim() || undefined,
                     categoryId: categoryId || undefined,
-                    amount: parseAmount(r.amountText) * parentSign
+                    amount: parseAmount(r.amountText) * parentSign,
+                    notes: r.notes.trim() || undefined
                 });
                 void subcategoryId;
             }
@@ -220,6 +223,14 @@ export const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({
                                                 className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl font-black text-slate-800 text-xs outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-right"
                                             />
                                         </div>
+                                        <input
+                                            type="text"
+                                            value={row.notes}
+                                            onFocus={(e) => e.target.select()}
+                                            onChange={(e) => updateRow(row.key, { notes: e.target.value })}
+                                            placeholder="Observação deste pedaço (opcional)"
+                                            className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl font-medium text-slate-600 text-xs outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
+                                        />
                                     </div>
                                 ))}
                             </div>

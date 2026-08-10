@@ -8,6 +8,7 @@ interface SplitRow {
     category: string;
     subcategory: string;
     amountText: string;
+    notes: string;
 }
 
 interface SplitFieldsInlineProps {
@@ -22,8 +23,8 @@ const newRowKey = () => `inline-split-${Date.now()}-${rowSeq++}`;
 
 export const SplitFieldsInline: React.FC<SplitFieldsInlineProps> = ({ totalAbs, categoryObjects, subcategories, onChange }) => {
     const [rows, setRows] = useState<SplitRow[]>([
-        { key: newRowKey(), category: '', subcategory: '', amountText: '' },
-        { key: newRowKey(), category: '', subcategory: '', amountText: '' }
+        { key: newRowKey(), category: '', subcategory: '', amountText: '', notes: '' },
+        { key: newRowKey(), category: '', subcategory: '', amountText: '', notes: '' }
     ]);
 
     const parseAmount = (text: string): number => {
@@ -41,7 +42,8 @@ export const SplitFieldsInline: React.FC<SplitFieldsInlineProps> = ({ totalAbs, 
             onChange(validRows.map(r => ({
                 category: r.category.trim(),
                 subcategory: r.subcategory.trim() || undefined,
-                amount: parseAmount(r.amountText)
+                amount: parseAmount(r.amountText),
+                notes: r.notes.trim() || undefined
             })));
         } else {
             onChange(null);
@@ -52,7 +54,7 @@ export const SplitFieldsInline: React.FC<SplitFieldsInlineProps> = ({ totalAbs, 
     const updateRow = (key: string, patch: Partial<SplitRow>) => {
         setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r));
     };
-    const addRow = () => setRows(prev => [...prev, { key: newRowKey(), category: '', subcategory: '', amountText: '' }]);
+    const addRow = () => setRows(prev => [...prev, { key: newRowKey(), category: '', subcategory: '', amountText: '', notes: '' }]);
     const removeRow = (key: string) => setRows(prev => prev.filter(r => r.key !== key));
 
     return (
@@ -106,6 +108,14 @@ export const SplitFieldsInline: React.FC<SplitFieldsInlineProps> = ({ totalAbs, 
                             className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-black text-slate-800 text-xs outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-right"
                         />
                     </div>
+                    <input
+                        type="text"
+                        value={row.notes}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => updateRow(row.key, { notes: e.target.value })}
+                        placeholder="Observação deste pedaço (opcional)"
+                        className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-medium text-slate-600 text-xs outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
+                    />
                 </div>
             ))}
 

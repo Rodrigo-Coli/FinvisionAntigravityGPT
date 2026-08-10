@@ -1,5 +1,21 @@
 [
   {
+    "version": "2026.08.09.2151",
+    "title": "Observação por pedaço na divisão de lançamento",
+    "date": "09/08/2026",
+    "benefits": [
+      {
+        "title": "Cada pedaço com sua própria observação",
+        "desc": "Ao dividir um lançamento, agora dá pra anotar um detalhe em cada pedaço, em vez de uma observação única para o lançamento inteiro.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "SplitFieldsInline.tsx e SplitTransactionModal.tsx: campo de observação por pedaço.",
+      "AddTransactionModal.tsx e ManualTransactionModal.tsx: observação geral some quando a divisão está ativa."
+    ]
+  },
+  {
     "version": "2026.08.09.2139",
     "title": "Dividir em categorias já no cadastro do lançamento",
     "date": "09/08/2026",
