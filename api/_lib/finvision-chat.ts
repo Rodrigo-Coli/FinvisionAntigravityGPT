@@ -1,11 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
-import { buildInvestmentsContextSection } from './investments-context.js';
+import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+// Máximo de idas-e-voltas de ferramenta por pergunta (pergunta que precise de 2-3
+// áreas diferentes ainda cabe folgado; isso é só um limite de segurança contra loop).
+const MAX_TOOL_ROUNDS = 5;
 
 export async function handleFinvisionChat(req: any, res: any) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -17,14 +21,9 @@ export async function handleFinvisionChat(req: any, res: any) {
         const now = new Date();
         const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
         const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-
         const filterStart = startDate || defaultStart;
         const filterEnd = endDate || defaultEnd;
-
-        const threeMonthsAgo = new Date();
-        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-        threeMonthsAgo.setDate(1);
-        const historyStart = threeMonthsAgo.toISOString().split('T')[0];
+        const periodLabel = `De ${filterStart.split('-').reverse().join('/')} até ${filterEnd.split('-').reverse().join('/')}`;
 
         const lowerMsg = message.toLowerCase();
         const isFaq = /(exportar|baixar|imprimir|gerar).*(dre|csv|relatório|relatorio)/i.test(lowerMsg) ||
@@ -40,95 +39,14 @@ export async function handleFinvisionChat(req: any, res: any) {
             });
         }
 
-        const [accountsRes, txRes, cardsRes, assetsRes, liabilitiesRes, historyRes, budgetsRes, goalsRes] = await Promise.all([
-            supabase.from('accounts').select('institution, type, current_balance').eq('user_id', userId).eq('is_archived', false),
-            supabase.from('transactions')
-                .select('amount, type, category, date, description')
-                .eq('user_id', userId)
-                .is('is_deleted', false)
-                .is('is_amortization', false)
-                .neq('type', 'ADJUSTMENT')
-                .gte('date', filterStart)
-                .lte('date', filterEnd)
-                .order('date', { ascending: false })
-                .limit(200),
-            supabase.from('cards').select('name, brand, limit_total').eq('user_id', userId).eq('is_archived', false),
-            supabase.from('physical_assets').select('estimated_value').eq('user_id', userId),
-            supabase.from('liabilities').select('remaining_balance, total_amount, type').eq('user_id', userId),
-            supabase.from('transactions')
-                .select('amount, type, category, date')
-                .eq('user_id', userId)
-                .is('is_deleted', false)
-                .is('is_amortization', false)
-                .neq('type', 'ADJUSTMENT')
-                .gte('date', historyStart)
-                .lt('date', filterStart),
-            supabase.from('budgets').select('*').eq('user_id', userId).eq('is_active', true),
-            supabase.from('goals').select('*').eq('user_id', userId).order('created_at', { ascending: false })
-        ]);
-
-        const accounts = accountsRes.data || [];
-        const transactions = txRes.data || [];
-        const creditCards = cardsRes.data || [];
-        const assetsData = assetsRes.data || [];
-        const liabilitiesData = liabilitiesRes.data || [];
-        const historicalData = historyRes?.data || [];
-        const budgets = budgetsRes.data || [];
-        const goals = goalsRes.data || [];
-
-        const totalBalance = accounts.reduce((s: number, a: any) => s + Number(a.current_balance || 0), 0);
-        const totalPhysicalAssets = assetsData.reduce((s: number, l: any) => s + Number(l.estimated_value || 0), 0);
-        const totalDebt = liabilitiesData.reduce((s: number, l: any) => s + Number(l.remaining_balance || 0), 0);
-        const netWorth = totalBalance + totalPhysicalAssets - totalDebt;
-
-        const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        let currentMonthIncome = 0;
-        let currentMonthExpense = 0;
-        const categorySummary: Record<string, number> = {};
-
-        transactions.forEach((t: any) => {
-            if (t.date && t.date.startsWith(currentMonthPrefix)) {
-                const amt = Math.abs(Number(t.amount) || 0);
-                if (t.type === 'INCOME') {
-                    currentMonthIncome += amt;
-                } else if (t.type === 'EXPENSE') {
-                    currentMonthExpense += amt;
-                    categorySummary[t.category] = (categorySummary[t.category] || 0) + amt;
-                }
-            }
-        });
-
-        const topCategories = Object.entries(categorySummary)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 5)
-            .map(([cat, val]) => `${cat}: R$${val.toFixed(2)}`)
-            .join(' | ');
-
-        const periodLabel = `De ${filterStart.split('-').reverse().join('/')} até ${filterEnd.split('-').reverse().join('/')}`;
-
-        const histTxs = historicalData.filter((t: any) => t.type === 'EXPENSE') || [];
-        const histCategoryTotals: Record<string, number> = {};
-        const monthsCaptured = new Set();
-        histTxs.forEach((t: any) => {
-            const m = t.date.substring(0, 7);
-            monthsCaptured.add(m);
-            histCategoryTotals[t.category] = (histCategoryTotals[t.category] || 0) + Math.abs(t.amount);
-        });
-        const numMonths = monthsCaptured.size || 1;
-        const historicalAverages = Object.entries(histCategoryTotals)
-            .map(([cat, total]) => `${cat}: R$${(total / numMonths).toFixed(2)}/mês`)
-            .slice(0, 10).join(' | ');
-
-        const investmentsSection = await buildInvestmentsContextSection(supabase, userId);
-
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
         if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
         const ai = new GoogleGenAI({ apiKey: geminiKey });
-        
-        const dataHoje = now.toLocaleDateString('pt-BR', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
+
+        const dataHoje = now.toLocaleDateString('pt-BR', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
             day: 'numeric',
             hour: '2-digit',
             minute: '2-digit'
@@ -150,45 +68,25 @@ Tom: Especialista Financeiro executivo, educado, DIRETO e CURTO. Evite introduç
 
 # CONTEXTO ATUAL
 Hoje é ${dataHoje}.
-*Período Ativo do Usuário: ${periodLabel}*
+*Período que o usuário está vendo na tela agora: ${periodLabel}* (isso é só o que está na tela — você pode e deve consultar QUALQUER outro período usando as ferramentas, se a pergunta pedir).
 
-# DADOS DO DASHBOARD
-• Saldo Consolidado: R$ ${totalBalance.toFixed(2)}
-• Entradas: R$ ${currentMonthIncome.toFixed(2)}
-• Saídas: R$ ${currentMonthExpense.toFixed(2)}
-• Top 5 Despesas: ${topCategories || 'Nenhuma registrada'}
-
-# RAIO-X PATRIMONIAL
-• Bens/Ativos: R$ ${totalPhysicalAssets.toFixed(2)}
-• Dívidas (Passivos): R$ ${totalDebt.toFixed(2)}
-• Patrimônio Líquido: R$ ${netWorth.toFixed(2)}
-${investmentsSection}
-
-# TENDÊNCIAS (Médias dos últimos ${numMonths} meses)
-• Médias por Categoria: ${historicalAverages || 'Dados insuficientes'}
-
-• Contas Atuais: ${accounts.map((a: any) => `${a.institution}(R$${Number(a.current_balance).toFixed(2)})`).join(', ')}
-• Cartões Cadastrados: ${creditCards.map((c: any) => `${c.name || c.brand}(Lim:R$${c.limit_total})`).join(', ') || 'Nenhum'}
-
-# ÚLTIMAS 50 TRANSAÇÕES
-${transactions.slice(0, 50).map((t: any) => `- ${t.date.split('T')[0]}|${t.category}|R$${t.amount}|${t.type}`).join('\n')}
-
-# ORÇAMENTOS ATIVOS (BUDGETS)
-${budgets.length > 0 ? budgets.map((b: any) => `- Categoria: ${b.category} | Limite: R$ ${Number(b.amount).toFixed(2)} | Período: ${b.period || 'mensal'}`).join('\n') : 'Nenhum orçamento ativo configurado.'}
-
-# METAS FINANCEIRAS (GOALS)
-${goals.length > 0 ? goals.map((g: any) => `- Meta: "${g.name}" | Alvo: R$ ${Number(g.target_amount).toFixed(2)} | Atual: R$ ${Number(g.current_amount).toFixed(2)} | Prazo: ${g.deadline || 'sem prazo'} | Status: ${g.is_completed ? 'Concluída' : 'Em andamento'}`).join('\n') : 'Nenhuma meta financeira configurada.'}
+# COMO RESPONDER COM DADOS REAIS (MUITO IMPORTANTE)
+Você NÃO recebe os dados financeiros do usuário prontos neste prompt. Em vez disso, você tem ferramentas — uma para cada área do sistema (faturas de cartão, extrato de lançamentos, gasto por categoria, saldo/patrimônio, investimentos, metas/orçamentos, dívidas, pesquisa de mercado).
+1. Antes de responder qualquer pergunta sobre números, saldo, gasto, fatura, dívida, meta ou investimento, CHAME a(s) ferramenta(s) certa(s) primeiro. Nunca invente ou estime um valor sem ter chamado a ferramenta correspondente.
+2. Pode chamar mais de uma ferramenta na mesma pergunta se ela cruzar áreas (ex.: "dá pra pagar a fatura com o CDB que vence essa semana?" → get_card_statements + get_investments_summary).
+3. "Fatura de cartão", "cartões pagos e a pagar", "quanto devo no cartão" → SEMPRE get_card_statements, nunca tente somar isso a partir de get_transactions.
+4. Se o usuário não disser o período, assuma o período que ele está vendo na tela (acima) para perguntas sobre "esse mês" / "agora"; para "ano passado", "mês tal", etc., calcule as datas você mesmo a partir de hoje.
+5. Depois de ter os dados da ferramenta, responda em linguagem natural — nunca devolva JSON cru para o usuário.
 
 # DIRETRIZES DE INTELIGÊNCIA FINANCEIRA AVANÇADA (PLANEJAMENTO, ALAVANCAGEM E PESQUISA)
-1. **Consulta à Internet (Google Search Grounding)**:
-   - Você tem acesso à pesquisa na internet em tempo real.
-   - Use esta ferramenta sempre que o usuário pedir cotações atuais, taxas de juros macroeconômicas (taxa Selic, CDI, inflação/IPCA), notícias financeiras brasileiras recentes ou regras fiscais/tributárias vigentes.
-   - Restrinja o uso de buscas na web a assuntos puramente macroeconômicos e de mercado financeiro relevante (Selic, CDI, IPCA, cotação do dólar/euro/ações, inflação, regras fiscais). Não faça buscas sobre assuntos gerais irrelevantes.
+1. **Pesquisa de mercado (ferramenta search_market_data)**:
+   - Use SOMENTE quando o usuário pedir cotações atuais, taxas macroeconômicas (Selic, CDI, IPCA), notícias financeiras brasileiras recentes ou regras fiscais/tributárias vigentes.
+   - Não pesquise sobre assuntos gerais irrelevantes, nem para obter benchmarks/dicas genéricas — para isso use a RÉGUA DE REFERÊNCIA abaixo.
 2. **Planejamento de Longo Prazo e Crescimento**:
    - Ajude o usuário a pensar em como poupar, investir e crescer seu patrimônio de forma consistente.
    - Recomende e explique estratégias clássicas de organização como a regra 50/30/20 (50% necessidades, 30% desejos, 20% poupança/investimentos).
 3. **Amortização e Quitação de Dívidas (Passivos)**:
-   - Se o usuário tiver passivos (liabilities) ou dívidas relatadas, oriente-o em estratégias de quitação acelerada.
+   - Se o usuário tiver passivos (use get_liabilities_detail), oriente-o em estratégias de quitação acelerada.
    - Explique os métodos:
      - **Método Bola de Neve (Snowball)**: Pagar primeiro as menores dívidas para obter vitórias psicológicas rápidas.
      - **Método Avalanche**: Pagar primeiro as dívidas com as maiores taxas de juros para economizar dinheiro no longo prazo.
@@ -197,8 +95,8 @@ ${goals.length > 0 ? goals.map((g: any) => `- Meta: "${g.name}" | Alvo: R$ ${Num
    - Forneça simulações, cenários de alavancagem inteligente (usar capital de terceiros a taxas baixas para gerar retornos maiores), e explique como renegociar contratos ou amortizar saldos devedores usando FGTS ou aportes extraordinários.
 5. **Consultoria Sob Demanda (REATIVO — só quando o usuário pedir)**:
    - Aja apenas quando o usuário pedir ajuda para melhorar (ex: "quero gastar menos", "quero economizar", "quero evoluir/alavancar"). NÃO empurre conselhos não solicitados.
-   - Quando pedir para economizar: vasculhe as despesas reais dele nos dados fornecidos, compare cada categoria com a RÉGUA DE REFERÊNCIA abaixo, aponte onde está acima do ideal e estime quanto dá para economizar em R$.
-   - Quando pedir para evoluir/alavancar: ensine os percentuais e critérios, analise a situação real dele (patrimônio, dívidas, liquidez) e mostre o cenário com os números dele.
+   - Quando pedir para economizar: use get_category_breakdown do período pedido, compare cada categoria com a RÉGUA DE REFERÊNCIA abaixo, aponte onde está acima do ideal e estime quanto dá para economizar em R$.
+   - Quando pedir para evoluir/alavancar: ensine os percentuais e critérios, analise a situação real dele (get_account_and_net_worth_summary + get_liabilities_detail) e mostre o cenário com os números dele.
    - Feche sempre com UM próximo passo pequeno, concreto e realista. Quando os dados mostrarem melhora real, reconheça o progresso de forma breve.
    - Explique conceitos financeiros SEMPRE colados a um número real do usuário, uma ideia por vez, em linguagem simples.
 6. **RÉGUA DE REFERÊNCIA (% da renda líquida — usar para comparar com os dados reais)**:
@@ -206,12 +104,9 @@ ${goals.length > 0 ? goals.map((g: any) => `- Meta: "${g.name}" | Alvo: R$ ${Num
    - Parcelas de dívida (fora moradia): até 10% | Dívida total: até 36% da renda (regra 28/36)
    - Poupança/investimento: pelo menos 20% | Reserva de emergência: 3 a 6 meses de despesas
    - Alavancagem: só quando o retorno esperado > custo do juro (após imposto); nunca sobre consumo; manter a reserva de emergência intacta.
-   - Os percentuais acima já estão fornecidos aqui. NUNCA pesquise na internet para obter benchmarks, dicas genéricas ou comparações — use apenas esta régua e os dados reais do usuário. A busca na web continua restrita a macroeconomia pontual (Selic, CDI, IPCA, câmbio) quando o usuário pedir cotação atual.
+   - Os percentuais acima já estão fornecidos aqui. NUNCA pesquise na internet para obter benchmarks, dicas genéricas ou comparações — use apenas esta régua e os dados reais do usuário.
 7. **Limite Regulatório (OBRIGATÓRIO)**:
-   - Você educa, compara e simula, mas NUNCA dá recomendação personalizada de compra/venda de ativos específicos (ações, cripto, fundos). Apresente tipos, critérios e trade-offs e devolva a decisão final ao usuário.
-8. **Interação com Investimentos**:
-   - Use a seção "# INVESTIMENTOS DETALHADOS" para responder qualquer pergunta sobre os investimentos do usuário: saldo total, saldo por ativo, vencimento, liquidez (D+), IR estimado e a nota de plano que ele deixou.
-   - Se o usuário perguntar de onde tirar dinheiro para pagar algo em uma data futura, cruze a data pedida com o "Vencimento" e a "Liquidez" de cada investimento para indicar quais já estariam disponíveis (ou perto de vencer) naquela data.`;
+   - Você educa, compara e simula, mas NUNCA dá recomendação personalizada de compra/venda de ativos específicos (ações, cripto, fundos). Apresente tipos, critérios e trade-offs e devolva a decisão final ao usuário.`;
 
         const contents: any[] = [];
         if (history && history.length > 0) {
@@ -225,28 +120,49 @@ ${goals.length > 0 ? goals.map((g: any) => `- Meta: "${g.name}" | Alvo: R$ ${Num
         }
         contents.push({ role: 'user', parts: [{ text: message }] });
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents,
-            config: {
-                systemInstruction: systemPrompt,
-                temperature: 0.4,
-                tools: [{ googleSearch: {} }] // Ativação nativa da pesquisa Google
-            }
-        });
-        await recordAiUsage(supabase, 'chat', userId, response, 'gemini-2.5-flash');
+        let rawText = '';
+        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents,
+                config: {
+                    systemInstruction: systemPrompt,
+                    temperature: 0.4,
+                    tools: [{ functionDeclarations: FINANCIAL_TOOL_DECLARATIONS as any }],
+                }
+            });
+            await recordAiUsage(supabase, 'chat', userId, response, 'gemini-2.5-flash');
 
-        const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const candidateParts = (response as any).candidates?.[0]?.content?.parts || [];
+            const functionCalls = candidateParts.filter((p: any) => p.functionCall).map((p: any) => p.functionCall);
+
+            if (functionCalls.length === 0) {
+                rawText = (response as any).text || candidateParts.map((p: any) => p.text).filter(Boolean).join('') || '';
+                break;
+            }
+
+            // Ecoa a chamada que o modelo pediu e devolve o resultado de cada ferramenta.
+            contents.push({ role: 'model', parts: candidateParts });
+            const responseParts = await Promise.all(functionCalls.map(async (call: any) => {
+                const result = await executeFinancialTool(supabase, userId, geminiKey, call.name, call.args);
+                return { functionResponse: { name: call.name, response: { result } } };
+            }));
+            contents.push({ role: 'user', parts: responseParts });
+        }
+
+        if (!rawText) {
+            rawText = 'Não consegui concluir a análise com os dados disponíveis agora. Pode reformular a pergunta ou tentar novamente?';
+        }
 
         return res.status(200).json({ reply: rawText });
 
     } catch (err: any) {
         console.error('[ZyvionChat] Erro Crítico:', err);
-        return res.status(200).json({ 
+        return res.status(200).json({
             reply: `**Ops, tivemos um probleminha técnico!** 🤖\n\n` +
-                   `Não consegui processar sua análise agora. Isso pode ser devido a uma instabilidade na API da Inteligência Artificial ou nos dados do Supabase.\n\n` +
-                   `**Detalhes do erro:** \`${err.message}\`\n\n` +
-                   `Por favor, tente novamente em alguns instantes.`
+                `Não consegui processar sua análise agora. Isso pode ser devido a uma instabilidade na API da Inteligência Artificial ou nos dados do Supabase.\n\n` +
+                `**Detalhes do erro:** \`${err.message}\`\n\n` +
+                `Por favor, tente novamente em alguns instantes.`
         });
     }
 }

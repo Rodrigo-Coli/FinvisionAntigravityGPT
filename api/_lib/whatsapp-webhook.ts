@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
-import { buildInvestmentsContextSection } from './investments-context.js';
+import { recordAiUsage } from './ai-usage.js';
+import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -1047,95 +1048,12 @@ async function handleInteractiveFinancialQuery(
     }
   }
 
-  const [accountsRes, txRes, cardsRes, assetsRes, liabilitiesRes] = await Promise.all([
-    supabase.from('accounts').select('id, institution, type, current_balance').eq('user_id', userId).eq('is_archived', false),
-    supabase.from('transactions')
-      .select('id, account_id, amount, type, category, subcategory, date, description, is_amortization, liability_id, is_paid, metadata')
-      .eq('user_id', userId)
-      .is('is_deleted', false)
-      .neq('type', 'ADJUSTMENT')
-      .gte('date', targetStartDate)
-      .lte('date', targetEndDate)
-      .order('date', { ascending: false })
-      .limit(150),
-    supabase.from('cards').select('name, brand, limit_total').eq('user_id', userId).eq('is_archived', false),
-    supabase.from('physical_assets').select('id, name, category, estimated_value').eq('user_id', userId),
-    supabase.from('liabilities').select('id, name, type, total_amount, remaining_balance, installment_amount, installments_remaining, interest_rate, metadata').eq('user_id', userId)
-  ]);
-
-  const accounts = accountsRes.data || [];
-  const transactions = txRes.data || [];
-  const creditCards = cardsRes.data || [];
-  const assetsData = assetsRes.data || [];
-  const liabilitiesData = liabilitiesRes.data || [];
-
-  const totalBalance = accounts.reduce((s: number, a: any) => s + Number(a.current_balance || 0), 0);
-  const totalPhysicalAssets = assetsData.reduce((s: number, l: any) => s + Number(l.estimated_value || 0), 0);
-  const totalDebt = liabilitiesData.reduce((s: number, l: any) => s + Number(l.remaining_balance || 0), 0);
-  const netWorth = totalBalance + totalPhysicalAssets - totalDebt;
-
-  let periodIncome = 0;
-  let periodExpense = 0;
-  const categorySummary: Record<string, number> = {};
-
-  transactions.forEach((t: any) => {
-    const amt = Math.abs(Number(t.amount) || 0);
-    if (t.is_amortization) return; // skip amortizations from regular monthly totals
-    if (t.type === 'INCOME') {
-      periodIncome += amt;
-    } else if (t.type === 'EXPENSE') {
-      periodExpense += amt;
-      categorySummary[t.category] = (categorySummary[t.category] || 0) + amt;
-    }
-  });
-
-  const topCategories = Object.entries(categorySummary)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([cat, val]) => `${cat}: R$ ${val.toFixed(2)}`)
-    .join(' | ');
-
-  const dataHoje = now.toLocaleDateString('pt-BR', { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
+  const dataHoje = now.toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
     day: 'numeric'
   });
-
-  // Construct detailed liabilities summary
-  const liabilitiesSummary = liabilitiesData.map((l: any) => {
-    const ir = l.interest_rate ? `juros ${l.interest_rate}% a.a.` : 'sem juros definidos';
-    const propertyStatus = l.metadata?.propertyType ? `[Status Imóvel: ${l.metadata.propertyType}]` : '';
-    const parcelas = l.installments_remaining 
-      ? `${l.installments_remaining} parcelas de R$ ${Number(l.installment_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
-      : 'sem parcelas mensais configuradas';
-    
-    // Extract balloons and down payments linked to this liability
-    const linkedTxs = transactions.filter(t => t.liability_id === l.id);
-    const atos = linkedTxs.filter(t => t.metadata?.type === 'DOWN_PAYMENT' || (t.description || '').toUpperCase().includes('ATO'));
-    const baloes = linkedTxs.filter(t => t.metadata?.type === 'INTERMEDIARY' || (t.description || '').toUpperCase().includes('INTERMEDIÁRIA') || (t.description || '').toUpperCase().includes('BALÃO'));
-    
-    const atosSummary = atos.length > 0 
-      ? `\n    └─ Entrada/Atos: ${atos.map(a => `${(a.description || '').split(' - ')[0]}: R$ ${Number(a.amount).toLocaleString('pt-BR')} (${a.is_paid ? 'PAGO' : 'PENDENTE'})`).join(', ')}`
-      : '';
-    const baloesSummary = baloes.length > 0 
-      ? `\n    └─ Balões/Intermediárias: ${baloes.map(b => `${(b.description || '').split(' - ')[0]}: R$ ${Number(b.amount).toLocaleString('pt-BR')} (${b.is_paid ? 'PAGO' : 'PENDENTE'})`).join(', ')}`
-      : '';
-    
-    return `${l.name} (${l.type}) ${propertyStatus}: Saldo Devedor R$ ${Number(l.remaining_balance).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}, ${ir}, ${parcelas}${atosSummary}${baloesSummary}`;
-  }).join('\n- ');
-
-  const investmentsSection = await buildInvestmentsContextSection(supabase, userId);
-
-  const accountMap = new Map(accounts.map((a: any) => [a.id, a.institution]));
-
-  const formattedTransactions = transactions.map((t: any) => {
-    const dateFmt = t.date ? t.date.split('T')[0].split('-').reverse().join('/') : '';
-    const categoryFmt = t.category + (t.subcategory ? ` > ${t.subcategory}` : '');
-    const accountName = t.account_id ? (accountMap.get(t.account_id) || 'Conta') : 'Conta';
-    const statusFmt = t.is_paid ? 'Pago' : 'Pendente';
-    return `- ${dateFmt} | Descrição: "${t.description}" | R$ ${Number(t.amount).toFixed(2)} | Tipo: ${t.type} | Categoria: ${categoryFmt} | Conta: ${accountName} | Status: ${statusFmt}`;
-  }).join('\n');
 
   const systemPrompt = `
 # IDENTIDADE
@@ -1145,44 +1063,32 @@ Seu tom de voz deve ser de especialista, educado, curto e sucinto. Use emojis ú
 # REGRAS DO WHATSAPP
 1. Limite sua resposta a no máximo 3 ou 4 parágrafos curtos.
 2. Use formatações em negrito do WhatsApp (*texto*).
-3. Nunca invente dados. Use as métricas reais fornecidas abaixo para responder à dúvida.
-4. IMPORTANTÍSSIMO: Sempre que o usuário perguntar sobre transações, gastos ou lançamentos de contas ou cartões, verifique detalhadamente a lista de "TRANSAÇÕES DETALHADAS NO PERÍODO SOLICITADO" abaixo. Os termos pesquisados podem estar na *descrição*, *categoria* ou *subcategoria*. Responda de forma completa, detalhando os lançamentos correspondentes (com data, descrição, valor e status de pagamento).
-5. IMPORTANTÍSSIMO: Sempre que o usuário perguntar sobre investimentos (saldo, vencimento, liquidez/D+, IR, ou "de onde tiro dinheiro para pagar algo"), use a seção "# INVESTIMENTOS DETALHADOS" abaixo. Cruze a data pedida com o "Vencimento"/"Liquidez" de cada item para dizer quais já estariam disponíveis naquela data.
-6. RESTRIÇÃO IMPORTANTE DE CONCORRENTES: Você é a Zyvion AI, exclusiva do Zyvion. Você está expressamente proibida de responder perguntas sobre concorrentes do mercado financeiro (ex: Mobills, Organizze, Olivia, Minhas Economias, Guiabolso) ou qualquer assunto não relacionado diretamente ao sistema Zyvion. Se o usuário perguntar sobre concorrentes ou fizer comparações, recuse educadamente, explicando que seu foco é exclusivamente ajudar a gerenciar as finanças e analisar os dados dentro do Zyvion.
+3. RESTRIÇÃO IMPORTANTE DE CONCORRENTES: Você é a Zyvion AI, exclusiva do Zyvion. Você está expressamente proibida de responder perguntas sobre concorrentes do mercado financeiro (ex: Mobills, Organizze, Olivia, Minhas Economias, Guiabolso) ou qualquer assunto não relacionado diretamente ao sistema Zyvion. Se o usuário perguntar sobre concorrentes ou fizer comparações, recuse educadamente, explicando que seu foco é exclusivamente ajudar a gerenciar as finanças e analisar os dados dentro do Zyvion.
+
+# COMO RESPONDER COM DADOS REAIS (MUITO IMPORTANTE)
+Você NÃO recebe os dados financeiros do usuário prontos neste prompt. Em vez disso, você tem ferramentas — uma para cada área do sistema (faturas de cartão, extrato de lançamentos, gasto por categoria, saldo/patrimônio, investimentos, metas/orçamentos, dívidas, pesquisa de mercado).
+1. Antes de responder qualquer pergunta sobre números, saldo, gasto, fatura, dívida, meta ou investimento, CHAME a(s) ferramenta(s) certa(s) primeiro. Nunca invente ou estime um valor sem ter chamado a ferramenta correspondente.
+2. Pode chamar mais de uma ferramenta na mesma pergunta se ela cruzar áreas.
+3. "Fatura de cartão", "cartões pagos e a pagar", "quanto devo no cartão" → SEMPRE get_card_statements, nunca tente somar isso a partir de get_transactions.
+4. Se o usuário não disser o período, use como padrão: ${customPeriodLabel} (de ${targetStartDate.split('-').reverse().join('/')} até ${targetEndDate.split('-').reverse().join('/')}). Para outros períodos ("mês passado", "ano passado" etc.), calcule as datas você mesmo a partir de hoje.
+5. Depois de ter os dados da ferramenta, responda em linguagem natural, curta — nunca devolva JSON cru para o usuário.
 
 # EVOLUÇÃO FINANCEIRA (REATIVO — só quando o usuário pedir para economizar/evoluir)
-- Quando o usuário pedir para gastar menos, vasculhe as despesas reais dele abaixo, compare com a RÉGUA DE REFERÊNCIA e aponte onde está acima do ideal, estimando quanto dá para economizar em R$.
-- Quando pedir para evoluir/alavancar, ensine os percentuais e analise a situação real dele. Feche sempre com UM próximo passo pequeno e concreto.
+- Quando o usuário pedir para gastar menos, use get_category_breakdown do período, compare com a RÉGUA DE REFERÊNCIA e aponte onde está acima do ideal, estimando quanto dá para economizar em R$.
+- Quando pedir para evoluir/alavancar, ensine os percentuais e analise a situação real dele (get_account_and_net_worth_summary + get_liabilities_detail). Feche sempre com UM próximo passo pequeno e concreto.
 - RÉGUA (% da renda líquida): Moradia até 30% | Transporte até 15% | Alimentação 10–15% | Lazer até 10% | Parcelas de dívida (fora moradia) até 10% (dívida total até 36%) | Poupança/investimento ≥20% | Reserva de emergência 3 a 6 meses de despesas.
 - Alavancagem só quando o retorno esperado supera o custo do juro; nunca sobre consumo; manter a reserva intacta.
-- Use APENAS a régua acima e os dados reais do usuário. NUNCA pesquise na internet. NUNCA recomende compra/venda de ativo específico — a decisão é do usuário.
+- Use APENAS a régua acima e os dados reais do usuário. NUNCA recomende compra/venda de ativo específico — a decisão é do usuário.
 
-
-# DADOS DO USUÁRIO
+# CONTEXTO ATUAL
 Hoje é ${dataHoje}.
-*Período Ativo da Consulta: ${customPeriodLabel} (de ${targetStartDate.split('-').reverse().join('/')} até ${targetEndDate.split('-').reverse().join('/')})*
-• Saldo Consolidado: R$ ${totalBalance.toFixed(2)}
-• Total de Entradas no Período: R$ ${periodIncome.toFixed(2)}
-• Total de Saídas no Período: R$ ${periodExpense.toFixed(2)}
-• Top Despesas do Período: ${topCategories || 'Nenhuma registrada'}
-• Bens/Ativos: R$ ${totalPhysicalAssets.toFixed(2)}
-• Dívidas (Passivos): R$ ${totalDebt.toFixed(2)}
-• Patrimônio Líquido: R$ ${netWorth.toFixed(2)}
-• Contas: ${accounts.map((a: any) => `${a.institution}(R$${Number(a.current_balance).toFixed(2)})`).join(', ')}
-• Bens Detalhados: ${assetsData.map((a: any) => `${a.name}(R$${Number(a.estimated_value).toFixed(2)})`).join(', ')}
-• Dívidas Detalhadas:
-- ${liabilitiesSummary || 'Nenhuma registrada'}
-• Cartões Cadastrados: ${creditCards.map((c: any) => `${c.name || c.brand}(Lim:R$${c.limit_total})`).join(', ') || 'Nenhum'}
-${investmentsSection}
-# TRANSAÇÕES DETALHADAS NO PERÍODO SOLICITADO (Máximo 150 lançamentos, mais recentes primeiro):
-${formattedTransactions || 'Nenhuma transação registrada neste período.'}
 `;
 
   if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
   const ai = new GoogleGenAI({ apiKey: geminiKey });
 
   // Mapear o histórico para o formato do Gemini
-  const contents = history.map(h => ({
+  const contents: any[] = history.map(h => ({
     role: h.role === 'user' ? 'user' : 'model',
     parts: [{ text: h.content }]
   }));
@@ -1193,16 +1099,39 @@ ${formattedTransactions || 'Nenhuma transação registrada neste período.'}
     parts: [{ text: queryText }]
   });
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: contents,
-    config: {
-      systemInstruction: systemPrompt,
-      temperature: 0.7,
-    }
-  });
+  // Loop de function calling: o modelo escolhe qual(is) ferramenta(s) da área certa
+  // chamar, a gente executa e devolve o resultado, até ele ter o suficiente para
+  // responder em texto. Limite de rodadas só como trava de segurança contra loop.
+  let rawReply = '';
+  for (let round = 0; round < 5; round++) {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents,
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.7,
+        tools: [{ functionDeclarations: FINANCIAL_TOOL_DECLARATIONS as any }],
+      }
+    });
+    await recordAiUsage(supabase, 'whatsapp_query', userId, response, 'gemini-2.5-flash');
 
-  const rawReply = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || 'Desculpe, não consegui obter resposta da análise agora.';
+    const candidateParts = (response as any).candidates?.[0]?.content?.parts || [];
+    const functionCalls = candidateParts.filter((p: any) => p.functionCall).map((p: any) => p.functionCall);
+
+    if (functionCalls.length === 0) {
+      rawReply = (response as any).text || candidateParts.map((p: any) => p.text).filter(Boolean).join('') || '';
+      break;
+    }
+
+    contents.push({ role: 'model', parts: candidateParts });
+    const responseParts = await Promise.all(functionCalls.map(async (call: any) => {
+      const result = await executeFinancialTool(supabase, userId, geminiKey!, call.name, call.args);
+      return { functionResponse: { name: call.name, response: { result } } };
+    }));
+    contents.push({ role: 'user', parts: responseParts });
+  }
+
+  if (!rawReply) rawReply = 'Desculpe, não consegui obter resposta da análise agora.';
   await sendWhatsApp(phone, rawReply);
 
   // Salvar a pergunta do usuário e a resposta no histórico de chat

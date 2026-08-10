@@ -1,33 +1,24 @@
 {
-  "version": "2026.08.10.0344",
-  "title": "Relatórios completos",
+  "version": "2026.08.10.1222",
+  "title": "IA financeira mais precisa",
   "date": "10/08/2026",
   "benefits": [
     {
-      "title": "Filtros que você digita e pode escolher vários de uma vez",
-      "desc": "Conta/Cartão, Categoria, Subcategoria e Pessoa/Empresa agora são caixas de busca: digite para achar e marque quantos quiser ao mesmo tempo, em vez de escolher um por um.",
-      "type": "novidade"
-    },
-    {
-      "title": "Muito mais opções pra fatiar o relatório",
-      "desc": "Dá pra combinar Tipo (Receita/Despesa/Transferência), Status (Pago/Pendente), faixa de valor e busca por texto — tudo junto com os filtros acima, pra montar o relatório exatamente do jeito que você precisa.",
-      "type": "novidade"
-    },
-    {
-      "title": "Resumo por categoria e por mês na própria tela",
-      "desc": "Além dos totais de entradas/saídas, agora aparece um resumo de gastos por categoria (com barrinha de proporção) e um resumo mês a mês, direto na tela de Relatórios.",
-      "type": "novidade"
-    },
-    {
-      "title": "PDF corrigido: agora baixa de verdade",
-      "desc": "O botão \"Gerar PDF\" estava abrindo uma página em branco em alguns celulares. Agora ele monta e baixa um PDF de verdade, com resumo, gastos por categoria e o extrato completo dos lançamentos filtrados.",
+      "title": "A IA agora consulta seus dados de verdade antes de responder",
+      "desc": "No chat do site e no WhatsApp, a assistente passou a buscar exatamente a informação certa para cada pergunta (fatura de cartão, extrato, gasto por categoria, patrimônio, investimentos, metas, dívidas), em vez de tentar adivinhar com um resumo fixo e incompleto. Perguntas como \"quanto tenho de fatura paga e a pagar em agosto\" agora batem com o que a tela mostra.",
       "type": "correcao"
+    },
+    {
+      "title": "Respostas mais rápidas e mais baratas de gerar",
+      "desc": "Como a IA só busca a área que a pergunta realmente precisa, ela usa bem menos dados por mensagem do que antes (que enviava tudo de uma vez, mesmo sem precisar).",
+      "type": "novidade"
     }
   ],
   "changes": [
-    "pages/Reports.tsx: reescrita completa — filtros multi-seleção (reaproveitando SearchableMultiSelect de components/history/HistoryFilters.tsx), filtros de Tipo/Status/Faixa de Valor/Busca, cards de resumo por categoria e por mês.",
-    "Geração de PDF trocada de window.print()+CSS de impressão (instável em mobile) para jsPDF + jspdf-autotable (novas dependências no package.json/package-lock.json).",
-    "Toda a lógica de divisão em categorias (has_splits) e de competência de fatura de cartão foi preservada e estendida para também considerar subcategoria.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo — filtros de Status e de Categoria alterando os totais corretamente, e geração de PDF sem erros no console."
+    "api/_lib/ai-financial-tools.ts (novo): 8 ferramentas de function calling reutilizadas pelo chat do site e pelo WhatsApp — get_card_statements, get_transactions, get_category_breakdown, get_account_and_net_worth_summary, get_investments_summary, get_goals_and_budgets, get_liabilities_detail, search_market_data.",
+    "api/_lib/finvision-chat.ts: removido o contexto fixo pré-carregado (que nunca incluía card_statements/card_transactions); substituído por loop de function calling com o Gemini.",
+    "api/_lib/whatsapp-webhook.ts (handleInteractiveFinancialQuery, intent QUERY): mesma troca — resto do arquivo (lançamento por mensagem, conciliação, edição) não foi tocado.",
+    "Corrigido de passagem: budgets usava o campo 'amount' (inexistente) em vez de 'monthly_limit', o que fazia o limite de orçamento aparecer como R$ NaN no prompt da IA.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; ferramentas testadas contra o banco real (conta rodrigocolicg@gmail.com) confirmando R$ 17.654,19 em faturas de agosto/26, sendo R$ 3.497,82 pago e R$ 14.156,37 a pagar — os mesmos números do banco."
   ]
 }
