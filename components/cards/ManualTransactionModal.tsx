@@ -165,11 +165,15 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                 className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
                             >
                                 <option value="">Selecione um cartão...</option>
-                                {cards.filter((c) => !c.is_archived).map((c) => (
-                                    <option key={c.id} value={c.id}>
-                                        {c.name} (**** {c.last4}){c.is_additional ? `  • Adicional${c.additional_label ? ': ' + c.additional_label : ''}` : ''}
-                                    </option>
-                                ))}
+                                {cards
+                                    .filter((c) => !c.is_archived)
+                                    .slice()
+                                    .sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0))
+                                    .map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.is_default ? '★ ' : ''}{c.name} (**** {c.last4}){c.is_additional ? `  • Adicional${c.additional_label ? ': ' + c.additional_label : ''}` : ''}
+                                        </option>
+                                    ))}
                             </select>
                         </div>
 

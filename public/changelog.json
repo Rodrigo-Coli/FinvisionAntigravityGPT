@@ -1,23 +1,20 @@
 {
-  "version": "2026.08.09.2326",
-  "title": "Visão consolidada de cartão com adicionais",
-  "date": "09/08/2026",
+  "version": "2026.08.10.0006",
+  "title": "Cartão padrão",
+  "date": "10/08/2026",
   "benefits": [
     {
-      "title": "Titular + adicionais somados numa fatura só",
-      "desc": "Cartões com adicional (ex: você e seu cônjuge) agora mostram, ao clicar no cartão no topo da carteira, o total e os lançamentos de todos juntos. Logo abaixo aparece o titular e cada adicional separadamente — clique em qualquer um pra ver só os lançamentos e o valor daquela pessoa.",
-      "type": "novidade"
-    },
-    {
-      "title": "Pagar tudo de uma vez",
-      "desc": "Na visão consolidada, 'Pagar Agora' quita a fatura do titular e de todos os adicionais numa única confirmação, debitando o total certo de uma conta só.",
+      "title": "Marque um cartão como padrão",
+      "desc": "No cadastro/edição do cartão, agora tem a opção \"Definir como cartão padrão\". Esse cartão passa a abrir pré-selecionado sempre que você entra em Cartões, e aparece como primeira opção ao lançar um gasto manual — só um cartão pode ser o padrão por vez.",
       "type": "novidade"
     }
   ],
   "changes": [
-    "components/cards/CardList.tsx: cartão do topo entra na visão consolidada (titular+adicionais); lista abaixo passa a incluir o titular junto dos adicionais para visão individual.",
-    "components/banking/CreditCardsSection.tsx: fetchStatements/fetchTransactions agregam por família de cartões quando consolidado (ignora sums_into_invoice); handlePayCombinedStatement/handleReopenCombinedStatement pagam/reabrem todas as faturas membro numa tacada, distribuindo o valor proporcionalmente ao aberto de cada uma.",
-    "Auditoria: confirmado por cálculo manual e pela função recalculate_card_statement_total que a divisão de lançamento em categorias NÃO soma duas vezes no valor da fatura (soma só o amount da linha pai, nunca tocado pela divisão).",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo com cartão titular + adicional simulados - consolidado bateu exatamente titular+adicional, individual de cada um bateu certo, pagamento consolidado quitou as duas faturas com o valor exato de cada uma, reabertura consolidada reverteu as duas."
+    "supabase/add_default_card.sql: coluna is_default em cards + índice único parcial (garante no máximo 1 padrão por usuário).",
+    "components/cards/AddCardModal.tsx: toggle \"Definir como cartão padrão\"; CreditCardsSection.tsx limpa o padrão anterior antes de marcar o novo.",
+    "components/cards/CardList.tsx: selo de estrela no cartão padrão na carteira.",
+    "components/cards/ManualTransactionModal.tsx: cartão padrão aparece primeiro (com ★) no seletor \"Cartão de Destino\".",
+    "CreditCardsSection.tsx: seleção inicial ao abrir Cartões passa a preferir o cartão padrão em vez do primeiro da lista.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo - marcar padrão, trocar de padrão (confirmado que só 1 fica marcado), reabrir a tela com o padrão pré-selecionado, e o padrão aparecendo primeiro e pré-selecionado no lançamento manual."
   ]
 }

@@ -41,7 +41,8 @@ const CreditCardsSection: React.FC = () => {
     const cached = localStorage.getItem('finvision_cached_cards');
     if (cached) {
       const parsed = JSON.parse(cached);
-      return parsed.length > 0 ? parsed[0] : null;
+      if (parsed.length === 0) return null;
+      return parsed.find((c: any) => c.is_default) || parsed[0];
     }
     return null;
   });
@@ -146,6 +147,7 @@ const CreditCardsSection: React.FC = () => {
   const [parentCardId, setParentCardId] = useState('');
   const [additionalLabel, setAdditionalLabel] = useState('');
   const [sumsIntoInvoice, setSumsIntoInvoice] = useState(true);
+  const [isDefaultCard, setIsDefaultCard] = useState(false);
   const [defaultCategory, setDefaultCategory] = useState('Pessoal');
   const [defaultSubcategory, setDefaultSubcategory] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -314,7 +316,7 @@ const CreditCardsSection: React.FC = () => {
         localStorage.setItem('finvision_cached_cards', JSON.stringify(activeCards));
 
         if (activeCards.length > 0) {
-          setSelectedCard((prev: any) => prev || activeCards[0]);
+          setSelectedCard((prev: any) => prev || activeCards.find((c: any) => c.is_default) || activeCards[0]);
         }
       } else {
         const cached = localStorage.getItem('finvision_cached_cards');
@@ -322,7 +324,7 @@ const CreditCardsSection: React.FC = () => {
           const parsed = JSON.parse(cached);
           setCards(parsed);
           if (parsed.length > 0) {
-            setSelectedCard((prev: any) => prev || parsed[0]);
+            setSelectedCard((prev: any) => prev || parsed.find((c: any) => c.is_default) || parsed[0]);
           }
         }
       }
@@ -333,7 +335,7 @@ const CreditCardsSection: React.FC = () => {
         const parsed = JSON.parse(cached);
         setCards(parsed);
         if (parsed.length > 0) {
-          setSelectedCard((prev: any) => prev || parsed[0]);
+          setSelectedCard((prev: any) => prev || parsed.find((c: any) => c.is_default) || parsed[0]);
         }
       }
     } finally {
@@ -1367,6 +1369,7 @@ const CreditCardsSection: React.FC = () => {
     setDefaultCategory(selectedCard.default_category || 'Pessoal');
     setDefaultSubcategory(selectedCard.default_subcategory || '');
     setDefaultOwner(selectedCard.default_owner || 'Pessoal');
+    setIsDefaultCard(!!selectedCard.is_default);
     setIsEditing(true);
     setShowAddModal(true);
   };
@@ -1468,8 +1471,20 @@ const CreditCardsSection: React.FC = () => {
         sums_into_invoice: isAdditional ? sumsIntoInvoice : true,
         default_category: correctedCategory,
         default_subcategory: correctedSubcategory,
-        default_owner: correctedOwner
+        default_owner: correctedOwner,
+        is_default: isDefaultCard
       };
+
+      // Só pode haver 1 cartão padrão por usuário (índice único no banco garante
+      // isso) - limpa o antigo ANTES de marcar o novo, senão os dois batem juntos
+      // e o índice rejeita o update/insert.
+      if (isDefaultCard) {
+        await supabase
+          .from('cards')
+          .update({ is_default: false })
+          .eq('user_id', user.id)
+          .eq('is_default', true);
+      }
 
       if (isEditing && selectedCard) {
         const { data, error } = await supabase
@@ -1479,12 +1494,12 @@ const CreditCardsSection: React.FC = () => {
           .select()
           .single();
         if (error) throw error;
-        setCards((prev) => prev.map(c => c.id === data.id ? data : c));
+        setCards((prev) => prev.map(c => c.id === data.id ? data : { ...c, is_default: isDefaultCard ? false : c.is_default }));
         setSelectedCard(data);
       } else {
         const { data, error } = await supabase.from('cards').insert([payload]).select().single();
         if (error) throw error;
-        setCards((prev) => [...prev, data]);
+        setCards((prev) => [...prev.map(c => ({ ...c, is_default: isDefaultCard ? false : c.is_default })), data]);
         if (!selectedCard) setSelectedCard(data);
       }
 
@@ -1513,6 +1528,7 @@ const CreditCardsSection: React.FC = () => {
     setDefaultCategory('Pessoal');
     setDefaultSubcategory('');
     setDefaultOwner('Pessoal');
+    setIsDefaultCard(false);
   };
 
   const handleRedirectToAccounts = () => {
@@ -2173,6 +2189,8 @@ const CreditCardsSection: React.FC = () => {
         setDefaultSubcategory={setDefaultSubcategory}
         defaultOwner={defaultOwner}
         setDefaultOwner={setDefaultOwner}
+        isDefaultCard={isDefaultCard}
+        setIsDefaultCard={setIsDefaultCard}
         entities={owners}
         categories={categories}
         subcategories={subcategories}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { CreditCard, CornerDownRight } from 'lucide-react';
+import { CreditCard, CornerDownRight, Star } from 'lucide-react';
 
 interface CardListProps {
     cards: any[];
@@ -108,7 +108,8 @@ export const CardList: React.FC<CardListProps> = ({
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <h4 className="font-bold text-xs truncate leading-tight">
+                                    <h4 className="font-bold text-xs truncate leading-tight flex items-center gap-1">
+                                        {card.is_default && <Star size={11} className="text-amber-400 fill-amber-400 shrink-0" />}
                                         {card.name}
                                     </h4>
                                     <div className="pt-2 border-t flex justify-between items-end border-slate-100/10">
@@ -232,7 +233,8 @@ export const CardList: React.FC<CardListProps> = ({
 
                             <div className="space-y-2">
                                 <div>
-                                    <h3 className={`font-semibold text-sm line-clamp-1 leading-tight ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+                                    <h3 className={`font-semibold text-sm line-clamp-1 leading-tight flex items-center gap-1 ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+                                        {card.is_default && <Star size={12} className="text-amber-400 fill-amber-400 shrink-0" />}
                                         {card.name}
                                     </h3>
                                     {isAdditional && card.additional_label && (

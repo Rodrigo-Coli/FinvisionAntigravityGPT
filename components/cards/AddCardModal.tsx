@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Loader2, CheckCircle2 } from 'lucide-react';
+import { X, Loader2, CheckCircle2, Star } from 'lucide-react';
 
 interface AddCardModalProps {
     show: boolean;
@@ -34,6 +34,8 @@ interface AddCardModalProps {
     setDefaultSubcategory: (v: string) => void;
     defaultOwner: string;
     setDefaultOwner: (v: string) => void;
+    isDefaultCard: boolean;
+    setIsDefaultCard: (v: boolean) => void;
     entities: string[];
     categories: { id: string; name: string }[];
     subcategories: { id: string; name: string; category_name?: string }[];
@@ -74,6 +76,8 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
     setDefaultSubcategory,
     defaultOwner,
     setDefaultOwner,
+    isDefaultCard,
+    setIsDefaultCard,
     entities,
     categories,
     subcategories,
@@ -183,7 +187,24 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
                                 </div>
                             </div>
                         </div>
-                        
+
+                        <button
+                            type="button"
+                            onClick={() => setIsDefaultCard(!isDefaultCard)}
+                            className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all text-left ${isDefaultCard ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <Star size={18} className={isDefaultCard ? 'text-amber-500 fill-amber-400' : 'text-slate-300'} />
+                                <div>
+                                    <p className={`text-xs font-black ${isDefaultCard ? 'text-amber-700' : 'text-slate-700'}`}>Definir como cartão padrão</p>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">Fica pré-selecionado ao abrir Cartões e é a primeira opção ao lançar um gasto.</p>
+                                </div>
+                            </div>
+                            <div className={`w-11 h-6 rounded-full p-1 transition-all flex items-center shrink-0 ${isDefaultCard ? 'bg-amber-500' : 'bg-slate-200'}`}>
+                                <div className={`w-4 h-4 bg-white rounded-full shadow transition-all transform ${isDefaultCard ? 'translate-x-5' : ''}`} />
+                            </div>
+                        </button>
+
                         <div className="p-6 bg-brand-50/50 rounded-3xl border border-brand-100 space-y-4">
                             <h3 className="text-[10px] font-black text-brand-600 uppercase tracking-[0.2em] ml-1">Configuração de Pagamento</h3>
                             <div className="grid grid-cols-2 gap-4">
