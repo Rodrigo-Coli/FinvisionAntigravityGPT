@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.08.10.1222",
+    "title": "IA financeira mais precisa",
+    "date": "10/08/2026",
+    "benefits": [
+      {
+        "title": "A IA agora consulta seus dados de verdade antes de responder",
+        "desc": "No chat do site e no WhatsApp, a assistente passou a buscar exatamente a informação certa para cada pergunta (fatura de cartão, extrato, categoria, patrimônio, investimentos, metas, dívidas) em vez de adivinhar com um resumo fixo e incompleto.",
+        "type": "correcao"
+      },
+      {
+        "title": "Respostas mais rápidas e mais baratas de gerar",
+        "desc": "A IA só busca a área que a pergunta realmente precisa.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "api/_lib/ai-financial-tools.ts (novo): 8 ferramentas de function calling compartilhadas pelo chat do site e WhatsApp.",
+      "finvision-chat.ts e whatsapp-webhook.ts (intent QUERY): contexto fixo trocado por loop de function calling.",
+      "Corrigido: budgets usava campo 'amount' inexistente em vez de 'monthly_limit'."
+    ]
+  },
+  {
     "version": "2026.08.10.0344",
     "title": "Relatórios completos",
     "date": "10/08/2026",
