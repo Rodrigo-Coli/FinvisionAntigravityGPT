@@ -1,20 +1,33 @@
 {
-  "version": "2026.08.10.0006",
-  "title": "Cartão padrão",
+  "version": "2026.08.10.0344",
+  "title": "Relatórios completos",
   "date": "10/08/2026",
   "benefits": [
     {
-      "title": "Marque um cartão como padrão",
-      "desc": "No cadastro/edição do cartão, agora tem a opção \"Definir como cartão padrão\". Esse cartão passa a abrir pré-selecionado sempre que você entra em Cartões, e aparece como primeira opção ao lançar um gasto manual — só um cartão pode ser o padrão por vez.",
+      "title": "Filtros que você digita e pode escolher vários de uma vez",
+      "desc": "Conta/Cartão, Categoria, Subcategoria e Pessoa/Empresa agora são caixas de busca: digite para achar e marque quantos quiser ao mesmo tempo, em vez de escolher um por um.",
       "type": "novidade"
+    },
+    {
+      "title": "Muito mais opções pra fatiar o relatório",
+      "desc": "Dá pra combinar Tipo (Receita/Despesa/Transferência), Status (Pago/Pendente), faixa de valor e busca por texto — tudo junto com os filtros acima, pra montar o relatório exatamente do jeito que você precisa.",
+      "type": "novidade"
+    },
+    {
+      "title": "Resumo por categoria e por mês na própria tela",
+      "desc": "Além dos totais de entradas/saídas, agora aparece um resumo de gastos por categoria (com barrinha de proporção) e um resumo mês a mês, direto na tela de Relatórios.",
+      "type": "novidade"
+    },
+    {
+      "title": "PDF corrigido: agora baixa de verdade",
+      "desc": "O botão \"Gerar PDF\" estava abrindo uma página em branco em alguns celulares. Agora ele monta e baixa um PDF de verdade, com resumo, gastos por categoria e o extrato completo dos lançamentos filtrados.",
+      "type": "correcao"
     }
   ],
   "changes": [
-    "supabase/add_default_card.sql: coluna is_default em cards + índice único parcial (garante no máximo 1 padrão por usuário).",
-    "components/cards/AddCardModal.tsx: toggle \"Definir como cartão padrão\"; CreditCardsSection.tsx limpa o padrão anterior antes de marcar o novo.",
-    "components/cards/CardList.tsx: selo de estrela no cartão padrão na carteira.",
-    "components/cards/ManualTransactionModal.tsx: cartão padrão aparece primeiro (com ★) no seletor \"Cartão de Destino\".",
-    "CreditCardsSection.tsx: seleção inicial ao abrir Cartões passa a preferir o cartão padrão em vez do primeiro da lista.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo - marcar padrão, trocar de padrão (confirmado que só 1 fica marcado), reabrir a tela com o padrão pré-selecionado, e o padrão aparecendo primeiro e pré-selecionado no lançamento manual."
+    "pages/Reports.tsx: reescrita completa — filtros multi-seleção (reaproveitando SearchableMultiSelect de components/history/HistoryFilters.tsx), filtros de Tipo/Status/Faixa de Valor/Busca, cards de resumo por categoria e por mês.",
+    "Geração de PDF trocada de window.print()+CSS de impressão (instável em mobile) para jsPDF + jspdf-autotable (novas dependências no package.json/package-lock.json).",
+    "Toda a lógica de divisão em categorias (has_splits) e de competência de fatura de cartão foi preservada e estendida para também considerar subcategoria.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; testado no modo demo — filtros de Status e de Categoria alterando os totais corretamente, e geração de PDF sem erros no console."
   ]
 }

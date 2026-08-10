@@ -1,5 +1,36 @@
 [
   {
+    "version": "2026.08.10.0344",
+    "title": "Relatórios completos",
+    "date": "10/08/2026",
+    "benefits": [
+      {
+        "title": "Filtros que você digita e pode escolher vários de uma vez",
+        "desc": "Conta/Cartão, Categoria, Subcategoria e Pessoa/Empresa agora são caixas de busca: digite para achar e marque quantos quiser ao mesmo tempo.",
+        "type": "novidade"
+      },
+      {
+        "title": "Muito mais opções pra fatiar o relatório",
+        "desc": "Tipo, Status, faixa de valor e busca por texto — tudo combinável junto com os filtros acima.",
+        "type": "novidade"
+      },
+      {
+        "title": "Resumo por categoria e por mês na própria tela",
+        "desc": "Resumo de gastos por categoria e um resumo mês a mês, direto na tela de Relatórios.",
+        "type": "novidade"
+      },
+      {
+        "title": "PDF corrigido: agora baixa de verdade",
+        "desc": "O botão \"Gerar PDF\" vinha em branco em alguns celulares. Agora gera um PDF real com resumo, categorias e extrato.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "pages/Reports.tsx: reescrita completa — filtros multi-seleção, Tipo/Status/Faixa de Valor/Busca, resumo por categoria e por mês.",
+      "PDF trocado de window.print() para jsPDF + jspdf-autotable."
+    ]
+  },
+  {
     "version": "2026.08.10.0006",
     "title": "Cartão padrão",
     "date": "10/08/2026",
