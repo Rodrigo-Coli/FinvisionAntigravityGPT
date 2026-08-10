@@ -19,6 +19,7 @@ import PlanUpgradeModal from '../subscription/PlanUpgradeModal';
 import { PayStatementModal } from '../cards/PayStatementModal';
 import { SeriesScopeModal, SeriesScope } from '../SeriesScopeModal';
 import { useToast } from '../../contexts/ToastContext';
+import { SplitTransactionService, SplitDraft } from '../../services/splitTransaction.service';
 
 type Account = {
   id: string;
@@ -96,6 +97,8 @@ const CreditCardsSection: React.FC = () => {
   const [txCardId, setTxCardId] = useState<string>('');
   const [txNotes, setTxNotes] = useState('');
   const [txTags, setTxTags] = useState<string[]>([]);
+  const [txIsDividing, setTxIsDividing] = useState(false);
+  const [txSplits, setTxSplits] = useState<SplitDraft[] | null>(null);
 
   // New Series States
   const [isInstallment, setIsInstallment] = useState(false);
@@ -1133,6 +1136,9 @@ const CreditCardsSection: React.FC = () => {
         const { data: txData, error } = await supabase.from('card_transactions').insert([payload]).select('id').single();
         if (error) throw error;
 
+        // Captura os pedaços antes do resetTxForm() limpar o estado do formulário.
+        const pendingSplits = txIsDividing ? txSplits : null;
+
         // OPTIMISTIC UI: Fechar modal e limpar campos IMEDIATAMENTE após o insert básico
         setShowAddTxModal(false);
         resetTxForm();
@@ -1145,6 +1151,15 @@ const CreditCardsSection: React.FC = () => {
               try {
                 await FinanceService.uploadAttachment(file, txData.id, true);
               } catch (e) { console.error("Erro background attachment:", e); }
+            }
+          }
+          if (txData?.id && pendingSplits && pendingSplits.length > 0) {
+            try {
+              await SplitTransactionService.saveSplits('card_transaction', txData.id, pendingSplits);
+              loadCardContext(txCardId);
+            } catch (e) {
+              console.error("Erro background divisão:", e);
+              toast('Lançamento criado, mas não foi possível salvar a divisão. Abra o lançamento e divida de novo.', 'error');
             }
           }
           if (targetStmtId) {
@@ -1256,6 +1271,8 @@ const CreditCardsSection: React.FC = () => {
     setTxFiles([]);
     setTxNotes('');
     setTxTags([]);
+    setTxIsDividing(false);
+    setTxSplits(null);
   };
 
   const handleEditClick = () => {
@@ -1994,6 +2011,10 @@ const CreditCardsSection: React.FC = () => {
         setTxNotes={setTxNotes}
         txTags={txTags}
         setTxTags={setTxTags}
+        txIsDividing={txIsDividing}
+        setTxIsDividing={setTxIsDividing}
+        txSplits={txSplits}
+        setTxSplits={setTxSplits}
         onCreateCategory={handleCreateCategory}
       />
 

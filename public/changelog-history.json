@@ -1,5 +1,21 @@
 [
   {
+    "version": "2026.08.09.2139",
+    "title": "Dividir em categorias já no cadastro do lançamento",
+    "date": "09/08/2026",
+    "benefits": [
+      {
+        "title": "Dividir direto ao criar o lançamento",
+        "desc": "Dá pra dividir um lançamento em várias categorias já ao cadastrar, tanto em Novo Lançamento (conta) quanto em Novo Gasto (cartão).",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "SplitFieldsInline.tsx (novo): editor de pedaços embutido nos formulários de criação.",
+      "AddTransactionModal.tsx e ManualTransactionModal.tsx: toggle 'Dividir em várias categorias'; History.tsx e CreditCardsSection.tsx salvam os pedaços após criar."
+    ]
+  },
+  {
     "version": "2026.08.09.2037",
     "title": "Filtro de categoria já enxerga lançamentos divididos",
     "date": "09/08/2026",

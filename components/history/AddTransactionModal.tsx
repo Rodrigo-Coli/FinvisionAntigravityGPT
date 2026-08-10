@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, CheckCircle2, AlertCircle, Plus, Camera, Check } from 'lucide-react';
+import { X, Loader2, CheckCircle2, AlertCircle, Plus, Camera, Check, SplitSquareHorizontal } from 'lucide-react';
 import { BankAccount } from '../../types';
 import { supabase } from '../../lib/supabase/client';
 import { useSubscription } from '../../contexts/SubscriptionContext';
+import { SplitFieldsInline } from './SplitFieldsInline';
+import { SplitDraft } from '../../services/splitTransaction.service';
 
 interface AddTransactionModalProps {
     show: boolean;
@@ -73,10 +75,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const [isSavingCategory, setIsSavingCategory] = useState(false);
     const [recentTxs, setRecentTxs] = useState<any[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [isDividing, setIsDividing] = useState(false);
+    const [splitDrafts, setSplitDrafts] = useState<SplitDraft[] | null>(null);
 
     const formAmount = form?.amount || '';
     const parsedAmount = Number(formAmount.replace(/\./g, '').replace(',', '.'));
     const isAmountInvalid = !formAmount.trim() || isNaN(parsedAmount) || parsedAmount === 0;
+    const canDivide = !form.isInstallment && !form.isRecurring;
+    const isSplitInvalid = isDividing && !splitDrafts;
 
     // Buscar as transações recentes quando o modal for aberto
     useEffect(() => {
@@ -428,6 +434,30 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             </datalist>
                         </div>
 
+                        {canDivide && (
+                            <div className="flex items-center justify-between px-1">
+                                <div className="flex items-center gap-2">
+                                    <SplitSquareHorizontal size={14} className="text-violet-500" />
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Dividir em várias categorias</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsDividing(v => !v); setIsCreatingCategory(false); }}
+                                    className={`w-11 h-6 rounded-full p-1 transition-all flex items-center ${isDividing ? 'bg-violet-600' : 'bg-slate-200'}`}
+                                >
+                                    <div className={`w-4 h-4 bg-white rounded-full shadow transition-all transform ${isDividing ? 'translate-x-5' : ''}`} />
+                                </button>
+                            </div>
+                        )}
+
+                        {isDividing ? (
+                            <SplitFieldsInline
+                                totalAbs={isNaN(parsedAmount) ? 0 : Math.abs(parsedAmount)}
+                                categoryObjects={categoryObjects}
+                                subcategories={subcategories}
+                                onChange={setSplitDrafts}
+                            />
+                        ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className={`${isCreatingCategory ? 'col-span-1 sm:col-span-2' : ''} space-y-2 transition-all duration-300`}>
                                 <div className="flex items-center justify-between">
@@ -513,6 +543,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 </div>
                             )}
                         </div>
+                        )}
 
                         {/* Observações e Tags */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -564,7 +595,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 <button
                                     onClick={() => {
                                         setAddField('isInstallment', !form.isInstallment);
-                                        if (!form.isInstallment) setAddField('isRecurring', false);
+                                        if (!form.isInstallment) { setAddField('isRecurring', false); setIsDividing(false); }
                                     }}
                                     className={`h-12 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${form.isInstallment ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-slate-400 border-slate-200'}`}
                                 >
@@ -573,7 +604,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 <button
                                     onClick={() => {
                                         setAddField('isRecurring', !form.isRecurring);
-                                        if (!form.isRecurring) setAddField('isInstallment', false);
+                                        if (!form.isRecurring) { setAddField('isInstallment', false); setIsDividing(false); }
                                     }}
                                     className={`h-12 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${form.isRecurring ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-slate-400 border-slate-200'}`}
                                 >
@@ -720,8 +751,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             </button>
                             <button
                                 type="button"
-                                onClick={() => !isAmountInvalid && onSubmit(form)}
-                                disabled={isSubmitting || isAmountInvalid}
+                                onClick={() => !isAmountInvalid && !isSplitInvalid && onSubmit({ ...form, splits: isDividing ? splitDrafts : null })}
+                                disabled={isSubmitting || isAmountInvalid || isSplitInvalid}
                                 className="w-full h-14 bg-brand-600 text-white font-black rounded-2xl hover:bg-brand-700 shadow-xl shadow-brand-500/30 transition-all active:scale-95 uppercase text-xs tracking-widest flex items-center justify-center gap-2 disabled:opacity-50 disabled:bg-slate-300 disabled:shadow-none"
                             >
                                 {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}

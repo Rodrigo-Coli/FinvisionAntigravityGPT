@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, Camera, Loader2, Plus } from 'lucide-react';
+import { X, CheckCircle2, Camera, Loader2, Plus, SplitSquareHorizontal } from 'lucide-react';
+import { SplitFieldsInline } from '../history/SplitFieldsInline';
+import { SplitDraft } from '../../services/splitTransaction.service';
 
 interface ManualTransactionModalProps {
     show: boolean;
@@ -42,6 +44,10 @@ interface ManualTransactionModalProps {
     setTxNotes: (v: string) => void;
     txTags: string[];
     setTxTags: (v: string[]) => void;
+    txIsDividing: boolean;
+    setTxIsDividing: (v: boolean) => void;
+    txSplits: SplitDraft[] | null;
+    setTxSplits: (v: SplitDraft[] | null) => void;
 }
 
 export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
@@ -82,12 +88,18 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     txNotes,
     setTxNotes,
     txTags,
-    setTxTags
+    setTxTags,
+    txIsDividing,
+    setTxIsDividing,
+    txSplits,
+    setTxSplits
 }) => {
     const [isCreatingCategory, setIsCreatingCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [isSavingCategory, setIsSavingCategory] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const canDivide = !isInstallment && !isRecurring;
+    const txAmountAbs = Math.abs(typeof txAmount === 'number' ? txAmount : (parseFloat(String(txAmount || '0').replace(',', '.')) || 0));
 
     const descQuery = (txDescription || '').toLowerCase().trim();
     const suggestions = descQuery.length >= 2
@@ -242,14 +254,14 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => { setIsInstallment?.(true); setIsRecurring?.(false); }}
+                                    onClick={() => { setIsInstallment?.(true); setIsRecurring?.(false); setTxIsDividing(false); }}
                                     className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${isInstallment ? 'bg-white text-brand-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}
                                 >
                                     Parcelado
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => { setIsInstallment?.(false); setIsRecurring?.(true); }}
+                                    onClick={() => { setIsInstallment?.(false); setIsRecurring?.(true); setTxIsDividing(false); }}
                                     className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${isRecurring ? 'bg-white text-brand-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}
                                 >
                                     Recorrente
@@ -307,6 +319,30 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                             )}
                         </div>
 
+                        {canDivide && (
+                            <div className="flex items-center justify-between px-1">
+                                <div className="flex items-center gap-2">
+                                    <SplitSquareHorizontal size={14} className="text-violet-500" />
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Dividir em várias categorias</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => { setTxIsDividing(!txIsDividing); setIsCreatingCategory(false); }}
+                                    className={`w-11 h-6 rounded-full p-1 transition-all flex items-center ${txIsDividing ? 'bg-violet-600' : 'bg-slate-200'}`}
+                                >
+                                    <div className={`w-4 h-4 bg-white rounded-full shadow transition-all transform ${txIsDividing ? 'translate-x-5' : ''}`} />
+                                </button>
+                            </div>
+                        )}
+
+                        {txIsDividing ? (
+                            <SplitFieldsInline
+                                totalAbs={txAmountAbs}
+                                categoryObjects={categories.map(c => ({ name: c.name }))}
+                                subcategories={subcategories}
+                                onChange={setTxSplits}
+                            />
+                        ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className={`${isCreatingCategory ? 'col-span-1 sm:col-span-2' : ''} space-y-2 transition-all duration-300`}>
                                 <div className="flex items-center justify-between animate-in fade-in duration-300">
@@ -396,6 +432,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                 </div>
                             )}
                         </div>
+                        )}
 
                         {/* Observações e Tags */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -507,7 +544,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                             <button
                                 type="button"
                                 onClick={onSubmit}
-                                disabled={isSaving}
+                                disabled={isSaving || (txIsDividing && !txSplits)}
                                 className="w-full h-14 bg-brand-600 text-white font-black rounded-2xl hover:bg-brand-700 shadow-xl shadow-brand-500/30 transition-all active:scale-95 uppercase text-xs tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
                             >
                                 {isSaving ? (

@@ -2462,6 +2462,16 @@ const HistoryPage: React.FC = () => {
         }
       }
 
+      // Divisão em categorias, quando o usuário preencheu os pedaços no formulário
+      if (createdTxId && f.splits && f.splits.length > 0) {
+        try {
+          await SplitTransactionService.saveSplits('transaction', createdTxId, f.splits);
+        } catch (splitErr: any) {
+          console.error('Erro ao salvar divisão do lançamento:', splitErr);
+          toast('Lançamento criado, mas não foi possível salvar a divisão. Abra o lançamento e divida de novo.', 'error');
+        }
+      }
+
       setAddModal({ open: false });
       
       // Optimistic UI for simple transactions
@@ -2481,6 +2491,7 @@ const HistoryPage: React.FC = () => {
           tags: f.tags || [],
           isPaid: false,
           paidAmount: 0,
+          hasSplits: !!(f.splits && f.splits.length > 0),
           metadata: { is_transfer: isTransfer },
           attachments: []
         };
