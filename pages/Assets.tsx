@@ -863,9 +863,15 @@ const Assets: React.FC = () => {
       }));
       setTransactions(mappedTxs);
 
-      // Proactively run automatic transaction creation check
+      // Proactively run automatic transaction creation check. Se algo for criado (ex.: o
+      // lançamento "Aquisição Ativo" de um veículo recém-cadastrado), recarrega os dados para
+      // que apareça no Extrato imediatamente — sem isso, o estado local `transactions` ficava
+      // desatualizado até o usuário sair da página e voltar. Termina sozinho: na segunda
+      // passagem não há mais nada para criar, então não há novo recarregamento.
       setTimeout(() => {
-        runAutoTransactionSync(userId, mappedPhys, mappedLiabs, mappedTxs);
+        runAutoTransactionSync(userId, mappedPhys, mappedLiabs, mappedTxs).then((createdAny) => {
+          if (createdAny) fetchData();
+        });
       }, 100);
 
       // Atualizar cache local
@@ -1639,11 +1645,16 @@ const Assets: React.FC = () => {
     return newCat?.id || null;
   };
 
-  const runAutoTransactionSync = async (userId: string, assets: any[], liabs: any[], txs: any[]) => {
-    if (!supabase) return;
+  // Retorna true se algum lançamento automático foi criado nesta execução, para que o
+  // chamador saiba que precisa recarregar os dados (o estado local `transactions` não é
+  // atualizado aqui — sem isso, o lançamento "Aquisição Ativo" recém-criado só aparecia no
+  // Extrato do ativo depois de sair da página e voltar).
+  const runAutoTransactionSync = async (userId: string, assets: any[], liabs: any[], txs: any[]): Promise<boolean> => {
+    if (!supabase) return false;
     // Impede execuções concorrentes (evita duplicação de lançamentos automáticos).
-    if (autoSyncInFlight) return;
+    if (autoSyncInFlight) return false;
     autoSyncInFlight = true;
+    let createdAny = false;
     try {
     // Busca as transações relevantes (incluindo deletadas) para auditar corretamente e evitar duplicar/recriar deletadas.
     // Filtra por metadata->>type em vez de trazer TODAS as transações do usuário: sem esse filtro, contas com
@@ -1659,7 +1670,7 @@ const Assets: React.FC = () => {
 
     if (linkedErr) {
       console.error('Assets: Erro ao buscar transações vinculadas para sincronização', linkedErr);
-      return;
+      return false;
     }
     const linkedTxs = allLinkedTxs || [];
 
@@ -1709,6 +1720,7 @@ const Assets: React.FC = () => {
             isCapitalized: true
           }
         }]);
+        createdAny = true;
       }
     }
 
@@ -1758,6 +1770,7 @@ const Assets: React.FC = () => {
             linked_asset_id: liab.linkedAssetId || undefined
           }
         }]);
+        createdAny = true;
       }
     }
 
@@ -1795,8 +1808,9 @@ const Assets: React.FC = () => {
             isCapitalized: true
           }
         }]);
+        createdAny = true;
       }
-      
+
       // Gera as parcelas a receber (só no modelo Parcelado Fixo).
       // Conta Corrente (OPEN_BALANCE) NÃO gera parcelas: o saldo devedor é dinâmico —
       // juros pro-rata (simples ou composto) acumulam sobre o saldo e cada baixa
@@ -1872,9 +1886,11 @@ const Assets: React.FC = () => {
             });
           }
           await supabase.from('transactions').insert(futureTxs);
+          createdAny = true;
         }
       }
     }
+    return createdAny;
     } finally {
       autoSyncInFlight = false;
     }
