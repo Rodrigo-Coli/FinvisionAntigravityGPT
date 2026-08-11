@@ -38,7 +38,7 @@ export const AIReconcileService = {
     return Array.isArray(data) ? (data as ReconcileItem[]) : [];
   },
 
-  async processReceiptItems(files: File | File[]): Promise<any> {
+  async processReceiptItems(files: File | File[], userId?: string): Promise<any> {
     const fileArray = Array.isArray(files) ? files : [files];
     const encodedFiles = await Promise.all(fileArray.map(async (file) => ({
       base64: await this.fileToBase64(file),
@@ -52,7 +52,7 @@ export const AIReconcileService = {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ files: encodedFiles }),
+      body: JSON.stringify({ files: encodedFiles, userId }),
     });
 
     if (!res.ok) {

@@ -4,6 +4,7 @@ import { recordAiUsage } from './ai-usage.js';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { StatementTemplateHelper } from './statement-template-helper.js';
+import { checkAiActionAllowed } from './ai-usage-limits.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -44,6 +45,11 @@ export async function handleBankReconcile(req: any, res: any) {
     // 2. Fallback para Gemini se não houver template ou se falhar/estiver vazio
     if (transactions.length === 0) {
       console.log('[Bank Reconcile] Bypassing/Fallback to Gemini para extração e aprendizado de modelo...');
+      const limitCheck = await checkAiActionAllowed(supabase, imp.user_id, 'bank_reconcile');
+      if (!limitCheck.allowed) {
+        await supabase.from('imports').update({ status: 'error', notes: limitCheck.message }).eq('id', import_id);
+        return res.status(429).json({ ok: false, message: limitCheck.message, limitReached: true });
+      }
       const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
       if (!geminiKey) throw new Error('Chave do Gemini (GEMINI_API_KEY) não encontrada.');
       const ai = new GoogleGenAI({ apiKey: geminiKey });

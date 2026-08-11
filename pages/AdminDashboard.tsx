@@ -19,6 +19,10 @@ import { isSuperadmin } from '../lib/authUtils';
 import { Profile } from '../types';
 
 // ─── Catálogo de features dos planos ────────────────────────────────────────
+// As 8 chaves com `aiUsageCategory` são as que realmente geram custo de IA e
+// entram no bloqueio automático por limite mensal (ver api/_lib/ai-usage-limits.ts —
+// AI_ACTION_CATEGORIES é o mapa oficial de qual chamada real de IA cai em qual
+// categoria; os dois lados TÊM que continuar batendo).
 const FEATURE_CATALOG = [
   { key: 'dashboard',              label: 'Dashboard Financeiro',      group: 'Core' },
   { key: 'accounts',               label: 'Contas Bancárias',          group: 'Core' },
@@ -26,12 +30,19 @@ const FEATURE_CATALOG = [
   { key: 'manual_transactions',    label: 'Transações Manuais',        group: 'Core' },
   { key: 'categories',             label: 'Categorias',                group: 'Core' },
   { key: 'reports_basic',          label: 'Relatórios Básicos',        group: 'Core' },
-  { key: 'reconcile',              label: 'Conciliação Bancária',      group: 'Importação' },
+  { key: 'reconcile',              label: 'Conciliação Bancária',      group: 'Importação',
+    description: 'Conciliar extrato de banco OU fatura de cartão usando IA para casar lançamentos automaticamente. Limite conta as duas juntas (banco + cartão), por mês.' },
   { key: 'ofx_import',             label: 'Importação OFX/CSV',        group: 'Importação' },
-  { key: 'ai_scanner',             label: 'Scanner de Cupom IA',       group: 'IA Labs' },
+  { key: 'import_docs',            label: 'Importação de Extrato/Fatura (IA)', group: 'Importação',
+    description: 'Quando a IA precisa LER um PDF/imagem de extrato ou fatura pra extrair os lançamentos (upload de documento, não CSV/OFX estruturado). Limite por mês.' },
+  { key: 'ai_scanner',             label: 'Scanner de Cupom/Comprovante IA', group: 'IA Labs',
+    description: 'Foto ou upload de comprovante/nota fiscal, tanto pelo site quanto por foto mandada no WhatsApp — a IA lê e extrai os itens. Limite conta as duas origens juntas, por mês.' },
   { key: 'ai_comparator',          label: 'Comparador de Preços',      group: 'IA Labs' },
-  { key: 'ai_diagnosis',           label: 'Diagnóstico Patrimonial',   group: 'IA Labs' },
+  { key: 'ai_diagnosis',           label: 'Diagnóstico Patrimonial',   group: 'IA Labs',
+    description: 'Análise completa de patrimônio gerada pela IA (aba Diagnóstico). Cada geração é uma chamada relativamente cara — poucas por mês já cobre o uso normal.' },
   { key: 'ai_shopping_list',       label: 'Lista de Compras IA',       group: 'IA Labs' },
+  { key: 'ai_categorize',          label: 'Categorização Automática (IA)', group: 'IA Labs',
+    description: 'Quando a IA sugere/preenche a categoria de um lançamento sozinha, sem o usuário escolher na mão. Limite por mês.' },
   { key: 'goals',                  label: 'Metas Financeiras',         group: 'Planejamento' },
   { key: 'budgets',                label: 'Orçamentos',                group: 'Planejamento' },
   { key: 'physical_assets',        label: 'Bens Físicos',              group: 'Planejamento' },
@@ -41,10 +52,15 @@ const FEATURE_CATALOG = [
   { key: 'whatsapp_notifications', label: 'WhatsApp Notifications',    group: 'Notificações' },
   { key: 'multi_user',             label: 'Multi-usuário (Família)',   group: 'Avançado' },
   { key: 'priority_support',       label: 'Suporte Prioritário',       group: 'Avançado' },
-  { key: 'ai_chat',                label: 'Chat IA Financeiro',        group: 'IA Labs' },
+  { key: 'ai_chat',                label: 'Chat IA Financeiro (site)', group: 'IA Labs',
+    description: 'Mensagens trocadas com a Zyvion AI dentro do site (Início). Cada pergunta do usuário = 1 uso, mesmo que a IA precise consultar várias áreas por baixo (fatura, extrato, etc.) pra responder. Limite por mês.' },
+  { key: 'whatsapp_messages',      label: 'Mensagens/Consultas no WhatsApp (IA)', group: 'IA Labs',
+    description: 'Cada mensagem de TEXTO que o usuário manda no WhatsApp (pergunta, lançamento, pagamento, conversa) — conta como 1 uso só, mesmo que por trás disso a IA rode várias etapas internas (classificar a intenção, calcular data, etc.). Limite por mês.' },
+  { key: 'whatsapp_voice',         label: 'Mensagens de Voz no WhatsApp (IA)', group: 'IA Labs',
+    description: 'Cada áudio que o usuário manda no WhatsApp, que a IA transcreve antes de processar. Transcrição de áudio custa mais que texto — vale um limite separado. Por mês.' },
 ];
 
-const LIMIT_FEATURES = ['accounts', 'cards', 'multi_user', 'ai_scanner', 'ai_shopping_list'];
+const LIMIT_FEATURES = ['accounts', 'cards', 'multi_user', 'ai_scanner', 'ai_shopping_list', 'ai_chat', 'ai_diagnosis', 'reconcile', 'import_docs', 'ai_categorize', 'whatsapp_messages', 'whatsapp_voice'];
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 type Tab = 'overview' | 'plans' | 'users' | 'campaigns' | 'coupons' | 'prompts' | 'audit' | 'referrals' | 'landing';
@@ -948,9 +964,15 @@ export default function AdminDashboard({ user }: { user?: Profile | null }) {
                             const isLimit = LIMIT_FEATURES.includes(feat.key);
                             return (
                               <div key={feat.key} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isOn ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}>
-                                <div>
+                                <div className="pr-2">
                                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{feat.group}</p>
-                                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{feat.label}</p>
+                                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                    {feat.label}
+                                    {(feat as any).description && <span title={(feat as any).description}><Info size={11} className="text-slate-300 shrink-0" /></span>}
+                                  </p>
+                                  {(feat as any).description && (
+                                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium leading-snug mt-0.5">{(feat as any).description}</p>
+                                  )}
                                 </div>
                                 {isLimit ? (
                                   <div className="flex flex-col items-center gap-0.5">

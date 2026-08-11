@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
+import { checkAiActionAllowed } from './ai-usage-limits.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -13,6 +14,11 @@ export async function handleWealthAnalysis(req: any, res: any) {
     if (!userId) return res.status(400).json({ error: 'userId é obrigatório' });
 
     try {
+        const limitCheck = await checkAiActionAllowed(supabase, userId, 'wealth_analysis');
+        if (!limitCheck.allowed) {
+            return res.status(429).json({ error: limitCheck.message, limitReached: true });
+        }
+
         const [accountsRes, assetsRes, liabilitiesRes, txRes] = await Promise.all([
             supabase.from('accounts').select('institution, type, current_balance, currency').eq('user_id', userId),
             supabase.from('physical_assets').select('id, name, category, estimated_value').eq('user_id', userId),

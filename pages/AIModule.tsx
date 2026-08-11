@@ -228,7 +228,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     setIsProcessing(true);
     setReceipt(null);
     try {
-      const data = await AIReconcileService.processReceiptItems(Array.from(files));
+      const data = await AIReconcileService.processReceiptItems(Array.from(files), user?.id);
       if (data.items) data.items = data.items.map((it: any) => ({ ...it, selected: true }));
       setReceipt(data);
       setPartialValue(data.total);

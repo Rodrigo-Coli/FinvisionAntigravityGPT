@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
+import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { Buffer } from 'node:buffer';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
@@ -12,7 +13,7 @@ export async function handleReceiptItems(req: any, res: any) {
     if (req.method === 'OPTIONS') return res.status(200).send('ok');
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    const { base64, mimeType, files } = req.body;
+    const { base64, mimeType, files, userId } = req.body;
     let inputFiles = [];
 
     if (files && Array.isArray(files)) {
@@ -24,6 +25,11 @@ export async function handleReceiptItems(req: any, res: any) {
     if (inputFiles.length === 0) return res.status(400).json({ error: 'Arquivo(s) obrigatório(s)' });
 
     try {
+        const limitCheck = await checkAiActionAllowed(supabase, userId, 'receipt_items');
+        if (!limitCheck.allowed) {
+            return res.status(429).json({ error: limitCheck.message, limitReached: true });
+        }
+
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
         if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
 
@@ -72,7 +78,7 @@ export async function handleReceiptItems(req: any, res: any) {
                 responseMimeType: "application/json"
             }
         });
-        await recordAiUsage(supabase, 'receipt_items', null, response, 'gemini-2.5-flash');
+        await recordAiUsage(supabase, 'receipt_items', userId || null, response, 'gemini-2.5-flash');
 
         if (!response) {
             throw new Error('A IA não retornou nenhuma resposta.');

@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
 import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
+import { checkAiActionAllowed } from './ai-usage-limits.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -37,6 +38,11 @@ export async function handleFinvisionChat(req: any, res: any) {
                     `• **Subcategorias:** Vá no menu lateral **"Ajustes" > "Categorias"**. Ao clicar em uma categoria pai, você pode criar subdivisões.\n` +
                     `• **Patrimônio:** Use a aba "Patrimônio" para registrar casas, carros e quitar passivos de longo prazo.`
             });
+        }
+
+        const limitCheck = await checkAiActionAllowed(supabase, userId, 'chat');
+        if (!limitCheck.allowed) {
+            return res.status(200).json({ reply: `🚦 ${limitCheck.message}`, limitReached: true });
         }
 
         const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
