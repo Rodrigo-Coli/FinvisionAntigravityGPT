@@ -33,8 +33,6 @@ const FEATURE_CATALOG = [
   { key: 'reconcile',              label: 'Conciliação Bancária',      group: 'Importação',
     description: 'Conciliar extrato de banco OU fatura de cartão usando IA para casar lançamentos automaticamente. Limite conta as duas juntas (banco + cartão), por mês.' },
   { key: 'ofx_import',             label: 'Importação OFX/CSV',        group: 'Importação' },
-  { key: 'import_docs',            label: 'Importação de Extrato/Fatura (IA)', group: 'Importação',
-    description: 'Quando a IA precisa LER um PDF/imagem de extrato ou fatura pra extrair os lançamentos (upload de documento, não CSV/OFX estruturado). Limite por mês.' },
   { key: 'ai_scanner',             label: 'Scanner de Cupom/Comprovante IA', group: 'IA Labs',
     description: 'Foto ou upload de comprovante/nota fiscal, tanto pelo site quanto por foto mandada no WhatsApp — a IA lê e extrai os itens. Limite conta as duas origens juntas, por mês.' },
   { key: 'ai_comparator',          label: 'Comparador de Preços',      group: 'IA Labs' },
@@ -60,7 +58,7 @@ const FEATURE_CATALOG = [
     description: 'Cada áudio que o usuário manda no WhatsApp, que a IA transcreve antes de processar. Transcrição de áudio custa mais que texto — vale um limite separado. Por mês.' },
 ];
 
-const LIMIT_FEATURES = ['accounts', 'cards', 'multi_user', 'ai_scanner', 'ai_shopping_list', 'ai_chat', 'ai_diagnosis', 'reconcile', 'import_docs', 'ai_categorize', 'whatsapp_messages', 'whatsapp_voice'];
+const LIMIT_FEATURES = ['accounts', 'cards', 'multi_user', 'ai_scanner', 'ai_shopping_list', 'ai_chat', 'ai_diagnosis', 'reconcile', 'ai_categorize', 'whatsapp_messages', 'whatsapp_voice'];
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 type Tab = 'overview' | 'plans' | 'users' | 'campaigns' | 'coupons' | 'prompts' | 'audit' | 'referrals' | 'landing';

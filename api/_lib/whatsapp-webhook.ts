@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
 import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
+import { checkAiActionAllowed } from './ai-usage-limits.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -1459,6 +1460,13 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         cleanMimeType = 'audio/ogg';
       }
 
+      const voiceLimitCheck = await checkAiActionAllowed(supabase, userId, 'whatsapp_voice_transcription');
+      if (!voiceLimitCheck.allowed) {
+        await sendWhatsApp(phone, `🚦 ${voiceLimitCheck.message}`);
+        await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
+        return res.status(200).json({ status: 'limit_reached' });
+      }
+
       const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
       if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
       const ai = new GoogleGenAI({ apiKey: geminiKey });
@@ -2393,6 +2401,13 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         return res.status(200).json({ status: 'media_error' });
       }
 
+      const ocrLimitCheck = await checkAiActionAllowed(supabase, userId, 'whatsapp_receipt_ocr');
+      if (!ocrLimitCheck.allowed) {
+        await sendWhatsApp(phone, `🚦 ${ocrLimitCheck.message}`);
+        await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
+        return res.status(200).json({ status: 'limit_reached' });
+      }
+
       const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
       if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
       const ai = new GoogleGenAI({ apiKey: geminiKey });
@@ -2590,6 +2605,13 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           await supabase.from('whatsapp_drafts').delete().eq('id', activeDraft.id);
           activeDraft = null;
         }
+      }
+
+      const msgLimitCheck = await checkAiActionAllowed(supabase, userId, 'whatsapp_classifier');
+      if (!msgLimitCheck.allowed) {
+        await sendWhatsApp(phone, `🚦 ${msgLimitCheck.message}`);
+        await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
+        return res.status(200).json({ status: 'limit_reached' });
       }
 
       const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;

@@ -94,10 +94,11 @@ const Reconcile: React.FC = () => {
         return;
       }
 
+      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch('/api/categorize-transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descriptions: uniqueDescriptions, categories: subcategories })
+        body: JSON.stringify({ descriptions: uniqueDescriptions, categories: subcategories, userId: session?.user?.id })
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.message);

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
+import { checkAiActionAllowed } from './ai-usage-limits.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -10,12 +11,17 @@ export async function handleCategorizeTransactions(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method not allowed' });
 
   try {
-    const { descriptions, categories } = req.body;
+    const { descriptions, categories, userId } = req.body;
     if (!descriptions || !Array.isArray(descriptions) || descriptions.length === 0) {
       return res.status(400).json({ ok: false, message: 'Need an array of transaction descriptions' });
     }
     if (!categories || !Array.isArray(categories)) {
       return res.status(400).json({ ok: false, message: 'Need an array of available categories' });
+    }
+
+    const limitCheck = await checkAiActionAllowed(supabase, userId, 'categorize');
+    if (!limitCheck.allowed) {
+      return res.status(429).json({ ok: false, message: limitCheck.message, limitReached: true });
     }
 
     const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
@@ -56,7 +62,7 @@ Importante:
         tools: [{ googleSearch: {} }]
       }
     });
-    await recordAiUsage(supabase, 'categorize', null, response, 'gemini-2.5-flash');
+    await recordAiUsage(supabase, 'categorize', userId || null, response, 'gemini-2.5-flash');
 
     let text = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || "[]";
     text = text.trim();

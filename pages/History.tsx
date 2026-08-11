@@ -1939,7 +1939,7 @@ const HistoryPage: React.FC = () => {
       const res = await fetch('/api/categorize-transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descriptions: uniqueDescriptions, categories: availableCategories })
+        body: JSON.stringify({ descriptions: uniqueDescriptions, categories: availableCategories, userId })
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.message);

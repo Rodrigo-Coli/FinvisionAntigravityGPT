@@ -29,10 +29,11 @@ export const AI_ACTION_CATEGORIES: Record<string, string> = {
   whatsapp_receipt_ocr: 'ai_scanner',
   bank_reconcile: 'reconcile',
   card_reconcile: 'reconcile',
-  parse_statement: 'import_docs',
-  parse_card_statement: 'import_docs',
-  process_import: 'import_docs',
-  import_worker: 'import_docs',
+  // parse_statement, parse_card_statement, process_import e import_worker NÃO
+  // entram aqui: são rotas antigas que ainda existem no código mas nenhum
+  // caminho do app hoje as chama (o fluxo real de importação de extrato/fatura
+  // é o de reconcile acima). Se algum dia voltarem a ser usadas, mapear pra
+  // uma categoria antes de ligar a chamada de novo.
   categorize: 'ai_categorize',
   wealth_analysis: 'ai_diagnosis',
 };
