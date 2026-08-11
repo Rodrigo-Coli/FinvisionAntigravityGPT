@@ -1645,11 +1645,17 @@ const Assets: React.FC = () => {
     if (autoSyncInFlight) return;
     autoSyncInFlight = true;
     try {
-    // Busca todas as transações (incluindo deletadas) para auditar corretamente e evitar duplicar/recriar deletadas
+    // Busca as transações relevantes (incluindo deletadas) para auditar corretamente e evitar duplicar/recriar deletadas.
+    // Filtra por metadata->>type em vez de trazer TODAS as transações do usuário: sem esse filtro, contas com
+    // milhares de lançamentos estouravam o limite padrão de 1000 linhas do PostgREST/Supabase, a query retornava
+    // só uma fatia parcial, o lançamento de "Aquisição Ativo" já existente ficava de fora dessa fatia, e o código
+    // concluía (erroneamente) que o ativo ainda não tinha lançamento — recriando-o a cada carregamento da página
+    // (loop de duplicação, ex.: dezenas de "Aquisição Ativo - Up" idênticos).
     const { data: allLinkedTxs, error: linkedErr } = await supabase
       .from('transactions')
       .select('id, metadata, liability_id, is_deleted')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .in('metadata->>type', ['asset_purchase', 'liability_inflow', 'loan_disbursement', 'loan_installment_provision']);
 
     if (linkedErr) {
       console.error('Assets: Erro ao buscar transações vinculadas para sincronização', linkedErr);
