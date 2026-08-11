@@ -1695,6 +1695,13 @@ const Assets: React.FC = () => {
         if (asset.category === 'REAL_ESTATE') {
           catName = 'Habitação';
           catColor = 'bg-emerald-50 text-emerald-600';
+        } else if (asset.metadata?.purpose === 'investimento') {
+          // Bem comprado com finalidade de investimento/revenda (ex.: veículo FLIP) não é
+          // gasto de uso pessoal — é capital alocado para revenda. Usa a categoria protegida
+          // "Investimento" em vez de Transporte/Outros, senão o lançamento fica sem sentido
+          // (ex.: um carro marcado como investimento aparecendo como despesa de "Transporte").
+          catName = 'Investimento';
+          catColor = 'bg-brand-50 text-brand-600';
         } else if (asset.category === 'VEHICLE') {
           catName = 'Transporte';
           catColor = 'bg-blue-50 text-blue-600';
