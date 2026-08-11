@@ -47,7 +47,7 @@ export async function handleCardReconcile(req: any, res: any) {
       console.log('[Card Reconcile] Bypassing/Fallback to Gemini para extração e aprendizado de modelo...');
       const limitCheck = await checkAiActionAllowed(supabase, imp.user_id, 'card_reconcile');
       if (!limitCheck.allowed) {
-        await supabase.from('imports').update({ status: 'error', notes: limitCheck.message }).eq('id', import_id);
+        await supabase.from('imports').update({ status: 'error', notes: `LIMIT_REACHED: ${limitCheck.message}` }).eq('id', import_id);
         return res.status(429).json({ error: limitCheck.message, limitReached: true });
       }
       const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;

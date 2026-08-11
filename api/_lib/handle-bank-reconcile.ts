@@ -47,7 +47,7 @@ export async function handleBankReconcile(req: any, res: any) {
       console.log('[Bank Reconcile] Bypassing/Fallback to Gemini para extração e aprendizado de modelo...');
       const limitCheck = await checkAiActionAllowed(supabase, imp.user_id, 'bank_reconcile');
       if (!limitCheck.allowed) {
-        await supabase.from('imports').update({ status: 'error', notes: limitCheck.message }).eq('id', import_id);
+        await supabase.from('imports').update({ status: 'error', notes: `LIMIT_REACHED: ${limitCheck.message}` }).eq('id', import_id);
         return res.status(429).json({ ok: false, message: limitCheck.message, limitReached: true });
       }
       const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;

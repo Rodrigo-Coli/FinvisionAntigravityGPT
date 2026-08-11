@@ -37,7 +37,7 @@ export default function GracefulDowngradeBanner() {
           onClick={() => setShowPlans(true)} 
           className="px-4 py-1.5 bg-white text-orange-950 text-[10px] font-black rounded-lg hover:bg-orange-50 transition-colors uppercase tracking-widest whitespace-nowrap shadow-md shadow-orange-950/20"
         >
-          Regularizar Agora
+          Faça Upgrade
         </button>
       </div>
 

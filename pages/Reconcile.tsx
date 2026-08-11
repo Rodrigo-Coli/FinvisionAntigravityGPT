@@ -29,6 +29,7 @@ import { DateUtils } from '../lib/dateUtils';
 import { ReconciliationService } from '../services/reconciliation.service';
 import { FinanceService } from '../services/finance.service';
 import { useToast } from '../contexts/ToastContext';
+import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 
 const Reconcile: React.FC = () => {
   const navigate = useNavigate();
@@ -82,6 +83,7 @@ const Reconcile: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isCategorizingAI, setIsCategorizingAI] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const handleSmartCategorize = async () => {
     setIsCategorizingAI(true);
@@ -101,10 +103,13 @@ const Reconcile: React.FC = () => {
         body: JSON.stringify({ descriptions: uniqueDescriptions, categories: subcategories, userId: session?.user?.id })
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.message);
+      if (!data.ok) {
+        if (data.limitReached) setShowUpgradeModal(true);
+        throw new Error(data.message);
+      }
 
       const mapping = new Map(data.data.map((d: any) => [d.description, d]));
-      
+
       setImported(prev => prev.map(t => {
         const match = mapping.get(t.description);
         if (match && (match as any).category) {
@@ -336,6 +341,7 @@ const Reconcile: React.FC = () => {
           }
         } else {
           toast(err.message, 'error');
+          if (err.limitReached) setShowUpgradeModal(true);
         }
       } finally {
         setIsProcessing(false); setProgressStep(null);
@@ -944,6 +950,7 @@ const Reconcile: React.FC = () => {
   };
 
   return (
+    <>
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
         <div>
@@ -1563,6 +1570,10 @@ const Reconcile: React.FC = () => {
         {realAccounts.map(a => <option key={a.id} value={a.institution} />)}
       </datalist>
     </div>
+    {showUpgradeModal && (
+      <PlanUpgradeModal onClose={() => setShowUpgradeModal(false)} />
+    )}
+    </>
   );
 };
 

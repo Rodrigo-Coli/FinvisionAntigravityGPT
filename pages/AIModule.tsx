@@ -7,6 +7,7 @@ import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
 import { DateUtils } from '../lib/dateUtils';
 import { useToast } from '../contexts/ToastContext';
+import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 
 // Helper to parse markdown into semantically correct HTML (protects lists and bolds)
 const parseMarkdownToReact = (text: string) => {
@@ -107,6 +108,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [wealthAnalysis, setWealthAnalysis] = useState<string>('');
   const [wealthMeta, setWealthMeta] = useState<any>(null);
   const [isLoadingWealth, setIsLoadingWealth] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // States para Conversão de Moeda
   const [exchangeQuote, setExchangeQuote] = useState<number>(1);
@@ -208,7 +210,10 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         body: JSON.stringify({ userId: user.id })
       });
       const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || 'Erro ao gerar diagnóstico');
+      if (!resp.ok) {
+        if (data.limitReached) setShowUpgradeModal(true);
+        throw new Error(data.error || 'Erro ao gerar diagnóstico');
+      }
       setWealthAnalysis(data.analysis);
       setWealthMeta(data.metadata);
     } catch (err: any) {
@@ -238,7 +243,10 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         setUserSettings(settings || { iof_rate: 2.38, spread_rate: 4.00 });
       }
       setIsApplyingTax(data.currency && data.currency !== 'BRL');
-    } catch (err: any) { toast(err.message || 'Erro ao processar cupons.', 'error'); } finally { setIsProcessing(false); }
+    } catch (err: any) {
+      toast(err.message || 'Erro ao processar cupons.', 'error');
+      if (err.limitReached) setShowUpgradeModal(true);
+    } finally { setIsProcessing(false); }
   };
 
   const toggleItemSelection = (index: number) => {
@@ -305,6 +313,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   return (
+    <>
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
       {/* HEADER SECTION */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
@@ -922,6 +931,10 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         )}
       </div>
     </div>
+    {showUpgradeModal && (
+      <PlanUpgradeModal onClose={() => setShowUpgradeModal(false)} />
+    )}
+    </>
   );
 };
 

@@ -13,6 +13,7 @@ import { ReconciliationService } from '../services/reconciliation.service';
 import { SplitTransactionService } from '../services/splitTransaction.service';
 import { findCloseMatch } from '../lib/stringUtils';
 import { useToast } from '../contexts/ToastContext';
+import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 
 // Modular Components
 import { HistoryFilters } from '../components/history/HistoryFilters';
@@ -1917,6 +1918,7 @@ const HistoryPage: React.FC = () => {
   };
 
   const [isCategorizingAI, setIsCategorizingAI] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const handleSmartCategorize = async () => {
     if (selectedIds.size === 0 || !supabase) return;
@@ -1942,10 +1944,13 @@ const HistoryPage: React.FC = () => {
         body: JSON.stringify({ descriptions: uniqueDescriptions, categories: availableCategories, userId })
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.message);
+      if (!data.ok) {
+        if (data.limitReached) setShowUpgradeModal(true);
+        throw new Error(data.message);
+      }
 
       const mapping = new Map(data.data.map((d: any) => [d.description, d]));
-      
+
       let updatedCount = 0;
       for (const tx of needsCategory) {
         const match = mapping.get(tx.description);
@@ -3402,6 +3407,10 @@ const HistoryPage: React.FC = () => {
           endDate={endDate}
           onClose={() => setShowDreModal(false)}
         />
+      )}
+
+      {showUpgradeModal && (
+        <PlanUpgradeModal onClose={() => setShowUpgradeModal(false)} />
       )}
     </div>
   );

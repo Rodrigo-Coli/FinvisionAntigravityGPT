@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Loader2, Bot, User, Trash2 } from 'lucide-react';
+import { Send, Sparkles, Loader2, Bot, User, Trash2, ArrowUpRight } from 'lucide-react';
+import PlanUpgradeModal from './subscription/PlanUpgradeModal';
 
 interface ChatMessage {
     id: string;
     role: 'user' | 'assistant';
     content: string;
     timestamp: Date;
+    limitReached?: boolean;
 }
 
 const renderMarkdown = (text: string) => {
@@ -79,6 +81,7 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [showUpgradeModal, setShowUpgradeModal] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -153,7 +156,8 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
                 content: data.reply,
-                timestamp: new Date()
+                timestamp: new Date(),
+                limitReached: !!data.limitReached
             };
 
             setMessages(prev => [...prev, assistantMsg]);
@@ -178,6 +182,7 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
     ];
 
     return (
+        <>
         <div className="bg-white border border-slate-100 rounded-[24px] sm:rounded-[32px] shadow-sm overflow-hidden flex flex-col h-full min-w-0">
             {/* Header */}
             <div className="p-4 sm:p-6 border-b border-slate-50 flex items-center justify-between bg-brand-900 text-white">
@@ -215,6 +220,14 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
                             <div className="text-xs sm:text-sm leading-relaxed break-words overflow-wrap-anywhere space-y-1">
                                 {renderMarkdown(msg.content)}
                             </div>
+                            {msg.limitReached && (
+                                <button
+                                    onClick={() => setShowUpgradeModal(true)}
+                                    className="mt-2 flex items-center gap-1.5 px-3 py-2 bg-brand-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-700 transition-colors"
+                                >
+                                    <ArrowUpRight size={12} /> Fazer Upgrade
+                                </button>
+                            )}
                             <span className={`text-[7px] sm:text-[8px] font-bold uppercase tracking-widest mt-2 block opacity-50 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
                                 {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
@@ -275,6 +288,10 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
                 </form>
             </div>
         </div>
+        {showUpgradeModal && (
+            <PlanUpgradeModal onClose={() => setShowUpgradeModal(false)} />
+        )}
+        </>
     );
 };
 

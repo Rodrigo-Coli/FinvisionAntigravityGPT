@@ -57,11 +57,15 @@ export const AIReconcileService = {
 
     if (!res.ok) {
       let msg = "Erro ao extrair itens do cupom.";
+      let limitReached = false;
       try {
         const j = await res.json();
         msg = j?.error || j?.message || msg;
+        limitReached = !!j?.limitReached;
       } catch { }
-      throw new Error(msg);
+      const err: any = new Error(msg);
+      err.limitReached = limitReached;
+      throw err;
     }
     return await res.json();
   },

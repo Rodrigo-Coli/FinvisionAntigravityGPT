@@ -251,10 +251,15 @@ export const ReconciliationService = {
           resolve(combined);
         } else if (imp.status === 'error') {
           clearInterval(interval);
-          const msg = (imp.notes?.startsWith('ERROR:'))
-            ? imp.notes.replace('ERROR:', '').trim()
-            : (imp.notes || "Erro no processamento");
-          reject(new Error(msg));
+          const isLimitReached = !!imp.notes?.startsWith('LIMIT_REACHED:');
+          const msg = isLimitReached
+            ? imp.notes.replace('LIMIT_REACHED:', '').trim()
+            : (imp.notes?.startsWith('ERROR:'))
+              ? imp.notes.replace('ERROR:', '').trim()
+              : (imp.notes || "Erro no processamento");
+          const err: any = new Error(msg);
+          err.limitReached = isLimitReached;
+          reject(err);
         } else if (attempts > 180) { // 6 minutos
           clearInterval(interval);
           reject(new Error("Timeout de processamento"));

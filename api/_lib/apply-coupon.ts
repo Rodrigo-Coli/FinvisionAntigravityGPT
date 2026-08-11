@@ -7,9 +7,22 @@ const supabase = createClient(
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
-  
-  const { userId, couponCode } = req.body;
-  if (!userId || !couponCode) return res.status(400).json({ error: 'userId and couponCode required' });
+
+  // Exige um token de login válido do Supabase — o userId é derivado do token,
+  // nunca aceito diretamente do corpo da requisição (evita resgatar cupom, ou
+  // ganhar um plano de graça, em nome de outra pessoa).
+  const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+  const token = typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : null;
+  if (!token) return res.status(401).json({ error: 'Login necessário (token ausente).' });
+
+  const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !authUser) return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente.' });
+
+  const userId = authUser.id;
+  const { couponCode } = req.body;
+  if (!couponCode) return res.status(400).json({ error: 'couponCode required' });
 
   try {
     // 1. Find coupon
