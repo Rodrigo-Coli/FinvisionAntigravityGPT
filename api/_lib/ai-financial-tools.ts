@@ -10,6 +10,7 @@
 
 import { GoogleGenAI, Type } from '@google/genai';
 import { buildInvestmentsContextSection } from './investments-context.js';
+import { recordAiUsage } from './ai-usage.js';
 
 const fmt = (v: number) => Number(v || 0).toFixed(2);
 
@@ -374,13 +375,14 @@ async function toolGetLiabilitiesDetail(supabase: any, userId: string) {
   };
 }
 
-async function toolSearchMarketData(args: any, geminiKey: string) {
+async function toolSearchMarketData(supabase: any, userId: string, args: any, geminiKey: string) {
   const ai = new GoogleGenAI({ apiKey: geminiKey });
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: [{ role: 'user', parts: [{ text: String(args.query || '') }] }],
     config: { tools: [{ googleSearch: {} }], temperature: 0.2 },
   });
+  await recordAiUsage(supabase, 'ai_tool_search_market_data', userId, response, 'gemini-2.5-flash');
   const text = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
   return { result: text || 'Nenhum dado encontrado.' };
 }
@@ -398,7 +400,7 @@ export async function executeFinancialTool(supabase: any, userId: string, gemini
       case 'get_investments_summary': return { summary: (await buildInvestmentsContextSection(supabase, userId)) || 'Nenhum investimento cadastrado.' };
       case 'get_goals_and_budgets': return await toolGetGoalsAndBudgets(supabase, userId);
       case 'get_liabilities_detail': return await toolGetLiabilitiesDetail(supabase, userId);
-      case 'search_market_data': return await toolSearchMarketData(args || {}, geminiKey);
+      case 'search_market_data': return await toolSearchMarketData(supabase, userId, args || {}, geminiKey);
       default: return { error: `Ferramenta desconhecida: ${name}` };
     }
   } catch (e: any) {

@@ -1031,6 +1031,7 @@ async function handleInteractiveFinancialQuery(
             responseMimeType: "application/json"
           }
         });
+        await recordAiUsage(supabase, 'whatsapp_date_extraction', userId, dateResponse, 'gemini-2.5-flash');
 
         const dateRaw = (dateResponse as any).text || (dateResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
         const dateClean = dateRaw.replace(/```json|```/g, "").trim();
@@ -1477,6 +1478,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           ]
         }]
       });
+      await recordAiUsage(supabase, 'whatsapp_voice_transcription', userId, response, 'gemini-2.5-flash');
 
       const transcribedText = ((response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
       
@@ -2502,6 +2504,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           responseMimeType: "application/json"
         }
       });
+      await recordAiUsage(supabase, 'whatsapp_receipt_ocr', userId, response, 'gemini-2.5-flash');
 
       const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
       if (!rawText) throw new Error('AI response empty');
@@ -2800,6 +2803,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           responseMimeType: "application/json"
         }
       });
+      await recordAiUsage(supabase, 'whatsapp_classifier', userId, response, 'gemini-2.5-flash');
 
       const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
       const cleanJson = rawText.replace(/```json|```/g, "").trim();
@@ -2924,6 +2928,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                 temperature: 0.7,
               }
             });
+            await recordAiUsage(supabase, 'whatsapp_chat_smalltalk', userId, chatResponse, 'gemini-2.5-flash');
 
             chatReply = (chatResponse as any).text || (chatResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || 'Olá! Sou a Zyvion AI. Como posso te ajudar com suas finanças hoje?';
           }
