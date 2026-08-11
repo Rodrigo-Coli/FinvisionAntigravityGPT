@@ -1692,6 +1692,10 @@ const Assets: React.FC = () => {
       if (!hasPurchaseTx) {
         let catName = 'Outros';
         let catColor = 'bg-slate-50 text-slate-600';
+        // Subcategoria simétrica à usada na venda do bem (ex.: venda de veículo usa
+        // subcategory 'Venda de Veículo' em category 'Venda de Ativos', mais abaixo neste
+        // arquivo) — sem isso a aquisição ficava sem nenhuma subcategoria.
+        let subcat: string | undefined;
         if (asset.category === 'REAL_ESTATE') {
           catName = 'Habitação';
           catColor = 'bg-emerald-50 text-emerald-600';
@@ -1700,16 +1704,19 @@ const Assets: React.FC = () => {
           // gasto de uso pessoal — é capital alocado para revenda. Usa a categoria protegida
           // "Investimento" em vez de Transporte/Outros, senão o lançamento fica sem sentido
           // (ex.: um carro marcado como investimento aparecendo como despesa de "Transporte").
+          // Subcategoria 'Aplicações' é a mesma já usada/seedada para essa categoria (Settings.tsx).
           catName = 'Investimento';
           catColor = 'bg-brand-50 text-brand-600';
+          subcat = 'Aplicações';
         } else if (asset.category === 'VEHICLE') {
           catName = 'Transporte';
           catColor = 'bg-blue-50 text-blue-600';
+          subcat = 'Aquisição de Veículo';
         }
-        
+
         const catId = await getOrCreateCategory(userId, catName, 'EXPENSE', catColor);
         const dateStr = asset.acquisitionDate || DateUtils.formatToISODate();
-        
+
         await supabase.from('transactions').insert([{
           user_id: userId,
           description: `Aquisição Ativo - ${asset.name}`,
@@ -1717,6 +1724,7 @@ const Assets: React.FC = () => {
           date: dateStr,
           type: 'EXPENSE',
           category: catName,
+          subcategory: subcat,
           category_id: catId,
           is_paid: true,
           paid_amount: amount,
