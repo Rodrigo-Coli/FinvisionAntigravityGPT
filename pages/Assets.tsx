@@ -1382,6 +1382,19 @@ const Assets: React.FC = () => {
     return linkedTransactionsMap.get(assetId) || [];
   };
 
+  // Categoria padrão do lançamento manual no Extrato do card, na mesma linha das
+  // categorias usadas pelos lançamentos automáticos (syncVehicleTransactions usa
+  // 'Ativos Físicos', syncOtherAssetTransactions usa 'Patrimônio') — antes vinha
+  // sempre fixo em 'Outros', sem relação com o tipo do bem.
+  const getDefaultLedgerCategory = (asset: PhysicalAsset | null): string => {
+    switch (asset?.category) {
+      case 'VEHICLE': return 'Ativos Físicos';
+      case 'REAL_ESTATE': return 'Ativos Imobiliários';
+      case 'OTHER': return 'Patrimônio';
+      default: return 'Outros';
+    }
+  };
+
   const getAssetFinancialHistory = (asset: PhysicalAsset) => {
     const txs = getAssetLinkedTransactions(asset.id);
     const inTxs = txs.filter(t => t.type === 'INCOME');
@@ -6056,6 +6069,7 @@ ${tabelaHtml}
           date: newTxForm.date,
           type: newTxForm.type,
           category: newTxForm.category,
+          subcategory: newTxForm.subcategory || null,
           category_id: catId || null,
           is_paid: true,
           paid_amount: amt,
@@ -12673,7 +12687,7 @@ ${tabelaHtml}
                             type: 'EXPENSE',
                             date: DateUtils.formatToISODate(),
                             isHistorical: false,
-                            category: 'Outros',
+                            category: getDefaultLedgerCategory(selectedAssetForExtrato),
                             subcategory: '',
                             isCapitalized: false
                           });
@@ -12714,7 +12728,7 @@ ${tabelaHtml}
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div>
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Tipo</label>
                         <select
@@ -12741,6 +12755,15 @@ ${tabelaHtml}
                           className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                           value={newTxForm.category}
                           onChange={e => setNewTxForm({ ...newTxForm, category: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Subcategoria</label>
+                        <input
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                          placeholder="Ex: Manutenção"
+                          value={newTxForm.subcategory}
+                          onChange={e => setNewTxForm({ ...newTxForm, subcategory: e.target.value })}
                         />
                       </div>
                     </div>

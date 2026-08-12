@@ -2162,6 +2162,8 @@ const HistoryPage: React.FC = () => {
 
     setPayModal(prev => prev.open ? { ...prev, isSubmitting: true, error: null } : prev);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUserId = session?.user?.id || payModal.tx.user_id || null;
       const chosenDate = payModal.payDate || payModal.tx.date || DateUtils.formatToISODate();
       const payAccId = payModal.payAccountId || payModal.tx.accountId;
       const payAcc = accounts.find(a => a.id === payAccId);
@@ -2206,8 +2208,8 @@ const HistoryPage: React.FC = () => {
           payment_history: newHistory
         };
         
-        await supabase.from('transactions').insert([{
-          user_id: payModal.tx.user_id || null,
+        const { error: remainderInsertError } = await supabase.from('transactions').insert([{
+          user_id: currentUserId,
           description: payModal.tx.description,
           amount: remainderAmount,
           date: payModal.payRemainderDate || DateUtils.formatToISODate(),
@@ -2227,6 +2229,7 @@ const HistoryPage: React.FC = () => {
           paid_at: null,
           metadata: remainderMeta
         }]);
+        if (remainderInsertError) throw remainderInsertError;
         
         // 3. Atualizar o histórico em todas as transações do mesmo grupo
         const { data: groupTxs } = await supabase
