@@ -14,6 +14,9 @@ interface ReferralSettingsRow {
   tier_step_percent: number;
   tier_cap_percent: number;
   min_payout_cents: number;
+  auto_payout_enabled: boolean;
+  max_auto_payout_cents: number;
+  admin_notification_phone: string | null;
 }
 
 interface WhatsappCostRow { id: string; category: string; meta_cost_usd: number; usd_to_brl_rate: number; }
@@ -109,6 +112,9 @@ export default function ReferralAdminPanel() {
         tier_step_percent: settings.tier_step_percent,
         tier_cap_percent: settings.tier_cap_percent,
         min_payout_cents: settings.min_payout_cents,
+        auto_payout_enabled: settings.auto_payout_enabled,
+        max_auto_payout_cents: settings.max_auto_payout_cents,
+        admin_notification_phone: settings.admin_notification_phone,
         updated_at: new Date().toISOString(),
       }).eq('id', 1);
       if (error) throw error;
@@ -259,6 +265,41 @@ export default function ReferralAdminPanel() {
         </div>
         <button onClick={saveSettings} disabled={saving} className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-brand-700 disabled:opacity-50">
           <Save size={14} /> {saving ? 'Salvando...' : 'Salvar padrão'}
+        </button>
+      </section>
+
+      {/* Pagamento automático de saque via Pix */}
+      <section className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-5">
+        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2 mb-1"><Wallet size={14} /> Pagamento Automático de Saque (Pix)</h3>
+        <p className="text-[10px] text-slate-400 mb-4">
+          Vem <strong>desligado</strong> por padrão. Quando ligado: se um pedido de saque ficar 48h sem você aprovar/rejeitar manualmente, o sistema paga sozinho via Pix — mas só até o teto configurado abaixo. Acima do teto, o pedido sempre espera seu clique, não importa quanto tempo passe.
+        </p>
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={() => setSettings({ ...settings, auto_payout_enabled: !settings.auto_payout_enabled })}
+            className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${settings.auto_payout_enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+          >
+            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${settings.auto_payout_enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+            {settings.auto_payout_enabled ? 'Ligado — pode pagar sozinho dentro do teto' : 'Desligado — todo saque espera clique manual'}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Teto do pagamento automático (R$)" value={settings.max_auto_payout_cents / 100} onChange={v => setSettings({ ...settings, max_auto_payout_cents: Math.round(v * 100) })} step="0.01" />
+          <div>
+            <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">WhatsApp para avisos (com DDI, ex: 5511999999999)</label>
+            <input
+              type="text"
+              value={settings.admin_notification_phone || ''}
+              onChange={e => setSettings({ ...settings, admin_notification_phone: e.target.value })}
+              placeholder="5511999999999"
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-brand-500"
+            />
+          </div>
+        </div>
+        <button onClick={saveSettings} disabled={saving} className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-brand-700 disabled:opacity-50">
+          <Save size={14} /> {saving ? 'Salvando...' : 'Salvar'}
         </button>
       </section>
 

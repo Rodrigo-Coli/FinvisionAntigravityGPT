@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { releaseMaturedCommissions, getTierProgress, getRecentCommissionTrend, getUpgradeOpportunity, getAvailableBalanceCents, retryFailedCommissionEvents } from './referral.service.js';
+import { releaseMaturedCommissions, getTierProgress, getRecentCommissionTrend, getUpgradeOpportunity, getAvailableBalanceCents, retryFailedCommissionEvents, autoPayEligiblePayouts } from './referral.service.js';
 import { sendWhatsAppRotated } from './whatsapp-rotation.service.js';
 import { isCronAuthorized } from './cron-auth.js';
 
@@ -44,6 +44,12 @@ export async function handleNotifyReferralEngagement(req: any, res: any) {
     // Reprocessa comissões que falharam no webhook por algum motivo passageiro
     // (ver recordCommissionEventFailure) — idempotente, seguro rodar todo dia.
     const commissionRetry = await retryFailedCommissionEvents();
+
+    // Paga automaticamente (Pix real via Asaas) os saques parados há mais de
+    // 48h — só age se referral_settings.auto_payout_enabled estiver ligado
+    // (vem desligado por padrão). Ver referral.service.ts para as travas de
+    // segurança (teto de valor, chave Pix validada, sem duplo pagamento).
+    const autoPayout = await autoPayEligiblePayouts();
 
     let nudgedCount = 0, decliningCount = 0, upgradeCount = 0, onboardedCount = 0;
 
@@ -108,7 +114,7 @@ export async function handleNotifyReferralEngagement(req: any, res: any) {
       if (await sendWhatsAppRotated({ number: target, text: msg, category: 'utility', purpose: 'referral_onboarding', userId: sub.user_id })) onboardedCount++;
     }
 
-    return res.status(200).json({ success: true, nudgedCount, decliningCount, upgradeCount, onboardedCount, commissionRetry });
+    return res.status(200).json({ success: true, nudgedCount, decliningCount, upgradeCount, onboardedCount, commissionRetry, autoPayout });
   } catch (err: any) {
     console.error('notify-referral-engagement error:', err);
     return res.status(500).json({ error: err.message });

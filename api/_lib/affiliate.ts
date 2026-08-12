@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { getAffiliate, getTierProgress, getAvailableBalanceCents, requestCreditRedemption } from './referral.service.js';
+import { getAffiliate, getTierProgress, getAvailableBalanceCents, requestCreditRedemption, notifyPayoutRequested } from './referral.service.js';
+import { validatePixKey } from './asaas-transfer.js';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co',
@@ -93,6 +94,9 @@ export async function handleAffiliateRequestPayout(req: any, res: any) {
   const { pixKey } = req.body || {};
   if (!pixKey || typeof pixKey !== 'string') return res.status(400).json({ error: 'Informe a chave Pix para o saque.' });
 
+  const pixCheck = validatePixKey(pixKey);
+  if (!pixCheck.valid) return res.status(400).json({ error: pixCheck.error || 'Chave Pix inválida.' });
+
   try {
     const affiliate = await getAffiliate(user.id);
     if (!affiliate) return res.status(400).json({ error: 'Aceite os termos do programa primeiro.' });
@@ -123,6 +127,8 @@ export async function handleAffiliateRequestPayout(req: any, res: any) {
     await supabase.from('affiliate_commission_events')
       .update({ paid_in_payout_id: payout.id })
       .in('id', eventIds);
+
+    notifyPayoutRequested(availableCents, pixKey).catch(() => {});
 
     return res.status(200).json({ success: true, payout });
   } catch (err: any) {

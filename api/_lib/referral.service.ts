@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { validatePixKey, createPixTransfer } from './asaas-transfer.js';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co',
@@ -559,4 +560,132 @@ export async function releaseMaturedCommissions(): Promise<{ affiliateId: string
     .select('affiliate_id, amount_cents');
   if (error) throw error;
   return (data || []).map((r: any) => ({ affiliateId: r.affiliate_id, amountCents: r.amount_cents }));
+}
+
+// ============================================================
+// Pagamento automático de saque via Pix (superadmin liga em
+// referral_settings.auto_payout_enabled — vem DESLIGADO por padrão).
+// ============================================================
+
+const money = (cents: number) => `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
+
+/**
+ * Notificação direta a um número fixo (o WhatsApp do superadmin), fora do
+ * fluxo de rotação por usuário (sendWhatsAppRotated é pra notificar CLIENTES,
+ * sempre pelo número atribuído a cada um — aqui é sempre o mesmo número fixo
+ * configurado em referral_settings.admin_notification_phone).
+ */
+async function notifyAdminWhatsApp(text: string): Promise<void> {
+  try {
+    const { data: settings } = await supabase.from('referral_settings').select('admin_notification_phone').eq('id', 1).single();
+    const phone = settings?.admin_notification_phone;
+    if (!phone) return;
+    if (!process.env.EVOLUTION_API_URL || !process.env.EVOLUTION_API_KEY || !process.env.EVOLUTION_INSTANCE) return;
+
+    const cleanBaseUrl = process.env.EVOLUTION_API_URL.endsWith('/')
+      ? process.env.EVOLUTION_API_URL.slice(0, -1)
+      : process.env.EVOLUTION_API_URL;
+
+    await fetch(`${cleanBaseUrl}/message/sendText/${process.env.EVOLUTION_INSTANCE}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY as string },
+      body: JSON.stringify({
+        number: phone,
+        text,
+        options: { delay: 800, presence: 'composing' },
+        textMessage: { text },
+      }),
+    });
+  } catch (e) {
+    console.error('[referral] Falha ao notificar admin via WhatsApp:', e);
+  }
+}
+
+/**
+ * Avisa o superadmin assim que um saque é solicitado — dá a ele a janela
+ * inteira de 48h pra revisar/agir antes do pagamento automático (se estiver
+ * ligado) disparar sozinho. Chamada por affiliate.ts, handleAffiliateRequestPayout.
+ */
+export async function notifyPayoutRequested(amountCents: number, pixKey: string): Promise<void> {
+  await notifyAdminWhatsApp(`💸 *Zyvion — Novo pedido de saque de indicação*\n\nValor: ${money(amountCents)}\nChave Pix: ${pixKey}\n\nVocê tem 48h para aprovar/rejeitar manualmente no Master Console antes do pagamento automático (se estiver ligado) processar sozinho.`);
+}
+
+/**
+ * Roda no cron diário. Paga automaticamente via Pix (chamada real à API do
+ * Asaas) os pedidos de saque que:
+ *  1. Estão há mais de 48h aguardando (nada de errado em demorar mais — a
+ *     precisão é "checagem diária", não cravado na hora);
+ *  2. São do tipo 'pix' (crédito pra assinatura continua 100% manual);
+ *  3. O valor está DENTRO do teto de segurança configurado (acima do teto,
+ *     fica pra sempre esperando clique manual do superadmin, nunca paga
+ *     sozinho, não importa quanto tempo passe);
+ *  4. auto_payout_enabled está ligado.
+ *
+ * IMPORTANTE: o botão manual "Pagar" do Master Console (processPayout, acima)
+ * NÃO chama a API de transferência — assume que o superadmin já mandou o Pix
+ * por fora, como sempre foi. Só ESTA função aqui dispara dinheiro de verdade.
+ * Misturar os dois caminhos causaria pagamento em dobro.
+ */
+export async function autoPayEligiblePayouts(): Promise<{ paid: number; failed: number; skipped: number }> {
+  const { data: settings } = await supabase
+    .from('referral_settings')
+    .select('auto_payout_enabled, max_auto_payout_cents')
+    .eq('id', 1)
+    .single();
+
+  if (!settings?.auto_payout_enabled) return { paid: 0, failed: 0, skipped: 0 };
+
+  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const { data: rawCandidates } = await supabase
+    .from('affiliate_payouts')
+    .select('id, affiliate_id, amount_cents, pix_key, notes')
+    .eq('status', 'requested')
+    .eq('redemption_type', 'pix')
+    .lte('requested_at', cutoff)
+    .lte('amount_cents', settings.max_auto_payout_cents || 0);
+
+  // Já tentamos e falhou uma vez — não martela sozinho todo dia, fica
+  // esperando o superadmin olhar e decidir (ver bloco de erro abaixo).
+  const candidates = (rawCandidates || []).filter((p: any) => !p.notes?.startsWith('AUTO_FAILED:'));
+
+  let paid = 0, failed = 0, skipped = 0;
+
+  for (const payout of candidates) {
+    const check = validatePixKey(payout.pix_key);
+    if (!check.valid || !check.type) {
+      await supabase.from('affiliate_payouts').update({ notes: `AUTO_FAILED: chave Pix inválida (${check.error || 'formato não reconhecido'})` }).eq('id', payout.id);
+      await notifyAdminWhatsApp(`⚠️ *Zyvion — Pagamento automático de indicação FALHOU*\n\nPedido de ${money(payout.amount_cents)} tem uma chave Pix inválida: "${payout.pix_key}".\nO afiliado precisa corrigir a chave. Nenhum valor foi transferido.`);
+      failed++;
+      continue;
+    }
+
+    const transfer = await createPixTransfer(payout.pix_key, check.type, payout.amount_cents);
+
+    if (!transfer.success) {
+      await supabase.from('affiliate_payouts').update({ notes: `AUTO_FAILED: ${transfer.error}` }).eq('id', payout.id);
+      await notifyAdminWhatsApp(`⚠️ *Zyvion — Pagamento automático de indicação FALHOU*\n\nPedido de ${money(payout.amount_cents)} não pôde ser transferido: ${transfer.error}\n\nPrecisa de ação manual no Master Console.`);
+      failed++;
+      continue;
+    }
+
+    // Update condicional (WHERE status ainda é 'requested'): trava contra
+    // processar o mesmo pedido duas vezes se o cron rodar sobreposto.
+    const { data: updated } = await supabase
+      .from('affiliate_payouts')
+      .update({ status: 'paid', paid_at: new Date().toISOString(), notes: `Pago automaticamente via Pix (Asaas transferência ${transfer.transferId})` })
+      .eq('id', payout.id)
+      .eq('status', 'requested')
+      .select('id');
+
+    if (!updated || updated.length === 0) { skipped++; continue; }
+
+    await supabase.from('affiliate_commission_events').update({ status: 'paid' }).eq('paid_in_payout_id', payout.id);
+    const { data: affiliate } = await supabase.from('affiliates').select('total_paid_cents').eq('id', payout.affiliate_id).single();
+    await supabase.from('affiliates').update({ total_paid_cents: (affiliate?.total_paid_cents || 0) + payout.amount_cents }).eq('id', payout.affiliate_id);
+
+    await notifyAdminWhatsApp(`✅ *Zyvion — Pagamento automático de indicação*\n\n${money(payout.amount_cents)} pagos via Pix automaticamente (pedido parado há mais de 48h sem ação manual).`);
+    paid++;
+  }
+
+  return { paid, failed, skipped };
 }
