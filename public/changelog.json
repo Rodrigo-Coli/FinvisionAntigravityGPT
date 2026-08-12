@@ -1,24 +1,28 @@
 {
-  "version": "2026.08.10.1222",
-  "title": "IA financeira mais precisa",
-  "date": "10/08/2026",
+  "version": "2026.08.12.2345",
+  "title": "Diferença de pagamento e lançamentos de Patrimônio corrigidos",
+  "date": "12/08/2026",
   "benefits": [
     {
-      "title": "A IA agora consulta seus dados de verdade antes de responder",
-      "desc": "No chat do site e no WhatsApp, a assistente passou a buscar exatamente a informação certa para cada pergunta (fatura de cartão, extrato, gasto por categoria, patrimônio, investimentos, metas, dívidas), em vez de tentar adivinhar com um resumo fixo e incompleto. Perguntas como \"quanto tenho de fatura paga e a pagar em agosto\" agora batem com o que a tela mostra.",
+      "title": "A parcela da diferença de um pagamento parcial não some mais",
+      "desc": "Ao registrar um pagamento parcial em Transações e gerar a diferença para uma data futura, essa parcela agora é criada de verdade e aparece tanto em Transações quanto no Extrato do bem vinculado (ex.: parcela de venda de veículo em Patrimônio).",
       "type": "correcao"
     },
     {
-      "title": "Respostas mais rápidas e mais baratas de gerar",
-      "desc": "Como a IA só busca a área que a pergunta realmente precisa, ela usa bem menos dados por mensagem do que antes (que enviava tudo de uma vez, mesmo sem precisar).",
+      "title": "Categoria sugerida automaticamente no Extrato de um bem",
+      "desc": "Ao lançar manualmente uma despesa ou receita dentro do card de um veículo, imóvel ou outro bem em Patrimônio, a categoria agora já vem sugerida de acordo com o tipo do bem, em vez de sempre 'Outros'.",
+      "type": "ux"
+    },
+    {
+      "title": "Novo campo de Subcategoria em Patrimônio",
+      "desc": "O lançamento manual no Extrato de um bem ganhou um campo de Subcategoria, que agora é salvo junto com o lançamento.",
       "type": "novidade"
     }
   ],
   "changes": [
-    "api/_lib/ai-financial-tools.ts (novo): 8 ferramentas de function calling reutilizadas pelo chat do site e pelo WhatsApp — get_card_statements, get_transactions, get_category_breakdown, get_account_and_net_worth_summary, get_investments_summary, get_goals_and_budgets, get_liabilities_detail, search_market_data.",
-    "api/_lib/finvision-chat.ts: removido o contexto fixo pré-carregado (que nunca incluía card_statements/card_transactions); substituído por loop de function calling com o Gemini.",
-    "api/_lib/whatsapp-webhook.ts (handleInteractiveFinancialQuery, intent QUERY): mesma troca — resto do arquivo (lançamento por mensagem, conciliação, edição) não foi tocado.",
-    "Corrigido de passagem: budgets usava o campo 'amount' (inexistente) em vez de 'monthly_limit', o que fazia o limite de orçamento aparecer como R$ NaN no prompt da IA.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; ferramentas testadas contra o banco real (conta rodrigocolicg@gmail.com) confirmando R$ 17.654,19 em faturas de agosto/26, sendo R$ 3.497,82 pago e R$ 14.156,37 a pagar — os mesmos números do banco."
+    "pages/History.tsx (submitPayment, fluxo de pagamento parcial com divisão): o insert da transação de diferença usava user_id nulo (o objeto Transaction em memória não carrega esse campo) — a RLS bloqueava o insert silenciosamente e o erro não era verificado. Agora o user_id é obtido da sessão atual e o erro do insert é verificado.",
+    "pages/Assets.tsx: nova função getDefaultLedgerCategory() sugere a categoria do lançamento manual do Extrato do bem conforme o tipo do ativo (VEHICLE → 'Ativos Físicos', REAL_ESTATE → 'Ativos Imobiliários', OTHER → 'Patrimônio').",
+    "pages/Assets.tsx: adicionado campo de Subcategoria no formulário de novo lançamento do Extrato do bem, agora persistido no insert em 'transactions'.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros; 127 testes (vitest) passando."
   ]
 }
