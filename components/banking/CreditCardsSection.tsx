@@ -220,8 +220,13 @@ const CreditCardsSection: React.FC = () => {
     if (!selectedCard) return;
 
     const combinedKey = combinedCardIds ? [...combinedCardIds].sort().join(',') : null;
+    // true só quando o CARTÃO em si mudou (ex: Titular -> Carol, ou pra outro cartão
+    // da carteira). Alternar entre "Tudo" e o titular da MESMA família não muda isto,
+    // porque handleSelectFamily/handleSelectIndividual sempre usam o titular como
+    // selectedCard nos dois casos.
+    const cardIdChanged = prevCardIdRef.current !== null && prevCardIdRef.current !== selectedCard.id;
     const cardChanged =
-      (prevCardIdRef.current !== null && prevCardIdRef.current !== selectedCard.id) ||
+      cardIdChanged ||
       (prevCombinedKeyRef.current !== null && prevCombinedKeyRef.current !== combinedKey) ||
       (prevCombinedKeyRef.current === null && combinedKey !== null && prevCardIdRef.current !== null);
     prevCardIdRef.current = selectedCard.id;
@@ -233,11 +238,18 @@ const CreditCardsSection: React.FC = () => {
       // necessário porque setSelectedStatementId só vale no próximo render — sem
       // ele, loadCardContext ainda leria a fatura do contexto anterior.
       setSelectedStatementId('CURRENT');
-      // Zera o que está na tela: enquanto a busca do contexto novo não volta, os
-      // lançamentos e o total do contexto anterior continuariam visíveis, dando a
-      // impressão de que a fatura de outro cartão/família "grudou".
-      setTransactions([]);
-      setCurrentStatement(null);
+      // Só zera a tela quando o CARTÃO em si mudou: aí sim os lançamentos/fatura
+      // antigos são de outro dono e não podem ficar visíveis nem por um instante.
+      // Alternar só entre "Tudo" (consolidado) e o titular da MESMA família (ex:
+      // clicar no cartão do topo da carteira) mantém o cartão selecionado igual, então
+      // não zeramos mais nada aqui — isso evitava a tela mostrar "sem fatura"/neutra
+      // por um instante ao entrar no consolidado, mesmo já existindo uma fatura aberta
+      // pra aquele período. A busca abaixo já filtra sempre por cartão/família certos,
+      // então os dados antigos são substituídos pelos corretos assim que a busca volta.
+      if (cardIdChanged) {
+        setTransactions([]);
+        setCurrentStatement(null);
+      }
       loadCardContext(selectedCard.id, 'CURRENT');
     } else {
       loadCardContext(selectedCard.id);
