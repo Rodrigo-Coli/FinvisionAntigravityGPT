@@ -1,5 +1,38 @@
 [
   {
+    "version": "2026.08.15.1958",
+    "title": "Lançamento no cartão e Comparador de preços corrigidos",
+    "date": "15/08/2026",
+    "benefits": [
+      {
+        "title": "Cupom escaneado volta a salvar de verdade no cartão",
+        "desc": "O 'Salvar no Cartão' do Scanner de Cupons mostrava 'SUCESSO!' mas o lançamento não aparecia no cartão escolhido — um campo extra no salvamento estava derrubando o registro silenciosamente. Corrigido.",
+        "type": "correcao"
+      },
+      {
+        "title": "Card do Comparador de Preços sem mais texto cortado",
+        "desc": "O preço da 'Melhor Oferta' podia vazar para fora do card em telas menores. Os cards ficaram também mais compactos.",
+        "type": "correcao"
+      },
+      {
+        "title": "Aviso quando a busca não encontra nada no Comparador",
+        "desc": "Antes, filtrar por um termo ou por Mercado/Restaurante/Loja sem resultados deixava a tela em branco parecendo quebrada. Agora aparece um aviso claro de 'Nenhum item encontrado'.",
+        "type": "ux"
+      },
+      {
+        "title": "Categoria dos itens do cupom mais precisa",
+        "desc": "Os itens escaneados agora sempre vêm com uma categoria classificada pela IA, em vez de caírem genericamente em 'Geral'.",
+        "type": "ux"
+      }
+    ],
+    "changes": [
+      "services/aiReconcile.service.ts (saveDirectToCard): removido o campo 'category' (texto solto) do insert em card_transactions — só category_id (FK) e subcategory existem de fato nessa tabela, mesmo formato do lançamento manual em CreditCardsSection.tsx. O campo extra provavelmente derrubava o insert inteiro com erro de coluna inexistente.",
+      "api/_lib/handle-receipt-items.ts: category_hint passou a ser obrigatório no responseSchema do Gemini (com fallback 'Geral' de garantia).",
+      "pages/AIModule.tsx (aba Comparador): corrigido overflow do preço no card de produto (faltava min-w-0/shrink-0 no flex); cards mais compactos; adicionado estado vazio 'Nenhum item encontrado'; legenda explicando que Mercado/Restaurante/Loja filtram pelo tipo de estabelecimento identificado pela IA, não uma loja específica.",
+      "Verificação: tsc -p tsconfig.json --noEmit sem erros."
+    ]
+  },
+  {
     "version": "2026.08.15.1900",
     "title": "Scanner de Cupons corrigido: categoria, subcategoria e busca por digitação",
     "date": "15/08/2026",
