@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { resolveTabParam } from '../lib/urlTabState';
-import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, Box, LayoutGrid, Brain, ShieldCheck, AlertTriangle, Target, Lightbulb } from 'lucide-react';
+import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, Box, LayoutGrid, Brain, ShieldCheck, AlertTriangle, Target, Lightbulb, X } from 'lucide-react';
 import { AIReconcileService } from '../services/aiReconcile.service';
 import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
@@ -84,7 +84,16 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [targetType, setTargetType] = useState<'account' | 'card'>('account');
   const [allTargets, setAllTargets] = useState<{ id: string; name: string; type: 'account' | 'card' }[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
-  const [confirmCategory, setConfirmCategory] = useState<string>('');
+  const [subcategories, setSubcategories] = useState<{ id: string; name: string; category_id: string; category_name?: string }[]>([]);
+  const [targetQuery, setTargetQuery] = useState('');
+  const [confirmCategoryName, setConfirmCategoryName] = useState<string>('');
+  const [confirmSubcategoryName, setConfirmSubcategoryName] = useState<string>('');
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [isCreatingSubcategory, setIsCreatingSubcategory] = useState(false);
+  const [newSubcategoryName, setNewSubcategoryName] = useState('');
+  const [isSavingSubcategory, setIsSavingSubcategory] = useState(false);
 
   // States para Dados de Inteligência
   const [comparisonData, setComparisonData] = useState<any[]>([]);
@@ -124,13 +133,16 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     }
   }, [activeTab]);
 
+  const targetLabel = (t: { name: string; type: 'account' | 'card' }) => `${t.name} · ${t.type === 'card' ? 'Cartão' : 'Conta'}`;
+
   const fetchAccounts = async () => {
     if (!supabase || !user) return;
 
-    const [accRes, cardRes, catRes] = await Promise.all([
+    const [accRes, cardRes, catRes, subRes] = await Promise.all([
       supabase.from('accounts').select('id, institution').eq('user_id', user.id).eq('is_archived', false),
       supabase.from('cards').select('id, name').eq('user_id', user.id).eq('is_archived', false),
-      supabase.from('categories').select('id, name').eq('user_id', user.id).eq('is_archived', false).eq('type', 'EXPENSE')
+      supabase.from('categories').select('id, name').eq('user_id', user.id).eq('is_archived', false).eq('type', 'EXPENSE'),
+      supabase.from('subcategories').select('id, name, category_id').eq('user_id', user.id)
     ]);
 
     const combined: { id: string; name: string; type: 'account' | 'card' }[] = [];
@@ -141,14 +153,63 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       cardRes.data.forEach((c: any) => combined.push({ id: c.id, name: c.name, type: 'card' }));
     }
 
-    setAllTargets(combined.sort((a, b) => a.name.localeCompare(b.name)));
-    if (combined.length > 0) {
-      setTargetId(combined[0].id);
-      setTargetType(combined[0].type);
+    const sortedTargets = combined.sort((a, b) => a.name.localeCompare(b.name));
+    setAllTargets(sortedTargets);
+    if (sortedTargets.length > 0) {
+      setTargetId(sortedTargets[0].id);
+      setTargetType(sortedTargets[0].type);
+      setTargetQuery(targetLabel(sortedTargets[0]));
     }
 
+    let sortedCats: { id: string; name: string }[] = [];
     if (catRes.data) {
-      setCategories(catRes.data.sort((a: any, b: any) => a.name.localeCompare(b.name)));
+      sortedCats = catRes.data.sort((a: any, b: any) => a.name.localeCompare(b.name));
+      setCategories(sortedCats);
+    }
+    if (subRes.data) {
+      const mappedSubs = subRes.data
+        .map((s: any) => ({ ...s, category_name: sortedCats.find((c) => c.id === s.category_id)?.name }))
+        .filter((s: any) => s.category_name)
+        .sort((a: any, b: any) => a.name.localeCompare(b.name));
+      setSubcategories(mappedSubs);
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed || !supabase || !user) return;
+    setIsSavingCategory(true);
+    try {
+      const { data, error } = await supabase.from('categories').insert({ user_id: user.id, name: trimmed, type: 'EXPENSE', color: 'bg-brand-50 text-brand-600' }).select('id, name').single();
+      if (error) throw error;
+      setCategories(prev => [...prev, data].sort((a: any, b: any) => a.name.localeCompare(b.name)));
+      setConfirmCategoryName(data.name);
+      setIsCreatingCategory(false);
+      setNewCategoryName('');
+    } catch (err: any) {
+      toast(err.message || 'Erro ao criar categoria.', 'error');
+    } finally {
+      setIsSavingCategory(false);
+    }
+  };
+
+  const handleCreateSubcategory = async () => {
+    const trimmed = newSubcategoryName.trim();
+    if (!trimmed || !supabase || !user) return;
+    const parentCategory = categories.find(c => c.name.toLowerCase() === confirmCategoryName.trim().toLowerCase());
+    if (!parentCategory) { toast('Selecione uma categoria antes de criar a subcategoria.', 'warning'); return; }
+    setIsSavingSubcategory(true);
+    try {
+      const { data, error } = await supabase.from('subcategories').insert({ user_id: user.id, category_id: parentCategory.id, name: trimmed }).select('id, name, category_id').single();
+      if (error) throw error;
+      setSubcategories(prev => [...prev, { ...data, category_name: parentCategory.name }].sort((a, b) => a.name.localeCompare(b.name)));
+      setConfirmSubcategoryName(data.name);
+      setIsCreatingSubcategory(false);
+      setNewSubcategoryName('');
+    } catch (err: any) {
+      toast(err.message || 'Erro ao criar subcategoria.', 'error');
+    } finally {
+      setIsSavingSubcategory(false);
     }
   };
 
@@ -265,7 +326,9 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     newItems[index].selected = !newItems[index].selected;
     const newTotal = newItems.filter(i => i.selected).reduce((sum, i) => sum + i.total_price, 0);
     setReceipt({ ...receipt, items: newItems });
-    if (reconcileMode === 'items') setPartialValue(newTotal);
+    // "Parcial" também aceita montar o valor tocando nos itens (além de digitar) —
+    // "Itens" sempre reflete a soma do que está marcado.
+    if (reconcileMode === 'items' || reconcileMode === 'partial') setPartialValue(newTotal);
   };
 
   const getReconcileAmount = () => {
@@ -291,12 +354,15 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
       if (targetType === 'card') {
         // Fluxo direto: salva no cartão sem passar pelo Reconcile
+        const matchedCategory = categories.find(c => c.name.toLowerCase() === confirmCategoryName.trim().toLowerCase());
         await AIReconcileService.saveDirectToCard({
           cardId: targetId,
           date: receipt.date || DateUtils.formatToISODate(),
           description,
           amount: finalAmount,
-          categoryId: confirmCategory || undefined
+          categoryId: matchedCategory?.id,
+          category: confirmCategoryName.trim() || undefined,
+          subcategory: confirmSubcategoryName.trim() || undefined
         });
       } else {
         // Fluxo padrão: fila de conciliação
@@ -461,6 +527,12 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                     ))}
                   </div>
 
+                  <p className="text-[9px] font-bold text-slate-400 leading-relaxed -mt-4">
+                    {reconcileMode === 'total' && 'Lança o valor total do cupom nesta conta/cartão. Os itens continuam sendo salvos no Comparador e na Minha Inflação de qualquer forma.'}
+                    {reconcileMode === 'partial' && 'Toque nos itens da lista ao lado para somar automaticamente, ou digite um valor manual abaixo.'}
+                    {reconcileMode === 'items' && 'Toque nos itens da lista ao lado para incluir/excluir do valor lançado — o restante do cupom não entra na conta/cartão.'}
+                  </p>
+
                   {reconcileMode === 'partial' && (
                     <div className="space-y-1.5 animate-in slide-in-from-top-1 duration-200">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Parcial a Conciliar</label>
@@ -490,39 +562,111 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   <div className="space-y-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Conta Financeira</label>
-                      <select
-                        value={targetId}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setTargetId(val);
-                          const t = allTargets.find(x => x.id === val);
-                          if (t) setTargetType(t.type);
-                        }}
-                        className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500"
-                      >
-                        <option value="">Selecione...</option>
-                        <optgroup label="Contas de Banco">
-                          {allTargets.filter(t => t.type === 'account').map((acc: any) => (<option key={acc.id} value={acc.id}>{acc.name}</option>))}
-                        </optgroup>
-                        <optgroup label="Cartões de Crédito">
-                          {allTargets.filter(t => t.type === 'card').map((card: any) => (<option key={card.id} value={card.id}>{card.name}</option>))}
-                        </optgroup>
-                      </select>
+                      <div className="relative">
+                        <input
+                          list="ai-target-list"
+                          value={targetQuery}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setTargetQuery(val);
+                            const match = allTargets.find(t => targetLabel(t).toLowerCase() === val.toLowerCase());
+                            if (match) { setTargetId(match.id); setTargetType(match.type); }
+                          }}
+                          placeholder="Busque a conta ou cartão..."
+                          className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+                        />
+                        <datalist id="ai-target-list">
+                          {allTargets.map((t) => (<option key={t.id} value={targetLabel(t)} />))}
+                        </datalist>
+                      </div>
                     </div>
 
                     {targetType === 'card' && (
                       <div className="space-y-1 animate-in slide-in-from-top-1 duration-200">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Categoria (Opcional)</label>
-                        <select
-                          value={confirmCategory}
-                          onChange={(e) => setConfirmCategory(e.target.value)}
-                          className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500"
-                        >
-                          <option value="">Selecione...</option>
-                          {categories.map((cat) => (
-                            <option key={cat.id} value={cat.id}>{cat.name}</option>
-                          ))}
-                        </select>
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Categoria (Opcional)</label>
+                          {!isCreatingCategory && (
+                            <button type="button" onClick={() => setIsCreatingCategory(true)} className="text-[10px] font-bold text-brand-600 hover:text-brand-700 uppercase tracking-widest">+ Nova</button>
+                          )}
+                        </div>
+                        {isCreatingCategory ? (
+                          <div className="flex items-center gap-2 animate-in slide-in-from-top-1 duration-200">
+                            <input
+                              type="text"
+                              autoFocus
+                              value={newCategoryName}
+                              onChange={(e) => setNewCategoryName(e.target.value)}
+                              placeholder="Nova categoria..."
+                              onKeyDown={(e) => e.key === 'Enter' && handleCreateCategory()}
+                              className="flex-1 h-14 px-4 bg-brand-50 border border-brand-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-xs"
+                            />
+                            <button type="button" onClick={handleCreateCategory} disabled={isSavingCategory} className="h-14 w-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center hover:bg-brand-700 transition-all disabled:opacity-50 shadow-lg shadow-brand-500/20 shrink-0">
+                              {isSavingCategory ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
+                            </button>
+                            <button type="button" onClick={() => setIsCreatingCategory(false)} disabled={isSavingCategory} className="h-14 w-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200 transition-all disabled:opacity-50 shrink-0">
+                              <X size={18} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <input
+                              list="ai-category-list"
+                              value={confirmCategoryName}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setConfirmCategoryName(e.target.value)}
+                              placeholder="Selecione ou digite..."
+                              className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+                            />
+                            <datalist id="ai-category-list">
+                              {categories.map((cat) => (<option key={cat.id} value={cat.name} />))}
+                            </datalist>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {targetType === 'card' && !isCreatingCategory && (
+                      <div className="space-y-1 animate-in slide-in-from-top-1 duration-200">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Subcategoria (Opcional)</label>
+                          {!isCreatingSubcategory && (
+                            <button type="button" onClick={() => setIsCreatingSubcategory(true)} className="text-[10px] font-bold text-brand-600 hover:text-brand-700 uppercase tracking-widest">+ Nova</button>
+                          )}
+                        </div>
+                        {isCreatingSubcategory ? (
+                          <div className="flex items-center gap-2 animate-in slide-in-from-top-1 duration-200">
+                            <input
+                              type="text"
+                              autoFocus
+                              value={newSubcategoryName}
+                              onChange={(e) => setNewSubcategoryName(e.target.value)}
+                              placeholder="Nova subcategoria..."
+                              onKeyDown={(e) => e.key === 'Enter' && handleCreateSubcategory()}
+                              className="flex-1 h-14 px-4 bg-brand-50 border border-brand-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-xs"
+                            />
+                            <button type="button" onClick={handleCreateSubcategory} disabled={isSavingSubcategory} className="h-14 w-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center hover:bg-brand-700 transition-all disabled:opacity-50 shadow-lg shadow-brand-500/20 shrink-0">
+                              {isSavingSubcategory ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
+                            </button>
+                            <button type="button" onClick={() => setIsCreatingSubcategory(false)} disabled={isSavingSubcategory} className="h-14 w-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200 transition-all disabled:opacity-50 shrink-0">
+                              <X size={18} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <input
+                              list="ai-subcategory-list"
+                              value={confirmSubcategoryName}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setConfirmSubcategoryName(e.target.value)}
+                              placeholder="Selecione ou digite..."
+                              className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+                            />
+                            <datalist id="ai-subcategory-list">
+                              {subcategories.filter(s => !confirmCategoryName || s.category_name === confirmCategoryName).map((s) => (<option key={s.id} value={s.name} />))}
+                            </datalist>
+                          </div>
+                        )}
                       </div>
                     )}
 

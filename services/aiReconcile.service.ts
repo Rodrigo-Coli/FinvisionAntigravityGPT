@@ -70,7 +70,7 @@ export const AIReconcileService = {
     return await res.json();
   },
 
-  async saveDirectToCard({ cardId, date, description, amount, categoryId }: { cardId: string; date: string; description: string; amount: number; categoryId?: string }) {
+  async saveDirectToCard({ cardId, date, description, amount, categoryId, category, subcategory }: { cardId: string; date: string; description: string; amount: number; categoryId?: string; category?: string; subcategory?: string }) {
     if (!supabase) throw new Error("Supabase is not configured");
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("No user found");
@@ -85,6 +85,8 @@ export const AIReconcileService = {
       is_manual: true,
       source: "ai_labs",
       category_id: categoryId || null,
+      category: category || null,
+      subcategory: subcategory || null,
     });
     if (error) throw new Error(prettySupabaseError(error));
     return true;

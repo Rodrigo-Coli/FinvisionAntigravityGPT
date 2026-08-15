@@ -1,28 +1,35 @@
 {
-  "version": "2026.08.12.2345",
-  "title": "Diferença de pagamento e lançamentos de Patrimônio corrigidos",
-  "date": "12/08/2026",
+  "version": "2026.08.15.1900",
+  "title": "Scanner de Cupons corrigido: categoria, subcategoria e busca por digitação",
+  "date": "15/08/2026",
   "benefits": [
     {
-      "title": "A parcela da diferença de um pagamento parcial não some mais",
-      "desc": "Ao registrar um pagamento parcial em Transações e gerar a diferença para uma data futura, essa parcela agora é criada de verdade e aparece tanto em Transações quanto no Extrato do bem vinculado (ex.: parcela de venda de veículo em Patrimônio).",
+      "title": "Cupom e nota fiscal não travam mais ao escanear",
+      "desc": "O Scanner de Cupons (AI & Insights) agora força um formato estruturado na resposta da IA. Antes, notas mais complexas (como uma DANFE completa) podiam fazer o app travar com 'Ops! Algo deu errado' ou mostrar o erro genérico 'Erro ao processar cupons.'",
       "type": "correcao"
     },
     {
-      "title": "Categoria sugerida automaticamente no Extrato de um bem",
-      "desc": "Ao lançar manualmente uma despesa ou receita dentro do card de um veículo, imóvel ou outro bem em Patrimônio, a categoria agora já vem sugerida de acordo com o tipo do bem, em vez de sempre 'Outros'.",
+      "title": "Subcategoria ao salvar cupom direto no cartão",
+      "desc": "Ao lançar um cupom escaneado direto num cartão de crédito, agora dá pra escolher também a Subcategoria — e criar categoria ou subcategoria nova na hora, sem sair da tela.",
+      "type": "novidade"
+    },
+    {
+      "title": "Busca por digitação em Conta, Categoria e Subcategoria",
+      "desc": "Os campos de Conta Financeira, Categoria e Subcategoria do Scanner de Cupons agora aceitam digitar para buscar, no mesmo padrão usado no restante do site.",
       "type": "ux"
     },
     {
-      "title": "Novo campo de Subcategoria em Patrimônio",
-      "desc": "O lançamento manual no Extrato de um bem ganhou um campo de Subcategoria, que agora é salvo junto com o lançamento.",
-      "type": "novidade"
+      "title": "Valor parcial também por itens",
+      "desc": "No modo 'Parcial' do Scanner de Cupons, agora dá para tocar nos itens da lista para somar o valor automaticamente, além de digitar manualmente.",
+      "type": "ux"
     }
   ],
   "changes": [
-    "pages/History.tsx (submitPayment, fluxo de pagamento parcial com divisão): o insert da transação de diferença usava user_id nulo (o objeto Transaction em memória não carrega esse campo) — a RLS bloqueava o insert silenciosamente e o erro não era verificado. Agora o user_id é obtido da sessão atual e o erro do insert é verificado.",
-    "pages/Assets.tsx: nova função getDefaultLedgerCategory() sugere a categoria do lançamento manual do Extrato do bem conforme o tipo do ativo (VEHICLE → 'Ativos Físicos', REAL_ESTATE → 'Ativos Imobiliários', OTHER → 'Patrimônio').",
-    "pages/Assets.tsx: adicionado campo de Subcategoria no formulário de novo lançamento do Extrato do bem, agora persistido no insert em 'transactions'.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros; 127 testes (vitest) passando."
+    "api/_lib/handle-receipt-items.ts: adicionado responseSchema estruturado na chamada ao Gemini (mesmo padrão do handle-bank-reconcile.ts), normalização defensiva de items/total e erro claro quando nenhum item é identificado no documento.",
+    "pages/AIModule.tsx (handleFileChange): validação de data.items antes de setar o estado do recibo, eliminando o crash 'Cannot read properties of undefined (reading map)' na renderização.",
+    "pages/AIModule.tsx + services/aiReconcile.service.ts: campo de Subcategoria (com criação inline, igual ao padrão de Transações) no fluxo 'Salvar no Cartão'; category/subcategory agora também são persistidos em card_transactions, não só category_id.",
+    "pages/AIModule.tsx: campos de Conta Financeira, Categoria e Subcategoria do Scanner de Cupons trocados de <select> nativo para input+datalist com busca por digitação, no padrão do restante do site; subcategoria filtrada pela categoria escolhida.",
+    "pages/AIModule.tsx (toggleItemSelection): selecionar itens da lista agora também atualiza o valor no modo 'Parcial', não só no modo 'Itens'.",
+    "Verificação: tsc -p tsconfig.json --noEmit sem erros."
   ]
 }
