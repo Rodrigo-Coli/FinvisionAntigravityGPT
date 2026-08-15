@@ -361,7 +361,6 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           description,
           amount: finalAmount,
           categoryId: matchedCategory?.id,
-          category: confirmCategoryName.trim() || undefined,
           subcategory: confirmSubcategoryName.trim() || undefined
         });
       } else {
@@ -387,6 +386,10 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+  const filteredComparisonProducts = comparisonData
+    .filter((p: any) => !targetSegment || p.merchantCategory === targetSegment)
+    .filter((p: any) => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <>
@@ -710,36 +713,44 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 ))}
               </div>
             </div>
+            <p className="text-[10px] font-bold text-slate-400 -mt-4 ml-1">Mercado / Restaurante / Loja filtram pelo tipo de estabelecimento que a IA identificou em cada cupom escaneado.</p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {isLoadingIntelligence ? (
-                Array(6).fill(0).map((_, i) => <div key={i} className="h-64 bg-slate-50 animate-pulse rounded-[40px]" />)
+                Array(6).fill(0).map((_, i) => <div key={i} className="h-56 bg-slate-50 animate-pulse rounded-[32px]" />)
+              ) : filteredComparisonProducts.length === 0 ? (
+                <div className="col-span-full py-20 flex flex-col items-center justify-center text-center gap-3 border-2 border-dashed border-slate-100 rounded-[40px]">
+                  <Store size={40} className="text-slate-200" />
+                  <p className="font-bold uppercase tracking-widest text-xs text-slate-400">Nenhum item encontrado</p>
+                  <p className="text-[11px] text-slate-400 max-w-xs">
+                    {comparisonData.length === 0
+                      ? 'Escaneie um cupom na aba "Escanear Cupom" para começar a comparar preços.'
+                      : 'Tente outro termo de busca ou troque o filtro de tipo de estabelecimento.'}
+                  </p>
+                </div>
               ) : (
-                comparisonData
-                  .filter((p: any) => !targetSegment || p.merchantCategory === targetSegment)
-                  .filter((p: any) => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()))
-                  .map((product: any) => (
-                    <div key={product.id} className="bg-white rounded-[32px] border border-slate-100 p-8 shadow-sm hover:border-brand-200 transition-all group overflow-hidden relative">
-                      <div className="flex justify-between items-start mb-6">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${product.trend === 'down' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                          {product.trend === 'down' ? <TrendingDown size={24} /> : <TrendingUp size={24} />}
+                filteredComparisonProducts.map((product: any) => (
+                    <div key={product.id} className="bg-white rounded-[28px] border border-slate-100 p-6 shadow-sm hover:border-brand-200 transition-all group overflow-hidden relative">
+                      <div className="flex justify-between items-start gap-2 mb-4">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all ${product.trend === 'down' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                          {product.trend === 'down' ? <TrendingDown size={18} /> : <TrendingUp size={18} />}
                         </div>
-                        <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-lg">{product.category}</span>
+                        <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest bg-slate-50 px-2.5 py-1 rounded-lg truncate max-w-[50%]">{product.category}</span>
                       </div>
 
-                      <h3 className="text-xl font-bold text-slate-900 mb-6 uppercase truncate">{product.name}</h3>
+                      <h3 className="text-base font-bold text-slate-900 mb-4 uppercase truncate" title={product.name}>{product.name}</h3>
 
-                      <div className="space-y-4 pt-6 border-t border-slate-50">
-                        <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl">
-                          <div className="space-y-0.5">
+                      <div className="space-y-3 pt-4 border-t border-slate-50">
+                        <div className="flex justify-between items-center gap-3 bg-slate-50 p-3.5 rounded-2xl">
+                          <div className="space-y-0.5 min-w-0 flex-1">
                             <span className="text-[9px] font-bold text-slate-400 uppercase">Melhor Oferta</span>
-                            <p className="text-xs font-bold text-slate-900 uppercase truncate max-w-[140px]">{product.bestMerchant}</p>
+                            <p className="text-xs font-bold text-slate-900 uppercase truncate" title={product.bestMerchant}>{product.bestMerchant}</p>
                           </div>
-                          <span className="text-xl font-bold text-emerald-600">{formatCurrency(product.minPrice)}</span>
+                          <span className="text-lg font-bold text-emerald-600 shrink-0 whitespace-nowrap">{formatCurrency(product.minPrice)}</span>
                         </div>
                         <button
                           onClick={() => !shoppingList.find(i => i.id === product.id) && setShoppingList([...shoppingList, product])}
-                          className="w-full h-12 bg-brand-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-brand-600 transition-all"
+                          className="w-full h-11 bg-brand-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-brand-600 transition-all"
                         >
                           Adicionar à Lista
                         </button>

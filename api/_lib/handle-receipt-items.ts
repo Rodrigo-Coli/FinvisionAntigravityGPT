@@ -101,7 +101,7 @@ export async function handleReceiptItems(req: any, res: any) {
                                     category_hint: { type: Type.STRING },
                                     is_promo: { type: Type.BOOLEAN }
                                 },
-                                required: ["description", "quantity", "unit_price", "total_price"]
+                                required: ["description", "quantity", "unit_price", "total_price", "category_hint"]
                             }
                         }
                     },
@@ -146,7 +146,7 @@ export async function handleReceiptItems(req: any, res: any) {
             unit: it.unit || 'un',
             unit_price: Number(it.unit_price) || 0,
             total_price: Number(it.total_price) || (Number(it.unit_price) || 0) * (Number(it.quantity) || 1),
-            category_hint: it.category_hint,
+            category_hint: it.category_hint || 'Geral',
             is_promo: !!it.is_promo
         }));
 

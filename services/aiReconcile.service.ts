@@ -70,11 +70,15 @@ export const AIReconcileService = {
     return await res.json();
   },
 
-  async saveDirectToCard({ cardId, date, description, amount, categoryId, category, subcategory }: { cardId: string; date: string; description: string; amount: number; categoryId?: string; category?: string; subcategory?: string }) {
+  async saveDirectToCard({ cardId, date, description, amount, categoryId, subcategory }: { cardId: string; date: string; description: string; amount: number; categoryId?: string; subcategory?: string }) {
     if (!supabase) throw new Error("Supabase is not configured");
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("No user found");
 
+    // Mesmo formato usado pelo lançamento manual de cartão (CreditCardsSection.tsx):
+    // category_id (FK) + subcategory (texto), sem coluna "category" solta. Um campo
+    // "category" extra no insert (adicionado numa versão anterior) provavelmente
+    // não existe em card_transactions e derrubava o insert inteiro silenciosamente.
     const { error } = await supabase.from("card_transactions").insert({
       user_id: user.id,
       card_id: cardId,
@@ -85,7 +89,6 @@ export const AIReconcileService = {
       is_manual: true,
       source: "ai_labs",
       category_id: categoryId || null,
-      category: category || null,
       subcategory: subcategory || null,
     });
     if (error) throw new Error(prettySupabaseError(error));
