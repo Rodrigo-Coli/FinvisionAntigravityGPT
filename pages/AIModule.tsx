@@ -234,7 +234,17 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     setReceipt(null);
     try {
       const data = await AIReconcileService.processReceiptItems(Array.from(files), user?.id);
-      if (data.items) data.items = data.items.map((it: any) => ({ ...it, selected: true }));
+      if (!data || !Array.isArray(data.items) || data.items.length === 0) {
+        throw new Error('Não foi possível identificar itens nesse cupom. Tente novamente com uma foto mais nítida.');
+      }
+      data.items = data.items.map((it: any) => ({
+        ...it,
+        selected: true,
+        quantity: Number(it.quantity) || 1,
+        unit_price: Number(it.unit_price) || 0,
+        total_price: Number(it.total_price) || 0,
+      }));
+      data.total = Number(data.total) || data.items.reduce((sum: number, it: any) => sum + it.total_price, 0);
       setReceipt(data);
       setPartialValue(data.total);
       setExchangeQuote(data.currency === 'USD' ? 5.20 : data.currency === 'EUR' ? 5.60 : 1);

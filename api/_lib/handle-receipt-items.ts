@@ -70,12 +70,43 @@ export async function handleReceiptItems(req: any, res: any) {
             ]
         }];
 
-        // USANDO O MESMO PADRÃO DO RECONCILE QUE ESTÁ OK
+        // Schema estruturado (mesmo padrão do handle-bank-reconcile.ts) — sem isso o
+        // Gemini eventualmente devolve texto fora do formato ou omite "items" em notas
+        // fiscais mais ruidosas (DANFE com blocos de ICMS/FCP por item), o que quebrava
+        // o parse no servidor ou o .map() no front.
         const response = await ai.models.generateContent({
             model,
             contents,
             config: {
-                responseMimeType: "application/json"
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        merchant: { type: Type.STRING },
+                        merchant_category: { type: Type.STRING },
+                        date: { type: Type.STRING },
+                        currency: { type: Type.STRING },
+                        total: { type: Type.NUMBER },
+                        items: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    description: { type: Type.STRING },
+                                    normalized_name: { type: Type.STRING },
+                                    quantity: { type: Type.NUMBER },
+                                    unit: { type: Type.STRING },
+                                    unit_price: { type: Type.NUMBER },
+                                    total_price: { type: Type.NUMBER },
+                                    category_hint: { type: Type.STRING },
+                                    is_promo: { type: Type.BOOLEAN }
+                                },
+                                required: ["description", "quantity", "unit_price", "total_price"]
+                            }
+                        }
+                    },
+                    required: ["merchant", "date", "total", "items"]
+                }
             }
         });
         await recordAiUsage(supabase, 'receipt_items', userId || null, response, 'gemini-2.5-flash');
@@ -97,9 +128,42 @@ export async function handleReceiptItems(req: any, res: any) {
         if (!rawText) throw new Error('IA não retornou conteúdo de texto.');
 
         const cleanJson = rawText.replace(/```json|```/g, "").trim();
-        const parsedData = JSON.parse(cleanJson);
+        let parsedData: any;
+        try {
+            parsedData = JSON.parse(cleanJson);
+        } catch (e) {
+            console.error('[AI-Labs] Resposta da IA não é um JSON válido:', rawText.slice(0, 500));
+            throw new Error('Não foi possível interpretar o cupom. Tente novamente com uma foto mais nítida.');
+        }
 
-        return res.status(200).json(parsedData);
+        // Normalização defensiva: mesmo com responseSchema, nunca confiar cegamente
+        // no shape devolvido pelo modelo antes de repassar pro front.
+        const items = Array.isArray(parsedData.items) ? parsedData.items : [];
+        const normalizedItems = items.map((it: any) => ({
+            description: it.description || it.normalized_name || 'Item',
+            normalized_name: it.normalized_name || it.description || 'Item',
+            quantity: Number(it.quantity) || 1,
+            unit: it.unit || 'un',
+            unit_price: Number(it.unit_price) || 0,
+            total_price: Number(it.total_price) || (Number(it.unit_price) || 0) * (Number(it.quantity) || 1),
+            category_hint: it.category_hint,
+            is_promo: !!it.is_promo
+        }));
+
+        if (normalizedItems.length === 0) {
+            throw new Error('Não conseguimos identificar os itens desse cupom. Tente novamente com uma foto mais nítida e completa.');
+        }
+
+        const total = Number(parsedData.total) || normalizedItems.reduce((sum: number, it: any) => sum + it.total_price, 0);
+
+        return res.status(200).json({
+            merchant: parsedData.merchant || 'Estabelecimento não identificado',
+            merchant_category: parsedData.merchant_category || 'Mercado',
+            date: parsedData.date || new Date().toISOString().slice(0, 10),
+            currency: parsedData.currency || 'BRL',
+            total,
+            items: normalizedItems
+        });
 
     } catch (err: any) {
         console.error('[AI-Labs] Erro fatal:', err.message);
