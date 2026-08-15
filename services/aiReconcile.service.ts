@@ -151,11 +151,24 @@ export const AIReconcileService = {
       const productName = (item.normalized_name || item.description).toUpperCase().trim();
       const searchName = productName.replace(/[-]/g, ' '); // Troca hífen por espaço para busca flexível
 
-      const { data: product } = await supabase.from('products')
+      // .ilike() em vez de .or() com string crua: nomes de produto com vírgula ou
+      // parênteses (comuns em OCR de cupom) quebram a sintaxe do filtro .or() do
+      // PostgREST silenciosamente (o erro não era verificado), fazendo duplicar o
+      // produto em vez de reconhecer o existente.
+      let { data: product } = await supabase.from('products')
         .select('id')
         .eq('user_id', user.id)
-        .or(`name.ilike.${productName},name.ilike.${searchName}`)
+        .ilike('name', productName)
         .maybeSingle();
+
+      if (!product && searchName !== productName) {
+        const { data: altBySearchName } = await supabase.from('products')
+          .select('id')
+          .eq('user_id', user.id)
+          .ilike('name', searchName)
+          .maybeSingle();
+        product = altBySearchName;
+      }
 
       let productId = product?.id;
 

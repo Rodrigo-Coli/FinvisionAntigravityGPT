@@ -882,7 +882,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                     }
                     let sumPct = 0;
                     comparisonData.forEach((product: any) => {
-                      const variation = (product.lastPrice - product.avgPrice) / product.avgPrice;
+                      const variation = product.avgPrice > 0 ? (product.lastPrice - product.avgPrice) / product.avgPrice : 0;
                       sumPct += variation;
                     });
                     const avgPct = (sumPct / comparisonData.length) * 100;
@@ -901,7 +901,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 {(() => {
                   let sumPct = 0;
                   comparisonData.forEach((product: any) => {
-                    sumPct += (product.lastPrice - product.avgPrice) / product.avgPrice;
+                    sumPct += product.avgPrice > 0 ? (product.lastPrice - product.avgPrice) / product.avgPrice : 0;
                   });
                   return sumPct >= 0 ? (
                     <TrendingUp size={48} className="text-rose-500 opacity-20" />
@@ -925,7 +925,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                       </div>
                     </div>
                     <div className="text-right space-y-1">
-                      <p className={`text-xl font-bold ${product.trend === 'up' ? 'text-rose-600' : 'text-emerald-600'}`}>{product.trend === 'up' ? '+' : '-'}{Math.round(Math.abs((product.lastPrice - product.avgPrice) / product.avgPrice) * 100)}%</p>
+                      <p className={`text-xl font-bold ${product.trend === 'up' ? 'text-rose-600' : 'text-emerald-600'}`}>{product.trend === 'up' ? '+' : '-'}{product.avgPrice > 0 ? Math.round(Math.abs((product.lastPrice - product.avgPrice) / product.avgPrice) * 100) : 0}%</p>
                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Variação Real</span>
                     </div>
                   </div>
