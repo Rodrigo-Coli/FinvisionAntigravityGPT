@@ -44,6 +44,24 @@ async function propagateToLiability(transactionId: string): Promise<void> {
   } catch { /* silencioso */ }
 }
 
+// Serializa as sincronizações de uma MESMA fatura. Vários pontos da tela de
+// Cartões disparam `syncStatementToHistory` em paralelo (inclusive em IIFEs
+// "fire and forget", sem await, depois de salvar um lançamento). Como o sync é
+// um "leia e então escreva", duas chamadas simultâneas podiam ler "não existe
+// espelho" ao mesmo tempo e inserir duas linhas para a mesma fatura — a semente
+// das faturas duplicadas. Encadear por statementId elimina essa corrida.
+const statementSyncChain = new Map<string, Promise<void>>();
+
+function serializeStatementSync(statementId: string, task: () => Promise<void>): Promise<void> {
+  const previous = statementSyncChain.get(statementId) || Promise.resolve();
+  const next = previous.catch(() => undefined).then(task);
+  statementSyncChain.set(statementId, next);
+  next.catch(() => undefined).then(() => {
+    if (statementSyncChain.get(statementId) === next) statementSyncChain.delete(statementId);
+  });
+  return next;
+}
+
 export const FinanceService = {
   // Contas
   getAccounts: async (): Promise<BankAccount[]> => {
@@ -544,6 +562,16 @@ export const FinanceService = {
   },
 
   syncStatementToHistory: async (statementId: string, overrideAccountId?: string, overridePaid?: boolean): Promise<void> => {
+    if (!supabase || !statementId) return;
+    return serializeStatementSync(
+      statementId,
+      () => FinanceService.runStatementSync(statementId, overrideAccountId, overridePaid)
+    );
+  },
+
+  // Implementação do sync. Não chamar direto: use `syncStatementToHistory`, que
+  // garante que só roda uma sincronização por fatura de cada vez.
+  runStatementSync: async (statementId: string, overrideAccountId?: string, overridePaid?: boolean): Promise<void> => {
     if (!supabase) return;
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -608,13 +636,54 @@ export const FinanceService = {
 
       if (!targetAccountId) return;
 
-      // 3. Upsert na tabela de transações usando query direta no jsonb
-      const { data: queryTx } = await supabase
+      // 3. Upsert na tabela de transações usando query direta no jsonb.
+      //
+      // ATENÇÃO (bug histórico de faturas duplicadas): aqui existia um
+      // `.maybeSingle()` cujo `error` era ignorado. O PostgREST devolve ERRO (e
+      // `data: null`) tanto quando o SELECT falha por rede quanto quando ele
+      // encontra MAIS DE UMA linha. Como o código só olhava o `data`, qualquer
+      // uma dessas situações era lida como "o espelho ainda não existe" e caía
+      // no INSERT. Bastava nascer uma única linha duplicada para o sync virar
+      // uma máquina de duplicar: a cada chamada, mais um "Fatura Cartão: X"
+      // pendente no Histórico (e mais um aviso de conta vencida no WhatsApp).
+      //
+      // Agora: lemos TODAS as linhas espelho da fatura, tratamos o erro
+      // explicitamente (erro => aborta, nunca insere) e, se houver duplicatas,
+      // consolidamos numa única linha canônica apagando as demais.
+      const { data: mirrorRows, error: mirrorErr } = await supabase
         .from('transactions')
-        .select('id, is_paid, date')
+        .select('id, is_paid, date, created_at')
         .eq('user_id', user.id)
         .filter('metadata->>card_statement_id', 'eq', statementId)
-        .maybeSingle();
+        .order('created_at', { ascending: true });
+
+      // Falhou a leitura: não dá para saber se o espelho existe. Sair sem
+      // inserir é sempre mais seguro do que arriscar criar uma duplicata.
+      if (mirrorErr) {
+        console.error('Erro ao localizar espelho da fatura no histórico:', mirrorErr);
+        return;
+      }
+
+      const existingMirrors = Array.isArray(mirrorRows) ? mirrorRows : [];
+
+      // Linha canônica: a que já registra pagamento (preserva a data real em que
+      // a fatura foi paga); na ausência dela, a mais antiga.
+      const queryTx = existingMirrors.find((t: any) => t.is_paid) || existingMirrors[0] || null;
+
+      // Autocura: elimina duplicatas herdadas do bug antigo. Sem isso, contas já
+      // corrompidas continuariam mostrando o mesmo vencimento várias vezes.
+      const staleMirrorIds = existingMirrors
+        .filter((t: any) => t.id !== queryTx?.id)
+        .map((t: any) => t.id);
+
+      if (staleMirrorIds.length > 0) {
+        const { error: dedupeErr } = await supabase
+          .from('transactions')
+          .delete()
+          .eq('user_id', user.id)
+          .in('id', staleMirrorIds);
+        if (dedupeErr) console.error('Erro ao remover faturas espelho duplicadas:', dedupeErr);
+      }
 
       const isPaidFinal = overridePaid !== undefined ? overridePaid : stmt.status === 'PAID';
 

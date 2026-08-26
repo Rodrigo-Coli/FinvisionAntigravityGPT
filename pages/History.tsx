@@ -2202,11 +2202,24 @@ const HistoryPage: React.FC = () => {
         
         // 2. Inserir a nova transação do restante Tx B
         const remainderAmount = payModal.remaining - amount;
-        const remainderMeta = {
+        const remainderMeta: any = {
           ...(payModal.tx.metadata || {}),
           partial_payment_group_id: groupId,
           payment_history: newHistory
         };
+
+        // Pagamento parcial de FATURA: o restante não pode herdar o
+        // `card_statement_id`. Esse campo é a chave que liga UMA transação do
+        // Histórico à fatura do cartão; duplicá-lo criava duas linhas com a
+        // mesma chave e fazia o sincronizador de faturas perder a referência e
+        // passar a inserir uma cópia nova a cada sincronização. Guardamos a
+        // origem em `partial_of_card_statement_id`, que preserva o vínculo para
+        // leitura sem colidir com o espelho da fatura.
+        if (remainderMeta.card_statement_id) {
+          remainderMeta.partial_of_card_statement_id = remainderMeta.card_statement_id;
+          delete remainderMeta.card_statement_id;
+          delete remainderMeta.is_provision;
+        }
         
         const { error: remainderInsertError } = await supabase.from('transactions').insert([{
           user_id: currentUserId,
@@ -2305,7 +2318,9 @@ const HistoryPage: React.FC = () => {
       
       // Sincronização Bidirecional: Se for pagamento de fatura, atualiza o status na tabela de cartões
       if (payModal.tx.type === 'BILL_PAYMENT') {
-        const stmtId = payModal.tx.metadata?.card_statement_id || payModal.tx.metadata?.statement_id;
+        const stmtId = payModal.tx.metadata?.card_statement_id
+          || payModal.tx.metadata?.partial_of_card_statement_id
+          || payModal.tx.metadata?.statement_id;
         if (stmtId) {
           const isFullyPaid = amount >= payModal.remaining - 0.01;
           const { data: stmt } = await supabase.from('card_statements').select('paid_amount').eq('id', stmtId).maybeSingle();
