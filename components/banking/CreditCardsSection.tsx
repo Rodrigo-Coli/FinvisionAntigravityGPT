@@ -5,6 +5,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
 import { FinanceService } from '../../services/finance.service';
 import { offlineQueue } from '../../lib/offlineQueue.service';
 import { isProbablyOffline } from '../../lib/connectivity';
+import { parseTags, collectTags } from '../../lib/tagUtils';
 import { useReconnectRefresh } from '../../lib/useReconnectRefresh';
 import { ReconciliationService } from '../../services/reconciliation.service';
 import { DateUtils } from '../../lib/dateUtils';
@@ -928,8 +929,13 @@ const CreditCardsSection: React.FC = () => {
   const saveTxPatch = async (id: string, patch: any, confirmedScope?: SeriesScope) => {
     if (!supabase) return;
 
-    if (patch.tags && typeof patch.tags === 'string') {
-      patch.tags = patch.tags.split(',').map((s: string) => s.trim()).filter((s: string) => s !== '');
+    // `tags` é uma coluna text[]: precisa virar array SEMPRE que o campo veio na
+    // edição. A guarda anterior era `if (patch.tags && ...)`, e `''` é falso —
+    // então APAGAR as tags pulava a conversão e mandava a string vazia para o
+    // banco, que recusa `''` num text[]. O erro caía no console e o usuário só
+    // via a tag voltar do jeito que estava.
+    if ('tags' in patch) {
+      patch.tags = parseTags(patch.tags);
     }
 
     const tx = transactions.find(t => t.id === id);
@@ -968,8 +974,12 @@ const CreditCardsSection: React.FC = () => {
         const { error } = await query;
         if (error) throw error;
       }
-    } catch (err) {
+    } catch (err: any) {
+      // Antes isso morria só no console: a edição não era gravada e a tela
+      // recarregava com o valor antigo, sem nenhum aviso. Quem editava uma tag
+      // via o campo "voltar sozinho" e concluía que o app não salvava.
       console.error('Erro ao salvar transação:', err);
+      toast('Não foi possível salvar a alteração: ' + (err?.message || 'erro desconhecido'), 'error');
     } finally {
       setSavingRowId(null);
       setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' });
@@ -1216,7 +1226,7 @@ const CreditCardsSection: React.FC = () => {
           subcategory: cleanSubcategory,
           owner_name: defaultOwnerName,
           notes: txNotes || '',
-          tags: txTags || []
+          tags: parseTags(txTags)
         };
 
         const { data: txData, error } = await supabase.from('card_transactions').insert([payload]).select('id').single();
@@ -1305,7 +1315,7 @@ const CreditCardsSection: React.FC = () => {
             subcategory: cleanSubcategory,
             owner_name: defaultOwnerName,
             notes: txNotes || '',
-            tags: txTags || []
+            tags: parseTags(txTags)
           });
         }
         
@@ -2295,6 +2305,7 @@ const CreditCardsSection: React.FC = () => {
         setTxNotes={setTxNotes}
         txTags={txTags}
         setTxTags={setTxTags}
+        availableTags={collectTags(transactions)}
         txIsDividing={txIsDividing}
         setTxIsDividing={setTxIsDividing}
         txSplits={txSplits}

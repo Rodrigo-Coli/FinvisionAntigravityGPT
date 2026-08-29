@@ -176,6 +176,10 @@ interface HistoryFiltersProps {
     filterOrigin: 'ALL' | 'ACCOUNT' | 'CARD';
     setFilterOrigin: (v: 'ALL' | 'ACCOUNT' | 'CARD') => void;
     owners: string[];
+    filterTag: string[];
+    setFilterTag: (v: string[]) => void;
+    /** Tags já usadas na conta (banco + cartão), para escolher no filtro. */
+    tags: string[];
     categories: string[];
     subcategories: string[];
     accounts: BankAccount[];
@@ -188,7 +192,7 @@ export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
     filterType, setFilterType, filterAccount, setFilterAccount,
     filterCategory, setFilterCategory, filterSubcategory, setFilterSubcategory, startDate, setStartDate,
     endDate, setEndDate, minPrice, setMinPrice, maxPrice, setMaxPrice,
-    filterOwner, setFilterOwner, filterOrigin, setFilterOrigin, owners, categories, subcategories, accounts, cards = [], resetFilters
+    filterOwner, setFilterOwner, filterOrigin, setFilterOrigin, owners, filterTag, setFilterTag, tags, categories, subcategories, accounts, cards = [], resetFilters
 }) => {
     const accountAndCardOptions = [
         ...accounts.map(acc => ({ id: acc.id, label: acc.institution })),
@@ -288,6 +292,16 @@ export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
                         options={owners.map(o => ({ id: o, label: o }))}
                         selected={filterOwner}
                         onChange={setFilterOwner}
+                    />
+
+                    <SearchableMultiSelect
+                        label="Tags"
+                        placeholder="Todas as Tags"
+                        searchPlaceholder="Buscar tag..."
+                        icon={<Tag size={12} />}
+                        options={tags.map(t => ({ id: t, label: t }))}
+                        selected={filterTag}
+                        onChange={setFilterTag}
                     />
 
                     <div className="flex flex-col justify-end gap-2">

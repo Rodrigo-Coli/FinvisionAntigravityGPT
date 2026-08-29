@@ -1,40 +1,40 @@
 {
-  "version": "2026.08.29.1015",
-  "title": "Fatura duplicada corrigida e app funcionando sem internet",
+  "version": "2026.08.29.1620",
+  "title": "Tags que ficam salvas e filtro de tags no Histórico",
   "date": "29/08/2026",
   "benefits": [
     {
-      "title": "Fatura paga não vira mais uma pilha de contas repetidas",
-      "desc": "Uma fatura de cartão já quitada podia aparecer dezenas de vezes como conta pendente, no app e no aviso do WhatsApp — e pagar de novo não resolvia, só criava mais uma cópia. A causa foi corrigida e as duplicatas existentes são limpas sozinhas.",
+      "title": "Agora dá para digitar vírgula no campo de tags",
+      "desc": "Ao criar um lançamento (banco ou cartão), a vírgula sumia da tela no instante em que era digitada — era impossível cadastrar mais de uma tag. Corrigido: o campo respeita o que você escreve.",
       "type": "correcao"
     },
     {
-      "title": "Lançamento feito sem internet agora chega ao servidor",
-      "desc": "O que você lançava offline ficava preso no aparelho e nunca subia, mesmo depois de reconectar. Agora sobe — inclusive o que já estava parado no seu celular desde antes desta atualização.",
+      "title": "Apagar uma tag do cartão volta a funcionar",
+      "desc": "Esvaziar o campo de tags de uma compra no cartão falhava sem avisar: a tela recarregava com a tag antiga de volta, como se nada tivesse acontecido.",
       "type": "correcao"
     },
     {
-      "title": "Pagar conta e quitar fatura funciona offline",
-      "desc": "Antes o pagamento simplesmente falhava sem internet. Agora fica na fila e é efetivado assim que a conexão volta. (Quitação parcial de fatura ainda pede conexão, e o app avisa.)",
-      "type": "melhoria"
-    },
-    {
-      "title": "App não trava mais na tela de carregando",
-      "desc": "Em Wi-Fi sem saída ou sinal fraco o app ficava preso no spinner, porque o pedido ao servidor nunca respondia nem falhava. Agora tudo tem prazo: estourou, ele abre com os dados salvos e avisa que está offline.",
+      "title": "Erro ao salvar uma edição agora aparece na tela",
+      "desc": "Falhas ao editar um lançamento de cartão morriam no console. Sem aviso, dava a impressão de que o app simplesmente não salvava.",
       "type": "correcao"
     },
     {
-      "title": "Telas abrem com os últimos dados em vez de vazias",
-      "desc": "Relatórios, Cartões e Transações agora mostram o último retrato conhecido da sua conta quando você está sem internet, com a data do dado em tela. E recarregam sozinhas assim que a conexão volta.",
+      "title": "Novo filtro de Tags no Histórico",
+      "desc": "Filtre lançamentos de banco e de cartão por uma ou mais tags, junto dos filtros de conta, categoria e pessoa. A busca por tag ignora acento e maiúscula.",
+      "type": "novidade"
+    },
+    {
+      "title": "Sugestão de tags já usadas",
+      "desc": "Ao digitar, o campo sugere as tags que você já criou. Isso evita o mesmo assunto virar três tags diferentes ('Maceió.26', 'Maceio.26', 'Maceió.2026') e sumir do filtro.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "services/finance.service.ts (syncStatementToHistory): o .maybeSingle() que localizava a transação espelho da fatura tinha o error descartado. O PostgREST devolve erro com data null tanto quando a consulta falha quanto quando encontra mais de uma linha, então os dois casos eram lidos como 'o espelho não existe' e o código inseria outra linha — bastava nascer uma duplicata para toda sincronização seguinte gerar mais uma. Agora lê todas as linhas, trata o erro (erro nunca vira INSERT), elege uma canônica e apaga as duplicatas.",
-    "Índice único uniq_transaction_per_card_statement em transactions (user_id, metadata->>card_statement_id): trava no banco contra a fatura duplicada.",
-    "lib/offlineQueue.service.ts: o id inventado no aparelho ('offline-...') ia dentro do payload do INSERT; como transactions.id é uuid, todo envio falhava com 22P02 e o lançamento nunca sincronizava. O id local saiu do payload e há migração para resgatar o que já estava preso nos aparelhos.",
-    "lib/session.ts: as 33 chamadas auth.getUser() batiam no servidor em vez de ler a sessão local — offline devolviam user null e o código lançava 'Usuário não autenticado' antes de chegar na linha que guardaria o item na fila. Trocadas por getSessionUser().",
-    "lib/connectivity.ts (novo): prazo em toda chamada de rede e detecção real de conectividade, no lugar de navigator.onLine, que responde 'existe interface de rede' e não 'a internet funciona'.",
-    "Removido lib/offlineQueue.ts, uma segunda fila com formato incompatível gravando na MESMA chave do localStorage, em que cada uma descartava em silêncio os itens da outra."
+    "lib/tagUtils.ts (novo): parseTags/formatTags/normalizeTag/collectTags/matchesAnyTag. Toda conversão de tags passa por aqui — nenhum caminho consegue mais mandar string crua para uma coluna text[].",
+    "components/common/TagsInput.tsx (novo): o campo separa o texto sendo DIGITADO do array publicado. O input controlado anterior derivava o valor de arr.join(', ') a cada tecla, então digitar 'viagem,' virava ['viagem'] e a vírgula sumia — impossível criar a segunda tag.",
+    "CreditCardsSection.saveTxPatch: a guarda era `if (patch.tags && typeof patch.tags === 'string')`; '' é falso, então apagar as tags pulava a conversão e enviava a string vazia para a coluna text[]. O erro do Postgres era engolido por um console.error.",
+    "CreditCardsSection.saveTxPatch: falha de gravação agora vira toast, em vez de só console.error.",
+    "History: novo filtro filterTag aplicado à lista, aos gráficos e à comparação de períodos; lista de tags derivada de banco + cartão, agrupando variações de acento/caixa sob a grafia mais usada.",
+    "HistoryFilters: novo seletor múltiplo 'Tags'."
   ]
 }

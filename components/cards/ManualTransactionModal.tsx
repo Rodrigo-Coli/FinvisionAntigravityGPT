@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, CheckCircle2, Camera, Loader2, Plus, SplitSquareHorizontal } from 'lucide-react';
 import { SplitFieldsInline } from '../history/SplitFieldsInline';
 import { SplitDraft } from '../../services/splitTransaction.service';
+import { TagsInput } from '../common/TagsInput';
 
 interface ManualTransactionModalProps {
     show: boolean;
@@ -44,6 +45,8 @@ interface ManualTransactionModalProps {
     setTxNotes: (v: string) => void;
     txTags: string[];
     setTxTags: (v: string[]) => void;
+    /** Tags já usadas na conta, sugeridas na digitação. */
+    availableTags?: string[];
     txIsDividing: boolean;
     setTxIsDividing: (v: boolean) => void;
     txSplits: SplitDraft[] | null;
@@ -89,6 +92,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     setTxNotes,
     txTags,
     setTxTags,
+    availableTags = [],
     txIsDividing,
     setTxIsDividing,
     txSplits,
@@ -454,15 +458,10 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                             )}
                             <div>
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Tags (Separadas por vírgula)</label>
-                                <input
-                                    type="text"
-                                    value={txTags?.join(', ') || ''}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        const arr = val.split(',').map(s => s.trim()).filter(s => s !== '');
-                                        setTxTags(arr);
-                                    }}
-                                    placeholder="Ex: viagem, lazer, 2026"
+                                <TagsInput
+                                    value={txTags}
+                                    onChange={setTxTags}
+                                    suggestions={availableTags}
                                     className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300 text-xs"
                                 />
                             </div>

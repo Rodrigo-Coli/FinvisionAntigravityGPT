@@ -7,6 +7,7 @@ import { Transaction, TransactionType, BankAccount, TransactionSplit } from '../
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { offlineQueue } from '../lib/offlineQueue.service';
 import { isNetworkFailure, isProbablyOffline, markNetworkFailure } from '../lib/connectivity';
+import { parseTags, collectTags, matchesAnyTag } from '../lib/tagUtils';
 import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata } from '../lib/historyUtils';
 import { DateUtils } from '../lib/dateUtils';
 import { FinanceService } from '../services/finance.service';
@@ -250,6 +251,7 @@ const HistoryPage: React.FC = () => {
   });
   const [filterSubcategory, setFilterSubcategory] = useState<string[]>([]);
   const [filterOwner, setFilterOwner] = useState<string[]>([]);
+  const [filterTag, setFilterTag] = useState<string[]>([]);
   // Origem: 'ALL' (conta + cartão, padrão) | 'ACCOUNT' (só conta) | 'CARD' (só cartão)
   // Padrão "Conta": é a única aba que mostra a linha resumida "Fatura Cartão: valor
   // total" (as outras escondem ela de propósito pra não contar a fatura em dobro com
@@ -279,6 +281,8 @@ const HistoryPage: React.FC = () => {
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
   const [owners, setOwners] = useState<string[]>(['Pessoal']);
+  // Tags já usadas na conta: alimentam o filtro e as sugestões de digitação.
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const lastRequestId = useRef(0);
   const isFirstLoad = useRef(true);
@@ -629,6 +633,12 @@ const HistoryPage: React.FC = () => {
         const deduplicatedOwners = Array.from(new Set((entities || []).map((o: string) => o.trim()))).filter(Boolean);
         setOwners(deduplicatedOwners.sort((a, b) => a.localeCompare(b)));
 
+        // Tags de banco e cartão juntas, agrupando variações de acento/caixa sob a
+        // grafia mais usada. É o que abastece o filtro de tags e as sugestões de
+        // digitação — sem sugestão, o mesmo assunto acabava gravado de três jeitos
+        // ("Maceió.26", "Maceio.26", "Maceió.2026") e o filtro não juntava nada.
+        setAvailableTags(collectTags(txs || [], cardTxs || []));
+
         // Initialize filters on first load (owner profiles and accounts)
         if (isFirstLoad.current) {
           let didInitializeFilters = false;
@@ -876,6 +886,9 @@ const HistoryPage: React.FC = () => {
         if (filterOwner.length > 0) {
           combinedForChart = combinedForChart.filter((t: any) => filterOwner.includes(t.owner_name));
         }
+        if (filterTag.length > 0) {
+          combinedForChart = combinedForChart.filter((t: any) => matchesAnyTag(t.tags, filterTag));
+        }
         if (minPrice !== '') {
           combinedForChart = combinedForChart.filter((t: any) => t._trueAmount >= Number(minPrice));
         }
@@ -955,6 +968,9 @@ const HistoryPage: React.FC = () => {
         }
         if (filterOwner.length > 0) {
           combined = combined.filter((t: any) => filterOwner.includes(t.owner_name));
+        }
+        if (filterTag.length > 0) {
+          combined = combined.filter((t: any) => matchesAnyTag(t.tags, filterTag));
         }
         if (minPrice !== '') {
           combined = combined.filter((t: any) => t._trueAmount >= Number(minPrice));
@@ -1333,7 +1349,7 @@ const HistoryPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [filterType, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, filterOrigin, page, sortField, sortDirection, debouncedSearch]);
+  }, [filterType, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, JSON.stringify(filterTag), filterOrigin, page, sortField, sortDirection, debouncedSearch]);
 
   const refreshCharts = useCallback(async () => {
     await fetchData(true);
@@ -1343,7 +1359,7 @@ const HistoryPage: React.FC = () => {
   useEffect(() => {
     setPage(0);
     setSelectedIds(new Set());
-  }, [filterType, JSON.stringify(filterAccount), JSON.stringify(filterCategory), JSON.stringify(filterSubcategory), startDate, endDate, minPrice, maxPrice, JSON.stringify(filterOwner), sortField, sortDirection, debouncedSearch]);
+  }, [filterType, JSON.stringify(filterAccount), JSON.stringify(filterCategory), JSON.stringify(filterSubcategory), startDate, endDate, minPrice, maxPrice, JSON.stringify(filterOwner), JSON.stringify(filterTag), sortField, sortDirection, debouncedSearch]);
 
   useEffect(() => {
     if (isSupabaseConfigured) fetchData();
@@ -1364,8 +1380,10 @@ const HistoryPage: React.FC = () => {
   const handleUpdate = async (id: string, field: string, value: any, confirmedScope?: SeriesScope) => {
     if (!supabase) return;
 
-    if (field === 'tags' && typeof value === 'string') {
-      value = value.split(',').map(s => s.trim()).filter(s => s !== '');
+    // Coluna text[]: normaliza sempre, inclusive quando o campo foi esvaziado
+    // (aí o valor correto é [], não a string vazia).
+    if (field === 'tags') {
+      value = parseTags(value);
     }
 
     const tx = transactions.find(t => t.id === id);
@@ -1926,7 +1944,7 @@ const HistoryPage: React.FC = () => {
 
   const resetFilters = () => {
     setFilterType('ALL'); setFilterCategory([]);
-    setFilterSubcategory([]); setFilterOrigin('ALL');
+    setFilterSubcategory([]); setFilterOrigin('ALL'); setFilterTag([]);
     setStartDate(DateUtils.formatToISODate(firstDay));
     setEndDate(DateUtils.formatToISODate(lastDay));
     setMinPrice(''); setMaxPrice('');
@@ -2837,6 +2855,9 @@ const HistoryPage: React.FC = () => {
     if (filterOwner.length > 0) {
       combined = combined.filter((t: any) => filterOwner.includes(t.owner_name));
     }
+    if (filterTag.length > 0) {
+      combined = combined.filter((t: any) => matchesAnyTag(t.tags, filterTag));
+    }
     if (minPrice !== '') {
       combined = combined.filter((t: any) => Math.abs(Number(t.amount || 0)) >= Number(minPrice));
     }
@@ -2941,7 +2962,7 @@ const HistoryPage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [showComparison, comparisonSlots, filterType, filterAccount, filterCategory, filterSubcategory, filterOwner, minPrice, maxPrice, debouncedSearch, viewMode, accounts, userId]);
+  }, [showComparison, comparisonSlots, filterType, filterAccount, filterCategory, filterSubcategory, filterOwner, JSON.stringify(filterTag), minPrice, maxPrice, debouncedSearch, viewMode, accounts, userId]);
 
   // Summary Calculations based on chartViewFiltered (respects 'Pagos & Recebidos' toggle)
   const summary = chartViewFiltered.reduce((acc, t) => {
@@ -3207,6 +3228,7 @@ const HistoryPage: React.FC = () => {
         filterCategory={filterCategory} setFilterCategory={setFilterCategory} filterSubcategory={filterSubcategory} setFilterSubcategory={setFilterSubcategory} startDate={startDate} setStartDate={setStartDate}
         endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
         filterOwner={filterOwner} setFilterOwner={setFilterOwner} owners={owners}
+        filterTag={filterTag} setFilterTag={setFilterTag} tags={availableTags}
         filterOrigin={filterOrigin} setFilterOrigin={setFilterOrigin}
         categories={availableCategories} subcategories={Array.from(new Set(subcategories.map(s => s.name?.trim()))).filter(Boolean).sort()} accounts={accounts} cards={cards} resetFilters={resetFilters}
       />
@@ -3536,7 +3558,7 @@ const HistoryPage: React.FC = () => {
       <AddTransactionModal show={addModal.open} onClose={() => setAddModal({ open: false })} onSubmit={createManualTransaction}
         isSubmitting={addModal.open ? addModal.isSubmitting : false} error={addModal.open ? addModal.error : null}
         initialForm={addModal.open ? addModal.form : {} as any}
-        accounts={accounts} owners={owners} categoryObjects={categoryObjects} subcategories={subcategories} onCreateCategory={handleCreateCategory}
+        accounts={accounts} owners={owners} categoryObjects={categoryObjects} subcategories={subcategories} availableTags={availableTags} onCreateCategory={handleCreateCategory}
       />
 
       <SeriesScopeModal
