@@ -17,7 +17,7 @@ export function getLevenshteinDistance(a: string, b: string): number {
 }
 
 export function normalizeStr(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
 export function findCloseMatch(input: string, list: string[]): string | null {

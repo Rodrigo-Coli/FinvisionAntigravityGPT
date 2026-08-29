@@ -8,6 +8,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { offlineQueue } from '../lib/offlineQueue.service';
 import { isNetworkFailure, isProbablyOffline, markNetworkFailure } from '../lib/connectivity';
 import { parseTags, collectTags, matchesAnyTag } from '../lib/tagUtils';
+import { SearchableInput } from '../components/common/SearchableInput';
 import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata } from '../lib/historyUtils';
 import { DateUtils } from '../lib/dateUtils';
 import { FinanceService } from '../services/finance.service';
@@ -3100,58 +3101,39 @@ const HistoryPage: React.FC = () => {
 
             <div className="relative w-full md:w-44">
               <Tag size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                list="bulk-categories-list"
+              <SearchableInput
                 value={bulkCategory}
-                onChange={(e) => setBulkCategory(e.target.value)}
+                onChange={setBulkCategory}
+                options={availableCategories}
                 placeholder="Trocar Categoria..."
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
               />
-              <datalist id="bulk-categories-list">
-                {availableCategories.map(cat => (
-                  <option key={cat} value={cat} />
-                ))}
-              </datalist>
             </div>
 
             <div className="relative w-full md:w-44">
               <Tag size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                list="bulk-subcategories-list"
+              <SearchableInput
                 value={bulkSubcategory}
-                onChange={(e) => setBulkSubcategory(e.target.value)}
+                onChange={setBulkSubcategory}
+                // Sem categoria escolhida no lote, sugere todas (os itens selecionados
+                // podem ter categorias diferentes); com categoria, filtra por ela.
+                options={(bulkCategory
+                  ? subcategories.filter(s => s.category_name === bulkCategory)
+                  : subcategories).map(s => s.name)}
                 placeholder="Trocar Subcat..."
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
               />
-              <datalist id="bulk-subcategories-list">
-                {/* Sem categoria escolhida no lote, sugere todas (os itens selecionados podem
-                    ter categorias diferentes); com categoria escolhida, filtra por ela. */}
-                {(bulkCategory
-                  ? subcategories.filter(s => s.category_name === bulkCategory)
-                  : subcategories
-                )
-                  .filter((s, idx, arr) => arr.findIndex(x => x.name === s.name) === idx)
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .map(s => (
-                    <option key={s.id} value={s.name} />
-                  ))}
-              </datalist>
             </div>
 
             <div className="relative w-full md:w-44">
               <User size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                list="bulk-owners-list"
+              <SearchableInput
                 value={bulkOwner}
-                onChange={(e) => setBulkOwner(e.target.value)}
-                placeholder="Pessoa ou Empresa..."
+                onChange={setBulkOwner}
+                options={owners}
+                placeholder="Trocar Pessoa..."
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-800 text-white text-[10px] font-bold uppercase rounded-xl outline-none focus:ring-2 focus:ring-brand-500/50 appearance-none cursor-pointer"
               />
-              <datalist id="bulk-owners-list">
-                {owners.map(o => (
-                  <option key={o} value={o} />
-                ))}
-              </datalist>
             </div>
 
             {(bulkCategory.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes('transferencia') || bulkCategory.toLowerCase().includes('transfer')) && (

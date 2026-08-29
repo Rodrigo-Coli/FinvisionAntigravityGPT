@@ -3,6 +3,7 @@ import { X, CheckCircle2, Camera, Loader2, Plus, SplitSquareHorizontal } from 'l
 import { SplitFieldsInline } from '../history/SplitFieldsInline';
 import { SplitDraft } from '../../services/splitTransaction.service';
 import { TagsInput } from '../common/TagsInput';
+import { SearchableInput } from '../common/SearchableInput';
 
 interface ManualTransactionModalProps {
     show: boolean;
@@ -398,19 +399,13 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                     </div>
                                 ) : (
                                     <div className="relative">
-                                        <input
-                                            list="card-categories-list"
+                                        <SearchableInput
                                             value={txCategory}
-                                            onFocus={(e) => e.target.select()}
-                                            onChange={(e) => setTxCategory(e.target.value)}
+                                            onChange={setTxCategory}
+                                            options={categories.map(c => c.name)}
                                             placeholder="Selecione ou digite..."
                                             className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                                         />
-                                        <datalist id="card-categories-list">
-                                            {categories.sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
-                                                <option key={c.id} value={c.name} />
-                                            ))}
-                                        </datalist>
                                     </div>
                                 )}
                             </div>
@@ -419,23 +414,13 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                 <div className="space-y-2 animate-in fade-in duration-300">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Subcategoria (Opcional)</label>
                                     <div className="relative">
-                                        <input
-                                            list="card-subcategories-list"
+                                        <SearchableInput
                                             value={txSubcategory}
-                                            onFocus={(e) => e.target.select()}
-                                            onChange={(e) => setTxSubcategory(e.target.value)}
+                                            onChange={setTxSubcategory}
+                                            options={subcategories.filter(s => !txCategory || s.category_name === txCategory).map(s => s.name)}
                                             placeholder="Selecione ou digite..."
                                             className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                                         />
-                                        <datalist id="card-subcategories-list">
-                                            {subcategories
-                                                .filter(s => !txCategory || s.category_name === txCategory)
-                                                .sort((a, b) => a.name.localeCompare(b.name))
-                                                .map(s => (
-                                                    <option key={s.id} value={s.name} />
-                                                ))
-                                            }
-                                        </datalist>
                                     </div>
                                 </div>
                             )}

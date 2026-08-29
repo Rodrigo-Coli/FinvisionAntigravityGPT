@@ -1,40 +1,28 @@
 {
-  "version": "2026.08.29.1620",
-  "title": "Tags que ficam salvas e filtro de tags no Histórico",
+  "version": "2026.08.29.1755",
+  "title": "Busca por categoria e subcategoria sem tropeçar em acento",
   "date": "29/08/2026",
   "benefits": [
     {
-      "title": "Agora dá para digitar vírgula no campo de tags",
-      "desc": "Ao criar um lançamento (banco ou cartão), a vírgula sumia da tela no instante em que era digitada — era impossível cadastrar mais de uma tag. Corrigido: o campo respeita o que você escreve.",
+      "title": "Digitar sem acento agora encontra a categoria certa",
+      "desc": "Digitar 'alimentacao' não trazia 'Alimentação', e 'cartao' não trazia 'Cartão de Crédito'. Como o campo aceita texto livre, era fácil acabar criando uma categoria duplicada sem acento. Vale para Categoria, Subcategoria e Pessoa/Empresa.",
       "type": "correcao"
     },
     {
-      "title": "Apagar uma tag do cartão volta a funcionar",
-      "desc": "Esvaziar o campo de tags de uma compra no cartão falhava sem avisar: a tela recarregava com a tag antiga de volta, como se nada tivesse acontecido.",
-      "type": "correcao"
+      "title": "A mesma regra em Transações e em Cartões",
+      "desc": "Novo lançamento, edição em linha e edição em lote — nos dois módulos — usam agora a mesma busca, que ignora acento, maiúscula e espaços nas pontas.",
+      "type": "melhoria"
     },
     {
-      "title": "Erro ao salvar uma edição agora aparece na tela",
-      "desc": "Falhas ao editar um lançamento de cartão morriam no console. Sem aviso, dava a impressão de que o app simplesmente não salvava.",
-      "type": "correcao"
-    },
-    {
-      "title": "Novo filtro de Tags no Histórico",
-      "desc": "Filtre lançamentos de banco e de cartão por uma ou mais tags, junto dos filtros de conta, categoria e pessoa. A busca por tag ignora acento e maiúscula.",
-      "type": "novidade"
-    },
-    {
-      "title": "Sugestão de tags já usadas",
-      "desc": "Ao digitar, o campo sugere as tags que você já criou. Isso evita o mesmo assunto virar três tags diferentes ('Maceió.26', 'Maceio.26', 'Maceió.2026') e sumir do filtro.",
+      "title": "Lista de sugestões mais esperta",
+      "desc": "O que começa com o que você digitou aparece primeiro, com navegação por seta e Enter. Digitar algo que não existe continua permitido — é assim que se cria categoria nova.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "lib/tagUtils.ts (novo): parseTags/formatTags/normalizeTag/collectTags/matchesAnyTag. Toda conversão de tags passa por aqui — nenhum caminho consegue mais mandar string crua para uma coluna text[].",
-    "components/common/TagsInput.tsx (novo): o campo separa o texto sendo DIGITADO do array publicado. O input controlado anterior derivava o valor de arr.join(', ') a cada tecla, então digitar 'viagem,' virava ['viagem'] e a vírgula sumia — impossível criar a segunda tag.",
-    "CreditCardsSection.saveTxPatch: a guarda era `if (patch.tags && typeof patch.tags === 'string')`; '' é falso, então apagar as tags pulava a conversão e enviava a string vazia para a coluna text[]. O erro do Postgres era engolido por um console.error.",
-    "CreditCardsSection.saveTxPatch: falha de gravação agora vira toast, em vez de só console.error.",
-    "History: novo filtro filterTag aplicado à lista, aos gráficos e à comparação de períodos; lista de tags derivada de banco + cartão, agrupando variações de acento/caixa sob a grafia mais usada.",
-    "HistoryFilters: novo seletor múltiplo 'Tags'."
+    "components/common/SearchableInput.tsx (novo): substitui o <datalist> nativo nos campos de Categoria, Subcategoria e Pessoa. Quem filtrava no datalist era o navegador, com comparação sensível a acento — 'Alimentação' não aparecia ao digitar 'alimentacao'. O filtro agora é nosso, com normalizeStr.",
+    "Aplicado em: AddTransactionModal (Transações), ManualTransactionModal (Cartões), TransactionList (edição em linha no cartão) e edição em lote do Histórico.",
+    "TransactionTable: CategoryPicker e SubcategoryPicker filtravam com toLowerCase(); trocado por normalizeStr.",
+    "lib/stringUtils.ts: o intervalo de acentos do regex passou a usar escape explícito (\\u0300-\\u036f) em vez dos caracteres combinantes no fonte."
   ]
 }

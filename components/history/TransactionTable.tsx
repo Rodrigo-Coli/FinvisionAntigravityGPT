@@ -4,6 +4,7 @@ import { Loader2, Trash2, RotateCcw, Check, ChevronUp, ChevronDown, Search, Plus
 import { DateUtils } from '../../lib/dateUtils';
 import { Transaction, BankAccount } from '../../types';
 import { SplitTransactionModal } from './SplitTransactionModal';
+import { normalizeStr } from '../../lib/stringUtils';
 
 interface TransactionTableProps {
     transactions: Transaction[];
@@ -83,7 +84,9 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({ value, transactionType,
     const txType = transactionType === 'INCOME' ? 'INCOME' : 'EXPENSE';
     const filtered = categoryObjects
         .filter(c => !c.type || c.type === txType)
-        .filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
+        // normalizeStr em vez de toLowerCase: sem isso, digitar "alimentacao"
+        // não encontrava "Alimentação" e o usuário criava uma categoria duplicada.
+        .filter(c => normalizeStr(c.name).includes(normalizeStr(search)))
         .sort((a, b) => a.name.localeCompare(b.name));
 
     const handleCreate = async () => {
@@ -191,7 +194,7 @@ const SubcategoryPicker: React.FC<SubcategoryPickerProps> = ({ value, parentCate
 
     const filtered = subcategories
         .filter(s => s.category_name === parentCategory)
-        .filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
+        .filter(s => normalizeStr(s.name).includes(normalizeStr(search)))
         .sort((a, b) => a.name.localeCompare(b.name));
 
     if (!parentCategory) return null;

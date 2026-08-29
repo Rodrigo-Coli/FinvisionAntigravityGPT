@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Clock, Plus, Loader2, Tags, Trash2, Paperclip, SplitSquareHorizontal } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 import { SplitTransactionModal } from '../history/SplitTransactionModal';
+import { SearchableInput } from '../common/SearchableInput';
 
 interface TransactionListProps {
     transactions: any[];
@@ -157,35 +158,25 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                 ) : (
                                 <div className="flex items-center gap-2">
                                     <div className="relative flex-1 min-w-0">
-                                        <input
-                                            type="text"
-                                            list="card-categories-list"
+                                        <SearchableInput
                                             value={tx.category ?? ''}
                                             placeholder="Categoria..."
-                                            onFocus={(e) => e.target.select()}
-                                            onChange={(e) => onUpdateTxLocal(tx.id, { category: e.target.value })}
-                                            onBlur={(e) => onCommitCategory?.(tx.id, e.target.value)}
+                                            options={categories.map(c => c.name)}
+                                            onChange={(v) => onUpdateTxLocal(tx.id, { category: v })}
+                                            onBlur={() => onCommitCategory?.(tx.id, tx.category ?? '')}
                                             className="w-full text-xs font-bold bg-white dark:bg-brand-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 pl-6 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm truncate"
                                         />
                                         <Tags size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-500 pointer-events-none" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <input
-                                            type="text"
-                                            list={`card-subcategories-mobile-${tx.id}`}
+                                        <SearchableInput
                                             value={tx.subcategory || ''}
                                             placeholder="Subcategoria..."
-                                            onFocus={(e) => e.target.select()}
-                                            onChange={(e) => onUpdateTxLocal(tx.id, { subcategory: e.target.value })}
-                                            onBlur={(e) => onCommitSubcategory?.(tx.id, e.target.value)}
+                                            options={subcategories.filter(s => s.category_name === tx.category).map(s => s.name)}
+                                            onChange={(v) => onUpdateTxLocal(tx.id, { subcategory: v })}
+                                            onBlur={() => onCommitSubcategory?.(tx.id, tx.subcategory || '')}
                                             className="w-full text-xs font-bold bg-transparent dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all truncate shadow-sm"
                                         />
-                                        <datalist id={`card-subcategories-mobile-${tx.id}`}>
-                                            {subcategories
-                                                .filter(s => s.category_name === tx.category)
-                                                .sort((a, b) => a.name.localeCompare(b.name))
-                                                .map(s => <option key={s.id} value={s.name} />)}
-                                        </datalist>
                                     </div>
                                 </div>
                                 )}
@@ -352,14 +343,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                 </button>
                                             ) : (
                                             <div className="relative">
-                                                <input
-                                                    type="text"
-                                                    list="card-categories-list"
+                                                <SearchableInput
                                                     value={tx.category ?? ''}
                                                     placeholder="Categoria..."
-                                                    onFocus={(e) => e.target.select()}
-                                                    onChange={(e) => onUpdateTxLocal(tx.id, { category: e.target.value })}
-                                                    onBlur={(e) => onCommitCategory?.(tx.id, e.target.value)}
+                                                    options={categories.map(c => c.name)}
+                                                    onChange={(v) => onUpdateTxLocal(tx.id, { category: v })}
+                                                    onBlur={() => onCommitCategory?.(tx.id, tx.category ?? '')}
                                                     className="w-full text-[10px] font-bold bg-white dark:bg-brand-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 pl-6 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm truncate"
                                                 />
                                                 <Tags size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-500 pointer-events-none" />
@@ -371,22 +360,14 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                         <div className="col-span-1">
                                             {!tx.has_splits && (
                                             <>
-                                            <input
-                                                type="text"
-                                                list={`card-subcategories-${tx.id}`}
+                                            <SearchableInput
                                                 value={tx.subcategory || ''}
                                                 placeholder="..."
-                                                onFocus={(e) => e.target.select()}
-                                                onChange={(e) => onUpdateTxLocal(tx.id, { subcategory: e.target.value })}
-                                                onBlur={(e) => onCommitSubcategory?.(tx.id, e.target.value)}
+                                                options={subcategories.filter(s => s.category_name === tx.category).map(s => s.name)}
+                                                onChange={(v) => onUpdateTxLocal(tx.id, { subcategory: v })}
+                                                onBlur={() => onCommitSubcategory?.(tx.id, tx.subcategory || '')}
                                                 className="w-full text-[10px] font-bold bg-transparent dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all truncate shadow-sm"
                                             />
-                                            <datalist id={`card-subcategories-${tx.id}`}>
-                                                {subcategories
-                                                    .filter(s => s.category_name === tx.category)
-                                                    .sort((a, b) => a.name.localeCompare(b.name))
-                                                    .map(s => <option key={s.id} value={s.name} />)}
-                                            </datalist>
                                             </>
                                             )}
                                         </div>
@@ -534,9 +515,6 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                 )}
             </div>
 
-            <datalist id="card-categories-list">
-                {categories.map((c) => <option key={c.id} value={c.name} />)}
-            </datalist>
 
             {splitTx && (
                 <SplitTransactionModal

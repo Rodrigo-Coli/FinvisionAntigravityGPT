@@ -7,6 +7,7 @@ import { SplitFieldsInline } from './SplitFieldsInline';
 import { SplitDraft } from '../../services/splitTransaction.service';
 import { getSessionUser } from '../../lib/session';
 import { TagsInput } from '../common/TagsInput';
+import { SearchableInput } from '../common/SearchableInput';
 
 interface AddTransactionModalProps {
     show: boolean;
@@ -424,19 +425,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pessoa ou Empresa</label>
-                            <input
-                                list="owners-list"
+                            <SearchableInput
                                 value={form.ownerName}
-                                onFocus={(e) => e.target.select()}
-                                onChange={(e) => setAddField('ownerName', e.target.value)}
+                                onChange={(v) => setAddField('ownerName', v)}
+                                options={owners}
                                 placeholder="Selecione ou digite..."
                                 className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                             />
-                            <datalist id="owners-list">
-                                {owners.sort((a, b) => a.localeCompare(b)).map((o: any) => (
-                                    <option key={o} value={o} />
-                                ))}
-                            </datalist>
                         </div>
 
                         {canDivide && (
@@ -510,19 +505,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                     </div>
                                 ) : (
                                     <div className="relative">
-                                        <input
-                                            list="add-categories-list"
+                                        <SearchableInput
                                             value={form.category}
-                                            onFocus={(e) => e.target.select()}
-                                            onChange={(e) => setAddField('category', e.target.value)}
+                                            onChange={(v) => setAddField('category', v)}
+                                            options={filteredCategories.map((c: any) => c.name)}
                                             placeholder="Selecione..."
                                             className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                                         />
-                                        <datalist id="add-categories-list">
-                                            {filteredCategories.sort((a, b) => a.name.localeCompare(b.name)).map((c: any) => (
-                                                <option key={c.name} value={c.name} />
-                                            ))}
-                                        </datalist>
                                     </div>
                                 )}
                             </div>
@@ -531,19 +520,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 <div className="space-y-2 animate-in fade-in duration-300">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Subcategoria (Opcional)</label>
                                     <div className="relative">
-                                        <input
-                                            list="add-subcategories-list"
+                                        <SearchableInput
                                             value={form.subcategory}
-                                            onFocus={(e) => e.target.select()}
-                                            onChange={(e) => setAddField('subcategory', e.target.value)}
+                                            onChange={(v) => setAddField('subcategory', v)}
+                                            options={subcategories.filter(s => s.category_name === form.category).map(s => s.name)}
                                             placeholder="Selecione..."
                                             className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                                         />
-                                        <datalist id="add-subcategories-list">
-                                            {subcategories.filter(s => s.category_name === form.category).sort((a, b) => a.name.localeCompare(b.name)).map(s => (
-                                                <option key={s.id} value={s.name} />
-                                            ))}
-                                        </datalist>
                                     </div>
                                 </div>
                             )}
