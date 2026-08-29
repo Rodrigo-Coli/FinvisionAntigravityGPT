@@ -1,5 +1,22 @@
 [
   {
+    "version": "2026.08.29.2230",
+    "title": "Aviso de offline não cobre mais o menu",
+    "date": "29/08/2026",
+    "benefits": [
+      {
+        "title": "Menu continua acessível quando o app está sem internet",
+        "desc": "A faixa vermelha de 'Offline' ficava por cima do cabeçalho no celular, escondendo o botão do menu — justamente quando você mais precisa navegar pelo que está salvo localmente. Agora ela empurra a tela para baixo em vez de cobrir.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "O aviso de offline é `fixed top-0` com z-index 100, e o cabeçalho do celular também é `fixed top-0` (z-50): o aviso ficava por cima e o botão do menu não recebia o toque.",
+      "OfflineBanner passa a medir a própria altura (useLayoutEffect + ResizeObserver, porque o texto quebra em duas linhas em telas estreitas) e publicá-la na variável CSS --offline-banner-h.",
+      "index.html: cabeçalho do celular, barra lateral do desktop e o padding do conteúdo passam a reservar essa altura. Vale 0px quando o aviso não está na tela, então o uso normal não muda."
+    ]
+  },
+  {
     "version": "2026.08.29.1755",
     "title": "Busca por categoria e subcategoria sem tropeçar em acento",
     "date": "29/08/2026",

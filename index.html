@@ -132,13 +132,34 @@
       padding-top: calc(1.5rem + env(safe-area-inset-top, 0px)) !important;
     }
     
+    /* Altura do aviso de offline, publicada pelo próprio componente.
+       O aviso é `fixed top-0`, então sem reservar espaço para ele o cabeçalho
+       (que também é fixed top-0) ficava ESCONDIDO ATRÁS dele no celular — era
+       impossível abrir o menu enquanto estivesse sem internet. Vale 0px quando
+       o aviso não está na tela, então nada muda no uso normal. */
+    :root {
+      --offline-banner-h: 0px;
+    }
+
+    /* Elemento fixo no topo que precisa ficar ABAIXO do aviso de offline. */
+    .below-offline-banner {
+      top: var(--offline-banner-h, 0px) !important;
+    }
+
+    /* Barra lateral do desktop: encosta no topo, mas encurta na mesma medida
+       para não sobrar altura e criar rolagem. */
+    .sidebar-below-offline-banner {
+      top: var(--offline-banner-h, 0px) !important;
+      height: calc(100vh - var(--offline-banner-h, 0px)) !important;
+    }
+
     .main-content-safe {
-      padding-top: calc(4rem + env(safe-area-inset-top, 0px)) !important;
+      padding-top: calc(4rem + env(safe-area-inset-top, 0px) + var(--offline-banner-h, 0px)) !important;
     }
 
     @media (min-width: 1024px) {
       .main-content-safe {
-        padding-top: 0px !important;
+        padding-top: var(--offline-banner-h, 0px) !important;
       }
     }
 

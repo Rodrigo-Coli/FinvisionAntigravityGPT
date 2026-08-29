@@ -1,28 +1,17 @@
 {
-  "version": "2026.08.29.1755",
-  "title": "Busca por categoria e subcategoria sem tropeçar em acento",
+  "version": "2026.08.29.2230",
+  "title": "Aviso de offline não cobre mais o menu",
   "date": "29/08/2026",
   "benefits": [
     {
-      "title": "Digitar sem acento agora encontra a categoria certa",
-      "desc": "Digitar 'alimentacao' não trazia 'Alimentação', e 'cartao' não trazia 'Cartão de Crédito'. Como o campo aceita texto livre, era fácil acabar criando uma categoria duplicada sem acento. Vale para Categoria, Subcategoria e Pessoa/Empresa.",
+      "title": "Menu continua acessível quando o app está sem internet",
+      "desc": "A faixa vermelha de 'Offline' ficava por cima do cabeçalho no celular, escondendo o botão do menu — justamente quando você mais precisa navegar pelo que está salvo localmente. Agora ela empurra a tela para baixo em vez de cobrir.",
       "type": "correcao"
-    },
-    {
-      "title": "A mesma regra em Transações e em Cartões",
-      "desc": "Novo lançamento, edição em linha e edição em lote — nos dois módulos — usam agora a mesma busca, que ignora acento, maiúscula e espaços nas pontas.",
-      "type": "melhoria"
-    },
-    {
-      "title": "Lista de sugestões mais esperta",
-      "desc": "O que começa com o que você digitou aparece primeiro, com navegação por seta e Enter. Digitar algo que não existe continua permitido — é assim que se cria categoria nova.",
-      "type": "melhoria"
     }
   ],
   "changes": [
-    "components/common/SearchableInput.tsx (novo): substitui o <datalist> nativo nos campos de Categoria, Subcategoria e Pessoa. Quem filtrava no datalist era o navegador, com comparação sensível a acento — 'Alimentação' não aparecia ao digitar 'alimentacao'. O filtro agora é nosso, com normalizeStr.",
-    "Aplicado em: AddTransactionModal (Transações), ManualTransactionModal (Cartões), TransactionList (edição em linha no cartão) e edição em lote do Histórico.",
-    "TransactionTable: CategoryPicker e SubcategoryPicker filtravam com toLowerCase(); trocado por normalizeStr.",
-    "lib/stringUtils.ts: o intervalo de acentos do regex passou a usar escape explícito (\\u0300-\\u036f) em vez dos caracteres combinantes no fonte."
+    "O aviso de offline é `fixed top-0` com z-index 100, e o cabeçalho do celular também é `fixed top-0` (z-50): o aviso ficava por cima e o botão do menu não recebia o toque.",
+    "OfflineBanner passa a medir a própria altura (useLayoutEffect + ResizeObserver, porque o texto quebra em duas linhas em telas estreitas) e publicá-la na variável CSS --offline-banner-h.",
+    "index.html: cabeçalho do celular, barra lateral do desktop e o padding do conteúdo passam a reservar essa altura. Vale 0px quando o aviso não está na tela, então o uso normal não muda."
   ]
 }

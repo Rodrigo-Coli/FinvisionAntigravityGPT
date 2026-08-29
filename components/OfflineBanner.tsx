@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { WifiOff, RefreshCw, MessageCircle, X } from 'lucide-react';
 import { offlineQueue } from '../lib/offlineQueue.service';
 import { isProbablyOnline, onConnectivityChange } from '../lib/connectivity';
@@ -14,6 +14,7 @@ const OfflineBanner: React.FC = () => {
     const [failedCount, setFailedCount] = useState(0);
     const [dismissed, setDismissed] = useState(false);
     const [syncing, setSyncing] = useState(false);
+    const barRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         let alive = true;
@@ -73,6 +74,45 @@ const OfflineBanner: React.FC = () => {
         };
     }, []);
 
+    // O aviso é `fixed top-0`, igual ao cabeçalho do celular — sem reservar
+    // espaço para ele, o cabeçalho (e o botão do menu) ficava escondido atrás.
+    // Publicamos a altura real numa variável de CSS e o layout desce na medida
+    // exata. Medimos em vez de fixar um valor porque o texto quebra em duas
+    // linhas em telas estreitas.
+    const visible = !dismissed && (isOffline || pendingCount > 0 || failedCount > 0 || syncing);
+
+    // useLayoutEffect e não useEffect: a medição precisa acontecer ANTES da
+    // pintura, senão existe um quadro em que o aviso já apareceu mas o layout
+    // ainda não desceu — e o cabeçalho pisca por baixo dele.
+    useLayoutEffect(() => {
+        const root = document.documentElement;
+
+        if (!visible) {
+            root.style.setProperty('--offline-banner-h', '0px');
+            return;
+        }
+
+        const publish = () => {
+            const h = barRef.current?.offsetHeight ?? 0;
+            root.style.setProperty('--offline-banner-h', `${h}px`);
+        };
+
+        publish();
+
+        // A altura muda quando o texto passa a ocupar duas linhas (rotação de
+        // tela, contagem da fila crescendo).
+        const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(publish) : null;
+        if (observer && barRef.current) observer.observe(barRef.current);
+        window.addEventListener('resize', publish);
+
+        return () => {
+            observer?.disconnect();
+            window.removeEventListener('resize', publish);
+            // Ao desmontar/esconder, devolve o espaço ao layout.
+            root.style.setProperty('--offline-banner-h', '0px');
+        };
+    }, [visible, isOffline, pendingCount, failedCount, syncing]);
+
     const openWhatsApp = () => {
         const msg = encodeURIComponent(
             `🆘 *Zyvion — Problema de Conexão*\n\n` +
@@ -85,11 +125,10 @@ const OfflineBanner: React.FC = () => {
         window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`, '_blank');
     };
 
-    if (dismissed) return null;
-    if (!isOffline && pendingCount === 0 && failedCount === 0 && !syncing) return null;
+    if (!visible) return null;
 
     return (
-        <div className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-300 ${isOffline
+        <div ref={barRef} className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-300 ${isOffline
             ? 'bg-rose-600 text-white'
             : 'bg-amber-500 text-white'
             }`}>

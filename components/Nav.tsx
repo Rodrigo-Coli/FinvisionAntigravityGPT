@@ -104,7 +104,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
   return (
     <>
       {/* Sidebar Desktop */}
-      <aside className="hidden lg:flex flex-col w-64 h-screen bg-white border-r border-slate-100 sticky top-0 z-50 p-6 overflow-y-auto">
+      <aside className="hidden lg:flex flex-col w-64 h-screen bg-white border-r border-slate-100 sticky top-0 z-50 p-6 overflow-y-auto sidebar-below-offline-banner">
         <div className="flex items-center gap-3 mb-12 px-2">
           <img src="/logo-icon.png" alt="Zyvion" className="w-10 h-10 object-contain" />
           <span className="text-xl font-bold tracking-tight text-slate-900">Zyvion</span>
@@ -214,7 +214,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
       </aside>
 
       {/* Mobile Header */}
-      <nav className="lg:hidden bg-white border-b border-slate-100 mobile-header-safe flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50">
+      <nav className="lg:hidden bg-white border-b border-slate-100 mobile-header-safe flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50 below-offline-banner">
         <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
           className="p-2.5 text-slate-500"
