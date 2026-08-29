@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase/client';
 import { useTour } from '../contexts/TourContext';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { resolveTabParam } from '../lib/urlTabState';
+import { signOutSafely } from '../lib/session';
 
 type NavSubItem = { id: string; label: string; icon: React.ReactNode };
 type NavItem = { label: string; path: string; icon: React.ReactNode; subItems?: NavSubItem[]; paramName?: string };
@@ -203,7 +204,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
 
           <div className="flex flex-col gap-2">
             <button
-              onClick={() => supabase?.auth.signOut()}
+              onClick={() => signOutSafely(supabase)}
               className="flex items-center justify-center gap-3 w-full px-4 py-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all text-sm font-medium"
             >
               <LogOut size={20} />
@@ -323,7 +324,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
 
           <div className="p-6 pt-4 border-t border-slate-100">
             <button
-              onClick={() => supabase?.auth.signOut()}
+              onClick={() => signOutSafely(supabase)}
               className="flex items-center gap-4 w-full p-4 text-rose-500 font-bold"
             >
               <LogOut size={20} />

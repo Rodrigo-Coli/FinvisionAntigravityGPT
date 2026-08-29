@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Profile } from '../types';
 import { supabase } from '../lib/supabase/client';
 import { Clock, LogOut, ShieldAlert, Mail, Loader2 } from 'lucide-react';
+import { signOutSafely } from '../lib/session';
 
 interface PendingApprovalProps {
   user: Profile;
@@ -15,7 +16,7 @@ const PendingApproval: React.FC<PendingApprovalProps> = ({ user }) => {
 
   const handleLogout = async () => {
     if (!supabase) return;
-    await supabase.auth.signOut();
+    await signOutSafely(supabase);
     navigate('/login');
   };
 

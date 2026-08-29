@@ -18,3 +18,6 @@ declare module 'virtual:pwa-register/react' {
     updateServiceWorker: (reloadPage?: boolean) => Promise<void>;
   };
 }
+
+/** Versão do build, injetada pelo Vite a partir de public/version.json. */
+declare const __APP_VERSION__: string;

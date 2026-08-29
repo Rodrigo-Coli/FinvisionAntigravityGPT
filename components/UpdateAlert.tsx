@@ -28,6 +28,8 @@ export const UpdateAlert: React.FC = () => {
   const [changelog, setChangelog] = useState<ChangelogData | null>(null);
   const [serverVersion, setServerVersion] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
+  // Atualização detectada comparando versões, sem passar pelo service worker.
+  const [versionMismatch, setVersionMismatch] = useState(false);
 
   const {
     offlineReady: [offlineReady, setOfflineReady],
@@ -64,6 +66,59 @@ export const UpdateAlert: React.FC = () => {
     return () => window.removeEventListener('focus', checkUpdatesOnFocus);
   }, []);
 
+  // Verificação por VERSÃO, independente do service worker.
+  //
+  // O aviso de atualização dependia exclusivamente do `needRefresh` do SW. No
+  // iOS, em PWA instalado na tela de início, o Safari é bem conservador para
+  // detectar service worker novo — o app rodava a versão antiga por dias sem
+  // nunca avisar. E `version.json`, que já era publicado a cada deploy, só era
+  // lido DEPOIS do `needRefresh`: na prática era decorativo.
+  //
+  // Agora comparamos a versão embutida no bundle com a do servidor. Se diferem,
+  // há atualização — não importa o que o SW ache.
+  useEffect(() => {
+    let alive = true;
+
+    const checkVersion = async () => {
+      try {
+        const res = await fetch(`/version.json?cb=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!alive || !data?.version) return;
+
+        setServerVersion(data.version);
+        const running = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
+        const stale = !!running && data.version !== running;
+        setVersionMismatch(prev => {
+          // Só reabre o aviso quando a versão MUDA; sem isso, cada verificação
+          // desfazia o 'Atualizar mais tarde' do usuário.
+          if (stale && !prev) setDismissed(false);
+          return stale;
+        });
+
+        if (stale) {
+          const cl = await fetch(`/changelog.json?cb=${Date.now()}`, { cache: 'no-store' })
+            .then(r => r.json()).catch(() => null);
+          if (alive && cl) setChangelog(cl);
+        }
+      } catch {
+        /* offline ou servidor fora: nada a avisar */
+      }
+    };
+
+    checkVersion();
+    // No iOS o app quase nunca é fechado de verdade: volta do multitarefa. O
+    // foco é o momento mais confiável para reconferir.
+    window.addEventListener('focus', checkVersion);
+    const id = setInterval(checkVersion, 10 * 60 * 1000);
+
+    return () => {
+      alive = false;
+      window.removeEventListener('focus', checkVersion);
+      clearInterval(id);
+    };
+  }, []);
+
   // Monitorar necessidade de atualização e buscar metadados frescos bypassando cache
   useEffect(() => {
     if (needRefresh) {
@@ -90,7 +145,9 @@ export const UpdateAlert: React.FC = () => {
   if (dismissed) return null;
 
   // 1. Modal Centralizado de Atualização Disponível
-  if (needRefresh) {
+  const hasUpdate = needRefresh || versionMismatch;
+
+  if (hasUpdate) {
     const getBenefitIcon = (type?: string) => {
       switch (type) {
         case 'security':
@@ -232,13 +289,34 @@ export const UpdateAlert: React.FC = () => {
           {/* Ações */}
           <div className="flex flex-col gap-2.5 mt-5 shrink-0">
             <button
-              onClick={() => {
+              onClick={async () => {
                 setIsUpdating(true);
-                updateServiceWorker(true);
-                // Fallback de segurança: recarrega a página após 2 segundos se o SW falhar em fazer a transição
-                setTimeout(() => {
-                  window.location.reload();
-                }, 2000);
+
+                if (needRefresh) {
+                  // Caminho normal: existe um SW novo esperando para assumir.
+                  updateServiceWorker(true);
+                } else {
+                  // iOS: o SW não sinalizou, então trocar de versão por ele não
+                  // funciona. Descadastramos o SW e limpamos os caches para o
+                  // recarregamento buscar os arquivos novos do servidor (ele se
+                  // registra de novo no carregamento seguinte).
+                  try {
+                    if ('serviceWorker' in navigator) {
+                      const regs = await navigator.serviceWorker.getRegistrations();
+                      await Promise.all(regs.map(r => r.unregister()));
+                    }
+                    if ('caches' in window) {
+                      const keys = await caches.keys();
+                      await Promise.all(keys.map(k => caches.delete(k)));
+                    }
+                  } catch (err) {
+                    console.warn('[SW] Falha ao limpar cache para atualizar:', err);
+                  }
+                }
+
+                // Rede de segurança: se a transição do SW não recarregar sozinha,
+                // recarregamos na mão.
+                setTimeout(() => window.location.reload(), needRefresh ? 2000 : 400);
               }}
               disabled={isUpdating}
               className="w-full py-3.5 bg-brand-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-brand-700 active:scale-98 transition-all flex items-center justify-center gap-2 shadow-lg shadow-brand-500/25 disabled:opacity-50"

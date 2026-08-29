@@ -52,3 +52,44 @@ export async function getSessionUser(client: any): Promise<any | null> {
   }
   return readPersistedUser();
 }
+
+/**
+ * Sair da conta sem depender da internet.
+ *
+ * `supabase.auth.signOut()` faz uma chamada de rede a /auth/v1/logout. Em
+ * conexão ruim esse fetch NÃO rejeita — fica pendurado. Como o código que
+ * chamava esperava por ele (`await supabase.auth.signOut()`) antes de limpar o
+ * armazenamento e redirecionar, o botão "Sair" simplesmente não fazia nada:
+ * nenhum erro, nenhuma tela nova, nada.
+ *
+ * Aqui a saída é garantida: tentamos encerrar a sessão no servidor com prazo e,
+ * dê no que der, a sessão local é apagada. Encerrar no servidor é desejável
+ * (invalida o refresh token), mas nunca pode impedir o usuário de sair.
+ */
+export async function signOutSafely(client: any, timeoutMs = 4000): Promise<void> {
+  if (!client) return;
+
+  try {
+    await withTimeout(client.auth.signOut(), timeoutMs, 'sair da conta');
+    return;
+  } catch {
+    /* sem rede ou servidor lento: encerra só localmente, abaixo */
+  }
+
+  try {
+    // scope 'local' não toca a rede: limpa a sessão só neste aparelho.
+    await withTimeout(client.auth.signOut({ scope: 'local' }), 1500, 'sair localmente');
+  } catch {
+    // Último recurso: remove na mão a chave que o supabase-js persiste.
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) keys.push(key);
+      }
+      keys.forEach(k => localStorage.removeItem(k));
+    } catch {
+      /* storage indisponível: não há mais o que fazer */
+    }
+  }
+}

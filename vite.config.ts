@@ -1,8 +1,18 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { readFileSync } from 'node:fs';
+
+// Versão do build, lida de public/version.json (a mesma que o app publica).
+// Fica embutida no bundle para o app conseguir comparar 'o que estou rodando'
+// com 'o que o servidor tem' SEM depender do service worker — no iOS o SW
+// costuma não sinalizar atualização em PWA instalado na tela de início.
+const APP_VERSION = JSON.parse(readFileSync('./public/version.json', 'utf-8')).version;
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION)
+  },
   plugins: [
     react(),
     VitePWA({

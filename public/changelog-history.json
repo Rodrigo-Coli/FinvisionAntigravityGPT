@@ -1,5 +1,29 @@
 [
   {
+    "version": "2026.08.30.0015",
+    "title": "Aviso de atualização no iPhone e botão Sair do demo",
+    "date": "30/08/2026",
+    "benefits": [
+      {
+        "title": "O iPhone agora avisa quando há versão nova",
+        "desc": "No iOS o app podia ficar dias rodando uma versão antiga sem nunca avisar. O aviso dependia só do service worker, que o Safari demora muito a atualizar em app instalado na tela de início. Agora o app compara a própria versão com a do servidor e avisa por conta própria.",
+        "type": "correcao"
+      },
+      {
+        "title": "Botão Sair volta a funcionar",
+        "desc": "Sair do modo demo (e da conta) travava sem dar erro quando a conexão estava ruim: o app esperava para sempre a resposta do servidor antes de encerrar a sessão. Agora a saída é garantida, com ou sem internet.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "UpdateAlert dependia exclusivamente do needRefresh do service worker. version.json já era publicado a cada deploy, mas só era lido DEPOIS do needRefresh — na prática era decorativo. Agora a versão do build é embutida no bundle (define __APP_VERSION__ a partir de public/version.json) e comparada com /version.json na carga, no foco da janela e a cada 10 minutos.",
+      "O botão ATUALIZAR AGORA passa a funcionar mesmo quando o SW não sinalizou: descadastra o service worker, limpa os caches e recarrega buscando os arquivos novos.",
+      "O aviso só reabre quando a VERSÃO muda; antes, cada verificação desfazia o 'Atualizar mais tarde' do usuário.",
+      "lib/session.ts (signOutSafely): supabase.auth.signOut() faz chamada de rede que, em conexão ruim, não rejeita — fica pendurada. Como DemoBanner esperava por ela antes de limpar o storage e redirecionar, o botão parecia morto. Agora há prazo, com queda para signOut local e, em último caso, limpeza direta da chave de sessão. Aplicado também em Nav, DemoMode, PendingApproval e UpgradeModal.",
+      "DemoBanner: a saída usava window.location.href = '/#/signup', que só troca o hash e não recarrega quando o caminho já é '/' — o app seguia montado com o estado do demo. Trocado por replace + reload."
+    ]
+  },
+  {
     "version": "2026.08.29.2230",
     "title": "Aviso de offline não cobre mais o menu",
     "date": "29/08/2026",

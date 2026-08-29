@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase/client';
 import { Sparkles, Loader2 } from 'lucide-react';
+import { signOutSafely } from '../lib/session';
 
 export default function DemoMode() {
   const navigate = useNavigate();
@@ -14,7 +15,7 @@ export default function DemoMode() {
         return;
       }
       
-      await supabase.auth.signOut();
+      await signOutSafely(supabase);
 
       // Gerar email randômico para isolar os ambientes de testes de cada visitante
       const demoEmail = `demo+${Date.now()}@finvision.app`;

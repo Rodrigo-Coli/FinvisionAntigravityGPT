@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { LogOut, Sparkles, X, Check, Gift, Key, Mail, Lock, CheckSquare, Square, ChevronDown, ChevronUp, Loader2, Trophy, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase/client';
 import { useToast } from '../contexts/ToastContext';
+import { signOutSafely } from '../lib/session';
 
 export default function DemoBanner() {
   const location = useLocation();
@@ -166,8 +167,14 @@ export default function DemoBanner() {
     localStorage.removeItem('finvision_demo_tasks');
     localStorage.removeItem('finvision_demo_asked_ai');
     setShowDiscardConfirm(false);
-    try { await supabase.auth.signOut(); } catch (e) {}
-    window.location.href = '/#/signup';
+    // signOutSafely nunca fica pendurado: antes, `await supabase.auth.signOut()`
+    // sem prazo travava aqui em conexão ruim e as duas linhas seguintes nunca
+    // rodavam — o botão parecia morto.
+    await signOutSafely(supabase);
+    // replace + reload: só trocar o hash não recarrega a página quando o
+    // caminho já é '/', e o app continuava montado com o estado do demo.
+    window.location.replace('/#/signup');
+    window.location.reload();
   };
 
   if (!isDemo) return null;

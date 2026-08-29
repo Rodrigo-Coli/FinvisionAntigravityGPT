@@ -2,6 +2,7 @@ import React from 'react';
 import { Lock, CreditCard, ExternalLink, MessageCircle } from 'lucide-react';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { supabase } from '../lib/supabase/client';
+import { signOutSafely } from '../lib/session';
 
 export default function UpgradeModal() {
   const { subscription, loadingSub } = useSubscription();
@@ -15,7 +16,7 @@ export default function UpgradeModal() {
 
   const handleLogout = async () => {
     if (supabase) {
-      await supabase.auth.signOut();
+      await signOutSafely(supabase);
       window.location.href = '/';
     }
   };
