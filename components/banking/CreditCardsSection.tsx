@@ -3,6 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Loader2, Edit2, Archive, Trash2, Info, Filter, X as XIcon } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
 import { FinanceService } from '../../services/finance.service';
+import { offlineQueue } from '../../lib/offlineQueue.service';
+import { isProbablyOffline } from '../../lib/connectivity';
+import { useReconnectRefresh } from '../../lib/useReconnectRefresh';
 import { ReconciliationService } from '../../services/reconciliation.service';
 import { DateUtils } from '../../lib/dateUtils';
 import { findCloseMatch } from '../../lib/stringUtils';
@@ -682,6 +685,10 @@ const CreditCardsSection: React.FC = () => {
   const getAccountLabel = (a: Account) => {
     return a.institution || a.name || a.bank_name || `Conta ${a.id.slice(0, 6)}`;
   };
+
+  // Voltou a internet (ou a fila offline subiu): recarrega a fatura do cartão
+  // aberto, em vez de deixar na tela o retrato antigo do cache.
+  useReconnectRefresh(() => { if (selectedCard?.id) loadCardContext(selectedCard.id); });
 
   // forcedStatementId: usado ao TROCAR de cartão, para ignorar a fatura que estava
   // selecionada no cartão anterior. Sem isso o valor antigo continuava valendo e a
@@ -1588,6 +1595,30 @@ const CreditCardsSection: React.FC = () => {
         return { id: o.id, pay: capped };
       });
 
+      // Sem internet: enfileira o pagamento de cada fatura da família em vez de
+      // falhar. A ordem importa — primeiro a fatura, depois o espelho no
+      // Histórico, que é derivado dela.
+      if (isProbablyOffline()) {
+        for (const o of opens) {
+          const p = payments.find((x: { id: string; pay: number }) => x.id === o.id)!;
+          const nextPaid = Math.round((o.paid + p.pay) * 100) / 100;
+          const newStatus = nextPaid >= o.total ? 'PAID' : 'OPEN';
+          offlineQueue.addAction('UPDATE_CARD_STATEMENT', {
+            id: o.id,
+            updates: { paid_amount: nextPaid, status: newStatus }
+          });
+          offlineQueue.addAction('SYNC_STATEMENT_TO_HISTORY', {
+            statementId: o.id, accountId: payAccountId, paid: true
+          });
+        }
+        offlineQueue.addAction('RECALC_ACCOUNT_BALANCE', { accountId: payAccountId });
+
+        setShowPayModal(false);
+        toast('Sem internet: pagamento salvo e será enviado quando a conexão voltar.', 'success');
+        navigate('/history');
+        return;
+      }
+
       for (const o of opens) {
         const p = payments.find((x: { id: string; pay: number }) => x.id === o.id)!;
         const nextPaid = Math.round((o.paid + p.pay) * 100) / 100;
@@ -1635,6 +1666,36 @@ const CreditCardsSection: React.FC = () => {
       if (!user) throw new Error("Usuário não autenticado.");
 
       let targetStatementId = currentStatement?.id;
+
+      // Sem internet: dá para pagar uma fatura que JÁ existe (é só marcar), mas
+      // não dá para criar a fatura ad-hoc abaixo — ela precisa do id que o banco
+      // gera para as etapas seguintes. Avisamos em vez de falhar em silêncio.
+      if (isProbablyOffline()) {
+        if (!targetStatementId) {
+          toast('Sem internet não é possível criar uma fatura nova. Conecte-se e tente de novo.', 'warning');
+          setIsPaying(false);
+          return;
+        }
+
+        const currentPaidOff = safeNumber(currentStatement?.paid_amount);
+        const cleanPayOff = Math.round(Number(payAmount || 0) * 100) / 100;
+        const nextPaidOff = Math.round((currentPaidOff + Math.abs(cleanPayOff)) * 100) / 100;
+        const statusOff = nextPaidOff >= statementTotal ? 'PAID' : 'OPEN';
+
+        offlineQueue.addAction('UPDATE_CARD_STATEMENT', {
+          id: targetStatementId,
+          updates: { total_amount: statementTotal, paid_amount: nextPaidOff, status: statusOff }
+        });
+        offlineQueue.addAction('SYNC_STATEMENT_TO_HISTORY', {
+          statementId: targetStatementId, accountId: payAccountId, paid: true
+        });
+        offlineQueue.addAction('RECALC_ACCOUNT_BALANCE', { accountId: payAccountId });
+
+        setShowPayModal(false);
+        toast('Sem internet: pagamento salvo e será enviado quando a conexão voltar.', 'success');
+        navigate('/history');
+        return;
+      }
 
       // Se não houver fatura, criar uma "Ad-hoc" para o mês atual
       if (!targetStatementId) {

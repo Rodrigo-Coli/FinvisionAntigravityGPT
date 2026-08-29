@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase/client';
 import { Budget, Goal } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { SplitTransactionService } from '../services/splitTransaction.service';
+import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 
 const BUDGET_COLORS = [
   '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'
@@ -95,6 +96,10 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
     
     fetchData(hasCache);
   }, []);
+
+  // Voltou a internet (ou a fila offline acabou de subir): busca os dados
+  // novos sozinha, em vez de deixar o usuário olhando o cache antigo.
+  useReconnectRefresh(() => { fetchData(true); });
 
   const fetchData = async (silent = false) => {
     const sb = supabase;

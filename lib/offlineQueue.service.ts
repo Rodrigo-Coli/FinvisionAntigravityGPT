@@ -36,6 +36,7 @@ export type OfflineActionType =
   | 'UPDATE_CARD_TRANSACTION'
   | 'DELETE_CARD_TRANSACTION'
   | 'UPDATE_CARD_STATEMENT'
+  | 'SYNC_STATEMENT_TO_HISTORY'
   | 'RECALC_ACCOUNT_BALANCE';
 
 export interface OfflineAction {
@@ -271,6 +272,14 @@ class OfflineQueueService {
     if (action.type === 'UPDATE_CARD_STATEMENT') {
       const { error } = await supabase.from('card_statements').update(p.updates).eq('id', p.id);
       if (error) throw error;
+      return;
+    }
+    if (action.type === 'SYNC_STATEMENT_TO_HISTORY') {
+      // Reproduz online exatamente a sincronização que a tela de Cartões faria.
+      // Import dinâmico de propósito: finance.service importa esta fila, e a
+      // dependência circular quebraria o carregamento do módulo.
+      const { FinanceService } = await import('../services/finance.service');
+      await FinanceService.syncStatementToHistory(p.statementId, p.accountId, p.paid);
       return;
     }
     if (action.type === 'RECALC_ACCOUNT_BALANCE') {

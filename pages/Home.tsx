@@ -30,6 +30,7 @@ import { projectionService } from '../services/projection.service';
 import { FinanceService } from '../services/finance.service';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import UsageMeter from '../components/subscription/UsageMeter';
+import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
   const [data, setData] = useState<DashboardData | null>(() => DashboardService.getCachedSummary());
@@ -143,6 +144,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
       console.warn('Erro ao primar caches offline:', e);
     }
   };
+
+  // Voltou a internet (ou a fila offline acabou de subir): busca os dados
+  // novos sozinha, em vez de deixar o usuário olhando o cache antigo.
+  useReconnectRefresh(() => { loadData(); });
 
   const loadData = async () => {
     try {

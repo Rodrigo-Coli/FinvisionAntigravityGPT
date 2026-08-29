@@ -63,6 +63,7 @@ import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
 import { computeInstallmentAmount, buildInstallmentDate } from '../lib/amortization';
 import { useToast } from '../contexts/ToastContext';
+import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -592,6 +593,10 @@ const Assets: React.FC = () => {
   }, []);
 
   // Fetch all core data
+  // Voltou a internet (ou a fila offline acabou de subir): busca os dados
+  // novos sozinha, em vez de deixar o usuário olhando o cache antigo.
+  useReconnectRefresh(() => { fetchData(); });
+
   const fetchData = async () => {
     if (!supabase) return;
     

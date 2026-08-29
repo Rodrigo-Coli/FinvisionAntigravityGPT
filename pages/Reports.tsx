@@ -9,15 +9,27 @@ import { FinanceService } from '../services/finance.service';
 import { TransactionSplit } from '../types';
 import { SearchableMultiSelect } from '../components/history/HistoryFilters';
 import { normalizeStr } from '../lib/stringUtils';
+import { isNetworkFailure, isProbablyOffline, markNetworkFailure } from '../lib/connectivity';
+import { getSessionUser } from '../lib/session';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 
 const normalize = normalizeStr;
 const fmtCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
+/**
+ * Relatórios era a única tela grande SEM nenhum cache: sem internet ela abria
+ * zerada, como se a conta não tivesse movimento. Guardamos o último resultado
+ * já calculado (é bem menor que as linhas cruas) para exibir offline, com a
+ * data do dado em tela para ninguém confundir com número ao vivo.
+ */
+const REPORTS_CACHE_KEY = 'finvision_cached_reports';
+
 const Reports: React.FC = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [staleCacheAt, setStaleCacheAt] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
   const [stats, setStats] = useState({
     totalIncome: 0,
@@ -148,6 +160,10 @@ const Reports: React.FC = () => {
     setMaxPrice('');
   };
 
+  // Voltou a internet (ou a fila offline acabou de subir): busca os dados
+  // novos sozinha, em vez de deixar o usuário olhando o cache antigo.
+  useReconnectRefresh(() => { fetchStats(); });
+
   const fetchStats = async () => {
     if (dateRange.start > dateRange.end) {
       setStats({ totalIncome: 0, totalExpense: 0, transactionCount: 0, pendingCount: 0 });
@@ -157,9 +173,31 @@ const Reports: React.FC = () => {
       return;
     }
     setLoading(true);
+
+    const applyCachedReport = (): boolean => {
+      try {
+        const raw = localStorage.getItem(REPORTS_CACHE_KEY);
+        if (!raw) return false;
+        const c = JSON.parse(raw);
+        setStats(c.stats);
+        setPrintTxs(c.printTxs || []);
+        setCategoryBreakdown(c.categoryBreakdown || []);
+        setMonthlyBreakdown(c.monthlyBreakdown || []);
+        setStaleCacheAt(c.savedAt || null);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      // Sem rede: mostra o último relatório calculado em vez de tela zerada.
+      if (isProbablyOffline()) {
+        applyCachedReport();
+        return;
+      }
+
+      const user = await getSessionUser(supabase);
       if (!user) return;
 
       let txsPromise: Promise<{ data: any[] | null }> = Promise.resolve({ data: [] });
@@ -368,12 +406,13 @@ const Reports: React.FC = () => {
         expense += cardFilteredAmount(c);
       });
 
-      setStats({
+      const nextStats = {
         totalIncome: income,
         totalExpense: expense,
         transactionCount: filteredTxs.length + cardTxs.length,
         pendingCount: pending
-      });
+      };
+      setStats(nextStats);
 
       // Lançamentos divididos viram uma linha por pedaço na exportação/impressão,
       // cada uma com sua própria categoria e valor. Quando há filtro de categoria ou
@@ -439,13 +478,33 @@ const Reports: React.FC = () => {
         else if (t.type === 'Despesa') cur.expense += amt;
         monthTotals.set(ym, cur);
       });
-      setMonthlyBreakdown(
-        Array.from(monthTotals.entries())
-          .map(([month, v]) => ({ month, ...v }))
-          .sort((a, b) => a.month.localeCompare(b.month))
-      );
+      const monthlyList = Array.from(monthTotals.entries())
+        .map(([month, v]) => ({ month, ...v }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+      setMonthlyBreakdown(monthlyList);
+      setStaleCacheAt(null);
+
+      try {
+        localStorage.setItem(REPORTS_CACHE_KEY, JSON.stringify({
+          savedAt: new Date().toISOString(),
+          stats: nextStats,
+          // O detalhamento pode ser enorme num período longo; guardamos um
+          // recorte para não estourar a cota do localStorage e derrubar o
+          // cache inteiro (o gráfico e os totais continuam completos).
+          printTxs: merged.slice(0, 500),
+          categoryBreakdown: Array.from(catTotals.entries())
+            .map(([category, total]) => ({ category, total, pct: (total / totalDespesaAbs) * 100 }))
+            .sort((a, b) => b.total - a.total),
+          monthlyBreakdown: monthlyList
+        }));
+      } catch { /* cota cheia: seguir sem cache é melhor que quebrar a tela */ }
     } catch (err) {
       console.error("Erro ao computar estatísticas de relatórios:", err);
+      // Caiu a conexão no meio: mostra o último relatório salvo em vez de zerar.
+      if (isNetworkFailure(err)) {
+        markNetworkFailure();
+        applyCachedReport();
+      }
     } finally {
       setLoading(false);
     }
@@ -646,6 +705,13 @@ const Reports: React.FC = () => {
           <h1 className="text-4xl font-black text-slate-900 tracking-tight">Relatórios Completos</h1>
           <p className="text-slate-500 font-medium mt-2">Combine todos os filtros do sistema e exporte planilhas ou PDF do seu fluxo de caixa.</p>
         </div>
+
+        {staleCacheAt && (
+          <div className="w-full flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-600">
+            <Calendar size={14} className="shrink-0" />
+            <span>Sem internet — relatório calculado em {new Date(staleCacheAt).toLocaleString('pt-BR')}. Reconecte para atualizar.</span>
+          </div>
+        )}
 
         {/* Date Picker */}
         <div className="flex bg-white p-2 rounded-2xl border border-slate-100 shadow-sm gap-2">

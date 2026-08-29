@@ -1,33 +1,40 @@
 {
-  "version": "2026.08.15.1958",
-  "title": "Lançamento no cartão e Comparador de preços corrigidos",
-  "date": "15/08/2026",
+  "version": "2026.08.29.1015",
+  "title": "Fatura duplicada corrigida e app funcionando sem internet",
+  "date": "29/08/2026",
   "benefits": [
     {
-      "title": "Cupom escaneado volta a salvar de verdade no cartão",
-      "desc": "O 'Salvar no Cartão' do Scanner de Cupons mostrava 'SUCESSO!' mas o lançamento não aparecia no cartão escolhido — um campo extra no salvamento estava derrubando o registro silenciosamente. Corrigido.",
+      "title": "Fatura paga não vira mais uma pilha de contas repetidas",
+      "desc": "Uma fatura de cartão já quitada podia aparecer dezenas de vezes como conta pendente, no app e no aviso do WhatsApp — e pagar de novo não resolvia, só criava mais uma cópia. A causa foi corrigida e as duplicatas existentes são limpas sozinhas.",
       "type": "correcao"
     },
     {
-      "title": "Card do Comparador de Preços sem mais texto cortado",
-      "desc": "O preço da 'Melhor Oferta' podia vazar para fora do card em telas menores. Os cards ficaram também mais compactos.",
+      "title": "Lançamento feito sem internet agora chega ao servidor",
+      "desc": "O que você lançava offline ficava preso no aparelho e nunca subia, mesmo depois de reconectar. Agora sobe — inclusive o que já estava parado no seu celular desde antes desta atualização.",
       "type": "correcao"
     },
     {
-      "title": "Aviso quando a busca não encontra nada no Comparador",
-      "desc": "Antes, filtrar por um termo ou por Mercado/Restaurante/Loja sem resultados deixava a tela em branco parecendo quebrada. Agora aparece um aviso claro de 'Nenhum item encontrado'.",
-      "type": "ux"
+      "title": "Pagar conta e quitar fatura funciona offline",
+      "desc": "Antes o pagamento simplesmente falhava sem internet. Agora fica na fila e é efetivado assim que a conexão volta. (Quitação parcial de fatura ainda pede conexão, e o app avisa.)",
+      "type": "melhoria"
     },
     {
-      "title": "Categoria dos itens do cupom mais precisa",
-      "desc": "Os itens escaneados agora sempre vêm com uma categoria classificada pela IA, em vez de caírem genericamente em 'Geral'.",
-      "type": "ux"
+      "title": "App não trava mais na tela de carregando",
+      "desc": "Em Wi-Fi sem saída ou sinal fraco o app ficava preso no spinner, porque o pedido ao servidor nunca respondia nem falhava. Agora tudo tem prazo: estourou, ele abre com os dados salvos e avisa que está offline.",
+      "type": "correcao"
+    },
+    {
+      "title": "Telas abrem com os últimos dados em vez de vazias",
+      "desc": "Relatórios, Cartões e Transações agora mostram o último retrato conhecido da sua conta quando você está sem internet, com a data do dado em tela. E recarregam sozinhas assim que a conexão volta.",
+      "type": "melhoria"
     }
   ],
   "changes": [
-    "services/aiReconcile.service.ts (saveDirectToCard): removido o campo 'category' (texto solto) do insert em card_transactions — só category_id (FK) e subcategory existem de fato nessa tabela, mesmo formato do lançamento manual em CreditCardsSection.tsx. O campo extra provavelmente derrubava o insert inteiro com erro de coluna inexistente.",
-    "api/_lib/handle-receipt-items.ts: category_hint passou a ser obrigatório no responseSchema do Gemini (com fallback 'Geral' de garantia).",
-    "pages/AIModule.tsx (aba Comparador): corrigido overflow do preço no card de produto (faltava min-w-0/shrink-0 no flex); cards mais compactos; adicionado estado vazio 'Nenhum item encontrado'; legenda explicando que Mercado/Restaurante/Loja filtram pelo tipo de estabelecimento identificado pela IA, não uma loja específica.",
-    "Verificação: tsc -p tsconfig.json --noEmit sem erros."
+    "services/finance.service.ts (syncStatementToHistory): o .maybeSingle() que localizava a transação espelho da fatura tinha o error descartado. O PostgREST devolve erro com data null tanto quando a consulta falha quanto quando encontra mais de uma linha, então os dois casos eram lidos como 'o espelho não existe' e o código inseria outra linha — bastava nascer uma duplicata para toda sincronização seguinte gerar mais uma. Agora lê todas as linhas, trata o erro (erro nunca vira INSERT), elege uma canônica e apaga as duplicatas.",
+    "Índice único uniq_transaction_per_card_statement em transactions (user_id, metadata->>card_statement_id): trava no banco contra a fatura duplicada.",
+    "lib/offlineQueue.service.ts: o id inventado no aparelho ('offline-...') ia dentro do payload do INSERT; como transactions.id é uuid, todo envio falhava com 22P02 e o lançamento nunca sincronizava. O id local saiu do payload e há migração para resgatar o que já estava preso nos aparelhos.",
+    "lib/session.ts: as 33 chamadas auth.getUser() batiam no servidor em vez de ler a sessão local — offline devolviam user null e o código lançava 'Usuário não autenticado' antes de chegar na linha que guardaria o item na fila. Trocadas por getSessionUser().",
+    "lib/connectivity.ts (novo): prazo em toda chamada de rede e detecção real de conectividade, no lugar de navigator.onLine, que responde 'existe interface de rede' e não 'a internet funciona'.",
+    "Removido lib/offlineQueue.ts, uma segunda fila com formato incompatível gravando na MESMA chave do localStorage, em que cada uma descartava em silêncio os itens da outra."
   ]
 }
