@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import { Transaction, TransactionType, BankAccount, TransactionSplit } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { offlineQueue } from '../lib/offlineQueue.service';
+import { isNetworkFailure, isProbablyOffline, markNetworkFailure } from '../lib/connectivity';
 import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata } from '../lib/historyUtils';
 import { DateUtils } from '../lib/dateUtils';
 import { FinanceService } from '../services/finance.service';
@@ -297,6 +298,10 @@ const HistoryPage: React.FC = () => {
   const [editValue, setEditValue] = useState<any>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
+  // Quando a tela está mostrando o último retrato salvo do banco (sem internet),
+  // guarda de quando ele é — para o usuário saber que não está vendo dado ao vivo.
+  const [staleCacheAt, setStaleCacheAt] = useState<string | null>(null);
+
   // Modals
   const [payModal, setPayModal] = useState<PayModalState>({ open: false });
   const [addModal, setAddModal] = useState<AddModalState>(() => {
@@ -486,6 +491,30 @@ const HistoryPage: React.FC = () => {
     }
 
     return clauses.join(',');
+  };
+
+  /**
+   * Sobrepõe às linhas vindas do banco/cache o que ainda está na fila offline:
+   * lançamentos criados, editados e excluídos sem internet. Sem isso, o que o
+   * usuário lançou offline só existia no estado do React e DESAPARECIA da tela
+   * ao recarregar o app — mesmo continuando na fila, o que dava a impressão de
+   * que o lançamento tinha se perdido.
+   */
+  const withPendingOffline = (rows: any[]): any[] => {
+    try {
+      const pending = offlineQueue.getPendingTransactions();
+      const { updates, deletions } = offlineQueue.getPendingMutations();
+      if (pending.length === 0 && deletions.size === 0 && Object.keys(updates).length === 0) return rows;
+
+      const merged = (rows || [])
+        .filter(r => !deletions.has(r.id))
+        .map(r => (updates[r.id] ? { ...r, ...updates[r.id], _pendingSync: true } : r));
+
+      return [...pending, ...merged];
+    } catch (e) {
+      console.warn('History: falha ao mesclar fila offline', e);
+      return rows;
+    }
   };
 
   const fetchData = useCallback(async (isSilent: boolean = false) => {
@@ -1069,19 +1098,39 @@ const HistoryPage: React.FC = () => {
           cardStatementsData = JSON.parse(localStorage.getItem(`finvision_cached_card_statements_${user.id}`) || '[]');
           hasCache = true;
         }
+
+        // Sem internet e o cache é de outro período? Antes a tela simplesmente
+        // ficava VAZIA — o cache só valia para o intervalo de datas idêntico.
+        // Mostrar o último retrato conhecido do banco é o comportamento certo:
+        // é exatamente o que o usuário espera de um app offline.
+        if (!hasCache && isProbablyOffline() && cachedRawTxs) {
+          accData = JSON.parse(localStorage.getItem('finvision_cached_accounts') || '[]');
+          cardDefsData = JSON.parse(localStorage.getItem('finvision_cached_card_defs') || '[]');
+          catData = JSON.parse(localStorage.getItem('finvision_cached_categories') || '[]');
+          subData = JSON.parse(localStorage.getItem('finvision_cached_subcategories') || '[]');
+          dbEntities = JSON.parse(localStorage.getItem('finvision_cached_owners') || '[]');
+          entityObjsRes = JSON.parse(localStorage.getItem('finvision_cached_owners_objs') || '[]');
+          transactionsData = JSON.parse(cachedRawTxs);
+          cardTxsData = JSON.parse(localStorage.getItem(`finvision_cached_raw_card_txs_${user.id}`) || '[]');
+          cardStatementsData = JSON.parse(localStorage.getItem(`finvision_cached_card_statements_${user.id}`) || '[]');
+          hasCache = true;
+          setStaleCacheAt(localStorage.getItem(`finvision_cached_at_${user.id}`));
+        }
       } catch (cacheErr) {
         console.warn("History: Falha ao ler cache inicial", cacheErr);
       }
 
       if (hasCache) {
-        renderData(accData, cardDefsData, catData, subData, dbEntities, entityObjsRes, transactionsData, cardTxsData, cardStatementsData);
+        renderData(accData, cardDefsData, catData, subData, dbEntities, entityObjsRes, withPendingOffline(transactionsData), cardTxsData, cardStatementsData);
         setIsLoading(false);
       } else if (!isSilent) {
         setIsLoading(true);
       }
 
-      // Se estiver offline, finaliza de forma segura com os dados locais
-      if (!navigator.onLine) {
+      // Sem rede: encerra com o que temos localmente. `isProbablyOffline` cobre
+      // também o caso de "conectado mas sem internet", em que `navigator.onLine`
+      // mente e o app tentava consultar o banco em vão.
+      if (isProbablyOffline()) {
         return;
       }
 
@@ -1265,13 +1314,21 @@ const HistoryPage: React.FC = () => {
         localStorage.setItem(`finvision_cached_raw_card_txs_${user.id}`, JSON.stringify(cardTxsData));
         localStorage.setItem(`finvision_cached_card_statements_${user.id}`, JSON.stringify(cardStatementsData));
         localStorage.setItem(`finvision_cached_raw_sig_${user.id}`, currentCacheSig);
+        localStorage.setItem(`finvision_cached_at_${user.id}`, new Date().toISOString());
+        setStaleCacheAt(null);
       } catch (cacheErr) {
         console.warn("Falha ao salvar cache no localStorage:", cacheErr);
       }
 
-      renderData(accData, cardDefsData, catData, subData, dbEntities, entityObjsRes, transactionsData, cardTxsData, cardStatementsData);
+      renderData(accData, cardDefsData, catData, subData, dbEntities, entityObjsRes, withPendingOffline(transactionsData), cardTxsData, cardStatementsData);
     } catch (err) {
       console.error(err);
+      // Falha de rede não é "erro ao carregar": o usuário já está vendo os dados
+      // do cache. Marcar erro aqui limpava a tela de quem estava só sem sinal.
+      if (isNetworkFailure(err)) {
+        markNetworkFailure();
+        return;
+      }
       setError('Erro ao carregar dados.');
     } finally {
       setIsLoading(false);
@@ -2170,7 +2227,69 @@ const HistoryPage: React.FC = () => {
       const accountName = payAcc ? (payAcc.institution || '') : '';
       
       const isPartial = amount < payModal.remaining - EPS;
-      
+
+      // --- PAGAMENTO SEM INTERNET ---
+      // Antes, este fluxo ia direto ao Supabase sem nenhuma guarda offline: sem
+      // rede o pagamento simplesmente falhava com "Erro ao processar pagamento"
+      // e nada era guardado para depois. Agora ele é gravado na fila e efetivado
+      // quando a conexão voltar.
+      //
+      // A quitação PARCIAL de fatura fica de fora de propósito: ela depende do
+      // `paid_amount` que está no servidor, e chutar esse número aqui deixaria a
+      // fatura e o histórico divergentes. Preferimos avisar a inventar.
+      if (isProbablyOffline()) {
+        const stmtIdOffline = payModal.tx.metadata?.card_statement_id
+          || payModal.tx.metadata?.partial_of_card_statement_id
+          || payModal.tx.metadata?.statement_id;
+
+        if (isPartial && stmtIdOffline) {
+          setPayModal(prev => prev.open ? { ...prev, isSubmitting: false, error: 'Pagamento parcial de fatura precisa de internet. Pague o valor total ou tente novamente quando estiver conectado.' } : prev);
+          return;
+        }
+
+        const isFullyPaid = !isPartial;
+        const newPaidAmount = (payModal.tx.paidAmount || 0) + amount;
+        const groupId = payModal.tx.metadata?.partial_payment_group_id || 'group-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+        const oldHistory = Array.isArray(payModal.tx.metadata?.payment_history) ? payModal.tx.metadata.payment_history : [];
+        const offlineMeta = {
+          ...(payModal.tx.metadata || {}),
+          partial_payment_group_id: groupId,
+          payment_history: [...oldHistory, { date: chosenDate, account_name: accountName, amount }]
+        };
+
+        offlineQueue.addAction('UPDATE_TRANSACTION', {
+          id: payModal.tx.id,
+          updates: {
+            is_paid: isFullyPaid,
+            paid_amount: isFullyPaid ? payModal.tx.amount : newPaidAmount,
+            paid_at: chosenDate,
+            date: chosenDate,
+            account_id: payAccId,
+            account_name: accountName,
+            metadata: offlineMeta
+          }
+        });
+
+        // Fatura quitada por inteiro: marca a fatura também. Sem isso, a próxima
+        // sincronização da tela de Cartões leria a fatura ainda em aberto e
+        // reverteria o pagamento que acabamos de registrar.
+        if (isFullyPaid && stmtIdOffline) {
+          offlineQueue.addAction('UPDATE_CARD_STATEMENT', {
+            id: stmtIdOffline,
+            updates: { status: 'PAID', paid_amount: payModal.tx.amount }
+          });
+        }
+
+        if (payAccId) offlineQueue.addAction('RECALC_ACCOUNT_BALANCE', { accountId: payAccId });
+        if (payModal.tx.accountId && payModal.tx.accountId !== payAccId) {
+          offlineQueue.addAction('RECALC_ACCOUNT_BALANCE', { accountId: payModal.tx.accountId });
+        }
+
+        setPayModal({ open: false });
+        await fetchData(true);
+        return;
+      }
+
       if (isPartial && payModal.splitRemainder) {
         // --- NOVO FLUXO DE PAGAMENTO PARCIAL COM DIVISÃO ---
         const groupId = payModal.tx.metadata?.partial_payment_group_id || 'group-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
@@ -3069,6 +3188,16 @@ const HistoryPage: React.FC = () => {
               <X size={14} />
             </button>
           </div>
+        </div>
+      )}
+
+      {staleCacheAt && (
+        <div className="mb-3 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-500">
+          <Clock size={14} className="shrink-0" />
+          <span>
+            Sem internet — mostrando os dados salvos em {new Date(staleCacheAt).toLocaleString('pt-BR')}.
+            O que você lançar agora fica na fila e é enviado quando a conexão voltar.
+          </span>
         </div>
       )}
 

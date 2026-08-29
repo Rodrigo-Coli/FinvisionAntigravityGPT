@@ -1,3 +1,4 @@
+import { getSessionUser } from '../lib/session';
 import { DateUtils } from '../lib/dateUtils';
 import { useEffect, useRef, useState } from 'react';
 import { BellRing, X } from 'lucide-react';
@@ -55,7 +56,7 @@ export function PushManager() {
     await getSwRegistration();
     if (!supabase) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return;
 
     if (typeof Notification === 'undefined') return;
@@ -144,7 +145,7 @@ export function PushManager() {
 
     try {
       if (!supabase) return;
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser(supabase);
       if (!user) return;
 
       // Busca transações pendentes dos próximos 3 dias
@@ -194,7 +195,7 @@ export function PushManager() {
         return;
       }
       const sub = await subscribeUserToPush();
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser(supabase);
       if (user) {
         await supabase.from('user_settings').upsert({
           user_id: user.id,

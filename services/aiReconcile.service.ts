@@ -1,6 +1,7 @@
 
 import { supabase } from "../lib/supabase/client";
 import { ReconcileItem } from "../types";
+import { getSessionUser } from '../lib/session';
 
 function getApiBaseUrl() {
   try {
@@ -72,7 +73,7 @@ export const AIReconcileService = {
 
   async saveDirectToCard({ cardId, date, description, amount, categoryId, subcategory }: { cardId: string; date: string; description: string; amount: number; categoryId?: string; subcategory?: string }) {
     if (!supabase) throw new Error("Supabase is not configured");
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) throw new Error("No user found");
 
     // Mesmo formato usado pelo lançamento manual de cartão (CreditCardsSection.tsx):
@@ -97,7 +98,7 @@ export const AIReconcileService = {
 
   async saveToReconcileQueue(items: ReconcileItem[], accountId: string, accountName: string, targetType?: 'account' | 'card') {
     if (!supabase) throw new Error("Supabase is not configured");
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) throw new Error("No user found");
 
     const payload = items.map((item) => ({
@@ -124,7 +125,7 @@ export const AIReconcileService = {
 
   async saveReceiptToLabs(receipt: any) {
     if (!supabase) throw new Error("Supabase is not configured");
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) throw new Error("No user found");
 
     const { data: doc, error: docErr } = await supabase
@@ -227,7 +228,7 @@ export const AIReconcileService = {
 
   async getPriceComparison() {
     if (!supabase) throw new Error("Supabase is not configured");
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) throw new Error("No user found");
 
     const { data, error } = await supabase

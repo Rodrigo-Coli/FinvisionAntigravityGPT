@@ -1,41 +1,75 @@
 import React, { useState, useEffect } from 'react';
 import { WifiOff, RefreshCw, MessageCircle, X } from 'lucide-react';
 import { offlineQueue } from '../lib/offlineQueue.service';
+import { isProbablyOnline, onConnectivityChange } from '../lib/connectivity';
 
 const WHATSAPP_NUMBER = '5511999999999'; // Substituir pelo número real do suporte
 
+/** De quanto em quanto tempo tentamos esvaziar a fila enquanto houver pendência. */
+const RETRY_INTERVAL_MS = 30000;
+
 const OfflineBanner: React.FC = () => {
-    const [isOffline, setIsOffline] = useState(!navigator.onLine);
+    const [isOffline, setIsOffline] = useState(!isProbablyOnline());
     const [pendingCount, setPendingCount] = useState(0);
+    const [failedCount, setFailedCount] = useState(0);
     const [dismissed, setDismissed] = useState(false);
     const [syncing, setSyncing] = useState(false);
 
     useEffect(() => {
-        const handleOnline = () => {
-            setIsOffline(false);
-            setDismissed(false);
-            // Trigger sync when connection returns
-            setSyncing(true);
-            offlineQueue.processQueue().finally(() => {
-                setSyncing(false);
-                setPendingCount(offlineQueue.getQueue().length);
-                window.dispatchEvent(new CustomEvent('offline-sync-completed'));
-            });
+        let alive = true;
+
+        const refreshCounts = () => {
+            if (!alive) return;
+            setPendingCount(offlineQueue.getPendingCount());
+            setFailedCount(offlineQueue.getFailed().length);
         };
-        const handleOffline = () => setIsOffline(true);
-        const handleQueueUpdate = () => setPendingCount(offlineQueue.getQueue().length);
 
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-        window.addEventListener('finvision_offline_queue_updated', handleQueueUpdate);
+        const trySync = async () => {
+            if (!alive || !isProbablyOnline() || offlineQueue.getPendingCount() === 0) {
+                refreshCounts();
+                return;
+            }
+            setSyncing(true);
+            try {
+                await offlineQueue.processQueue();
+            } finally {
+                if (alive) {
+                    setSyncing(false);
+                    refreshCounts();
+                }
+            }
+        };
 
-        // Check pending operations
-        setPendingCount(offlineQueue.getQueue().length);
+        // 1. Ao abrir o app. A versão anterior só sincronizava no evento `online`
+        //    do navegador — quem fechasse o app offline e reabrisse já conectado
+        //    ficava com a fila parada até a conexão cair e voltar de novo.
+        trySync();
+
+        // 2. Retentativa periódica: em conexão instável o evento `online` não
+        //    dispara, mas a rede volta. Sem isso a fila só andava por sorte.
+        const timer = setInterval(trySync, RETRY_INTERVAL_MS);
+
+        // 3. Mudanças de conectividade, incluindo as detectadas por timeout
+        //    (`navigator.onLine` sozinho não percebe "Wi-Fi sem internet").
+        const unsubscribe = onConnectivityChange((online) => {
+            if (!alive) return;
+            setIsOffline(!online);
+            if (online) {
+                setDismissed(false);
+                trySync();
+            }
+        });
+
+        window.addEventListener('finvision_offline_queue_updated', refreshCounts);
+        window.addEventListener('offline-queue-updated', refreshCounts);
+        refreshCounts();
 
         return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-            window.removeEventListener('finvision_offline_queue_updated', handleQueueUpdate);
+            alive = false;
+            clearInterval(timer);
+            unsubscribe();
+            window.removeEventListener('finvision_offline_queue_updated', refreshCounts);
+            window.removeEventListener('offline-queue-updated', refreshCounts);
         };
     }, []);
 
@@ -45,13 +79,14 @@ const OfflineBanner: React.FC = () => {
             `Olá, estou com dificuldades para acessar meus dados no Zyvion.\n` +
             `Status: *${isOffline ? 'Sem internet' : 'Internet lenta / erro de sincronização'}*\n` +
             `Lançamentos pendentes: *${pendingCount}*\n` +
+            `Lançamentos com falha: *${failedCount}*\n` +
             `Hora: ${new Date().toLocaleString('pt-BR')}`
         );
         window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`, '_blank');
     };
 
     if (dismissed) return null;
-    if (!isOffline && pendingCount === 0 && !syncing) return null;
+    if (!isOffline && pendingCount === 0 && failedCount === 0 && !syncing) return null;
 
     return (
         <div className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-300 ${isOffline
@@ -76,9 +111,13 @@ const OfflineBanner: React.FC = () => {
                             <RefreshCw size={14} className="animate-spin" />
                             Sincronizando {pendingCount} lançamento{pendingCount > 1 ? 's' : ''} com a nuvem...
                         </p>
-                    ) : (
+                    ) : pendingCount > 0 ? (
                         <p className="text-sm font-bold">
                             ⚠️ Internet restabelecida — {pendingCount} lançamento{pendingCount > 1 ? 's' : ''} aguardando envio.
+                        </p>
+                    ) : (
+                        <p className="text-sm font-bold">
+                            ⚠️ {failedCount} lançamento{failedCount > 1 ? 's' : ''} não {failedCount > 1 ? 'puderam' : 'pôde'} ser enviado{failedCount > 1 ? 's' : ''}. Fale com o suporte para recuperá-{failedCount > 1 ? 'los' : 'lo'}.
                         </p>
                     )}
                 </div>

@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase/client';
 import { X, Plus, Trash2, Upload, Loader2, Building2, Wallet, ArrowRight, TrendingUp, HelpCircle, Home } from 'lucide-react';
 import { Liability } from '../../types';
 import { syncRentalTransactions, syncCondoIptuTransactions, PayerOption } from './realEstatePropertySync';
+import { getSessionUser } from '../../lib/session';
 
 interface RealEstateWizardModalProps {
   onClose: () => void;
@@ -106,7 +107,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
     if (!supabase) return;
     setIsLoadingConsortia(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser(supabase);
       if (!user) return;
       const { data } = await supabase
         .from('liabilities')
@@ -237,7 +238,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
     if (!supabase) return;
     setIsSubmitting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser(supabase);
       if (!user) throw new Error("Usuário não autenticado");
 
       const estimatedAmt = parseFloat(estimatedValue) || 0;

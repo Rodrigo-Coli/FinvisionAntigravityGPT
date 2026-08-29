@@ -2,6 +2,9 @@
 import { BankAccount, Transaction, CreditCardDetailed, Entity } from '../types';
 import { findCloseMatch } from '../lib/stringUtils';
 import { DateUtils } from '../lib/dateUtils';
+import { getSessionUser } from '../lib/session';
+import { isNetworkFailure, isProbablyOffline, markNetworkSuccess, withTimeout, NETWORK_TIMEOUT_MS } from '../lib/connectivity';
+import { isOfflineId } from '../lib/offlineQueue.service';
 
 // PROPAGAÇÃO REVERSA: quando uma parcela vinculada a um passivo é editada/paga/excluída em
 // Transações, recalcula o saldo devedor e o nº de parcelas restantes do passivo a partir das
@@ -67,7 +70,7 @@ export const FinanceService = {
   getAccounts: async (): Promise<BankAccount[]> => {
     if (!supabase) return [];
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return [];
 
     const { data, error } = await supabase
@@ -93,7 +96,7 @@ export const FinanceService = {
 
   createAccount: async (account: Omit<BankAccount, 'id'>): Promise<BankAccount> => {
     if (!supabase) throw new Error('Supabase not configured');
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     const { data, error } = await supabase.from('accounts').insert({
       user_id: user?.id,
       institution: account.institution,
@@ -113,7 +116,7 @@ export const FinanceService = {
   getTransactions: async (filters?: any): Promise<Transaction[]> => {
     if (!supabase) return [];
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return [];
 
     let query = supabase
@@ -148,7 +151,7 @@ export const FinanceService = {
   getCards: async (): Promise<CreditCardDetailed[]> => {
     if (!supabase) return [];
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return [];
 
     const { data, error } = await supabase
@@ -162,7 +165,7 @@ export const FinanceService = {
 
   getOrCreateStatement: async (cardId: string, dateStr: string): Promise<string> => {
     if (!supabase) throw new Error('Supabase not configured');
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) throw new Error("Usuário não autenticado");
 
     // 1. Buscar detalhes do cartão
@@ -254,7 +257,7 @@ export const FinanceService = {
   getEntities: async (includeArchived = false): Promise<string[]> => {
     if (!supabase) return ['Pessoal'];
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser(supabase);
       if (!user) return ['Pessoal'];
 
       let query = supabase.from('entities').select('name').eq('user_id', user.id);
@@ -281,7 +284,7 @@ export const FinanceService = {
 
   archiveEntity: async (name: string, archive: boolean = true): Promise<void> => {
     if (!supabase || !name || name === 'Pessoal') return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return;
 
     await supabase.from('entities')
@@ -292,7 +295,7 @@ export const FinanceService = {
 
   getEntityObjects: async (includeArchived = false): Promise<Entity[]> => {
     if (!supabase) return [];
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return [];
 
     let query = supabase.from('entities').select('*').eq('user_id', user.id);
@@ -313,7 +316,7 @@ export const FinanceService = {
     const trimmedName = name.trim();
     if (trimmedName.toLowerCase() === 'pessoal') return 'Pessoal';
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser(supabase);
       if (!user) return 'Pessoal';
 
       // 1. Obter todas as entidades existentes
@@ -334,48 +337,108 @@ export const FinanceService = {
   },
 
   // Transações com Suporte Offline
+  //
+  // As três funções abaixo seguem a mesma regra: tenta enviar ao banco com
+  // prazo; se faltar rede (offline declarado, timeout ou fetch quebrado),
+  // enfileira e devolve sucesso — o lançamento é do usuário, não pode se perder
+  // porque a conexão oscilou. Só erro de DADOS chega até a tela como falha.
+  //
+  // Antes, a guarda era `if (!navigator.onLine)`, que é falso-negativo em
+  // Wi-Fi sem saída e em sinal fraco: nesses casos o app achava que estava
+  // online, mandava a gravação para um fetch que nunca respondia e o
+  // lançamento não ia nem para o banco nem para a fila.
   saveTransaction: async (tx: any): Promise<any> => {
     if (!supabase) return null;
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) throw new Error('Usuário não autenticado');
 
-    if (!navigator.onLine) {
-      const { offlineQueue } = await import('../lib/offlineQueue.service');
-      const fakeId = tx.id || 'offline-' + Date.now();
-      const payload = { ...tx, id: fakeId, user_id: user.id };
-      offlineQueue.addAction('CREATE_TRANSACTION', payload);
-      return { id: fakeId, ...payload };
-    }
+    const { offlineQueue } = await import('../lib/offlineQueue.service');
+    // O id NUNCA vai no payload: `transactions.id` é uuid gerado pelo banco.
+    // Mandar um id inventado no aparelho ('offline-...') fazia todo INSERT
+    // enfileirado falhar com 22P02 e o lançamento nunca sincronizava.
+    const row = { ...tx, user_id: user.id };
+    delete (row as any).id;
 
-    const { data, error } = await supabase.from('transactions').insert([{ ...tx, user_id: user.id }]).select().single();
-    if (error) throw error;
-    return data;
+    const queueIt = () => {
+      const localId = offlineQueue.addAction('CREATE_TRANSACTION', row);
+      return { ...row, id: localId, _pendingSync: true };
+    };
+
+    if (isProbablyOffline()) return queueIt();
+
+    try {
+      const { data, error } = await withTimeout<any>(
+        supabase.from('transactions').insert([row]).select().single(),
+        NETWORK_TIMEOUT_MS,
+        'salvar lançamento'
+      );
+      if (error) throw error;
+      markNetworkSuccess();
+      return data;
+    } catch (err) {
+      if (isNetworkFailure(err)) return queueIt();
+      throw err;
+    }
   },
 
   updateTransaction: async (id: string, updates: any): Promise<void> => {
     if (!supabase) return;
-    if (!navigator.onLine) {
-      const { offlineQueue } = await import('../lib/offlineQueue.service');
-      offlineQueue.addAction('UPDATE_TRANSACTION', { id, updates });
-      return;
+    const { offlineQueue } = await import('../lib/offlineQueue.service');
+
+    const queueIt = () => { offlineQueue.addAction('UPDATE_TRANSACTION', { id, updates }); };
+
+    // Linha ainda só existe na fila (criada offline): a edição tem que ser
+    // aplicada ali, senão o UPDATE viajaria para um id que o banco não conhece.
+    if (isOfflineId(id)) return queueIt();
+    if (isProbablyOffline()) return queueIt();
+
+    try {
+      const { error } = await withTimeout<any>(
+        supabase.from('transactions').update(updates).eq('id', id),
+        NETWORK_TIMEOUT_MS,
+        'atualizar lançamento'
+      );
+      if (error) throw error;
+      markNetworkSuccess();
+    } catch (err) {
+      if (isNetworkFailure(err)) return queueIt();
+      throw err;
     }
-    const { error } = await supabase.from('transactions').update(updates).eq('id', id);
-    if (error) throw error;
+
     // Propagação reversa: se a transação estiver vinculada a um passivo, recalcula o passivo.
     await propagateToLiability(id);
   },
 
   deleteTransaction: async (id: string): Promise<void> => {
     if (!supabase) return;
-    if (!navigator.onLine) {
-      const { offlineQueue } = await import('../lib/offlineQueue.service');
-      offlineQueue.addAction('DELETE_TRANSACTION', { id });
-      return;
+    const { offlineQueue } = await import('../lib/offlineQueue.service');
+
+    const queueIt = () => { offlineQueue.addAction('DELETE_TRANSACTION', { id }); };
+
+    if (isProbablyOffline()) return queueIt();
+
+    let preTx: any = null;
+    try {
+      // Captura o vínculo ANTES de marcar como excluída (a linha ainda existe).
+      const pre = await withTimeout<any>(
+        supabase.from('transactions').select('liability_id').eq('id', id).maybeSingle(),
+        NETWORK_TIMEOUT_MS,
+        'ler lançamento'
+      );
+      preTx = pre.data;
+
+      const { error } = await withTimeout<any>(
+        supabase.from('transactions').update({ is_deleted: true }).eq('id', id),
+        NETWORK_TIMEOUT_MS,
+        'excluir lançamento'
+      );
+      if (error) throw error;
+      markNetworkSuccess();
+    } catch (err) {
+      if (isNetworkFailure(err)) return queueIt();
+      throw err;
     }
-    // Captura o vínculo ANTES de marcar como excluída (a linha ainda existe).
-    const { data: preTx } = await supabase.from('transactions').select('liability_id').eq('id', id).maybeSingle();
-    const { error } = await supabase.from('transactions').update({ is_deleted: true }).eq('id', id);
-    if (error) throw error;
+
     // Propagação reversa: recalcula o passivo excluindo esta parcela.
     if (preTx?.liability_id) await syncLiabilityFromTransactions(preTx.liability_id);
   },
@@ -384,7 +447,7 @@ export const FinanceService = {
   getCategories: async (): Promise<string[]> => {
     if (!supabase) return [];
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser(supabase);
       if (!user) return [];
 
       const { data, error } = await supabase
@@ -413,7 +476,7 @@ export const FinanceService = {
   ensureCategoryExists: async (name: string): Promise<void> => {
     if (!supabase || !name) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser(supabase);
       if (!user) return;
 
       const { data: existing } = await supabase
@@ -437,7 +500,7 @@ export const FinanceService = {
   // --- ANEXOS ---
   uploadAttachment: async (file: File, txId?: string, isCard: boolean = false, source: string = 'manual'): Promise<string> => {
     if (!supabase) throw new Error('Supabase not configured');
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) throw new Error('Usuário não autenticado');
 
     const fileExt = file.name.split('.').pop();
@@ -574,7 +637,7 @@ export const FinanceService = {
   runStatementSync: async (statementId: string, overrideAccountId?: string, overridePaid?: boolean): Promise<void> => {
     if (!supabase) return;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser(supabase);
       if (!user) return;
 
       // 1. Obter dados da fatura
@@ -731,7 +794,7 @@ export const FinanceService = {
 
   reconcileCardTransaction: async (data: any): Promise<void> => {
     if (!supabase) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return;
 
     const statementId = await FinanceService.getOrCreateStatement(data.card_id, data.date);
