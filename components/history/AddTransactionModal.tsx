@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase/client';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { SplitFieldsInline } from './SplitFieldsInline';
 import { SplitDraft } from '../../services/splitTransaction.service';
+import { getSessionUser } from '../../lib/session';
 
 interface AddTransactionModalProps {
     show: boolean;
@@ -92,7 +93,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 try {
                     // Fallback imediato para cache do localStorage (funciona offline e dá velocidade instantânea)
                     if (supabase) {
-                        const { data: { user } } = await supabase.auth.getUser();
+                        const user = await getSessionUser(supabase);
                         if (user) {
                             const localRaw = localStorage.getItem(`finvision_cached_raw_txs_${user.id}`);
                             if (localRaw) {
@@ -127,7 +128,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                 if (supabase && navigator.onLine) {
                     try {
-                        const { data: { user } } = await supabase.auth.getUser();
+                        const user = await getSessionUser(supabase);
                         if (!user) return;
 
                         const { data, error } = await supabase

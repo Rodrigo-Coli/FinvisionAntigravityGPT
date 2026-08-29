@@ -5,6 +5,7 @@ import { PhysicalAsset, Transaction } from '../../types';
 import { DateUtils } from '../../lib/dateUtils';
 import * as XLSX from 'xlsx';
 import { syncRentalTransactions as sharedSyncRentalTransactions, syncCondoIptuTransactions } from './realEstatePropertySync';
+import { getSessionUser } from '../../lib/session';
 
 // Trava global contra salvamento concorrente. syncRentalTransactions/syncExpenseProvisions
 // apagam as parcelas futuras e recriam do zero a cada chamada — se handleSaveChanges rodar
@@ -433,7 +434,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
     if (!supabase) return;
     setIsSubmitting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser(supabase);
       if (!user) throw new Error('Usuário não autenticado');
 
       const estVal = parseFloat(estimatedValue) || 0;
@@ -876,7 +877,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser(supabase);
       if (!user) return;
 
       let categoryName = 'Ativos Imobiliários';

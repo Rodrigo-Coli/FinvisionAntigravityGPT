@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase/client';
+import { getSessionUser } from '../lib/session';
 
 function getLevenshteinDistance(a: string, b: string): number {
   const matrix = Array.from({ length: a.length + 1 }, () => 
@@ -90,7 +91,7 @@ export const ReconciliationService = {
   }) {
     if (!supabase) throw new Error("Supabase não configurado");
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) throw new Error("Usuário não autenticado");
 
     onProgress?.("Verificando integridade...");
@@ -331,7 +332,7 @@ export const ReconciliationService = {
 
   async ensureCategoryExists(categoryName: string): Promise<string> {
     if (!supabase || !categoryName) return '';
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return '';
 
     // 1. Obter todas as categorias existentes
@@ -365,7 +366,7 @@ export const ReconciliationService = {
 
   async ensureSubcategoryExists(categoryId: string, subcategoryName: string): Promise<string> {
     if (!supabase || !categoryId || !subcategoryName) return '';
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return '';
 
     // 1. Obter todas as subcategorias existentes desta categoria
@@ -399,7 +400,7 @@ export const ReconciliationService = {
 
   async ensureAccountExists(accountName: string): Promise<string> {
     if (!supabase || !accountName) return '';
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return '';
 
     // 1. Obter todas as contas existentes

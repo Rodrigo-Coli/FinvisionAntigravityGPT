@@ -27,6 +27,8 @@ import UpgradeModal from './components/UpgradeModal';
 import PlanUpsellNudge from './components/PlanUpsellNudge';
 import DemoBanner from './components/DemoBanner';
 import UpdateAlert from './components/UpdateAlert';
+import { withTimeout, BOOT_TIMEOUT_MS } from './lib/connectivity';
+import { getSessionUser } from './lib/session';
 
 // Lazy-loaded pages — carregadas só quando o usuário navega até elas
 const Home          = lazy(() => import('./pages/Home'));
@@ -167,7 +169,16 @@ const App: React.FC = () => {
       }
     };
 
-    supabase.auth.getSession().then(({ data: { session } }: any) => handleSession(session));
+    // Prazo no boot: sem isso, uma conexão ruim (Wi-Fi sem saída, sinal fraco)
+    // deixava `getSession()` pendurado, `handleSession` nunca rodava e o app
+    // ficava eternamente no spinner — a "tela travada". Estourando o prazo,
+    // seguimos com a sessão já salva no aparelho e o app abre offline.
+    withTimeout<any>(supabase.auth.getSession(), BOOT_TIMEOUT_MS, 'sessão inicial')
+      .then(({ data: { session } }: any) => handleSession(session))
+      .catch(async () => {
+        const cached = await getSessionUser(supabase);
+        handleSession(cached ? { user: cached } : null);
+      });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => handleSession(session));
 
     return () => subscription?.unsubscribe();
@@ -175,8 +186,15 @@ const App: React.FC = () => {
 
   const fetchProfile = async (uid: string, email?: string) => {
     if (!supabase) return;
+    // Idem: com prazo. O `finally` já liberava a tela quando a rede falhava
+    // rápido, mas numa conexão que só engasga o fetch nunca resolve e o
+    // `finally` nunca chega — era assim que o app parava na tela de carregando.
     try {
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
+      const { data, error } = await withTimeout<any>(
+        supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
+        BOOT_TIMEOUT_MS,
+        'perfil'
+      );
       if (!data && !error) {
         const newProfile = { id: uid, email: email || '', role: UserRole.USER, is_approved: true };
         const { data: created } = await supabase.from('profiles').upsert(newProfile).select().single();
@@ -188,7 +206,11 @@ const App: React.FC = () => {
       }
 
       // Sincroniza preferência de dark mode do banco e aplica
-      const { data: userSettings } = await supabase.from('user_settings').select('auto_dark_mode, dark_mode_force').eq('user_id', uid).maybeSingle();
+      const { data: userSettings } = await withTimeout<any>(
+        supabase.from('user_settings').select('auto_dark_mode, dark_mode_force').eq('user_id', uid).maybeSingle(),
+        BOOT_TIMEOUT_MS,
+        'preferências'
+      );
       if (userSettings) {
         const forceDark = userSettings.dark_mode_force || false;
         const autoDark = userSettings.auto_dark_mode || false;

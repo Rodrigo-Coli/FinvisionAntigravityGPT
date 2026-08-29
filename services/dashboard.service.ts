@@ -2,13 +2,14 @@ import { supabase } from '../lib/supabase/client';
 import { DashboardData } from '../types';
 import { projectionService } from './projection.service';
 import { safeStorage } from '../lib/safeStorage';
+import { getSessionUser } from '../lib/session';
 
 export const DashboardService = {
   getSummary: async (): Promise<DashboardData> => {
     const sb = supabase;
     if (!sb) return { consolidatedBalance: 0, netWorth: 0, creditCards: [], alerts: [], goals: [], cashFlow: [], assets: [] };
 
-    const { data: { user } } = await sb.auth.getUser();
+    const user = await getSessionUser(sb);
     if (!user) return { consolidatedBalance: 0, netWorth: 0, creditCards: [], alerts: [], goals: [], cashFlow: [], assets: [] };
 
 
