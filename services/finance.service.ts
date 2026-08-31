@@ -762,10 +762,18 @@ export const FinanceService = {
           : DateUtils.formatToISODate();
       }
 
+      // Rótulo da fatura pelo MÊS DE VENCIMENTO, igual à tela de Cartões.
+      // As colunas month/year guardam o ciclo de FECHAMENTO: no BTG (fecha 25,
+      // vence dia 1) a fatura que vence em 01/09/2026 está gravada como month=8.
+      // A descrição saía "(8/2026)" no Histórico e no aviso do WhatsApp enquanto
+      // a mesma fatura aparecia como "09/2026" em Cartões — e o usuário lia isso
+      // como uma segunda conta, do mês errado.
+      const competence = DateUtils.getStatementCompetence(stmt) || { month: stmt.month, year: stmt.year };
+
       const payload: any = {
         user_id: user.id,
         account_id: targetAccountId,
-        description: `Fatura Cartão: ${stmt.cards?.name || 'Cartão'} (${stmt.month}/${stmt.year})`,
+        description: `Fatura Cartão: ${stmt.cards?.name || 'Cartão'} (${competence.month}/${competence.year})`,
         amount: amount,
         date: mirrorDate,
         type: 'BILL_PAYMENT',

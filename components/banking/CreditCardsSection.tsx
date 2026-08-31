@@ -1884,11 +1884,34 @@ const CreditCardsSection: React.FC = () => {
     return <span className={`${base} bg-slate-50 text-slate-600 border-slate-100`}>{s}</span>;
   })();
 
-  const otherOpenStatements = statements.filter(s => 
-    s.id !== currentStatement?.id && 
-    ['OPEN', 'DUE', 'PENDING'].includes(s.status) && 
-    Number(s.total_amount || 0) > Number(s.paid_amount || 0)
-  );
+  // Faturas ANTERIORES à que está na tela e ainda com saldo em aberto — a conta
+  // que o usuário precisa pagar agora.
+  //
+  // Antes o filtro pegava QUALQUER fatura aberta, inclusive as de meses futuros
+  // que o app já cria adiantadas para lançamentos recorrentes/parcelados, e o
+  // aviso mostrava `[0]` de uma lista ordenada por vencimento DECRESCENTE — ou
+  // seja, a fatura mais distante no futuro. Com uma fatura vencendo em 01/09/2026
+  // o texto dizia "por exemplo, AGOSTO / 2028", e a fatura realmente pendente
+  // ficava escondida no seletor de Período (parecia "não existir" na tela).
+  const currentDueTime = currentStatement?.due_date ? new Date(currentStatement.due_date).getTime() : Infinity;
+  const otherOpenStatements = statements
+    .filter(s =>
+      s.id !== currentStatement?.id &&
+      ['OPEN', 'DUE', 'PENDING'].includes(s.status) &&
+      Number(s.total_amount || 0) > Number(s.paid_amount || 0) &&
+      s.due_date &&
+      new Date(s.due_date).getTime() < currentDueTime
+    )
+    .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+
+  // A mais antiga é a mais urgente: é ela que o aviso cita e abre com um clique.
+  const oldestOpenStatement = otherOpenStatements[0] || null;
+
+  const goToStatement = (statementId: string) => {
+    if (!selectedCard?.id) return;
+    setSelectedStatementId(statementId);
+    fetchTransactions(selectedCard.id, statementId);
+  };
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
@@ -2031,15 +2054,28 @@ const CreditCardsSection: React.FC = () => {
                   statementBadge={statementBadge}
                 />
 
-                {otherOpenStatements.length > 0 && (
+                {oldestOpenStatement && (
                   <div className="p-5 bg-amber-50/60 border border-amber-100/70 rounded-3xl flex items-start gap-4 text-amber-800 animate-in fade-in zoom-in-95 duration-300">
                     <Info size={20} className="shrink-0 text-amber-500 mt-0.5" />
-                    <div className="space-y-1">
-                      <p className="text-xs font-black uppercase tracking-wider text-amber-600">Atenção: Faturas Anteriores Pendentes</p>
-                      <p className="text-[11px] font-bold text-amber-600/90 leading-relaxed">
-                        Existem faturas de períodos passados com saldos em aberto (por exemplo, {DateUtils.formatStatementLabel(otherOpenStatements[0])}).
-                        Você pode alternar o seletor de <strong>Período</strong> abaixo para visualizar e pagar essas faturas.
+                    <div className="space-y-2">
+                      <p className="text-xs font-black uppercase tracking-wider text-amber-600">
+                        {otherOpenStatements.length > 1
+                          ? `Atenção: ${otherOpenStatements.length} faturas anteriores pendentes`
+                          : 'Atenção: fatura anterior pendente'}
                       </p>
+                      <p className="text-[11px] font-bold text-amber-600/90 leading-relaxed">
+                        A fatura de <strong>{DateUtils.formatStatementLabel(oldestOpenStatement)}</strong> ainda está em aberto:{' '}
+                        <strong>{formatCurrency(Math.max(0, Number(oldestOpenStatement.total_amount || 0) - Number(oldestOpenStatement.paid_amount || 0)))}</strong>
+                        {oldestOpenStatement.due_date ? <> com vencimento em <strong>{formatDateBR(oldestOpenStatement.due_date)}</strong></> : null}.
+                        {' '}A fatura mostrada acima é a do ciclo em andamento — pagar por ela não quita a anterior.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => goToStatement(oldestOpenStatement.id)}
+                        className="px-3 py-2 rounded-xl bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all active:scale-95"
+                      >
+                        Abrir fatura de {DateUtils.formatStatementLabel(oldestOpenStatement)}
+                      </button>
                     </div>
                   </div>
                 )}

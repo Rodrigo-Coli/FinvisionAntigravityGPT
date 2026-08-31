@@ -48,6 +48,33 @@ describe('DateUtils', () => {
         });
     });
 
+    // A descrição do lançamento espelho da fatura (Histórico e aviso de conta a
+    // pagar no WhatsApp/push) usa esses números. Caso real: a fatura do BTG que
+    // vence em 01/09/2026 está gravada como month=8 e saía como "BTG (8/2026)"
+    // no Histórico enquanto a tela de Cartões chamava a MESMA fatura de 09/2026.
+    describe('getStatementCompetence', () => {
+        it('usa o mes/ano do vencimento, nao o do fechamento', () => {
+            const btg = { month: 8, year: 2026, due_date: '2026-09-01' };
+            expect(DateUtils.getStatementCompetence(btg)).toEqual({ month: 9, year: 2026 });
+        });
+
+        it('mantem o mes quando fechamento e vencimento caem no mesmo mes', () => {
+            const bradesco = { month: 7, year: 2026, due_date: '2026-07-25T00:00:00.000Z' };
+            expect(DateUtils.getStatementCompetence(bradesco)).toEqual({ month: 7, year: 2026 });
+        });
+
+        it('vira o ano na fatura de dezembro que vence em janeiro', () => {
+            expect(DateUtils.getStatementCompetence({ month: 12, year: 2026, due_date: '2027-01-01' }))
+                .toEqual({ month: 1, year: 2027 });
+        });
+
+        it('cai para month/year quando nao ha due_date valido', () => {
+            expect(DateUtils.getStatementCompetence({ month: 3, year: 2026 })).toEqual({ month: 3, year: 2026 });
+            expect(DateUtils.getStatementCompetence({ month: 3, year: 2026, due_date: 'xxx' })).toEqual({ month: 3, year: 2026 });
+            expect(DateUtils.getStatementCompetence(null)).toBeNull();
+        });
+    });
+
     describe('formatToISODate', () => {
         it('deve retornar data no formato YYYY-MM-DD', () => {
             const date = new Date(2026, 2, 6); // 6 de março de 2026

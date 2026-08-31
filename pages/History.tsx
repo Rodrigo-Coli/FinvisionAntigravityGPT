@@ -946,9 +946,22 @@ const HistoryPage: React.FC = () => {
         // Esta mesma lógica também alimenta chartCategoryTransactions (usado só pelo gráfico),
         // então o comportamento entre lista e gráfico ficou consistente.
         // v2026.07.17.1830
+        //
+        // EXCEÇÃO da aba "Abertos" (viewMode === 'PENDING'): ali a troca da fatura
+        // pelas compras itemizadas escondia a única linha que representa a DÍVIDA.
+        // Compras de cartão entram sempre como is_paid = true (já foram feitas), então
+        // nenhuma delas é "em aberto" — e a fatura, que é o que de fato está a pagar,
+        // era descartada por is_provision. Resultado: o aviso de WhatsApp/push dizia
+        // "1 conta pendente: Fatura Cartão BTG, vence amanhã" e o link levava para uma
+        // lista vazia ("Nenhum lançamento encontrado"), como se a conta não existisse.
+        // Nesta aba mostramos as movimentações bancárias (fatura inclusa) e deixamos as
+        // compras de fora: elas nunca apareceriam aqui e só empurrariam as contas em
+        // aberto para fora da página. Sem risco de contar duas vezes.
+        const pendingOnlyView = viewMode === 'PENDING';
         let combined = (
           filterOrigin === 'CARD' ? normalizedCardTxsInRange :
           filterOrigin === 'ACCOUNT' ? (txs || []) :
+          pendingOnlyView ? (txs || []) :
           [
             ...(txs || []).filter((t: any) => !(t?.metadata?.is_provision === true)),
             ...normalizedCardTxsInRange
@@ -1350,7 +1363,7 @@ const HistoryPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [filterType, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, JSON.stringify(filterTag), filterOrigin, page, sortField, sortDirection, debouncedSearch]);
+  }, [filterType, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, JSON.stringify(filterTag), filterOrigin, viewMode, page, sortField, sortDirection, debouncedSearch]);
 
   const refreshCharts = useCallback(async () => {
     await fetchData(true);
@@ -1360,7 +1373,7 @@ const HistoryPage: React.FC = () => {
   useEffect(() => {
     setPage(0);
     setSelectedIds(new Set());
-  }, [filterType, JSON.stringify(filterAccount), JSON.stringify(filterCategory), JSON.stringify(filterSubcategory), startDate, endDate, minPrice, maxPrice, JSON.stringify(filterOwner), JSON.stringify(filterTag), sortField, sortDirection, debouncedSearch]);
+  }, [filterType, JSON.stringify(filterAccount), JSON.stringify(filterCategory), JSON.stringify(filterSubcategory), startDate, endDate, minPrice, maxPrice, JSON.stringify(filterOwner), JSON.stringify(filterTag), viewMode, sortField, sortDirection, debouncedSearch]);
 
   useEffect(() => {
     if (isSupabaseConfigured) fetchData();

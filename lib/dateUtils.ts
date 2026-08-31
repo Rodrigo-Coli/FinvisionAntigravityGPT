@@ -97,36 +97,46 @@ export const DateUtils = {
     },
 
     /**
-     * Rótulo de uma fatura de cartão, sempre pelo MÊS DE VENCIMENTO.
+     * Mês/ano em que uma fatura de cartão é COBRADA (mês do vencimento).
      *
      * As colunas month/year da fatura guardam o ciclo de FECHAMENTO. Em cartão que
      * fecha num mês e vence no seguinte (ex.: BTG, fecha dia 25 e vence dia 1), o
-     * ciclo e o vencimento caem em meses diferentes — a fatura que fecha em 25/07
-     * vence em 01/08, e era rotulada "JULHO". Como a regra do app é que a compra
-     * conta no mês em que a fatura vence, o rótulo tem que seguir o vencimento.
+     * ciclo e o vencimento caem em meses diferentes — a fatura que fecha em 25/08
+     * vence em 01/09, e está gravada como month=8. Como a regra do app é que a
+     * compra conta no mês em que a fatura vence, tudo que é exibido para o usuário
+     * (rótulo na tela de Cartões, descrição do lançamento no Histórico e o aviso de
+     * conta a pagar no WhatsApp/push) tem que seguir o vencimento — senão a mesma
+     * fatura aparece como "09/2026" em Cartões e "(8/2026)" no Histórico, e parece
+     * que são duas contas diferentes.
      *
      * Não mexe no dado gravado: só na forma de exibir.
+     */
+    getStatementCompetence: (
+        stmt: { due_date?: string | null; month?: number; year?: number } | null | undefined
+    ): { month: number; year: number } | null => {
+        if (!stmt) return null;
+        const due = stmt.due_date ? new Date(stmt.due_date) : null;
+        if (due && !isNaN(due.getTime())) {
+            // due_date é gravado em UTC (meia-noite); lemos em UTC para não voltar um dia.
+            return { month: due.getUTCMonth() + 1, year: due.getUTCFullYear() };
+        }
+        if (stmt.year && stmt.month) return { month: stmt.month, year: stmt.year };
+        return null;
+    },
+
+    /**
+     * Rótulo por extenso de uma fatura de cartão, sempre pelo MÊS DE VENCIMENTO.
+     * Ver `getStatementCompetence` para o porquê.
      */
     formatStatementLabel: (
         stmt: { due_date?: string | null; month?: number; year?: number } | null | undefined,
         withSlash: boolean = true
     ): string => {
-        if (!stmt) return '';
-        const due = stmt.due_date ? new Date(stmt.due_date) : null;
-        if (due && !isNaN(due.getTime())) {
-            // due_date é gravado em UTC (meia-noite); lemos em UTC para não voltar um dia.
-            const y = due.getUTCFullYear();
-            const m = due.getUTCMonth() + 1;
-            return withSlash
-                ? DateUtils.formatFullMonthYear(y, m)
-                : DateUtils.formatFullMonthYearNoSlash(y, m);
-        }
-        if (stmt.year && stmt.month) {
-            return withSlash
-                ? DateUtils.formatFullMonthYear(stmt.year, stmt.month)
-                : DateUtils.formatFullMonthYearNoSlash(stmt.year, stmt.month);
-        }
-        return '';
+        const competence = DateUtils.getStatementCompetence(stmt);
+        if (!competence) return '';
+        return withSlash
+            ? DateUtils.formatFullMonthYear(competence.year, competence.month)
+            : DateUtils.formatFullMonthYearNoSlash(competence.year, competence.month);
     },
 
     /**
