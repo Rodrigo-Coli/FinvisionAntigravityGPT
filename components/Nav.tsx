@@ -43,6 +43,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { id: 'comparative', label: 'Comparador', icon: <Store size={16} /> },
     { id: 'shopping', label: 'Lista de Compras', icon: <ShoppingCart size={16} /> },
     { id: 'history', label: 'Minha Inflação', icon: <BarChart3 size={16} /> },
+    { id: 'portfolio', label: 'Raio-X da Carteira', icon: <TrendingUp size={16} /> },
     { id: 'wealth', label: 'Diagnóstico', icon: <Brain size={16} /> },
   ];
 

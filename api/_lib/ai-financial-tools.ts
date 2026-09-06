@@ -10,6 +10,8 @@
 
 import { GoogleGenAI, Type } from '@google/genai';
 import { buildInvestmentsContextSection } from './investments-context.js';
+import { buildPortfolioAnalysis } from './portfolio-metrics.js';
+import { getMarketIndexes } from './market-indexes.js';
 import { recordAiUsage } from './ai-usage.js';
 
 const fmt = (v: number) => Number(v || 0).toFixed(2);
@@ -123,6 +125,21 @@ export const FINANCIAL_TOOL_DECLARATIONS = [
     description:
       'Retorna todos os investimentos do usuário: saldo por ativo, tipo, vencimento, liquidez (D+), Imposto de Renda estimado e a nota/plano que o usuário deixou para cada um. ' +
       'Use para qualquer pergunta sobre investimentos, "de onde eu tiro dinheiro para pagar algo em uma data futura", ou vencimento de aplicações.',
+    parameters: { type: Type.OBJECT, properties: {} },
+  },
+  {
+    name: 'get_portfolio_analysis',
+    description:
+      'Retorna a ANÁLISE COMPLETA da carteira de investimentos já calculada pelo sistema: rentabilidade realizada e anualizada de cada ativo, taxa contratada convertida em % a.a. com os índices REAIS do Banco Central, comparação com o CDI, IR estimado, concentração por ativo/classe/emissor, exposição acima do teto do FGC, faixas de liquidez, cobertura da reserva de emergência, vencimentos dos próximos 90 dias e uma lista de alertas prontos. ' +
+      'Use SEMPRE que o usuário pedir para "analisar meus investimentos", perguntar se está bem investido, se deve mudar/resgatar/reaplicar algo, se está rendendo bem, se está muito concentrado ou exposto, ou pedir revisão de carteira. ' +
+      'Todos os números já vêm calculados: NUNCA refaça as contas, apenas interprete. Para saldo simples de um ativo, use get_investments_summary, que é mais leve.',
+    parameters: { type: Type.OBJECT, properties: {} },
+  },
+  {
+    name: 'get_market_indexes',
+    description:
+      'Retorna os índices macroeconômicos vigentes que o sistema usa em todos os cálculos (CDI, Selic, IPCA 12 meses, IGP-M 12 meses), com a fonte e a data de atualização. ' +
+      'Use SEMPRE que precisar de CDI/Selic/IPCA — nunca pesquise na internet nem estime esses números de cabeça, para a resposta não divergir do que o app mostra.',
     parameters: { type: Type.OBJECT, properties: {} },
   },
   {
@@ -387,6 +404,18 @@ async function toolSearchMarketData(supabase: any, userId: string, args: any, ge
   return { result: text || 'Nenhum dado encontrado.' };
 }
 
+// Análise de carteira: os números vêm prontos de portfolio-metrics.ts (mesma fonte do
+// relatório completo e do diagnóstico patrimonial), então o chat, o Raio-X da Carteira
+// e a tela de Patrimônio nunca divergem entre si.
+async function toolGetPortfolioAnalysis(supabase: any, userId: string) {
+  const indexes = await getMarketIndexes(supabase, userId);
+  const analysis = await buildPortfolioAnalysis(supabase, userId, indexes);
+  if (analysis.positions.length === 0) {
+    return { message: 'O usuário ainda não tem investimentos cadastrados em Patrimônio > Investimentos.' };
+  }
+  return analysis;
+}
+
 // Executor central: recebe o nome da tool que o Gemini pediu e roda a query certa.
 // Nunca lança para fora — erro vira { error } no resultado, pra IA poder explicar ao
 // usuário em vez de a chamada inteira quebrar.
@@ -398,6 +427,8 @@ export async function executeFinancialTool(supabase: any, userId: string, gemini
       case 'get_category_breakdown': return await toolGetCategoryBreakdown(supabase, userId, args || {});
       case 'get_account_and_net_worth_summary': return await toolGetAccountAndNetWorthSummary(supabase, userId);
       case 'get_investments_summary': return { summary: (await buildInvestmentsContextSection(supabase, userId)) || 'Nenhum investimento cadastrado.' };
+      case 'get_portfolio_analysis': return await toolGetPortfolioAnalysis(supabase, userId);
+      case 'get_market_indexes': return await getMarketIndexes(supabase, userId);
       case 'get_goals_and_budgets': return await toolGetGoalsAndBudgets(supabase, userId);
       case 'get_liabilities_detail': return await toolGetLiabilitiesDetail(supabase, userId);
       case 'search_market_data': return await toolSearchMarketData(supabase, userId, args || {}, geminiKey);

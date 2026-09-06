@@ -10,6 +10,7 @@ import { handleFinvisionChat } from './_lib/finvision-chat.js';
 import { handleBankReconcile } from './_lib/handle-bank-reconcile.js';
 import { handleCardReconcile } from './_lib/handle-card-reconcile.js';
 import { handleWealthAnalysis } from './_lib/handle-wealth-analysis.js';
+import { handleInvestmentAnalysis } from './_lib/handle-investment-analysis.js';
 import { handleParseCardStatement } from './_lib/parse-card-statement.js';
 import { handleParseStatement } from './_lib/parse-statement.js';
 import { handleProcessImport } from './_lib/process-import.js';
@@ -50,6 +51,7 @@ export default async function handler(req: any, res: any) {
     if (url.includes('/finvision-chat'))         return handleFinvisionChat(req, res);
     if (url.includes('/categorize-transactions')) return handleCategorizeTransactions(req, res);
     if (url.includes('/handle-wealth-analysis'))  return handleWealthAnalysis(req, res);
+    if (url.includes('/handle-investment-analysis')) return handleInvestmentAnalysis(req, res);
 
     // --- Reconciliação / Import ---
     if (url.includes('/handle-bank-reconcile'))   return handleBankReconcile(req, res);

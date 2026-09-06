@@ -1,93 +1,88 @@
-// Monta o bloco de texto "INVESTIMENTOS DETALHADOS" injetado no prompt da IA
-// (tanto no chat do app quanto no WhatsApp) para que o assistente consiga responder
-// qualquer pergunta sobre investimentos: saldo, vencimento, liquidez (D+), IR estimado
-// e a "nota de plano" que o usuário deixou para cada um.
+// Monta o bloco de texto "INVESTIMENTOS DETALHADOS" que a IA recebe quando pergunta
+// pela área de investimentos (tool get_investments_summary do chat e do WhatsApp).
 //
-// Segue o mesmo padrão já usado nos dois handlers: busca tudo antes da chamada ao
-// modelo (sem function calling) e injeta como texto formatado.
+// Antes este arquivo fazia as próprias contas e mandava só saldo, vencimento, liquidez
+// e IR — sem a TAXA CONTRATADA, sem corretora e sem rentabilidade. Sem a taxa, era
+// impossível a IA dizer se um CDB estava rendendo bem ou mal; ela só conseguia
+// devolver texto genérico. Agora o cálculo todo vem de portfolio-metrics.ts (fonte
+// única, determinística, compartilhada com o relatório completo) e aqui só acontece a
+// formatação em texto.
 
-const INVEST_TYPE_LABEL: Record<string, string> = {
-  CDB: 'CDB', LCI_LCA: 'LCI/LCA', TESOURO: 'Tesouro', DEBENTURES: 'Debêntures',
-  CRI_CRA: 'CRI/CRA', COE: 'COE', ACOES: 'Ações', FIIS: 'FIIs', FUNDOS: 'Fundos',
-  CRIPTO: 'Cripto', PREVIDENCIA: 'Previdência', POUPANCA: 'Poupança', OUTROS: 'Outros'
-};
+import { buildPortfolioAnalysis, type PortfolioAnalysis } from './portfolio-metrics.js';
+import { getMarketIndexes, type MarketIndexes } from './market-indexes.js';
 
-// Tabela regressiva padrão de IR para renda fixa (Lei 11.033/2004) — mesma regra
-// duplicada em lib/financialEngine.ts (frontend) e pages/Assets.tsx; ver memória
-// project_finvision_2026-07-25_investimentos_revisao.md sobre revisão manual se a
-// Receita mudar a alíquota.
-function regressiveTaxRate(days: number, isExempt: boolean): number {
-  if (isExempt) return 0;
-  if (days <= 180) return 0.225;
-  if (days <= 360) return 0.20;
-  if (days <= 720) return 0.175;
-  return 0.15;
+const brl = (v: number) => `R$ ${Number(v || 0).toFixed(2)}`;
+const dateBR = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : 'sem data definida');
+
+export async function buildInvestmentsContextSection(
+  supabase: any,
+  userId: string,
+  indexes?: MarketIndexes
+): Promise<string> {
+  const marketIndexes = indexes || (await getMarketIndexes(supabase, userId));
+  const analysis = await buildPortfolioAnalysis(supabase, userId, marketIndexes);
+  return formatInvestmentsSection(analysis);
 }
 
-export async function buildInvestmentsContextSection(supabase: any, userId: string): Promise<string> {
-  const { data: assets } = await supabase
-    .from('physical_assets')
-    .select('id, name, metadata, estimated_value, acquisition_date')
-    .eq('user_id', userId)
-    .eq('category', 'INVESTMENT');
+export function formatInvestmentsSection(analysis: PortfolioAnalysis): string {
+  if (analysis.positions.length === 0) return '';
 
-  const activeAssets = (assets || []).filter((a: any) => a.metadata?.status !== 'RESGATADO');
-  if (activeAssets.length === 0) return '';
+  const { totals, marketIndexes: idx } = analysis;
 
-  const assetIds = activeAssets.map((a: any) => a.id);
-  const { data: reminders } = await supabase
-    .from('investment_reminders')
-    .select('asset_id, note')
-    .in('asset_id', assetIds);
-  const reminderByAsset = new Map((reminders || []).map((r: any) => [r.asset_id, r.note]));
+  const lines = analysis.positions.map(p => {
+    const parts = [
+      `- "${p.name}" (${p.type})`,
+      `Saldo bruto: ${brl(p.grossValue)}`,
+      `Valor aplicado: ${brl(p.appliedValue)}`,
+      `Ganho: ${brl(p.gainValue)} (${p.gainPercent}%${p.annualizedGainPercent !== null ? ` · ${p.annualizedGainPercent}% a.a. realizado` : ''})`,
+    ];
 
-  let totalGross = 0;
-  const lines = activeAssets.map((a: any) => {
-    const meta = a.metadata || {};
-    const gross = Number(a.estimated_value || 0);
-    totalGross += gross;
-    const purchase = Number(meta.purchaseValue ?? meta.initialInvestmentAmount ?? gross);
-    const typeLabel = INVEST_TYPE_LABEL[meta.investmentType] || meta.investmentType || 'Investimento';
-    const isVariableIncome = ['ACOES', 'FIIS', 'CRIPTO'].includes(meta.investmentType);
-    const isExempt = !!meta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'POUPANCA'].includes(meta.investmentType);
-
-    let daysHeld = 0;
-    if (a.acquisition_date) {
-      daysHeld = Math.max(0, Math.floor((Date.now() - new Date(a.acquisition_date).getTime()) / 86400000));
+    if (p.contractedRateLabel) {
+      parts.push(`Taxa contratada: ${p.contractedRateLabel} ≈ ${p.contractedAnnualPercent}% a.a.${p.vsCdiPercent !== null ? ` (${p.vsCdiPercent}% do CDI)` : ''}`);
+    } else if (!p.isVariableIncome) {
+      parts.push('Taxa contratada: NÃO CADASTRADA');
     }
-
-    let irTexto: string;
-    if (isExempt) {
-      irTexto = 'isento';
-    } else if (isVariableIncome) {
-      irTexto = meta.investmentType === 'FIIS' ? '20% sobre o lucro (ganho de capital)' : '15% sobre o lucro (ganho de capital)';
-    } else {
-      const taxRate = regressiveTaxRate(daysHeld, false);
-      irTexto = `${(taxRate * 100).toFixed(1)}% sobre o lucro (tabela regressiva, ${daysHeld} dias desde a aplicação)`;
+    if (p.realizedVsContractedPP !== null) {
+      parts.push(`Realizado x contratado: ${p.realizedVsContractedPP > 0 ? '+' : ''}${p.realizedVsContractedPP} p.p.`);
     }
+    if (p.issuer) parts.push(`Emissor: ${p.issuer}`);
+    if (p.broker) parts.push(`Corretora: ${p.broker}`);
+    if (p.identifier) parts.push(`Identificador: ${p.identifier}`);
+    parts.push(`Vencimento: ${dateBR(p.maturityDate)}${p.daysToMaturity !== null ? ` (${p.daysToMaturity} dias)` : ''}`);
+    parts.push(`Liquidez: ${p.liquidityLabel}`);
+    parts.push(`Rendimento: ${p.payoutType === 'MENSAL' ? 'cupom mensal na conta' : 'acumulado no ativo'}`);
+    parts.push(`IR estimado: ${p.isTaxExempt ? 'isento' : `${p.taxRatePercent}% sobre o lucro = ${brl(p.estimatedTaxValue)}`}`);
+    parts.push(`Líquido hoje: ${brl(p.netValue)}`);
+    parts.push(`FGC: ${p.fgcCovered ? 'coberto' : 'sem cobertura do FGC'}`);
+    if (p.flags.length > 0) parts.push(`Sinais: ${p.flags.join(', ')}`);
+    if (p.userNote) parts.push(`Nota de plano do usuário: "${p.userNote}"`);
 
-    const vencimento = meta.vencimentoDate ? meta.vencimentoDate.split('-').reverse().join('/') : 'sem data definida';
-
-    let liquidezTexto: string;
-    const liquidityDays = meta.liquidityDays;
-    const atMaturity = !!meta.liquidityAtMaturity;
-    if (liquidityDays !== undefined && liquidityDays !== null) {
-      liquidezTexto = liquidityDays === 0 ? 'liquidez diária (D+0)' : `D+${liquidityDays}`;
-      if (atMaturity) liquidezTexto += ' e também disponível no vencimento';
-    } else if (atMaturity) {
-      liquidezTexto = 'somente disponível no vencimento';
-    } else {
-      liquidezTexto = 'não informada';
-    }
-
-    const note = reminderByAsset.get(a.id);
-
-    return `- "${a.name}" (${typeLabel}) | Saldo bruto: R$ ${gross.toFixed(2)} | Valor aplicado: R$ ${purchase.toFixed(2)} | Vencimento: ${vencimento} | Liquidez: ${liquidezTexto} | IR estimado: ${irTexto}${note ? ` | Nota de plano do usuário: "${note}"` : ''}`;
+    return parts.join(' | ');
   });
 
+  const allocation = analysis.allocationByType
+    .map(a => `${a.type} ${a.percent}% (${brl(a.value)})`)
+    .join(' · ');
+
+  const topAlerts = analysis.alerts.slice(0, 6)
+    .map(a => `- [${a.severity}] ${a.title}: ${a.detail}`)
+    .join('\n');
+
   return `
-# INVESTIMENTOS DETALHADOS (use para responder QUALQUER pergunta sobre investimentos — saldo, vencimento, liquidez/D+, IR estimado, de onde tirar dinheiro para pagar algo, quanto ficará disponível nos próximos N dias etc. Calcule datas comparando "Vencimento"/liquidez de cada item com a data de hoje informada acima)
-Total investido (soma dos saldos brutos): R$ ${totalGross.toFixed(2)}
+# INVESTIMENTOS DETALHADOS
+(Use para QUALQUER pergunta sobre investimentos. Todos os números abaixo já estão
+calculados — NÃO refaça as contas, apenas interprete. Para uma análise de carteira
+completa, com concentração, FGC, liquidez e vencimentos, chame get_portfolio_analysis.)
+
+Índices de mercado em uso: CDI ${idx.cdi}% a.a. · Selic ${idx.selic}% a.a. · IPCA ${idx.ipca}% (12m) — fonte: ${idx.source === 'bcb' ? 'Banco Central' : idx.source === 'user_settings' ? 'Ajustes do usuário' : 'padrão do sistema'}.
+
+Total aplicado: ${brl(totals.applied)} | Saldo bruto: ${brl(totals.gross)} | Líquido de IR: ${brl(totals.net)}
+Ganho acumulado: ${brl(totals.gainValue)} (${totals.gainPercent}%${totals.annualizedGainPercent !== null ? ` · ${totals.annualizedGainPercent}% a.a.` : ''})
+Taxa média contratada da carteira: ${totals.weightedAvgContractedAnnualPercent !== null ? `${totals.weightedAvgContractedAnnualPercent}% a.a. (${totals.portfolioVsCdiPP !== null && totals.portfolioVsCdiPP >= 0 ? '+' : ''}${totals.portfolioVsCdiPP} p.p. vs CDI)` : 'não calculável — faltam taxas no cadastro'}
+Alocação: ${allocation || 'não classificada'}
+Liquidez imediata (D+0 + caixa): ${brl(analysis.liquidity.immediateValue + analysis.liquidity.cashInAccountsValue)}
 ${lines.join('\n')}
+${topAlerts ? `\nPontos de atenção já detectados pelo sistema:\n${topAlerts}` : ''}
+${analysis.dataGaps.length > 0 ? `\nLacunas de cadastro: ${analysis.dataGaps.join(' ')}` : ''}
 `;
 }

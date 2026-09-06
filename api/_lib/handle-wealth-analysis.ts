@@ -2,6 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
+import { getMarketIndexes } from './market-indexes.js';
+import { buildPortfolioAnalysis } from './portfolio-metrics.js';
+import { formatInvestmentsSection } from './investments-context.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -21,7 +24,11 @@ export async function handleWealthAnalysis(req: any, res: any) {
 
         const [accountsRes, assetsRes, liabilitiesRes, txRes] = await Promise.all([
             supabase.from('accounts').select('institution, type, current_balance, currency').eq('user_id', userId),
-            supabase.from('physical_assets').select('id, name, category, estimated_value').eq('user_id', userId),
+            // INVESTMENT fica de fora: investimento não é bem físico. Antes ele entrava
+            // aqui e chegava à IA como uma linha solta de nome + valor, sem tipo, taxa,
+            // vencimento nem liquidez — por isso o diagnóstico nunca dizia nada útil
+            // sobre a carteira. Agora ele vem completo pelo bloco de investimentos abaixo.
+            supabase.from('physical_assets').select('id, name, category, estimated_value').eq('user_id', userId).neq('category', 'INVESTMENT'),
             supabase.from('liabilities').select('id, name, type, total_amount, remaining_balance, interest_rate, installment_amount, installments_remaining, metadata').eq('user_id', userId),
             supabase.from('transactions').select('amount, type, category, date, description, is_amortization, liability_id, is_paid, metadata').eq('user_id', userId).eq('is_deleted', false).gte('date', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]).order('date', { ascending: false }).limit(400)
         ]);
@@ -31,10 +38,23 @@ export async function handleWealthAnalysis(req: any, res: any) {
         const liabilities = liabilitiesRes.data || [];
         const transactions = txRes.data || [];
 
+        const marketIndexes = await getMarketIndexes(supabase, userId);
+        const portfolio = await buildPortfolioAnalysis(supabase, userId, marketIndexes);
+        const investmentsSection = formatInvestmentsSection(portfolio);
+        const totalInvestments = portfolio.totals.gross;
+
+        // Cuidado com dupla contagem: o trigger recalculate_account_balance
+        // (supabase/update_investments_balance_trigger.sql) já soma os investimentos
+        // vinculados a uma corretora dentro do current_balance daquela conta. Então só
+        // os investimentos SEM corretora vinculada entram de novo no patrimônio bruto.
+        const unlinkedInvestmentsValue = portfolio.positions
+            .filter(p => !p.broker)
+            .reduce((s: number, p) => s + p.grossValue, 0);
+
         const totalFinancial = accounts.reduce((s: number, a: any) => s + Number(a.current_balance || 0), 0);
         const totalPhysical = physicalAssets.reduce((s: number, a: any) => s + Number(a.estimated_value || 0), 0);
         const totalLiabilities = liabilities.reduce((s: number, l: any) => s + Number(l.remaining_balance || 0), 0);
-        const totalAssets = totalFinancial + totalPhysical;
+        const totalAssets = totalFinancial + totalPhysical + unlinkedInvestmentsValue;
         const netWorth = totalAssets - totalLiabilities;
 
         let totalIncome3m = 0, totalExpense3m = 0;
@@ -87,7 +107,7 @@ export async function handleWealthAnalysis(req: any, res: any) {
 
         const systemPrompt = `Você é o Zyvion Wealth Advisor, o consultor financeiro patrimonial de elite incorporado no aplicativo Zyvion. Você tem acesso completo ao patrimônio do usuário.\n\nREGRAS ABSOLUTAS:\n- Nunca mencione "Gemini", "Google" ou qualquer AI. Você é o Zyvion.\n- Seja direto, preciso e use dados reais fornecidos.\n- Formate com markdown (# títulos, **negrito**, listas) para leitura fácil.\n- Use valores em Reais formatados (R$ 0.000,00).\n- Seja como um Private Banker de alto nível: honesto, objetivo, sem enrolação.\n- Separe seu relatório em seções claras.`;
 
-        const userPrompt = `Analise o patrimônio financeiro completo do usuário e forneça um diagnóstico patrimonial completo:\n\n## DADOS FINANCEIROS DO USUÁRIO\n\n**CONTAS E INVESTIMENTOS (Total: R$ ${totalFinancial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}):**\n- ${accountsSummary || 'Nenhuma conta cadastrada'}\n\n**BENS FÍSICOS (Total: R$ ${totalPhysical.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}):**\n- ${physicalSummary || 'Nenhum bem físico cadastrado'}\n\n**DÍVIDAS E PASSIVOS (Total: R$ ${totalLiabilities.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}):**\n- ${liabilitiesSummary || 'Nenhum passivo cadastrado'}\n\n**FLUXO DE CAIXA (Média 3 meses):**\n- Renda Mensal Média: R$ ${avgMonthlyIncome.toLocaleString('pt-BR')}\n- Gastos Mensais Médios: R$ ${avgMonthlyExpense.toLocaleString('pt-BR')}\n- Poupança Mensal: R$ ${avgMonthlySavings.toLocaleString('pt-BR')}\n- Comprometimento com Dívidas: ${debtToIncome}% da renda\n\n**RESUMO PATRIMONIAL:**\n- Patrimônio Bruto (Ativos): R$ ${totalAssets.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n- Total de Dívidas: R$ ${totalLiabilities.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n- **Patrimônio Líquido Real: R$ ${netWorth.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}**\n\nCom base nesses dados, forneça:\n1. 🏦 Score de Saúde Financeira (0-100)\n2. 📊 Análise de Dívidas vs Investimentos (comente especificamente sobre a viabilidade de aportes e a sustentabilidade das parcelas de obras de imóveis Na Planta e consórcios comparado às suas sobras de caixa)\n3. ⚠️ Alertas e Riscos (atente para atos ou balões pendentes nos imóveis Na Planta)\n4. 🎯 Plano de Ação (3 prioridades)\n5. 💡 Oportunidades Identificadas`;
+        const userPrompt = `Analise o patrimônio financeiro completo do usuário e forneça um diagnóstico patrimonial completo:\n\n## DADOS FINANCEIROS DO USUÁRIO\n\n**CONTAS E INVESTIMENTOS (Total: R$ ${totalFinancial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}):**\n- ${accountsSummary || 'Nenhuma conta cadastrada'}\n\n**BENS FÍSICOS (Total: R$ ${totalPhysical.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}):**\n- ${physicalSummary || 'Nenhum bem físico cadastrado'}\n\n${investmentsSection ? `**CARTEIRA DE INVESTIMENTOS (Total: R$ ${totalInvestments.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) — números JÁ CALCULADOS, não refaça as contas. Os aplicados via corretora já estão dentro do saldo da conta de investimento listada acima, então NÃO some as duas coisas:**\n${investmentsSection}\n\n` : '**CARTEIRA DE INVESTIMENTOS:** nenhum investimento cadastrado.\n\n'}**DÍVIDAS E PASSIVOS (Total: R$ ${totalLiabilities.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}):**\n- ${liabilitiesSummary || 'Nenhum passivo cadastrado'}\n\n**FLUXO DE CAIXA (Média 3 meses):**\n- Renda Mensal Média: R$ ${avgMonthlyIncome.toLocaleString('pt-BR')}\n- Gastos Mensais Médios: R$ ${avgMonthlyExpense.toLocaleString('pt-BR')}\n- Poupança Mensal: R$ ${avgMonthlySavings.toLocaleString('pt-BR')}\n- Comprometimento com Dívidas: ${debtToIncome}% da renda\n\n**RESUMO PATRIMONIAL:**\n- Patrimônio Bruto (Ativos): R$ ${totalAssets.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n- Total de Dívidas: R$ ${totalLiabilities.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n- **Patrimônio Líquido Real: R$ ${netWorth.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}**\n\nCom base nesses dados, forneça:\n1. 🏦 Score de Saúde Financeira (0-100)\n2. 📈 Saúde da Carteira de Investimentos (use os números já calculados: rentabilidade, taxa média contratada vs CDI, concentração, FGC e liquidez; dê um veredito curto por classe de ativo e NUNCA recomende comprar ou vender um ativo específico)\n3. 📊 Análise de Dívidas vs Investimentos (comente especificamente sobre a viabilidade de aportes e a sustentabilidade das parcelas de obras de imóveis Na Planta e consórcios comparado às suas sobras de caixa)\n4. ⚠️ Alertas e Riscos (atente para atos ou balões pendentes nos imóveis Na Planta)\n5. 🎯 Plano de Ação (3 prioridades)\n6. 💡 Oportunidades Identificadas`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -99,7 +119,7 @@ export async function handleWealthAnalysis(req: any, res: any) {
         const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
         if (!rawText) throw new Error('Zyvion AI não retornou análise.');
 
-        return res.status(200).json({ analysis: rawText, metadata: { netWorth, totalAssets, totalLiabilities, avgMonthlySavings, debtToIncome, generatedAt: new Date().toISOString() } });
+        return res.status(200).json({ analysis: rawText, metadata: { netWorth, totalAssets, totalLiabilities, totalInvestments, avgMonthlySavings, debtToIncome, generatedAt: new Date().toISOString() } });
     } catch (err: any) {
         console.error('[WealthAdvisor] Erro:', err.message);
         return res.status(500).json({ error: err.message });

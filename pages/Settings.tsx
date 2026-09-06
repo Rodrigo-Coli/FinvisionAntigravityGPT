@@ -185,6 +185,11 @@ const SettingsPage: React.FC = () => {
   // Índices de mercado que alimentam o cálculo de renda fixa (CDI, IPCA, IGP-M).
   const [marketIndexes, setMarketIndexes] = useState({ cdi: 10.4, ipca: 4.0, igpm: 4.0 });
   const [editingIndexes, setEditingIndexes] = useState({ cdi: 10.4, ipca: 4.0, igpm: 4.0 });
+  // Automático = usar o que o cron traz da API do Banco Central. Manual = o usuário
+  // assume os números (útil para simular cenário). A mesma flag manda no cálculo do
+  // app e no da IA — ver api/_lib/market-indexes.ts (getMarketIndexes).
+  const [indexesManual, setIndexesManual] = useState(false);
+  const [officialIndexes, setOfficialIndexes] = useState<{ cdi: number; ipca: number; igpm: number; updatedAt: string } | null>(null);
 
   const saveMarketIndexes = async () => {
     if (!supabase) return;
@@ -194,14 +199,24 @@ const SettingsPage: React.FC = () => {
       if (!user) return;
       const { error } = await supabase.from('user_settings').upsert({
         user_id: user.id,
-        market_indexes: editingIndexes,
+        market_indexes: { ...editingIndexes, manual: indexesManual },
         updated_at: DateUtils.getNow().toISOString()
       });
       if (error) throw error;
-      setMarketIndexes(editingIndexes);
-      FinancialEngine.setMarketIndexes(editingIndexes);
-      localStorage.setItem('finvision_market_indexes', JSON.stringify(editingIndexes));
-      toast('Índices atualizados. Os cálculos de renda fixa já usam os novos valores.', 'success');
+      // No modo automático o que vale são os índices oficiais, não o que ficou no campo.
+      const applied = !indexesManual && officialIndexes
+        ? { cdi: officialIndexes.cdi, ipca: officialIndexes.ipca, igpm: officialIndexes.igpm }
+        : editingIndexes;
+      setMarketIndexes(applied);
+      setEditingIndexes(applied);
+      FinancialEngine.setMarketIndexes(applied);
+      localStorage.setItem('finvision_market_indexes', JSON.stringify(applied));
+      toast(
+        indexesManual
+          ? 'Índices manuais salvos. Os cálculos de renda fixa já usam os seus valores.'
+          : 'Modo automático ligado. Os cálculos passam a seguir os índices do Banco Central.',
+        'success'
+      );
     } catch (err) {
       console.error('Erro ao salvar índices de mercado:', err);
       toast('Não foi possível salvar os índices. Verifique sua conexão.', 'error');
@@ -288,11 +303,33 @@ const SettingsPage: React.FC = () => {
             whatsapp_number: data.whatsapp_number || '',
             push_enabled: data.push_enabled || false
           });
-          const idx = {
+          const isManual = data.market_indexes?.manual === true;
+          setIndexesManual(isManual);
+
+          // Índices oficiais (cache alimentado pelo cron a partir da API do Banco Central).
+          const { data: bcb } = await supabase
+            .from('market_indexes_cache')
+            .select('cdi, ipca, igpm, updated_at')
+            .eq('id', 'BR')
+            .maybeSingle();
+          const bcbUsable = !!bcb && Number(bcb.cdi) > 0
+            && (Date.now() - new Date(bcb.updated_at).getTime()) / 86400000 <= 7;
+          if (bcbUsable) {
+            setOfficialIndexes({
+              cdi: Number(bcb!.cdi), ipca: Number(bcb!.ipca), igpm: Number(bcb!.igpm),
+              updatedAt: bcb!.updated_at
+            });
+          }
+
+          const userIdx = {
             cdi: Number(data.market_indexes?.cdi ?? 10.4),
             ipca: Number(data.market_indexes?.ipca ?? 4.0),
             igpm: Number(data.market_indexes?.igpm ?? 4.0)
           };
+          // Mesma precedência do backend: manual > oficial > o que houver salvo.
+          const idx = !isManual && bcbUsable
+            ? { cdi: Number(bcb!.cdi), ipca: Number(bcb!.ipca), igpm: Number(bcb!.igpm) }
+            : userIdx;
           setMarketIndexes(idx);
           setEditingIndexes(idx);
           FinancialEngine.setMarketIndexes(idx);
@@ -1619,11 +1656,32 @@ const SettingsPage: React.FC = () => {
                   <div>
                     <h2 className="text-2xl font-bold text-slate-900 italic">Índices de Mercado</h2>
                     <p className="text-sm text-slate-500 font-medium">
-                      Usados para projetar quanto rendem seus títulos atrelados a CDI, IPCA e IGP-M.
-                      Atualize quando o cenário mudar.
+                      Usados para projetar quanto rendem seus títulos atrelados a CDI, IPCA e IGP-M —
+                      e também pela IA na análise da sua carteira.
                     </p>
                   </div>
                 </div>
+
+                {/* Automático x manual: o app busca os índices oficiais do Banco Central
+                    uma vez por dia. O manual continua existindo para quem quer simular
+                    um cenário, e a escolha vale tanto para as telas quanto para a IA. */}
+                <label className="flex items-start gap-3 p-5 bg-indigo-50/50 rounded-[24px] border border-indigo-100 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!indexesManual}
+                    onChange={e => setIndexesManual(!e.target.checked)}
+                    className="w-5 h-5 mt-0.5 rounded accent-indigo-600 shrink-0"
+                  />
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">Atualizar automaticamente pelo Banco Central</p>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5 leading-relaxed">
+                      {officialIndexes
+                        ? `Valores oficiais de hoje: CDI ${officialIndexes.cdi}% · IPCA ${officialIndexes.ipca}% · IGP-M ${officialIndexes.igpm}% (atualizados em ${new Date(officialIndexes.updatedAt).toLocaleDateString('pt-BR')}).`
+                        : 'Os valores oficiais ainda não foram sincronizados. Enquanto isso, valem os números abaixo.'}
+                      {' '}Desmarque para usar seus próprios números.
+                    </p>
+                  </div>
+                </label>
 
                 <div className="space-y-4">
                   {([
@@ -1631,14 +1689,17 @@ const SettingsPage: React.FC = () => {
                     { key: 'ipca', label: 'IPCA (ao ano)' },
                     { key: 'igpm', label: 'IGP-M (ao ano)' }
                   ] as const).map(idx => (
-                    <div key={idx.key} className="p-6 bg-slate-50 rounded-[24px] border border-slate-50">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block">{idx.label}</label>
+                    <div key={idx.key} className={`p-6 rounded-[24px] border transition-opacity ${indexesManual ? 'bg-slate-50 border-slate-50' : 'bg-slate-50/50 border-slate-50 opacity-60'}`}>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block">
+                        {idx.label}{!indexesManual && ' · automático'}
+                      </label>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
                           inputMode="decimal"
                           step="0.01"
-                          className="bg-transparent font-bold text-3xl text-slate-900 w-28 outline-none"
+                          disabled={!indexesManual}
+                          className="bg-transparent font-bold text-3xl text-slate-900 w-28 outline-none disabled:cursor-not-allowed"
                           value={editingIndexes[idx.key]}
                           onChange={e => setEditingIndexes(prev => ({ ...prev, [idx.key]: parseFloat(e.target.value) || 0 }))}
                         />
@@ -1647,16 +1708,14 @@ const SettingsPage: React.FC = () => {
                     </div>
                   ))}
 
-                  {(editingIndexes.cdi !== marketIndexes.cdi
-                    || editingIndexes.ipca !== marketIndexes.ipca
-                    || editingIndexes.igpm !== marketIndexes.igpm) && (
-                    <button
-                      onClick={saveMarketIndexes}
-                      className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20"
-                    >
-                      Salvar Índices
-                    </button>
-                  )}
+                  {/* Sempre visível: agora o botão salva também a escolha entre automático
+                      e manual, que não aparece na comparação de valores. */}
+                  <button
+                    onClick={saveMarketIndexes}
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20"
+                  >
+                    Salvar Índices
+                  </button>
                 </div>
               </div>
 

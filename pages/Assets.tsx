@@ -483,6 +483,13 @@ const Assets: React.FC = () => {
     yieldRate: '',
     payoutType: 'ACUMULADO' as 'ACUMULADO' | 'MENSAL',
     brokerAccountId: '',
+    // Emissor = quem deve o dinheiro (o banco que emitiu o CDB), diferente da
+    // corretora onde o título está custodiado. É por emissor que o teto do FGC
+    // (R$ 250 mil por CPF/instituição) é contado na análise de carteira.
+    issuer: '',
+    // CNPJ do fundo ou ticker do papel. Sem ele a IA não pode pesquisar o produto
+    // na internet — pesquisar pelo nome solto traria o produto errado.
+    identifier: '',
     vencimentoDate: '',
     liquidityAtMaturity: false,
     liquidityDays: '',
@@ -3367,6 +3374,8 @@ const Assets: React.FC = () => {
         yieldRate: formData.category === 'INVESTMENT' ? formData.yieldRate : undefined,
         payoutType: formData.category === 'INVESTMENT' ? formData.payoutType : undefined,
         brokerAccountId: formData.category === 'INVESTMENT' ? formData.brokerAccountId : undefined,
+        issuer: formData.category === 'INVESTMENT' ? (formData.issuer.trim() || undefined) : undefined,
+        identifier: formData.category === 'INVESTMENT' ? (formData.identifier.trim() || undefined) : undefined,
         vencimentoDate: formData.category === 'INVESTMENT' ? formData.vencimentoDate : undefined,
         liquidityAtMaturity: formData.category === 'INVESTMENT' ? !!formData.liquidityAtMaturity : undefined,
         liquidityDays: formData.category === 'INVESTMENT'
@@ -4342,6 +4351,8 @@ const Assets: React.FC = () => {
       yieldRate: '',
       payoutType: 'ACUMULADO',
       brokerAccountId: '',
+      issuer: '',
+      identifier: '',
       vencimentoDate: '',
       liquidityAtMaturity: false,
       liquidityDays: '',
@@ -4549,6 +4560,8 @@ const Assets: React.FC = () => {
       yieldRate: meta.yieldRate || '',
       payoutType: meta.payoutType || 'ACUMULADO',
       brokerAccountId: meta.brokerAccountId || '',
+      issuer: meta.issuer || '',
+      identifier: meta.identifier || meta.cnpj || meta.ticker || '',
       vencimentoDate: meta.vencimentoDate || '',
       liquidityAtMaturity: getLiquidityInfo(meta).atMaturity,
       liquidityDays: getLiquidityInfo(meta).days !== null ? String(getLiquidityInfo(meta).days) : '',
@@ -11433,6 +11446,43 @@ ${tabelaHtml}
                             { value: 'OUTROS', label: 'Outros' },
                           ]}
                         />
+                      </div>
+                    </div>
+
+                    {/* Emissor e identificador: os dois campos que destravam a análise de
+                        carteira. O emissor é quem conta para o teto do FGC (R$ 250 mil por
+                        CPF/instituição); o CNPJ/ticker é o que permite a IA pesquisar o
+                        produto no mercado em vez de chutar pelo nome. */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">
+                          Emissor {['CDB', 'LCI_LCA', 'POUPANCA'].includes(formData.investmentType) && <span className="text-amber-600">(conta no FGC)</span>}
+                        </label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          placeholder="Ex: Banco Inter"
+                          value={formData.issuer}
+                          onChange={(e) => setFormData({ ...formData, issuer: e.target.value })}
+                        />
+                        <p className="text-[10px] text-slate-400 font-medium mt-1 text-left">
+                          Quem emitiu o título — não é a corretora onde ele está guardado.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">
+                          CNPJ do Fundo / Ticker
+                        </label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          placeholder={['ACOES', 'FIIS'].includes(formData.investmentType) ? 'Ex: PETR4' : 'Ex: 12.345.678/0001-90'}
+                          value={formData.identifier}
+                          onChange={(e) => setFormData({ ...formData, identifier: e.target.value })}
+                        />
+                        <p className="text-[10px] text-slate-400 font-medium mt-1 text-left">
+                          Opcional. Com ele, o Raio-X da Carteira consegue comparar o produto com o mercado.
+                        </p>
                       </div>
                     </div>
 

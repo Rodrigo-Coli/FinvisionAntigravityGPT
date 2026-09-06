@@ -68,8 +68,8 @@ const parseMarkdownToReact = (text: string) => {
 
 const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const { toast } = useToast();
-  type AITab = 'upload' | 'history' | 'comparative' | 'shopping' | 'wealth';
-  const AI_TABS: AITab[] = ['upload', 'history', 'comparative', 'shopping', 'wealth'];
+  type AITab = 'upload' | 'history' | 'comparative' | 'shopping' | 'portfolio' | 'wealth';
+  const AI_TABS: AITab[] = ['upload', 'history', 'comparative', 'shopping', 'portfolio', 'wealth'];
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab: AITab = resolveTabParam(searchParams.get('view'), AI_TABS, 'upload');
   const setActiveTab = (tab: AITab) => {
@@ -117,6 +117,12 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [wealthAnalysis, setWealthAnalysis] = useState<string>('');
   const [wealthMeta, setWealthMeta] = useState<any>(null);
   const [isLoadingWealth, setIsLoadingWealth] = useState(false);
+  const [portfolioAnalysis, setPortfolioAnalysis] = useState<string>('');
+  const [portfolioMeta, setPortfolioMeta] = useState<any>(null);
+  const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false);
+  // Pesquisa de produto na internet é opcional: custa tempo e só serve para quem tem
+  // fundo/ação/FII com CNPJ ou ticker cadastrado.
+  const [withMarketResearch, setWithMarketResearch] = useState(true);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // States para Conversão de Moeda
@@ -284,6 +290,31 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     }
   };
 
+  const generatePortfolioAnalysis = async () => {
+    if (!user?.id) return;
+    setIsLoadingPortfolio(true);
+    setPortfolioAnalysis('');
+    setPortfolioMeta(null);
+    try {
+      const resp = await fetch('/api/handle-investment-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, withMarketResearch })
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        if (data.limitReached) setShowUpgradeModal(true);
+        throw new Error(data.error || 'Erro ao gerar a análise da carteira');
+      }
+      setPortfolioAnalysis(data.analysis);
+      setPortfolioMeta(data.metrics);
+    } catch (err: any) {
+      setPortfolioAnalysis(`**Erro:** ${err.message}`);
+    } finally {
+      setIsLoadingPortfolio(false);
+    }
+  };
+
   const handlePrintPDF = () => {
     window.print();
   };
@@ -413,6 +444,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           { id: 'comparative', label: 'Comparador', icon: <Store size={16} /> },
           { id: 'shopping', label: 'Lista de Compras', icon: <ShoppingCart size={16} /> },
           { id: 'history', label: 'Minha Inflação', icon: <BarChart3 size={16} /> },
+          { id: 'portfolio', label: 'Raio-X da Carteira', icon: <TrendingUp size={16} /> },
           { id: 'wealth', label: 'Diagnóstico', icon: <Brain size={16} /> },
         ].map((tab) => (
           <button
@@ -932,6 +964,175 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+        {activeTab === 'portfolio' && (
+          <div className="space-y-8">
+            {/* Hero */}
+            <div className="bg-slate-900 rounded-[40px] p-10 md:p-16 text-white relative overflow-hidden">
+              <div className="absolute -top-10 -right-10 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl" />
+              <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
+                <div className="w-20 h-20 bg-white/5 border border-white/10 rounded-[28px] flex items-center justify-center shrink-0">
+                  <TrendingUp size={40} className="text-emerald-400" />
+                </div>
+                <div className="text-center md:text-left flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-1">Zyvion Portfolio Advisor</p>
+                  <h2 className="text-3xl md:text-4xl font-bold tracking-tight">Raio-X da Carteira</h2>
+                  <p className="text-slate-400 mt-2 font-medium">
+                    Rentabilidade real de cada ativo contra o CDI vigente, concentração, cobertura do FGC, liquidez e vencimentos — com um veredito por ativo.
+                  </p>
+                  <label className="mt-4 inline-flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={withMarketResearch}
+                      onChange={(e) => setWithMarketResearch(e.target.checked)}
+                      className="w-4 h-4 rounded accent-emerald-500"
+                    />
+                    <span className="text-[11px] font-bold text-slate-400">
+                      Pesquisar meus fundos e ações no mercado (só funciona com CNPJ/ticker cadastrado)
+                    </span>
+                  </label>
+                </div>
+                <button
+                  onClick={generatePortfolioAnalysis}
+                  disabled={isLoadingPortfolio}
+                  className="shrink-0 flex items-center gap-3 px-8 py-4 bg-emerald-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl shadow-emerald-600/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {isLoadingPortfolio ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                  {isLoadingPortfolio ? 'Analisando...' : 'Analisar Carteira'}
+                </button>
+              </div>
+            </div>
+
+            {/* Cartões: mesmos números que a IA leu — se o texto divergir daqui, aqui é a verdade */}
+            {portfolioMeta && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                {[
+                  {
+                    label: 'Saldo Bruto',
+                    value: `R$ ${Math.round(portfolioMeta.totalGross).toLocaleString('pt-BR')}`,
+                    sub: `Líquido de IR: R$ ${Math.round(portfolioMeta.totalNet).toLocaleString('pt-BR')}`,
+                    color: 'text-slate-900', icon: <ShieldCheck size={20} />
+                  },
+                  {
+                    label: 'Ganho Acumulado',
+                    value: `R$ ${Math.round(portfolioMeta.gainValue).toLocaleString('pt-BR')}`,
+                    sub: portfolioMeta.annualizedGainPercent !== null ? `${portfolioMeta.annualizedGainPercent}% a.a. realizado` : `${portfolioMeta.gainPercent}% no período`,
+                    color: portfolioMeta.gainValue >= 0 ? 'text-emerald-600' : 'text-red-600', icon: <TrendingUp size={20} />
+                  },
+                  {
+                    label: `Taxa Média vs CDI (${portfolioMeta.cdi}%)`,
+                    value: portfolioMeta.weightedAvgContractedAnnualPercent !== null ? `${portfolioMeta.weightedAvgContractedAnnualPercent}% a.a.` : '—',
+                    sub: portfolioMeta.portfolioVsCdiPP !== null
+                      ? `${portfolioMeta.portfolioVsCdiPP >= 0 ? '+' : ''}${portfolioMeta.portfolioVsCdiPP} p.p. vs CDI`
+                      : 'cadastre as taxas dos ativos',
+                    color: (portfolioMeta.portfolioVsCdiPP ?? 0) >= 0 ? 'text-emerald-600' : 'text-orange-600', icon: <Target size={20} />
+                  },
+                  {
+                    label: 'Reserva de Emergência',
+                    value: portfolioMeta.emergencyMonthsCovered !== null ? `${portfolioMeta.emergencyMonthsCovered} meses` : '—',
+                    sub: `${portfolioMeta.highSeverityAlerts} alerta(s) grave(s)`,
+                    color: (portfolioMeta.emergencyMonthsCovered ?? 0) >= 3 ? 'text-emerald-600' : 'text-red-600', icon: <AlertTriangle size={20} />
+                  },
+                ].map((card, i) => (
+                  <div key={i} className="bg-white border border-slate-100 rounded-[28px] p-6 shadow-sm">
+                    <div className={`${card.color} mb-3`}>{card.icon}</div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{card.label}</p>
+                    <p className={`text-2xl font-bold mt-1 ${card.color}`}>{card.value}</p>
+                    <p className="text-[10px] text-slate-400 font-medium mt-1">{card.sub}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Alertas determinísticos: vêm do cálculo, não do texto da IA */}
+            {portfolioMeta?.alerts?.length > 0 && (
+              <div className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm space-y-4">
+                <h3 className="font-bold text-slate-900 uppercase tracking-widest text-[10px]">Alertas do Sistema</h3>
+                {portfolioMeta.alerts.map((alert: any, i: number) => (
+                  <div
+                    key={i}
+                    className={`flex gap-3 p-4 rounded-2xl border ${
+                      alert.severity === 'HIGH' ? 'bg-red-50 border-red-100'
+                      : alert.severity === 'MEDIUM' ? 'bg-amber-50 border-amber-100'
+                      : 'bg-slate-50 border-slate-100'
+                    }`}
+                  >
+                    <AlertTriangle
+                      size={18}
+                      className={`shrink-0 mt-0.5 ${
+                        alert.severity === 'HIGH' ? 'text-red-600'
+                        : alert.severity === 'MEDIUM' ? 'text-amber-600' : 'text-slate-400'
+                      }`}
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">{alert.title}</p>
+                      <p className="text-xs text-slate-500 font-medium mt-0.5 leading-relaxed">{alert.detail}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Relatório */}
+            {portfolioAnalysis && (
+              <div id="print-portfolio-report" className="bg-white border border-slate-100 rounded-[40px] shadow-sm overflow-hidden">
+                {/* Mesmo tratamento de impressão do Diagnóstico: sem esse bloco o PDF sai
+                    com o menu, os botões e o fundo escuro do hero. */}
+                <style dangerouslySetInnerHTML={{ __html: `
+                  @media print {
+                    body { background: white !important; color: black !important; }
+                    nav, footer, aside, header, button, .no-print, [role="navigation"], .bg-slate-900 {
+                      display: none !important;
+                    }
+                    #print-portfolio-report {
+                      border: none !important; box-shadow: none !important;
+                      padding: 0 !important; margin: 0 !important; background: white !important;
+                    }
+                    .prose { max-width: 100% !important; color: #0f172a !important; font-size: 13px !important; }
+                    h1, h2, h3, h4 { color: #0f172a !important; page-break-after: avoid !important; }
+                    p, li, tr { page-break-inside: avoid !important; }
+                  }
+                ` }} />
+                <div className="px-10 py-6 border-b border-slate-50 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Sparkles size={18} className="text-emerald-500" />
+                    <h3 className="font-bold text-slate-900 uppercase tracking-widest text-[10px]">Relatório da Carteira</h3>
+                  </div>
+                  <button
+                    onClick={handlePrintPDF}
+                    className="no-print flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-md"
+                  >
+                    Exportar (PDF)
+                  </button>
+                </div>
+                <div className="p-10 prose prose-slate max-w-none">
+                  {parseMarkdownToReact(portfolioAnalysis)}
+                </div>
+                {portfolioMeta?.dataGaps?.length > 0 && (
+                  <div className="px-10 pb-10">
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Para a próxima análise ir mais fundo</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        {portfolioMeta.dataGaps.map((gap: string, i: number) => (
+                          <li key={i} className="text-xs text-slate-600 font-medium">{gap}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!portfolioAnalysis && !isLoadingPortfolio && (
+              <div className="bg-white border border-dashed border-slate-200 rounded-[40px] p-16 text-center">
+                <TrendingUp size={40} className="mx-auto text-slate-200 mb-4" />
+                <p className="text-slate-400 font-medium max-w-lg mx-auto">
+                  Clique em <strong>Analisar Carteira</strong> para receber o raio-X completo dos seus investimentos.
+                  Quanto mais completo o cadastro em Patrimônio &gt; Investimentos (taxa contratada, emissor, vencimento e liquidez), mais fundo o relatório consegue ir.
+                </p>
+              </div>
+            )}
           </div>
         )}
         {activeTab === 'wealth' && (

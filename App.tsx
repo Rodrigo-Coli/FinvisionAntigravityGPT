@@ -102,9 +102,12 @@ const App: React.FC = () => {
   }, []);
 
   // Índices de mercado (CDI, IPCA, IGP-M) que alimentam todo o cálculo de renda fixa.
-  // Aplica na hora o valor que já está no aparelho e, em seguida, confirma com o que
-  // está salvo na conta. Sem isso, quem mudasse os índices em Ajustes só veria efeito
-  // nas telas depois de passar pela própria tela de Ajustes.
+  // Aplica na hora o valor que já está no aparelho e, em seguida, confirma com o servidor.
+  //
+  // A precedência é a MESMA de api/_lib/market-indexes.ts (getMarketIndexes) de propósito:
+  // override manual do usuário > cache oficial do Banco Central > Ajustes sem marca de
+  // manual > padrão do código. Se as duas pontas divergirem, a IA responde um CDI e a
+  // tela mostra outro — que era exatamente o problema antes de o cache existir.
   useEffect(() => {
     try {
       const cached = safeStorage.getItem('finvision_market_indexes');
@@ -117,14 +120,34 @@ const App: React.FC = () => {
       const { data: { session } } = await supabase!.auth.getSession();
       const uid = session?.user?.id;
       if (!uid || cancelled) return;
-      const { data } = await supabase!
-        .from('user_settings')
-        .select('market_indexes')
-        .eq('user_id', uid)
-        .maybeSingle();
-      if (cancelled || !data?.market_indexes) return;
-      FinancialEngine.setMarketIndexes(data.market_indexes);
-      safeStorage.setItem('finvision_market_indexes', JSON.stringify(data.market_indexes));
+
+      const [settingsRes, bcbRes] = await Promise.all([
+        supabase!.from('user_settings').select('market_indexes').eq('user_id', uid).maybeSingle(),
+        supabase!.from('market_indexes_cache').select('cdi, ipca, igpm, updated_at').eq('id', 'BR').maybeSingle(),
+      ]);
+      if (cancelled) return;
+
+      const userIndexes = settingsRes.data?.market_indexes;
+      const hasUserIndexes = !!userIndexes && Number(userIndexes.cdi) > 0;
+
+      const bcb = bcbRes.data;
+      const bcbAgeDays = bcb?.updated_at
+        ? (Date.now() - new Date(bcb.updated_at).getTime()) / 86400000
+        : Number.POSITIVE_INFINITY;
+      const bcbUsable = !!bcb && Number(bcb.cdi) > 0 && bcbAgeDays <= 7;
+
+      let resolved: { cdi: number; ipca: number; igpm: number } | null = null;
+      if (hasUserIndexes && userIndexes.manual === true) {
+        resolved = { cdi: Number(userIndexes.cdi), ipca: Number(userIndexes.ipca), igpm: Number(userIndexes.igpm) };
+      } else if (bcbUsable) {
+        resolved = { cdi: Number(bcb!.cdi), ipca: Number(bcb!.ipca), igpm: Number(bcb!.igpm) };
+      } else if (hasUserIndexes) {
+        resolved = { cdi: Number(userIndexes.cdi), ipca: Number(userIndexes.ipca), igpm: Number(userIndexes.igpm) };
+      }
+      if (!resolved) return;
+
+      FinancialEngine.setMarketIndexes(resolved);
+      safeStorage.setItem('finvision_market_indexes', JSON.stringify(resolved));
     })();
     return () => { cancelled = true; };
   }, []);

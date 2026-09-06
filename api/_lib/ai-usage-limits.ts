@@ -9,7 +9,8 @@
 // (console.error) para dar pra monitorar se isso está acontecendo com frequência.
 //
 // Usado por api/_lib/finvision-chat.ts, whatsapp-webhook.ts, handle-receipt-items.ts,
-// handle-wealth-analysis.ts, categorize-transactions.ts, handle-bank-reconcile.ts,
+// handle-wealth-analysis.ts, handle-investment-analysis.ts, categorize-transactions.ts,
+// handle-bank-reconcile.ts,
 // handle-card-reconcile.ts (e futuramente a linha de importação de extrato/fatura).
 
 // Mapa oficial: cada `fn` gravado em ai_usage_logs (ver api/_lib/ai-usage.ts)
@@ -36,6 +37,10 @@ export const AI_ACTION_CATEGORIES: Record<string, string> = {
   // uma categoria antes de ligar a chamada de novo.
   categorize: 'ai_categorize',
   wealth_analysis: 'ai_diagnosis',
+  // Raio-X da Carteira (handle-investment-analysis.ts). Divide a MESMA cota de
+  // diagnóstico do wealth_analysis de propósito: os dois são relatórios profundos
+  // do mesmo porte, e assim nenhum plano precisou ganhar coluna nova.
+  investment_analysis: 'ai_diagnosis',
 };
 
 // Rótulos amigáveis pra mensagem de bloqueio mostrada ao usuário.
@@ -47,7 +52,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   reconcile: 'conciliações com IA',
   import_docs: 'importações de extrato/fatura',
   ai_categorize: 'categorizações automáticas',
-  ai_diagnosis: 'diagnósticos de patrimônio',
+  ai_diagnosis: 'diagnósticos de patrimônio e de carteira',
 };
 
 export interface AiLimitCheck {
