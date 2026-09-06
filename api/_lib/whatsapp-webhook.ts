@@ -855,21 +855,29 @@ async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: 
 
     const descriptionVal = tx.description?.toLowerCase().includes('[transf]') ? tx.description : `[TRANSF] ${tx.description || 'Transferência'}`;
 
+    // O recálculo de saldo do banco soma COALESCE(paid_amount, 0) e só considera
+    // TRANSFER marcada com `affects_balance` (ver recalculate_account_balance).
+    // Faltando qualquer um dos dois, a transferência aparece no extrato e nenhum
+    // dos dois saldos se mexe.
+    const transferAmount = Number(tx.amount || 0);
+
     // 1. Source Transaction (debit)
     await supabase.from('transactions').insert({
       user_id: userId,
       account_id: finalAccountId,
       description: descriptionVal,
-      amount: tx.amount || 0,
+      amount: transferAmount,
       date: dateVal,
       type: 'TRANSFER',
       category: 'Transferência',
       subcategory: tx.subcategory || null,
       is_paid: true,
+      paid_amount: transferAmount,
+      paid_at: dateVal,
       owner_name: ownerVal,
       notes: tx.notes || '',
       tags: tx.tags || [],
-      metadata: { is_transfer: true, transfer_side: 'SOURCE', counter_account_id: finalDestAccountId }
+      metadata: { is_transfer: true, affects_balance: !!finalDestAccountId, transfer_side: 'SOURCE', counter_account_id: finalDestAccountId }
     });
 
     // 2. Destination Transaction (credit)
@@ -878,16 +886,18 @@ async function executeDirectLaunch(userId: string, tx: any): Promise<{ success: 
         user_id: userId,
         account_id: finalDestAccountId,
         description: descriptionVal,
-        amount: tx.amount || 0,
+        amount: transferAmount,
         date: dateVal,
         type: 'TRANSFER',
         category: 'Transferência',
         subcategory: tx.subcategory || null,
         is_paid: true,
+        paid_amount: transferAmount,
+        paid_at: dateVal,
         owner_name: ownerVal,
         notes: tx.notes || '',
         tags: tx.tags || [],
-        metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: finalAccountId }
+        metadata: { is_transfer: true, affects_balance: true, transfer_side: 'DESTINATION', counter_account_id: finalAccountId }
       });
     }
 
@@ -2230,21 +2240,27 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
             const dateVal = tx.date || new Date().toISOString().split('T')[0];
             const descriptionVal = tx.description?.toLowerCase().includes('[transf]') ? tx.description : `[TRANSF] ${tx.description || 'Transferência'}`;
 
+            // Idem ao fluxo acima: sem paid_amount + affects_balance a transferência
+            // não move saldo nenhum (ver recalculate_account_balance).
+            const transferAmountVal = Number(tx.amount || 0);
+
             // 1. Source Transaction (debit)
             await supabase.from('transactions').insert({
               user_id: userId,
               account_id: finalAccountId,
               description: descriptionVal,
-              amount: tx.amount || 0,
+              amount: transferAmountVal,
               date: dateVal,
               type: 'TRANSFER',
               category: 'Transferência',
               subcategory: tx.subcategory || null,
               is_paid: true,
+              paid_amount: transferAmountVal,
+              paid_at: dateVal,
               owner_name: oVal,
               notes: tx.notes || '',
               tags: tx.tags || [],
-              metadata: { is_transfer: true, transfer_side: 'SOURCE', counter_account_id: finalDestAccountId }
+              metadata: { is_transfer: true, affects_balance: true, transfer_side: 'SOURCE', counter_account_id: finalDestAccountId }
             });
 
             // 2. Destination Transaction (credit)
@@ -2252,16 +2268,18 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               user_id: userId,
               account_id: finalDestAccountId,
               description: descriptionVal,
-              amount: tx.amount || 0,
+              amount: transferAmountVal,
               date: dateVal,
               type: 'TRANSFER',
               category: 'Transferência',
               subcategory: tx.subcategory || null,
               is_paid: true,
+              paid_amount: transferAmountVal,
+              paid_at: dateVal,
               owner_name: oVal,
               notes: tx.notes || '',
               tags: tx.tags || [],
-              metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: finalAccountId }
+              metadata: { is_transfer: true, affects_balance: true, transfer_side: 'DESTINATION', counter_account_id: finalAccountId }
             });
 
             // Recalculate balances

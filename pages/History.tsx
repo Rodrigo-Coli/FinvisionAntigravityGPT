@@ -2561,6 +2561,11 @@ const HistoryPage: React.FC = () => {
         if (isTransfer && f.destinationAccountId) {
           const accDest = accounts.find(a => a.id === f.destinationAccountId);
           const accSrc = accounts.find(a => a.id === f.accountId);
+          // `affects_balance` é o que faz o recálculo de saldo do banco considerar a
+          // transferência (ver recalculate_account_balance). Sem essa marca as duas
+          // pernas nascem neutras: o lançamento aparece no extrato e nenhum dos dois
+          // saldos se mexe. Transferências antigas continuam neutras de propósito —
+          // o flag vale só para as criadas daqui em diante.
           const { data, error: insertErr } = await supabase.from('transactions').insert([
             {
               user_id: user?.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
@@ -2568,7 +2573,7 @@ const HistoryPage: React.FC = () => {
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
               notes: f.notes || '',
               tags: f.tags || [],
-              metadata: { is_transfer: true, transfer_side: 'SOURCE', counter_account_id: f.destinationAccountId }
+              metadata: { is_transfer: true, affects_balance: true, transfer_side: 'SOURCE', counter_account_id: f.destinationAccountId }
             },
             {
               user_id: user?.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
@@ -2576,7 +2581,7 @@ const HistoryPage: React.FC = () => {
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
               notes: f.notes || '',
               tags: f.tags || [],
-              metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: f.accountId }
+              metadata: { is_transfer: true, affects_balance: true, transfer_side: 'DESTINATION', counter_account_id: f.accountId }
             }
           ]).select('id');
           if (insertErr) throw insertErr;

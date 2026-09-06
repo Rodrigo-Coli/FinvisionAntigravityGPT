@@ -867,6 +867,11 @@ const Reconcile: React.FC = () => {
           metadata: {
             category_id: finalCategoryId,
             is_transfer: isTransfer,
+            // `affects_balance` é o que faz o recálculo de saldo do banco considerar
+            // a transferência (ver recalculate_account_balance). Sem ele as pernas
+            // nascem neutras e nenhum dos dois saldos se mexe. Só marca quando existe
+            // a conta de contrapartida — aí as duas pernas se compensam.
+            affects_balance: isTransfer && !!counterId && counterId !== 'NONE',
             transfer_side: isTransfer ? (thisSideIsSource ? 'SOURCE' : 'DESTINATION') : null,
             counter_account_id: isTransfer ? counterId : null
           }
@@ -890,6 +895,7 @@ const Reconcile: React.FC = () => {
             metadata: {
               category_id: finalCategoryId,
               is_transfer: true,
+              affects_balance: true,
               transfer_side: thisSideIsSource ? 'DESTINATION' : 'SOURCE', // The opposite of the main leg
               counter_account_id: targetId, // The other side is the main account
               source_transaction_id: item.id
