@@ -1,5 +1,50 @@
 [
   {
+    "version": "2026.09.05.2350",
+    "title": "Fatura em aberto, ajuste de saldo e transferência entre contas",
+    "date": "05/09/2026",
+    "benefits": [
+      {
+        "title": "A fatura do cartão a pagar volta a aparecer em Transações",
+        "desc": "O aviso do WhatsApp cobrava uma fatura que a aba Abertos não mostrava: em \"Tudo\" a fatura é trocada pelas compras itemizadas, e compra de cartão nunca fica em aberto. A lista ficava vazia e a conta parecia não existir. Agora a aba Abertos mostra a fatura.",
+        "type": "correcao"
+      },
+      {
+        "title": "O aviso de fatura anterior aponta a fatura certa",
+        "desc": "Em Cartões, o aviso de fatura pendente considerava qualquer fatura aberta — inclusive as futuras que o app cria adiantadas para recorrências — e citava a mais distante (chegava a dizer AGOSTO/2028 com uma fatura vencendo em setembro de 2026). Agora mostra a mais antiga em aberto, com valor, vencimento e um botão que abre ela direto.",
+        "type": "correcao"
+      },
+      {
+        "title": "A mesma fatura com o mesmo nome em todo lugar",
+        "desc": "Cartão que fecha num mês e vence no seguinte tinha dois nomes para a mesma fatura: 09/2026 na tela de Cartões e (8/2026) no Histórico e no WhatsApp. Parecia outra conta. Agora todos seguem o mês do vencimento.",
+        "type": "correcao"
+      },
+      {
+        "title": "Ajustar saldo de corretora deixa de recusar o valor certo",
+        "desc": "Numa conta de investimento com rendimentos lançados, o modal mostrava variação de milhares de reais e, ao confirmar, respondia que o saldo já era aquele. A tela media o caixa livre de um jeito e o banco de outro. Agora as duas contas batem, e o modal mostra saldo total, caixa livre e total investido separados.",
+        "type": "correcao"
+      },
+      {
+        "title": "Ajuste de saldo não volta mais sozinho",
+        "desc": "O lançamento do ajuste era gravado sem o valor pago, e é esse campo que o recálculo de saldo soma. O ajuste valia zero para o banco: a tela mostrava o número novo até o próximo recálculo e o saldo voltava ao anterior. Vale para todas as contas.",
+        "type": "correcao"
+      },
+      {
+        "title": "Transferência criada fora da tela de Contas passa a mexer no saldo",
+        "desc": "Transferência lançada em Transações, na conciliação de extrato ou pelo WhatsApp aparecia no extrato mas não alterava saldo nenhum — nem na origem, nem no destino. Só o botão Transferir da tela de Contas funcionava. Os três caminhos foram corrigidos.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "History: na aba Abertos (viewMode PENDING) a origem \"Tudo\" deixa de trocar a fatura pelas compras itemizadas. Compras de cartão entram sempre com is_paid true, então nenhuma é \"em aberto\" e a fatura (metadata.is_provision) era descartada — a aba ficava vazia e o link do push caía em \"Nenhum lançamento encontrado\". Sem risco de contar duas vezes: nessa aba as compras não apareceriam de qualquer forma.",
+      "CreditCardsSection: otherOpenStatements filtrava qualquer fatura aberta e exibia [0] de uma lista ordenada por vencimento decrescente — a mais distante no futuro. Agora só entram faturas anteriores à da tela, da mais antiga para a mais nova, com valor em aberto, vencimento e botão para abrir a fatura.",
+      "DateUtils.getStatementCompetence: a regra do mês de vencimento (que a tela de Cartões já usava) virou função e passou a valer também para a descrição do lançamento espelho gerado em syncStatementToHistory — que é o texto que aparece no Histórico e no aviso do WhatsApp.",
+      "AccountsSection: o saldo de conta INVESTMENT é calculado no banco como initial_balance + transações + investimentos, ou seja o caixa livre é initial_balance MAIS as transações. A tela comparava o valor digitado com initial_balance puro, então a variação e a validação usavam bases diferentes. Os dois modos passam a trabalhar com a variação sobre o saldo atual; o total investido é carregado ao abrir o modal e serve só para exibição.",
+      "AccountsSection: o lançamento do Ajuste Pontual passa a gravar paid_amount, is_paid e paid_at — recalculate_account_balance soma COALESCE(paid_amount, 0), não amount. Comparações de igualdade passaram a usar tolerância de centavo em vez de === 0.",
+      "History, Reconcile e whatsapp-webhook: as pernas de transferência nasciam sem metadata.affects_balance, marca que recalculate_account_balance exige desde 26/07/2026 para considerar um TRANSFER. As três passam a gravá-la (na conciliação, só quando existe conta de contrapartida). No bot do WhatsApp as pernas também eram gravadas sem paid_amount, então valiam zero mesmo com a marca."
+    ]
+  },
+  {
     "version": "2026.08.30.0015",
     "title": "Aviso de atualização no iPhone e botão Sair do demo",
     "date": "30/08/2026",
