@@ -315,9 +315,20 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       }
       setIsApplyingTax(data.currency && data.currency !== 'BRL');
     } catch (err: any) {
-      toast(err.message || 'Erro ao processar cupons.', 'error');
-      if (err.limitReached) setShowUpgradeModal(true);
-    } finally { setIsProcessing(false); }
+      // Sem o console.error qualquer falha que não fosse um Error (ex.: um Event
+      // do DOM vindo do FileReader) sumia atrás da mensagem genérica abaixo.
+      console.error('[AI-Labs] Falha ao processar cupom:', err);
+      const message = typeof err?.message === 'string' && err.message.trim()
+        ? err.message
+        : 'Erro ao processar cupons. Verifique o arquivo selecionado e tente novamente.';
+      toast(message, 'error');
+      if (err?.limitReached) setShowUpgradeModal(true);
+    } finally {
+      setIsProcessing(false);
+      // Sem isso, reenviar o mesmo arquivo depois de um erro não dispara o
+      // onChange do input e a tela parece travada.
+      if (e.target) e.target.value = '';
+    }
   };
 
   const toggleItemSelection = (index: number) => {

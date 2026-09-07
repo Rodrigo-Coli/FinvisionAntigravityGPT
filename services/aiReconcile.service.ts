@@ -12,6 +12,57 @@ function getApiBaseUrl() {
   return "";
 }
 
+// Limite prático do corpo de uma Serverless Function na Vercel: 4.5MB.
+// O JSON enviado é praticamente só base64, então medimos o base64 direto com margem.
+const MAX_UPLOAD_BASE64_CHARS = 4_000_000;
+const MAX_IMAGE_DIMENSION = 1600;
+const JPEG_QUALITY = 0.8;
+
+export type EncodedFile = { base64: string; mimeType: string; fileName: string };
+
+// Formatos que o Gemini aceita como inlineData de imagem. HEIC/HEIF entram aqui
+// porque a câmera de vários aparelhos salva nesse formato e o navegador não
+// consegue decodificá-lo no <canvas> — nesse caso mandamos os bytes originais.
+const SUPPORTED_INLINE_MIMES = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'application/pdf',
+]);
+
+// Descobre o tipo real pelos magic bytes. Arquivos escolhidos por provedores do
+// Android (Google Fotos/Drive/Documentos) frequentemente chegam com file.type
+// vazio, e assumir "image/jpeg" às cegas fazia o Gemini recusar o arquivo.
+function sniffMimeType(base64: string, declared?: string): string {
+  const declaredMime = (declared || '').toLowerCase();
+  if (SUPPORTED_INLINE_MIMES.has(declaredMime)) return declaredMime;
+
+  try {
+    const head = atob(base64.slice(0, 32));
+    if (head.startsWith('\xFF\xD8\xFF')) return 'image/jpeg';
+    if (head.startsWith('\x89PNG')) return 'image/png';
+    if (head.startsWith('%PDF')) return 'application/pdf';
+    if (head.startsWith('GIF8')) return 'image/gif';
+    if (head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP') return 'image/webp';
+    if (head.slice(4, 8) === 'ftyp') {
+      const brand = head.slice(8, 12);
+      if (brand.startsWith('hei') || brand.startsWith('mif') || brand.startsWith('msf')) return 'image/heic';
+      if (brand.startsWith('avif') || brand.startsWith('avis')) return 'image/heif';
+    }
+  } catch { }
+
+  if (declaredMime.startsWith('image/')) return declaredMime;
+  return 'image/jpeg';
+}
+
+// A Vercel corta o request antes de chegar no handler quando o corpo estoura o
+// limite, e a resposta vem em HTML — o front só conseguia mostrar um erro
+// genérico. Barramos antes de enviar, com uma mensagem acionável.
+function assertPayloadWithinLimit(base64Parts: string[]) {
+  const total = base64Parts.reduce((sum, part) => sum + part.length, 0);
+  if (total > MAX_UPLOAD_BASE64_CHARS) {
+    const mb = (total / 1_048_576).toFixed(1);
+    throw new Error(`Os arquivos selecionados somam cerca de ${mb}MB, acima do limite de envio. Envie menos cupons por vez ou use fotos de menor resolução.`);
+  }
+}
+
 function prettySupabaseError(err: any) {
   if (!err) return "Erro desconhecido.";
   const parts: string[] = [];
@@ -23,8 +74,8 @@ function prettySupabaseError(err: any) {
 
 export const AIReconcileService = {
   async processFinancialDocument(file: File): Promise<ReconcileItem[]> {
-    const base64Data = await this.fileToBase64(file);
-    const mimeType = file.type.startsWith('image/') ? 'image/jpeg' : (file.type || "application/octet-stream");
+    const { base64: base64Data, mimeType } = await this.encodeFileForAI(file);
+    assertPayloadWithinLimit([base64Data]);
     const baseUrl = getApiBaseUrl();
     const url = `${baseUrl}/api/handle-bank-reconcile`;
 
@@ -41,11 +92,10 @@ export const AIReconcileService = {
 
   async processReceiptItems(files: File | File[], userId?: string): Promise<any> {
     const fileArray = Array.isArray(files) ? files : [files];
-    const encodedFiles = await Promise.all(fileArray.map(async (file) => ({
-      base64: await this.fileToBase64(file),
-      mimeType: file.type.startsWith('image/') ? 'image/jpeg' : (file.type || "image/jpeg"),
-      fileName: file.name
-    })));
+    // O mime vai junto do encoder: forçar "image/jpeg" para qualquer imagem fazia
+    // o Gemini recusar arquivos que caíram no fallback sem recompressão (HEIC/PNG).
+    const encodedFiles = await Promise.all(fileArray.map((file) => this.encodeFileForAI(file)));
+    assertPayloadWithinLimit(encodedFiles.map((f) => f.base64));
 
     const baseUrl = getApiBaseUrl();
     const url = `${baseUrl}/api/handle-receipt-items`;
@@ -57,7 +107,13 @@ export const AIReconcileService = {
     });
 
     if (!res.ok) {
-      let msg = "Erro ao extrair itens do cupom.";
+      // 413 (payload) e 502/504 (timeout) voltam como HTML da própria Vercel,
+      // sem JSON — sem essas mensagens o usuário ficava sem saber o que houve.
+      let msg = res.status === 413
+        ? "Os arquivos são grandes demais para envio. Envie menos cupons por vez ou use fotos de menor resolução."
+        : res.status === 504 || res.status === 502
+          ? "A leitura do cupom demorou demais e foi interrompida. Tente enviar um cupom por vez."
+          : `Erro ao extrair itens do cupom (HTTP ${res.status}).`;
       let limitReached = false;
       try {
         const j = await res.json();
@@ -65,6 +121,7 @@ export const AIReconcileService = {
         limitReached = !!j?.limitReached;
       } catch { }
       const err: any = new Error(msg);
+      err.status = res.status;
       err.limitReached = limitReached;
       throw err;
     }
@@ -274,51 +331,110 @@ export const AIReconcileService = {
     return data || [];
   },
 
-  fileToBase64(file: File): Promise<string> {
+  // Lê o arquivo como data URL. Rejeita SEMPRE com um Error de verdade: antes
+  // repassávamos o ProgressEvent/Event do DOM direto para o reject, então o
+  // `err.message` chegava vazio no front e o usuário só via o texto genérico
+  // "Erro ao processar cupons.", sem nenhuma pista do que falhou.
+  readFileAsDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
-      if (!file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve((reader.result as string).split(",")[1]);
-        reader.onerror = (error) => reject(error);
-        return;
-      }
-
       const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result !== 'string' || result.indexOf(',') === -1) {
+          reject(new Error(`Não foi possível ler "${file.name}". O arquivo parece estar vazio ou corrompido.`));
+          return;
+        }
+        resolve(result);
+      };
+      reader.onerror = () => {
+        const detail = reader.error?.name ? ` (${reader.error.name})` : '';
+        reject(new Error(`Não foi possível ler "${file.name}"${detail}. Se a foto veio do Google Fotos/Drive, baixe para o aparelho e tente novamente.`));
+      };
+      reader.onabort = () => reject(new Error(`A leitura de "${file.name}" foi interrompida. Tente selecionar o arquivo novamente.`));
+      try {
+        reader.readAsDataURL(file);
+      } catch (e: any) {
+        reject(new Error(`Não foi possível abrir "${file.name}": ${e?.message || 'arquivo inacessível'}.`));
+      }
+    });
+  },
+
+  // Reduz e recomprime a imagem em JPEG. Nunca rejeita: se o navegador não
+  // conseguir decodificar (HEIC do celular, por exemplo) ou o canvas falhar,
+  // devolvemos os bytes originais com o mime correto em vez de derrubar o
+  // upload inteiro — o Gemini aceita png/webp/heic/heif nativamente.
+  compressImageDataUrl(dataUrl: string, base64: string, mimeType: string): Promise<EncodedFile & { fileName?: string }> {
+    return new Promise((resolve) => {
+      const original = { base64, mimeType, fileName: '' };
+      let settled = false;
+      const finish = (value: EncodedFile & { fileName?: string }) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+
+      const img = new Image();
+      img.onload = () => {
+        try {
           let width = img.width;
           let height = img.height;
-          
-          const MAX_DIMENSION = 1600;
-          if (width > height && width > MAX_DIMENSION) {
-            height *= MAX_DIMENSION / width;
-            width = MAX_DIMENSION;
-          } else if (height > MAX_DIMENSION) {
-            width *= MAX_DIMENSION / height;
-            height = MAX_DIMENSION;
+          if (!width || !height) return finish(original);
+
+          if (width > height && width > MAX_IMAGE_DIMENSION) {
+            height *= MAX_IMAGE_DIMENSION / width;
+            width = MAX_IMAGE_DIMENSION;
+          } else if (height > MAX_IMAGE_DIMENSION) {
+            width *= MAX_IMAGE_DIMENSION / height;
+            height = MAX_IMAGE_DIMENSION;
           }
 
-          canvas.width = width;
-          canvas.height = height;
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(width);
+          canvas.height = Math.round(height);
           const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            resolve((reader.result as string).split(",")[1]);
-            return;
-          }
-          ctx.drawImage(img, 0, 0, width, height);
-          
-          // Force jpeg to reduce size significantly
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-          resolve(compressedDataUrl.split(',')[1]);
-        };
-        img.onerror = (error) => reject(error);
-        img.src = e.target?.result as string;
+          if (!ctx) return finish(original);
+
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressed = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+          const compressedBase64 = compressed.split(',')[1];
+          if (!compressedBase64) return finish(original);
+          finish({ base64: compressedBase64, mimeType: 'image/jpeg', fileName: '' });
+        } catch (e) {
+          // toDataURL pode estourar memória em fotos muito grandes no celular.
+          // Antes esse throw escapava da Promise e ela nunca resolvia — o
+          // spinner ficava girando para sempre.
+          console.warn('[AI-Labs] Falha ao comprimir imagem, enviando original:', e);
+          finish(original);
+        }
       };
-      reader.onerror = (error) => reject(error);
+      img.onerror = () => finish(original);
+      try {
+        img.src = dataUrl;
+      } catch {
+        finish(original);
+      }
     });
+  },
+
+  async encodeFileForAI(file: File): Promise<EncodedFile> {
+    const dataUrl = await this.readFileAsDataUrl(file);
+    const base64 = dataUrl.split(',')[1] || '';
+    if (!base64) throw new Error(`O arquivo "${file.name}" está vazio.`);
+
+    const mimeType = sniffMimeType(base64, file.type);
+    if (!mimeType.startsWith('image/')) {
+      return { base64, mimeType, fileName: file.name };
+    }
+
+    // Refaz a data URL com o mime detectado: com file.type vazio o FileReader
+    // gera "data:;base64,..." e o <img> nunca consegue decodificar.
+    const decodableUrl = `data:${mimeType};base64,${base64}`;
+    const encoded = await this.compressImageDataUrl(decodableUrl, base64, mimeType);
+    return { base64: encoded.base64, mimeType: encoded.mimeType, fileName: file.name };
+  },
+
+  async fileToBase64(file: File): Promise<string> {
+    const { base64 } = await this.encodeFileForAI(file);
+    return base64;
   },
 };
