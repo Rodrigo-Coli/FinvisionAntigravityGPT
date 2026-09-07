@@ -13,8 +13,16 @@ export async function handleReceiptItems(req: any, res: any) {
     if (req.method === 'OPTIONS') return res.status(200).send('ok');
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    const { base64, mimeType, files, userId } = req.body;
-    let inputFiles = [];
+    // req.body pode chegar undefined (corpo vazio) ou como string crua dependendo
+    // do content-type; desestruturar direto estourava um TypeError fora do try.
+    let body: any = req.body;
+    if (typeof body === 'string') {
+        try { body = JSON.parse(body); } catch { body = {}; }
+    }
+    if (!body || typeof body !== 'object') body = {};
+
+    const { base64, mimeType, files, userId } = body;
+    let inputFiles: any[] = [];
 
     if (files && Array.isArray(files)) {
         inputFiles = files;
@@ -166,7 +174,12 @@ export async function handleReceiptItems(req: any, res: any) {
         });
 
     } catch (err: any) {
-        console.error('[AI-Labs] Erro fatal:', err.message);
-        return res.status(500).json({ error: err.message });
+        console.error('[AI-Labs] Erro fatal ao processar cupom:', err?.message, err?.stack);
+        // err.message vazio virava `{}` no JSON e o front caía na mensagem
+        // genérica sem nenhuma informação sobre a falha.
+        const message = typeof err?.message === 'string' && err.message.trim()
+            ? err.message
+            : 'Falha inesperada ao processar o cupom. Tente novamente em instantes.';
+        return res.status(500).json({ error: message });
     }
 }
