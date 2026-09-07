@@ -15,8 +15,9 @@ function getApiBaseUrl() {
 // Limite prático do corpo de uma Serverless Function na Vercel: 4.5MB.
 // O JSON enviado é praticamente só base64, então medimos o base64 direto com margem.
 const MAX_UPLOAD_BASE64_CHARS = 4_000_000;
-const MAX_IMAGE_DIMENSION = 1600;
-const JPEG_QUALITY = 0.8;
+// Passos de compressão em ordem: se o primeiro ainda estourar o limite de
+// envio (foto de câmera de altíssima resolução), tenta um segundo mais agressivo.
+const COMPRESSION_STEPS: Array<[number, number]> = [[1600, 0.8], [1100, 0.6]];
 
 export type EncodedFile = { base64: string; mimeType: string; fileName: string };
 
@@ -27,22 +28,41 @@ const SUPPORTED_INLINE_MIMES = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'application/pdf',
 ]);
 
+// Lê só os primeiros bytes do arquivo, sem materializar o conteúdo todo.
+async function readHeaderBytes(file: File, length = 16): Promise<Uint8Array> {
+  const slice = file.slice(0, length);
+  const anySlice = slice as any;
+  if (typeof anySlice.arrayBuffer === 'function') {
+    return new Uint8Array(await anySlice.arrayBuffer());
+  }
+  // Safari antigo não tem Blob.arrayBuffer.
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.onerror = () => resolve(new Uint8Array());
+    try { reader.readAsArrayBuffer(slice); } catch { resolve(new Uint8Array()); }
+  });
+}
+
+const ascii = (bytes: Uint8Array, from: number, to: number) =>
+  String.fromCharCode(...Array.from(bytes.slice(from, to)));
+
 // Descobre o tipo real pelos magic bytes. Arquivos escolhidos por provedores do
 // Android (Google Fotos/Drive/Documentos) frequentemente chegam com file.type
 // vazio, e assumir "image/jpeg" às cegas fazia o Gemini recusar o arquivo.
-function sniffMimeType(base64: string, declared?: string): string {
-  const declaredMime = (declared || '').toLowerCase();
+async function sniffMimeType(file: File): Promise<string> {
+  const declaredMime = (file.type || '').toLowerCase();
   if (SUPPORTED_INLINE_MIMES.has(declaredMime)) return declaredMime;
 
   try {
-    const head = atob(base64.slice(0, 32));
-    if (head.startsWith('\xFF\xD8\xFF')) return 'image/jpeg';
-    if (head.startsWith('\x89PNG')) return 'image/png';
-    if (head.startsWith('%PDF')) return 'application/pdf';
-    if (head.startsWith('GIF8')) return 'image/gif';
-    if (head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP') return 'image/webp';
-    if (head.slice(4, 8) === 'ftyp') {
-      const brand = head.slice(8, 12);
+    const head = await readHeaderBytes(file);
+    if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return 'image/jpeg';
+    if (head[0] === 0x89 && ascii(head, 1, 4) === 'PNG') return 'image/png';
+    if (ascii(head, 0, 4) === '%PDF') return 'application/pdf';
+    if (ascii(head, 0, 4) === 'GIF8') return 'image/gif';
+    if (ascii(head, 0, 4) === 'RIFF' && ascii(head, 8, 12) === 'WEBP') return 'image/webp';
+    if (ascii(head, 4, 8) === 'ftyp') {
+      const brand = ascii(head, 8, 12);
       if (brand.startsWith('hei') || brand.startsWith('mif') || brand.startsWith('msf')) return 'image/heic';
       if (brand.startsWith('avif') || brand.startsWith('avis')) return 'image/heif';
     }
@@ -92,9 +112,15 @@ export const AIReconcileService = {
 
   async processReceiptItems(files: File | File[], userId?: string): Promise<any> {
     const fileArray = Array.isArray(files) ? files : [files];
+    // Um arquivo por vez, de propósito: com Promise.all o navegador decodificava
+    // todas as fotos ao mesmo tempo e o pico de memória multiplicava pelo número
+    // de cupons — o suficiente para o Android matar a aba antes do envio.
     // O mime vai junto do encoder: forçar "image/jpeg" para qualquer imagem fazia
     // o Gemini recusar arquivos que caíram no fallback sem recompressão (HEIC/PNG).
-    const encodedFiles = await Promise.all(fileArray.map((file) => this.encodeFileForAI(file)));
+    const encodedFiles: EncodedFile[] = [];
+    for (const file of fileArray) {
+      encodedFiles.push(await this.encodeFileForAI(file));
+    }
     assertPayloadWithinLimit(encodedFiles.map((f) => f.base64));
 
     const baseUrl = getApiBaseUrl();
@@ -359,78 +385,122 @@ export const AIReconcileService = {
     });
   },
 
-  // Reduz e recomprime a imagem em JPEG. Nunca rejeita: se o navegador não
-  // conseguir decodificar (HEIC do celular, por exemplo) ou o canvas falhar,
-  // devolvemos os bytes originais com o mime correto em vez de derrubar o
-  // upload inteiro — o Gemini aceita png/webp/heic/heif nativamente.
-  compressImageDataUrl(dataUrl: string, base64: string, mimeType: string): Promise<EncodedFile & { fileName?: string }> {
+  async readFileAsBase64(file: File): Promise<string> {
+    const dataUrl = await this.readFileAsDataUrl(file);
+    return dataUrl.split(',')[1] || '';
+  },
+
+  // Desenha a fonte já decodificada num canvas reduzido e devolve o JPEG.
+  // Retorna null (em vez de lançar) quando o canvas não coopera — em celular
+  // `toDataURL` pode estourar memória ou devolver "data:," silenciosamente.
+  drawToJpegBase64(source: CanvasImageSource, srcWidth: number, srcHeight: number, maxDimension: number, quality: number): string | null {
+    try {
+      if (!srcWidth || !srcHeight) return null;
+      let width = srcWidth;
+      let height = srcHeight;
+      if (width > height && width > maxDimension) {
+        height *= maxDimension / width;
+        width = maxDimension;
+      } else if (height > maxDimension) {
+        width *= maxDimension / height;
+        height = maxDimension;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(width));
+      canvas.height = Math.max(1, Math.round(height));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+
+      ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+      const base64 = dataUrl.split(',')[1];
+      return base64 || null;
+    } catch (e) {
+      // Antes esse throw acontecia dentro de img.onload, escapava da Promise e
+      // ela nunca resolvia — o spinner ficava girando para sempre.
+      console.warn('[AI-Labs] Canvas falhou ao exportar a imagem:', e);
+      return null;
+    }
+  },
+
+  // Decodifica via createImageBitmap, que trabalha direto no Blob e fora da
+  // thread principal. É o caminho mais leve em memória: o antigo (FileReader
+  // -> data URL -> <img>) mantinha os bytes, uma string base64 ~1,37x maior e
+  // o bitmap ao mesmo tempo, e uma foto de câmera de celular (12–50MP) chegava
+  // a derrubar a aba antes de qualquer requisição sair.
+  async compressViaImageBitmap(file: File, maxDimension: number, quality: number): Promise<string | null> {
+    if (typeof createImageBitmap !== 'function') return null;
+    let bitmap: ImageBitmap | null = null;
+    try {
+      bitmap = await createImageBitmap(file);
+      return this.drawToJpegBase64(bitmap, bitmap.width, bitmap.height, maxDimension, quality);
+    } catch (e) {
+      console.warn('[AI-Labs] createImageBitmap falhou:', e);
+      return null;
+    } finally {
+      bitmap?.close?.();
+    }
+  },
+
+  // Caminho antigo, agora só como reserva. Usa object URL em vez de data URL
+  // (sem a string base64 gigante na memória) e o <img> descobre o formato pelo
+  // conteúdo, então funciona mesmo com file.type vazio — comum em arquivos
+  // escolhidos pelos provedores do Android (Google Fotos/Drive/Documentos).
+  compressViaImageElement(file: File, maxDimension: number, quality: number): Promise<string | null> {
     return new Promise((resolve) => {
-      const original = { base64, mimeType, fileName: '' };
+      let objectUrl = '';
+      try {
+        objectUrl = URL.createObjectURL(file);
+      } catch {
+        resolve(null);
+        return;
+      }
+
       let settled = false;
-      const finish = (value: EncodedFile & { fileName?: string }) => {
+      const finish = (value: string | null) => {
         if (settled) return;
         settled = true;
+        try { URL.revokeObjectURL(objectUrl); } catch { }
         resolve(value);
       };
 
       const img = new Image();
-      img.onload = () => {
-        try {
-          let width = img.width;
-          let height = img.height;
-          if (!width || !height) return finish(original);
-
-          if (width > height && width > MAX_IMAGE_DIMENSION) {
-            height *= MAX_IMAGE_DIMENSION / width;
-            width = MAX_IMAGE_DIMENSION;
-          } else if (height > MAX_IMAGE_DIMENSION) {
-            width *= MAX_IMAGE_DIMENSION / height;
-            height = MAX_IMAGE_DIMENSION;
-          }
-
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.round(width);
-          canvas.height = Math.round(height);
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return finish(original);
-
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const compressed = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
-          const compressedBase64 = compressed.split(',')[1];
-          if (!compressedBase64) return finish(original);
-          finish({ base64: compressedBase64, mimeType: 'image/jpeg', fileName: '' });
-        } catch (e) {
-          // toDataURL pode estourar memória em fotos muito grandes no celular.
-          // Antes esse throw escapava da Promise e ela nunca resolvia — o
-          // spinner ficava girando para sempre.
-          console.warn('[AI-Labs] Falha ao comprimir imagem, enviando original:', e);
-          finish(original);
-        }
-      };
-      img.onerror = () => finish(original);
+      img.onload = () => finish(this.drawToJpegBase64(img, img.width, img.height, maxDimension, quality));
+      img.onerror = () => finish(null);
       try {
-        img.src = dataUrl;
+        img.src = objectUrl;
       } catch {
-        finish(original);
+        finish(null);
       }
     });
   },
 
   async encodeFileForAI(file: File): Promise<EncodedFile> {
-    const dataUrl = await this.readFileAsDataUrl(file);
-    const base64 = dataUrl.split(',')[1] || '';
-    if (!base64) throw new Error(`O arquivo "${file.name}" está vazio.`);
+    const mimeType = await sniffMimeType(file);
 
-    const mimeType = sniffMimeType(base64, file.type);
     if (!mimeType.startsWith('image/')) {
+      const base64 = await this.readFileAsBase64(file);
+      if (!base64) throw new Error(`O arquivo "${file.name}" está vazio.`);
       return { base64, mimeType, fileName: file.name };
     }
 
-    // Refaz a data URL com o mime detectado: com file.type vazio o FileReader
-    // gera "data:;base64,..." e o <img> nunca consegue decodificar.
-    const decodableUrl = `data:${mimeType};base64,${base64}`;
-    const encoded = await this.compressImageDataUrl(decodableUrl, base64, mimeType);
-    return { base64: encoded.base64, mimeType: encoded.mimeType, fileName: file.name };
+    // Duas tentativas: se a primeira ainda passar do limite de envio (foto de
+    // altíssima resolução), reduz mais em vez de falhar no meio do caminho.
+    for (const [maxDimension, quality] of COMPRESSION_STEPS) {
+      const viaBitmap = await this.compressViaImageBitmap(file, maxDimension, quality);
+      const base64 = viaBitmap ?? await this.compressViaImageElement(file, maxDimension, quality);
+      if (base64 && base64.length <= MAX_UPLOAD_BASE64_CHARS) {
+        return { base64, mimeType: 'image/jpeg', fileName: file.name };
+      }
+      if (!base64) break; // o navegador não decodifica esse formato: vai de original
+    }
+
+    // Nenhuma decodificação funcionou (HEIC em navegador sem suporte, por
+    // exemplo). Manda os bytes originais: o Gemini aceita png/webp/heic/heif.
+    const original = await this.readFileAsBase64(file);
+    if (!original) throw new Error(`O arquivo "${file.name}" está vazio.`);
+    return { base64: original, mimeType, fileName: file.name };
   },
 
   async fileToBase64(file: File): Promise<string> {
