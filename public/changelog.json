@@ -1,24 +1,26 @@
 {
-  "version": "2026.08.30.0015",
-  "title": "Aviso de atualização no iPhone e botão Sair do demo",
-  "date": "30/08/2026",
+  "version": "2026.09.07.1726",
+  "title": "Scanner de cupons volta a funcionar no celular",
+  "date": "07/09/2026",
   "benefits": [
     {
-      "title": "O iPhone agora avisa quando há versão nova",
-      "desc": "No iOS o app podia ficar dias rodando uma versão antiga sem nunca avisar. O aviso dependia só do service worker, que o Safari demora muito a atualizar em app instalado na tela de início. Agora o app compara a própria versão com a do servidor e avisa por conta própria.",
+      "title": "Enviar cupom no celular não falha mais",
+      "desc": "O envio de Cupom Fiscal no AI & Insights falhava antes mesmo de sair do aparelho: com foto da câmera, o navegador ficava sem memória ao preparar a imagem e a aba era encerrada — às vezes com a mensagem \"Erro ao processar cupons\", às vezes recarregando a tela sozinha. Agora a foto é preparada de um jeito bem mais leve, e cupons enviados de uma vez são processados um a um.",
       "type": "correcao"
     },
     {
-      "title": "Botão Sair volta a funcionar",
-      "desc": "Sair do modo demo (e da conta) travava sem dar erro quando a conexão estava ruim: o app esperava para sempre a resposta do servidor antes de encerrar a sessão. Agora a saída é garantida, com ou sem internet.",
+      "title": "Quando algo dá errado, o app diz o que foi",
+      "desc": "Toda falha no envio caía na mesma mensagem genérica, sem nenhuma pista. Agora o aviso diz qual arquivo falhou e por quê — arquivo ilegível, formato que o navegador não abre ou arquivos grandes demais para envio.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "UpdateAlert dependia exclusivamente do needRefresh do service worker. version.json já era publicado a cada deploy, mas só era lido DEPOIS do needRefresh — na prática era decorativo. Agora a versão do build é embutida no bundle (define __APP_VERSION__ a partir de public/version.json) e comparada com /version.json na carga, no foco da janela e a cada 10 minutos.",
-    "O botão ATUALIZAR AGORA passa a funcionar mesmo quando o SW não sinalizou: descadastra o service worker, limpa os caches e recarrega buscando os arquivos novos.",
-    "O aviso só reabre quando a VERSÃO muda; antes, cada verificação desfazia o 'Atualizar mais tarde' do usuário.",
-    "lib/session.ts (signOutSafely): supabase.auth.signOut() faz chamada de rede que, em conexão ruim, não rejeita — fica pendurada. Como DemoBanner esperava por ela antes de limpar o storage e redirecionar, o botão parecia morto. Agora há prazo, com queda para signOut local e, em último caso, limpeza direta da chave de sessão. Aplicado também em Nav, DemoMode, PendingApproval e UpgradeModal.",
-    "DemoBanner: a saída usava window.location.href = '/#/signup', que só troca o hash e não recarrega quando o caminho já é '/' — o app seguia montado com o estado do demo. Trocado por replace + reload."
+    "AIReconcileService.fileToBase64 rejeitava com o Event do DOM (que não tem .message), então o toast do AIModule caía sempre no texto genérico 'Erro ao processar cupons.' e a causa real era descartada. Agora toda falha de leitura rejeita com um Error nomeando o arquivo e o motivo.",
+    "O preparo da imagem usava FileReader -> data URL -> <img> -> canvas, mantendo ao mesmo tempo os bytes do arquivo, uma string base64 ~1,37x maior e o bitmap em tamanho original. Com foto de câmera isso bastava para o Android encerrar a aba antes de qualquer requisição sair — confirmado nos logs, que não registraram nenhuma chamada a /api/handle-receipt-items durante as falhas.",
+    "A decodificação passa a usar createImageBitmap direto do Blob (sem base64 intermediário), com <img> + object URL como reserva e os bytes originais como último recurso — o Gemini aceita png/webp/heic/heif nativamente.",
+    "Exceções dentro de img.onload (toDataURL estourando memória) escapavam da Promise, que nunca resolvia: o spinner girava para sempre. Agora há fallback.",
+    "O tipo do arquivo passa a ser detectado pelos primeiros bytes. Arquivos escolhidos pelos provedores do Android (Google Fotos/Drive) chegam com file.type vazio e o tipo era chutado como image/jpeg, fazendo a IA recusar o arquivo.",
+    "Vários cupons eram codificados em paralelo (Promise.all), multiplicando o pico de memória pelo número de arquivos; agora é um por vez.",
+    "Guarda de tamanho antes do envio e tradução dos erros 413/502/504 da Vercel, que voltam em HTML e deixavam o usuário sem informação nenhuma."
   ]
 }
