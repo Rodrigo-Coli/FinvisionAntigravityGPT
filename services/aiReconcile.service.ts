@@ -94,8 +94,8 @@ function prettySupabaseError(err: any) {
 
 export const AIReconcileService = {
   async processFinancialDocument(file: File): Promise<ReconcileItem[]> {
-    const { base64: base64Data, mimeType } = await this.encodeFileForAI(file);
-    assertPayloadWithinLimit([base64Data]);
+    const base64Data = await this.fileToBase64(file);
+    const mimeType = file.type.startsWith('image/') ? 'image/jpeg' : (file.type || "application/octet-stream");
     const baseUrl = getApiBaseUrl();
     const url = `${baseUrl}/api/handle-bank-reconcile`;
 
