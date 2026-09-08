@@ -10,6 +10,11 @@ import { TagsInput } from '../common/TagsInput';
 import { SearchableInput } from '../common/SearchableInput';
 import { normalizeStr } from '../../lib/stringUtils';
 
+// Quantas transacoes passadas varrer para montar as sugestoes de descricao.
+// Como a lista e deduplicada por descricao, o numero de sugestoes distintas fica
+// bem abaixo disso.
+const RECENT_TX_LOOKBACK = 800;
+
 interface AddTransactionModalProps {
     show: boolean;
     onClose: () => void;
@@ -137,13 +142,25 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         const user = await getSessionUser(supabase);
                         if (!user) return;
 
+                        // `lte('date', hoje)`: a sugestão tem que vir do que ja
+                        // aconteceu. Sem esse recorte, as 200 linhas mais recentes por
+                        // data eram as PARCELAS FUTURAS de financiamentos e
+                        // recorrencias — numa carteira real isso significava buscar
+                        // sugestao entre lancamentos de 2033 a 2040 e nunca encontrar
+                        // uma despesa do dia a dia (ex.: "Diarista", lancada dezenas de
+                        // vezes, nao aparecia nenhuma vez).
+                        //
+                        // O limite tambem sobe: dedupamos por descricao, entao 200
+                        // linhas viram bem menos que 200 sugestoes distintas.
+                        const hoje = new Date().toISOString().split('T')[0];
                         const { data, error } = await supabase
                             .from('transactions')
                             .select('description, category, subcategory, account_id, owner_name, type')
                             .eq('user_id', user.id)
                             .eq('is_deleted', false)
+                            .lte('date', hoje)
                             .order('date', { ascending: false })
-                            .limit(200);
+                            .limit(RECENT_TX_LOOKBACK);
 
                         if (error) throw error;
 
@@ -211,10 +228,24 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         (c: any) => !c.type || c.type === form.type
     );
 
-    const query = (form.description || '').toLowerCase().trim();
-    const suggestions = query.length >= 2
-        ? recentTxs.filter(tx => (tx.description || '').toLowerCase().includes(query)).slice(0, 5)
-        : [];
+    // normalizeStr em vez de toLowerCase: sem isso "agua" nao encontrava "Água"
+    // e "aluguel condominio" nao encontrava "Aluguel Condomínio" — mesma regra ja
+    // usada na busca do Historico e no SearchableInput.
+    const query = normalizeStr(form.description || '');
+    const suggestions = React.useMemo(() => {
+        if (query.length < 2) return [];
+        const comeca: any[] = [];
+        const contem: any[] = [];
+        for (const tx of recentTxs) {
+            const desc = normalizeStr(tx.description || '');
+            if (!desc) continue;
+            if (desc.startsWith(query)) comeca.push(tx);
+            else if (desc.includes(query)) contem.push(tx);
+        }
+        // Quem comeca com o termo aparece primeiro: digitando "die", "Diarista"
+        // deve vir antes de "Comida de rua (diet)".
+        return [...comeca, ...contem].slice(0, 5);
+    }, [recentTxs, query]);
 
     const handleCreateCategorySubmit = async () => {
         if (!newCategoryName.trim()) return;
