@@ -1,5 +1,22 @@
 [
   {
+    "version": "2026.09.08.1715",
+    "title": "Correção do erro \"Ops! Algo deu errado\" ao abrir o lançamento",
+    "date": "08/09/2026",
+    "benefits": [
+      {
+        "title": "A tela não quebra mais ao abrir o Novo Lançamento",
+        "desc": "A versão publicada há pouco derrubava o app com a tela \"Ops! Algo deu errado\" (erros React #300 e #310) ao abrir ou fechar o formulário de lançamento. Foi um defeito introduzido junto com a correção das sugestões de descrição, e está resolvido. Nenhum dado foi afetado.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "A lista de sugestões de descrição foi escrita como React.useMemo, mas o ponto do arquivo onde ela fica está DEPOIS do `if (!show || !form.date) return null` do componente. Com isso o hook só era chamado quando o modal estava aberto: a contagem de hooks mudava entre um render e outro e o React derrubava a árvore inteira (#310 ao abrir, #300 ao fechar) — violação das Regras dos Hooks.",
+      "Passa a ser um cálculo simples (função executada na hora), sem hook: filtrar algumas centenas de itens por tecla é barato, memorizar não era. O comportamento das sugestões continua idêntico.",
+      "Verificado em navegador real: com useMemo, abrir o modal quebra com \"Rendered more hooks than during the previous render\"; sem ele, três ciclos de abrir/digitar/fechar passam sem erro e as sugestões continuam funcionando."
+    ]
+  },
+  {
     "version": "2026.09.08.1625",
     "title": "Sugestão de descrição volta a aparecer no lançamento",
     "date": "08/09/2026",
