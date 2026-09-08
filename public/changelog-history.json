@@ -1,5 +1,29 @@
 [
   {
+    "version": "2026.09.08.1609",
+    "title": "Subcategoria volta a listar as opções da categoria",
+    "date": "08/09/2026",
+    "benefits": [
+      {
+        "title": "A subcategoria volta a aparecer no lançamento de cartão",
+        "desc": "Ao lançar um gasto no cartão, escolher a categoria (\"Alimentação\", por exemplo) e o campo de subcategoria não oferecia nenhuma opção — mesmo com as subcategorias devidamente cadastradas. O cadastro estava intacto; a tela é que lia a lista guardada no aparelho sem saber a qual categoria cada subcategoria pertencia. Corrigido.",
+        "type": "correcao"
+      },
+      {
+        "title": "Categoria com espaço sobrando não some mais da lista",
+        "desc": "Categorias e subcategorias salvas com um espaço a mais no fim do nome não casavam na comparação e sumiam da lista de opções. Agora a comparação ignora espaço e maiúscula, tanto no cartão quanto nas transações.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "A tela de cartão lia o cache de subcategorias sem traduzir category_id em category_name. O cache próprio dela já guarda o nome da categoria, mas quando ele não existe a tela cai no cache compartilhado com o Histórico, que guarda a linha crua do banco (select('*')) — sem category_name. O useState inicial fazia JSON.parse direto, então toda subcategoria ficava sem dono e a lista vinha vazia para qualquer categoria. Os caminhos de offline e de erro já traduziam corretamente; só o estado inicial não, o que tornava a falha intermitente.",
+      "fetchSubcategories usava supabase.auth.getSession() e dava return seco quando a sessão ainda não tinha sido restaurada — comum na abertura a frio do app, inclusive logo após atualizar a versão. Nesse caso a lista crua ficava em memória pelo resto da sessão. Passa a usar getSessionUser (lê a sessão persistida) e, sem usuário ou sem rede, cai no cache já normalizado.",
+      "A consulta passa a pedir category_id junto do embed categories(name), para conseguir resolver o nome pelo cache local caso o embed venha vazio.",
+      "normalizeSubcategories: um único helper de normalização e deduplicação, usado por todos os caminhos de leitura (estado inicial, rede, offline e erro), em vez de três trechos parecidos e um sem tradução.",
+      "O filtro do campo de subcategoria passa a comparar com normalizeStr nos dois lados em vez de igualdade estrita, em ManualTransactionModal (cartão) e AddTransactionModal (transações)."
+    ]
+  },
+  {
     "version": "2026.09.07.2115",
     "title": "Escolha de conta ou cartão no scanner de cupons",
     "date": "07/09/2026",
