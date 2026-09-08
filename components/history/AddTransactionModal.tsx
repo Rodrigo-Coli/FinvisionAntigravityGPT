@@ -232,7 +232,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     // e "aluguel condominio" nao encontrava "Aluguel Condomínio" — mesma regra ja
     // usada na busca do Historico e no SearchableInput.
     const query = normalizeStr(form.description || '');
-    const suggestions = React.useMemo(() => {
+    // Calculo simples, NAO um hook. Este ponto do arquivo fica depois do
+    // `if (!show || !form.date) return null` acima: um useMemo aqui so roda
+    // quando o modal esta aberto, entao a contagem de hooks mudava entre um
+    // render e outro e o React derrubava a tela inteira (erros #300 e #310).
+    // Filtrar algumas centenas de itens por tecla e barato; memorizar nao era.
+    const suggestions = (() => {
         if (query.length < 2) return [];
         const comeca: any[] = [];
         const contem: any[] = [];
@@ -245,7 +250,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         // Quem comeca com o termo aparece primeiro: digitando "die", "Diarista"
         // deve vir antes de "Comida de rua (diet)".
         return [...comeca, ...contem].slice(0, 5);
-    }, [recentTxs, query]);
+    })();
 
     const handleCreateCategorySubmit = async () => {
         if (!newCategoryName.trim()) return;

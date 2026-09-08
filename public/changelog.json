@@ -1,22 +1,17 @@
 {
-  "version": "2026.09.08.1625",
-  "title": "Sugestão de descrição volta a aparecer no lançamento",
+  "version": "2026.09.08.1715",
+  "title": "Correção do erro \"Ops! Algo deu errado\" ao abrir o lançamento",
   "date": "08/09/2026",
   "benefits": [
     {
-      "title": "Digitar a descrição volta a sugerir lançamentos anteriores",
-      "desc": "Ao digitar a descrição em um novo lançamento, o app deveria mostrar os lançamentos parecidos já feitos e, ao tocar em um deles, preencher categoria, subcategoria, conta e pessoa automaticamente. Numa carteira com financiamentos e recorrências isso nunca acontecia: a busca olhava só as transações mais recentes por data, que são as parcelas futuras. Agora ela olha o que já aconteceu.",
+      "title": "A tela não quebra mais ao abrir o Novo Lançamento",
+      "desc": "A versão publicada há pouco derrubava o app com a tela \"Ops! Algo deu errado\" (erros React #300 e #310) ao abrir ou fechar o formulário de lançamento. Foi um defeito introduzido junto com a correção das sugestões de descrição, e está resolvido. Nenhum dado foi afetado.",
       "type": "correcao"
-    },
-    {
-      "title": "A busca da descrição ignora acento",
-      "desc": "Digitar \"agua\" não encontrava \"Água e Esgoto\". Além disso, quem começa com o que você digitou agora aparece antes de quem apenas contém.",
-      "type": "melhoria"
     }
   ],
   "changes": [
-    "A consulta de sugestões pegava as 200 transações mais recentes POR DATA, sem recortar o futuro. Numa carteira com parcelamentos e recorrências, essas 200 linhas são todas parcelas futuras — verificado em produção: as 200 mais recentes iam de 2033 a 2040, com 200 descrições distintas e nenhuma ocorrência de uma despesa corriqueira lançada dezenas de vezes. A consulta passa a filtrar date <= hoje.",
-    "Limite de 200 para 800: como a lista é deduplicada por descrição, 200 linhas rendem bem menos que 200 sugestões distintas. Na base real o conjunto passa de 0 para 367 descrições, cobrindo desde novembro de 2025.",
-    "O filtro do texto digitado passa a usar normalizeStr em vez de toLowerCase, e ordena colocando antes quem começa com o termo. A lista virou useMemo em vez de ser recalculada a cada render."
+    "A lista de sugestões de descrição foi escrita como React.useMemo, mas o ponto do arquivo onde ela fica está DEPOIS do `if (!show || !form.date) return null` do componente. Com isso o hook só era chamado quando o modal estava aberto: a contagem de hooks mudava entre um render e outro e o React derrubava a árvore inteira (#310 ao abrir, #300 ao fechar) — violação das Regras dos Hooks.",
+    "Passa a ser um cálculo simples (função executada na hora), sem hook: filtrar algumas centenas de itens por tecla é barato, memorizar não era. O comportamento das sugestões continua idêntico.",
+    "Verificado em navegador real: com useMemo, abrir o modal quebra com \"Rendered more hooks than during the previous render\"; sem ele, três ciclos de abrir/digitar/fechar passam sem erro e as sugestões continuam funcionando."
   ]
 }
