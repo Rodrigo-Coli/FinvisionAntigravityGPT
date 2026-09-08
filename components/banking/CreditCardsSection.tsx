@@ -9,7 +9,8 @@ import { parseTags, collectTags } from '../../lib/tagUtils';
 import { useReconnectRefresh } from '../../lib/useReconnectRefresh';
 import { ReconciliationService } from '../../services/reconciliation.service';
 import { DateUtils } from '../../lib/dateUtils';
-import { findCloseMatch } from '../../lib/stringUtils';
+import { findCloseMatch, normalizeStr } from '../../lib/stringUtils';
+import { getSessionUser } from '../../lib/session';
 
 // Modular Components
 import { CardList } from '../cards/CardList';
@@ -97,12 +98,51 @@ const CreditCardsSection: React.FC = () => {
   const [txDate, setTxDate] = useState<string>(() => DateUtils.formatToISODate());
   const [txDescription, setTxDescription] = useState('');
   const [txAmount, setTxAmount] = useState<number | string>('');
+// Subcategoria so aparece na lista se souber a QUAL categoria pertence
+// (`category_name`). O cache proprio desta tela ja guarda esse campo, mas o
+// cache compartilhado com o Historico guarda a linha crua do banco
+// (`select('*')`), que tem `category_id` e NAO tem `category_name`. Ler esse
+// cache sem traduzir deixava toda subcategoria sem dono: escolher "Alimentação"
+// e o campo de subcategoria nao oferecia nada.
+function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: string; name: string; category_name?: string }[] {
+  let cats = cachedCategories;
+  if (!cats) {
+    try {
+      const c = localStorage.getItem('finvision_cached_categories_cc') || localStorage.getItem('finvision_cached_categories');
+      cats = c ? JSON.parse(c) : [];
+    } catch { cats = []; }
+  }
+
+  const mapped = (raw || []).map((s: any) => {
+    let catName = s.category_name;
+    if (!catName && s.category_id && cats && cats.length > 0) {
+      catName = cats.find((c: any) => c.id === s.category_id)?.name;
+    }
+    return { id: s.id, name: s.name, category_name: catName };
+  });
+
+  const unique: any[] = [];
+  const seen = new Set<string>();
+  for (const sub of mapped) {
+    if (!sub.name) continue;
+    const key = `${normalizeStr(sub.name)}::${normalizeStr(sub.category_name || '')}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(sub);
+  }
+  return unique;
+}
+
   const [txCategory, setTxCategory] = useState<string>('');
   const [txSubcategory, setTxSubcategory] = useState<string>('');
   const [subcategories, setSubcategories] = useState<{ id: string, name: string, category_name?: string }[]>(() => {
     const cached = localStorage.getItem('finvision_cached_subcategories_cc') ||
                    localStorage.getItem('finvision_cached_subcategories');
-    return cached ? JSON.parse(cached) : [];
+    try {
+      return cached ? normalizeSubcategories(JSON.parse(cached)) : [];
+    } catch {
+      return [];
+    }
   });
   const [txCardId, setTxCardId] = useState<string>('');
   const [txNotes, setTxNotes] = useState('');
@@ -444,107 +484,54 @@ const CreditCardsSection: React.FC = () => {
 
   const fetchSubcategories = async () => {
     if (!supabase) return;
-    try {
-      if (navigator.onLine) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const user = session?.user;
-        if (!user) return;
-        const { data, error } = await supabase
-          .from('subcategories')
-          .select('id, name, categories(name)')
-          .eq('user_id', user.id)
-          .order('name', { ascending: true });
-        if (error) throw error;
-        const mapped = (data || []).map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          category_name: s.categories?.name
-        }));
 
-        // Deduplicate subcategories by name and category name
-        const uniqueSubcats: any[] = [];
-        const seenSubcats = new Set<string>();
-        for (const sub of mapped) {
-          const key = `${sub.name?.toLowerCase().trim()}::${sub.category_name?.toLowerCase().trim()}`;
-          if (!seenSubcats.has(key)) {
-            seenSubcats.add(key);
-            uniqueSubcats.push(sub);
-          }
-        }
-
-        setSubcategories(uniqueSubcats);
-        localStorage.setItem('finvision_cached_subcategories_cc', JSON.stringify(uniqueSubcats));
-      } else {
-        const cached = localStorage.getItem('finvision_cached_subcategories_cc') ||
-                       localStorage.getItem('finvision_cached_subcategories');
-        if (cached) {
-          const raw = JSON.parse(cached);
-          const catsCached = localStorage.getItem('finvision_cached_categories_cc') || localStorage.getItem('finvision_cached_categories');
-          const cats = catsCached ? JSON.parse(catsCached) : [];
-          const mapped = raw.map((s: any) => {
-            let catName = s.category_name;
-            if (!catName && s.category_id && cats.length > 0) {
-              const matched = cats.find((c: any) => c.id === s.category_id);
-              if (matched) catName = matched.name;
-            }
-            return {
-              id: s.id,
-              name: s.name,
-              category_name: catName
-            };
-          });
-
-          const uniqueSubcats: any[] = [];
-          const seenSubcats = new Set<string>();
-          for (const sub of mapped) {
-            const key = `${sub.name?.toLowerCase().trim()}::${sub.category_name?.toLowerCase().trim()}`;
-            if (!seenSubcats.has(key)) {
-              seenSubcats.add(key);
-              uniqueSubcats.push(sub);
-            }
-          }
-          setSubcategories(uniqueSubcats);
-        }
-      }
-    } catch (err) {
-      console.error('Erro ao buscar subcategorias, fallback cache:', err);
+    // Cache ja normalizado, para o caso de a rede/sessao nao responder.
+    const fromCache = () => {
       const cached = localStorage.getItem('finvision_cached_subcategories_cc') ||
                      localStorage.getItem('finvision_cached_subcategories');
-      if (cached) {
-        try {
-          const raw = JSON.parse(cached);
-          const catsCached = localStorage.getItem('finvision_cached_categories_cc') || localStorage.getItem('finvision_cached_categories');
-          const cats = catsCached ? JSON.parse(catsCached) : [];
-          const mapped = raw.map((s: any) => {
-            let catName = s.category_name;
-            if (!catName && s.category_id && cats.length > 0) {
-              const matched = cats.find((c: any) => c.id === s.category_id);
-              if (matched) catName = matched.name;
-            }
-            return {
-              id: s.id,
-              name: s.name,
-              category_name: catName
-            };
-          });
-
-          const uniqueSubcats: any[] = [];
-          const seenSubcats = new Set<string>();
-          for (const sub of mapped) {
-            const key = `${sub.name?.toLowerCase().trim()}::${sub.category_name?.toLowerCase().trim()}`;
-            if (!seenSubcats.has(key)) {
-              seenSubcats.add(key);
-              uniqueSubcats.push(sub);
-            }
-          }
-          setSubcategories(uniqueSubcats);
-        } catch (e) {
-          setSubcategories([]);
-        }
+      if (!cached) return;
+      try {
+        setSubcategories(normalizeSubcategories(JSON.parse(cached)));
+      } catch {
+        /* cache corrompido: mantem o que ja estava em memoria */
       }
+    };
+
+    try {
+      if (!navigator.onLine) { fromCache(); return; }
+
+      // getSessionUser em vez de auth.getSession(): na abertura do app a sessao
+      // pode ainda nao ter sido restaurada, e o codigo antigo dava `return` sem
+      // nada — deixando a lista crua do cache compartilhado (sem category_name)
+      // em memoria pelo resto da sessao. getSessionUser le a sessao persistida.
+      const user = await getSessionUser(supabase);
+      if (!user) { fromCache(); return; }
+
+      const { data, error } = await supabase
+        .from('subcategories')
+        .select('id, name, category_id, categories(name)')
+        .eq('user_id', user.id)
+        .order('name', { ascending: true });
+      if (error) throw error;
+
+      // category_id vai junto de proposito: se o embed `categories(name)` vier
+      // vazio, normalizeSubcategories ainda resolve o nome pelo cache local.
+      const normalized = normalizeSubcategories(
+        (data || []).map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          category_id: s.category_id,
+          category_name: s.categories?.name
+        }))
+      );
+
+      setSubcategories(normalized);
+      localStorage.setItem('finvision_cached_subcategories_cc', JSON.stringify(normalized));
+    } catch (err) {
+      console.error('Erro ao buscar subcategorias, fallback cache:', err);
+      fromCache();
     }
   };
-
   const fetchAccounts = async () => {
     if (!supabase) return;
     try {

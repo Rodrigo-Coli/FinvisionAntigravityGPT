@@ -8,6 +8,7 @@ import { SplitDraft } from '../../services/splitTransaction.service';
 import { getSessionUser } from '../../lib/session';
 import { TagsInput } from '../common/TagsInput';
 import { SearchableInput } from '../common/SearchableInput';
+import { normalizeStr } from '../../lib/stringUtils';
 
 interface AddTransactionModalProps {
     show: boolean;
@@ -523,7 +524,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                         <SearchableInput
                                             value={form.subcategory}
                                             onChange={(v) => setAddField('subcategory', v)}
-                                            options={subcategories.filter(s => s.category_name === form.category).map(s => s.name)}
+                                            options={subcategories.filter(s => normalizeStr(s.category_name || '') === normalizeStr(form.category || '')).map(s => s.name)}
                                             placeholder="Selecione..."
                                             className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                                         />
