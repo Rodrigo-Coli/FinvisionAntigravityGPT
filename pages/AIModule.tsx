@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { resolveTabParam } from '../lib/urlTabState';
-import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, Box, LayoutGrid, Brain, ShieldCheck, AlertTriangle, Target, Lightbulb, X } from 'lucide-react';
+import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, ShoppingCart, Calculator, Hash, TrendingUp, TrendingDown, MapPin, Search, Filter, Calendar, Info, Box, LayoutGrid, Brain, ShieldCheck, AlertTriangle, Target, Lightbulb, X, Landmark, CreditCard } from 'lucide-react';
 import { AIReconcileService } from '../services/aiReconcile.service';
 import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
 import { DateUtils } from '../lib/dateUtils';
 import { useToast } from '../contexts/ToastContext';
 import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
+import { SearchableInput } from '../components/common/SearchableInput';
+import { findCloseMatch } from '../lib/stringUtils';
 
 // Helper to parse markdown into semantically correct HTML (protects lists and bolds)
 const parseMarkdownToReact = (text: string) => {
@@ -82,10 +84,14 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'done'>('idle');
   const [targetId, setTargetId] = useState('');
   const [targetType, setTargetType] = useState<'account' | 'card'>('account');
-  const [allTargets, setAllTargets] = useState<{ id: string; name: string; type: 'account' | 'card' }[]>([]);
+  // Contas e cartões separados, com os mesmos campos que as telas de lançamento
+  // usam para montar o rótulo. Antes era uma lista só, misturada, num campo de
+  // texto livre: o usuário tinha que digitar o nome e adivinhar o sufixo
+  // "· Conta"/"· Cartão", e um cartão adicional era indistinguível do titular.
+  const [accountOptions, setAccountOptions] = useState<any[]>([]);
+  const [cardOptions, setCardOptions] = useState<any[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [subcategories, setSubcategories] = useState<{ id: string; name: string; category_id: string; category_name?: string }[]>([]);
-  const [targetQuery, setTargetQuery] = useState('');
   const [confirmCategoryName, setConfirmCategoryName] = useState<string>('');
   const [confirmSubcategoryName, setConfirmSubcategoryName] = useState<string>('');
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
@@ -133,33 +139,54 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     }
   }, [activeTab]);
 
-  const targetLabel = (t: { name: string; type: 'account' | 'card' }) => `${t.name} · ${t.type === 'card' ? 'Cartão' : 'Conta'}`;
+  // Mesmos rótulos das telas de lançamento, para o usuário reconhecer a conta /
+  // o cartão exatamente como os vê lá: AddTransactionModal mostra a instituição,
+  // ManualTransactionModal marca o padrão com ★, os 4 últimos dígitos e o adicional.
+  const accountLabel = (a: any) => a.institution || a.name || 'Conta';
+  const cardLabel = (c: any) =>
+    `${c.is_default ? '★ ' : ''}${c.name || 'Cartão'}${c.last4 ? ` (**** ${c.last4})` : ''}` +
+    `${c.is_additional ? `  • Adicional${c.additional_label ? ': ' + c.additional_label : ''}` : ''}`;
+
+  const currentOptions = targetType === 'card' ? cardOptions : accountOptions;
+  const optionLabel = (o: any) => (targetType === 'card' ? cardLabel(o) : accountLabel(o));
+
+  const switchTargetType = (type: 'account' | 'card') => {
+    setTargetType(type);
+    const list = type === 'card' ? cardOptions : accountOptions;
+    setTargetId(list[0]?.id || '');
+  };
 
   const fetchAccounts = async () => {
     if (!supabase || !user) return;
 
     const [accRes, cardRes, catRes, subRes] = await Promise.all([
       supabase.from('accounts').select('id, institution').eq('user_id', user.id).eq('is_archived', false),
-      supabase.from('cards').select('id, name').eq('user_id', user.id).eq('is_archived', false),
+      // Os mesmos campos que ManualTransactionModal usa para montar a lista de
+      // cartões — sem eles não dá para distinguir titular de adicional nem ver
+      // qual é o cartão padrão.
+      supabase.from('cards').select('id, name, last4, is_default, is_additional, additional_label').eq('user_id', user.id).eq('is_archived', false),
       supabase.from('categories').select('id, name').eq('user_id', user.id).eq('is_archived', false).eq('type', 'EXPENSE'),
       supabase.from('subcategories').select('id, name, category_id').eq('user_id', user.id)
     ]);
 
-    const combined: { id: string; name: string; type: 'account' | 'card' }[] = [];
-    if (accRes.data) {
-      accRes.data.forEach((a: any) => combined.push({ id: a.id, name: a.institution, type: 'account' }));
-    }
-    if (cardRes.data) {
-      cardRes.data.forEach((c: any) => combined.push({ id: c.id, name: c.name, type: 'card' }));
-    }
+    const accounts = (accRes.data || []).slice().sort((a: any, b: any) => accountLabel(a).localeCompare(accountLabel(b), 'pt-BR'));
+    // Cartão padrão primeiro, como na tela de lançamento de cartão.
+    const cards = (cardRes.data || []).slice().sort((a: any, b: any) => {
+      const byDefault = (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0);
+      return byDefault !== 0 ? byDefault : (a.name || '').localeCompare(b.name || '', 'pt-BR');
+    });
+    setAccountOptions(accounts);
+    setCardOptions(cards);
 
-    const sortedTargets = combined.sort((a, b) => a.name.localeCompare(b.name));
-    setAllTargets(sortedTargets);
-    if (sortedTargets.length > 0) {
-      setTargetId(sortedTargets[0].id);
-      setTargetType(sortedTargets[0].type);
-      setTargetQuery(targetLabel(sortedTargets[0]));
-    }
+    // Mantém o destino escolhido se ele ainda existir; senão cai no primeiro
+    // do tipo em foco (conta, quando houver).
+    const initialType: 'account' | 'card' = accounts.length > 0 ? 'account' : 'card';
+    const initialList = initialType === 'card' ? cards : accounts;
+    setTargetType((prev) => (accounts.length && cards.length ? prev : initialType));
+    setTargetId((prev) => {
+      const stillThere = [...accounts, ...cards].some((o: any) => o.id === prev);
+      return stillThere ? prev : (initialList[0]?.id || '');
+    });
 
     let sortedCats: { id: string; name: string }[] = [];
     if (catRes.data) {
@@ -359,20 +386,29 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     try {
       await AIReconcileService.saveReceiptToLabs(receipt);
       const finalAmount = getReconcileAmount();
-      const target = allTargets.find((t: any) => t.id === targetId);
-      const targetName = target?.name || 'Destino';
+      const target = currentOptions.find((o: any) => o.id === targetId);
+      const targetName = target ? optionLabel(target) : 'Destino';
+      // findCloseMatch (o mesmo resolvedor do resto do app) em vez de comparar com
+      // toLowerCase: digitar "alimentacao" não batia com "Alimentação" e o
+      // lançamento ia parar no cartão SEM categoria nenhuma, sem avisar.
+      // Também devolve o nome canônico, para não gravar variações sem acento.
+      const categoryName = findCloseMatch(confirmCategoryName.trim(), categories.map(c => c.name)) || confirmCategoryName.trim();
+      const subcatNames = subcategories
+        .filter(sc => !categoryName || sc.category_name === categoryName)
+        .map(sc => sc.name);
+      const subcategoryName = findCloseMatch(confirmSubcategoryName.trim(), subcatNames) || confirmSubcategoryName.trim();
       const description = `Labs: ${receipt.merchant} ${receipt.currency !== 'BRL' ? '[' + receipt.currency + ']' : ''}`;
 
       if (targetType === 'card') {
         // Fluxo direto: salva no cartão sem passar pelo Reconcile
-        const matchedCategory = categories.find(c => c.name.toLowerCase() === confirmCategoryName.trim().toLowerCase());
+        const matchedCategory = categories.find(c => c.name === categoryName);
         await AIReconcileService.saveDirectToCard({
           cardId: targetId,
           date: receipt.date || DateUtils.formatToISODate(),
           description,
           amount: finalAmount,
           categoryId: matchedCategory?.id,
-          subcategory: confirmSubcategoryName.trim() || undefined
+          subcategory: subcategoryName || undefined
         });
       } else {
         // Fluxo padrão: fila de conciliação
@@ -387,7 +423,11 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           }],
           targetId,
           targetName,
-          targetType
+          targetType,
+          // A fila de conciliação lê metadata.category/subcategory como
+          // pré-preenchimento (pages/Reconcile.tsx), então a classificação feita
+          // aqui não se perde: chega lá já escolhida, faltando só confirmar.
+          { category: categoryName || undefined, subcategory: subcategoryName || undefined }
         );
       }
       setSaveStatus('done');
@@ -575,72 +615,97 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
                   <div className="space-y-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Conta Financeira</label>
-                      <div className="relative">
-                        <input
-                          list="ai-target-list"
-                          value={targetQuery}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setTargetQuery(val);
-                            const match = allTargets.find(t => targetLabel(t).toLowerCase() === val.toLowerCase());
-                            if (match) { setTargetId(match.id); setTargetType(match.type); }
-                          }}
-                          placeholder="Busque a conta ou cartão..."
-                          className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
-                        />
-                        <datalist id="ai-target-list">
-                          {allTargets.map((t) => (<option key={t.id} value={targetLabel(t)} />))}
-                        </datalist>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Lançar em</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {([
+                          { type: 'account' as const, label: 'Conta', icon: <Landmark size={16} />, count: accountOptions.length },
+                          { type: 'card' as const, label: 'Cartão', icon: <CreditCard size={16} />, count: cardOptions.length },
+                        ]).map((opt) => (
+                          <button
+                            key={opt.type}
+                            type="button"
+                            onClick={() => switchTargetType(opt.type)}
+                            disabled={opt.count === 0}
+                            className={`h-14 rounded-2xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                              targetType === opt.type
+                                ? 'bg-brand-50 text-brand-600 ring-2 ring-brand-500'
+                                : 'bg-slate-50 text-slate-400 hover:bg-slate-100'
+                            }`}
+                          >
+                            {opt.icon}
+                            {opt.label}
+                          </button>
+                        ))}
                       </div>
+                      <p className="text-[10px] font-medium text-slate-400 ml-1 pt-1 leading-relaxed">
+                        {targetType === 'card'
+                          ? 'Lança direto na fatura do cartão, com a categoria escolhida aqui.'
+                          : 'Envia para a fila de Conciliação já classificado — é só confirmar por lá.'}
+                      </p>
                     </div>
 
-                    {targetType === 'card' && (
-                      <div className="space-y-1 animate-in slide-in-from-top-1 duration-200">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Categoria (Opcional)</label>
-                          {!isCreatingCategory && (
-                            <button type="button" onClick={() => setIsCreatingCategory(true)} className="text-[10px] font-bold text-brand-600 hover:text-brand-700 uppercase tracking-widest">+ Nova</button>
-                          )}
-                        </div>
-                        {isCreatingCategory ? (
-                          <div className="flex items-center gap-2 animate-in slide-in-from-top-1 duration-200">
-                            <input
-                              type="text"
-                              autoFocus
-                              value={newCategoryName}
-                              onChange={(e) => setNewCategoryName(e.target.value)}
-                              placeholder="Nova categoria..."
-                              onKeyDown={(e) => e.key === 'Enter' && handleCreateCategory()}
-                              className="flex-1 h-14 px-4 bg-brand-50 border border-brand-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-xs"
-                            />
-                            <button type="button" onClick={handleCreateCategory} disabled={isSavingCategory} className="h-14 w-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center hover:bg-brand-700 transition-all disabled:opacity-50 shadow-lg shadow-brand-500/20 shrink-0">
-                              {isSavingCategory ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
-                            </button>
-                            <button type="button" onClick={() => setIsCreatingCategory(false)} disabled={isSavingCategory} className="h-14 w-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200 transition-all disabled:opacity-50 shrink-0">
-                              <X size={18} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="relative">
-                            <input
-                              list="ai-category-list"
-                              value={confirmCategoryName}
-                              onFocus={(e) => e.target.select()}
-                              onChange={(e) => setConfirmCategoryName(e.target.value)}
-                              placeholder="Selecione ou digite..."
-                              className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
-                            />
-                            <datalist id="ai-category-list">
-                              {categories.map((cat) => (<option key={cat.id} value={cat.name} />))}
-                            </datalist>
-                          </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                        {targetType === 'card' ? 'Cartão' : 'Conta Bancária'}
+                      </label>
+                      <select
+                        value={targetId}
+                        onChange={(e) => setTargetId(e.target.value)}
+                        className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none appearance-none cursor-pointer"
+                      >
+                        <option value="">{targetType === 'card' ? 'Selecione um cartão...' : 'Selecione uma conta...'}</option>
+                        {currentOptions.map((o: any) => (
+                          <option key={o.id} value={o.id}>{optionLabel(o)}</option>
+                        ))}
+                      </select>
+                      {currentOptions.length === 0 && (
+                        <p className="text-[10px] font-medium text-amber-600 ml-1 pt-1">
+                          {targetType === 'card' ? 'Nenhum cartão cadastrado.' : 'Nenhuma conta cadastrada.'}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1 animate-in slide-in-from-top-1 duration-200">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Categoria (Opcional)</label>
+                        {!isCreatingCategory && (
+                          <button type="button" onClick={() => setIsCreatingCategory(true)} className="text-[10px] font-bold text-brand-600 hover:text-brand-700 uppercase tracking-widest">+ Nova</button>
                         )}
                       </div>
-                    )}
+                      {isCreatingCategory ? (
+                        <div className="flex items-center gap-2 animate-in slide-in-from-top-1 duration-200">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={newCategoryName}
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                            placeholder="Nova categoria..."
+                            onKeyDown={(e) => e.key === 'Enter' && handleCreateCategory()}
+                            className="flex-1 h-14 px-4 bg-brand-50 border border-brand-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-xs"
+                          />
+                          <button type="button" onClick={handleCreateCategory} disabled={isSavingCategory} className="h-14 w-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center hover:bg-brand-700 transition-all disabled:opacity-50 shadow-lg shadow-brand-500/20 shrink-0">
+                            {isSavingCategory ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
+                          </button>
+                          <button type="button" onClick={() => setIsCreatingCategory(false)} disabled={isSavingCategory} className="h-14 w-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center hover:bg-slate-200 transition-all disabled:opacity-50 shrink-0">
+                            <X size={18} />
+                          </button>
+                        </div>
+                      ) : (
+                        // SearchableInput em vez de <datalist>: o filtro do navegador
+                        // é sensível a acento, então "alimentacao" não achava
+                        // "Alimentação" e o usuário criava uma categoria duplicada.
+                        // Mesmo componente das telas de cartão e de transações.
+                        <SearchableInput
+                          value={confirmCategoryName}
+                          onChange={setConfirmCategoryName}
+                          options={categories.map((c) => c.name)}
+                          placeholder="Selecione ou digite..."
+                          className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+                        />
+                      )}
+                    </div>
 
-                    {targetType === 'card' && !isCreatingCategory && (
+                    {!isCreatingCategory && (
                       <div className="space-y-1 animate-in slide-in-from-top-1 duration-200">
                         <div className="flex items-center justify-between">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Subcategoria (Opcional)</label>
@@ -667,19 +732,13 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                             </button>
                           </div>
                         ) : (
-                          <div className="relative">
-                            <input
-                              list="ai-subcategory-list"
-                              value={confirmSubcategoryName}
-                              onFocus={(e) => e.target.select()}
-                              onChange={(e) => setConfirmSubcategoryName(e.target.value)}
-                              placeholder="Selecione ou digite..."
-                              className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
-                            />
-                            <datalist id="ai-subcategory-list">
-                              {subcategories.filter(s => !confirmCategoryName || s.category_name === confirmCategoryName).map((s) => (<option key={s.id} value={s.name} />))}
-                            </datalist>
-                          </div>
+                          <SearchableInput
+                            value={confirmSubcategoryName}
+                            onChange={setConfirmSubcategoryName}
+                            options={subcategories.filter(s => !confirmCategoryName || s.category_name === confirmCategoryName).map((s) => s.name)}
+                            placeholder="Selecione ou digite..."
+                            className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+                          />
                         )}
                       </div>
                     )}

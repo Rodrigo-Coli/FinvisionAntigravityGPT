@@ -179,7 +179,16 @@ export const AIReconcileService = {
     return true;
   },
 
-  async saveToReconcileQueue(items: ReconcileItem[], accountId: string, accountName: string, targetType?: 'account' | 'card') {
+  async saveToReconcileQueue(
+    items: ReconcileItem[],
+    accountId: string,
+    accountName: string,
+    targetType?: 'account' | 'card',
+    // Categoria/subcategoria escolhidas na origem. A tela de conciliação lê
+    // metadata.category/metadata.subcategory como valor inicial, entao o que o
+    // usuario classificou aqui chega la ja preenchido.
+    classification?: { category?: string; subcategory?: string }
+  ) {
     if (!supabase) throw new Error("Supabase is not configured");
     const user = await getSessionUser(supabase);
     if (!user) throw new Error("No user found");
@@ -198,6 +207,8 @@ export const AIReconcileService = {
         target_type: targetType,
         original_account_id: accountId,
         original_account_name: accountName,
+        ...(classification?.category ? { category: classification.category } : {}),
+        ...(classification?.subcategory ? { subcategory: classification.subcategory } : {}),
       },
     }));
 

@@ -1,26 +1,29 @@
 {
-  "version": "2026.09.07.1726",
-  "title": "Scanner de cupons volta a funcionar no celular",
+  "version": "2026.09.07.2115",
+  "title": "Escolha de conta ou cartão no scanner de cupons",
   "date": "07/09/2026",
   "benefits": [
     {
-      "title": "Enviar cupom no celular não falha mais",
-      "desc": "O envio de Cupom Fiscal no AI & Insights falhava antes mesmo de sair do aparelho: com foto da câmera, o navegador ficava sem memória ao preparar a imagem e a aba era encerrada — às vezes com a mensagem \"Erro ao processar cupons\", às vezes recarregando a tela sozinha. Agora a foto é preparada de um jeito bem mais leve, e cupons enviados de uma vez são processados um a um.",
-      "type": "correcao"
+      "title": "Agora dá para escolher entre conta e cartão, sem digitar",
+      "desc": "Ao finalizar um cupom no AI & Insights, o destino era um campo de texto só, misturando contas e cartões — quem tem dois cartões do mesmo banco via duas opções quase idênticas, sem os quatro últimos dígitos e sem saber qual era o adicional. Agora você escolhe Conta ou Cartão e a lista mostra exatamente o que as telas de lançamento mostram: instituição da conta, e no cartão a estrela do padrão, os últimos dígitos e o apelido do adicional.",
+      "type": "melhoria"
     },
     {
-      "title": "Quando algo dá errado, o app diz o que foi",
-      "desc": "Toda falha no envio caía na mesma mensagem genérica, sem nenhuma pista. Agora o aviso diz qual arquivo falhou e por quê — arquivo ilegível, formato que o navegador não abre ou arquivos grandes demais para envio.",
+      "title": "Categoria e subcategoria também para lançamento em conta",
+      "desc": "Antes só o cartão aceitava classificar o cupom. Agora a conta também aceita, e a categoria escolhida chega já preenchida na tela de Conciliação — é só confirmar. Os campos são os mesmos das telas de cartão e de transações, que encontram a categoria mesmo digitada sem acento.",
+      "type": "melhoria"
+    },
+    {
+      "title": "Cupom no cartão não fica mais sem categoria",
+      "desc": "Digitar a categoria sem acento (\"alimentacao\" em vez de \"Alimentação\") fazia o cupom ser lançado no cartão sem categoria nenhuma, sem nenhum aviso. Corrigido.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "AIReconcileService.fileToBase64 rejeitava com o Event do DOM (que não tem .message), então o toast do AIModule caía sempre no texto genérico 'Erro ao processar cupons.' e a causa real era descartada. Agora toda falha de leitura rejeita com um Error nomeando o arquivo e o motivo.",
-    "O preparo da imagem usava FileReader -> data URL -> <img> -> canvas, mantendo ao mesmo tempo os bytes do arquivo, uma string base64 ~1,37x maior e o bitmap em tamanho original. Com foto de câmera isso bastava para o Android encerrar a aba antes de qualquer requisição sair — confirmado nos logs, que não registraram nenhuma chamada a /api/handle-receipt-items durante as falhas.",
-    "A decodificação passa a usar createImageBitmap direto do Blob (sem base64 intermediário), com <img> + object URL como reserva e os bytes originais como último recurso — o Gemini aceita png/webp/heic/heif nativamente.",
-    "Exceções dentro de img.onload (toDataURL estourando memória) escapavam da Promise, que nunca resolvia: o spinner girava para sempre. Agora há fallback.",
-    "O tipo do arquivo passa a ser detectado pelos primeiros bytes. Arquivos escolhidos pelos provedores do Android (Google Fotos/Drive) chegam com file.type vazio e o tipo era chutado como image/jpeg, fazendo a IA recusar o arquivo.",
-    "Vários cupons eram codificados em paralelo (Promise.all), multiplicando o pico de memória pelo número de arquivos; agora é um por vez.",
-    "Guarda de tamanho antes do envio e tradução dos erros 413/502/504 da Vercel, que voltam em HTML e deixavam o usuário sem informação nenhuma."
+    "O destino do cupom era um <input list> único misturando contas e cartões com sufixo '· Conta'/'· Cartão'. Passa a ser um seletor de tipo (Conta/Cartão) mais um <select> só do tipo escolhido, com os mesmos rótulos de AddTransactionModal (instituição) e ManualTransactionModal (★ padrão, **** last4, 'Adicional: apelido'), cartão padrão primeiro.",
+    "Categoria e subcategoria deixam de ser exclusivas do cartão. No caminho de conta a classificação vai em metadata.category/metadata.subcategory, que pages/Reconcile.tsx já lê como valor inicial — nenhuma mudança de banco foi necessária.",
+    "Os campos de categoria/subcategoria trocam <datalist> por SearchableInput, o mesmo componente das telas de cartão e transações: o filtro do datalist é do navegador e sensível a acento, então 'alimentacao' não encontrava 'Alimentação' e o usuário acabava criando categoria duplicada.",
+    "handleFinalize resolvia a categoria digitada com toLowerCase, que não casa com acento: o lançamento ia para o cartão com categoryId indefinido, silenciosamente sem categoria. Agora usa findCloseMatch (o mesmo resolvedor de reconciliation.service e finance.service) e grava sempre o nome canônico, evitando variações sem acento na base.",
+    "A subcategoria é resolvida apenas dentro da categoria escolhida, para não herdar uma subcategoria de outra categoria."
   ]
 }

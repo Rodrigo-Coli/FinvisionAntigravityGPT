@@ -1,5 +1,34 @@
 [
   {
+    "version": "2026.09.07.2115",
+    "title": "Escolha de conta ou cartão no scanner de cupons",
+    "date": "07/09/2026",
+    "benefits": [
+      {
+        "title": "Agora dá para escolher entre conta e cartão, sem digitar",
+        "desc": "Ao finalizar um cupom no AI & Insights, o destino era um campo de texto só, misturando contas e cartões — quem tem dois cartões do mesmo banco via duas opções quase idênticas, sem os quatro últimos dígitos e sem saber qual era o adicional. Agora você escolhe Conta ou Cartão e a lista mostra exatamente o que as telas de lançamento mostram: instituição da conta, e no cartão a estrela do padrão, os últimos dígitos e o apelido do adicional.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Categoria e subcategoria também para lançamento em conta",
+        "desc": "Antes só o cartão aceitava classificar o cupom. Agora a conta também aceita, e a categoria escolhida chega já preenchida na tela de Conciliação — é só confirmar. Os campos são os mesmos das telas de cartão e de transações, que encontram a categoria mesmo digitada sem acento.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Cupom no cartão não fica mais sem categoria",
+        "desc": "Digitar a categoria sem acento (\"alimentacao\" em vez de \"Alimentação\") fazia o cupom ser lançado no cartão sem categoria nenhuma, sem nenhum aviso. Corrigido.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "O destino do cupom era um <input list> único misturando contas e cartões com sufixo '· Conta'/'· Cartão'. Passa a ser um seletor de tipo (Conta/Cartão) mais um <select> só do tipo escolhido, com os mesmos rótulos de AddTransactionModal (instituição) e ManualTransactionModal (★ padrão, **** last4, 'Adicional: apelido'), cartão padrão primeiro.",
+      "Categoria e subcategoria deixam de ser exclusivas do cartão. No caminho de conta a classificação vai em metadata.category/metadata.subcategory, que pages/Reconcile.tsx já lê como valor inicial — nenhuma mudança de banco foi necessária.",
+      "Os campos de categoria/subcategoria trocam <datalist> por SearchableInput, o mesmo componente das telas de cartão e transações: o filtro do datalist é do navegador e sensível a acento, então 'alimentacao' não encontrava 'Alimentação' e o usuário acabava criando categoria duplicada.",
+      "handleFinalize resolvia a categoria digitada com toLowerCase, que não casa com acento: o lançamento ia para o cartão com categoryId indefinido, silenciosamente sem categoria. Agora usa findCloseMatch (o mesmo resolvedor de reconciliation.service e finance.service) e grava sempre o nome canônico, evitando variações sem acento na base.",
+      "A subcategoria é resolvida apenas dentro da categoria escolhida, para não herdar uma subcategoria de outra categoria."
+    ]
+  },
+  {
     "version": "2026.09.07.1726",
     "title": "Scanner de cupons volta a funcionar no celular",
     "date": "07/09/2026",
