@@ -44,6 +44,95 @@ describe('fila offline — criação de lançamento', () => {
   });
 });
 
+describe('fila offline — compra de cartão criada sem internet', () => {
+  it('guarda a compra sem o id local e sem fatura, para a fatura ser resolvida no envio', () => {
+    // A fatura (card_statements) não existe offline: ela depende de consultar o
+    // cartão e, se for o caso, criar a linha. Enfileirar com um statement_id
+    // inventado quebraria a chave estrangeira no envio.
+    const localId = offlineQueue.addAction('CREATE_CARD_TRANSACTION', {
+      user_id: 'u1',
+      card_id: 'card-1',
+      date: '2026-09-08',
+      description: 'Mercado',
+      amount: 120,
+      tags: ['Maceió.26'],
+      _categoryName: 'Alimentação'
+    });
+
+    const [action] = offlineQueue.getQueue();
+    expect(action.type).toBe('CREATE_CARD_TRANSACTION');
+    expect(action.payload.id).toBeUndefined();
+    expect(action.payload.statement_id).toBeUndefined();
+    expect(action.payload.tags).toEqual(['Maceió.26']);
+    expect(action.payload._categoryName).toBe('Alimentação');
+    expect(isOfflineId(localId)).toBe(true);
+  });
+
+  it('expõe as compras pendentes para a tela do cartão continuar mostrando', () => {
+    offlineQueue.addAction('CREATE_CARD_TRANSACTION', { card_id: 'card-1', description: 'Posto', amount: 200 });
+    offlineQueue.addAction('CREATE_CARD_TRANSACTION', { card_id: 'card-2', description: 'Farmácia', amount: 30 });
+
+    const todas = offlineQueue.getPendingCardTransactions();
+    expect(todas).toHaveLength(2);
+
+    const doCartao1 = offlineQueue.getPendingCardTransactions(['card-1']);
+    expect(doCartao1).toHaveLength(1);
+    expect(doCartao1[0].description).toBe('Posto');
+    expect(isOfflineId(doCartao1[0].id)).toBe(true);
+    expect(doCartao1[0]._pendingSync).toBe(true);
+  });
+
+  it('não mistura a compra de cartão com os lançamentos bancários pendentes', () => {
+    offlineQueue.addAction('CREATE_TRANSACTION', { description: 'Aluguel', amount: 1500 });
+    offlineQueue.addAction('CREATE_CARD_TRANSACTION', { card_id: 'card-1', description: 'Mercado', amount: 120 });
+
+    expect(offlineQueue.getPendingTransactions().map(t => t.description)).toEqual(['Aluguel']);
+    expect(offlineQueue.getPendingCardTransactions().map(t => t.description)).toEqual(['Mercado']);
+  });
+
+  it('não expõe os metadados de envio para a tela', () => {
+    offlineQueue.addAction('CREATE_CARD_TRANSACTION', {
+      card_id: 'card-1',
+      description: 'Mercado',
+      amount: 120,
+      _rowId: '11111111-2222-3333-4444-555555555555',
+      _categoryName: 'Alimentação'
+    });
+
+    const [pendente] = offlineQueue.getPendingCardTransactions();
+    expect(pendente._rowId).toBeUndefined();
+    expect(pendente._categoryName).toBeUndefined();
+    expect(pendente.description).toBe('Mercado');
+  });
+
+  it('resgata compras de cartão presas pelo bug do id no payload', () => {
+    localStorage.setItem(QUEUE_KEY, JSON.stringify([
+      { id: 'c1', type: 'CREATE_CARD_TRANSACTION', payload: { id: 'offline-991', card_id: 'card-1', description: 'Uber', amount: 22 } }
+    ]));
+
+    const [action] = offlineQueue.getQueue();
+    expect(action.payload.id).toBeUndefined();
+    expect(action.localId).toBe('offline-991');
+    expect(action.payload.description).toBe('Uber');
+  });
+});
+
+describe('fila offline — user_id de verdade no envio', () => {
+  it('mantém o uuid quando a tela conseguiu ler a sessão', async () => {
+    const svc: any = offlineQueue;
+    const row = await svc.withRealUserId({ user_id: 'b3f1d0c2-9a4e-4f11-8c77-2a6d5e0b1c34', amount: 10 });
+    expect(row.user_id).toBe('b3f1d0c2-9a4e-4f11-8c77-2a6d5e0b1c34');
+  });
+
+  it('recusa enviar com o placeholder que a tela usa quando não há sessão', async () => {
+    // 'offline-user' não é uuid: o INSERT falharia com 22P02 a cada reconexão
+    // até ser aposentado, e o lançamento se perderia em silêncio. Sem sessão
+    // para resolver (supabase é null neste teste), a ação erra em vez de sumir.
+    const svc: any = offlineQueue;
+    await expect(svc.withRealUserId({ user_id: 'offline-user', amount: 10 })).rejects.toThrow();
+  });
+});
+
 describe('fila offline — migração de itens já gravados no aparelho', () => {
   it('resgata itens presos pelo bug do id inválido', () => {
     localStorage.setItem(QUEUE_KEY, JSON.stringify([

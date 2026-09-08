@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { parseTags, formatTags, normalizeTag, collectTags, matchesAnyTag } from '../lib/tagUtils';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { parseTags, formatTags, normalizeTag, collectTags, matchesAnyTag, getKnownTags, rememberTags, suggestTags } from '../lib/tagUtils';
 
 describe('parseTags — o que ia para a coluna text[]', () => {
   it('converte o texto digitado em array', () => {
@@ -89,5 +89,53 @@ describe('matchesAnyTag — filtro por tag', () => {
   it('não casa o que não tem a tag', () => {
     expect(matchesAnyTag(linha.tags, ['casa'])).toBe(false);
     expect(matchesAnyTag(null, ['casa'])).toBe(false);
+  });
+});
+
+describe('catálogo local de tags — por que o campo não sugeria nada', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('começa vazio e guarda o que foi digitado', () => {
+    expect(getKnownTags()).toEqual([]);
+    rememberTags('Maceió.26, lazer');
+    expect(getKnownTags()).toEqual(['lazer', 'Maceió.26']);
+  });
+
+  it('não duplica variação de acento e caixa da mesma tag', () => {
+    rememberTags(['Maceió.26']);
+    rememberTags(['maceio.26']);
+    expect(getKnownTags()).toEqual(['Maceió.26']);
+  });
+
+  it('sobrevive a recarregar o app: fica no localStorage, não na memória', () => {
+    rememberTags(['obra']);
+    // getKnownTags relê do storage a cada chamada — é o que faz a sugestão
+    // continuar existindo depois de fechar e reabrir o app, inclusive offline.
+    expect(getKnownTags()).toEqual(['obra']);
+  });
+
+  it('sugere o que está na tela somado ao que o aparelho já conhece', () => {
+    // O caso real: a tag foi usada num lançamento bancário (Histórico) e o
+    // usuário abre a tela de Cartões, onde só as compras da fatura estão
+    // carregadas. Antes, a sugestão vinha só da tela e não aparecia nada.
+    rememberTags(['Maceió.26']);
+    const sugestoes = suggestTags([{ tags: ['mercado'] }]);
+    expect(sugestoes).toEqual(['Maceió.26', 'mercado']);
+  });
+
+  it('a tela alimenta o catálogo: o que passou por suggestTags vira sugestão depois', () => {
+    suggestTags([{ tags: ['viagem'] }, { tags: ['lazer'] }]);
+    expect(getKnownTags()).toEqual(['lazer', 'viagem']);
+    // Mesmo com a tela vazia (offline, cache de outro período), a lista continua.
+    expect(suggestTags([])).toEqual(['lazer', 'viagem']);
+  });
+
+  it('ignora entrada vazia sem apagar o que já existe', () => {
+    rememberTags(['casa']);
+    rememberTags('');
+    rememberTags(null);
+    expect(getKnownTags()).toEqual(['casa']);
   });
 });

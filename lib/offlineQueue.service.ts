@@ -27,12 +27,22 @@ import { isNetworkFailure, isProbablyOnline, markNetworkFailure, markNetworkSucc
  *    formato incompatível gravando na MESMA chave do localStorage; cada um
  *    descartava em silêncio os itens do outro. Aquele arquivo foi removido e a
  *    migração abaixo recupera itens no formato antigo.
+ *
+ * 5. COMPRA DE CARTÃO NÃO TINHA CAMINHO OFFLINE NENHUM. A tela de Cartões ia
+ *    direto ao Supabase: criava a categoria, resolvia/criava a fatura
+ *    (`card_statements`) e só então inseria a compra. Sem internet, essa
+ *    sequência ou estourava erro ou ficava pendurada — o botão travava em
+ *    "Processando..." e a compra não ia nem para o banco nem para a fila.
+ *    Agora existe CREATE_CARD_TRANSACTION: a compra é enfileirada sem fatura, e
+ *    a fatura (e a categoria nova, se houver) é resolvida na hora do envio,
+ *    exatamente como a tela faria online.
  */
 
 export type OfflineActionType =
   | 'CREATE_TRANSACTION'
   | 'UPDATE_TRANSACTION'
   | 'DELETE_TRANSACTION'
+  | 'CREATE_CARD_TRANSACTION'
   | 'UPDATE_CARD_TRANSACTION'
   | 'DELETE_CARD_TRANSACTION'
   | 'UPDATE_CARD_STATEMENT'
@@ -48,8 +58,9 @@ export interface OfflineAction {
   attempts?: number;
   lastError?: string;
   /**
-   * Só para CREATE_TRANSACTION: o id provisório que a tela usa para exibir o
-   * lançamento antes de ele existir no banco. NUNCA vai no INSERT.
+   * Só para as ações de criação (CREATE_TRANSACTION, CREATE_CARD_TRANSACTION):
+   * o id provisório que a tela usa para exibir o lançamento antes de ele existir
+   * no banco. NUNCA vai no INSERT.
    */
   localId?: string;
 }
@@ -125,7 +136,8 @@ function migrate(raw: any[]): OfflineAction[] {
 
     // O bug original: id inventado no aparelho dentro do payload do INSERT.
     // Tiramos daqui para o item finalmente conseguir sincronizar.
-    if (action.type === 'CREATE_TRANSACTION' && action.payload && isOfflineId(action.payload.id)) {
+    if ((action.type === 'CREATE_TRANSACTION' || action.type === 'CREATE_CARD_TRANSACTION')
+        && action.payload && isOfflineId(action.payload.id)) {
       action.localId = action.localId || action.payload.id;
       const { id, ...rest } = action.payload;
       action.payload = rest;
@@ -198,6 +210,29 @@ class OfflineQueueService {
       }));
   }
 
+  /**
+   * Compras de cartão criadas offline e ainda não enviadas, no formato de linha
+   * de `card_transactions`. Sem isso, a compra lançada sem internet sumia da
+   * fatura ao recarregar o app — e a pessoa lançava tudo de novo.
+   *
+   * @param cardIds quando informado, só as compras destes cartões.
+   */
+  getPendingCardTransactions(cardIds?: string[]): any[] {
+    const wanted = cardIds && cardIds.length > 0 ? new Set(cardIds) : null;
+    return this.getQueue()
+      .filter(a => a.type === 'CREATE_CARD_TRANSACTION' && a.payload)
+      .filter(a => !wanted || wanted.has(a.payload.card_id))
+      .map(a => {
+        // `_rowId` e `_categoryName` são metadados do envio; a tela não os usa.
+        const { _rowId, _categoryName, ...row } = a.payload;
+        return {
+          ...row,
+          id: a.localId || OFFLINE_ID_PREFIX + a.id,
+          _pendingSync: true
+        };
+      });
+  }
+
   /** Edições/exclusões offline ainda não enviadas, por id de transação. */
   getPendingMutations(): { updates: Record<string, any>; deletions: Set<string> } {
     const updates: Record<string, any> = {};
@@ -221,7 +256,7 @@ class OfflineQueueService {
     let finalPayload = payload;
     let localId: string | undefined;
 
-    if (type === 'CREATE_TRANSACTION') {
+    if (type === 'CREATE_TRANSACTION' || type === 'CREATE_CARD_TRANSACTION') {
       // O id é do banco (`gen_random_uuid()`), nunca do aparelho. Guardar um id
       // inventado aqui era exatamente o que impedia a sincronização.
       const { id, ...rest } = payload || {};
@@ -239,12 +274,31 @@ class OfflineQueueService {
     this.saveQueue(this.getQueue().filter(item => item.id !== id));
   }
 
+  /**
+   * Garante um `user_id` de verdade na linha antes do INSERT.
+   *
+   * Offline, a tela nem sempre consegue ler a sessão e chegava a gravar um
+   * placeholder ('offline-user') no lugar do uuid. A coluna é `uuid`: o envio
+   * falhava com 22P02 a cada reconexão até ser aposentado, e o lançamento se
+   * perdia em silêncio. No envio já estamos online — dá para resolver de fato.
+   */
+  private async withRealUserId(row: any): Promise<any> {
+    const isUuid = (v: any) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+    if (isUuid(row?.user_id)) return row;
+
+    const { getSessionUser } = await import('./session');
+    const user = await getSessionUser(supabase);
+    if (!user?.id) throw new Error('Usuário não autenticado para enviar a fila offline');
+    return { ...row, user_id: user.id };
+  }
+
   private async execute(action: OfflineAction): Promise<void> {
     if (!supabase) throw new Error('Supabase indisponível');
     const p = action.payload || {};
 
     if (action.type === 'CREATE_TRANSACTION') {
-      const { id, ...row } = p; // cinto e suspensório: id local nunca vai ao banco
+      const { id, ...rest } = p; // cinto e suspensório: id local nunca vai ao banco
+      const row = await this.withRealUserId(rest);
       const { error } = await supabase.from('transactions').insert([row]);
       if (error) throw error;
       return;
@@ -257,6 +311,61 @@ class OfflineQueueService {
     if (action.type === 'DELETE_TRANSACTION') {
       const { error } = await supabase.from('transactions').update({ is_deleted: true }).eq('id', p.id);
       if (error) throw error;
+      return;
+    }
+    if (action.type === 'CREATE_CARD_TRANSACTION') {
+      const { id, _categoryName, _rowId: rowId, ...row } = p; // `id` local nunca vai ao banco
+
+      // Categoria digitada offline que ainda não existia no banco. Guardamos o
+      // NOME (`_categoryName`, metadado local que nunca vai no INSERT) e
+      // resolvemos aqui — offline não dá para criar a categoria e sem isso o
+      // lançamento sincronizaria com a categoria em branco.
+      if (!row.category_id && _categoryName) {
+        try {
+          const { ReconciliationService } = await import('../services/reconciliation.service');
+          row.category_id = (await ReconciliationService.ensureCategoryExists(_categoryName)) || null;
+        } catch (catErr) {
+          console.warn('Fila offline: não foi possível resolver a categoria do lançamento de cartão', catErr);
+        }
+      }
+
+      // A fatura (statement) não existe offline — ela depende de consultar o
+      // cartão e, se for o caso, CRIAR a linha em `card_statements`. Por isso o
+      // lançamento é enfileirado sem `statement_id` e a fatura certa é resolvida
+      // aqui, na hora do envio, exatamente como a tela faria online.
+      let statementId = row.statement_id || null;
+      const { FinanceService } = await import('../services/finance.service');
+      if (!statementId && row.card_id && row.date) {
+        statementId = await FinanceService.getOrCreateStatement(row.card_id, row.date);
+      }
+
+      // Idempotência: a compra vai com um uuid DE VERDADE gerado no aparelho
+      // (`_rowId`), não com o id inventado `offline-...` que quebrava o INSERT.
+      // Isso protege o caso em que a rede some DEPOIS de o banco gravar — a
+      // resposta é que se perdeu, a tela enfileira uma compra que já existe, e o
+      // usuário veria a mesma compra duas vezes na fatura. Com o id fixo o
+      // segundo envio bate na chave primária (23505) e é reconhecido como "já
+      // enviado". Duas compras iguais de verdade (mesmo valor, mesmo dia, mesma
+      // descrição) continuam sendo duas, porque cada uma tem seu próprio uuid.
+      const insertRow = await this.withRealUserId({ ...row, statement_id: statementId, ...(rowId ? { id: rowId } : {}) });
+      const { error } = await supabase.from('card_transactions').insert([insertRow]);
+      if (error) {
+        const jaEnviada = rowId && (error.code === '23505' || /duplicate key/i.test(error.message || ''));
+        if (!jaEnviada) throw error;
+        console.warn('Fila offline: compra de cartão já estava no banco, não foi inserida de novo');
+      }
+
+      // O espelho da fatura no Histórico é consequência, não parte do
+      // lançamento: se falhar, o lançamento JÁ está gravado e repetir a ação
+      // duplicaria a compra. A tela de Cartões refaz essa sincronização ao
+      // carregar, então aqui basta registrar.
+      if (statementId) {
+        try {
+          await FinanceService.syncStatementToHistory(statementId);
+        } catch (syncErr) {
+          console.warn('Fila offline: lançamento de cartão enviado, sincronização da fatura ficou para depois', syncErr);
+        }
+      }
       return;
     }
     if (action.type === 'UPDATE_CARD_TRANSACTION') {

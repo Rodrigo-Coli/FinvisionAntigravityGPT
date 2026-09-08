@@ -9,6 +9,7 @@ import { getSessionUser } from '../../lib/session';
 import { TagsInput } from '../common/TagsInput';
 import { SearchableInput } from '../common/SearchableInput';
 import { normalizeStr } from '../../lib/stringUtils';
+import { isProbablyOffline } from '../../lib/connectivity';
 
 // Quantas transacoes passadas varrer para montar as sugestoes de descricao.
 // Como a lista e deduplicada por descricao, o numero de sugestoes distintas fica
@@ -137,7 +138,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     setRecentTxs(Array.from(uniqueTxsMap.values()));
                 }
 
-                if (supabase && navigator.onLine) {
+                // isProbablyOffline e não navigator.onLine: este último responde
+                // `true` em Wi-Fi sem saída, e a busca das sugestões ficava
+                // pendurada sem nunca responder.
+                if (supabase && !isProbablyOffline()) {
                     try {
                         const user = await getSessionUser(supabase);
                         if (!user) return;

@@ -29,6 +29,8 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
 import { DateUtils } from '../../lib/dateUtils';
 import { findCloseMatch } from '../../lib/stringUtils';
 import { useToast } from '../../contexts/ToastContext';
+import { isProbablyOffline } from '../../lib/connectivity';
+import { getSessionUser } from '../../lib/session';
 
 const COLORS = [
   { name: 'Blue', hex: '#3b82f6' },
@@ -121,14 +123,18 @@ const AccountsSection: React.FC = () => {
   const fetchAccounts = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      if (navigator.onLine) {
+      // isProbablyOffline e não navigator.onLine: este último responde `true` em
+      // Wi-Fi sem saída e sinal fraco, e a tela ia buscar no banco uma resposta
+      // que nunca chegava — ficando no spinner em vez de mostrar o cache.
+      if (!isProbablyOffline()) {
         if (!isSupabaseConfigured || !supabase) {
           setLoading(false);
           return;
         }
 
-        const { data: { session } } = await supabase.auth.getSession();
-        const user = session?.user;
+        // getSessionUser: lê a sessão do aparelho com prazo, em vez de esperar
+        // por uma renovação de token que offline não termina.
+        const user = await getSessionUser(supabase);
         if (!user) return;
 
         const { data, error } = await supabase

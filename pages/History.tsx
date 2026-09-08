@@ -5,9 +5,10 @@ import * as XLSX from 'xlsx';
 
 import { Transaction, TransactionType, BankAccount, TransactionSplit } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
-import { offlineQueue } from '../lib/offlineQueue.service';
-import { isNetworkFailure, isProbablyOffline, markNetworkFailure } from '../lib/connectivity';
-import { parseTags, collectTags, matchesAnyTag } from '../lib/tagUtils';
+import { offlineQueue, isOfflineId } from '../lib/offlineQueue.service';
+import { isNetworkFailure, isProbablyOffline, markNetworkFailure, markNetworkSuccess, withTimeout, NETWORK_TIMEOUT_MS } from '../lib/connectivity';
+import { parseTags, suggestTags, matchesAnyTag, rememberTags } from '../lib/tagUtils';
+import { getSessionUser } from '../lib/session';
 import { SearchableInput } from '../components/common/SearchableInput';
 import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata } from '../lib/historyUtils';
 import { DateUtils } from '../lib/dateUtils';
@@ -534,8 +535,8 @@ const HistoryPage: React.FC = () => {
     try {
       if (!supabase) return;
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      // getSessionUser (e não auth.getSession): lê a sessão do aparelho com prazo.
+      const user = await getSessionUser(supabase);
       if (!user) {
         setIsLoading(false);
         return;
@@ -638,7 +639,7 @@ const HistoryPage: React.FC = () => {
         // grafia mais usada. É o que abastece o filtro de tags e as sugestões de
         // digitação — sem sugestão, o mesmo assunto acabava gravado de três jeitos
         // ("Maceió.26", "Maceio.26", "Maceió.2026") e o filtro não juntava nada.
-        setAvailableTags(collectTags(txs || [], cardTxs || []));
+        setAvailableTags(suggestTags(txs || [], cardTxs || []));
 
         // Initialize filters on first load (owner profiles and accounts)
         if (isFirstLoad.current) {
@@ -1409,7 +1410,7 @@ const HistoryPage: React.FC = () => {
       if (field === 'owner_name' && value) {
         const matched = findCloseMatch(value, owners);
         if (matched) cleanValue = matched;
-        if (navigator.onLine) {
+        if (!isProbablyOffline()) {
           cleanValue = await FinanceService.ensureEntityExists(cleanValue);
         }
       }
@@ -1417,13 +1418,13 @@ const HistoryPage: React.FC = () => {
         const names = categoryObjects.map(c => c.name);
         const matched = findCloseMatch(value, names);
         if (matched) cleanValue = matched;
-        if (navigator.onLine) await ReconciliationService.ensureCategoryExists(cleanValue);
+        if (!isProbablyOffline()) await ReconciliationService.ensureCategoryExists(cleanValue);
       }
       if (field === 'subcategory' && value && tx?.category) {
         const subcatNames = subcategories.filter(s => s.category_name === tx.category).map(s => s.name);
         const matched = findCloseMatch(value, subcatNames);
         if (matched) cleanValue = matched;
-        if (navigator.onLine) {
+        if (!isProbablyOffline()) {
           const catId = await ReconciliationService.ensureCategoryExists(tx.category);
           if (catId) await (ReconciliationService as any).ensureSubcategoryExists(catId, cleanValue);
         }
@@ -1485,13 +1486,13 @@ const HistoryPage: React.FC = () => {
         if (acc) patch.account_name = acc.institution;
       }
 
-      if (!navigator.onLine && confirmedScope && confirmedScope !== 'ONLY_THIS') {
+      if (isProbablyOffline() && confirmedScope && confirmedScope !== 'ONLY_THIS') {
         toast("Edição em série indisponível offline.", 'warning');
         return;
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      // getSessionUser (e não auth.getSession): lê a sessão do aparelho com prazo.
+      const user = await getSessionUser(supabase);
       if (!user) return;
 
       if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
@@ -1516,7 +1517,7 @@ const HistoryPage: React.FC = () => {
           return t;
         }));
 
-        if (!navigator.onLine) {
+        if (isProbablyOffline()) {
           if (tx?.metadata?.is_card) {
             const { offlineQueue } = await import('../lib/offlineQueue.service');
             offlineQueue.addAction('UPDATE_CARD_TRANSACTION', { id, updates: patch });
@@ -1772,18 +1773,18 @@ const HistoryPage: React.FC = () => {
 
     if (!confirmedScope && !window.confirm('Excluir transação?')) return;
 
-    if (!navigator.onLine && confirmedScope && confirmedScope !== 'ONLY_THIS') {
+    if (isProbablyOffline() && confirmedScope && confirmedScope !== 'ONLY_THIS') {
       toast("Exclusão em série indisponível offline.", 'warning');
       return;
     }
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      // getSessionUser (e não auth.getSession): lê a sessão do aparelho com prazo.
+      const user = await getSessionUser(supabase);
       if (!user) return;
 
       if (tx?.metadata?.is_card) {
-        if (!navigator.onLine) {
+        if (isProbablyOffline()) {
           const { offlineQueue } = await import('../lib/offlineQueue.service');
           offlineQueue.addAction('DELETE_CARD_TRANSACTION', { id });
           setTransactions(prev => prev.filter(t => t.id !== id));
@@ -1814,7 +1815,7 @@ const HistoryPage: React.FC = () => {
         }
       } else {
         if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
-          if (!navigator.onLine) {
+          if (isProbablyOffline()) {
             await FinanceService.deleteTransaction(id);
             setTransactions(prev => prev.filter(t => t.id !== id));
             setSeriesModal({ show: false, tx: null, pendingAction: 'DELETE' });
@@ -1998,7 +1999,7 @@ const HistoryPage: React.FC = () => {
 
   const handleSmartCategorize = async () => {
     if (selectedIds.size === 0 || !supabase) return;
-    if (!navigator.onLine) {
+    if (isProbablyOffline()) {
       toast("Categorização por IA requer conexão com a internet.", 'warning');
       return;
     }
@@ -2051,7 +2052,7 @@ const HistoryPage: React.FC = () => {
   const handleBulkUpdate = async () => {
     if (selectedIds.size === 0 || !supabase) return;
 
-    if (!navigator.onLine) {
+    if (isProbablyOffline()) {
       toast("Edição em lote indisponível sem conexão.", 'warning');
       return;
     }
@@ -2071,12 +2072,12 @@ const HistoryPage: React.FC = () => {
       if (bulkOwner && bulkOwner !== 'Pessoal') {
         const matched = findCloseMatch(bulkOwner, owners);
         if (matched) cleanOwner = matched;
-        if (navigator.onLine) cleanOwner = await FinanceService.ensureEntityExists(cleanOwner);
+        if (!isProbablyOffline()) cleanOwner = await FinanceService.ensureEntityExists(cleanOwner);
       }
       if (bulkCategory) {
         const matched = findCloseMatch(bulkCategory, availableCategories);
         if (matched) cleanCategory = matched;
-        if (navigator.onLine) {
+        if (!isProbablyOffline()) {
           const catId = await ReconciliationService.ensureCategoryExists(cleanCategory);
           if (catId && cleanSubcategory) {
             const subcatNames = subcategories.filter(s => s.category_name === cleanCategory).map(s => s.name);
@@ -2146,7 +2147,7 @@ const HistoryPage: React.FC = () => {
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0 || !supabase) return;
 
-    if (!navigator.onLine) {
+    if (isProbablyOffline()) {
       toast('A exclusão em lote está indisponível sem conexão com a internet.', 'warning');
       return;
     }
@@ -2238,8 +2239,11 @@ const HistoryPage: React.FC = () => {
 
     setPayModal(prev => prev.open ? { ...prev, isSubmitting: true, error: null } : prev);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const currentUserId = session?.user?.id || payModal.tx.user_id || null;
+      // getSessionUser (e não auth.getSession): lê a sessão do aparelho com prazo.
+      // O pagamento tem caminho offline logo abaixo, mas com auth.getSession()
+      // o botão travava AQUI, antes de chegar nele.
+      const sessionUser = await getSessionUser(supabase);
+      const currentUserId = sessionUser?.id || payModal.tx.user_id || null;
       const chosenDate = payModal.payDate || payModal.tx.date || DateUtils.formatToISODate();
       const payAccId = payModal.payAccountId || payModal.tx.accountId;
       const payAcc = accounts.find(a => a.id === payAccId);
@@ -2498,9 +2502,24 @@ const HistoryPage: React.FC = () => {
 
     setAddModal(prev => ({ ...prev, isSubmitting: true, error: null }));
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      // getSessionUser e não auth.getSession(): este último bate na rede quando
+      // o token expirou e, sem internet, fica pendurado ANTES de qualquer coisa
+      // útil — o botão ficava girando para sempre e o lançamento não ia nem para
+      // o banco nem para a fila. getSessionUser tem prazo e cai para a sessão
+      // salva no aparelho.
+      const user = await getSessionUser(supabase);
       const userId = user?.id || 'offline-user';
+
+      // A rota (banco agora x fila) segue o MESMO sinal que o aviso de offline
+      // usa. `navigator.onLine` só diz que existe uma interface de rede ativa:
+      // em Wi-Fi sem saída ou sinal de uma barra ele responde `true`, o app ia
+      // para o caminho online e o `fetch` ficava pendurado sem prazo nenhum.
+      const offline = isProbablyOffline();
+
+      // A tag digitada entra no catálogo local na hora: offline ela nunca volta
+      // do banco, e sem isso não viraria sugestão no próximo lançamento.
+      const cleanTags = parseTags(f.tags);
+      rememberTags(cleanTags);
 
       // Typo correction for manual insertion
       if (f.ownerName && f.ownerName !== 'Pessoal') {
@@ -2517,11 +2536,23 @@ const HistoryPage: React.FC = () => {
         if (matched) f.subcategory = matched;
       }
 
-      if (navigator.onLine) {
-        if (f.ownerName && f.ownerName !== 'Pessoal') await FinanceService.ensureEntityExists(f.ownerName);
-        if (f.category) {
-          const catId = await ReconciliationService.ensureCategoryExists(f.category);
-          if (catId && f.subcategory) await (ReconciliationService as any).ensureSubcategoryExists(catId, f.subcategory);
+      // Cadastros auxiliares (pessoa, categoria, subcategoria) só existem online.
+      // Com prazo e sem derrubar o lançamento: se a rede falhar aqui, o que
+      // importa — o lançamento — continua o caminho e vai para a fila.
+      if (!offline) {
+        try {
+          if (f.ownerName && f.ownerName !== 'Pessoal') {
+            await withTimeout(FinanceService.ensureEntityExists(f.ownerName), NETWORK_TIMEOUT_MS, 'cadastrar pessoa');
+          }
+          if (f.category) {
+            const catId = await withTimeout(ReconciliationService.ensureCategoryExists(f.category), NETWORK_TIMEOUT_MS, 'cadastrar categoria');
+            if (catId && f.subcategory) {
+              await withTimeout((ReconciliationService as any).ensureSubcategoryExists(catId, f.subcategory), NETWORK_TIMEOUT_MS, 'cadastrar subcategoria');
+            }
+          }
+        } catch (auxErr) {
+          if (!isNetworkFailure(auxErr)) throw auxErr;
+          console.warn('Lançamento seguirá sem cadastrar categoria/pessoa (sem rede):', auxErr);
         }
       }
 
@@ -2531,30 +2562,20 @@ const HistoryPage: React.FC = () => {
       const accountName = targetAcc?.institution || 'Conta';
 
       if (!f.isInstallment && !f.isRecurring) {
-        if (!navigator.onLine) {
-          const newTx = {
-            date: f.date, description: f.description, amount, type: f.type,
-            account_id: f.accountId, category: f.category, subcategory: f.subcategory || null, is_paid: false, paid_amount: 0,
-            owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
-            notes: f.notes || '',
-            tags: f.tags || []
-          };
-          const saved = await FinanceService.saveTransaction(newTx);
-          setTransactions(prev => [saved as any, ...prev]);
-          setAddModal({ open: false });
-          return;
-        }
-
         if (isTransfer && f.destinationAccountId) {
+          // Transferência = duas linhas que só fazem sentido juntas (origem e
+          // destino). Enfileirar as duas separadas arriscaria uma passar e a
+          // outra não, deixando o saldo torto — por isso ela continua exigindo
+          // internet, e o aviso diz isso em vez de fingir que salvou.
           const accDest = accounts.find(a => a.id === f.destinationAccountId);
           const accSrc = accounts.find(a => a.id === f.accountId);
-          const { data, error: insertErr } = await supabase.from('transactions').insert([
+          const rows = [
             {
               user_id: user?.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
               account_id: f.accountId, account_name: accSrc?.institution || 'Conta', category: f.category, subcategory: f.subcategory || null, is_paid: true, paid_amount: amount, paid_at: f.date,
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
               notes: f.notes || '',
-              tags: f.tags || [],
+              tags: cleanTags,
               metadata: { is_transfer: true, transfer_side: 'SOURCE', counter_account_id: f.destinationAccountId }
             },
             {
@@ -2562,25 +2583,40 @@ const HistoryPage: React.FC = () => {
               account_id: f.destinationAccountId, account_name: accDest?.institution || 'Conta Destino', category: f.category, subcategory: f.subcategory || null, is_paid: true, paid_amount: amount, paid_at: f.date,
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
               notes: f.notes || '',
-              tags: f.tags || [],
+              tags: cleanTags,
               metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: f.accountId }
             }
-          ]).select('id');
-          if (insertErr) throw insertErr;
-          createdTxId = data?.[0]?.id;
+          ];
+
+          if (offline) {
+            setAddModal(prev => ({ ...prev, isSubmitting: false, error: 'Transferência entre contas precisa de internet, porque cria os dois lados de uma vez. Tente de novo quando estiver conectado.' }));
+            return;
+          }
+
+          const res: any = await withTimeout<any>(
+            supabase.from('transactions').insert(rows).select('id'),
+            NETWORK_TIMEOUT_MS,
+            'salvar transferência'
+          );
+          if (res.error) throw res.error;
+          markNetworkSuccess();
+          createdTxId = res.data?.[0]?.id;
         } else {
-          const { data, error: insertErr } = await supabase.from('transactions').insert({
-            user_id: user?.id, date: f.date, description: f.description, amount, type: f.type,
+          // Lançamento simples: um caminho só para online e offline.
+          // FinanceService.saveTransaction tenta o banco com prazo e, se faltar
+          // rede (inclusive o "conectado sem internet"), guarda na fila e
+          // devolve o lançamento com um id provisório. Só erro de DADOS sobe.
+          const saved = await FinanceService.saveTransaction({
+            date: f.date, description: f.description, amount, type: f.type,
             account_id: f.accountId, category: f.category, subcategory: f.subcategory || null,
             is_paid: f.isPaidNow === true,
             paid_amount: f.isPaidNow === true ? amount : 0,
             paid_at: f.isPaidNow === true ? f.date : null,
             owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
             notes: f.notes || '',
-            tags: f.tags || []
-          }).select('id');
-          if (insertErr) throw insertErr;
-          createdTxId = data?.[0]?.id;
+            tags: cleanTags
+          });
+          createdTxId = saved?.id || null;
         }
       } else {
         const { TransactionSeriesUtils } = await import('../lib/transactionSeriesUtils');
@@ -2593,27 +2629,54 @@ const HistoryPage: React.FC = () => {
           user_id: userId, date: item.date, description: item.description, amount: item.amount, type: item.type, account_id: item.accountId, category: item.category, subcategory: item.subcategory, is_paid: false, paid_amount: 0,
           owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
           notes: f.notes || '',
-          tags: f.tags || [],
+          tags: cleanTags,
           metadata: { ...(f.isInstallment ? { installment_group_id: groupId, installment_number: (item as any).installmentNumber, installment_total: f.installmentsCount } : { recurrence_group_id: groupId }) }
         }));
 
-        if (!navigator.onLine) {
-          inserts.forEach(tx => {
-            const fakeId = 'offline-' + crypto.randomUUID();
-            offlineQueue.addAction('CREATE_TRANSACTION', { ...tx, id: fakeId });
-          });
-          setTransactions(prev => [...inserts.map(tx => ({ ...tx, id: 'offline-' + crypto.randomUUID(), account_name: accounts.find(a => a.id === tx.account_id)?.institution || 'Conta' })) as any, ...prev]);
+        /** Guarda a série inteira na fila e devolve a tela ao usuário. */
+        const queueSeries = () => {
+          inserts.forEach(tx => offlineQueue.addAction('CREATE_TRANSACTION', tx));
           setAddModal({ open: false });
+          toast(`Sem internet: ${inserts.length} lançamentos salvos no aparelho e enviados assim que a conexão voltar.`, 'success');
+          // A tela relê a fila em withPendingOffline, então basta recarregar —
+          // antes o React recebia linhas com um id inventado na hora, diferente
+          // do que ficou na fila, e elas sumiam no primeiro recarregamento.
+          fetchData(true);
+        };
+
+        if (offline) { queueSeries(); return; }
+
+        try {
+          const res: any = await withTimeout<any>(
+            supabase.from('transactions').insert(inserts).select('id'),
+            NETWORK_TIMEOUT_MS,
+            'salvar parcelas'
+          );
+          if (res.error) throw res.error;
+          markNetworkSuccess();
+          createdTxId = res.data?.[0]?.id;
+        } catch (seriesErr) {
+          // Falha de REDE cai na fila. Erro de dados sobe para o usuário: na
+          // fila ele só falharia de novo a cada reconexão, para sempre.
+          if (!isNetworkFailure(seriesErr)) throw seriesErr;
+          queueSeries();
           return;
         }
+      }
 
-        const { data, error: insertErr } = await supabase.from('transactions').insert(inserts).select('id');
-        if (insertErr) throw insertErr;
-        createdTxId = data?.[0]?.id;
+      // O lançamento ficou na fila (id provisório): anexo e divisão dependem do
+      // id REAL do banco, que só existe depois de sincronizar. Tentar agora
+      // gravaria o anexo apontando para um id que não existe.
+      const savedOffline = isOfflineId(createdTxId);
+      if (savedOffline) {
+        toast('Sem internet: lançamento salvo no aparelho e enviado assim que a conexão voltar.', 'success');
+        if ((f.files && f.files.length > 0) || (f.splits && f.splits.length > 0)) {
+          toast('Anexos e divisão por categoria precisam de internet. Abra o lançamento depois de sincronizar para adicioná-los.', 'error');
+        }
       }
 
       // Handle Attachments (Multi-upload)
-      if (createdTxId && f.files && f.files.length > 0) {
+      if (createdTxId && !savedOffline && f.files && f.files.length > 0) {
         for (const file of f.files) {
           try {
             await FinanceService.uploadAttachment(file, createdTxId, false);
@@ -2624,7 +2687,7 @@ const HistoryPage: React.FC = () => {
       }
 
       // Divisão em categorias, quando o usuário preencheu os pedaços no formulário
-      if (createdTxId && f.splits && f.splits.length > 0) {
+      if (createdTxId && !savedOffline && f.splits && f.splits.length > 0) {
         try {
           await SplitTransactionService.saveSplits('transaction', createdTxId, f.splits);
         } catch (splitErr: any) {
@@ -2649,10 +2712,10 @@ const HistoryPage: React.FC = () => {
           subcategory: f.subcategory,
           owner_name: f.ownerName,
           notes: f.notes || '',
-          tags: f.tags || [],
-          isPaid: false,
-          paidAmount: 0,
-          hasSplits: !!(f.splits && f.splits.length > 0),
+          tags: cleanTags,
+          isPaid: f.isPaidNow === true,
+          paidAmount: f.isPaidNow === true ? amount : 0,
+          hasSplits: !!(f.splits && f.splits.length > 0 && !savedOffline),
           metadata: { is_transfer: isTransfer },
           attachments: []
         };
@@ -2707,8 +2770,8 @@ const HistoryPage: React.FC = () => {
   const handleCreateCategory = async (name: string, type: 'INCOME' | 'EXPENSE') => {
     if (!supabase) return;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      // getSessionUser (e não auth.getSession): lê a sessão do aparelho com prazo.
+      const user = await getSessionUser(supabase);
       if (!user) return;
       await supabase.from('categories').insert({ user_id: user.id, name, type, color: 'bg-brand-50 text-brand-600' });
       await fetchData(); // Refetch the list
@@ -2724,7 +2787,7 @@ const HistoryPage: React.FC = () => {
     // as compras pelo mês da compra em vez do vencimento). Offline: usa o estado.
     let slotCardDefs: any[] = allCardMeta;
     let slotStatements: { id: string; due_date: string }[] = cardStatements;
-    if (navigator.onLine && supabase && userId) {
+    if (!isProbablyOffline() && supabase && userId) {
       try {
         const [txsRes, cardTxsRes, cardsRes, stmtsRes] = await Promise.all([
           supabase
@@ -3465,8 +3528,8 @@ const HistoryPage: React.FC = () => {
         reopenTransaction={async (t) => {
           if (!supabase || !window.confirm('Deseja reabrir este lançamento?')) return;
           try {
-            const { data: { session } } = await supabase.auth.getSession();
-            const user = session?.user;
+            // getSessionUser (e não auth.getSession): sessão do aparelho, com prazo.
+            const user = await getSessionUser(supabase);
             if (!user) return;
             const isCardPayment = t.type === 'BILL_PAYMENT' || t.description.toLowerCase().includes('pagamento cartão');
             if (isCardPayment) {
