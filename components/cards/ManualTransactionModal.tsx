@@ -4,6 +4,7 @@ import { SplitFieldsInline } from '../history/SplitFieldsInline';
 import { SplitDraft } from '../../services/splitTransaction.service';
 import { TagsInput } from '../common/TagsInput';
 import { SearchableInput } from '../common/SearchableInput';
+import { normalizeStr } from '../../lib/stringUtils';
 
 interface ManualTransactionModalProps {
     show: boolean;
@@ -417,7 +418,10 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                                         <SearchableInput
                                             value={txSubcategory}
                                             onChange={setTxSubcategory}
-                                            options={subcategories.filter(s => !txCategory || s.category_name === txCategory).map(s => s.name)}
+                                            // normalizeStr nos dois lados: com `===` cru, uma
+                                            // categoria gravada com espaco sobrando ou caixa
+                                            // diferente nao casava e a lista vinha vazia.
+                                            options={subcategories.filter(s => !txCategory || normalizeStr(s.category_name || '') === normalizeStr(txCategory)).map(s => s.name)}
                                             placeholder="Selecione ou digite..."
                                             className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all placeholder:text-slate-300"
                                         />
