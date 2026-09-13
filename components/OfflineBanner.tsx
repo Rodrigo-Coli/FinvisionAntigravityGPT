@@ -1,15 +1,26 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { WifiOff, RefreshCw, MessageCircle, X } from 'lucide-react';
 import { offlineQueue } from '../lib/offlineQueue.service';
-import { isProbablyOnline, onConnectivityChange } from '../lib/connectivity';
+import { isProbablyOnline, markNetworkSuccess, onConnectivityChange, probeConnectivity } from '../lib/connectivity';
 
 const WHATSAPP_NUMBER = '5511999999999'; // Substituir pelo número real do suporte
 
 /** De quanto em quanto tempo tentamos esvaziar a fila enquanto houver pendência. */
 const RETRY_INTERVAL_MS = 30000;
 
+/**
+ * De quanto em quanto tempo perguntamos à rede, de verdade, se ela voltou —
+ * enquanto o app se considera offline. Sem isso a única saída do modo offline
+ * era esperar o período grudento inteiro, e a tarja vermelha ficava na tela
+ * muito depois de a conexão ter voltado.
+ */
+const PROBE_INTERVAL_MS = 8000;
+
 const OfflineBanner: React.FC = () => {
-    const [isOffline, setIsOffline] = useState(!isProbablyOnline());
+    // Começa SEM a tarja: o diagnóstico de offline é confirmado por sonda antes
+    // de virar aviso vermelho (ver confirmOffline). A exceção é
+    // `navigator.onLine === false`, que é conclusivo e aparece na hora.
+    const [isOffline, setIsOffline] = useState(() => navigator.onLine === false);
     const [pendingCount, setPendingCount] = useState(0);
     const [failedCount, setFailedCount] = useState(0);
     const [dismissed, setDismissed] = useState(false);
@@ -23,6 +34,32 @@ const OfflineBanner: React.FC = () => {
             if (!alive) return;
             setPendingCount(offlineQueue.getPendingCount());
             setFailedCount(offlineQueue.getFailed().length);
+        };
+
+        /**
+         * A tarja vermelha só aparece depois de a queda ser CONFIRMADA.
+         *
+         * Antes, qualquer prazo estourado já pintava "Offline" — e uma abertura
+         * mais lenta do app (4G fraco, consulta grande) bastava para o usuário
+         * ver o aviso com a internet funcionando. Agora: se o navegador diz que
+         * não há rede, acreditamos na hora; se é só um palpite nosso, a gente
+         * pergunta para a rede antes de avisar.
+         */
+        const confirmOffline = async () => {
+            if (!alive) return;
+
+            if (navigator.onLine === false) { setIsOffline(true); return; }
+            if (isProbablyOnline()) { setIsOffline(false); return; }
+
+            const online = await probeConnectivity();
+            if (!alive) return;
+            if (online) {
+                markNetworkSuccess(); // desfaz o diagnóstico errado para o app inteiro
+                setIsOffline(false);
+                trySync();
+            } else {
+                setIsOffline(true);
+            }
         };
 
         const trySync = async () => {
@@ -54,12 +91,25 @@ const OfflineBanner: React.FC = () => {
         //    (`navigator.onLine` sozinho não percebe "Wi-Fi sem internet").
         const unsubscribe = onConnectivityChange((online) => {
             if (!alive) return;
-            setIsOffline(!online);
             if (online) {
+                setIsOffline(false);
                 setDismissed(false);
                 trySync();
+            } else {
+                // Não mostra na hora: confirma com a rede primeiro.
+                confirmOffline();
             }
         });
+
+        // 4. Enquanto nos consideramos offline, perguntamos à rede de tempos em
+        //    tempos. É o que faz a tarja sumir assim que a conexão volta, mesmo
+        //    sem o evento `online` do navegador (que em celular quase não vem).
+        const probeTimer = setInterval(() => {
+            if (!alive || isProbablyOnline()) return;
+            confirmOffline();
+        }, PROBE_INTERVAL_MS);
+
+        confirmOffline();
 
         window.addEventListener('finvision_offline_queue_updated', refreshCounts);
         window.addEventListener('offline-queue-updated', refreshCounts);
@@ -68,6 +118,7 @@ const OfflineBanner: React.FC = () => {
         return () => {
             alive = false;
             clearInterval(timer);
+            clearInterval(probeTimer);
             unsubscribe();
             window.removeEventListener('finvision_offline_queue_updated', refreshCounts);
             window.removeEventListener('offline-queue-updated', refreshCounts);

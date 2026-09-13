@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 import { Transaction, TransactionType, BankAccount, TransactionSplit } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { offlineQueue, isOfflineId } from '../lib/offlineQueue.service';
-import { isNetworkFailure, isProbablyOffline, markNetworkFailure, markNetworkSuccess, withTimeout, NETWORK_TIMEOUT_MS } from '../lib/connectivity';
+import { isNetworkFailure, isHardNetworkFailure, isProbablyOffline, markNetworkFailure, markNetworkSuccess, withTimeout, NETWORK_TIMEOUT_MS } from '../lib/connectivity';
 import { parseTags, suggestTags, matchesAnyTag, rememberTags } from '../lib/tagUtils';
 import { getSessionUser } from '../lib/session';
 import { SearchableInput } from '../components/common/SearchableInput';
@@ -1344,7 +1344,11 @@ const HistoryPage: React.FC = () => {
       // Falha de rede não é "erro ao carregar": o usuário já está vendo os dados
       // do cache. Marcar erro aqui limpava a tela de quem estava só sem sinal.
       if (isNetworkFailure(err)) {
-        markNetworkFailure();
+        // Classifica: só a falha DURA (o navegador não entregou a requisição)
+        // liga o modo offline na hora. Uma consulta que só demorou é lentidão,
+        // e pintar a tarja vermelha por causa disso era o que fazia o app
+        // "viver offline" em conexão boa porém lenta.
+        markNetworkFailure(isHardNetworkFailure(err) ? 'hard' : 'soft');
         return;
       }
       setError('Erro ao carregar dados.');

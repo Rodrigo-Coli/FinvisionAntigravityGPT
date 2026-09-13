@@ -1,5 +1,5 @@
 import { supabase } from './supabase/client';
-import { isNetworkFailure, isProbablyOnline, markNetworkFailure, markNetworkSuccess, withTimeout } from './connectivity';
+import { isHardNetworkFailure, isNetworkFailure, isProbablyOnline, markNetworkFailure, markNetworkSuccess, withTimeout } from './connectivity';
 
 /**
  * Fila offline — o que era quebrado aqui
@@ -434,7 +434,7 @@ class OfflineQueueService {
           successCount++;
         } catch (err: any) {
           if (isNetworkFailure(err)) {
-            markNetworkFailure();
+            markNetworkFailure(isHardNetworkFailure(err) ? 'hard' : 'soft');
             networkDown = true;
             remaining.push(action);
             continue;

@@ -189,19 +189,25 @@ describe('classificação de falha de rede', () => {
 });
 
 describe('prazo das chamadas de rede', () => {
-  it('rejeita quando a resposta não chega e marca o app como offline', async () => {
+  it('rejeita quando a resposta não chega — mas um prazo só não declara offline', async () => {
+    // A versão anterior ligava o modo offline no PRIMEIRO prazo estourado, e era
+    // por isso que o app vivia mostrando a tarja vermelha: lentidão não é queda.
+    // O lançamento continua indo para a fila (isNetworkFailure segue verdadeiro),
+    // o que muda é só o aviso na tela. Ver tests/connectivity.test.ts.
     const nunca = new Promise(() => undefined);
-    await expect(withTimeout(nunca, 20, 'teste')).rejects.toBeInstanceOf(NetworkTimeoutError);
-    expect(isProbablyOnline()).toBe(false);
+    const err = await withTimeout(nunca, 20, 'teste').catch(e => e);
+    expect(err).toBeInstanceOf(NetworkTimeoutError);
+    expect(isNetworkFailure(err)).toBe(true);
+    expect(isProbablyOnline()).toBe(true);
   });
 
   it('deixa a resposta passar quando ela chega a tempo', async () => {
     await expect(withTimeout(Promise.resolve('ok'), 1000, 'teste')).resolves.toBe('ok');
   });
 
-  it('considera o app offline logo após uma falha, sem esperar novo timeout', () => {
+  it('considera o app offline logo após uma falha DURA, sem esperar novo timeout', () => {
     expect(isProbablyOnline()).toBe(true);
-    markNetworkFailure();
+    markNetworkFailure('hard');
     expect(isProbablyOnline()).toBe(false);
     markNetworkSuccess();
     expect(isProbablyOnline()).toBe(true);

@@ -621,13 +621,18 @@ export default function AdminDashboard({ user }: { user?: Profile | null }) {
           {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: 'Assinaturas Ativas', value: metrics.activeSubscriptions, icon: <TrendingUp size={18} />, color: 'emerald' },
-              { label: 'Em Trial', value: metrics.trialing, icon: <Clock size={18} />, color: 'blue' },
-              { label: 'Novos esta semana', value: `+${metrics.newThisWeek}`, icon: <ArrowUpRight size={18} />, color: 'violet' },
-              { label: 'Cancelamentos/mês', value: metrics.churnedThisMonth, icon: <XCircle size={18} />, color: 'rose' },
+              // A classe vai INTEIRA, não montada por pedaços a partir do nome
+              // da cor. O Tailwind agora é compilado no build e só gera o que
+              // consegue LER no código-fonte: um nome de classe formado em tempo
+              // de execução não existe no CSS final, e estes quadradinhos
+              // ficariam sem cor nenhuma. (tests/indexHtml.test.ts vigia isso.)
+              { label: 'Assinaturas Ativas', value: metrics.activeSubscriptions, icon: <TrendingUp size={18} />, color: 'bg-emerald-50 text-emerald-500' },
+              { label: 'Em Trial', value: metrics.trialing, icon: <Clock size={18} />, color: 'bg-blue-50 text-blue-500' },
+              { label: 'Novos esta semana', value: `+${metrics.newThisWeek}`, icon: <ArrowUpRight size={18} />, color: 'bg-violet-50 text-violet-500' },
+              { label: 'Cancelamentos/mês', value: metrics.churnedThisMonth, icon: <XCircle size={18} />, color: 'bg-rose-50 text-rose-500' },
             ].map(kpi => (
               <div key={kpi.label} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] p-5 shadow-sm">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 bg-${kpi.color}-50 text-${kpi.color}-500`}>{kpi.icon}</div>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${kpi.color}`}>{kpi.icon}</div>
                 <p className="text-2xl font-black text-slate-900 dark:text-white">{kpi.value}</p>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{kpi.label}</p>
               </div>

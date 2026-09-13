@@ -1,4 +1,8 @@
 
+// O CSS do app (Tailwind + estilos próprios) entra pelo bundle, e não mais por
+// uma CDN de terceiro no <head>. Ver tailwind.config.js para o motivo.
+import './src/index.css';
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';

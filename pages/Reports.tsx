@@ -9,7 +9,7 @@ import { FinanceService } from '../services/finance.service';
 import { TransactionSplit } from '../types';
 import { SearchableMultiSelect } from '../components/history/HistoryFilters';
 import { normalizeStr } from '../lib/stringUtils';
-import { isNetworkFailure, isProbablyOffline, markNetworkFailure } from '../lib/connectivity';
+import { isNetworkFailure, isHardNetworkFailure, isProbablyOffline, markNetworkFailure } from '../lib/connectivity';
 import { getSessionUser } from '../lib/session';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -502,7 +502,9 @@ const Reports: React.FC = () => {
       console.error("Erro ao computar estatísticas de relatórios:", err);
       // Caiu a conexão no meio: mostra o último relatório salvo em vez de zerar.
       if (isNetworkFailure(err)) {
-        markNetworkFailure();
+        // Idem: lentidão (prazo estourado) não vira tarja vermelha na primeira
+        // ocorrência; só falha dura, ou repetição, declara offline.
+        markNetworkFailure(isHardNetworkFailure(err) ? 'hard' : 'soft');
         applyCachedReport();
       }
     } finally {
