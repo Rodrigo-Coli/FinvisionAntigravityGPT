@@ -4,9 +4,26 @@ import { supabase } from '../lib/supabase/client';
 import { Sparkles, Loader2 } from 'lucide-react';
 import { signOutSafely } from '../lib/session';
 
+/**
+ * Modo demo — por que demorava tanto para abrir
+ * ---------------------------------------------
+ * Eram cinco idas e voltas à rede EM FILA, cada uma esperando a anterior:
+ * logout no servidor -> cadastro -> (login) -> clonagem dos dados -> busca do
+ * plano -> assinatura. No celular em 4G isso vira uma eternidade encarando um
+ * spinner sem nenhuma informação, e é fácil achar que travou.
+ *
+ * O que mudou:
+ *  - o logout agora é só local (`localOnly`). A sessão anterior vai ser
+ *    substituída por uma conta nova em seguida, então esperar até 4s por um
+ *    logout de rede não servia para nada — e era a PRIMEIRA espera de todas;
+ *  - a clonagem dos dados e a busca do plano passaram a rodar em paralelo: uma
+ *    não depende do resultado da outra;
+ *  - a tela diz em que passo está, em vez de um "Iniciando Demo..." fixo.
+ */
 export default function DemoMode() {
   const navigate = useNavigate();
   const [error, setError] = useState('');
+  const [step, setStep] = useState('Preparando...');
 
   useEffect(() => {
     async function loginDemo() {
@@ -15,7 +32,9 @@ export default function DemoMode() {
         return;
       }
       
-      await signOutSafely(supabase);
+      // Só local: a sessão atual será trocada por uma conta nova logo abaixo.
+      setStep('Criando seu acesso de demonstração');
+      await signOutSafely(supabase, 4000, { localOnly: true });
 
       // Gerar email randômico para isolar os ambientes de testes de cada visitante
       const demoEmail = `demo+${Date.now()}@finvision.app`;
@@ -42,22 +61,21 @@ export default function DemoMode() {
         }
       }
 
-      // Clona e cria fake data específico para ESSE uuid através do RPC
-      const { error: rpcError } = await supabase.rpc('clone_demo_data', {
-        new_uid: signUpData.user.id
-      });
+      // Clonagem dos dados e busca do plano vão JUNTAS: uma não depende da
+      // outra, e em fila elas somavam duas viagens de rede completas.
+      setStep('Carregando contas, cartões e lançamentos');
+      const [cloneRes, planRes] = await Promise.all([
+        supabase.rpc('clone_demo_data', { new_uid: signUpData.user.id }),
+        supabase.from('plans').select('id').eq('slug', 'starter').maybeSingle()
+      ]);
 
-      if (rpcError) {
-        console.warn('Erro populando dados demo. Ambiente será carregado vazio:', rpcError);
+      if (cloneRes.error) {
+        console.warn('Erro populando dados demo. Ambiente será carregado vazio:', cloneRes.error);
       }
 
       // Garante que o usuário demo tenha plano Starter para limites ficarem definidos
       try {
-        const { data: starterPlan } = await supabase
-          .from('plans')
-          .select('id')
-          .eq('slug', 'starter')
-          .maybeSingle();
+        const starterPlan = planRes.data;
 
         if (starterPlan) {
           await supabase.from('subscriptions').upsert({
@@ -73,6 +91,7 @@ export default function DemoMode() {
         console.warn('Não foi possível criar assinatura demo:', subErr);
       }
 
+      setStep('Quase lá');
       localStorage.setItem('is_finvision_demo', 'true');
       
       // Dá tempo do banco finalizar os triggers de accounts/profiles de entrada
@@ -102,7 +121,7 @@ export default function DemoMode() {
       ) : (
         <div className="mt-10 flex flex-col items-center gap-3">
           <Loader2 size={24} className="animate-spin text-brand-400" />
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest animate-pulse">Iniciando Demo...</span>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest animate-pulse">{step}</span>
         </div>
       )}
     </div>

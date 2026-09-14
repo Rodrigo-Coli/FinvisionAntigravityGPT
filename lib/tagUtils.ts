@@ -94,3 +94,70 @@ export function matchesAnyTag(rowTags: unknown, selected: string[]): boolean {
   const wanted = new Set(selected.map(normalizeTag));
   return parseTags(rowTags).some(tag => wanted.has(normalizeTag(tag)));
 }
+
+/**
+ * Catálogo de tags conhecidas — por que precisa existir
+ * ----------------------------------------------------
+ * As sugestões de tag eram montadas SÓ com o que estava carregado na tela no
+ * momento (`collectTags(transactions)`). Isso quebrava em três situações reais:
+ *
+ *   - na tela de Cartões, `transactions` é só a fatura aberta do cartão
+ *     selecionado; tags usadas em lançamentos bancários, em outro cartão ou em
+ *     outra fatura simplesmente não existiam ali;
+ *   - offline, quando a tela vinha do cache de um recorte curto de período;
+ *   - na PRIMEIRA vez que a pessoa usa tags: ela digita "Maceió.26", salva, e a
+ *     tag só vira sugestão depois de a linha voltar do banco — o que offline
+ *     nunca acontece.
+ *
+ * O resultado era sempre o mesmo: campo de tags sem nenhuma sugestão. Agora toda
+ * tag vista ou digitada é guardada neste catálogo local, que sobrevive a
+ * recarregamento e funciona sem internet.
+ */
+const KNOWN_TAGS_KEY = 'finvision_known_tags';
+
+/** Teto do catálogo: evita crescer sem limite no localStorage. */
+const KNOWN_TAGS_LIMIT = 400;
+
+/** Tags já conhecidas neste aparelho, em ordem alfabética. */
+export function getKnownTags(): string[] {
+  try {
+    const raw = localStorage.getItem(KNOWN_TAGS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return parseTags(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return []; // storage indisponível (modo privado, cota): segue sem sugestões
+  }
+}
+
+/**
+ * Acrescenta tags ao catálogo local. Aceita array, texto com vírgulas ou nada —
+ * nunca lança, porque isto roda dentro de fluxos de salvamento e não pode
+ * derrubar o lançamento do usuário.
+ */
+export function rememberTags(input: unknown): string[] {
+  const incoming = parseTags(input);
+  if (incoming.length === 0) return getKnownTags();
+
+  const merged = parseTags([...getKnownTags(), ...incoming])
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    .slice(0, KNOWN_TAGS_LIMIT);
+
+  try {
+    localStorage.setItem(KNOWN_TAGS_KEY, JSON.stringify(merged));
+  } catch {
+    /* cota estourada: as sugestões desta sessão continuam valendo em memória */
+  }
+  return merged;
+}
+
+/**
+ * Lista para sugerir na digitação: o que está na tela AGORA somado ao catálogo
+ * local. De quebra, alimenta o catálogo com o que a tela trouxe — então abrir o
+ * Histórico uma vez já deixa as tags disponíveis na tela de Cartões, e vice-versa.
+ */
+export function suggestTags(...rowGroups: any[][]): string[] {
+  const onScreen = collectTags(...rowGroups);
+  const known = onScreen.length > 0 ? rememberTags(onScreen) : getKnownTags();
+  return parseTags([...onScreen, ...known]).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}

@@ -114,14 +114,22 @@ const App: React.FC = () => {
     if (!supabase) return;
     let cancelled = false;
     (async () => {
-      const { data: { session } } = await supabase!.auth.getSession();
-      const uid = session?.user?.id;
+      // Tarefa de fundo: o valor do aparelho já foi aplicado acima, então esta
+      // busca não pode ficar pendurada sem prazo (era mais um `await` de rede
+      // disparado no boot, competindo com o que a tela realmente precisa).
+      const user = await getSessionUser(supabase!);
+      const uid = user?.id;
       if (!uid || cancelled) return;
-      const { data } = await supabase!
-        .from('user_settings')
-        .select('market_indexes')
-        .eq('user_id', uid)
-        .maybeSingle();
+      const { data } = await withTimeout<any>(
+        supabase!
+          .from('user_settings')
+          .select('market_indexes')
+          .eq('user_id', uid)
+          .maybeSingle(),
+        BOOT_TIMEOUT_MS,
+        'índices de mercado',
+        { silent: true }
+      ).catch(() => ({ data: null }));
       if (cancelled || !data?.market_indexes) return;
       FinancialEngine.setMarketIndexes(data.market_indexes);
       safeStorage.setItem('finvision_market_indexes', JSON.stringify(data.market_indexes));
@@ -173,7 +181,12 @@ const App: React.FC = () => {
     // deixava `getSession()` pendurado, `handleSession` nunca rodava e o app
     // ficava eternamente no spinner — a "tela travada". Estourando o prazo,
     // seguimos com a sessão já salva no aparelho e o app abre offline.
-    withTimeout<any>(supabase.auth.getSession(), BOOT_TIMEOUT_MS, 'sessão inicial')
+    // `silent`: o prazo aqui é curto DE PROPÓSITO, para o app abrir depressa com
+    // o que já está no aparelho. Estourá-lo significa "a rede está lenta", não
+    // "não há internet" — e deixar isso pintar a tarja vermelha fazia o app
+    // aparecer como offline em toda abertura mais demorada (4G fraco, projeto
+    // frio). A conectividade de verdade é medida pelas chamadas normais do app.
+    withTimeout<any>(supabase.auth.getSession(), BOOT_TIMEOUT_MS, 'sessão inicial', { silent: true })
       .then(({ data: { session } }: any) => handleSession(session))
       .catch(async () => {
         const cached = await getSessionUser(supabase);
@@ -193,7 +206,8 @@ const App: React.FC = () => {
       const { data, error } = await withTimeout<any>(
         supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
         BOOT_TIMEOUT_MS,
-        'perfil'
+        'perfil',
+        { silent: true } // idem: prazo de boot não é diagnóstico de conectividade
       );
       if (!data && !error) {
         const newProfile = { id: uid, email: email || '', role: UserRole.USER, is_approved: true };
@@ -209,7 +223,8 @@ const App: React.FC = () => {
       const { data: userSettings } = await withTimeout<any>(
         supabase.from('user_settings').select('auto_dark_mode, dark_mode_force').eq('user_id', uid).maybeSingle(),
         BOOT_TIMEOUT_MS,
-        'preferências'
+        'preferências',
+        { silent: true }
       );
       if (userSettings) {
         const forceDark = userSettings.dark_mode_force || false;

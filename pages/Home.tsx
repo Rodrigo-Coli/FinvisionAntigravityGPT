@@ -31,6 +31,7 @@ import { FinanceService } from '../services/finance.service';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import UsageMeter from '../components/subscription/UsageMeter';
 import { useReconnectRefresh } from '../lib/useReconnectRefresh';
+import { isProbablyOffline } from '../lib/connectivity';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
   const [data, setData] = useState<DashboardData | null>(() => DashboardService.getCachedSummary());
@@ -115,7 +116,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
   }, []);
 
   const primeOfflineCaches = async () => {
-    if (!supabase || !navigator.onLine || !user?.id) return;
+    if (!supabase || isProbablyOffline() || !user?.id) return;
     try {
       const [accRes, catRes, subRes, entitiesRes] = await Promise.all([
         supabase.from('accounts').select('*').eq('user_id', user.id).eq('is_archived', false),
@@ -151,7 +152,10 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
   const loadData = async () => {
     try {
-      if (navigator.onLine) {
+      // isProbablyOffline e não navigator.onLine: este último responde `true` em
+      // Wi-Fi sem saída e sinal fraco, e o painel ia buscar no banco uma resposta
+      // que nunca chegava — ficando no spinner em vez de mostrar o cache.
+      if (!isProbablyOffline()) {
         primeOfflineCaches(); // Silently trigger background cache priming
         const dashboardData = await DashboardService.getSummary();
         setData(dashboardData);

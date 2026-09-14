@@ -1,11 +1,11 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Loader2, Edit2, Archive, Trash2, Info, Filter, X as XIcon } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
 import { FinanceService } from '../../services/finance.service';
 import { offlineQueue } from '../../lib/offlineQueue.service';
-import { isProbablyOffline } from '../../lib/connectivity';
-import { parseTags, collectTags } from '../../lib/tagUtils';
+import { isProbablyOffline, isNetworkFailure, markNetworkSuccess, withTimeout, NETWORK_TIMEOUT_MS } from '../../lib/connectivity';
+import { parseTags, suggestTags, rememberTags } from '../../lib/tagUtils';
 import { useReconnectRefresh } from '../../lib/useReconnectRefresh';
 import { ReconciliationService } from '../../services/reconciliation.service';
 import { DateUtils } from '../../lib/dateUtils';
@@ -344,9 +344,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     if (!supabase) return;
     if (!silent) setLoading(true);
     try {
-      if (navigator.onLine) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const user = session?.user;
+      if (!isProbablyOffline()) {
+        const user = await getSessionUser(supabase);
         if (!user) return;
         const { data, error } = await supabase
           .from('cards')
@@ -390,9 +389,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
   const fetchCategories = async () => {
     if (!supabase) return;
     try {
-      if (navigator.onLine) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const user = session?.user;
+      if (!isProbablyOffline()) {
+        const user = await getSessionUser(supabase);
         if (!user) return;
         const { data, error } = await supabase
           .from('categories')
@@ -462,8 +460,10 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
   const handleCreateCategory = async (name: string) => {
     if (!supabase) return;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      // getSessionUser: lê a sessão salva no aparelho, com prazo. auth.getSession()
+      // bate na rede quando o token expirou e, sem internet, fica pendurado —
+      // travando o botão antes de qualquer verificação de offline abaixo.
+      const user = await getSessionUser(supabase);
       if (!user) return;
       
       const { data, error } = await supabase
@@ -498,7 +498,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     };
 
     try {
-      if (!navigator.onLine) { fromCache(); return; }
+      if (isProbablyOffline()) { fromCache(); return; }
 
       // getSessionUser em vez de auth.getSession(): na abertura do app a sessao
       // pode ainda nao ter sido restaurada, e o codigo antigo dava `return` sem
@@ -535,9 +535,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
   const fetchAccounts = async () => {
     if (!supabase) return;
     try {
-      if (navigator.onLine) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const user = session?.user;
+      if (!isProbablyOffline()) {
+        const user = await getSessionUser(supabase);
         if (!user) return;
         const { data, error } = await supabase
           .from('accounts')
@@ -632,9 +631,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
   const fetchOwners = async () => {
     if (!supabase) return;
     try {
-      if (navigator.onLine) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const user = session?.user;
+      if (!isProbablyOffline()) {
+        const user = await getSessionUser(supabase);
         if (!user) return;
         const { data, error } = await supabase.from('entities').select('name').eq('user_id', user.id).eq('is_archived', false);
         if (error) throw error;
@@ -786,10 +784,9 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       setStatements(cachedData);
     }
 
-    if (!supabase || !navigator.onLine) return cachedData;
+    if (!supabase || isProbablyOffline()) return cachedData;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      const user = await getSessionUser(supabase);
       if (!user) return cachedData;
 
       let query = supabase.from('card_statements').select('*').eq('user_id', user.id).order('due_date', { ascending: false });
@@ -810,10 +807,15 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
   // Carrega lançamentos recentes do usuário (todos os cartões) para sugerir descrições,
   // preenchendo categoria/subcategoria/pessoa automaticamente — igual às transações.
   const fetchRecentTxs = async () => {
-    if (!supabase || !navigator.onLine) return;
+    if (!supabase || isProbablyOffline()) {
+      // Sem rede não há o que buscar, mas o spinner PRECISA sair: com o cache
+      // vazio (primeiro acesso a esta fatura offline) a tela ficava carregando
+      // para sempre, porque o `finally` que desliga o spinner está no try abaixo.
+      setLoadingTxs(false);
+      return;
+    }
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      const user = await getSessionUser(supabase);
       if (!user) return;
       const { data, error } = await supabase
         .from('card_transactions')
@@ -851,8 +853,30 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       : `finvision_cached_card_transactions_${cardId}_${statementId || 'all'}`;
     const cached = localStorage.getItem(dynamicKey);
     const cachedData = cached ? JSON.parse(cached) : [];
-    if (cachedData.length > 0) {
-      setTransactions(cachedData);
+
+    /**
+     * Junta ao que veio do banco/cache as compras lançadas offline que ainda
+     * estão na fila. Sem isso, a compra feita sem internet só existia no estado
+     * do React: bastava trocar de fatura ou recarregar o app para ela sumir da
+     * tela — e a pessoa lançava tudo de novo, achando que tinha se perdido.
+     */
+    const withPendingOffline = (rows: any[]): any[] => {
+      try {
+        const pending = offlineQueue.getPendingCardTransactions(familyIds || [cardId]);
+        if (pending.length === 0) return rows;
+        // A compra enfileirada ainda não tem fatura (statement_id é resolvido no
+        // envio), então ela aparece em qualquer fatura do cartão que estiver
+        // aberta na tela — é o único lugar onde o usuário conseguiria vê-la.
+        return [...pending, ...(rows || [])];
+      } catch (e) {
+        console.warn('Cartões: falha ao mesclar fila offline', e);
+        return rows;
+      }
+    };
+
+    const cachedWithPending = withPendingOffline(cachedData);
+    if (cachedWithPending.length > 0) {
+      setTransactions(cachedWithPending);
       setLoadingTxs(false);
     } else {
       setLoadingTxs(true);
@@ -865,10 +889,9 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       if (selected) setCurrentStatement(selected);
     }
 
-    if (!supabase || !navigator.onLine) return;
+    if (!supabase || isProbablyOffline()) return;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      const user = await getSessionUser(supabase);
       if (!user) return;
 
       // Join com categories(name): sem isso, tx.category vem undefined (a coluna real
@@ -900,7 +923,9 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       if (error) throw error;
 
       const mapped = (data || []).map((t: any) => ({ ...t, category: t.categories?.name || '' }));
-      setTransactions(mapped);
+      setTransactions(withPendingOffline(mapped));
+      // O cache guarda só o que é do banco: o pendente vive na fila e é mesclado
+      // na leitura, senão ele viraria uma linha fantasma quando sincronizasse.
       localStorage.setItem(dynamicKey, JSON.stringify(mapped));
     } catch (err) {
       console.error('Erro ao buscar transações de cartão, fallback cache:', err);
@@ -940,8 +965,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
 
     setSavingRowId(id);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      // getSessionUser (e não auth.getSession): lê a sessão do aparelho com prazo.
+      const user = await getSessionUser(supabase);
       if (!user) return;
 
       if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
@@ -1061,8 +1086,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     if (!confirmedScope && !confirm('Excluir esta transação?')) return;
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      // getSessionUser (e não auth.getSession): lê a sessão do aparelho com prazo.
+      const user = await getSessionUser(supabase);
       if (!user) return;
 
       if (!confirmedScope || confirmedScope === 'ONLY_THIS') {
@@ -1133,6 +1158,25 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     }
   };
 
+  /**
+   * Lançar uma compra de cartão — por que este fluxo travava em "Processando..."
+   * ----------------------------------------------------------------------------
+   * A versão anterior era 100% online e sem prazo em nenhuma etapa: lia a sessão
+   * pela rede (`supabase.auth.getSession()`), criava a categoria, resolvia ou
+   * CRIAVA a fatura em `card_statements` e só então inseria a compra. Sem
+   * internet:
+   *
+   *   - se o `fetch` rejeitava, a compra sumia com um toast de erro;
+   *   - se ficava pendurado (Wi-Fi sem saída, sinal de uma barra — em que o
+   *     `fetch` NÃO rejeita), nada acontecia: o botão ficava em "Processando..."
+   *     para sempre e a compra não ia nem para o banco nem para a fila offline.
+   *
+   * Agora a decisão de rota é a mesma que o aviso de offline usa
+   * (`isProbablyOffline`, que enxerga "conectado mas sem internet"), toda etapa
+   * online tem prazo, e falha de rede no meio do caminho cai para a fila em vez
+   * de perder o lançamento. A fatura e a categoria nova são resolvidas na hora
+   * do envio (ver CREATE_CARD_TRANSACTION na fila) — offline elas não existem.
+   */
   const handleAddManualTx = async () => {
     const parseNumeric = (val: any, fallback = 0): number => {
       if (typeof val === 'number') return val;
@@ -1144,12 +1188,18 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     if (!supabase || !txCardId) return;
     setIsSaving(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-      if (!user) return;
+      // getSessionUser e não auth.getSession(): aquele bate na rede quando o
+      // token expirou e, offline, fica pendurado antes mesmo de chegar na
+      // primeira linha útil. Este lê a sessão salva no aparelho, com prazo.
+      const user = await getSessionUser(supabase);
+      if (!user) {
+        toast('Não foi possível identificar sua conta. Entre novamente para lançar.', 'error');
+        return;
+      }
 
       const cleanAmount = parseNumeric(txAmount);
       const cleanInstallments = parseNumeric(installmentsCount, 1);
+      const offline = isProbablyOffline();
 
       // Resolve categoryName (txCategory) to category_id, auto-creating if it doesn't exist
       let resolvedCategoryId: string | null = null;
@@ -1157,13 +1207,17 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         const catObj = categories.find(c => c.name.toLowerCase().trim() === txCategory.toLowerCase().trim());
         if (catObj) {
           resolvedCategoryId = catObj.id;
-        } else {
+        } else if (!offline) {
           try {
-            const { data: newCat, error: catError } = await supabase
-              .from('categories')
-              .insert({ user_id: user.id, name: txCategory.trim(), type: 'EXPENSE', color: 'bg-brand-50 text-brand-600' })
-              .select('id')
-              .single();
+            const { data: newCat, error: catError } = await withTimeout<any>(
+              supabase
+                .from('categories')
+                .insert({ user_id: user.id, name: txCategory.trim(), type: 'EXPENSE', color: 'bg-brand-50 text-brand-600' })
+                .select('id')
+                .single(),
+              NETWORK_TIMEOUT_MS,
+              'criar categoria'
+            );
             if (!catError && newCat) {
               resolvedCategoryId = newCat.id;
               // Refresh categories list in background
@@ -1173,6 +1227,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
             console.error("Erro ao criar categoria sob demanda:", e);
           }
         }
+        // Offline a categoria nova não pode ser criada agora: o NOME viaja na
+        // fila (`_categoryName`) e vira category_id na hora do envio.
       }
 
       let cleanSubcategory = txSubcategory || null;
@@ -1181,11 +1237,15 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         const matched = findCloseMatch(cleanSubcategory, subcatNames);
         if (matched) {
           cleanSubcategory = matched;
-        } else if (resolvedCategoryId) {
+        } else if (resolvedCategoryId && !offline) {
           // Subcategoria nova: registra na tabela para virar opção futura (igual às transações).
           // O serviço já faz dedup interno, evitando duplicatas.
           try {
-            await ReconciliationService.ensureSubcategoryExists(resolvedCategoryId, cleanSubcategory.trim());
+            await withTimeout(
+              ReconciliationService.ensureSubcategoryExists(resolvedCategoryId, cleanSubcategory.trim()),
+              NETWORK_TIMEOUT_MS,
+              'criar subcategoria'
+            );
             fetchSubcategories();
           } catch (e) {
             console.error('Erro ao salvar subcategoria nova do cartão:', e);
@@ -1195,29 +1255,101 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
 
       const cardObj = cards.find(c => c.id === txCardId);
       const defaultOwnerName = cardObj?.default_owner || 'Pessoal';
+      const cleanTags = parseTags(txTags);
+      // A tag digitada entra no catálogo local na hora: offline ela nunca volta
+      // do banco, e sem isso não viraria sugestão no próximo lançamento.
+      rememberTags(cleanTags);
+
+      /** Campos comuns às duas rotas (simples e série). */
+      const baseRow = {
+        user_id: user.id,
+        card_id: txCardId,
+        description: txDescription,
+        status: 'POSTED',
+        source: 'MANUAL',
+        is_manual: true,
+        category_id: resolvedCategoryId || null,
+        subcategory: cleanSubcategory,
+        owner_name: defaultOwnerName,
+        notes: txNotes || '',
+        tags: cleanTags
+      };
+
+      /**
+       * Guarda o lançamento (ou a série) na fila e devolve a tela ao usuário.
+       * Usado tanto quando já sabemos que está offline quanto quando a rede
+       * falha no meio do envio — em nenhum dos dois casos o lançamento pode se
+       * perder.
+       */
+      const queueOffline = (rows: any[]) => {
+        for (const row of rows) {
+          offlineQueue.addAction('CREATE_CARD_TRANSACTION', {
+            ...row,
+            // Sem statement_id de propósito: a fatura é resolvida no envio.
+            // `_rowId` é um uuid de verdade e torna o envio idempotente: se a
+            // resposta do banco se perder e a compra for enfileirada mesmo já
+            // tendo gravado, o reenvio bate na chave primária em vez de criar
+            // uma segunda compra igual na fatura.
+            _rowId: crypto.randomUUID(),
+            _categoryName: !row.category_id && txCategory.trim() ? txCategory.trim() : undefined
+          });
+        }
+
+        const perdeuExtras = (txFiles && txFiles.length > 0) || (txIsDividing && txSplits && txSplits.length > 0);
+        setShowAddTxModal(false);
+        resetTxForm();
+        loadCardContext(txCardId);
+        toast(
+          rows.length > 1
+            ? `Sem internet: ${rows.length} lançamentos salvos no aparelho e enviados assim que a conexão voltar.`
+            : 'Sem internet: lançamento salvo no aparelho e enviado assim que a conexão voltar.',
+          'success'
+        );
+        if (perdeuExtras) {
+          // Anexo e divisão dependem de o lançamento já existir no banco (o
+          // upload precisa do id real). Avisar é melhor do que deixar a pessoa
+          // achar que o comprovante foi junto.
+          toast('Anexos e divisão por categoria precisam de internet. Abra o lançamento depois de sincronizar para adicioná-los.', 'error');
+        }
+      };
 
       if (!isInstallment && !isRecurring) {
-        // Fluxo Simples
-        const targetStmtId = await FinanceService.getOrCreateStatement(txCardId, txDate);
-        const payload: any = {
-          user_id: user.id,
-          card_id: txCardId,
-          statement_id: targetStmtId,
-          date: txDate,
-          description: txDescription,
-          amount: cleanAmount,
-          status: 'POSTED',
-          source: 'MANUAL',
-          is_manual: true,
-          category_id: resolvedCategoryId || null,
-          subcategory: cleanSubcategory,
-          owner_name: defaultOwnerName,
-          notes: txNotes || '',
-          tags: parseTags(txTags)
-        };
+        // ── Fluxo Simples ──
+        if (offline) {
+          queueOffline([{ ...baseRow, date: txDate, amount: cleanAmount }]);
+          return;
+        }
 
-        const { data: txData, error } = await supabase.from('card_transactions').insert([payload]).select('id').single();
-        if (error) throw error;
+        let targetStmtId: string;
+        let txData: any;
+        try {
+          targetStmtId = await withTimeout(
+            FinanceService.getOrCreateStatement(txCardId, txDate),
+            NETWORK_TIMEOUT_MS,
+            'abrir fatura'
+          );
+
+          const res = await withTimeout<any>(
+            supabase.from('card_transactions')
+              .insert([{ ...baseRow, statement_id: targetStmtId, date: txDate, amount: cleanAmount }])
+              .select('id')
+              .single(),
+            NETWORK_TIMEOUT_MS,
+            'salvar lançamento do cartão'
+          );
+          if (res.error) throw res.error;
+          txData = res.data;
+        } catch (err) {
+          // Só falha de REDE vai para a fila. Erro de dados (coluna inválida,
+          // permissão) precisa chegar ao usuário — enfileirar aí só faria o item
+          // falhar de novo a cada reconexão, para sempre.
+          if (isNetworkFailure(err)) {
+            queueOffline([{ ...baseRow, date: txDate, amount: cleanAmount }]);
+            return;
+          }
+          throw err;
+        }
+        markNetworkSuccess();
 
         // Captura os pedaços antes do resetTxForm() limpar o estado do formulário.
         const pendingSplits = txIsDividing ? txSplits : null;
@@ -1253,7 +1385,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         })();
 
       } else {
-        // Fluxo Série (Parcelado ou Recorrente)
+        // ── Fluxo Série (Parcelado ou Recorrente) ──
         const type = isInstallment ? 'INSTALLMENT' : 'RECURRING';
         const { TransactionSeriesUtils } = await import('../../lib/transactionSeriesUtils');
 
@@ -1278,36 +1410,61 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         );
 
         const groupId = crypto.randomUUID();
-        const inserts = [];
-        for (const item of series) {
-          const targetStmtId = await FinanceService.getOrCreateStatement(txCardId, item.date!);
-          inserts.push({
-            user_id: user.id,
-            card_id: txCardId,
-            statement_id: targetStmtId,
-            date: item.date,
-            description: item.description,
-            amount: item.amount,
-            status: 'POSTED',
-            category_id: resolvedCategoryId || null,
-            is_manual: true,
-            source: 'MANUAL',
-            is_installment: item.is_installment,
-            installment_number: item.installment_number,
-            installment_total: item.installment_total,
-            installment_group_id: isInstallment ? groupId : null,
-            is_recurring: item.is_recurring,
-            recurrence_period: item.recurrence_period,
-            recurrence_group_id: isRecurring ? groupId : null,
-            subcategory: cleanSubcategory,
-            owner_name: defaultOwnerName,
-            notes: txNotes || '',
-            tags: parseTags(txTags)
-          });
+
+        /** A série sem a fatura resolvida — é o que vai para a fila offline. */
+        const buildRow = (item: any, statementId: string | null) => ({
+          ...baseRow,
+          statement_id: statementId,
+          date: item.date,
+          description: item.description,
+          amount: item.amount,
+          is_installment: item.is_installment,
+          installment_number: item.installment_number,
+          installment_total: item.installment_total,
+          installment_group_id: isInstallment ? groupId : null,
+          is_recurring: item.is_recurring,
+          recurrence_period: item.recurrence_period,
+          recurrence_group_id: isRecurring ? groupId : null
+        });
+
+        if (offline) {
+          queueOffline(series.map((item: any) => {
+            const { statement_id, ...row } = buildRow(item, null);
+            return row;
+          }));
+          return;
         }
-        
-        const { data: insertsData, error } = await supabase.from('card_transactions').insert(inserts).select('id');
-        if (error) throw error;
+
+        let inserts: any[] = [];
+        let insertsData: any[] | null = null;
+        try {
+          for (const item of series) {
+            const targetStmtId = await withTimeout(
+              FinanceService.getOrCreateStatement(txCardId, item.date!),
+              NETWORK_TIMEOUT_MS,
+              'abrir fatura'
+            );
+            inserts.push(buildRow(item, targetStmtId));
+          }
+
+          const res = await withTimeout<any>(
+            supabase.from('card_transactions').insert(inserts).select('id'),
+            NETWORK_TIMEOUT_MS,
+            'salvar parcelas do cartão'
+          );
+          if (res.error) throw res.error;
+          insertsData = res.data;
+        } catch (err) {
+          if (isNetworkFailure(err)) {
+            queueOffline(series.map((item: any) => {
+              const { statement_id, ...row } = buildRow(item, null);
+              return row;
+            }));
+            return;
+          }
+          throw err;
+        }
+        markNetworkSuccess();
 
         // OPTIMISTIC UI para séries
         setShowAddTxModal(false);
@@ -1338,6 +1495,9 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       console.error('Erro crítico ao adicionar transação:', err);
       toast("Erro ao salvar lançamento: " + (err.message || "Erro desconhecido"), 'error');
     } finally {
+      // O botão SEMPRE volta ao normal. Antes, um `fetch` pendurado deixava
+      // "Processando..." na tela indefinidamente porque nenhuma etapa tinha
+      // prazo — o finally existia, mas nunca era alcançado.
       setIsSaving(false);
     }
   };
@@ -1438,8 +1598,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
 
     setIsSaving(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      // getSessionUser (e não auth.getSession): lê a sessão do aparelho com prazo.
+      const user = await getSessionUser(supabase);
       if (!user) return;
 
       let correctedCategory = defaultCategory || 'Pessoal';
@@ -1561,8 +1721,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
 
     setIsPaying(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      // getSessionUser (e não auth.getSession): lê a sessão do aparelho com prazo.
+      const user = await getSessionUser(supabase);
       if (!user) throw new Error("Usuário não autenticado.");
 
       const { data: members, error: fetchErr } = await supabase
@@ -1658,8 +1818,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     }
     setIsPaying(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      // getSessionUser (e não auth.getSession): lê a sessão do aparelho com prazo.
+      const user = await getSessionUser(supabase);
       if (!user) throw new Error("Usuário não autenticado.");
 
       let targetStatementId = currentStatement?.id;
@@ -1876,6 +2036,13 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     ['OPEN', 'DUE', 'PENDING'].includes(s.status) && 
     Number(s.total_amount || 0) > Number(s.paid_amount || 0)
   );
+
+  // Sugestões de tag: as da fatura aberta MAIS o catálogo local (tags já vistas
+  // em qualquer tela, inclusive no Histórico, e as digitadas offline). Antes era
+  // só `collectTags(transactions)` — como `transactions` é a fatura de UM cartão,
+  // uma carteira inteira de tags não aparecia e o campo parecia não ter sugestão
+  // nenhuma. Em useMemo porque a função também grava o catálogo no localStorage.
+  const tagSuggestions = useMemo(() => suggestTags(transactions), [transactions]);
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-10 py-8 space-y-8 animate-in fade-in duration-500">
@@ -2292,7 +2459,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         setTxNotes={setTxNotes}
         txTags={txTags}
         setTxTags={setTxTags}
-        availableTags={collectTags(transactions)}
+        availableTags={tagSuggestions}
         txIsDividing={txIsDividing}
         setTxIsDividing={setTxIsDividing}
         txSplits={txSplits}

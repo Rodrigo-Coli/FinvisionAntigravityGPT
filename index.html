@@ -55,271 +55,55 @@
   -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Outfit:wght@100..900&display=swap"
-    rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
-            display: ['"Outfit"', 'sans-serif'],
-          },
-          colors: {
-            brand: {
-              50: '#F3F6FB',
-              100: '#c1ecfd',
-              200: '#8de2fe',
-              300: '#38D8FF',
-              400: '#3eb0fd',
-              500: '#2D7FF9',
-              600: '#2362c2',
-              700: '#1b4a96',
-              800: '#123268',
-              900: '#0A1F44',
-              950: '#0e1428',
-            },
-          },
-          animation: {
-            'scan': 'scan 2s linear infinite',
-            'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            'float': 'float 6s ease-in-out infinite',
-            'spin-slow': 'spin 15s linear infinite',
-          },
-          keyframes: {
-            scan: {
-              '0%': { transform: 'translateY(-100%)', opacity: '0' },
-              '50%': { opacity: '1' },
-              '100%': { transform: 'translateY(100%)', opacity: '0' },
-            },
-            float: {
-              '0%, 100%': { transform: 'translateY(0)' },
-              '50%': { transform: 'translateY(-10px)' },
-            }
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    .scrollbar-hide::-webkit-scrollbar {
-      display: none;
-    }
+  <!--
+    As fontes NÃO podem bloquear a primeira pintura.
 
-    .scrollbar-hide {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
-    }
+    Como <link rel="stylesheet"> comum, o navegador se recusa a desenhar
+    qualquer coisa até a folha de estilo do Google responder. Medimos isso: numa
+    rede em que o fonts.googleapis.com não respondia, a tela ficou EM BRANCO por
+    12,5 segundos antes de a requisição desistir — e num iPhone em 4G instável é
+    exatamente esse o cenário de "o site demora para abrir".
 
-    /* Safe Area Padding Utilities */
-    .pb-safe {
-      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px) !important;
-    }
-    
-    .pt-safe {
-      padding-top: env(safe-area-inset-top, 0px) !important;
-    }
-
-    .mobile-header-safe {
-      height: calc(4rem + env(safe-area-inset-top, 0px)) !important;
-      padding-top: env(safe-area-inset-top, 0px) !important;
-    }
-
-    .menu-overlay-safe {
-      padding-top: calc(1.5rem + env(safe-area-inset-top, 0px)) !important;
-    }
-    
-    /* Altura do aviso de offline, publicada pelo próprio componente.
-       O aviso é `fixed top-0`, então sem reservar espaço para ele o cabeçalho
-       (que também é fixed top-0) ficava ESCONDIDO ATRÁS dele no celular — era
-       impossível abrir o menu enquanto estivesse sem internet. Vale 0px quando
-       o aviso não está na tela, então nada muda no uso normal. */
-    :root {
-      --offline-banner-h: 0px;
-    }
-
-    /* Elemento fixo no topo que precisa ficar ABAIXO do aviso de offline. */
-    .below-offline-banner {
-      top: var(--offline-banner-h, 0px) !important;
-    }
-
-    /* Barra lateral do desktop: encosta no topo, mas encurta na mesma medida
-       para não sobrar altura e criar rolagem. */
-    .sidebar-below-offline-banner {
-      top: var(--offline-banner-h, 0px) !important;
-      height: calc(100vh - var(--offline-banner-h, 0px)) !important;
-    }
-
-    .main-content-safe {
-      padding-top: calc(4rem + env(safe-area-inset-top, 0px) + var(--offline-banner-h, 0px)) !important;
-    }
-
-    @media (min-width: 1024px) {
-      .main-content-safe {
-        padding-top: var(--offline-banner-h, 0px) !important;
-      }
-    }
-
-    /* Prevent horizontal overflow on all elements (mobile fix) */
-    *, *::before, *::after {
-      box-sizing: border-box;
-    }
-
-    html {
-      /* instant scrollTo behavior so programmatic scroll resets work */
-      scroll-behavior: auto;
-      overflow-x: hidden;
-      width: 100%;
-      position: relative;
-    }
-
-    body {
-      overflow-x: hidden;
-      width: 100%;
-      position: relative;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    #root {
-      width: 100%;
-      max-width: 100vw;
-      overflow-x: hidden;
-    }
-
-    /* Force all children of root to stay within bounds on mobile */
-    @media (max-width: 768px) {
-      #root * {
-        max-width: 100%;
-      }
-      
-      /* Allow scroll containers to keep their behavior */
-      .overflow-x-auto, .overflow-auto {
-        max-width: none !important;
-      }
-    }
-
-
-    /* Utility: break long words to prevent overflow */
-    .overflow-wrap-anywhere {
-      overflow-wrap: anywhere;
-      word-break: break-word;
-    }
-
-    /* No scrollbar on chat chips row */
-    .no-scrollbar::-webkit-scrollbar {
-      display: none;
-    }
-    .no-scrollbar {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
-    }
-
-    .clip-path-half {
-      clip-path: polygon(0 0, 100% 0, 100% 50%, 0 50%);
-    }
-
-    .glass {
-      background: rgba(255, 255, 255, 0.7);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-    }
-
-    .dark .glass {
-      background: rgba(15, 23, 42, 0.7);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .text-gradient {
-      background: linear-gradient(to right, #2D7FF9, #0A1F44);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .card-premium {
-      @apply transition-all duration-300 hover:shadow-2xl hover:shadow-brand-500/10 hover:-translate-y-1;
-    }
-
-    /* Classes para o Efeito 3D do Mockup */
-    .perspective-1000 {
-      perspective: 1000px;
-    }
-    .rotate-x-12 {
-      transform: rotateX(12deg);
-    }
-
-    /* Fallback Nativo para Classes do Tailwind Animate */
-    .animate-in {
-      animation-fill-mode: both;
-    }
-    .fade-in {
-      animation: fadeIn 1s ease-out forwards;
-    }
-    .slide-in-from-bottom-8 {
-      animation: slideInUp 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    @keyframes slideInUp {
-      from { transform: translateY(2rem); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-
-    /* ========================================================
-       PRINT STYLES - Extrato de Empréstimo / Asset Ledger
-    ======================================================== */
-    @media print {
-      /* Hide everything except the extrato modal */
-      body > #root > * { display: none !important; }
-
-      /* Show and reset the extrato modal overlay */
-      .fixed.inset-0.z-50 {
-        display: flex !important;
-        position: static !important;
-        background: white !important;
-        backdrop-filter: none !important;
-      }
-
-      /* Make the modal inner box full-page */
-      .fixed.inset-0.z-50 > div {
-        width: 100% !important;
-        max-width: none !important;
-        max-height: none !important;
-        height: auto !important;
-        border-radius: 0 !important;
-        box-shadow: none !important;
-        overflow: visible !important;
-      }
-
-      /* Scrollable area expands to show all content */
-      .flex-1.overflow-y-auto {
-        overflow: visible !important;
-        max-height: none !important;
-      }
-
-      /* Ensure tables render fully */
-      table { page-break-inside: auto; }
-      tr    { page-break-inside: avoid; page-break-after: auto; }
-
-      /* Utility: hide elements during print */
-      .print\:hidden { display: none !important; }
-      .hidden.print\:block { display: block !important; }
-    }
-  </style>
+    O truque do media="print" faz o navegador baixar a folha sem tratá-la como
+    bloqueante; o onload devolve ela para todas as mídias assim que chega. Como a
+    fonte já vem com `display=swap` e a pilha tem `sans-serif` de reserva, o
+    texto aparece na hora e troca de fonte quando o arquivo chega. O <noscript>
+    cobre quem estiver sem JavaScript.
+  -->
+  <link rel="stylesheet" media="print" onload="this.media='all'; this.onload=null;"
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Outfit:wght@100..900&display=swap">
+  <noscript>
+    <link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Outfit:wght@100..900&display=swap">
+  </noscript>
 </head>
 
 <body class="bg-slate-50 text-slate-900 antialiased">
   <div id="root"></div>
   <script>
-    console.log("INDEX.HTML SCRIPT EXECUTING!");
+    /*
+     * NUNCA volte a escrever no HTML interno do <body> aqui.
+     *
+     * Existia um depurador nesta linha que ANEXAVA uma div de erro ao HTML
+     * interno do body, lendo e reatribuindo a propriedade.
+     *
+     * Reatribuir esse HTML REPARSEIA o documento inteiro: todo
+     * nó do DOM é destruído e recriado do zero. O React continua apontando para
+     * os nós antigos (agora soltos) e perde o ponto onde escuta os cliques.
+     * Visualmente a página fica igual — e absolutamente nada responde ao toque.
+     *
+     * No iPhone isso acontecia de cara: basta UM erro de script (um recurso de
+     * terceiro, uma extensão, um aviso do próprio Safari) logo no início para o
+     * site inteiro ficar "olhando mas não clicando", justamente enquanto o aviso
+     * de instalar o app aparecia.
+     *
+     * O erro agora vai só para o console, que não mexe na página.
+     */
     window.addEventListener('error', (event) => {
-      document.body.innerHTML += '<div style="color:red;z-index:9999;position:absolute;top:0;">' + event.message + '</div>';
+      console.error('[Zyvion] Erro nao tratado:', event.message, event.filename, event.lineno);
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      console.error('[Zyvion] Promessa rejeitada sem tratamento:', event.reason);
     });
     // Captura o evento de instalação PWA ANTES de qualquer outro código
     window.__pwaInstallPrompt = null;

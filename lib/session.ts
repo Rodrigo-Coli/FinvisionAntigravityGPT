@@ -66,14 +66,27 @@ export async function getSessionUser(client: any): Promise<any | null> {
  * dê no que der, a sessão local é apagada. Encerrar no servidor é desejável
  * (invalida o refresh token), mas nunca pode impedir o usuário de sair.
  */
-export async function signOutSafely(client: any, timeoutMs = 4000): Promise<void> {
+/**
+ * @param opts.localOnly pula a ida ao servidor e encerra só neste aparelho.
+ *   Use quando a sessão que está sendo descartada não importa mais — o modo
+ *   demo, por exemplo, cria uma conta nova logo em seguida. Sem isso, entrar no
+ *   demo começava esperando até 4s por um logout de rede que não muda nada, e
+ *   essa espera era paga ANTES de qualquer coisa aparecer na tela.
+ */
+export async function signOutSafely(
+  client: any,
+  timeoutMs = 4000,
+  opts: { localOnly?: boolean } = {}
+): Promise<void> {
   if (!client) return;
 
-  try {
-    await withTimeout(client.auth.signOut(), timeoutMs, 'sair da conta');
-    return;
-  } catch {
-    /* sem rede ou servidor lento: encerra só localmente, abaixo */
+  if (!opts.localOnly) {
+    try {
+      await withTimeout(client.auth.signOut(), timeoutMs, 'sair da conta');
+      return;
+    } catch {
+      /* sem rede ou servidor lento: encerra só localmente, abaixo */
+    }
   }
 
   try {

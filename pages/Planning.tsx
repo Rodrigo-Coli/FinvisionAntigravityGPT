@@ -7,6 +7,8 @@ import { Budget, Goal } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { SplitTransactionService } from '../services/splitTransaction.service';
 import { useReconnectRefresh } from '../lib/useReconnectRefresh';
+import { isProbablyOffline } from '../lib/connectivity';
+import { getSessionUser } from '../lib/session';
 
 const BUDGET_COLORS = [
   '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'
@@ -106,9 +108,13 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
     if (!sb) return;
     if (!silent) setIsLoading(true);
     try {
-      if (navigator.onLine) {
-        const { data: { session } } = await sb.auth.getSession();
-        const u = session?.user;
+      // isProbablyOffline e não navigator.onLine: este último responde `true` em
+      // Wi-Fi sem saída e sinal fraco, e a tela ia buscar no banco uma resposta
+      // que nunca chegava — ficando no spinner em vez de mostrar o cache.
+      if (!isProbablyOffline()) {
+        // getSessionUser: lê a sessão do aparelho com prazo, em vez de esperar
+        // por uma renovação de token que offline não termina.
+        const u = await getSessionUser(sb);
         if (!u) return;
 
         // Run fetches in parallel
