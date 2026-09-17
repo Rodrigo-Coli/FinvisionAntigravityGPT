@@ -11,6 +11,15 @@ import { parseTags, suggestTags, matchesAnyTag, rememberTags } from '../lib/tagU
 import { getSessionUser } from '../lib/session';
 import { SearchableInput } from '../components/common/SearchableInput';
 import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata } from '../lib/historyUtils';
+import {
+  buildRemainderRow,
+  buildSettledUpdate,
+  buildConventionalUpdate,
+  getPaymentHistory,
+  newPartialPaymentGroupId,
+  describePaymentError,
+  round2
+} from '../lib/partialPayment';
 import { DateUtils } from '../lib/dateUtils';
 import { FinanceService } from '../services/finance.service';
 import { ReconciliationService } from '../services/reconciliation.service';
@@ -1049,6 +1058,13 @@ const HistoryPage: React.FC = () => {
           const isIncomplete = !t.description || !t.account_name || !t.category || !t.owner_name;
           return {
             id: t.id,
+            // Campos que existem no banco e eram descartados aqui. A "diferença"
+            // de um pagamento parcial é criada a partir DESTE objeto: sem eles a
+            // nova pendência nascia sem categoria e sem vínculo com a dívida.
+            user_id: t.user_id,
+            category_id: t.category_id ?? undefined,
+            liability_id: t.liability_id ?? undefined,
+            is_amortization: !!t.is_amortization,
             description: t.description ?? 'Sem descrição',
             amount: Number(t.amount || 0),
             date: t.date,
@@ -2220,12 +2236,73 @@ const HistoryPage: React.FC = () => {
       tx,
       remaining,
       payAmount: String(remaining.toFixed(2)),
-      payAccountId: tx.accountId,
+      // Lançamento gerado por um bem (aquisição de veículo, provisão de imóvel)
+      // nasce SEM conta bancária. Antes o estado ficava `undefined` enquanto a
+      // lista já mostrava a primeira conta: quem não tocava no seletor pagava
+      // "em lugar nenhum" — o lançamento era quitado sem debitar conta alguma e
+      // o saldo nunca mexia. O padrão agora é o que está visível na tela.
+      payAccountId: tx.accountId || accounts[0]?.id || '',
       payDate: (tx.date || '').split('T')[0] || DateUtils.formatToISODate(),
       payRemainderDate: DateUtils.formatToISODate(),
       splitRemainder: false,
       isSubmitting: false
     });
+  };
+
+  /**
+   * Reabrir um lançamento é dizer "isto não foi pago". O `paid_amount` voltava a
+   * zero, mas o `payment_history` dentro do metadata continuava lá: o modal de
+   * pagamento seguia exibindo pagamentos que não valiam mais, e o pagamento
+   * seguinte era acrescentado ao final dessa lista fantasma, dobrando o extrato.
+   *
+   * O VALOR não é restaurado aqui de propósito. Num lançamento que já foi
+   * dividido, o valor cheio original está repartido entre ele e a diferença que
+   * ficou pendente; devolver o valor cheio a esta linha contaria o mesmo dinheiro
+   * duas vezes. `original_amount` fica guardado no metadata como registro.
+   */
+  const reopenPatch = (t: Transaction): Record<string, any> => {
+    const meta: Record<string, any> = { ...(t.metadata || {}) };
+    delete meta.payment_history;
+    delete meta.partial_payment_group_id;
+
+    return {
+      is_paid: false,
+      paid_amount: 0,
+      paid_at: null,
+      metadata: meta
+    };
+  };
+
+  /**
+   * Replica o histórico de pagamentos nas demais linhas do mesmo grupo (as
+   * "diferenças" já geradas antes), para que o extrato de parciais fique igual
+   * em qualquer uma delas.
+   *
+   * É complemento, não o pagamento em si: se falhar, o pagamento continua de pé
+   * e só o espelho do histórico fica desatualizado — por isso avisa no console
+   * em vez de derrubar a operação inteira.
+   */
+  const syncGroupPaymentHistory = async (groupId: string, history: any[], skipIds: (string | undefined)[]) => {
+    if (!supabase) return;
+    const skip = new Set(skipIds.filter(Boolean) as string[]);
+    const { data: groupTxs, error } = await supabase
+      .from('transactions')
+      .select('id, metadata')
+      .eq('metadata->>partial_payment_group_id', groupId);
+
+    if (error) {
+      console.warn('Não foi possível espelhar o histórico de pagamentos no grupo', error);
+      return;
+    }
+
+    for (const gTx of groupTxs || []) {
+      if (skip.has(gTx.id)) continue;
+      const { error: updErr } = await supabase
+        .from('transactions')
+        .update({ metadata: { ...((gTx as any).metadata || {}), payment_history: history } })
+        .eq('id', gTx.id);
+      if (updErr) console.warn('Falha ao espelhar histórico em', gTx.id, updErr);
+    }
   };
 
   const submitPayment = async () => {
@@ -2238,6 +2315,13 @@ const HistoryPage: React.FC = () => {
     }
     if (amount > payModal.remaining + EPS) {
       setPayModal(prev => prev.open ? { ...prev, error: 'O valor do pagamento não pode ser maior que o saldo restante.' } : prev);
+      return;
+    }
+    // Sem conta, o pagamento não debita nem credita nada e o saldo não mexe.
+    // Era o que acontecia em silêncio com lançamentos gerados por um bem, que
+    // nascem sem conta vinculada.
+    if (!payModal.payAccountId && accounts.length > 0) {
+      setPayModal(prev => prev.open ? { ...prev, error: 'Selecione a conta em que o valor foi debitado/creditado.' } : prev);
       return;
     }
 
@@ -2275,26 +2359,49 @@ const HistoryPage: React.FC = () => {
         }
 
         const isFullyPaid = !isPartial;
-        const newPaidAmount = (payModal.tx.paidAmount || 0) + amount;
-        const groupId = payModal.tx.metadata?.partial_payment_group_id || 'group-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
-        const oldHistory = Array.isArray(payModal.tx.metadata?.payment_history) ? payModal.tx.metadata.payment_history : [];
-        const offlineMeta = {
-          ...(payModal.tx.metadata || {}),
-          partial_payment_group_id: groupId,
-          payment_history: [...oldHistory, { date: chosenDate, account_name: accountName, amount }]
+        const groupId = payModal.tx.metadata?.partial_payment_group_id || newPartialPaymentGroupId();
+        const newHistory = [
+          ...getPaymentHistory(payModal.tx),
+          { date: chosenDate, account_name: accountName, amount: round2(amount) }
+        ];
+
+        const splitOffline = isPartial && payModal.splitRemainder;
+        const offlineParams = {
+          tx: payModal.tx,
+          remaining: payModal.remaining,
+          amount,
+          paidDate: chosenDate,
+          remainderDate: payModal.payRemainderDate || DateUtils.formatToISODate(),
+          payAccountId: payAccId,
+          payAccountName: accountName,
+          userId: currentUserId,
+          groupId,
+          history: newHistory
         };
+
+        // "Gerar diferença" sem internet: a diferença entra na fila como um
+        // lançamento novo, igual ao que o fluxo online cria. Antes a caixinha
+        // era simplesmente ignorada offline — o lançamento ficava marcado como
+        // parcial e a diferença nunca aparecia, nem depois de reconectar.
+        if (splitOffline) {
+          offlineQueue.addAction('CREATE_TRANSACTION', buildRemainderRow(offlineParams));
+        }
 
         offlineQueue.addAction('UPDATE_TRANSACTION', {
           id: payModal.tx.id,
-          updates: {
-            is_paid: isFullyPaid,
-            paid_amount: isFullyPaid ? payModal.tx.amount : newPaidAmount,
-            paid_at: chosenDate,
-            date: chosenDate,
-            account_id: payAccId,
-            account_name: accountName,
-            metadata: offlineMeta
-          }
+          updates: splitOffline
+            ? buildSettledUpdate(offlineParams)
+            : buildConventionalUpdate({
+                tx: payModal.tx,
+                amount,
+                remaining: payModal.remaining,
+                paidDate: chosenDate,
+                payAccountId: payAccId,
+                payAccountName: accountName,
+                groupId,
+                history: newHistory,
+                eps: EPS
+              })
         });
 
         // Fatura quitada por inteiro: marca a fatura também. Sem isso, a próxima
@@ -2318,149 +2425,93 @@ const HistoryPage: React.FC = () => {
       }
 
       if (isPartial && payModal.splitRemainder) {
-        // --- NOVO FLUXO DE PAGAMENTO PARCIAL COM DIVISÃO ---
-        const groupId = payModal.tx.metadata?.partial_payment_group_id || 'group-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
-        const newPayment = {
-          date: chosenDate,
-          account_name: accountName,
-          amount: amount
-        };
-        const oldHistory = Array.isArray(payModal.tx.metadata?.payment_history) ? payModal.tx.metadata.payment_history : [];
-        const newHistory = [...oldHistory, newPayment];
-        
-        // 1. Atualizar a transação atual Tx A
-        const updatedMeta = {
-          ...(payModal.tx.metadata || {}),
-          partial_payment_group_id: groupId,
-          payment_history: newHistory
-        };
-        
-        await supabase.from('transactions').update({
-          amount: amount,
-          is_paid: true,
-          paid_amount: amount,
-          paid_at: chosenDate,
-          date: chosenDate,
-          account_id: payAccId,
-          account_name: accountName,
-          metadata: updatedMeta
-        }).eq('id', payModal.tx.id);
-        
-        // 2. Inserir a nova transação do restante Tx B
-        const remainderAmount = payModal.remaining - amount;
-        const remainderMeta: any = {
-          ...(payModal.tx.metadata || {}),
-          partial_payment_group_id: groupId,
-          payment_history: newHistory
+        // --- PAGAMENTO PARCIAL COM DIVISÃO ---
+        //
+        // A ORDEM AQUI É A PARTE IMPORTANTE. Antes, a tela primeiro rebaixava o
+        // lançamento original para o valor pago e só depois criava a diferença.
+        // Quando a criação falhava (e ela falhava SEMPRE, por causa do campo
+        // `attachments`, que não é coluna de `transactions`), a original já tinha
+        // sido reduzida e quitada: uma aquisição de R$ 102.000 ficou valendo
+        // R$ 5.000, e os R$ 97.000 restantes não existiam em lugar nenhum. A
+        // mensagem dizia apenas "Erro ao processar pagamento".
+        //
+        // Agora a diferença é criada PRIMEIRO. Se ela não entrar, nada foi
+        // tocado e o lançamento continua inteiro. Se ela entrar e a atualização
+        // da original falhar, a diferença recém-criada é desfeita.
+        const groupId = payModal.tx.metadata?.partial_payment_group_id || newPartialPaymentGroupId();
+        const newHistory = [
+          ...getPaymentHistory(payModal.tx),
+          { date: chosenDate, account_name: accountName, amount: round2(amount) }
+        ];
+
+        const splitParams = {
+          tx: payModal.tx,
+          remaining: payModal.remaining,
+          amount,
+          paidDate: chosenDate,
+          remainderDate: payModal.payRemainderDate || DateUtils.formatToISODate(),
+          payAccountId: payAccId,
+          payAccountName: accountName,
+          userId: currentUserId,
+          groupId,
+          history: newHistory
         };
 
-        // Pagamento parcial de FATURA: o restante não pode herdar o
-        // `card_statement_id`. Esse campo é a chave que liga UMA transação do
-        // Histórico à fatura do cartão; duplicá-lo criava duas linhas com a
-        // mesma chave e fazia o sincronizador de faturas perder a referência e
-        // passar a inserir uma cópia nova a cada sincronização. Guardamos a
-        // origem em `partial_of_card_statement_id`, que preserva o vínculo para
-        // leitura sem colidir com o espelho da fatura.
-        if (remainderMeta.card_statement_id) {
-          remainderMeta.partial_of_card_statement_id = remainderMeta.card_statement_id;
-          delete remainderMeta.card_statement_id;
-          delete remainderMeta.is_provision;
-        }
-        
-        const { error: remainderInsertError } = await supabase.from('transactions').insert([{
-          user_id: currentUserId,
-          description: payModal.tx.description,
-          amount: remainderAmount,
-          date: payModal.payRemainderDate || DateUtils.formatToISODate(),
-          type: payModal.tx.type,
-          category: payModal.tx.category,
-          category_id: payModal.tx.category_id || null,
-          subcategory: payModal.tx.subcategory || null,
-          account_id: payModal.tx.accountId,
-          account_name: payModal.tx.accountName || '',
-          owner_name: payModal.tx.owner_name || null,
-          notes: payModal.tx.notes || '',
-          tags: payModal.tx.tags || [],
-          attachments: payModal.tx.attachments || [],
-          liability_id: payModal.tx.liability_id || null,
-          is_paid: false,
-          paid_amount: 0,
-          paid_at: null,
-          metadata: remainderMeta
-        }]);
-        if (remainderInsertError) throw remainderInsertError;
-        
-        // 3. Atualizar o histórico em todas as transações do mesmo grupo
-        const { data: groupTxs } = await supabase
+        // 1. Criar a diferença (Tx B)
+        const { data: createdRemainder, error: remainderInsertError } = await supabase
           .from('transactions')
-          .select('id, metadata')
-          .eq('metadata->>partial_payment_group_id', groupId);
-          
-        if (groupTxs && groupTxs.length > 0) {
-          for (const gTx of groupTxs) {
-            if (gTx.id !== payModal.tx.id) {
-              const gUpdatedMeta = {
-                ...(gTx.metadata || {}),
-                payment_history: newHistory
-              };
-              await supabase.from('transactions').update({ metadata: gUpdatedMeta }).eq('id', gTx.id);
-            }
+          .insert([buildRemainderRow(splitParams)])
+          .select('id')
+          .single();
+        if (remainderInsertError) throw remainderInsertError;
+
+        // 2. Fechar a original (Tx A) pelo valor efetivamente pago
+        const { error: settleError } = await supabase
+          .from('transactions')
+          .update(buildSettledUpdate(splitParams))
+          .eq('id', payModal.tx.id);
+
+        if (settleError) {
+          // Desfaz a diferença: sem isso sobraria uma pendência duplicada,
+          // porque o lançamento original continua aberto pelo valor cheio.
+          if (createdRemainder?.id) {
+            await supabase.from('transactions').delete().eq('id', createdRemainder.id);
           }
+          throw settleError;
         }
+
+        await syncGroupPaymentHistory(groupId, newHistory, [payModal.tx.id, createdRemainder?.id]);
       } else {
         // --- FLUXO DE PAGAMENTO CONVENCIONAL ---
-        const isFullyPaid = amount >= payModal.remaining - EPS;
-        const newPaidAmount = (payModal.tx.paidAmount || 0) + amount;
-        
-        const groupId = payModal.tx.metadata?.partial_payment_group_id || 'group-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
-        const newPayment = {
-          date: chosenDate,
-          account_name: accountName,
-          amount: amount
-        };
-        const oldHistory = Array.isArray(payModal.tx.metadata?.payment_history) ? payModal.tx.metadata.payment_history : [];
-        const newHistory = [...oldHistory, newPayment];
-        
-        const updatedMeta = {
-          ...(payModal.tx.metadata || {}),
-          partial_payment_group_id: groupId,
-          payment_history: newHistory
-        };
-        
-        await supabase.from('transactions').update({
-          is_paid: isFullyPaid,
-          paid_amount: isFullyPaid ? payModal.tx.amount : newPaidAmount,
-          paid_at: chosenDate,
-          date: chosenDate,
-          account_id: payAccId,
-          account_name: accountName,
-          metadata: updatedMeta
-        }).eq('id', payModal.tx.id);
-        
-        // Sincronizar o histórico de pagamentos para o grupo se pertencer a um grupo
-        const { data: groupTxs } = await supabase
-          .from('transactions')
-          .select('id, metadata')
-          .eq('metadata->>partial_payment_group_id', groupId);
-          
-        if (groupTxs && groupTxs.length > 0) {
-          for (const gTx of groupTxs) {
-            if (gTx.id !== payModal.tx.id) {
-              const gUpdatedMeta = {
-                ...(gTx.metadata || {}),
-                payment_history: newHistory
-              };
-              await supabase.from('transactions').update({ metadata: gUpdatedMeta }).eq('id', gTx.id);
-            }
-          }
-        }
+        const groupId = payModal.tx.metadata?.partial_payment_group_id || newPartialPaymentGroupId();
+        const newHistory = [
+          ...getPaymentHistory(payModal.tx),
+          { date: chosenDate, account_name: accountName, amount: round2(amount) }
+        ];
+
+        const { error: payError } = await supabase.from('transactions').update(buildConventionalUpdate({
+          tx: payModal.tx,
+          amount,
+          remaining: payModal.remaining,
+          paidDate: chosenDate,
+          payAccountId: payAccId,
+          payAccountName: accountName,
+          groupId,
+          history: newHistory,
+          eps: EPS
+        })).eq('id', payModal.tx.id);
+        if (payError) throw payError;
+
+        await syncGroupPaymentHistory(groupId, newHistory, [payModal.tx.id]);
       }
       
       // Recalcular saldo das contas
-      if (payAccId !== payModal.tx.accountId) {
+      if (payAccId && payAccId !== payModal.tx.accountId && payModal.tx.accountId) {
         await supabase.rpc('recalculate_account_balance', { p_account_id: payModal.tx.accountId });
       }
-      await supabase.rpc('recalculate_account_balance', { p_account_id: payAccId });
+      if (payAccId) {
+        await supabase.rpc('recalculate_account_balance', { p_account_id: payAccId });
+      }
       
       // Sincronização Bidirecional: Se for pagamento de fatura, atualiza o status na tabela de cartões
       if (payModal.tx.type === 'BILL_PAYMENT') {
@@ -2480,8 +2531,10 @@ const HistoryPage: React.FC = () => {
       setPayModal({ open: false });
       await fetchData(true); // Silent refresh
     } catch (err) {
-      console.error(err);
-      setPayModal(prev => prev.open ? { ...prev, isSubmitting: false, error: 'Erro ao processar pagamento.' } : prev);
+      console.error('Falha ao processar pagamento', err);
+      // O texto genérico de antes escondia a resposta do banco — inclusive a que
+      // dizia, com todas as letras, qual coluna não existia.
+      setPayModal(prev => prev.open ? { ...prev, isSubmitting: false, error: describePaymentError(err) } : prev);
     }
   };
 
@@ -3547,11 +3600,15 @@ const HistoryPage: React.FC = () => {
                   }).eq('id', statementId);
                 }
               }
-              await supabase.from('transactions').update({ is_paid: false, paid_amount: 0, paid_at: null }).eq('id', t.id);
+              const { error } = await supabase.from('transactions').update(reopenPatch(t)).eq('id', t.id);
+              if (error) throw error;
             } else {
-              await supabase.from('transactions').update({ is_paid: false, paid_amount: 0, paid_at: null }).eq('id', t.id);
+              const { error } = await supabase.from('transactions').update(reopenPatch(t)).eq('id', t.id);
+              if (error) throw error;
             }
-            await supabase.rpc('recalculate_account_balance', { p_account_id: t.accountId });
+            if (t.accountId) {
+              await supabase.rpc('recalculate_account_balance', { p_account_id: t.accountId });
+            }
             await fetchData();
           } catch (e) { console.error(e); toast('Erro ao reabrir. Tente novamente.', 'error'); }
         }}
