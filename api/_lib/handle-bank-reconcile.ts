@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { StatementTemplateHelper } from './statement-template-helper.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
+import { requireUser } from './require-user.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -13,12 +14,17 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 export async function handleBankReconcile(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method not allowed' });
 
-  const { import_id, account_name, import_source } = req.body;
+  // Só o dono da importação pode processá-la (antes bastava saber o import_id).
+  const user = await requireUser(req, res);
+  if (!user) return;
+
+  const { import_id, account_name, import_source } = req.body || {};
   if (!import_id) return res.status(400).json({ ok: false, message: 'import_id is required' });
 
   try {
     const { data: imp, error: impErr } = await supabase.from('imports').select('id, user_id, document_id, account_id, type, notes, parse_meta').eq('id', import_id).single();
     if (impErr || !imp) throw new Error(`Import não encontrado: ${impErr?.message || 'Unknown'}`);
+    if (imp.user_id !== user.id) return res.status(403).json({ ok: false, message: 'Essa importação não pertence à sua conta.' });
 
     const { data: doc, error: docErr } = await supabase.from('documents').select('id, bucket, path, mime_type').eq('id', imp.document_id).single();
     if (docErr || !doc) throw new Error(`Documento associado não encontrado: ${docErr?.message || 'Unknown'}`);
@@ -121,7 +127,9 @@ RETORNE APENAS JSON NO FORMATO:
               }
             }
           });
-          await recordAiUsage(supabase, 'bank_reconcile', null, response, 'gemini-2.5-flash');
+          // Com o user_id o limite do plano para conciliação passa a contar
+          // (antes ficava nulo e o limite nunca era aplicado).
+          await recordAiUsage(supabase, 'bank_reconcile', imp.user_id, response, currentModel);
           rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
           if (rawText) break;
         } catch (e) { console.error(`Falha no modelo ${currentModel}:`, e); }

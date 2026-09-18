@@ -10,9 +10,6 @@ import { handleFinvisionChat } from './_lib/finvision-chat.js';
 import { handleBankReconcile } from './_lib/handle-bank-reconcile.js';
 import { handleCardReconcile } from './_lib/handle-card-reconcile.js';
 import { handleWealthAnalysis } from './_lib/handle-wealth-analysis.js';
-import { handleParseCardStatement } from './_lib/parse-card-statement.js';
-import { handleParseStatement } from './_lib/parse-statement.js';
-import { handleProcessImport } from './_lib/process-import.js';
 import { handleAsaasWebhook } from './_lib/asaas-webhook.js';
 import { handleWhatsAppWebhook } from './_lib/whatsapp-webhook.js';
 import { handleNotifyBillsDue } from './_lib/notify-bills-due.js';
@@ -55,9 +52,8 @@ export default async function handler(req: any, res: any) {
     if (url.includes('/handle-bank-reconcile'))   return handleBankReconcile(req, res);
     if (url.includes('/handle-card-reconcile'))   return handleCardReconcile(req, res);
     if (url.includes('/handle-receipt-items'))     return handleReceiptItems(req, res);
-    if (url.includes('/parse-card-statement'))     return handleParseCardStatement(req, res);
-    if (url.includes('/parse-statement') && !url.includes('/parse-card-statement')) return handleParseStatement(req, res);
-    if (url.includes('/process-import'))           return handleProcessImport(req, res);
+    // parse-statement, parse-card-statement, process-import e handle-import-worker
+    // foram removidos: eram rotas antigas sem autenticação que nenhuma tela usava.
 
     // --- Webhooks ---
     if (url.includes('/asaas-webhook'))            return handleAsaasWebhook(req, res);

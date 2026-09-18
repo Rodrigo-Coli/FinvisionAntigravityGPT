@@ -1,3 +1,5 @@
+import { isCronAuthorized } from './cron-auth.js';
+
 export async function handleHealth(req: any, res: any) {
   const evolutionUrl = process.env.EVOLUTION_API_URL;
   const evolutionKey = process.env.EVOLUTION_API_KEY;
@@ -10,6 +12,15 @@ export async function handleHealth(req: any, res: any) {
     whatsappSendTest: null,
     timestamp: new Date().toISOString()
   };
+
+  // Sem o segredo do cron (?key=... ou Authorization: Bearer ...), o endpoint
+  // responde só o "ok" básico — é o que o app usa. Antes, qualquer pessoa
+  // conseguia mandar WhatsApp pelo seu número (?testWhatsApp=) e trocar a URL
+  // do webhook do Evolution (?setWebhook=true) sem login nenhum.
+  const authorized = isCronAuthorized(req);
+  if (!authorized) {
+    return res.status(200).json({ status: 'ok', timestamp: diagnostics.timestamp });
+  }
 
   if (diagnostics.evolutionConfigured) {
     try {
@@ -69,7 +80,11 @@ export async function handleHealth(req: any, res: any) {
           body: JSON.stringify({
             webhook: {
               enabled: true,
-              url: 'https://zyvion.automanow.com.br/api/whatsapp-webhook',
+              // O segredo vai na própria URL para o webhook conseguir provar que
+              // veio do Evolution (ver isWebhookAuthorized em whatsapp-webhook.ts).
+              url: process.env.WHATSAPP_WEBHOOK_SECRET
+                ? `https://zyvion.automanow.com.br/api/whatsapp-webhook?secret=${encodeURIComponent(process.env.WHATSAPP_WEBHOOK_SECRET)}`
+                : 'https://zyvion.automanow.com.br/api/whatsapp-webhook',
               webhookByEvents: false,
               webhookBase64: false,
               events: ['MESSAGES_UPSERT']

@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
+import { requireUser } from './require-user.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -10,8 +11,10 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 export async function handleWealthAnalysis(req: any, res: any) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    const { userId } = req.body;
-    if (!userId) return res.status(400).json({ error: 'userId é obrigatório' });
+    // Usuário sai do token de login, nunca do corpo (ver require-user.ts).
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const userId = user.id;
 
     try {
         const limitCheck = await checkAiActionAllowed(supabase, userId, 'wealth_analysis');
@@ -102,6 +105,6 @@ export async function handleWealthAnalysis(req: any, res: any) {
         return res.status(200).json({ analysis: rawText, metadata: { netWorth, totalAssets, totalLiabilities, avgMonthlySavings, debtToIncome, generatedAt: new Date().toISOString() } });
     } catch (err: any) {
         console.error('[WealthAdvisor] Erro:', err.message);
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: 'Não foi possível gerar o diagnóstico agora. Tente novamente em instantes.' });
     }
 }

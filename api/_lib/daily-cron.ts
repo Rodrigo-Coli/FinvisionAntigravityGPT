@@ -2,6 +2,7 @@ import { handleNotifyBillsDue } from './notify-bills-due.js';
 import { handleNotifyInvestmentsDue } from './notify-investments-due.js';
 import { handleNotifyReferralEngagement } from './notify-referral-engagement.js';
 import { handleMaintenance } from './maintenance.js';
+import { isCronAuthorized } from './cron-auth.js';
 
 // Um "res" descartável só pra capturar o resultado de cada handler sem
 // escrever de verdade na resposta HTTP (cada handler já termina com
@@ -21,6 +22,10 @@ function captureRes() {
 // Vercel permite): dispara o lembrete de contas a vencer e as notificações
 // de engajamento do programa de indicação, nessa ordem.
 export async function handleDailyCron(req: any, res: any) {
+  // Checagem única aqui: a manutenção (maintenance.ts) não valida o segredo
+  // sozinha, então sem isto qualquer pessoa disparava o cron inteiro.
+  if (!isCronAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+
   const bills = captureRes();
   await handleNotifyBillsDue(req, bills.res as any);
 

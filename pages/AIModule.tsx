@@ -5,6 +5,7 @@ import { Sparkles, BarChart3, Store, Receipt, Check, Loader2, Tag, ArrowRight, S
 import { AIReconcileService } from '../services/aiReconcile.service';
 import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
+import { authHeaders } from '../lib/apiClient';
 import { DateUtils } from '../lib/dateUtils';
 import { useToast } from '../contexts/ToastContext';
 import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
@@ -294,8 +295,8 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     try {
       const resp = await fetch('/api/handle-wealth-analysis', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id })
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({})
       });
       const data = await resp.json();
       if (!resp.ok) {

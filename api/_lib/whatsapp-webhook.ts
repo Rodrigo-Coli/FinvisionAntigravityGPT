@@ -1255,9 +1255,38 @@ function filterTransactionsInMemory(txs: any[], filters: { description?: string;
   });
 }
 
+// Prova de origem do webhook. Antes não havia nenhuma: qualquer pessoa podia
+// mandar um POST com o telefone de um cliente e criar/pagar/apagar lançamentos
+// na conta dele. Aceita, em ordem:
+//   1. ?secret=<WHATSAPP_WEBHOOK_SECRET> na URL cadastrada no Evolution (ou o
+//      header x-webhook-secret com o mesmo valor);
+//   2. o campo `apikey` que o Evolution API v2 envia no corpo, igual à
+//      EVOLUTION_API_KEY já configurada.
+// Se nenhuma das duas variáveis existir no ambiente, o webhook é recusado
+// (fail-closed) e o motivo vai para o log da Vercel.
+function isWebhookAuthorized(req: any, body: any): boolean {
+  const secret = process.env.WHATSAPP_WEBHOOK_SECRET;
+  const evolutionKey = process.env.EVOLUTION_API_KEY;
+
+  if (secret) {
+    const fromQuery = typeof req?.query?.secret === 'string' ? req.query.secret : '';
+    const fromHeader = typeof req?.headers?.['x-webhook-secret'] === 'string' ? req.headers['x-webhook-secret'] : '';
+    if (fromQuery === secret || fromHeader === secret) return true;
+  }
+  if (evolutionKey && typeof body?.apikey === 'string' && body.apikey === evolutionKey) return true;
+
+  if (!secret && !evolutionKey) {
+    console.error('[WhatsApp Webhook] Recusado: configure WHATSAPP_WEBHOOK_SECRET (e use ?secret=... na URL do webhook do Evolution).');
+  } else {
+    console.error('[WhatsApp Webhook] Recusado: segredo ausente/incorreto. Confira ?secret=... na URL do webhook do Evolution.');
+  }
+  return false;
+}
+
 export async function handleWhatsAppWebhook(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
   const body = req.body || {};
+  if (!isWebhookAuthorized(req, body)) return res.status(401).json({ error: 'Unauthorized' });
   let phone = '';
   let userId: string = '';
   let message: any = null;

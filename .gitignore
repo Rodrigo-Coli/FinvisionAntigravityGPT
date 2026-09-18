@@ -54,3 +54,6 @@ error*.log
 
 # Config MCP local (nao versionar)
 .mcp.json
+
+# Scripts pessoais de depuração (continham tokens) — não versionar
+scratch/

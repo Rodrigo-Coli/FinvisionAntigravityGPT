@@ -2,6 +2,7 @@
 import { supabase } from "../lib/supabase/client";
 import { ReconcileItem } from "../types";
 import { getSessionUser } from '../lib/session';
+import { authHeaders } from '../lib/apiClient';
 
 function getApiBaseUrl() {
   try {
@@ -101,7 +102,7 @@ export const AIReconcileService = {
 
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify({ base64: base64Data, mimeType, fileName: file.name }),
     });
 
@@ -128,8 +129,8 @@ export const AIReconcileService = {
 
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ files: encodedFiles, userId }),
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+      body: JSON.stringify({ files: encodedFiles }),
     });
 
     if (!res.ok) {

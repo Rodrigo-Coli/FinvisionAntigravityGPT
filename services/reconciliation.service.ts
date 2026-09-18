@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase/client';
 import { getSessionUser } from '../lib/session';
+import { authHeaders } from '../lib/apiClient';
 
 function getLevenshteinDistance(a: string, b: string): number {
   const matrix = Array.from({ length: a.length + 1 }, () => 
@@ -207,11 +208,13 @@ export const ReconciliationService = {
 
     console.log(`[ReconciliationService] Chamando ${endpoint} para ${importSource} via Proxy`);
 
-    fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).catch(e => console.error("Erro ao disparar worker:", e));
+    authHeaders()
+      .then(auth => fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...auth },
+        body: JSON.stringify(payload)
+      }))
+      .catch(e => console.error("Erro ao disparar worker:", e));
   },
 
   async pollImportStatus(importId: string, onUpdate: (imp: any) => void): Promise<any> {

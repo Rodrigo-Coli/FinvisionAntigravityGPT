@@ -647,6 +647,7 @@ export const FinanceService = {
           *,
           cards (
             name,
+            account_id,
             default_category,
             default_subcategory,
             default_owner
@@ -680,7 +681,10 @@ export const FinanceService = {
       const amount = Math.round(Math.max(0, rawTotal) * 100) / 100;
 
       // 2. Localizar conta para o lançamento
-      let targetAccountId = overrideAccountId;
+      // Prioridade: conta vinculada ao cartão. Antes o espelho procurava uma
+      // conta chamada "Bradesco" e, sem ela, usava a primeira conta da lista —
+      // a fatura provisionada aparecia na conta errada para outros usuários.
+      let targetAccountId = overrideAccountId || stmt.cards?.account_id || undefined;
 
       if (!targetAccountId) {
         const { data: accounts } = await supabase

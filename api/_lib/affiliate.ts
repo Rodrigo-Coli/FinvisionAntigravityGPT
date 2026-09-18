@@ -124,11 +124,30 @@ export async function handleAffiliateRequestPayout(req: any, res: any) {
     }).select().single();
     if (error) throw error;
 
-    await supabase.from('affiliate_commission_events')
+    // Reserva ATÔMICA: só marca eventos que ainda estão livres (paid_in_payout_id
+    // nulo). Dois pedidos simultâneos não conseguem reservar o mesmo evento — o
+    // segundo recebe zero linhas. Antes, os dois pedidos nasciam com o saldo
+    // inteiro e o pagamento automático pagava em dobro.
+    const { data: reserved, error: reserveErr } = await supabase.from('affiliate_commission_events')
       .update({ paid_in_payout_id: payout.id })
-      .in('id', eventIds);
+      .in('id', eventIds)
+      .is('paid_in_payout_id', null)
+      .select('amount_cents');
+    if (reserveErr) throw reserveErr;
 
-    notifyPayoutRequested(availableCents, pixKey).catch(() => {});
+    const reservedCents = (reserved || []).reduce((s: number, e: any) => s + e.amount_cents, 0);
+    if (reservedCents <= 0) {
+      await supabase.from('affiliate_payouts').delete().eq('id', payout.id);
+      return res.status(409).json({ error: 'Já existe um pedido de saque em andamento para esse saldo.' });
+    }
+    if (reservedCents !== availableCents) {
+      // Parte foi reservada por outro pedido no meio do caminho: o valor do
+      // saque passa a ser exatamente o que foi reservado de verdade.
+      await supabase.from('affiliate_payouts').update({ amount_cents: reservedCents }).eq('id', payout.id);
+      payout.amount_cents = reservedCents;
+    }
+
+    notifyPayoutRequested(reservedCents, pixKey).catch(() => {});
 
     return res.status(200).json({ success: true, payout });
   } catch (err: any) {
