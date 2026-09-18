@@ -1,17 +1,35 @@
 {
-  "version": "2026.09.08.1715",
-  "title": "Correção do erro \"Ops! Algo deu errado\" ao abrir o lançamento",
-  "date": "08/09/2026",
+  "version": "2026.09.18.1559",
+  "title": "Pagamento parcial: a diferença voltou a ser gerada",
+  "date": "18/09/2026",
   "benefits": [
     {
-      "title": "A tela não quebra mais ao abrir o Novo Lançamento",
-      "desc": "A versão publicada há pouco derrubava o app com a tela \"Ops! Algo deu errado\" (erros React #300 e #310) ao abrir ou fechar o formulário de lançamento. Foi um defeito introduzido junto com a correção das sugestões de descrição, e está resolvido. Nenhum dado foi afetado.",
+      "title": "\"Gerar diferença como nova pendência\" funciona de novo",
+      "desc": "Todo pagamento parcial marcado para gerar a diferença falhava com \"Erro ao processar pagamento\" — em qualquer lançamento, não só nos de veículo. A pendência com o valor restante agora é criada normalmente.",
       "type": "correcao"
+    },
+    {
+      "title": "O valor do lançamento não se perde mais quando algo dá errado",
+      "desc": "Antes o lançamento original era rebaixado para o valor pago ANTES de a diferença ser criada. Com a falha, o restante sumia: uma aquisição de R$ 102.000 ficava valendo R$ 5.000. Agora a diferença é criada primeiro — se ela não entrar, nada é alterado.",
+      "type": "seguranca"
+    },
+    {
+      "title": "Erro que explica o que aconteceu",
+      "desc": "A mensagem genérica deu lugar ao que o banco realmente respondeu, e o pagamento passou a exigir a conta a ser debitada — lançamentos gerados por um bem eram quitados sem debitar conta nenhuma.",
+      "type": "usabilidade"
+    },
+    {
+      "title": "Extrato do bem mostra o que ainda falta pagar",
+      "desc": "O extrato do card patrimonial somava pago e pendente no mesmo número. Agora traz \"Ainda a Pagar\", quanto já foi pago, e marca cada linha em aberto como \"Em aberto\" ou \"Parcial\".",
+      "type": "recurso"
     }
   ],
   "changes": [
-    "A lista de sugestões de descrição foi escrita como React.useMemo, mas o ponto do arquivo onde ela fica está DEPOIS do `if (!show || !form.date) return null` do componente. Com isso o hook só era chamado quando o modal estava aberto: a contagem de hooks mudava entre um render e outro e o React derrubava a árvore inteira (#310 ao abrir, #300 ao fechar) — violação das Regras dos Hooks.",
-    "Passa a ser um cálculo simples (função executada na hora), sem hook: filtrar algumas centenas de itens por tecla é barato, memorizar não era. O comportamento das sugestões continua idêntico.",
-    "Verificado em navegador real: com useMemo, abrir o modal quebra com \"Rendered more hooks than during the previous render\"; sem ele, três ciclos de abrir/digitar/fechar passam sem erro e as sugestões continuam funcionando."
+    "A linha da diferença era montada espalhando o objeto de tela no INSERT, e junto ia `attachments` — que não é coluna de `transactions`, e sim um relacionamento lido por join com `documents`. O PostgREST recusa a requisição inteira quando o corpo traz coluna inexistente (400 / PGRST204), então a diferença NUNCA foi criada desde que a função existe: nenhum grupo de pagamento parcial no banco tinha mais de uma linha.",
+    "As linhas enviadas ao banco passam a ser montadas a partir de uma lista fechada de colunas reais (`lib/partialPayment.ts`), então campo que só existe na tela não volta a vazar para o INSERT.",
+    "Ordem invertida e com rollback: a diferença é criada primeiro; se a atualização do lançamento original falhar depois, a diferença recém-criada é desfeita. Toda escrita confere o erro — antes nenhuma conferia.",
+    "`original_amount` guarda o valor cheio antes do rateio, e a diferença deixa de herdar o `type` de provisão de ativo (IPVA, seguro, parcela de venda, condomínio, IPTU), que fazia as telas de Ativos apagarem a pendência ao reeditar o bem.",
+    "Sem internet, a caixinha \"gerar diferença\" era ignorada em silêncio; agora a diferença entra na fila offline como lançamento novo.",
+    "O mapeamento de transações do Histórico descartava `user_id`, `category_id` e `liability_id`, e o de Ativos não trazia `paid_amount` — a diferença nascia sem categoria e sem vínculo, e o extrato contava lançamento meio pago como aberto pelo valor cheio."
   ]
 }
