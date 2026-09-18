@@ -134,6 +134,11 @@ Você NÃO recebe os dados financeiros do usuário prontos neste prompt. Em vez 
         contents.push({ role: 'user', parts: [{ text: message }] });
 
         let rawText = '';
+        // O Gemini 2.5 às vezes devolve uma rodada VAZIA (finishReason
+        // MALFORMED_FUNCTION_CALL: ele tentou chamar uma ferramenta e errou o
+        // formato). Antes isso virava "Não consegui concluir a análise" na hora;
+        // agora a rodada é repetida até 2 vezes antes de desistir.
+        let emptyRetries = 0;
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
@@ -146,11 +151,19 @@ Você NÃO recebe os dados financeiros do usuário prontos neste prompt. Em vez 
             });
             await recordAiUsage(supabase, 'chat', userId, response, 'gemini-2.5-flash');
 
-            const candidateParts = (response as any).candidates?.[0]?.content?.parts || [];
+            const candidate = (response as any).candidates?.[0];
+            const candidateParts = candidate?.content?.parts || [];
             const functionCalls = candidateParts.filter((p: any) => p.functionCall).map((p: any) => p.functionCall);
 
             if (functionCalls.length === 0) {
                 rawText = (response as any).text || candidateParts.map((p: any) => p.text).filter(Boolean).join('') || '';
+                if (!rawText && emptyRetries < 2) {
+                    emptyRetries++;
+                    console.warn(`[ZyvionChat] Rodada vazia (finishReason=${candidate?.finishReason || 'desconhecido'}), tentando de novo (${emptyRetries}/2).`);
+                    round--;
+                    continue;
+                }
+                if (!rawText) console.error(`[ZyvionChat] Sem resposta após ${emptyRetries} tentativas. finishReason=${candidate?.finishReason}`);
                 break;
             }
 

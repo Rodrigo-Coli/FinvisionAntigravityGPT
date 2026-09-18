@@ -1332,7 +1332,7 @@ const SettingsPage: React.FC = () => {
                   <button 
                     onClick={async () => {
                       const oldPrefs = profile?.preferences;
-                      const newValue = !(profile?.preferences?.show_bottom_nav ?? true);
+                      const newValue = !(profile?.preferences?.show_bottom_nav === true);
                       const newPrefs = { ...profile?.preferences, show_bottom_nav: newValue };
                       setProfile({ ...profile, preferences: newPrefs });
                       const { error } = await supabase!.from('profiles').update({ preferences: newPrefs }).eq('id', profile.id);
@@ -1341,9 +1341,9 @@ const SettingsPage: React.FC = () => {
                         toast('Erro ao salvar preferência. Tente novamente.', 'error');
                       }
                     }}
-                    className={`w-14 h-8 rounded-full p-1 transition-all ${profile?.preferences?.show_bottom_nav !== false ? 'bg-brand-600' : 'bg-slate-200'}`}
+                    className={`w-14 h-8 rounded-full p-1 transition-all ${profile?.preferences?.show_bottom_nav === true ? 'bg-brand-600' : 'bg-slate-200'}`}
                   >
-                    <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${profile?.preferences?.show_bottom_nav !== false ? 'translate-x-6' : 'translate-x-0'}`} />
+                    <div className={`w-6 h-6 bg-white rounded-full shadow-sm transition-all transform ${profile?.preferences?.show_bottom_nav === true ? 'translate-x-6' : 'translate-x-0'}`} />
                   </button>
                 </div>
 

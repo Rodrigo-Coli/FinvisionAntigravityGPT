@@ -54,5 +54,46 @@ export async function handlePromoteDemo(req: any, res: any) {
   // Atualiza o perfil com o e-mail real
   await supabaseAdmin.from('profiles').update({ email }).eq('id', userId);
 
-  return res.status(200).json({ success: true });
+  // A conta real nasce ZERADA: os dados de exemplo do demo (contas, cartões,
+  // lançamentos, metas, orçamentos, bens, dívidas, importações e cupons) são
+  // apagados aqui. Antes eles ficavam na conta promovida, e o usuário novo
+  // começava com o "Apartamento Pinheiros" e o salário fictício.
+  const wipe = await clearDemoData(userId);
+  if (wipe.errors.length) console.error('[promote-demo] Falha ao limpar dados demo:', wipe.errors);
+
+  return res.status(200).json({ success: true, cleared: wipe.errors.length === 0 });
+}
+
+async function clearDemoData(userId: string): Promise<{ errors: string[] }> {
+  const errors: string[] = [];
+  const del = async (table: string, column = 'user_id', value: any = userId) => {
+    const { error } = await supabaseAdmin.from(table).delete().eq(column, value);
+    if (error) errors.push(`${table}: ${error.message}`);
+  };
+
+  // Ordem respeita as chaves estrangeiras (filhos antes dos pais).
+  await del('transaction_splits');
+  await del('transactions');
+  await del('card_transactions');
+  await del('card_statements');
+  await del('cards');
+  await del('imported_transactions');
+  await del('imports');
+  await del('product_prices');
+  await del('ai_document_items');
+  await del('ai_documents');
+  await del('products');
+  await del('budgets');
+  await del('goals');
+  await del('liabilities');
+
+  const { data: assets } = await supabaseAdmin.from('physical_assets').select('id').eq('user_id', userId);
+  const assetIds = (assets || []).map((a: any) => a.id);
+  if (assetIds.length) {
+    const { error } = await supabaseAdmin.from('investment_reminders').delete().in('asset_id', assetIds);
+    if (error) errors.push(`investment_reminders: ${error.message}`);
+  }
+  await del('physical_assets');
+  await del('accounts');
+  return { errors };
 }

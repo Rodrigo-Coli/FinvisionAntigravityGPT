@@ -1105,6 +1105,9 @@ Hoje é ${dataHoje}.
   // chamar, a gente executa e devolve o resultado, até ele ter o suficiente para
   // responder em texto. Limite de rodadas só como trava de segurança contra loop.
   let rawReply = '';
+  // Mesma proteção do chat do site: rodada vazia do Gemini (MALFORMED_FUNCTION_CALL)
+  // é repetida até 2 vezes em vez de virar "não consegui" na hora.
+  let emptyRetries = 0;
   for (let round = 0; round < 5; round++) {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -1117,11 +1120,18 @@ Hoje é ${dataHoje}.
     });
     await recordAiUsage(supabase, 'whatsapp_query', userId, response, 'gemini-2.5-flash');
 
-    const candidateParts = (response as any).candidates?.[0]?.content?.parts || [];
+    const candidate = (response as any).candidates?.[0];
+    const candidateParts = candidate?.content?.parts || [];
     const functionCalls = candidateParts.filter((p: any) => p.functionCall).map((p: any) => p.functionCall);
 
     if (functionCalls.length === 0) {
       rawReply = (response as any).text || candidateParts.map((p: any) => p.text).filter(Boolean).join('') || '';
+      if (!rawReply && emptyRetries < 2) {
+        emptyRetries++;
+        console.warn(`[WhatsApp Query] Rodada vazia (finishReason=${candidate?.finishReason || 'desconhecido'}), tentando de novo (${emptyRetries}/2).`);
+        round--;
+        continue;
+      }
       break;
     }
 
