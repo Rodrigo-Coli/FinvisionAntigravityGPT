@@ -861,6 +861,9 @@ const Assets: React.FC = () => {
         subcategory: t.subcategory || '',
         metadata: t.metadata || {},
         isPaid: !!t.is_paid,
+        // Sem isto, o extrato do card conta como "em aberto" o valor cheio de um
+        // lançamento que já teve uma parte paga.
+        paidAmount: Number(t.paid_amount ?? 0),
         liability_id: t.liability_id,
         is_recurring: !!t.is_recurring,
         installment_number: t.installment_number,
@@ -1408,10 +1411,25 @@ const Assets: React.FC = () => {
     const totalExtraExpenses = outTxs.reduce((acc, curr) => acc + curr.amount, 0);
     const totalIncome = inTxs.reduce((acc, curr) => acc + curr.amount, 0);
 
+    // O extrato somava pago e pendente no mesmo número, sem dizer quanto ainda
+    // falta pagar — quem quitava um bem em parcelas não tinha como ver o saldo
+    // em aberto por aqui. `amount - paid_amount` cobre tanto a pendência inteira
+    // quanto a parcialmente paga.
+    const openOf = (list: any[]) => list.reduce(
+      (acc, t) => acc + (t.isPaid ? 0 : Math.max(Number(t.amount || 0) - Number(t.paidAmount || 0), 0)),
+      0
+    );
+    const openExtraExpenses = openOf(outTxs);
+    const openIncome = openOf(inTxs);
+
     return {
       txs,
       totalExtraExpenses,
-      totalIncome
+      totalIncome,
+      openExtraExpenses,
+      openIncome,
+      paidExtraExpenses: totalExtraExpenses - openExtraExpenses,
+      paidIncome: totalIncome - openIncome
     };
   };
 
@@ -12661,6 +12679,29 @@ ${tabelaHtml}
                         {formatCurrency(info.totalIncome - info.totalExtraExpenses)}
                       </p>
                     </div>
+
+                    {/* Quanto do total ainda não foi pago/recebido. Sem esta linha o
+                        extrato mostrava só o total comprometido, e quem estava
+                        quitando o bem em parcelas não via o saldo em aberto. */}
+                    {(info.openExtraExpenses > 0 || info.openIncome > 0) && (
+                      <div className="sm:col-span-3 border-t border-slate-200/60 pt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6">
+                        {info.openExtraExpenses > 0 && (
+                          <div className="flex justify-between items-center sm:gap-2 w-full sm:w-auto">
+                            <p className="text-xs font-black uppercase text-amber-600 tracking-wider">Ainda a Pagar</p>
+                            <p className="text-sm font-black text-amber-600">{formatCurrency(info.openExtraExpenses)}</p>
+                          </div>
+                        )}
+                        {info.openIncome > 0 && (
+                          <div className="flex justify-between items-center sm:gap-2 w-full sm:w-auto">
+                            <p className="text-xs font-black uppercase text-amber-600 tracking-wider">Ainda a Receber</p>
+                            <p className="text-sm font-black text-amber-600">{formatCurrency(info.openIncome)}</p>
+                          </div>
+                        )}
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          Já pago: {formatCurrency(info.paidExtraExpenses)}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -12854,6 +12895,13 @@ ${tabelaHtml}
                           <span className="break-words">{tx.description}</span>
                           {tx.metadata?.is_historical && (
                             <span className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-[7px] font-black uppercase tracking-wider shrink-0">Histórico</span>
+                          )}
+                          {/* Pago e pendente apareciam idênticos na lista: não dava
+                              para saber, olhando o extrato, o que ainda é dívida. */}
+                          {!tx.isPaid && (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[7px] font-black uppercase tracking-wider shrink-0">
+                              {Number(tx.paidAmount || 0) > 0 ? 'Parcial' : 'Em aberto'}
+                            </span>
                           )}
                         </p>
                         <p className="text-xs text-slate-400 font-medium">
