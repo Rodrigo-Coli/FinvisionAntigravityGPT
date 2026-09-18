@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
+import { requireUser } from './require-user.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -10,8 +11,13 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 export async function handleCategorizeTransactions(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, message: 'Method not allowed' });
 
+  // Usuário sai do token de login (antes era aberto e o userId vinha do corpo).
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const userId = user.id;
+
   try {
-    const { descriptions, categories, userId } = req.body;
+    const { descriptions, categories } = req.body || {};
     if (!descriptions || !Array.isArray(descriptions) || descriptions.length === 0) {
       return res.status(400).json({ ok: false, message: 'Need an array of transaction descriptions' });
     }
@@ -62,7 +68,7 @@ Importante:
         tools: [{ googleSearch: {} }]
       }
     });
-    await recordAiUsage(supabase, 'categorize', userId || null, response, 'gemini-2.5-flash');
+    await recordAiUsage(supabase, 'categorize', userId, response, 'gemini-2.5-flash');
 
     let text = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || "[]";
     text = text.trim();

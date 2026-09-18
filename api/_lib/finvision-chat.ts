@@ -3,6 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
 import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
+import { requireUser } from './require-user.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -15,8 +16,14 @@ const MAX_TOOL_ROUNDS = 5;
 export async function handleFinvisionChat(req: any, res: any) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    const { userId, message, history, startDate, endDate } = req.body;
-    if (!userId || !message) return res.status(400).json({ error: 'userId e message são obrigatórios' });
+    // O usuário vem do token de login, nunca do corpo (antes qualquer pessoa
+    // podia mandar o userId de outro cliente e ler os dados dele).
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const userId = user.id;
+
+    const { message, history, startDate, endDate } = req.body || {};
+    if (!message || typeof message !== 'string') return res.status(400).json({ error: 'message é obrigatório' });
 
     try {
         const now = new Date();
@@ -164,11 +171,11 @@ Você NÃO recebe os dados financeiros do usuário prontos neste prompt. Em vez 
 
     } catch (err: any) {
         console.error('[ZyvionChat] Erro Crítico:', err);
+        // O detalhe técnico fica só no log do servidor — antes ia para a tela do
+        // usuário e expunha nomes de tabela/serviço.
         return res.status(200).json({
             reply: `**Ops, tivemos um probleminha técnico!** 🤖\n\n` +
-                `Não consegui processar sua análise agora. Isso pode ser devido a uma instabilidade na API da Inteligência Artificial ou nos dados do Supabase.\n\n` +
-                `**Detalhes do erro:** \`${err.message}\`\n\n` +
-                `Por favor, tente novamente em alguns instantes.`
+                `Não consegui processar sua análise agora. Por favor, tente novamente em alguns instantes.`
         });
     }
 }

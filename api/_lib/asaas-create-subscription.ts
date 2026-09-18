@@ -40,6 +40,8 @@ export default async function handler(req: any, res: any) {
   } = req.body;
 
   if (!planSlug) return res.status(400).json({ error: 'planSlug required' });
+  if (!(period in PERIOD_MONTHS)) return res.status(400).json({ error: 'Período inválido.' });
+  if (paymentMethod !== 'CREDIT_CARD' && paymentMethod !== 'PIX') return res.status(400).json({ error: 'Forma de pagamento inválida.' });
 
   try {
     // 1. Get plan
@@ -106,7 +108,12 @@ export default async function handler(req: any, res: any) {
         .eq('is_active', true)
         .maybeSingle();
 
-      if (coupon) {
+      // Mesmas regras de validade do apply-coupon: cupom vencido ou esgotado
+      // não dá desconto (antes só `is_active` era checado aqui).
+      const couponExpired = !!(coupon?.expires_at && new Date(coupon.expires_at) < now);
+      const couponExhausted = !!(coupon?.max_uses && (coupon.uses_count || 0) >= coupon.max_uses);
+
+      if (coupon && !couponExpired && !couponExhausted) {
         const { data: used } = await supabase.from('coupon_uses')
           .select('id').eq('coupon_id', coupon.id).eq('user_id', userId).maybeSingle();
 

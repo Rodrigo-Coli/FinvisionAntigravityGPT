@@ -9,6 +9,7 @@ import { offlineQueue, isOfflineId } from '../lib/offlineQueue.service';
 import { isNetworkFailure, isHardNetworkFailure, isProbablyOffline, markNetworkFailure, markNetworkSuccess, withTimeout, NETWORK_TIMEOUT_MS } from '../lib/connectivity';
 import { parseTags, suggestTags, matchesAnyTag, rememberTags } from '../lib/tagUtils';
 import { getSessionUser } from '../lib/session';
+import { authHeaders } from '../lib/apiClient';
 import { SearchableInput } from '../components/common/SearchableInput';
 import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata } from '../lib/historyUtils';
 import { DateUtils } from '../lib/dateUtils';
@@ -2021,8 +2022,8 @@ const HistoryPage: React.FC = () => {
 
       const res = await fetch('/api/categorize-transactions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descriptions: uniqueDescriptions, categories: availableCategories, userId })
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ descriptions: uniqueDescriptions, categories: availableCategories })
       });
       const data = await res.json();
       if (!data.ok) {

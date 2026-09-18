@@ -365,7 +365,24 @@ export async function requestCreditRedemption(userId: string, amountCents: numbe
   }).select().single();
   if (error) throw error;
 
-  await supabase.from('affiliate_commission_events').update({ paid_in_payout_id: payout.id }).in('id', reservedIds);
+  // Reserva atômica (mesma lógica de handleAffiliateRequestPayout): só pega
+  // eventos ainda livres, para dois pedidos simultâneos não usarem o mesmo saldo.
+  const { data: actuallyReserved, error: reserveErr } = await supabase
+    .from('affiliate_commission_events')
+    .update({ paid_in_payout_id: payout.id })
+    .in('id', reservedIds)
+    .is('paid_in_payout_id', null)
+    .select('amount_cents');
+  if (reserveErr) throw reserveErr;
+
+  const reservedCents = (actuallyReserved || []).reduce((s: number, e: any) => s + e.amount_cents, 0);
+  if (reservedCents <= 0) {
+    await supabase.from('affiliate_payouts').delete().eq('id', payout.id);
+    throw new Error('Já existe um pedido em andamento para esse saldo.');
+  }
+  if (reservedCents !== reserved) {
+    await supabase.from('affiliate_payouts').update({ amount_cents: reservedCents }).eq('id', payout.id);
+  }
 
   return { payoutId: payout.id };
 }
@@ -644,9 +661,9 @@ export async function autoPayEligiblePayouts(): Promise<{ paid: number; failed: 
     .lte('requested_at', cutoff)
     .lte('amount_cents', settings.max_auto_payout_cents || 0);
 
-  // Já tentamos e falhou uma vez — não martela sozinho todo dia, fica
-  // esperando o superadmin olhar e decidir (ver bloco de erro abaixo).
-  const candidates = (rawCandidates || []).filter((p: any) => !p.notes?.startsWith('AUTO_FAILED:'));
+  // Já tentamos e falhou uma vez (AUTO_FAILED) ou já está sendo pago agora por
+  // outra execução (AUTO_PROCESSING) — não mexe.
+  const candidates = (rawCandidates || []).filter((p: any) => !p.notes?.startsWith('AUTO_'));
 
   let paid = 0, failed = 0, skipped = 0;
 
@@ -659,6 +676,19 @@ export async function autoPayEligiblePayouts(): Promise<{ paid: number; failed: 
       continue;
     }
 
+    // TRAVA ANTES DE MANDAR DINHEIRO: marca o pedido como "em processamento" com
+    // um update condicional. Se duas execuções do cron se sobrepuserem, só uma
+    // consegue marcar (a outra vê zero linhas e pula). Antes a trava ficava
+    // DEPOIS da transferência, e o mesmo pedido podia ser pago duas vezes.
+    const { data: locked } = await supabase
+      .from('affiliate_payouts')
+      .update({ notes: 'AUTO_PROCESSING: transferência Pix em andamento' })
+      .eq('id', payout.id)
+      .eq('status', 'requested')
+      .not('notes', 'like', 'AUTO_%')
+      .select('id');
+    if (!locked || locked.length === 0) { skipped++; continue; }
+
     const transfer = await createPixTransfer(payout.pix_key, check.type, payout.amount_cents);
 
     if (!transfer.success) {
@@ -668,8 +698,6 @@ export async function autoPayEligiblePayouts(): Promise<{ paid: number; failed: 
       continue;
     }
 
-    // Update condicional (WHERE status ainda é 'requested'): trava contra
-    // processar o mesmo pedido duas vezes se o cron rodar sobreposto.
     const { data: updated } = await supabase
       .from('affiliate_payouts')
       .update({ status: 'paid', paid_at: new Date().toISOString(), notes: `Pago automaticamente via Pix (Asaas transferência ${transfer.transferId})` })

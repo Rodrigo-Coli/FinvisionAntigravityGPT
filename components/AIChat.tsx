@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Sparkles, Loader2, Bot, User, Trash2, ArrowUpRight } from 'lucide-react';
 import PlanUpgradeModal from './subscription/PlanUpgradeModal';
+import { authHeaders } from '../lib/apiClient';
 
 interface ChatMessage {
     id: string;
@@ -10,9 +11,20 @@ interface ChatMessage {
     limitReached?: boolean;
 }
 
+// Neutraliza HTML antes de aplicar a formatação. A resposta da IA carrega
+// descrições de lançamentos (que qualquer origem pode conter) e é injetada
+// como HTML abaixo — sem isto, um "<img onerror=...>" numa descrição rodava
+// script na tela do usuário.
+const escapeHtml = (s: string) => s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 const renderMarkdown = (text: string) => {
     // 1. WhatsApp-style bold (*text*) or standard markdown (**text**)
-    let html = text
+    let html = escapeHtml(text)
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<strong>$1</strong>');
 
@@ -130,9 +142,8 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
         try {
             const response = await fetch('/api/finvision-chat', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
                 body: JSON.stringify({
-                    userId,
                     message: query,
                     startDate,
                     endDate,

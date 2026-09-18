@@ -4,6 +4,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { Buffer } from 'node:buffer';
+import { requireUser } from './require-user.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -21,7 +22,13 @@ export async function handleReceiptItems(req: any, res: any) {
     }
     if (!body || typeof body !== 'object') body = {};
 
-    const { base64, mimeType, files, userId } = body;
+    // Só usuário logado pode usar o scanner (antes era aberto e qualquer um
+    // gastava a cota do Gemini). O userId sai do token, não do corpo.
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const userId = user.id;
+
+    const { base64, mimeType, files } = body;
     let inputFiles: any[] = [];
 
     if (files && Array.isArray(files)) {
@@ -117,7 +124,7 @@ export async function handleReceiptItems(req: any, res: any) {
                 }
             }
         });
-        await recordAiUsage(supabase, 'receipt_items', userId || null, response, 'gemini-2.5-flash');
+        await recordAiUsage(supabase, 'receipt_items', userId, response, 'gemini-2.5-flash');
 
         if (!response) {
             throw new Error('A IA não retornou nenhuma resposta.');

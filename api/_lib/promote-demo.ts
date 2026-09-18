@@ -26,6 +26,19 @@ export async function handlePromoteDemo(req: any, res: any) {
 
   const userId = userData.user.id;
 
+  // Só uma conta DEMO pode ser promovida. Sem isto, qualquer usuário logado
+  // trocava o próprio e-mail para um endereço de terceiro sem confirmação.
+  const currentEmail = String(userData.user.email || '').toLowerCase();
+  if (!/^demo\+.*@finvision\.app$/.test(currentEmail)) {
+    return res.status(403).json({ error: 'Esta ação só está disponível para contas de demonstração.' });
+  }
+  if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'E-mail inválido.' });
+  }
+  if (typeof password !== 'string' || password.length < 6) {
+    return res.status(400).json({ error: 'A senha precisa ter pelo menos 6 caracteres.' });
+  }
+
   // Usa o admin para atualizar — ignora validação do e-mail temporário
   const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
     email,

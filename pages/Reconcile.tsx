@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { ImportedTransaction, MatchStatus, BankAccount } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
+import { authHeaders } from '../lib/apiClient';
 import { DateUtils } from '../lib/dateUtils';
 import { ReconciliationService } from '../services/reconciliation.service';
 import { FinanceService } from '../services/finance.service';
@@ -96,11 +97,10 @@ const Reconcile: React.FC = () => {
         return;
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch('/api/categorize-transactions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descriptions: uniqueDescriptions, categories: subcategories, userId: session?.user?.id })
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ descriptions: uniqueDescriptions, categories: subcategories })
       });
       const data = await res.json();
       if (!data.ok) {
