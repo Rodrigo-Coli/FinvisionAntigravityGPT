@@ -18,7 +18,7 @@ const FloatingActions: React.FC<FloatingActionsProps> = ({ user }) => {
     return null;
   }
 
-  const showOnMobile = user.preferences?.show_bottom_nav === false;
+  const showOnMobile = user.preferences?.show_bottom_nav !== true;
   const containerClass = showOnMobile
     ? "fixed bottom-6 right-6 flex flex-col items-end gap-3 z-50"
     : "hidden lg:flex fixed bottom-10 right-10 flex-col items-end gap-3 z-50";

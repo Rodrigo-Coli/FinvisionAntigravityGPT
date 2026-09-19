@@ -21,7 +21,8 @@ const BottomNav: React.FC<BottomNavProps> = ({ user }) => {
     return i;
   });
   const visibleItems = Array.from(new Set(mappedVisibleItems));
-  const showNav = prefs.show_bottom_nav !== false;
+  // Padrão: barra inferior desligada (opt-in em Ajustes > Preferências).
+  const showNav = prefs.show_bottom_nav === true;
 
   if (!showNav) return null;
 

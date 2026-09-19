@@ -265,7 +265,7 @@ const App: React.FC = () => {
                 {session && profile && (
                   <>
                     <Nav user={profile} />
-                    {profile.preferences?.show_bottom_nav !== false && <BottomNav user={profile} />}
+                    {profile.preferences?.show_bottom_nav === true && <BottomNav user={profile} />}
                     <FloatingActions user={profile} />
                   </>
                 )}
