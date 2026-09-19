@@ -4,6 +4,7 @@ import { recordAiUsage } from './ai-usage.js';
 import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { requireUser } from './require-user.js';
+import { sanitizeChatHistory, buildFallbackReply, type ToolResult } from './chat-history.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -12,6 +13,10 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 // Máximo de idas-e-voltas de ferramenta por pergunta (pergunta que precise de 2-3
 // áreas diferentes ainda cabe folgado; isso é só um limite de segurança contra loop).
 const MAX_TOOL_ROUNDS = 5;
+
+// Modelo principal e o reserva, usado quando o principal devolve resposta vazia.
+const PRIMARY_MODEL = 'gemini-2.5-flash';
+const FALLBACK_MODEL = 'gemini-2.0-flash';
 
 export async function handleFinvisionChat(req: any, res: any) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -121,35 +126,41 @@ Você NÃO recebe os dados financeiros do usuário prontos neste prompt. Em vez 
 7. **Limite Regulatório (OBRIGATÓRIO)**:
    - Você educa, compara e simula, mas NUNCA dá recomendação personalizada de compra/venda de ativos específicos (ações, cripto, fundos). Apresente tipos, critérios e trade-offs e devolva a decisão final ao usuário.`;
 
-        const contents: any[] = [];
-        if (history && history.length > 0) {
-            history.forEach((msg: any) => {
-                if (msg.role === 'assistant' || msg.role === 'model') {
-                    contents.push({ role: 'model', parts: [{ text: msg.content }] });
-                } else if (msg.role === 'user') {
-                    contents.push({ role: 'user', parts: [{ text: msg.content }] });
-                }
-            });
-        }
+        // O histórico da tela começa com a SAUDAÇÃO do assistente. Mandar isso
+        // como primeiro turno faz o Gemini devolver resposta vazia (STOP sem
+        // texto) de forma consistente — era a causa do "Não consegui concluir a
+        // análise" ao perguntar o saldo. sanitizeChatHistory corta os turnos do
+        // modelo que ficam na frente e descarta mensagens vazias.
+        const contents: any[] = sanitizeChatHistory(history);
         contents.push({ role: 'user', parts: [{ text: message }] });
 
         let rawText = '';
-        // O Gemini 2.5 às vezes devolve uma rodada VAZIA (finishReason
-        // MALFORMED_FUNCTION_CALL: ele tentou chamar uma ferramenta e errou o
-        // formato). Antes isso virava "Não consegui concluir a análise" na hora;
-        // agora a rodada é repetida até 2 vezes antes de desistir.
-        let emptyRetries = 0;
+        // Guarda o que cada ferramenta trouxe: se o modelo não escrever a
+        // resposta, respondemos com os números reais em vez de uma desculpa.
+        const toolResults: ToolResult[] = [];
+        let emptyRounds = 0;
+
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+            // Na segunda tentativa seguida sem texto, troca de modelo: o 2.5 já
+            // se mostrou capaz de travar em resposta vazia para um mesmo contexto.
+            const model = emptyRounds >= 1 ? FALLBACK_MODEL : PRIMARY_MODEL;
+
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model,
                 contents,
                 config: {
                     systemInstruction: systemPrompt,
                     temperature: 0.4,
+                    // Sem "pensamento" interno: no 2.5-flash ele consome a resposta
+                    // e o modelo devolve partes sem texto nenhum. Para este chat,
+                    // que responde curto e usa ferramentas, não faz falta — e fica
+                    // mais rápido e mais barato.
+                    thinkingConfig: { thinkingBudget: 0 },
+                    maxOutputTokens: 3072,
                     tools: [{ functionDeclarations: FINANCIAL_TOOL_DECLARATIONS as any }],
                 }
             });
-            await recordAiUsage(supabase, 'chat', userId, response, 'gemini-2.5-flash');
+            await recordAiUsage(supabase, 'chat', userId, response, model);
 
             const candidate = (response as any).candidates?.[0];
             const candidateParts = candidate?.content?.parts || [];
@@ -157,26 +168,32 @@ Você NÃO recebe os dados financeiros do usuário prontos neste prompt. Em vez 
 
             if (functionCalls.length === 0) {
                 rawText = (response as any).text || candidateParts.map((p: any) => p.text).filter(Boolean).join('') || '';
-                if (!rawText && emptyRetries < 2) {
-                    emptyRetries++;
-                    console.warn(`[ZyvionChat] Rodada vazia (finishReason=${candidate?.finishReason || 'desconhecido'}), tentando de novo (${emptyRetries}/2).`);
-                    round--;
-                    continue;
-                }
-                if (!rawText) console.error(`[ZyvionChat] Sem resposta após ${emptyRetries} tentativas. finishReason=${candidate?.finishReason}`);
-                break;
+                if (rawText) break;
+
+                emptyRounds++;
+                console.warn(`[ZyvionChat] Resposta vazia (modelo=${model}, finishReason=${candidate?.finishReason || '?'}, turnos=${contents.length}, ferramentas=${toolResults.length}). Tentativa ${emptyRounds}/2.`);
+                if (emptyRounds >= 2) break;
+                continue;
             }
 
             // Ecoa a chamada que o modelo pediu e devolve o resultado de cada ferramenta.
             contents.push({ role: 'model', parts: candidateParts });
             const responseParts = await Promise.all(functionCalls.map(async (call: any) => {
                 const result = await executeFinancialTool(supabase, userId, geminiKey, call.name, call.args);
+                toolResults.push({ name: call.name, result });
                 return { functionResponse: { name: call.name, response: { result } } };
             }));
             contents.push({ role: 'user', parts: responseParts });
         }
 
         if (!rawText) {
+            // Última rede: entrega os números que as ferramentas já buscaram.
+            const fallback = buildFallbackReply(toolResults);
+            if (fallback) {
+                console.warn('[ZyvionChat] Modelo sem texto — respondendo com os dados das ferramentas.');
+                return res.status(200).json({ reply: fallback });
+            }
+            console.error(`[ZyvionChat] Sem resposta e sem dados de ferramenta (turnos=${contents.length}).`);
             rawText = 'Não consegui concluir a análise com os dados disponíveis agora. Pode reformular a pergunta ou tentar novamente?';
         }
 

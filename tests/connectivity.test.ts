@@ -106,7 +106,14 @@ describe('classificação de falha', () => {
 
 describe('sonda de conectividade', () => {
   const realFetch = globalThis.fetch;
-  afterEach(() => { globalThis.fetch = realFetch; });
+
+  // A sonda só tem para onde ligar se VITE_SUPABASE_URL existir. Sem isso ela
+  // devolve "online" sem tocar a rede, e estes dois testes passavam a testar
+  // nada — era o que acontecia em qualquer máquina sem o arquivo .env (que
+  // deixou de ser versionado). Fixamos a variável aqui para o teste valer em
+  // qualquer ambiente.
+  beforeEach(() => { vi.stubEnv('VITE_SUPABASE_URL', 'https://projeto.supabase.co'); });
+  afterEach(() => { globalThis.fetch = realFetch; vi.unstubAllEnvs(); });
 
   it('uma sonda que passa desfaz um diagnóstico errado de offline', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({} as any) as any;

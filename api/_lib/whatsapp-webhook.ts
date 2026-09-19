@@ -3,6 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
 import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
+import { sanitizeChatHistory, buildFallbackReply, type ToolResult } from './chat-history.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -1089,11 +1090,11 @@ Hoje é ${dataHoje}.
   if (!geminiKey) throw new Error('GEMINI_API_KEY não configurada.');
   const ai = new GoogleGenAI({ apiKey: geminiKey });
 
-  // Mapear o histórico para o formato do Gemini
-  const contents: any[] = history.map(h => ({
-    role: h.role === 'user' ? 'user' : 'model',
-    parts: [{ text: h.content }]
-  }));
+  // Mapear o histórico para o formato do Gemini. sanitizeChatHistory descarta
+  // mensagens vazias e garante que a conversa começa com um turno do USUÁRIO —
+  // começando com um turno do modelo, o Gemini devolve resposta vazia (ver
+  // api/_lib/chat-history.ts).
+  const contents: any[] = sanitizeChatHistory(history);
 
   // Adicionar a pergunta atual do usuário ao final do histórico enviado à API do Gemini
   contents.push({
@@ -1105,20 +1106,25 @@ Hoje é ${dataHoje}.
   // chamar, a gente executa e devolve o resultado, até ele ter o suficiente para
   // responder em texto. Limite de rodadas só como trava de segurança contra loop.
   let rawReply = '';
-  // Mesma proteção do chat do site: rodada vazia do Gemini (MALFORMED_FUNCTION_CALL)
-  // é repetida até 2 vezes em vez de virar "não consegui" na hora.
-  let emptyRetries = 0;
+  // Mesma proteção do chat do site (ver api/_lib/finvision-chat.ts): sem
+  // "pensamento" interno, troca de modelo quando a resposta vem vazia e, em
+  // último caso, os números crus das ferramentas em vez de uma desculpa.
+  const toolResults: ToolResult[] = [];
+  let emptyRounds = 0;
   for (let round = 0; round < 5; round++) {
+    const model = emptyRounds >= 1 ? 'gemini-2.0-flash' : 'gemini-2.5-flash';
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model,
       contents,
       config: {
         systemInstruction: systemPrompt,
         temperature: 0.7,
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 2048,
         tools: [{ functionDeclarations: FINANCIAL_TOOL_DECLARATIONS as any }],
       }
     });
-    await recordAiUsage(supabase, 'whatsapp_query', userId, response, 'gemini-2.5-flash');
+    await recordAiUsage(supabase, 'whatsapp_query', userId, response, model);
 
     const candidate = (response as any).candidates?.[0];
     const candidateParts = candidate?.content?.parts || [];
@@ -1126,24 +1132,24 @@ Hoje é ${dataHoje}.
 
     if (functionCalls.length === 0) {
       rawReply = (response as any).text || candidateParts.map((p: any) => p.text).filter(Boolean).join('') || '';
-      if (!rawReply && emptyRetries < 2) {
-        emptyRetries++;
-        console.warn(`[WhatsApp Query] Rodada vazia (finishReason=${candidate?.finishReason || 'desconhecido'}), tentando de novo (${emptyRetries}/2).`);
-        round--;
-        continue;
-      }
-      break;
+      if (rawReply) break;
+
+      emptyRounds++;
+      console.warn(`[WhatsApp Query] Resposta vazia (modelo=${model}, finishReason=${candidate?.finishReason || '?'}). Tentativa ${emptyRounds}/2.`);
+      if (emptyRounds >= 2) break;
+      continue;
     }
 
     contents.push({ role: 'model', parts: candidateParts });
     const responseParts = await Promise.all(functionCalls.map(async (call: any) => {
       const result = await executeFinancialTool(supabase, userId, geminiKey!, call.name, call.args);
+      toolResults.push({ name: call.name, result });
       return { functionResponse: { name: call.name, response: { result } } };
     }));
     contents.push({ role: 'user', parts: responseParts });
   }
 
-  if (!rawReply) rawReply = 'Desculpe, não consegui obter resposta da análise agora.';
+  if (!rawReply) rawReply = buildFallbackReply(toolResults) || 'Desculpe, não consegui obter resposta da análise agora.';
   await sendWhatsApp(phone, rawReply);
 
   // Salvar a pergunta do usuário e a resposta no histórico de chat

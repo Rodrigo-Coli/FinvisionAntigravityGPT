@@ -147,7 +147,12 @@ const AIChat: React.FC<{ userId: string, startDate?: string, endDate?: string }>
                     message: query,
                     startDate,
                     endDate,
-                    history: messages.map(m => ({ role: m.role, content: m.content }))
+                    // A saudação inicial (id 'init') e mensagens vazias ficam de
+                    // fora: o histórico enviado precisa começar por uma fala do
+                    // usuário, senão o modelo devolve resposta vazia.
+                    history: messages
+                        .filter(m => m.id !== 'init' && m.content.trim())
+                        .map(m => ({ role: m.role, content: m.content }))
                 })
             });
 
