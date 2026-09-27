@@ -57,6 +57,11 @@ describe('helpers', () => {
 });
 
 describe('dia de cobrança, "a partir de" e valor fixo', () => {
+  it('valor fixo maior que o saldo cai na divisão igual', () => {
+    const plan = buildSaleInstallmentPlan({ total: 100, downPayment: 0, installmentsCount: 2, frequency: 'MENSAL', firstInstallmentDate: '2026-01-01', fixedInstallmentAmount: 100 });
+    expect(plan.map(p => p.amount)).toEqual([50, 50]);
+  });
+
   it('primeiro dia de cobrança em ou depois da data inicial', async () => {
     const { resolveFirstInstallmentDate } = await import('../lib/saleInstallments');
     expect(resolveFirstInstallmentDate('2026-10-01', 10)).toBe('2026-10-10');
@@ -81,7 +86,9 @@ describe('dia de cobrança, "a partir de" e valor fixo', () => {
     }, '2026-09-27');
     const plan = buildSaleInstallmentPlan({ total: 115956.39, ...s });
     expect(plan).toHaveLength(12);
-    expect(plan.every(p => p.amount === 7996.39)).toBe(true);
+    expect(plan.slice(0, 11).every(p => p.amount === 7996.39)).toBe(true);
+    expect(plan[11].amount).toBe(7996.1);
+    expect(Math.round(plan.reduce((a, p) => a + p.amount, 20000) * 100) / 100).toBe(115956.39);
     expect(plan[0].date).toBe('2026-10-25');
     expect(plan[11].date).toBe('2027-09-25');
   });

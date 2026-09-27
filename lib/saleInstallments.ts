@@ -109,9 +109,9 @@ export interface SalePlanInput {
   /** Parcelas já recebidas: número da parcela → valor recebido. */
   receivedInstallments?: { number: number; amount: number }[];
   /**
-   * Valor fixo da parcela, como está no contrato. Quando informado, TODAS as
-   * pendentes usam exatamente este valor (contratos com juros/arredondamento não
-   * fecham com a divisão simples do saldo). Vazio = divide o saldo.
+   * Valor fixo da parcela, como está no contrato. Quando informado, as pendentes
+   * usam este valor e a última recebe o que falta para fechar o valor da venda.
+   * Vazio = divide o saldo igualmente.
    */
   fixedInstallmentAmount?: number;
   /** Dia de cobrança fixo nos passos mensais (1–31). */
@@ -141,9 +141,13 @@ export const buildSaleInstallmentPlan = (input: SalePlanInput): SalePlanInstallm
   const pendingNumbers = Array.from({ length: n }, (_, i) => i + 1).filter(k => !receivedNumbers.has(k));
   if (pendingNumbers.length === 0 || balance <= 0) return [];
 
+  // Valor fixo do contrato: todas usam esse valor e a ÚLTIMA fecha a diferença, para
+  // a soma continuar igual ao valor da venda (ex.: 11x 7.996,39 + 7.996,10).
+  // Se o valor fixo não couber no saldo, cai na divisão igual.
   const fixed = round2(Number(input.fixedInstallmentAmount) || 0);
-  const base = fixed > 0 ? fixed : Math.floor((balance / pendingNumbers.length) * 100) / 100;
-  const last = fixed > 0 ? fixed : round2(balance - base * (pendingNumbers.length - 1));
+  const fixedFits = fixed > 0 && round2(balance - fixed * (pendingNumbers.length - 1)) > 0;
+  const base = fixedFits ? fixed : Math.floor((balance / pendingNumbers.length) * 100) / 100;
+  const last = round2(balance - base * (pendingNumbers.length - 1));
 
   return pendingNumbers.map((num, idx) => ({
     number: num,

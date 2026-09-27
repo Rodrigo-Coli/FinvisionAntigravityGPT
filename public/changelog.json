@@ -5,7 +5,7 @@
   "benefits": [
     {
       "title": "Você define como vai receber a venda",
-      "desc": "Ao marcar um veículo (ou outro bem/imóvel) como vendido em \"Parcelado\", agora dá para informar a entrada, a quantidade de parcelas, a periodicidade (semanal a anual), a partir de qual data a cobrança começa e o dia de cobrança. O saldo (venda − entrada) é dividido igualmente — ou, se preferir, informe o valor da parcela exatamente como está no contrato.",
+      "desc": "Ao marcar um veículo (ou outro bem/imóvel) como vendido em \"Parcelado\", agora dá para informar a entrada, a quantidade de parcelas, a periodicidade (semanal a anual), a partir de qual data a cobrança começa e o dia de cobrança. O saldo (venda − entrada) é dividido igualmente — ou informe o valor da parcela do contrato, e a última parcela ajusta os centavos para fechar o valor da venda.",
       "type": "recurso"
     },
     {

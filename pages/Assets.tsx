@@ -10879,8 +10879,8 @@ ${tabelaHtml}
                               const lastDate = nInst > 0 && firstDate
                                 ? addSalePeriod(firstDate, freq, nInst - 1, plan.dueDay)
                                 : '';
-                              const planTotal = downVal + perInst * nInst;
-                              const planDiff = fixedInst > 0 ? Math.round((planTotal - soldVal) * 100) / 100 : 0;
+                              const lastInst = nInst > 0 ? Math.round((soldVal - downVal - perInst * (nInst - 1)) * 100) / 100 : 0;
+                              const lastDiffers = fixedInst > 0 && nInst > 1 && lastInst > 0 && Math.abs(lastInst - perInst) >= 0.005;
                               const fmtDate = (iso: string) => iso.split('-').reverse().join('/');
                               const inputCls = "w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20";
                               const labelCls = "block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5";
@@ -10981,10 +10981,13 @@ ${tabelaHtml}
                                       ) : (
                                         <>
                                           {downVal > 0 && <div>Entrada: {brl(downVal)}</div>}
-                                          <div>{fixedInst > 0 ? 'Parcelas' : `Saldo ${brl(soldVal - downVal)} em`} {nInst}x de {brl(perInst)} ({SALE_FREQUENCY_OPTIONS.find(o => o.value === freq)?.label.toLowerCase()})</div>
+                                          <div>Saldo {brl(soldVal - downVal)} em {nInst}x de {brl(perInst)} ({SALE_FREQUENCY_OPTIONS.find(o => o.value === freq)?.label.toLowerCase()})</div>
                                           {firstDate && <div className="font-medium opacity-80">1ª parcela em {fmtDate(firstDate)}{lastDate && nInst > 1 ? ` · última em ${fmtDate(lastDate)}` : ''}</div>}
-                                          {planDiff !== 0 && (
-                                            <div className="font-medium text-amber-700 mt-1">Entrada + parcelas = {brl(planTotal)} ({planDiff > 0 ? '+' : ''}{brl(planDiff)} em relação ao valor da venda)</div>
+                                          {lastDiffers && (
+                                            <div className="font-medium text-amber-700 mt-1">Última parcela: {brl(lastInst)} (ajuste para fechar o valor da venda)</div>
+                                          )}
+                                          {fixedInst > 0 && lastInst <= 0 && (
+                                            <div className="font-medium text-amber-700 mt-1">Esse valor de parcela ultrapassa o saldo; será usada a divisão igual.</div>
                                           )}
                                           <div className="font-medium opacity-80 mt-1">Parcelas já recebidas são mantidas; só as pendentes são recalculadas ao salvar.</div>
                                         </>
