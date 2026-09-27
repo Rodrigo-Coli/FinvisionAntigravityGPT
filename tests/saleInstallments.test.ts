@@ -55,3 +55,34 @@ describe('helpers', () => {
     expect(isSaleRowSettled({ is_paid: false, paid_amount: 0 })).toBe(false);
   });
 });
+
+describe('dia de cobrança, "a partir de" e valor fixo', () => {
+  it('primeiro dia de cobrança em ou depois da data inicial', async () => {
+    const { resolveFirstInstallmentDate } = await import('../lib/saleInstallments');
+    expect(resolveFirstInstallmentDate('2026-10-01', 10)).toBe('2026-10-10');
+    expect(resolveFirstInstallmentDate('2026-10-15', 10)).toBe('2026-11-10');
+    expect(resolveFirstInstallmentDate('2026-12-20', 5)).toBe('2027-01-05');
+    expect(resolveFirstInstallmentDate('2026-02-01', 31)).toBe('2026-02-28');
+    expect(resolveFirstInstallmentDate('2026-10-15', null)).toBe('2026-10-15');
+  });
+
+  it('dia 31 não herda o 28 de fevereiro nas parcelas seguintes', () => {
+    const plan = buildSaleInstallmentPlan({
+      total: 300, downPayment: 0, installmentsCount: 3, frequency: 'MENSAL',
+      firstInstallmentDate: '2026-02-28', dueDay: 31
+    });
+    expect(plan.map(p => p.date)).toEqual(['2026-02-28', '2026-03-31', '2026-04-30']);
+  });
+
+  it('CLA 180: entrada 20.000 + 12x de 7.996,39 com valor fixo do contrato', () => {
+    const s = readSalePlanSettings({
+      saleDownPayment: '20000', saleInstallmentsCount: '12', saleInstallmentFrequency: 'MENSAL',
+      saleFirstInstallmentDate: '2026-10-01', saleInstallmentDueDay: '25', saleInstallmentAmount: '7996.39'
+    }, '2026-09-27');
+    const plan = buildSaleInstallmentPlan({ total: 115956.39, ...s });
+    expect(plan).toHaveLength(12);
+    expect(plan.every(p => p.amount === 7996.39)).toBe(true);
+    expect(plan[0].date).toBe('2026-10-25');
+    expect(plan[11].date).toBe('2027-09-25');
+  });
+});

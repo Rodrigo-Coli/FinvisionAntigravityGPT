@@ -62,7 +62,7 @@ import SearchableSelect from '../components/common/SearchableSelect';
 import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
 import { computeInstallmentAmount, buildInstallmentDate } from '../lib/amortization';
-import { SALE_FREQUENCY_OPTIONS, previewSaleInstallment, syncSaleInstallmentPlan, addSalePeriod, isSaleFrequency } from '../lib/saleInstallments';
+import { SALE_FREQUENCY_OPTIONS, previewSaleInstallment, syncSaleInstallmentPlan, addSalePeriod, isSaleFrequency, readSalePlanSettings } from '../lib/saleInstallments';
 import { useToast } from '../contexts/ToastContext';
 import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 
@@ -479,6 +479,8 @@ const Assets: React.FC = () => {
     saleInstallmentsCount: '10',
     saleInstallmentFrequency: 'MENSAL' as string,
     saleFirstInstallmentDate: DateUtils.formatToISODate(),
+    saleInstallmentDueDay: '',
+    saleInstallmentAmount: '',
     ipvaPaymentMethod: 'PARCELADO' as 'A_VISTA' | 'PARCELADO',
     ipvaInstallmentsCount: '5',
     seguroPaymentMethod: 'PARCELADO' as 'A_VISTA' | 'RECORRENTE' | 'PARCELADO',
@@ -3290,7 +3292,12 @@ const Assets: React.FC = () => {
             return;
           }
           if (!formData.saleFirstInstallmentDate) {
-            toast('Informe a data da 1ª parcela.', 'warning');
+            toast('Informe a partir de qual data as parcelas começam.', 'warning');
+            return;
+          }
+          const dueDayVal = formData.saleInstallmentDueDay ? parseInt(formData.saleInstallmentDueDay, 10) : 0;
+          if (formData.saleInstallmentDueDay && (!(dueDayVal >= 1) || dueDayVal > 31)) {
+            toast('O dia de cobrança deve estar entre 1 e 31.', 'warning');
             return;
           }
         } else if (formData.salePaymentMethod === 'PERMUTA') {
@@ -3420,6 +3427,8 @@ const Assets: React.FC = () => {
         saleInstallmentsCount: formData.isSold && formData.salePaymentMethod === 'PARCELADO' ? (parseInt(formData.saleInstallmentsCount, 10) || 1) : undefined,
         saleInstallmentFrequency: formData.isSold && formData.salePaymentMethod === 'PARCELADO' ? formData.saleInstallmentFrequency : undefined,
         saleFirstInstallmentDate: formData.isSold && formData.salePaymentMethod === 'PARCELADO' ? formData.saleFirstInstallmentDate : undefined,
+        saleInstallmentDueDay: formData.isSold && formData.salePaymentMethod === 'PARCELADO' ? (parseInt(formData.saleInstallmentDueDay, 10) || undefined) : undefined,
+        saleInstallmentAmount: formData.isSold && formData.salePaymentMethod === 'PARCELADO' ? (parseFloat(formData.saleInstallmentAmount) || undefined) : undefined,
         // Advanced OTHER technical and custody fields
         brandModel: formData.category === 'OTHER' ? formData.brandModel : undefined,
         serialNumber: formData.category === 'OTHER' ? formData.serialNumber : undefined,
@@ -4397,6 +4406,8 @@ const Assets: React.FC = () => {
       saleInstallmentsCount: '10',
       saleInstallmentFrequency: 'MENSAL',
       saleFirstInstallmentDate: DateUtils.formatToISODate(),
+      saleInstallmentDueDay: '',
+      saleInstallmentAmount: '',
       // Investment-specific fields
       investmentType: 'CDB',
       interestType: 'CDI',
@@ -4610,6 +4621,8 @@ const Assets: React.FC = () => {
       saleInstallmentsCount: meta.saleInstallmentsCount ? String(meta.saleInstallmentsCount) : '10',
       saleInstallmentFrequency: isSaleFrequency(meta.saleInstallmentFrequency) ? meta.saleInstallmentFrequency : 'MENSAL',
       saleFirstInstallmentDate: meta.saleFirstInstallmentDate || meta.saleDate || DateUtils.formatToISODate(),
+      saleInstallmentDueDay: meta.saleInstallmentDueDay ? String(meta.saleInstallmentDueDay) : '',
+      saleInstallmentAmount: meta.saleInstallmentAmount ? String(meta.saleInstallmentAmount) : '',
       // Investment-specific fields
       investmentType: meta.investmentType || 'CDB',
       interestType: meta.interestType || 'CDI',
@@ -10857,11 +10870,18 @@ ${tabelaHtml}
                               const soldVal = parseFloat(formData.soldValue) || 0;
                               const downVal = parseFloat(formData.saleDownPayment) || 0;
                               const nInst = parseInt(formData.saleInstallmentsCount, 10) || 0;
-                              const perInst = previewSaleInstallment(soldVal, downVal, nInst);
+                              const fixedInst = parseFloat(formData.saleInstallmentAmount) || 0;
+                              const perInst = fixedInst > 0 ? fixedInst : previewSaleInstallment(soldVal, downVal, nInst);
                               const freq = isSaleFrequency(formData.saleInstallmentFrequency) ? formData.saleInstallmentFrequency : 'MENSAL';
-                              const lastDate = nInst > 0 && formData.saleFirstInstallmentDate
-                                ? addSalePeriod(formData.saleFirstInstallmentDate, freq, nInst - 1)
+                              const monthlyStep = freq !== 'SEMANAL' && freq !== 'QUINZENAL';
+                              const plan = readSalePlanSettings(formData, DateUtils.formatToISODate());
+                              const firstDate = formData.saleFirstInstallmentDate ? plan.firstInstallmentDate : '';
+                              const lastDate = nInst > 0 && firstDate
+                                ? addSalePeriod(firstDate, freq, nInst - 1, plan.dueDay)
                                 : '';
+                              const planTotal = downVal + perInst * nInst;
+                              const planDiff = fixedInst > 0 ? Math.round((planTotal - soldVal) * 100) / 100 : 0;
+                              const fmtDate = (iso: string) => iso.split('-').reverse().join('/');
                               const inputCls = "w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20";
                               const labelCls = "block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5";
                               const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -10917,13 +10937,41 @@ ${tabelaHtml}
                                       </select>
                                     </div>
                                   </div>
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <label className={labelCls}>Cobrança a partir de</label>
+                                      <input
+                                        type="date"
+                                        className={inputCls}
+                                        value={formData.saleFirstInstallmentDate}
+                                        onChange={(e) => setFormData({ ...formData, saleFirstInstallmentDate: e.target.value })}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className={labelCls}>Dia de Cobrança</label>
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        max="31"
+                                        step="1"
+                                        className={inputCls}
+                                        value={monthlyStep ? formData.saleInstallmentDueDay : ''}
+                                        onChange={(e) => setFormData({ ...formData, saleInstallmentDueDay: e.target.value })}
+                                        placeholder={monthlyStep ? 'Ex: 10 (vazio = dia da data)' : 'Não se aplica'}
+                                        disabled={!monthlyStep}
+                                      />
+                                    </div>
+                                  </div>
                                   <div>
-                                    <label className={labelCls}>Vencimento da 1ª Parcela</label>
+                                    <label className={labelCls}>Valor da Parcela (R$) — opcional</label>
                                     <input
-                                      type="date"
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
                                       className={inputCls}
-                                      value={formData.saleFirstInstallmentDate}
-                                      onChange={(e) => setFormData({ ...formData, saleFirstInstallmentDate: e.target.value })}
+                                      value={formData.saleInstallmentAmount}
+                                      onChange={(e) => setFormData({ ...formData, saleInstallmentAmount: e.target.value })}
+                                      placeholder={`Vazio = divide o saldo (${brl(previewSaleInstallment(soldVal, downVal, nInst))})`}
                                     />
                                   </div>
                                   {soldVal > 0 && nInst > 0 && (
@@ -10933,8 +10981,11 @@ ${tabelaHtml}
                                       ) : (
                                         <>
                                           {downVal > 0 && <div>Entrada: {brl(downVal)}</div>}
-                                          <div>Saldo {brl(soldVal - downVal)} em {nInst}x de {brl(perInst)} ({SALE_FREQUENCY_OPTIONS.find(o => o.value === freq)?.label.toLowerCase()})</div>
-                                          {lastDate && <div className="font-medium opacity-80">Última parcela em {lastDate.split('-').reverse().join('/')}</div>}
+                                          <div>{fixedInst > 0 ? 'Parcelas' : `Saldo ${brl(soldVal - downVal)} em`} {nInst}x de {brl(perInst)} ({SALE_FREQUENCY_OPTIONS.find(o => o.value === freq)?.label.toLowerCase()})</div>
+                                          {firstDate && <div className="font-medium opacity-80">1ª parcela em {fmtDate(firstDate)}{lastDate && nInst > 1 ? ` · última em ${fmtDate(lastDate)}` : ''}</div>}
+                                          {planDiff !== 0 && (
+                                            <div className="font-medium text-amber-700 mt-1">Entrada + parcelas = {brl(planTotal)} ({planDiff > 0 ? '+' : ''}{brl(planDiff)} em relação ao valor da venda)</div>
+                                          )}
                                           <div className="font-medium opacity-80 mt-1">Parcelas já recebidas são mantidas; só as pendentes são recalculadas ao salvar.</div>
                                         </>
                                       )}

@@ -5,7 +5,7 @@
   "benefits": [
     {
       "title": "Você define como vai receber a venda",
-      "desc": "Ao marcar um veículo (ou outro bem/imóvel) como vendido em \"Parcelado\", agora dá para informar a entrada, a quantidade de parcelas, a periodicidade (semanal, quinzenal, mensal, bimestral, trimestral, semestral ou anual) e o vencimento da 1ª parcela. O saldo (venda − entrada) é dividido igualmente e a soma fecha exatamente no valor da venda.",
+      "desc": "Ao marcar um veículo (ou outro bem/imóvel) como vendido em \"Parcelado\", agora dá para informar a entrada, a quantidade de parcelas, a periodicidade (semanal a anual), a partir de qual data a cobrança começa e o dia de cobrança. O saldo (venda − entrada) é dividido igualmente — ou, se preferir, informe o valor da parcela exatamente como está no contrato.",
       "type": "recurso"
     },
     {

@@ -59,7 +59,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
  * preso ao último dia do mês quando não existe (dia 31 em fevereiro → 28/29), sempre
  * relativo ao dia ORIGINAL, para a sequência não "escorregar" (31/01 → 28/02 → 31/03).
  */
-export const addSalePeriod = (firstDateISO: string, frequency: SaleInstallmentFrequency, index: number): string => {
+export const addSalePeriod = (firstDateISO: string, frequency: SaleInstallmentFrequency, index: number, anchorDay?: number | null): string => {
   const [y, m, d] = firstDateISO.split('T')[0].split('-').map(Number);
   const step = FREQUENCY_STEP[frequency] || FREQUENCY_STEP.MENSAL;
 
@@ -72,7 +72,28 @@ export const addSalePeriod = (firstDateISO: string, frequency: SaleInstallmentFr
   const year = y + Math.floor(totalMonths / 12);
   const month = ((totalMonths % 12) + 12) % 12;
   const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  return `${year}-${pad(month + 1)}-${pad(Math.min(d, lastDay))}`;
+  // anchorDay = dia de cobrança escolhido (ex.: 31), para não herdar o 28 de fevereiro.
+  const day = anchorDay && anchorDay >= 1 && anchorDay <= 31 ? anchorDay : d;
+  return `${year}-${pad(month + 1)}-${pad(Math.min(day, lastDay))}`;
+};
+
+/**
+ * "A partir de" + "dia de cobrança" → data da 1ª parcela: o primeiro dia de cobrança
+ * que cai EM ou DEPOIS da data inicial (dia inexistente no mês vira o último dia).
+ * Sem dia de cobrança, a própria data inicial é o 1º vencimento.
+ */
+export const resolveFirstInstallmentDate = (startISO: string, dueDay?: number | null): string => {
+  const start = startISO.split('T')[0];
+  const day = Math.floor(Number(dueDay) || 0);
+  if (day < 1 || day > 31) return start;
+  const [y, m] = start.split('-').map(Number);
+  const inMonth = (yy: number, mm0: number) => {
+    const last = new Date(Date.UTC(yy, mm0 + 1, 0)).getUTCDate();
+    return `${yy}-${pad(mm0 + 1)}-${pad(Math.min(day, last))}`;
+  };
+  const candidate = inMonth(y, m - 1);
+  if (candidate >= start) return candidate;
+  return m === 12 ? inMonth(y + 1, 0) : inMonth(y, m);
 };
 
 export interface SalePlanInput {
@@ -87,6 +108,14 @@ export interface SalePlanInput {
   firstInstallmentDate: string;
   /** Parcelas já recebidas: número da parcela → valor recebido. */
   receivedInstallments?: { number: number; amount: number }[];
+  /**
+   * Valor fixo da parcela, como está no contrato. Quando informado, TODAS as
+   * pendentes usam exatamente este valor (contratos com juros/arredondamento não
+   * fecham com a divisão simples do saldo). Vazio = divide o saldo.
+   */
+  fixedInstallmentAmount?: number;
+  /** Dia de cobrança fixo nos passos mensais (1–31). */
+  dueDay?: number | null;
 }
 
 export interface SalePlanInstallment {
@@ -112,14 +141,15 @@ export const buildSaleInstallmentPlan = (input: SalePlanInput): SalePlanInstallm
   const pendingNumbers = Array.from({ length: n }, (_, i) => i + 1).filter(k => !receivedNumbers.has(k));
   if (pendingNumbers.length === 0 || balance <= 0) return [];
 
-  const base = Math.floor((balance / pendingNumbers.length) * 100) / 100;
-  const last = round2(balance - base * (pendingNumbers.length - 1));
+  const fixed = round2(Number(input.fixedInstallmentAmount) || 0);
+  const base = fixed > 0 ? fixed : Math.floor((balance / pendingNumbers.length) * 100) / 100;
+  const last = fixed > 0 ? fixed : round2(balance - base * (pendingNumbers.length - 1));
 
   return pendingNumbers.map((num, idx) => ({
     number: num,
     total: n,
     amount: idx === pendingNumbers.length - 1 ? last : base,
-    date: addSalePeriod(input.firstInstallmentDate, input.frequency, num - 1)
+    date: addSalePeriod(input.firstInstallmentDate, input.frequency, num - 1, input.dueDay)
   }));
 };
 
@@ -140,12 +170,18 @@ export const previewSaleInstallment = (total: number, downPayment: number, count
 export const readSalePlanSettings = (values: Record<string, any>, fallbackDate: string) => {
   const count = parseInt(String(values.saleInstallmentsCount ?? ''), 10);
   const frequency = isSaleFrequency(values.saleInstallmentFrequency) ? values.saleInstallmentFrequency : 'MENSAL';
+  const startDate = (values.saleFirstInstallmentDate || values.saleDate || fallbackDate) as string;
+  const dueDay = parseInt(String(values.saleInstallmentDueDay ?? ''), 10);
+  // Dia de cobrança só faz sentido em passos de mês (mensal, trimestral...).
+  const usesDueDay = frequency !== 'SEMANAL' && frequency !== 'QUINZENAL' && dueDay >= 1 && dueDay <= 31;
   return {
+    fixedInstallmentAmount: parseFloat(String(values.saleInstallmentAmount ?? '')) || 0,
+    dueDay: usesDueDay ? dueDay : null,
     downPayment: parseFloat(String(values.saleDownPayment ?? '')) || 0,
     downPaymentDate: (values.saleDownPaymentDate || values.saleDate || fallbackDate) as string,
     installmentsCount: Number.isFinite(count) && count > 0 ? count : 10,
     frequency: frequency as SaleInstallmentFrequency,
-    firstInstallmentDate: (values.saleFirstInstallmentDate || values.saleDate || fallbackDate) as string
+    firstInstallmentDate: resolveFirstInstallmentDate(startDate, usesDueDay ? dueDay : null)
   };
 };
 
@@ -231,7 +267,9 @@ export const syncSaleInstallmentPlan = async (p: SyncSalePlanParams) => {
     installmentsCount: settings.installmentsCount,
     frequency: settings.frequency,
     firstInstallmentDate: settings.firstInstallmentDate,
-    receivedInstallments
+    receivedInstallments,
+    fixedInstallmentAmount: settings.fixedInstallmentAmount,
+    dueDay: settings.dueDay
   });
 
   plan.forEach(inst => {
