@@ -62,6 +62,7 @@ import SearchableSelect from '../components/common/SearchableSelect';
 import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
 import { computeInstallmentAmount, buildInstallmentDate } from '../lib/amortization';
+import { SALE_FREQUENCY_OPTIONS, previewSaleInstallment, syncSaleInstallmentPlan, addSalePeriod, isSaleFrequency } from '../lib/saleInstallments';
 import { useToast } from '../contexts/ToastContext';
 import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 
@@ -472,6 +473,12 @@ const Assets: React.FC = () => {
     permutaOutrosNome: '',
     saleDate: DateUtils.formatToISODate(),
     saleCashAmount: '',
+    // Venda parcelada: entrada + N parcelas numa periodicidade
+    saleDownPayment: '',
+    saleDownPaymentDate: DateUtils.formatToISODate(),
+    saleInstallmentsCount: '10',
+    saleInstallmentFrequency: 'MENSAL' as string,
+    saleFirstInstallmentDate: DateUtils.formatToISODate(),
     ipvaPaymentMethod: 'PARCELADO' as 'A_VISTA' | 'PARCELADO',
     ipvaInstallmentsCount: '5',
     seguroPaymentMethod: 'PARCELADO' as 'A_VISTA' | 'RECORRENTE' | 'PARCELADO',
@@ -2066,7 +2073,10 @@ const Assets: React.FC = () => {
         .eq('is_paid', false)
         .eq('is_deleted', false)
         .eq('metadata->>linked_asset_id', vehicleId)
-        .in('metadata->>type', ['vehicle_ipva', 'vehicle_seguro', 'vehicle_licenciamento', 'vehicle_rental_income', 'vehicle_sale_installment']);
+        // Linha com valor já recebido (paid_amount > 0) não é provisão: é dinheiro que
+        // entrou. Apagá-la sumia com o recebimento ao reeditar o bem.
+        .or('paid_amount.is.null,paid_amount.lte.0')
+        .in('metadata->>type', ['vehicle_ipva', 'vehicle_seguro', 'vehicle_licenciamento', 'vehicle_rental_income', 'vehicle_sale_installment', 'vehicle_sale_down_payment']);
 
       if (oldProvisions && oldProvisions.length > 0) {
         await supabase.from('transactions').delete().in('id', oldProvisions.map((p: any) => p.id));
@@ -2078,8 +2088,26 @@ const Assets: React.FC = () => {
         const comission = parseFloat(formValues.saleCommission || (formValues as any).saleComission) || 0;
         const saleDateStr = formValues.saleDate || todayStr;
 
+        // Esta sincronização roda a CADA edição do bem vendido. Comissão, recebimento
+        // à vista e bens de permuta já lançados não podem ser inseridos de novo.
+        const { data: priorSaleRows } = await supabase
+          .from('transactions')
+          .select('metadata')
+          .eq('user_id', userId)
+          .eq('is_deleted', false)
+          .eq('metadata->>linked_asset_id', vehicleId)
+          .in('metadata->>type', ['vehicle_sale_comission', 'vehicle_sale_revenue']);
+        const priorSaleTypes = new Set((priorSaleRows || []).map((r: any) => r.metadata?.type));
+        const { data: priorPermuta } = await supabase
+          .from('physical_assets')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('metadata->>permuta_origem_asset_id', vehicleId)
+          .limit(1);
+        const permutaAlreadyCreated = (priorPermuta || []).length > 0;
+
         // Registrar comissão de venda (se houver)
-        if (comission > 0) {
+        if (comission > 0 && !priorSaleTypes.has('vehicle_sale_comission')) {
           await supabase.from('transactions').insert([{
             user_id: userId,
             description: `${formValues.name} - Comissão de Venda`,
@@ -2122,7 +2150,7 @@ const Assets: React.FC = () => {
             cashVal = parseFloat(formValues.saleCashAmount) || 0;
           }
 
-          if (cashVal > 0) {
+          if (cashVal > 0 && !priorSaleTypes.has('vehicle_sale_revenue')) {
             await supabase.from('transactions').insert([{
               user_id: userId,
               description: formValues.salePaymentMethod === 'HIBRIDO'
@@ -2142,35 +2170,26 @@ const Assets: React.FC = () => {
           }
         } 
         else if (formValues.salePaymentMethod === 'PARCELADO') {
-          const parcelas = 10; // 10 parcelas mensais padrão
-          const valorParcela = soldAmount / parcelas;
-          const newSaleInstallments = [];
-          
-          for (let i = 0; i < parcelas; i++) {
-            const futureDate = new Date();
-            futureDate.setMonth(futureDate.getMonth() + i);
-            const futureDateStr = DateUtils.formatToISODate(futureDate);
-
-            newSaleInstallments.push({
-              user_id: userId,
-              description: `${formValues.name} - Receita Parcelada Venda (${i+1}/${parcelas})`,
-              amount: valorParcela,
-              date: futureDateStr,
-              type: 'INCOME',
-              category: 'Venda de Ativos',
-              subcategory: 'Venda de Veículo',
-              category_id: revenueCatId || null,
-              is_paid: false,
-              metadata: { linked_asset_id: vehicleId, type: 'vehicle_sale_installment', installment: i+1 }
-            });
-          }
-          if (newSaleInstallments.length > 0) {
-            await supabase.from('transactions').insert(newSaleInstallments);
-          }
+          // Entrada + N parcelas na periodicidade escolhida; recebidas são preservadas.
+          await syncSaleInstallmentPlan({
+            supabase,
+            userId,
+            assetId: vehicleId,
+            installmentType: 'vehicle_sale_installment',
+            downPaymentType: 'vehicle_sale_down_payment',
+            values: formValues,
+            total: soldAmount,
+            todayISO: todayStr,
+            describeInstallment: (n, total) => `${formValues.name} - Receita Parcelada Venda (${n}/${total})`,
+            describeDownPayment: () => `${formValues.name} - Entrada Venda de Veículo`,
+            baseRow: { category: 'Venda de Ativos', subcategory: 'Venda de Veículo', category_id: revenueCatId || null }
+          });
         }
 
         // Criar bens de permuta automaticamente com vínculo de origem
-        if (Array.isArray(formValues.permutaItems)) {
+        if (permutaAlreadyCreated) {
+          // Bens da permuta já foram criados numa edição anterior.
+        } else if (Array.isArray(formValues.permutaItems)) {
           const assetsToInsert = formValues.permutaItems
             .filter((item: any) => item.name && (parseFloat(item.value) || 0) > 0)
             .map((item: any) => ({
@@ -2421,7 +2440,10 @@ const Assets: React.FC = () => {
         .eq('is_paid', false)
         .eq('is_deleted', false)
         .eq('metadata->>linked_asset_id', otherId)
-        .in('metadata->>type', ['other_rental_income', 'other_sale_installment']);
+        // Linha com valor já recebido (paid_amount > 0) não é provisão: é dinheiro que
+        // entrou. Apagá-la sumia com o recebimento ao reeditar o bem.
+        .or('paid_amount.is.null,paid_amount.lte.0')
+        .in('metadata->>type', ['other_rental_income', 'other_sale_installment', 'other_sale_down_payment']);
 
       if (oldProvisions && oldProvisions.length > 0) {
         await supabase.from('transactions').delete().in('id', oldProvisions.map((p: any) => p.id));
@@ -2433,8 +2455,26 @@ const Assets: React.FC = () => {
         const comission = parseFloat(formValues.saleCommission || (formValues as any).saleComission) || 0;
         const saleDateStr = formValues.saleDate || todayStr;
 
+        // Esta sincronização roda a CADA edição do bem vendido. Comissão, recebimento
+        // à vista e bens de permuta já lançados não podem ser inseridos de novo.
+        const { data: priorSaleRows } = await supabase
+          .from('transactions')
+          .select('metadata')
+          .eq('user_id', userId)
+          .eq('is_deleted', false)
+          .eq('metadata->>linked_asset_id', otherId)
+          .in('metadata->>type', ['other_sale_comission', 'other_sale_revenue']);
+        const priorSaleTypes = new Set((priorSaleRows || []).map((r: any) => r.metadata?.type));
+        const { data: priorPermuta } = await supabase
+          .from('physical_assets')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('metadata->>permuta_origem_asset_id', otherId)
+          .limit(1);
+        const permutaAlreadyCreated = (priorPermuta || []).length > 0;
+
         // Registrar comissão de venda (se houver)
-        if (comission > 0) {
+        if (comission > 0 && !priorSaleTypes.has('other_sale_comission')) {
           await supabase.from('transactions').insert([{
             user_id: userId,
             description: `${formValues.name} - Comissão de Venda`,
@@ -2477,7 +2517,7 @@ const Assets: React.FC = () => {
             cashVal = parseFloat(formValues.saleCashAmount) || 0;
           }
 
-          if (cashVal > 0) {
+          if (cashVal > 0 && !priorSaleTypes.has('other_sale_revenue')) {
             await supabase.from('transactions').insert([{
               user_id: userId,
               description: formValues.salePaymentMethod === 'HIBRIDO'
@@ -2497,35 +2537,25 @@ const Assets: React.FC = () => {
           }
         } 
         else if (formValues.salePaymentMethod === 'PARCELADO') {
-          const parcelas = 10; // 10 parcelas mensais padrão
-          const valorParcela = soldAmount / parcelas;
-          const newSaleInstallments = [];
-          
-          for (let i = 0; i < parcelas; i++) {
-            const futureDate = new Date();
-            futureDate.setMonth(futureDate.getMonth() + i);
-            const futureDateStr = DateUtils.formatToISODate(futureDate);
-
-            newSaleInstallments.push({
-              user_id: userId,
-              description: `${formValues.name} - Receita Parcelada Venda (${i+1}/${parcelas})`,
-              amount: valorParcela,
-              date: futureDateStr,
-              type: 'INCOME',
-              category: 'Venda de Ativos',
-              subcategory: 'Venda de Outros Bens',
-              category_id: revenueCatId || null,
-              is_paid: false,
-              metadata: { linked_asset_id: otherId, type: 'other_sale_installment', installment: i+1 }
-            });
-          }
-          if (newSaleInstallments.length > 0) {
-            await supabase.from('transactions').insert(newSaleInstallments);
-          }
+          await syncSaleInstallmentPlan({
+            supabase,
+            userId,
+            assetId: otherId,
+            installmentType: 'other_sale_installment',
+            downPaymentType: 'other_sale_down_payment',
+            values: formValues,
+            total: soldAmount,
+            todayISO: todayStr,
+            describeInstallment: (n, total) => `${formValues.name} - Receita Parcelada Venda (${n}/${total})`,
+            describeDownPayment: () => `${formValues.name} - Entrada Venda de Ativo`,
+            baseRow: { category: 'Venda de Ativos', subcategory: 'Venda de Outros Bens', category_id: revenueCatId || null }
+          });
         }
 
         // Criar bens de permuta automaticamente com vínculo de origem
-        if (Array.isArray(formValues.permutaItems)) {
+        if (permutaAlreadyCreated) {
+          // Bens da permuta já foram criados numa edição anterior.
+        } else if (Array.isArray(formValues.permutaItems)) {
           const assetsToInsert = formValues.permutaItems
             .filter((item: any) => item.name && (parseFloat(item.value) || 0) > 0)
             .map((item: any) => ({
@@ -3248,6 +3278,21 @@ const Assets: React.FC = () => {
             toast(`Inconsistência de valores na venda: O valor de venda (R$ ${soldVal.toLocaleString('pt-BR')}) deve ser igual à soma do valor em dinheiro (R$ ${cashVal.toLocaleString('pt-BR')}) + permutas (R$ ${permutaTotal.toLocaleString('pt-BR')}).`, 'warning');
             return;
           }
+        } else if (formData.salePaymentMethod === 'PARCELADO') {
+          const downVal = parseFloat(formData.saleDownPayment) || 0;
+          const nInst = parseInt(formData.saleInstallmentsCount, 10) || 0;
+          if (nInst < 1) {
+            toast('Informe a quantidade de parcelas da venda (mínimo 1).', 'warning');
+            return;
+          }
+          if (downVal < 0 || downVal >= soldVal) {
+            toast(`A entrada (R$ ${downVal.toLocaleString('pt-BR')}) deve ser menor que o valor da venda (R$ ${soldVal.toLocaleString('pt-BR')}).`, 'warning');
+            return;
+          }
+          if (!formData.saleFirstInstallmentDate) {
+            toast('Informe a data da 1ª parcela.', 'warning');
+            return;
+          }
         } else if (formData.salePaymentMethod === 'PERMUTA') {
           const permutaTotal = (formData.permutaItems || []).reduce((sum, item) => sum + (parseFloat(item.value) || 0), 0);
           if (Math.abs(soldVal - permutaTotal) > 0.01) {
@@ -3370,6 +3415,11 @@ const Assets: React.FC = () => {
         permutaItems: formData.isSold ? formData.permutaItems : undefined,
         saleDate: formData.isSold ? formData.saleDate : undefined,
         saleCashAmount: formData.isSold ? (parseFloat(formData.saleCashAmount) || 0) : undefined,
+        saleDownPayment: formData.isSold && formData.salePaymentMethod === 'PARCELADO' ? (parseFloat(formData.saleDownPayment) || 0) : undefined,
+        saleDownPaymentDate: formData.isSold && formData.salePaymentMethod === 'PARCELADO' ? formData.saleDownPaymentDate : undefined,
+        saleInstallmentsCount: formData.isSold && formData.salePaymentMethod === 'PARCELADO' ? (parseInt(formData.saleInstallmentsCount, 10) || 1) : undefined,
+        saleInstallmentFrequency: formData.isSold && formData.salePaymentMethod === 'PARCELADO' ? formData.saleInstallmentFrequency : undefined,
+        saleFirstInstallmentDate: formData.isSold && formData.salePaymentMethod === 'PARCELADO' ? formData.saleFirstInstallmentDate : undefined,
         // Advanced OTHER technical and custody fields
         brandModel: formData.category === 'OTHER' ? formData.brandModel : undefined,
         serialNumber: formData.category === 'OTHER' ? formData.serialNumber : undefined,
@@ -4140,31 +4190,19 @@ const Assets: React.FC = () => {
           }
         } 
         else if (formData.salePaymentMethod === 'PARCELADO') {
-          const parcelas = 10;
-          const valorParcela = soldAmount / parcelas;
-          const newSaleInstallments = [];
-          
-          for (let i = 0; i < parcelas; i++) {
-            const futureDate = new Date(saleDateStr + 'T00:00:00');
-            futureDate.setMonth(futureDate.getMonth() + i);
-            const futureDateStr = DateUtils.formatToISODate(futureDate);
-
-            newSaleInstallments.push({
-              user_id: user.id,
-              description: `Receita Parcelada Venda (${i+1}/${parcelas}) - ${formData.name}`,
-              amount: valorParcela,
-              date: futureDateStr,
-              type: 'INCOME',
-              category: 'Outras Receitas',
-              subcategory: 'Venda de Ativo',
-              category_id: revenueCatId,
-              is_paid: false,
-              metadata: { linked_asset_id: assetId, type: 'real_estate_sale_installment', installment: i+1 }
-            });
-          }
-          if (newSaleInstallments.length > 0) {
-            await supabase.from('transactions').insert(newSaleInstallments);
-          }
+          await syncSaleInstallmentPlan({
+            supabase,
+            userId: user.id,
+            assetId,
+            installmentType: 'real_estate_sale_installment',
+            downPaymentType: 'real_estate_sale_down_payment',
+            values: formData,
+            total: soldAmount,
+            todayISO: DateUtils.formatToISODate(),
+            describeInstallment: (n, total) => `Receita Parcelada Venda (${n}/${total}) - ${formData.name}`,
+            describeDownPayment: () => `Entrada Venda de Imóvel - ${formData.name}`,
+            baseRow: { category: 'Outras Receitas', subcategory: 'Venda de Ativo', category_id: revenueCatId }
+          });
         }
 
         // 4. Criar bens de permuta automaticamente
@@ -4354,6 +4392,11 @@ const Assets: React.FC = () => {
       permutaItems: [],
       saleDate: DateUtils.formatToISODate(),
       saleCashAmount: '',
+      saleDownPayment: '',
+      saleDownPaymentDate: DateUtils.formatToISODate(),
+      saleInstallmentsCount: '10',
+      saleInstallmentFrequency: 'MENSAL',
+      saleFirstInstallmentDate: DateUtils.formatToISODate(),
       // Investment-specific fields
       investmentType: 'CDB',
       interestType: 'CDI',
@@ -4561,6 +4604,12 @@ const Assets: React.FC = () => {
       ),
       saleDate: meta.saleDate || DateUtils.formatToISODate(),
       saleCashAmount: meta.saleCashAmount !== undefined ? String(meta.saleCashAmount) : '',
+      saleDownPayment: meta.saleDownPayment ? String(meta.saleDownPayment) : '',
+      saleDownPaymentDate: meta.saleDownPaymentDate || meta.saleDate || DateUtils.formatToISODate(),
+      // Vendas parceladas antes desta opção existir foram geradas em 10x mensais.
+      saleInstallmentsCount: meta.saleInstallmentsCount ? String(meta.saleInstallmentsCount) : '10',
+      saleInstallmentFrequency: isSaleFrequency(meta.saleInstallmentFrequency) ? meta.saleInstallmentFrequency : 'MENSAL',
+      saleFirstInstallmentDate: meta.saleFirstInstallmentDate || meta.saleDate || DateUtils.formatToISODate(),
       // Investment-specific fields
       investmentType: meta.investmentType || 'CDB',
       interestType: meta.interestType || 'CDI',
@@ -10803,6 +10852,97 @@ ${tabelaHtml}
                                 />
                               </div>
                             )}
+
+                            {formData.salePaymentMethod === 'PARCELADO' && (() => {
+                              const soldVal = parseFloat(formData.soldValue) || 0;
+                              const downVal = parseFloat(formData.saleDownPayment) || 0;
+                              const nInst = parseInt(formData.saleInstallmentsCount, 10) || 0;
+                              const perInst = previewSaleInstallment(soldVal, downVal, nInst);
+                              const freq = isSaleFrequency(formData.saleInstallmentFrequency) ? formData.saleInstallmentFrequency : 'MENSAL';
+                              const lastDate = nInst > 0 && formData.saleFirstInstallmentDate
+                                ? addSalePeriod(formData.saleFirstInstallmentDate, freq, nInst - 1)
+                                : '';
+                              const inputCls = "w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20";
+                              const labelCls = "block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5";
+                              const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                              return (
+                                <div className="space-y-4 animate-in slide-in-from-top-2">
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <label className={labelCls}>Entrada (R$)</label>
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        className={inputCls}
+                                        value={formData.saleDownPayment}
+                                        onChange={(e) => setFormData({ ...formData, saleDownPayment: e.target.value })}
+                                        placeholder="0.00 (sem entrada)"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className={labelCls}>Data da Entrada</label>
+                                      <input
+                                        type="date"
+                                        className={inputCls}
+                                        value={formData.saleDownPaymentDate}
+                                        onChange={(e) => setFormData({ ...formData, saleDownPaymentDate: e.target.value })}
+                                        disabled={downVal <= 0}
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <label className={labelCls}>Qtd. de Parcelas</label>
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        step="1"
+                                        className={inputCls}
+                                        value={formData.saleInstallmentsCount}
+                                        onChange={(e) => setFormData({ ...formData, saleInstallmentsCount: e.target.value })}
+                                        placeholder="Ex: 12"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className={labelCls}>Periodicidade</label>
+                                      <select
+                                        className={inputCls}
+                                        value={freq}
+                                        onChange={(e) => setFormData({ ...formData, saleInstallmentFrequency: e.target.value })}
+                                      >
+                                        {SALE_FREQUENCY_OPTIONS.map(o => (
+                                          <option key={o.value} value={o.value}>{o.label}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <label className={labelCls}>Vencimento da 1ª Parcela</label>
+                                    <input
+                                      type="date"
+                                      className={inputCls}
+                                      value={formData.saleFirstInstallmentDate}
+                                      onChange={(e) => setFormData({ ...formData, saleFirstInstallmentDate: e.target.value })}
+                                    />
+                                  </div>
+                                  {soldVal > 0 && nInst > 0 && (
+                                    <div className={`rounded-xl px-4 py-3 text-xs font-bold ${downVal >= soldVal ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-800'}`}>
+                                      {downVal >= soldVal ? (
+                                        <>A entrada precisa ser menor que o valor da venda.</>
+                                      ) : (
+                                        <>
+                                          {downVal > 0 && <div>Entrada: {brl(downVal)}</div>}
+                                          <div>Saldo {brl(soldVal - downVal)} em {nInst}x de {brl(perInst)} ({SALE_FREQUENCY_OPTIONS.find(o => o.value === freq)?.label.toLowerCase()})</div>
+                                          {lastDate && <div className="font-medium opacity-80">Última parcela em {lastDate.split('-').reverse().join('/')}</div>}
+                                          <div className="font-medium opacity-80 mt-1">Parcelas já recebidas são mantidas; só as pendentes são recalculadas ao salvar.</div>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
 
                             {formData.salePaymentMethod === 'HIBRIDO' && (
                               <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
