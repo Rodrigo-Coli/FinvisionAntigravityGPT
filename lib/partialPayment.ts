@@ -114,9 +114,11 @@ export const ASSET_PROVISION_TYPES = [
   'vehicle_licenciamento',
   'vehicle_rental_income',
   'vehicle_sale_installment',
+  'vehicle_sale_down_payment',
   // Outros bens (pages/Assets.tsx — syncOtherAssetTransactions)
   'other_rental_income',
   'other_sale_installment',
+  'other_sale_down_payment',
   // Imóveis (components/assets/realEstatePropertySync.ts e RealEstateDetailModal)
   'rental_income',
   'short_stay_booking',

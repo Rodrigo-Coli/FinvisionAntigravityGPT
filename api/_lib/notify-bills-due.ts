@@ -76,7 +76,7 @@ export async function handleNotifyBillsDue(req: any, res: any) {
     const [{ data: expenses }, { data: incomes }] = await Promise.all([
       supabase
         .from('transactions')
-        .select('description, amount, date, user_id, accounts(institution)')
+        .select('description, amount, paid_amount, date, user_id, accounts(institution)')
         .in('type', ['EXPENSE', 'BILL_PAYMENT', 'expense', 'bill_payment'])
         .eq('is_paid', false)
         .eq('is_deleted', false)
@@ -86,7 +86,7 @@ export async function handleNotifyBillsDue(req: any, res: any) {
         .order('date', { ascending: true }),
       supabase
         .from('transactions')
-        .select('description, amount, date, user_id, accounts(institution)')
+        .select('description, amount, paid_amount, date, user_id, accounts(institution)')
         .in('type', ['INCOME', 'income'])
         .eq('is_paid', false)
         .eq('is_deleted', false)
@@ -95,6 +95,13 @@ export async function handleNotifyBillsDue(req: any, res: any) {
         .lte('date', tomorrowStr)
         .order('date', { ascending: true })
     ]);
+
+    // Mesma regra da tela (HistoryUtils.getStatus): lançamento cujo valor pago já
+    // cobre o total está QUITADO, mesmo que `is_paid` tenha ficado false. Antes o
+    // relatório olhava só `is_paid` e cobrava como "vencida" uma parcela que o app
+    // mostrava como PAGA. Parcial aparece pelo saldo que falta.
+    const openAmount = (t: any) => Math.max(0, Number(t.amount || 0) - Number(t.paid_amount || 0));
+    const isStillOpen = (t: any) => openAmount(t) > 0.005;
 
     const statusLabelFor = (dateStr: string) => {
       const cleanDate = dateStr ? dateStr.split('T')[0] : '';
@@ -107,8 +114,8 @@ export async function handleNotifyBillsDue(req: any, res: any) {
     };
 
     for (const u of filteredUsers) {
-      const bills = expenses?.filter(e => e.user_id === u.user_id) || [];
-      const receivables = incomes?.filter(i => i.user_id === u.user_id) || [];
+      const bills = expenses?.filter(e => e.user_id === u.user_id && isStillOpen(e)) || [];
+      const receivables = incomes?.filter(i => i.user_id === u.user_id && isStillOpen(i)) || [];
       if (bills.length === 0 && receivables.length === 0) continue;
 
       let msg = `*Zyvion* 🔔\n`;
@@ -120,14 +127,14 @@ export async function handleNotifyBillsDue(req: any, res: any) {
       if (bills.length > 0) {
         msg += `*💸 Contas a Pagar*\n`;
         bills.forEach((b: any) => {
-          msg += `• *${b.description}*\n  └─ Valor: *R$ ${Number(b.amount).toFixed(2)}*\n  └─ Status: *${statusLabelFor(b.date)}*\n\n`;
+          msg += `• *${b.description}*\n  └─ Valor: *R$ ${openAmount(b).toFixed(2)}*\n  └─ Status: *${statusLabelFor(b.date)}*\n\n`;
         });
       }
 
       if (receivables.length > 0) {
         msg += `*💰 Receitas a Receber*\n`;
         receivables.forEach((r: any) => {
-          msg += `• *${r.description}*\n  └─ Valor: *R$ ${Number(r.amount).toFixed(2)}*\n  └─ Status: *${statusLabelFor(r.date)}*\n\n`;
+          msg += `• *${r.description}*\n  └─ Valor: *R$ ${openAmount(r).toFixed(2)}*\n  └─ Status: *${statusLabelFor(r.date)}*\n\n`;
         });
       }
 
@@ -175,13 +182,14 @@ export async function handleWeeklySummary(req: any, res: any) {
     const [txRes, accountsRes, pendingRes] = await Promise.all([
       supabase.from('transactions').select('user_id, amount, type, category').eq('is_deleted', false).in('user_id', userIds).gte('date', sevenDaysAgoStr).lte('date', todayStr),
       supabase.from('accounts').select('user_id, institution, current_balance').eq('is_archived', false).in('user_id', userIds),
-      supabase.from('transactions').select('user_id, description, amount, date').eq('is_paid', false).eq('is_deleted', false).eq('type', 'EXPENSE').in('user_id', userIds).gte('date', todayStr).lte('date', sevenDaysAheadStr).order('date', { ascending: true })
+      supabase.from('transactions').select('user_id, description, amount, paid_amount, date').eq('is_paid', false).eq('is_deleted', false).eq('type', 'EXPENSE').in('user_id', userIds).gte('date', todayStr).lte('date', sevenDaysAheadStr).order('date', { ascending: true })
     ]);
 
     for (const u of filteredUsers) {
       const txs = (txRes.data || []).filter((t: any) => t.user_id === u.user_id);
       const accounts = (accountsRes.data || []).filter((a: any) => a.user_id === u.user_id);
-      const upcoming = (pendingRes.data || []).filter((b: any) => b.user_id === u.user_id);
+      // Quitado pelo valor pago (mesmo com is_paid=false) não é conta a vencer.
+      const upcoming = (pendingRes.data || []).filter((b: any) => b.user_id === u.user_id && Number(b.amount || 0) - Number(b.paid_amount || 0) > 0.005);
 
       const weekIncome = txs.filter((t: any) => t.type === 'INCOME').reduce((s: number, t: any) => s + Number(t.amount), 0);
       const weekExpense = txs.filter((t: any) => t.type === 'EXPENSE').reduce((s: number, t: any) => s + Number(t.amount), 0);
