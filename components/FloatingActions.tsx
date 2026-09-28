@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, CreditCard as CreditCardIcon, DollarSign } from 'lucide-react';
+import { Plus, CreditCard as CreditCardIcon, DollarSign, Receipt } from 'lucide-react';
 import { Profile } from '../types';
 
 interface FloatingActionsProps {
@@ -37,6 +37,19 @@ const FloatingActions: React.FC<FloatingActionsProps> = ({ user }) => {
         {/* Sub-actions container */}
         {isOpen && (
           <div className="flex flex-col items-end gap-3 mb-2 z-50">
+            {/* Receipt (cupom fiscal) button — abre a leitura de cupom do Insights AI */}
+            <div className="flex items-center gap-3 animate-in slide-in-from-bottom-2 fade-in duration-200 delay-100">
+              <span className="bg-slate-950/80 text-white text-[9px] font-black uppercase tracking-widest px-2.5 py-1.5 rounded-xl shadow-lg shadow-slate-950/10 backdrop-blur-xs select-none">
+                Ler Cupom
+              </span>
+              <button
+                onClick={() => { navigate('/ai?view=upload'); setIsOpen(false); }}
+                className="w-12 h-12 bg-emerald-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/30 hover:scale-110 active:scale-95 transition-all"
+              >
+                <Receipt size={20} />
+              </button>
+            </div>
+
             {/* Card transaction button */}
             <div className="flex items-center gap-3 animate-in slide-in-from-bottom-2 fade-in duration-200 delay-75">
               <span className="bg-slate-950/80 text-white text-[9px] font-black uppercase tracking-widest px-2.5 py-1.5 rounded-xl shadow-lg shadow-slate-950/10 backdrop-blur-xs select-none">
