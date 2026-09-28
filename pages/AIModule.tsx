@@ -10,7 +10,7 @@ import { DateUtils } from '../lib/dateUtils';
 import { useToast } from '../contexts/ToastContext';
 import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 import { SearchableInput } from '../components/common/SearchableInput';
-import { findCloseMatch } from '../lib/stringUtils';
+import { findCloseMatch, normalizeStr } from '../lib/stringUtils';
 
 // Helper to parse markdown into semantically correct HTML (protects lists and bolds)
 const parseMarkdownToReact = (text: string) => {
@@ -166,7 +166,10 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       // cartões — sem eles não dá para distinguir titular de adicional nem ver
       // qual é o cartão padrão.
       supabase.from('cards').select('id, name, last4, is_default, is_additional, additional_label').eq('user_id', user.id).eq('is_archived', false),
-      supabase.from('categories').select('id, name').eq('user_id', user.id).eq('is_archived', false).eq('type', 'EXPENSE'),
+      // Sem filtro de tipo: categorias antigas têm `type` NULL e sumiam daqui
+      // (junto com as subcategorias delas), embora aparecessem na tela do
+      // cartão. Mesma regra do cartão: todas as não arquivadas.
+      supabase.from('categories').select('id, name, type, is_archived').eq('user_id', user.id),
       supabase.from('subcategories').select('id, name, category_id').eq('user_id', user.id)
     ]);
 
@@ -191,7 +194,13 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
     let sortedCats: { id: string; name: string }[] = [];
     if (catRes.data) {
-      sortedCats = catRes.data.sort((a: any, b: any) => a.name.localeCompare(b.name));
+      // Nome igual em tipos diferentes: a de despesa vem antes, para o
+      // lançamento resolver o nome para ela.
+      const typeRank = (t: string | null) => (t === 'EXPENSE' ? 0 : t === 'INCOME' ? 2 : 1);
+      sortedCats = catRes.data
+        .filter((c: any) => c.name && c.is_archived !== true)
+        .sort((a: any, b: any) => a.name.localeCompare(b.name) || typeRank(a.type) - typeRank(b.type))
+        .map((c: any) => ({ id: c.id, name: c.name }));
       setCategories(sortedCats);
     }
     if (subRes.data) {
@@ -736,7 +745,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                           <SearchableInput
                             value={confirmSubcategoryName}
                             onChange={setConfirmSubcategoryName}
-                            options={subcategories.filter(s => !confirmCategoryName || s.category_name === confirmCategoryName).map((s) => s.name)}
+                            options={subcategories.filter(s => !confirmCategoryName.trim() || normalizeStr(s.category_name || '') === normalizeStr(confirmCategoryName)).map((s) => s.name)}
                             placeholder="Selecione ou digite..."
                             className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
                           />
