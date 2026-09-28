@@ -1,0 +1,53 @@
+name: Notas de atualização
+
+# Todo PR para a main que mexe no app precisa publicar versão nova com as notas
+# do que mudou (public/version.json + public/changelog.json +
+# public/changelog-history.json). Sem isso, o aviso "Atualizar agora" repete
+# as novidades da versão anterior. O teste tests/releaseNotes.test.ts garante
+# que os três arquivos estão coerentes entre si; esta checagem garante que
+# foram atualizados neste PR.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  versao-e-notas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Conferir versão e notas
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          changed=$(git diff --name-only "$BASE"..."$HEAD")
+          echo "Arquivos alterados:"; echo "$changed"
+
+          # O que não chega ao usuário não exige versão nova.
+          app=$(echo "$changed" | grep -vE '^(docs/|documentos/|tests/|\.github/|supabase/|_importar/|public/(version|changelog|changelog-history)\.json$)|\.md$' || true)
+          if [ -z "$app" ]; then
+            echo "Só arquivos fora do app mudaram; versão nova não é obrigatória."
+            exit 0
+          fi
+
+          fail=0
+          for f in public/version.json public/changelog.json public/changelog-history.json; do
+            if ! echo "$changed" | grep -qx "$f"; then
+              echo "::error file=$f::Este PR muda o app mas não atualiza $f. Publique uma versão nova com as notas do que mudou."
+              fail=1
+            fi
+          done
+
+          old=$(git show "$BASE:public/version.json" | jq -r .version)
+          new=$(jq -r .version public/version.json)
+          if [ "$(printf '%s\n%s\n' "$old" "$new" | sort | tail -1)" != "$new" ] || [ "$old" = "$new" ]; then
+            echo "::error file=public/version.json::A versão precisa aumentar ($old -> $new)."
+            fail=1
+          fi
+
+          exit $fail

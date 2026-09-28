@@ -174,37 +174,32 @@ export const UpdateAlert: React.FC = () => {
       }
     };
 
-    // Lista de benefícios dinâmicos carregados do changelog se existirem, caso contrário usa o fallback estático
-    const benefits = changelog?.benefits && changelog.benefits.length > 0
-      ? changelog.benefits.map(b => ({
+    // As notas só valem se forem DESTA versão: changelog.json com a mesma
+    // versão do version.json do servidor, e essa versão diferente da que está
+    // rodando. Se alguém publicar código sem atualizar as notas (já aconteceu:
+    // o aviso mostrava a novidade da versão anterior), cai no texto genérico
+    // em vez de anunciar como novo algo que o usuário já tem.
+    const running = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
+    const notesAreFresh = !!changelog && !!serverVersion
+      && changelog.version === serverVersion
+      && serverVersion !== running;
+    const notes = notesAreFresh ? changelog : null;
+
+    const benefits = notes?.benefits && notes.benefits.length > 0
+      ? notes.benefits.map(b => ({
           icon: getBenefitIcon(b.type),
           title: b.title,
           desc: b.desc
         }))
       : [
           {
-            icon: <Shield size={16} className="text-emerald-500" />,
-            title: "Mais Segurança para Você",
-            desc: "Proteção atualizada para a sincronização das suas contas, investimentos e chaves seguras."
-          },
-          {
-            icon: <Zap size={16} className="text-amber-500" />,
-            title: "Carregamento Super Rápido",
-            desc: "Código otimizado para que as telas, gráficos e filtros abram instantaneamente."
-          },
-          {
-            icon: <TrendingUp size={16} className="text-brand-500" />,
-            title: "Cálculos e Saldos Precisos",
-            desc: "Correções e novos motores de rentabilidade que garantem que seu patrimônio seja recalculado de forma impecável."
-          },
-          {
-            icon: <Cpu size={16} className="text-indigo-500" />,
-            title: "Novos Recursos Ativos",
-            desc: "Acesso direto às novas telas de patrimônio, consórcios, e sincronizadores automatizados."
+            icon: <Check size={16} className="text-emerald-500" />,
+            title: "Melhorias e correções",
+            desc: "Esta versão traz ajustes no app. Atualize para ficar com a versão mais recente."
           }
         ];
 
-    const displayVersion = serverVersion || changelog?.version || 'Nova Versão';
+    const displayVersion = serverVersion || 'Nova Versão';
 
     return (
       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300">
@@ -223,15 +218,15 @@ export const UpdateAlert: React.FC = () => {
               <Sparkles size={26} className="animate-pulse" />
             </div>
             <h3 className="text-base font-black text-slate-950 dark:text-white uppercase tracking-wider">
-              {changelog?.title || 'Atualização Pronta!'}
+              {notes?.title || 'Atualização Pronta!'}
             </h3>
             <div className="flex items-center gap-2 mt-1.5">
               <span className="text-[10px] font-black text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/40 px-2 py-0.5 rounded-lg border border-brand-100 dark:border-brand-900">
                 v{displayVersion}
               </span>
-              {changelog?.date && (
+              {notes?.date && (
                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
-                  Publicado em {changelog.date}
+                  Publicado em {notes.date}
                 </span>
               )}
             </div>
@@ -266,14 +261,14 @@ export const UpdateAlert: React.FC = () => {
             </div>
 
             {/* Mudanças Técnicas (Changelog do Dev) */}
-            {changelog && changelog.changes && changelog.changes.length > 0 && (
+            {notes && notes.changes && notes.changes.length > 0 && (
               <div className="bg-slate-50/30 dark:bg-slate-950/10 rounded-2xl p-4 border border-slate-100/60 dark:border-slate-800/20">
                 <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">
                   Detalhes Técnicos da Versão:
                 </p>
                 
                 <div className="space-y-2.5">
-                  {changelog.changes.map((change, idx) => (
+                  {notes.changes.map((change, idx) => (
                     <div key={idx} className="flex gap-2.5 items-start text-xs text-slate-600 dark:text-slate-300 font-semibold leading-relaxed">
                       <div className="w-1.5 h-1.5 rounded-full bg-brand-500 shrink-0 mt-1.5" />
                       <div className="text-[11px] text-slate-600 dark:text-slate-400 leading-normal">

@@ -1,27 +1,28 @@
 {
-  "version": "2026.09.27.1204",
-  "title": "Venda parcelada com entrada, quantidade de parcelas e periodicidade",
-  "date": "27/09/2026",
+  "version": "2026.09.28.1944",
+  "title": "Categorias no cupom e atalho para ler cupom",
+  "date": "28/09/2026",
   "benefits": [
     {
-      "title": "Você define como vai receber a venda",
-      "desc": "Ao marcar um veículo (ou outro bem/imóvel) como vendido em \"Parcelado\", agora dá para informar a entrada, a quantidade de parcelas, a periodicidade (semanal a anual), a partir de qual data a cobrança começa e o dia de cobrança. O saldo (venda − entrada) é dividido igualmente — ou informe o valor da parcela do contrato, e a última parcela ajusta os centavos para fechar o valor da venda.",
-      "type": "recurso"
-    },
-    {
-      "title": "Parcelas recebidas não somem nem duplicam ao editar",
-      "desc": "Reeditar o bem vendido recalcula só as parcelas pendentes, descontando o que já entrou. Antes a edição podia apagar um recebimento ou gerar comissão, receita à vista e bens de permuta em dobro.",
+      "title": "O cupom mostra todas as suas categorias",
+      "desc": "Ao lançar um cupom fiscal, a lista de Categoria e Subcategoria agora traz todas as que você cadastrou — antes parte delas (as mais antigas) não aparecia, embora aparecesse no lançamento de cartão.",
       "type": "correcao"
     },
     {
-      "title": "Aviso do WhatsApp não cobra o que já foi recebido",
-      "desc": "O resumo de contas a pagar/receber passou a usar a mesma regra do app: lançamento cujo valor pago cobre o total conta como quitado, e o parcial aparece pelo saldo que falta.",
+      "title": "Ler Cupom direto no botão +",
+      "desc": "O botão + ganhou a opção \"Ler Cupom\", que abre direto a tela de envio do cupom fiscal.",
+      "type": "recurso"
+    },
+    {
+      "title": "O aviso de atualização mostra só o que mudou de verdade",
+      "desc": "Se as notas da versão não corresponderem à atualização, o aviso passa a mostrar uma mensagem genérica em vez de repetir as novidades da versão anterior.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "Venda \"Parcelado\" gerava sempre 10 parcelas mensais do valor cheio a partir de HOJE (não da data da venda). Novo `lib/saleInstallments.ts` monta o plano (entrada + N parcelas + periodicidade) e é usado por veículos, outros bens e imóveis.",
-    "A limpeza de provisões dos bens deixa de apagar linhas com `paid_amount > 0`, e comissão/receita à vista/permuta só são lançadas uma vez por bem.",
-    "`notify-bills-due` filtra por saldo em aberto (amount − paid_amount) em vez de só `is_paid`."
+    "Cupom (Insights AI): a busca de categorias filtrava `type = EXPENSE`, escondendo categorias com tipo vazio e as subcategorias delas. Agora segue a regra da tela de cartão: todas as não arquivadas.",
+    "Subcategoria do cupom filtra pela categoria ignorando acento e maiúscula.",
+    "Botão + ganhou o atalho \"Ler Cupom\" (`/ai?view=upload`).",
+    "UpdateAlert só exibe as notas quando `changelog.json` é da mesma versão do `version.json` do servidor; teste no build impede publicar versão e notas descasadas."
   ]
 }
