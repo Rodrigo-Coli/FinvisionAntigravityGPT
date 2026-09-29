@@ -43,3 +43,20 @@ describe('sanitizeReceiptDate', () => {
     expect(sanitizeReceiptDate('2026-09-30', '2026-09-29')).toEqual({ date: '2026-09-30', adjusted: false });
   });
 });
+
+import { suspiciousDateReason } from '../lib/receiptDate';
+
+describe('suspiciousDateReason', () => {
+  const today = '2026-09-29';
+  it('data recente não é suspeita', () => {
+    expect(suspiciousDateReason('2026-09-28', today)).toBeNull();
+    expect(suspiciousDateReason('2026-01-15', today)).toBeNull();
+    expect(suspiciousDateReason('2026-09-30', today)).toBeNull(); // folga de fuso
+  });
+  it('futuro, muito antiga e inválida são apontadas', () => {
+    expect(suspiciousDateReason('2026-11-08', today)).toBe('future');
+    expect(suspiciousDateReason('2023-09-28', today)).toBe('old');
+    expect(suspiciousDateReason('', today)).toBe('invalid');
+    expect(suspiciousDateReason('2026-02-31', today)).toBe('invalid');
+  });
+});
