@@ -1384,7 +1384,15 @@ const Assets: React.FC = () => {
       t.metadata?.type !== 'investment_redemption_partial' &&
       (t.category === 'Rendimentos' || t.category === 'Investimentos' || t.metadata?.type === 'investment_yield') &&
       (fluxoYieldMode === 'TOTAL' || t.metadata?.payout_type !== 'ACUMULADO')
-    ).reduce((sum, t) => sum + t.amount, 0);
+    ).reduce((sum, t) => sum + t.amount, 0)
+      // Rendimento acumulado não vira mais transação (não passa por conta nenhuma): no
+      // modo "Total" ele vem direto do extrato do investimento. Movimentações antigas
+      // com transação vinculada já entraram na soma acima, então ficam de fora aqui.
+      + (fluxoYieldMode === 'TOTAL'
+        ? allInvestmentMovements
+            .filter(mv => mv.movement_type === 'RENDIMENTO_ACUMULADO' && !mv.linked_transaction_id && matchesFluxoPeriod(mv.movement_date))
+            .reduce((sum, mv) => sum + Number(mv.amount || 0), 0)
+        : 0);
 
     const isEstimatedMode = fluxoPeriodMode === 'ESTIMADO';
     const displayYield = isEstimatedMode ? estimatedMonthlyYield : realizedYield;
@@ -1416,7 +1424,7 @@ const Assets: React.FC = () => {
       realizedSelfSustainabilityPercent,
       totalInvestedBalance
     };
-  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, linkedTransactionsMap, transactions, fluxoPeriodMode, fluxoStartDate, fluxoEndDate, fluxoYieldMode]);
+  }, [activePhysicalAssets, activeLiabilities, dynamicBrokers, excludedAssetIds, excludedConsortiumIds, excludedOtherAssetIds, excludedOtherLiabilityIds, excludedBrokerIds, estimatedYieldRate, linkedTransactionsMap, transactions, allInvestmentMovements, fluxoPeriodMode, fluxoStartDate, fluxoEndDate, fluxoYieldMode]);
 
   // Asset helpers
   const getAssetLinkedTransactions = (assetId: string) => {
@@ -3663,63 +3671,56 @@ const Assets: React.FC = () => {
           }
 
           if (delta > 0) {
-            const isAcumulado = formData.payoutType === 'ACUMULADO';
-            const subcat = isAcumulado ? 'Rendimentos Acumulados' : 'Rendimentos Mensais';
-            
-            let catId = null;
-            const { data: catRes } = await supabase
-              .from('categories')
-              .select('id')
-              .eq('user_id', user.id)
-              .eq('name', 'Investimentos')
-              .maybeSingle();
-            
-            if (catRes) {
-              catId = catRes.id;
-            } else {
-              const { data: newCat } = await supabase
-                .from('categories')
-                .insert({
-                  user_id: user.id,
-                  name: 'Investimentos',
-                  type: 'INCOME',
-                  color: 'bg-indigo-50 text-indigo-600'
-                })
-                .select('id')
-                .maybeSingle();
-              if (newCat) catId = newCat.id;
-            }
-
+            // Mesma regra de cima: tudo que não é MENSAL fica dentro do título.
+            const isAcumulado = formData.payoutType !== 'MENSAL';
             const todayStr = DateUtils.formatToISODate();
-            const { data: yieldTx } = await supabase.from('transactions').insert([{
-              user_id: user.id,
-              description: `Rendimento automático - ${formData.name}`,
-              amount: delta,
-              date: todayStr,
-              type: 'INCOME',
-              category: 'Investimentos',
-              subcategory: subcat,
-              category_id: catId,
-              is_paid: true,
-              paid_amount: delta,
-              paid_at: todayStr,
-              account_id: isAcumulado ? null : (formData.brokerAccountId || null),
-              account_name: isAcumulado ? null : (brokers.find(b => b.id === formData.brokerAccountId)?.name || null),
-              metadata: {
-                linked_asset_id: editingAsset.id,
-                type: 'investment_yield',
-                payout_type: formData.payoutType
-              }
-            }]).select('id').single();
 
-            await supabase.from('investment_movements').insert([{
-              user_id: user.id,
-              asset_id: editingAsset.id,
-              movement_type: isAcumulado ? 'RENDIMENTO_ACUMULADO' : 'RENDIMENTO_MENSAL',
-              amount: delta,
-              movement_date: todayStr,
-              linked_transaction_id: yieldTx?.id || null
-            }]);
+            if (isAcumulado) {
+              // Valorização que fica no título não passa por conta nenhuma: só aumenta o
+              // saldo bruto e fica registrada no extrato do investimento. Antes ela também
+              // virava uma receita "Rendimento automático" sem conta, que aparecia nas
+              // receitas como se o dinheiro tivesse entrado. Vira caixa só quando você
+              // lançar o resgate/juros recebido.
+              await supabase.from('investment_movements').insert([{
+                user_id: user.id,
+                asset_id: editingAsset.id,
+                movement_type: 'RENDIMENTO_ACUMULADO',
+                amount: delta,
+                movement_date: todayStr,
+                notes: 'Valorização do saldo bruto'
+              }]);
+            } else {
+              const catId = await ensureInvestmentCategory(user.id);
+              const { data: yieldTx } = await supabase.from('transactions').insert([{
+                user_id: user.id,
+                description: `Rendimento automático - ${formData.name}`,
+                amount: delta,
+                date: todayStr,
+                type: 'INCOME',
+                category: 'Investimentos',
+                subcategory: 'Rendimentos Mensais',
+                category_id: catId,
+                is_paid: true,
+                paid_amount: delta,
+                paid_at: todayStr,
+                account_id: formData.brokerAccountId || null,
+                account_name: brokers.find(b => b.id === formData.brokerAccountId)?.name || null,
+                metadata: {
+                  linked_asset_id: editingAsset.id,
+                  type: 'investment_yield',
+                  payout_type: formData.payoutType
+                }
+              }]).select('id').single();
+
+              await supabase.from('investment_movements').insert([{
+                user_id: user.id,
+                asset_id: editingAsset.id,
+                movement_type: 'RENDIMENTO_MENSAL',
+                amount: delta,
+                movement_date: todayStr,
+                linked_transaction_id: yieldTx?.id || null
+              }]);
+            }
           } else if (delta < 0) {
             // Ajuste manual (ex.: correção de marcação a mercado) — não mexe em caixa, só registra no extrato.
             await supabase.from('investment_movements').insert([{

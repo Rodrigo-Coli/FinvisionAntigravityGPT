@@ -1,11 +1,16 @@
 {
-  "version": "2026.09.29.0000",
+  "version": "2026.09.29.0009",
   "title": "Extrato do investimento fecha com o saldo do card",
   "date": "29/09/2026",
   "benefits": [
     {
       "title": "Rendimento certo ao editar o saldo",
       "desc": "Ao atualizar o Saldo Bruto Atual de um investimento, o rendimento lançado no extrato agora é o que falta para o extrato bater com o saldo bruto — antes ele podia ficar menor e somar um valor diferente do card.",
+      "type": "correção"
+    },
+    {
+      "title": "Valorização não vira receita",
+      "desc": "Quando o saldo de um investimento que acumula sobe (ou cai), isso fica só no investimento e no extrato dele — não aparece mais como receita nas suas contas. O dinheiro entra na conta quando você lançar o resgate ou os juros recebidos.",
       "type": "correção"
     },
     {
@@ -22,6 +27,7 @@
   "changes": [
     "`lib/investmentLedger.ts`: `ledgerImpliedGross`, `grossChangeToRecord`, `netOfTax` (+ `tests/investmentLedger.test.ts`).",
     "`pages/Assets.tsx`: na edição de investimento ACUMULADO o delta é calculado contra a soma do extrato (aportes + acumulados + ajustes), não contra o `estimated_value` anterior; sem conciliação possível (resgate/amortização) mantém a regra antiga.",
+    "`pages/Assets.tsx`: edição de investimento não-MENSAL não cria mais a transação INCOME \"Rendimento automático\" (sem conta); só grava `RENDIMENTO_ACUMULADO` no extrato. No Fluxo modo \"Total\" o rendimento acumulado passa a vir de `investment_movements` sem transação vinculada.",
     "`pages/Assets.tsx`: resumo bruto/IR/líquido no modal de extrato, líquido estimado por rendimento acumulado e botão de conciliação (`handleReconcileLedgerGap`)."
   ]
 }
