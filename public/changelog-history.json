@@ -1,5 +1,33 @@
 [
   {
+    "version": "2026.09.28.2203",
+    "title": "Compra lançada pelo cupom aparece no cartão e nas transações",
+    "date": "28/09/2026",
+    "benefits": [
+      {
+        "title": "Compra do cupom entra na fatura certa",
+        "desc": "Ao lançar um cupom (ou print de compra) no cartão, a compra agora entra na fatura do cartão e aparece em Cartões e em Transações. Antes ela era gravada sem fatura e não aparecia em lugar nenhum.",
+        "type": "correcao"
+      },
+      {
+        "title": "Data da compra visível e editável",
+        "desc": "A tela do cupom mostra a data da compra antes de lançar, e dá para corrigir. Quando a imagem não traz o ano (como num print de notificação do banco), o app usa o ano atual e avisa para você conferir. Antes a data podia sair em 2023 ou com dia e mês trocados.",
+        "type": "correcao"
+      },
+      {
+        "title": "Aviso de onde a compra foi parar",
+        "desc": "Depois de finalizar, o app diz se a compra foi lançada no cartão ou enviada para Conciliar (quando o destino é uma conta).",
+        "type": "usabilidade"
+      }
+    ],
+    "changes": [
+      "`AIReconcileService.saveDirectToCard` passa a abrir/usar a fatura pela data (`getOrCreateStatement`), grava `status: POSTED` e sincroniza a fatura com o Histórico — mesmo caminho de `reconcileCardTransaction`.",
+      "Leitura do cupom: o prompt informa a data de hoje e o padrão DD/MM; `lib/receiptDate.ts` corrige ano chutado, dia/mês invertidos e datas no futuro (servidor e tela).",
+      "Tela do cupom: campo \"Data da compra\" antes do destino; a data escolhida é a usada no cartão, na conciliação e no Comparador.",
+      "Toast de sucesso informa o destino (cartão ou Conciliar)."
+    ]
+  },
+  {
     "version": "2026.09.28.1944",
     "title": "Categorias no cupom e atalho para ler cupom",
     "date": "28/09/2026",

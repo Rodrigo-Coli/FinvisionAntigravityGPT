@@ -11,6 +11,7 @@ import { useToast } from '../contexts/ToastContext';
 import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 import { SearchableInput } from '../components/common/SearchableInput';
 import { findCloseMatch, normalizeStr } from '../lib/stringUtils';
+import { sanitizeReceiptDate } from '../lib/receiptDate';
 
 // Helper to parse markdown into semantically correct HTML (protects lists and bolds)
 const parseMarkdownToReact = (text: string) => {
@@ -83,6 +84,11 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [reconcileMode, setReconcileMode] = useState<'total' | 'partial' | 'items'>('total');
   const [partialValue, setPartialValue] = useState<number>(0);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'done'>('idle');
+  // Data da compra, sempre visível e editável antes de lançar. A IA chutava o
+  // ano quando a imagem não trazia (2023 em vez de 2026) e a compra sumia do
+  // app sem o usuário ter como ver a data errada.
+  const [purchaseDate, setPurchaseDate] = useState('');
+  const [purchaseDateAdjusted, setPurchaseDateAdjusted] = useState(false);
   const [targetId, setTargetId] = useState('');
   const [targetType, setTargetType] = useState<'account' | 'card'>('account');
   // Contas e cartões separados, com os mesmos campos que as telas de lançamento
@@ -343,6 +349,10 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         total_price: Number(it.total_price) || 0,
       }));
       data.total = Number(data.total) || data.items.reduce((sum: number, it: any) => sum + it.total_price, 0);
+      const { date: fixedDate, adjusted } = sanitizeReceiptDate(data.date, DateUtils.formatToISODate());
+      data.date = fixedDate;
+      setPurchaseDate(fixedDate);
+      setPurchaseDateAdjusted(adjusted);
       setReceipt(data);
       setPartialValue(data.total);
       setExchangeQuote(data.currency === 'USD' ? 5.20 : data.currency === 'EUR' ? 5.60 : 1);
@@ -392,9 +402,11 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
   const handleFinalize = async () => {
     if (!receipt || !targetId) { toast("Selecione um destino (Banco ou Cartão).", 'warning'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseDate)) { toast("Informe a data da compra.", 'warning'); return; }
     setSaveStatus('saving');
     try {
-      await AIReconcileService.saveReceiptToLabs(receipt);
+      const dated = { ...receipt, date: purchaseDate };
+      await AIReconcileService.saveReceiptToLabs(dated);
       const finalAmount = getReconcileAmount();
       const target = currentOptions.find((o: any) => o.id === targetId);
       const targetName = target ? optionLabel(target) : 'Destino';
@@ -414,17 +426,18 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         const matchedCategory = categories.find(c => c.name === categoryName);
         await AIReconcileService.saveDirectToCard({
           cardId: targetId,
-          date: receipt.date || DateUtils.formatToISODate(),
+          date: purchaseDate,
           description,
           amount: finalAmount,
           categoryId: matchedCategory?.id,
           subcategory: subcategoryName || undefined
         });
+        toast(`Lançado no cartão ${targetName} em ${DateUtils.formatDisplayDate(purchaseDate)}. Já aparece na fatura e em Transações.`, 'success');
       } else {
         // Fluxo padrão: fila de conciliação
         await AIReconcileService.saveToReconcileQueue(
           [{
-            date: receipt.date,
+            date: purchaseDate,
             description,
             amount: finalAmount,
             type: 'debit',
@@ -439,6 +452,10 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           // aqui não se perde: chega lá já escolhida, faltando só confirmar.
           { category: categoryName || undefined, subcategory: subcategoryName || undefined }
         );
+        // Conta passa pela conciliação: só entra em Transações depois de
+        // confirmado em Conciliar. Sem este aviso o usuário procurava a compra
+        // em Transações e achava que tinha se perdido.
+        toast(`Enviado para Conciliar (${targetName}). Confirme lá para entrar em Transações.`, 'success');
       }
       setSaveStatus('done');
       setTimeout(() => { setReceipt(null); setSaveStatus('idle'); }, 2000);
@@ -520,7 +537,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                     <div>
                       <h2 className="text-2xl font-bold text-slate-900 tracking-tight uppercase italic">{receipt.merchant}</h2>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                        {DateUtils.formatDateTime(receipt.date)} • {receipt.currency || 'BRL'}
+                        {DateUtils.formatDisplayDate(purchaseDate) || '—'} • {receipt.currency || 'BRL'}
                       </p>
                     </div>
                     <div className="text-right">
@@ -624,6 +641,22 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   </div>
 
                   <div className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Data da compra</label>
+                      <input
+                        type="date"
+                        value={purchaseDate}
+                        max={DateUtils.formatToISODate()}
+                        onChange={(e) => { setPurchaseDate(e.target.value); setPurchaseDateAdjusted(false); }}
+                        className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+                      />
+                      {purchaseDateAdjusted && (
+                        <p className="text-[10px] font-bold text-amber-600 ml-1 leading-relaxed">
+                          A data lida no cupom não parecia certa (sem ano, no futuro ou muito antiga) e foi ajustada. Confira antes de lançar.
+                        </p>
+                      )}
+                    </div>
+
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Lançar em</label>
                       <div className="grid grid-cols-2 gap-2">

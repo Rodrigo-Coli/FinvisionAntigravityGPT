@@ -5,6 +5,7 @@ import { recordAiUsage } from './ai-usage.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { Buffer } from 'node:buffer';
 import { requireUser } from './require-user.js';
+import { sanitizeReceiptDate } from '../../lib/receiptDate.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -76,9 +77,14 @@ export async function handleReceiptItems(req: any, res: any) {
     const ai = new GoogleGenAI({ apiKey: geminiKey });
     const model = 'gemini-2.5-flash';
 
+        // A IA não sabe a data de hoje: sem isso, print sem ano (notificação do
+        // banco: "28 de set.") virava 2023 e a compra sumia do app.
+        const todayISO = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+        const dateContext = `\n\nCONTEXTO DE DATA: hoje é ${todayISO} (AAAA-MM-DD). Datas no documento estão no padrão brasileiro DIA/MÊS/ANO. Se o ano não aparecer, use o ano da compra mais recente possível que não seja depois de hoje. Devolva "date" sempre como AAAA-MM-DD.`;
+
         const contents = [{
             parts: [
-                { text: prompt },
+                { text: prompt + dateContext },
                 ...inputFiles.map((f: any) => ({
                     inlineData: { data: f.base64, mimeType: f.mimeType || 'image/jpeg' }
                 }))
@@ -174,7 +180,7 @@ export async function handleReceiptItems(req: any, res: any) {
         return res.status(200).json({
             merchant: parsedData.merchant || 'Estabelecimento não identificado',
             merchant_category: parsedData.merchant_category || 'Mercado',
-            date: parsedData.date || new Date().toISOString().slice(0, 10),
+            date: sanitizeReceiptDate(parsedData.date, todayISO).date,
             currency: parsedData.currency || 'BRL',
             total,
             items: normalizedItems
