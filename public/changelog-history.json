@@ -1,5 +1,21 @@
 [
   {
+    "version": "2026.09.28.2320",
+    "title": "Print de compra e comprovante voltam a ser lidos no cupom",
+    "date": "28/09/2026",
+    "benefits": [
+      {
+        "title": "Print da notificação do banco funciona no cupom",
+        "desc": "Enviar o print de uma notificação de compra (ou um comprovante sem lista de produtos) no scanner de cupom voltou a funcionar. A compra vira um item único com o valor total, pronto para lançar no cartão ou na conta. Antes aparecia o erro \"Não conseguimos identificar os itens desse cupom\".",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`api/_lib/handle-receipt-items.ts`: o prompt ganha a regra para comprovante sem itens (um item \"Compra em <estabelecimento>\" com o total). Se a IA ainda devolver `items` vazio com `total > 0`, o servidor monta esse item em vez de responder erro.",
+      "O prompt salvo no banco (`ai_prompts.receipt_scanner`) é uma frase genérica; as regras de data e de comprovante são acrescentadas no código, sempre."
+    ]
+  },
+  {
     "version": "2026.09.28.2309",
     "title": "Data das importações em destaque para você conferir",
     "date": "28/09/2026",
