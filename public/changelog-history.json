@@ -1,5 +1,31 @@
 [
   {
+    "version": "2026.09.28.2340",
+    "title": "Cupom sugere categoria e subcategoria pelo seu histórico",
+    "date": "28/09/2026",
+    "benefits": [
+      {
+        "title": "Categoria sugerida automaticamente",
+        "desc": "Ao ler um cupom ou print de compra, o app procura no seu histórico lançamentos do mesmo estabelecimento e já preenche a categoria e a subcategoria que você usou. Exemplo: GASFORT F01 vem como Veículo / Combustível. Reconhece o mesmo lugar mesmo com o nome um pouco diferente, e você pode trocar antes de lançar.",
+        "type": "recurso"
+      },
+      {
+        "title": "Sem histórico, usa o tipo de estabelecimento",
+        "desc": "Se for a primeira compra no lugar, o app usa o tipo de estabelecimento lido no cupom (por exemplo, posto → Combustível), desde que você já tenha essa categoria.",
+        "type": "recurso"
+      },
+      {
+        "title": "Cada cupom começa limpo",
+        "desc": "A categoria do cupom anterior não fica mais preenchida no próximo.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`lib/categorySuggestion.ts` (+ testes): compara palavras relevantes da descrição (sem acento, sem prefixo \"Labs:\", sem termos genéricos como posto/comercio/ltda). Nota 3 = mesma descrição, 2 = mesma palavra principal, 1 = palavra em comum. Só sugere categoria/subcategoria que existem hoje.",
+      "`pages/AIModule.tsx`: carrega em segundo plano os lançamentos classificados (conta e cartão, só passado, até 1.500 de cada) e aplica a sugestão ao ler o cupom, com a indicação de onde ela veio."
+    ]
+  },
+  {
     "version": "2026.09.28.2320",
     "title": "Print de compra e comprovante voltam a ser lidos no cupom",
     "date": "28/09/2026",
