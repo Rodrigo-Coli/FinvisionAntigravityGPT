@@ -27,6 +27,7 @@ import { ImportedTransaction, MatchStatus, BankAccount } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { authHeaders } from '../lib/apiClient';
 import { DateUtils } from '../lib/dateUtils';
+import { suspiciousDateReason, SUSPICIOUS_DATE_LABEL } from '../lib/receiptDate';
 import { ReconciliationService } from '../services/reconciliation.service';
 import { FinanceService } from '../services/finance.service';
 import { useToast } from '../contexts/ToastContext';
@@ -449,7 +450,7 @@ const Reconcile: React.FC = () => {
     if (!imported.length || !supabase) return;
     if (!selectedTargetId) return toast("Selecione um destino (Banco/Cartão) para aplicar a todas as transações, ou ajuste individualmente.", 'warning');
 
-    if (!window.confirm(`Deseja sincronizar todas as ${imported.length} transações para o destino selecionado?`)) return;
+    if (!window.confirm(`Deseja sincronizar todas as ${imported.length} transações para o destino selecionado?${suspiciousDatesWarning(imported)}`)) return;
 
     setIsProcessing(true);
     setProgressStep("Sincronizando tudo...");
@@ -709,11 +710,27 @@ const Reconcile: React.FC = () => {
     }
   };
 
+  // Texto extra para a confirmação em lote: lista os lançamentos com data que
+  // merece conferência (no futuro, mais de 1 ano, inválida), para o usuário
+  // não gravar em massa uma data lida errada do arquivo.
+  const suspiciousDatesWarning = (items: any[]) => {
+    const today = DateUtils.formatToISODate();
+    const flagged = items
+      .map(t => ({ t, reason: suspiciousDateReason(t.date, today) }))
+      .filter(x => x.reason);
+    if (flagged.length === 0) return '';
+    const sample = flagged.slice(0, 5)
+      .map(x => `• ${DateUtils.formatDisplayDate(x.t.date) || 'sem data'} — ${x.t.description} (${SUSPICIOUS_DATE_LABEL[x.reason!]})`)
+      .join('\n');
+    const more = flagged.length > 5 ? `\n… e mais ${flagged.length - 5}.` : '';
+    return `\n\nAtenção: ${flagged.length} lançamento(s) com data para conferir:\n${sample}${more}\n\nToque na data para corrigir antes, ou confirme se estiver certa.`;
+  };
+
   const handleBulkConfirm = async () => {
     if (selectedIds.size === 0) return;
     if (!selectedTargetId) return toast("Selecione um destino (Banco/Cartão) para confirmar a seleção.", 'warning');
 
-    if (!window.confirm(`Deseja confirmar as ${selectedIds.size} transações selecionadas?`)) return;
+    if (!window.confirm(`Deseja confirmar as ${selectedIds.size} transações selecionadas?${suspiciousDatesWarning(imported.filter(t => selectedIds.has(t.id)))}`)) return;
 
     setIsProcessing(true);
     setProgressStep(`Confirmando ${selectedIds.size} itens...`);
@@ -1222,9 +1239,25 @@ const Reconcile: React.FC = () => {
                                 onChange={e => setEditForm({ ...editForm, date: e.target.value })}
                                 className="w-full bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-2 focus:ring-brand-500 mb-1"
                               />
-                            ) : (
-                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{DateUtils.formatDisplayDate(item.date)}</p>
-                            )}
+                            ) : (() => {
+                              // A data vem da leitura do arquivo pela IA e pode sair
+                              // errada (ano chutado, dia/mês trocados). Fica em destaque
+                              // e clicável para o usuário conferir antes de confirmar;
+                              // data no futuro ou com mais de 1 ano ganha aviso.
+                              const reason = suspiciousDateReason(item.date, DateUtils.formatToISODate());
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => startEditing(item)}
+                                  title="Tocar para corrigir a data"
+                                  className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-bold transition-colors ${reason ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
+                                >
+                                  {reason ? <AlertCircle size={12} /> : <Calendar size={12} />}
+                                  {DateUtils.formatDisplayDate(item.date) || 'Sem data'}
+                                  {reason && <span className="text-[10px] font-bold">· Confira: {SUSPICIOUS_DATE_LABEL[reason]}</span>}
+                                </button>
+                              );
+                            })()}
 
                             {isEditing ? (
                               <div className="relative">

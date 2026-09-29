@@ -87,3 +87,29 @@ export function sanitizeReceiptDate(
 
   return keep(t);
 }
+
+/**
+ * Data de lançamento importado que merece conferência antes de confirmar.
+ * Não corrige nada — extrato antigo é legítimo —, só aponta para o usuário:
+ * no futuro (mais de 1 dia, folga de fuso) ou com mais de 1 ano.
+ */
+export function suspiciousDateReason(
+  dateISO: string | null | undefined,
+  todayISO: string
+): 'future' | 'old' | 'invalid' | null {
+  const m = String(dateISO || '').match(ISO_RE);
+  if (!m) return 'invalid';
+  const t = toUTC(Number(m[1]), Number(m[2]), Number(m[3]));
+  if (t === null) return 'invalid';
+  const [ty, tm, td] = todayISO.split('-').map(Number);
+  const today = toUTC(ty, tm, td)!;
+  if (t > today + DAY_MS) return 'future';
+  if (today - t > 366 * DAY_MS) return 'old';
+  return null;
+}
+
+export const SUSPICIOUS_DATE_LABEL: Record<'future' | 'old' | 'invalid', string> = {
+  future: 'data no futuro',
+  old: 'mais de 1 ano atrás',
+  invalid: 'data inválida',
+};

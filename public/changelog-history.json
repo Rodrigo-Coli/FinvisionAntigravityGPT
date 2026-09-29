@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.09.28.2309",
+    "title": "Data das importações em destaque para você conferir",
+    "date": "28/09/2026",
+    "benefits": [
+      {
+        "title": "Confira a data antes de confirmar",
+        "desc": "Em Conciliar, a data de cada lançamento importado agora aparece em destaque. Tocando nela você corrige na hora, antes de confirmar.",
+        "type": "usabilidade"
+      },
+      {
+        "title": "Aviso quando a data parece errada",
+        "desc": "Lançamento importado com data no futuro ou de mais de 1 ano atrás ganha o aviso \"Confira\". Ao confirmar vários de uma vez, o app lista os que estão com a data suspeita antes de gravar.",
+        "type": "correcao"
+      },
+      {
+        "title": "Leitura de extratos e faturas acerta mais o ano",
+        "desc": "A leitura de extratos e faturas agora sabe a data de hoje e o padrão dia/mês brasileiro. Linhas sem ano não recebem mais um ano chutado.",
+        "type": "precisao"
+      }
+    ],
+    "changes": [
+      "`pages/Reconcile.tsx`: data de cada item vira um botão que abre a edição; aviso âmbar com `suspiciousDateReason` (futuro, >1 ano, inválida). As confirmações \"confirmar selecionados\" e \"sincronizar tudo\" listam as datas suspeitas no diálogo.",
+      "`api/_lib/handle-bank-reconcile.ts` e `handle-card-reconcile.ts`: prompt recebe a data de hoje (America/Sao_Paulo), o padrão DD/MM e a regra do ano ausente. Nenhuma data de importação é alterada automaticamente.",
+      "`lib/receiptDate.ts`: `suspiciousDateReason` + testes."
+    ]
+  },
+  {
     "version": "2026.09.28.2203",
     "title": "Compra lançada pelo cupom aparece no cartão e nas transações",
     "date": "28/09/2026",
