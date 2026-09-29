@@ -845,6 +845,15 @@ const Reconcile: React.FC = () => {
 
     setProcessingItemId(item.id);
     try {
+      // Observação e tags vindas da origem (cupom do Insights AI). Só entram no
+      // insert quando existem, para não mudar nada nos itens de extrato.
+      const originNotes = typeof item.metadata?.notes === 'string' && item.metadata.notes.trim() ? item.metadata.notes.trim() : null;
+      const originTags = Array.isArray(item.metadata?.tags) && item.metadata.tags.length ? item.metadata.tags : null;
+      const originExtras = {
+        ...(originNotes ? { notes: originNotes } : {}),
+        ...(originTags ? { tags: originTags } : {}),
+      };
+
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user) return;
@@ -881,6 +890,7 @@ const Reconcile: React.FC = () => {
           category: categoryName, subcategory: subcategoryName || null,
           owner_name: owner === 'Pessoal' ? null : owner,
           is_paid: true, paid_amount: absoluteAmount, paid_at: finalDate,
+          ...originExtras,
           metadata: {
             category_id: finalCategoryId,
             is_transfer: isTransfer,
@@ -933,7 +943,8 @@ const Reconcile: React.FC = () => {
           source: 'IMPORT', status: 'POSTED', owner_name: owner === 'Pessoal' ? null : owner,
           category_id: finalCategoryId || null,
           category: categoryName,
-          subcategory: subcategoryName || null
+          subcategory: subcategoryName || null,
+          ...originExtras
         });
         if (insertCardErr) throw insertCardErr;
       }
@@ -1330,6 +1341,15 @@ const Reconcile: React.FC = () => {
                                     <Pencil size={11} className="text-slate-200 group-hover/edit:text-brand-500 transition-colors shrink-0 mt-0.5" />
                                   </div>
                                 </button>
+                                {/* Observação/tags escolhidas no cupom: entram na transação ao confirmar. */}
+                                {(item.metadata?.notes || (Array.isArray(item.metadata?.tags) && item.metadata.tags.length > 0)) && (
+                                  <div className="flex flex-wrap items-center gap-1 text-[10px] font-bold text-slate-500">
+                                    {item.metadata?.notes && <span className="italic normal-case break-words">“{item.metadata.notes}”</span>}
+                                    {Array.isArray(item.metadata?.tags) && item.metadata.tags.map((t: string) => (
+                                      <span key={t} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-brand-50 text-brand-600"><Tag size={9} />{t}</span>
+                                    ))}
+                                  </div>
+                                )}
                                 {item.potential_duplicate && (
                                   <div className="flex flex-col gap-1.5 p-2 bg-amber-50 rounded-lg border border-amber-100">
                                     <div className="flex items-start gap-1">
