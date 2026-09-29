@@ -12,6 +12,7 @@ import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 import { SearchableInput } from '../components/common/SearchableInput';
 import { findCloseMatch, normalizeStr } from '../lib/stringUtils';
 import { sanitizeReceiptDate } from '../lib/receiptDate';
+import { suggestCategory, ClassifiedTx, CategorySuggestion } from '../lib/categorySuggestion';
 
 // Helper to parse markdown into semantically correct HTML (protects lists and bolds)
 const parseMarkdownToReact = (text: string) => {
@@ -101,6 +102,11 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [subcategories, setSubcategories] = useState<{ id: string; name: string; category_id: string; category_name?: string }[]>([]);
   const [confirmCategoryName, setConfirmCategoryName] = useState<string>('');
   const [confirmSubcategoryName, setConfirmSubcategoryName] = useState<string>('');
+  // Sugestão de categoria/subcategoria pelo histórico do usuário (ex.: "GASFORT
+  // F01" já lançado como Veículo / Combustível). Carregado uma vez, em segundo
+  // plano; a leitura do cupom espera por ele antes de sugerir.
+  const classifiedHistoryRef = useRef<Promise<ClassifiedTx[]> | null>(null);
+  const [categorySuggestion, setCategorySuggestion] = useState<CategorySuggestion | null>(null);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isSavingCategory, setIsSavingCategory] = useState(false);
@@ -139,8 +145,37 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const loadClassifiedHistory = async (): Promise<ClassifiedTx[]> => {
+    if (!supabase || !user) return [];
+    const today = DateUtils.formatToISODate();
+    try {
+      // Só o passado (parcelas/recorrências futuras não ensinam nada) e só o
+      // que tem categoria. As mais recentes primeiro.
+      const [txRes, cardRes] = await Promise.all([
+        supabase.from('transactions').select('description, category, subcategory, date')
+          .eq('user_id', user.id).not('category', 'is', null).lte('date', today)
+          .order('date', { ascending: false }).limit(1500),
+        supabase.from('card_transactions').select('description, category, subcategory, date, categories(name)')
+          .eq('user_id', user.id).lte('date', today)
+          .order('date', { ascending: false }).limit(1500),
+      ]);
+      const fromTx = (txRes.data || []).map((t: any) => ({
+        description: t.description, category: t.category, subcategory: t.subcategory, date: String(t.date || '').slice(0, 10),
+      }));
+      const fromCard = (cardRes.data || []).map((t: any) => ({
+        description: t.description, category: t.categories?.name || t.category, subcategory: t.subcategory, date: String(t.date || '').slice(0, 10),
+      }));
+      return [...fromTx, ...fromCard].filter(t => t.description && t.category);
+    } catch (err) {
+      // Sugestão é conveniência: sem ela o usuário só escolhe na mão.
+      console.warn('[AI-Labs] Histórico para sugestão de categoria indisponível:', err);
+      return [];
+    }
+  };
+
   useEffect(() => {
     fetchAccounts();
+    if (!classifiedHistoryRef.current && user) classifiedHistoryRef.current = loadClassifiedHistory();
     if (activeTab !== 'upload') {
       fetchIntelligenceData();
     }
@@ -353,6 +388,25 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       data.date = fixedDate;
       setPurchaseDate(fixedDate);
       setPurchaseDateAdjusted(adjusted);
+
+      // Cupom novo = compra nova: não herda a categoria do cupom anterior.
+      // Preenche com a sugestão do histórico (ou do tipo de estabelecimento),
+      // que o usuário vê e pode trocar.
+      if (!classifiedHistoryRef.current) classifiedHistoryRef.current = loadClassifiedHistory();
+      const history = await classifiedHistoryRef.current;
+      const suggestion = suggestCategory(
+        data.merchant || '',
+        history,
+        categories.map(c => c.name),
+        subcategories,
+        [data.merchant_category, data.items?.[0]?.category_hint].filter(Boolean)
+      );
+      setCategorySuggestion(suggestion);
+      setConfirmCategoryName(suggestion?.category || '');
+      setConfirmSubcategoryName(suggestion?.subcategory || '');
+      setIsCreatingCategory(false);
+      setIsCreatingSubcategory(false);
+
       setReceipt(data);
       setPartialValue(data.total);
       setExchangeQuote(data.currency === 'USD' ? 5.20 : data.currency === 'EUR' ? 5.60 : 1);
@@ -745,6 +799,16 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                           placeholder="Selecione ou digite..."
                           className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
                         />
+                      )}
+                      {categorySuggestion && !isCreatingCategory
+                        && confirmCategoryName === categorySuggestion.category
+                        && confirmSubcategoryName === categorySuggestion.subcategory && (
+                        <p className="text-[10px] font-bold text-brand-600 ml-1 leading-relaxed flex items-center gap-1">
+                          <Sparkles size={11} />
+                          {categorySuggestion.source === 'history'
+                            ? <>Sugerido pelo seu histórico: {categorySuggestion.basedOn}. Troque se não for o caso.</>
+                            : <>Sugerido pelo tipo de estabelecimento ({categorySuggestion.basedOn}). Troque se não for o caso.</>}
+                        </p>
                       )}
                     </div>
 
