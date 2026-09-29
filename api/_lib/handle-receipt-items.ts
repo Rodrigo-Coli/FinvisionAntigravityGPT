@@ -80,7 +80,11 @@ export async function handleReceiptItems(req: any, res: any) {
         // A IA não sabe a data de hoje: sem isso, print sem ano (notificação do
         // banco: "28 de set.") virava 2023 e a compra sumia do app.
         const todayISO = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
-        const dateContext = `\n\nCONTEXTO DE DATA: hoje é ${todayISO} (AAAA-MM-DD). Datas no documento estão no padrão brasileiro DIA/MÊS/ANO. Se o ano não aparecer, use o ano da compra mais recente possível que não seja depois de hoje. Devolva "date" sempre como AAAA-MM-DD.`;
+        const dateContext = `\n\nCONTEXTO DE DATA: hoje é ${todayISO} (AAAA-MM-DD). Datas no documento estão no padrão brasileiro DIA/MÊS/ANO. Se o ano não aparecer, use o ano da compra mais recente possível que não seja depois de hoje. Devolva "date" sempre como AAAA-MM-DD.`
+            // O prompt salvo no banco (ai_prompts.receipt_scanner) é uma frase
+            // genérica; sem esta regra, print de notificação/comprovante (sem lista
+            // de itens) às vezes voltava com "items" vazio e o usuário via erro.
+            + `\n\nCOMPROVANTE SEM ITENS: se a imagem for um print de notificação do banco, comprovante de cartão/Pix ou recibo sem lista de produtos, retorne "items" com UM único item: description "Compra em <estabelecimento>", quantity 1, unit_price e total_price iguais ao valor total, category_hint com o tipo do estabelecimento. Nunca retorne "items" vazio quando houver um valor total.`;
 
         const contents = [{
             parts: [
@@ -171,8 +175,26 @@ export async function handleReceiptItems(req: any, res: any) {
             is_promo: !!it.is_promo
         }));
 
+        // Rede de segurança para print/comprovante sem itens: com valor total
+        // lido, vira um item único em vez de erro (o lançamento só precisa do
+        // total; o Comparador ganha um registro da compra).
+        const parsedTotal = Number(parsedData.total) || 0;
+        if (normalizedItems.length === 0 && parsedTotal > 0) {
+            const merchantName = String(parsedData.merchant || '').trim() || 'estabelecimento';
+            normalizedItems.push({
+                description: `Compra em ${merchantName}`,
+                normalized_name: `Compra em ${merchantName}`,
+                quantity: 1,
+                unit: 'un',
+                unit_price: parsedTotal,
+                total_price: parsedTotal,
+                category_hint: parsedData.merchant_category || 'Geral',
+                is_promo: false
+            });
+        }
+
         if (normalizedItems.length === 0) {
-            throw new Error('Não conseguimos identificar os itens desse cupom. Tente novamente com uma foto mais nítida e completa.');
+            throw new Error('Não conseguimos identificar o valor desse cupom ou comprovante. Tente novamente com uma foto mais nítida e completa.');
         }
 
         const total = Number(parsedData.total) || normalizedItems.reduce((sum: number, it: any) => sum + it.total_price, 0);
