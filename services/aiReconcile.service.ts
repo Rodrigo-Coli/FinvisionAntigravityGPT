@@ -164,20 +164,39 @@ export const AIReconcileService = {
     // category_id (FK) + subcategory (texto), sem coluna "category" solta. Um campo
     // "category" extra no insert (adicionado numa versão anterior) provavelmente
     // não existe em card_transactions e derrubava o insert inteiro silenciosamente.
+    //
+    // A fatura (statement_id) é obrigatória: a tela de Cartões lista as compras
+    // pela fatura e o espelho da fatura em Transações também. Sem ela a compra
+    // ficava gravada mas invisível em todo o app. Mesmo caminho da conciliação
+    // de cartão (FinanceService.reconcileCardTransaction) e do lançamento manual:
+    // fatura pela data, status POSTED, depois sincroniza com o Histórico.
+    const { FinanceService } = await import("./finance.service");
+    const statementId = await FinanceService.getOrCreateStatement(cardId, date);
+
     const { error } = await supabase.from("card_transactions").insert({
       user_id: user.id,
       card_id: cardId,
+      statement_id: statementId,
       date,
       description,
       amount: Math.abs(amount),
-      status: "pending",
+      status: "POSTED",
       is_manual: true,
       source: "ai_labs",
       category_id: categoryId || null,
       subcategory: subcategory || null,
     });
     if (error) throw new Error(prettySupabaseError(error));
-    return true;
+
+    // O espelho no Histórico é consequência: a compra já está gravada, e a tela
+    // de Cartões refaz essa sincronização ao carregar. Falhar aqui não pode
+    // fazer o usuário lançar de novo (duplicaria a compra).
+    try {
+      await FinanceService.syncStatementToHistory(statementId);
+    } catch (syncErr) {
+      console.warn("[AI-Labs] Compra salva, mas a sincronização da fatura falhou:", syncErr);
+    }
+    return { statementId };
   },
 
   async saveToReconcileQueue(
