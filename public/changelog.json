@@ -1,26 +1,22 @@
 {
-  "version": "2026.09.28.2340",
-  "title": "Cupom sugere categoria e subcategoria pelo seu histórico",
+  "version": "2026.09.28.2348",
+  "title": "Observação e tags no lançamento pelo cupom",
   "date": "28/09/2026",
   "benefits": [
     {
-      "title": "Categoria sugerida automaticamente",
-      "desc": "Ao ler um cupom ou print de compra, o app procura no seu histórico lançamentos do mesmo estabelecimento e já preenche a categoria e a subcategoria que você usou. Exemplo: GASFORT F01 vem como Veículo / Combustível. Reconhece o mesmo lugar mesmo com o nome um pouco diferente, e você pode trocar antes de lançar.",
+      "title": "Observação e tags no cupom",
+      "desc": "Ao lançar um cupom ou print de compra, agora dá para escrever uma observação e colocar tags (opcionais), como no lançamento manual. O campo de tags sugere as que você já usa.",
       "type": "recurso"
     },
     {
-      "title": "Sem histórico, usa o tipo de estabelecimento",
-      "desc": "Se for a primeira compra no lugar, o app usa o tipo de estabelecimento lido no cupom (por exemplo, posto → Combustível), desde que você já tenha essa categoria.",
+      "title": "Vale para cartão e para conta",
+      "desc": "No cartão, a observação e as tags entram direto na compra. Em conta, a compra passa por Conciliar: lá elas aparecem no item e entram na transação quando você confirma.",
       "type": "recurso"
-    },
-    {
-      "title": "Cada cupom começa limpo",
-      "desc": "A categoria do cupom anterior não fica mais preenchida no próximo.",
-      "type": "correcao"
     }
   ],
   "changes": [
-    "`lib/categorySuggestion.ts` (+ testes): compara palavras relevantes da descrição (sem acento, sem prefixo \"Labs:\", sem termos genéricos como posto/comercio/ltda). Nota 3 = mesma descrição, 2 = mesma palavra principal, 1 = palavra em comum. Só sugere categoria/subcategoria que existem hoje.",
-    "`pages/AIModule.tsx`: carrega em segundo plano os lançamentos classificados (conta e cartão, só passado, até 1.500 de cada) e aplica a sugestão ao ler o cupom, com a indicação de onde ela veio."
+    "`pages/AIModule.tsx`: campos Observação e Tags (`TagsInput`, sugestões das tags do histórico); cada cupom novo começa com os campos vazios.",
+    "`AIReconcileService.saveDirectToCard` grava `notes`/`tags`; `saveToReconcileQueue` leva em `metadata.notes`/`metadata.tags`.",
+    "`pages/Reconcile.tsx`: mostra observação/tags do item e aplica em `transactions`/`card_transactions` ao confirmar — só quando existem, sem mudar os itens de extrato."
   ]
 }

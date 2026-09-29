@@ -13,6 +13,8 @@ import { SearchableInput } from '../components/common/SearchableInput';
 import { findCloseMatch, normalizeStr } from '../lib/stringUtils';
 import { sanitizeReceiptDate } from '../lib/receiptDate';
 import { suggestCategory, ClassifiedTx, CategorySuggestion } from '../lib/categorySuggestion';
+import { TagsInput } from '../components/common/TagsInput';
+import { parseTags, rememberTags, suggestTags } from '../lib/tagUtils';
 
 // Helper to parse markdown into semantically correct HTML (protects lists and bolds)
 const parseMarkdownToReact = (text: string) => {
@@ -107,6 +109,11 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   // plano; a leitura do cupom espera por ele antes de sugerir.
   const classifiedHistoryRef = useRef<Promise<ClassifiedTx[]> | null>(null);
   const [categorySuggestion, setCategorySuggestion] = useState<CategorySuggestion | null>(null);
+  // Observação e tags opcionais, iguais às do lançamento manual. Cartão grava
+  // direto; conta leva para Conciliar e aplica quando o usuário confirma lá.
+  const [purchaseNotes, setPurchaseNotes] = useState('');
+  const [purchaseTags, setPurchaseTags] = useState<string[]>([]);
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isSavingCategory, setIsSavingCategory] = useState(false);
@@ -152,13 +159,15 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       // Só o passado (parcelas/recorrências futuras não ensinam nada) e só o
       // que tem categoria. As mais recentes primeiro.
       const [txRes, cardRes] = await Promise.all([
-        supabase.from('transactions').select('description, category, subcategory, date')
+        supabase.from('transactions').select('description, category, subcategory, date, tags')
           .eq('user_id', user.id).not('category', 'is', null).lte('date', today)
           .order('date', { ascending: false }).limit(1500),
-        supabase.from('card_transactions').select('description, category, subcategory, date, categories(name)')
+        supabase.from('card_transactions').select('description, category, subcategory, date, tags, categories(name)')
           .eq('user_id', user.id).lte('date', today)
           .order('date', { ascending: false }).limit(1500),
       ]);
+      // Tags já usadas nos lançamentos viram sugestão no campo de tags.
+      setTagSuggestions(suggestTags(txRes.data || [], cardRes.data || []));
       const fromTx = (txRes.data || []).map((t: any) => ({
         description: t.description, category: t.category, subcategory: t.subcategory, date: String(t.date || '').slice(0, 10),
       }));
@@ -406,6 +415,8 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       setConfirmSubcategoryName(suggestion?.subcategory || '');
       setIsCreatingCategory(false);
       setIsCreatingSubcategory(false);
+      setPurchaseNotes('');
+      setPurchaseTags([]);
 
       setReceipt(data);
       setPartialValue(data.total);
@@ -473,6 +484,9 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         .filter(sc => !categoryName || sc.category_name === categoryName)
         .map(sc => sc.name);
       const subcategoryName = findCloseMatch(confirmSubcategoryName.trim(), subcatNames) || confirmSubcategoryName.trim();
+      const cleanNotes = purchaseNotes.trim();
+      const cleanTags = parseTags(purchaseTags);
+      rememberTags(cleanTags);
       const description = `Labs: ${receipt.merchant} ${receipt.currency !== 'BRL' ? '[' + receipt.currency + ']' : ''}`;
 
       if (targetType === 'card') {
@@ -484,7 +498,9 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           description,
           amount: finalAmount,
           categoryId: matchedCategory?.id,
-          subcategory: subcategoryName || undefined
+          subcategory: subcategoryName || undefined,
+          notes: cleanNotes || undefined,
+          tags: cleanTags.length ? cleanTags : undefined
         });
         toast(`Lançado no cartão ${targetName} em ${DateUtils.formatDisplayDate(purchaseDate)}. Já aparece na fatura e em Transações.`, 'success');
       } else {
@@ -504,7 +520,12 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
           // A fila de conciliação lê metadata.category/subcategory como
           // pré-preenchimento (pages/Reconcile.tsx), então a classificação feita
           // aqui não se perde: chega lá já escolhida, faltando só confirmar.
-          { category: categoryName || undefined, subcategory: subcategoryName || undefined }
+          {
+            category: categoryName || undefined,
+            subcategory: subcategoryName || undefined,
+            notes: cleanNotes || undefined,
+            tags: cleanTags.length ? cleanTags : undefined
+          }
         );
         // Conta passa pela conciliação: só entra em Transações depois de
         // confirmado em Conciliar. Sem este aviso o usuário procurava a compra
@@ -849,6 +870,32 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                         )}
                       </div>
                     )}
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Observação (Opcional)</label>
+                      <textarea
+                        value={purchaseNotes}
+                        onChange={(e) => setPurchaseNotes(e.target.value)}
+                        placeholder="Detalhes sobre a compra..."
+                        rows={2}
+                        className="w-full bg-slate-50 border-none rounded-2xl px-5 py-3 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none resize-none placeholder:text-slate-300"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Tags (Opcional)</label>
+                      <TagsInput
+                        value={purchaseTags}
+                        onChange={setPurchaseTags}
+                        suggestions={tagSuggestions}
+                        className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none placeholder:text-slate-300"
+                      />
+                      {targetType === 'account' && (purchaseNotes.trim() || purchaseTags.length > 0) && (
+                        <p className="text-[10px] font-bold text-slate-400 ml-1 leading-relaxed">
+                          Em conta, a compra passa por Conciliar: a observação e as tags vão junto e entram na transação quando você confirmar lá.
+                        </p>
+                      )}
+                    </div>
 
                     <button
                       onClick={handleFinalize}

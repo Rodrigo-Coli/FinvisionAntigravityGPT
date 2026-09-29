@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.09.28.2348",
+    "title": "Observação e tags no lançamento pelo cupom",
+    "date": "28/09/2026",
+    "benefits": [
+      {
+        "title": "Observação e tags no cupom",
+        "desc": "Ao lançar um cupom ou print de compra, agora dá para escrever uma observação e colocar tags (opcionais), como no lançamento manual. O campo de tags sugere as que você já usa.",
+        "type": "recurso"
+      },
+      {
+        "title": "Vale para cartão e para conta",
+        "desc": "No cartão, a observação e as tags entram direto na compra. Em conta, a compra passa por Conciliar: lá elas aparecem no item e entram na transação quando você confirma.",
+        "type": "recurso"
+      }
+    ],
+    "changes": [
+      "`pages/AIModule.tsx`: campos Observação e Tags (`TagsInput`, sugestões das tags do histórico); cada cupom novo começa com os campos vazios.",
+      "`AIReconcileService.saveDirectToCard` grava `notes`/`tags`; `saveToReconcileQueue` leva em `metadata.notes`/`metadata.tags`.",
+      "`pages/Reconcile.tsx`: mostra observação/tags do item e aplica em `transactions`/`card_transactions` ao confirmar — só quando existem, sem mudar os itens de extrato."
+    ]
+  },
+  {
     "version": "2026.09.28.2340",
     "title": "Cupom sugere categoria e subcategoria pelo seu histórico",
     "date": "28/09/2026",

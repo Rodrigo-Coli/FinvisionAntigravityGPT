@@ -155,7 +155,7 @@ export const AIReconcileService = {
     return await res.json();
   },
 
-  async saveDirectToCard({ cardId, date, description, amount, categoryId, subcategory }: { cardId: string; date: string; description: string; amount: number; categoryId?: string; subcategory?: string }) {
+  async saveDirectToCard({ cardId, date, description, amount, categoryId, subcategory, notes, tags }: { cardId: string; date: string; description: string; amount: number; categoryId?: string; subcategory?: string; notes?: string; tags?: string[] }) {
     if (!supabase) throw new Error("Supabase is not configured");
     const user = await getSessionUser(supabase);
     if (!user) throw new Error("No user found");
@@ -185,6 +185,9 @@ export const AIReconcileService = {
       source: "ai_labs",
       category_id: categoryId || null,
       subcategory: subcategory || null,
+      // Mesmos campos do lançamento manual de cartão.
+      notes: notes || '',
+      tags: tags && tags.length ? tags : [],
     });
     if (error) throw new Error(prettySupabaseError(error));
 
@@ -207,7 +210,7 @@ export const AIReconcileService = {
     // Categoria/subcategoria escolhidas na origem. A tela de conciliação lê
     // metadata.category/metadata.subcategory como valor inicial, entao o que o
     // usuario classificou aqui chega la ja preenchido.
-    classification?: { category?: string; subcategory?: string }
+    classification?: { category?: string; subcategory?: string; notes?: string; tags?: string[] }
   ) {
     if (!supabase) throw new Error("Supabase is not configured");
     const user = await getSessionUser(supabase);
@@ -229,6 +232,10 @@ export const AIReconcileService = {
         original_account_name: accountName,
         ...(classification?.category ? { category: classification.category } : {}),
         ...(classification?.subcategory ? { subcategory: classification.subcategory } : {}),
+        // Observação e tags escolhidas na origem (cupom): Conciliar aplica na
+        // transação ao confirmar.
+        ...(classification?.notes ? { notes: classification.notes } : {}),
+        ...(classification?.tags && classification.tags.length ? { tags: classification.tags } : {}),
       },
     }));
 
