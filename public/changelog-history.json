@@ -1,35 +1,41 @@
 [
   {
-    "version": "2026.09.29.0009",
-    "title": "Extrato do investimento fecha com o saldo do card",
+    "version": "2026.09.29.0019",
+    "title": "Lucro dos investimentos por período e extrato que fecha com o card",
     "date": "29/09/2026",
     "benefits": [
       {
-        "title": "Rendimento certo ao editar o saldo",
-        "desc": "Ao atualizar o Saldo Bruto Atual de um investimento, o rendimento lançado no extrato agora é o que falta para o extrato bater com o saldo bruto — antes ele podia ficar menor e somar um valor diferente do card.",
-        "type": "correção"
+        "title": "Veja quanto seus investimentos renderam",
+        "desc": "Novo painel \"Resultado dos Investimentos\" na aba Investimentos: valorização, quedas, juros recebidos e o resultado do período (este mês, mês passado, 3 ou 12 meses, este ano, desde o início ou datas que você escolher), também por investimento. Respeita os filtros da carteira.",
+        "type": "recurso"
       },
       {
         "title": "Valorização não vira receita",
-        "desc": "Quando o saldo de um investimento que acumula sobe (ou cai), isso fica só no investimento e no extrato dele — não aparece mais como receita nas suas contas. O dinheiro entra na conta quando você lançar o resgate ou os juros recebidos.",
+        "desc": "Quando o saldo de um investimento que acumula sobe ou cai, isso fica só no investimento e no extrato dele — não aparece mais como receita. O dinheiro entra na conta quando você lança o resgate ou os juros recebidos.",
+        "type": "correção"
+      },
+      {
+        "title": "Extrato bate com o saldo do card",
+        "desc": "Ao atualizar o Saldo Bruto Atual, o extrato passa a somar exatamente o saldo bruto. Se já havia uma diferença antiga, ela entra separada, na data do primeiro aporte, para não inflar o resultado do dia.",
         "type": "correção"
       },
       {
         "title": "Bruto e líquido lado a lado",
-        "desc": "O extrato mostra o resumo: aplicado, rendimento bruto, IR estimado e saldo bruto/líquido. Cada rendimento acumulado exibe também o valor líquido aproximado.",
+        "desc": "O extrato mostra aplicado, rendimento bruto, IR estimado e saldo bruto/líquido, e cada rendimento traz o líquido aproximado. Extratos antigos que não batem mostram o botão \"Registrar diferença no extrato\".",
         "type": "melhoria"
       },
       {
-        "title": "Conserte extratos antigos com um toque",
-        "desc": "Se o extrato não somar o saldo bruto do card, aparece um aviso com o botão \"Registrar diferença no extrato\". Não mexe no saldo nem em conta nenhuma.",
-        "type": "recurso"
+        "title": "Ajuste manual negativo corrigido",
+        "desc": "Um ajuste manual negativo lançado no extrato agora reduz o valor do investimento (antes aumentava). Rendimento acumulado e ajuste também não criam mais lançamento em conta por engano.",
+        "type": "correção"
       }
     ],
     "changes": [
-      "`lib/investmentLedger.ts`: `ledgerImpliedGross`, `grossChangeToRecord`, `netOfTax` (+ `tests/investmentLedger.test.ts`).",
-      "`pages/Assets.tsx`: na edição de investimento ACUMULADO o delta é calculado contra a soma do extrato (aportes + acumulados + ajustes), não contra o `estimated_value` anterior; sem conciliação possível (resgate/amortização) mantém a regra antiga.",
-      "`pages/Assets.tsx`: edição de investimento não-MENSAL não cria mais a transação INCOME \"Rendimento automático\" (sem conta); só grava `RENDIMENTO_ACUMULADO` no extrato. No Fluxo modo \"Total\" o rendimento acumulado passa a vir de `investment_movements` sem transação vinculada.",
-      "`pages/Assets.tsx`: resumo bruto/IR/líquido no modal de extrato, líquido estimado por rendimento acumulado e botão de conciliação (`handleReconcileLedgerGap`)."
+      "`lib/investmentLedger.ts` (+ testes): `ledgerImpliedGross`, `splitGrossChange`, `firstAporteDate`, `periodResult`, `resolveResultPeriod`, `netOfTax`.",
+      "`pages/Assets.tsx`: painel \"Resultado dos Investimentos\" (`investmentPeriodResult`) a partir de `investment_movements`, com filtro de período e respeitando `getFilteredInvestments`.",
+      "`pages/Assets.tsx`: edição de investimento não-MENSAL não cria mais a transação INCOME \"Rendimento automático\"; grava só `RENDIMENTO_ACUMULADO`/`AJUSTE_MANUAL`. Diferença pré-existente entre extrato e saldo anterior vira movimentação separada datada no primeiro aporte. Fluxo modo \"Total\" soma `RENDIMENTO_ACUMULADO` sem transação vinculada.",
+      "`pages/Assets.tsx`: resumo bruto/IR/líquido e botão de conciliação no modal de extrato.",
+      "`pages/Assets.tsx` (`handleAddMovement`): `AJUSTE_MANUAL` passa o valor com sinal para `applyMovementSideEffects`; conta escondida não é usada em `RENDIMENTO_ACUMULADO`/`AJUSTE_MANUAL`."
     ]
   },
   {

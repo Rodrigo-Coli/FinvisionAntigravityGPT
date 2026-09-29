@@ -61,7 +61,7 @@ import ConsortiumSection from '../components/assets/ConsortiumSection';
 import SearchableSelect from '../components/common/SearchableSelect';
 import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
-import { grossChangeToRecord, ledgerImpliedGross, netOfTax } from '../lib/investmentLedger';
+import { splitGrossChange, firstAporteDate, ledgerImpliedGross, netOfTax, periodResult, resolveResultPeriod, ResultPeriodPreset } from '../lib/investmentLedger';
 import { computeInstallmentAmount, buildInstallmentDate } from '../lib/amortization';
 import { SALE_FREQUENCY_OPTIONS, previewSaleInstallment, syncSaleInstallmentPlan, addSalePeriod, isSaleFrequency, readSalePlanSettings } from '../lib/saleInstallments';
 import { useToast } from '../contexts/ToastContext';
@@ -320,6 +320,11 @@ const Assets: React.FC = () => {
   // Liquidity and Maturity filters for investments
   const [liquidityFilter, setLiquidityFilter] = useState<string>('ALL');
   const [maturityFilter, setMaturityFilter] = useState<string>('ALL');
+  // Painel "Resultado dos investimentos" (lucro/queda por período)
+  const [resultPeriod, setResultPeriod] = useState<ResultPeriodPreset>('MES');
+  const [resultCustomStart, setResultCustomStart] = useState('');
+  const [resultCustomEnd, setResultCustomEnd] = useState('');
+  const [showResultByAsset, setShowResultByAsset] = useState(false);
   const [investmentSearchQuery, setInvestmentSearchQuery] = useState<string>('');
   const [investmentTypeFilter, setInvestmentTypeFilter] = useState<string>('ALL');
   const [investmentBrokerFilter, setInvestmentBrokerFilter] = useState<string>('ALL');
@@ -1587,6 +1592,35 @@ const Assets: React.FC = () => {
       return true;
     });
   };
+
+  // Lucro/queda dos investimentos no período escolhido, a partir do extrato
+  // (investment_movements). Respeita os filtros da carteira (busca, tipo, corretora...).
+  // Aporte, resgate e amortização não entram: são dinheiro trocando de bolso.
+  const investmentPeriodResult = useMemo(() => {
+    const range = resolveResultPeriod(resultPeriod, DateUtils.formatToISODate(), resultCustomStart, resultCustomEnd);
+    const investments = getFilteredInvestments(enrichedPhysicalAssets.filter(p => p.category === 'INVESTMENT'));
+    const byAssetMovs = new Map<string, any[]>();
+    for (const mv of allInvestmentMovements) {
+      const list = byAssetMovs.get(mv.asset_id) || [];
+      list.push(mv);
+      byAssetMovs.set(mv.asset_id, list);
+    }
+    const rows = investments
+      .map(inv => ({ id: inv.id, name: inv.name, ...periodResult(byAssetMovs.get(inv.id) || [], range.start, range.end) }))
+      .filter(r => r.appreciation !== 0 || r.depreciation !== 0 || r.received !== 0)
+      .sort((a, b) => b.total - a.total);
+    const sum = (k: 'appreciation' | 'depreciation' | 'received' | 'total') =>
+      Math.round(rows.reduce((acc, r) => acc + r[k], 0) * 100) / 100;
+    return {
+      range,
+      rows,
+      appreciation: sum('appreciation'),
+      depreciation: sum('depreciation'),
+      received: sum('received'),
+      total: sum('total')
+    };
+    // getFilteredInvestments lê os filtros abaixo
+  }, [resultPeriod, resultCustomStart, resultCustomEnd, enrichedPhysicalAssets, allInvestmentMovements, investmentSearchQuery, investmentTypeFilter, investmentBrokerFilter, liquidityFilter, maturityFilter]);
 
   const calculateIRProvisions = (inv: PhysicalAsset) => {
     const meta = inv.metadata || {};
@@ -3138,7 +3172,10 @@ const Assets: React.FC = () => {
     const type = newMovementForm.movement_type;
     const isNegativeType = ['RESGATE_PARCIAL', 'RESGATE_TOTAL', 'AMORTIZACAO'].includes(type);
     const asset = selectedInvestmentForLedger;
-    const accountId = newMovementForm.accountId || '';
+    // Rendimento acumulado e ajuste não passam por conta: o seletor de conta some para
+    // eles, mas o valor escolhido antes (em outro tipo) ficava guardado e acabava criando
+    // um lançamento de "Resgate" na conta.
+    const accountId = type === 'RENDIMENTO_ACUMULADO' || type === 'AJUSTE_MANUAL' ? '' : (newMovementForm.accountId || '');
     const dateStr = newMovementForm.movement_date;
     const signedAmount = isNegativeType ? -Math.abs(amt) : amt;
 
@@ -3182,7 +3219,9 @@ const Assets: React.FC = () => {
         userId: user.id,
         asset,
         type,
-        amount: Math.abs(amt),
+        // Ajuste manual tem sinal (queda = negativo). Com Math.abs, um ajuste de −10
+        // aumentava o valor do título em 10.
+        amount: type === 'AJUSTE_MANUAL' ? amt : Math.abs(amt),
         dateStr,
         accountId
       });
@@ -3248,7 +3287,9 @@ const Assets: React.FC = () => {
       asset_id: asset.id,
       movement_type: gap > 0 ? 'RENDIMENTO_ACUMULADO' : 'AJUSTE_MANUAL',
       amount: Math.round(gap * 100) / 100,
-      movement_date: DateUtils.formatToISODate(),
+      // A diferença não aconteceu hoje: data no primeiro aporte para não inflar o
+      // resultado do mês. Dá para mudar a data no lápis da movimentação.
+      movement_date: firstAporteDate(investmentMovements) || asset.acquisitionDate || DateUtils.formatToISODate(),
       notes: 'Conciliação com o saldo bruto'
     }]);
     if (error) {
@@ -3657,22 +3698,34 @@ const Assets: React.FC = () => {
         if (formData.category === 'INVESTMENT') {
           const oldValue = Number(editingAsset.estimatedValue) || 0;
           const newValue = value;
-          // Rendimento que fica no título (ACUMULADO): mede a diferença contra o que o
-          // extrato já soma, não contra o saldo anterior do cadastro. Assim, depois de
-          // salvar, aportes + rendimentos do extrato = saldo bruto do card. Com a regra
-          // antiga, qualquer sobra entre custo e saldo inicial nunca entrava no extrato.
-          let delta = newValue - oldValue;
-          if (formData.payoutType !== 'MENSAL') {
+          const delta = Math.round((newValue - oldValue) * 100) / 100;
+          const isAcumulado = formData.payoutType !== 'MENSAL';
+
+          // Rendimento que fica no título: se o extrato já não batia com o saldo anterior
+          // (ex.: saldo inicial cadastrado acima do custo), registra essa sobra à parte,
+          // datada no primeiro aporte — ela não aconteceu hoje. Assim, depois de salvar,
+          // aportes + rendimentos do extrato = saldo bruto do card, e o resultado do dia
+          // continua sendo só o que mudou agora. Só mexe no extrato quando o saldo bruto
+          // mudou nesta edição (editar nome/taxa não lança nada).
+          if (isAcumulado && delta !== 0) {
             const { data: ledgerRows } = await supabase
               .from('investment_movements')
-              .select('movement_type, amount')
+              .select('movement_type, amount, movement_date')
               .eq('asset_id', editingAsset.id);
-            delta = grossChangeToRecord(ledgerRows || [], oldValue, newValue);
+            const { priorGap } = splitGrossChange(ledgerRows || [], oldValue, newValue);
+            if (Math.abs(priorGap) >= 0.01) {
+              await supabase.from('investment_movements').insert([{
+                user_id: user.id,
+                asset_id: editingAsset.id,
+                movement_type: priorGap > 0 ? 'RENDIMENTO_ACUMULADO' : 'AJUSTE_MANUAL',
+                amount: priorGap,
+                movement_date: firstAporteDate(ledgerRows || []) || acqDate || DateUtils.formatToISODate(),
+                notes: 'Diferença que já existia entre custo e saldo'
+              }]);
+            }
           }
 
           if (delta > 0) {
-            // Mesma regra de cima: tudo que não é MENSAL fica dentro do título.
-            const isAcumulado = formData.payoutType !== 'MENSAL';
             const todayStr = DateUtils.formatToISODate();
 
             if (isAcumulado) {
@@ -9393,6 +9446,91 @@ ${tabelaHtml}
                 )}
               </div>
 
+              {/* Resultado dos investimentos (lucro/queda) por período */}
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">Resultado dos Investimentos</h4>
+                    <p className="text-[10px] text-slate-400 font-semibold">Lucro ou queda registrados no extrato, antes do IR. Aportes e resgates não entram.</p>
+                  </div>
+                  <select
+                    value={resultPeriod}
+                    onChange={(e) => setResultPeriod(e.target.value as ResultPeriodPreset)}
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                  >
+                    <option value="MES">Este mês</option>
+                    <option value="MES_ANTERIOR">Mês passado</option>
+                    <option value="3M">Últimos 3 meses</option>
+                    <option value="12M">Últimos 12 meses</option>
+                    <option value="ANO">Este ano</option>
+                    <option value="TUDO">Desde o início</option>
+                    <option value="PERSONALIZADO">Personalizado</option>
+                  </select>
+                </div>
+                {resultPeriod === 'PERSONALIZADO' && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+                    <span>De</span>
+                    <input type="date" value={resultCustomStart} onChange={(e) => setResultCustomStart(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-bold" />
+                    <span>até</span>
+                    <input type="date" value={resultCustomEnd} onChange={(e) => setResultCustomEnd(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-bold" />
+                  </div>
+                )}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-emerald-50 rounded-2xl p-3">
+                    <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Valorização</p>
+                    <p className="text-sm font-black text-emerald-700">{formatCurrency(investmentPeriodResult.appreciation)}</p>
+                  </div>
+                  <div className="bg-rose-50 rounded-2xl p-3">
+                    <p className="text-[9px] font-black text-rose-600 uppercase tracking-widest">Quedas</p>
+                    <p className="text-sm font-black text-rose-700">{formatCurrency(investmentPeriodResult.depreciation)}</p>
+                  </div>
+                  <div className="bg-indigo-50 rounded-2xl p-3">
+                    <p className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">Juros recebidos</p>
+                    <p className="text-sm font-black text-indigo-700">{formatCurrency(investmentPeriodResult.received)}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-2xl p-3">
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Resultado</p>
+                    <p className={`text-sm font-black ${investmentPeriodResult.total >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {investmentPeriodResult.total > 0 ? '+' : ''}{formatCurrency(investmentPeriodResult.total)}
+                    </p>
+                  </div>
+                </div>
+                {investmentPeriodResult.rows.length === 0 ? (
+                  <p className="text-xs text-slate-400 font-semibold">Nenhum lucro ou queda registrado neste período.</p>
+                ) : (
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => setShowResultByAsset(v => !v)}
+                      className="flex items-center gap-1 text-[10px] font-black text-indigo-500 hover:text-indigo-700 uppercase tracking-widest"
+                    >
+                      {showResultByAsset ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      {showResultByAsset ? 'Ocultar' : 'Ver'} por investimento ({investmentPeriodResult.rows.length})
+                    </button>
+                    {showResultByAsset && (
+                      <div className="divide-y divide-slate-100 border border-slate-100 rounded-2xl">
+                        {investmentPeriodResult.rows.map(r => (
+                          <div key={r.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-700 break-words">{r.name}</p>
+                              <p className="text-[10px] text-slate-400 font-semibold">
+                                {[
+                                  r.appreciation ? `valorização ${formatCurrency(r.appreciation)}` : '',
+                                  r.depreciation ? `queda ${formatCurrency(r.depreciation)}` : '',
+                                  r.received ? `juros ${formatCurrency(r.received)}` : ''
+                                ].filter(Boolean).join(' · ')}
+                              </p>
+                            </div>
+                            <span className={`text-xs font-black shrink-0 ${r.total >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                              {r.total > 0 ? '+' : ''}{formatCurrency(r.total)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {dynamicBrokers.map(broker => {
                   const brokerInvestments = getFilteredInvestments(enrichedPhysicalAssets.filter(
@@ -12689,7 +12827,7 @@ ${tabelaHtml}
                       descontado no resgate — o líquido abaixo é uma estimativa com a alíquota de hoje.
                     </p>
                     <div className="flex justify-between"><span className="text-slate-500">Aplicado</span><span className="font-bold text-slate-700">{formatCurrency(ledgerSummary.cost)}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Rendimento bruto</span><span className="font-bold text-emerald-600">{formatCurrency(ledgerSummary.grossYield)}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Rendimento bruto</span><span className={`font-bold ${ledgerSummary.grossYield >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{formatCurrency(ledgerSummary.grossYield)}</span></div>
                     {ledgerSummary.tax > 0 && (
                       <div className="flex justify-between"><span className="text-slate-500">IR estimado ({(ledgerSummary.taxRate * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%)</span><span className="font-bold text-rose-500">−{formatCurrency(ledgerSummary.tax)}</span></div>
                     )}
