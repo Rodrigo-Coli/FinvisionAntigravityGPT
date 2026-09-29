@@ -61,6 +61,7 @@ import ConsortiumSection from '../components/assets/ConsortiumSection';
 import SearchableSelect from '../components/common/SearchableSelect';
 import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
+import { grossChangeToRecord, ledgerImpliedGross, netOfTax } from '../lib/investmentLedger';
 import { computeInstallmentAmount, buildInstallmentDate } from '../lib/amortization';
 import { SALE_FREQUENCY_OPTIONS, previewSaleInstallment, syncSaleInstallmentPlan, addSalePeriod, isSaleFrequency, readSalePlanSettings } from '../lib/saleInstallments';
 import { useToast } from '../contexts/ToastContext';
@@ -1117,6 +1118,29 @@ const Assets: React.FC = () => {
       };
     });
   }, [activePhysicalAssets, investmentLotsByAsset]);
+
+  // Resumo do extrato aberto: mesmo custo/IR do card, mais a conferência de que as
+  // movimentações somam o saldo bruto. É o que mostra ao usuário por que o rendimento
+  // do histórico (bruto) difere do "líquido" do card.
+  const ledgerSummary = useMemo(() => {
+    if (!selectedInvestmentForLedger) return null;
+    const enriched: any = enrichedPhysicalAssets.find(p => p.id === selectedInvestmentForLedger.id);
+    if (!enriched || enriched.category !== 'INVESTMENT') return null;
+    const gross = Number(enriched.estimatedValue || 0);
+    const cost = Number(enriched.costBasis || 0);
+    const tax = Number(enriched.taxAmount || 0);
+    const implied = ledgerImpliedGross(investmentMovements);
+    return {
+      gross,
+      cost,
+      grossYield: Math.round((gross - cost) * 100) / 100,
+      tax,
+      taxRate: Number(enriched.taxRate || 0),
+      net: Number(enriched.netValue ?? gross),
+      implied,
+      gap: implied === null ? null : Math.round((gross - implied) * 100) / 100
+    };
+  }, [selectedInvestmentForLedger, enrichedPhysicalAssets, investmentMovements]);
 
   const dynamicBrokers = useMemo(() => {
     return brokers.map(b => {
@@ -3203,6 +3227,31 @@ const Assets: React.FC = () => {
     await reloadAllInvestmentMovements();
   };
 
+  // Registra no extrato a diferença entre o saldo bruto do card e o que o extrato soma
+  // (aportes + rendimentos acumulados + ajustes). Não mexe no valor do ativo nem em conta
+  // nenhuma: o saldo bruto já está certo, só faltava o extrato explicar de onde ele veio.
+  const handleReconcileLedgerGap = async (asset: any, gap: number) => {
+    if (!supabase || !asset || Math.abs(gap) < 0.01) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) return;
+    const { error } = await supabase.from('investment_movements').insert([{
+      user_id: user.id,
+      asset_id: asset.id,
+      movement_type: gap > 0 ? 'RENDIMENTO_ACUMULADO' : 'AJUSTE_MANUAL',
+      amount: Math.round(gap * 100) / 100,
+      movement_date: DateUtils.formatToISODate(),
+      notes: 'Conciliação com o saldo bruto'
+    }]);
+    if (error) {
+      toast(`Erro ao conciliar o extrato: ${error.message}`, 'error');
+      return;
+    }
+    loadInvestmentMovements(asset.id);
+    await reloadAllInvestmentMovements();
+    toast('Extrato conciliado com o saldo bruto do card.', 'success');
+  };
+
   const handleSaveReminder = async () => {
     if (!supabase || !selectedInvestmentForLedger) return;
     const { data: { session } } = await supabase.auth.getSession();
@@ -3600,7 +3649,18 @@ const Assets: React.FC = () => {
         if (formData.category === 'INVESTMENT') {
           const oldValue = Number(editingAsset.estimatedValue) || 0;
           const newValue = value;
-          const delta = newValue - oldValue;
+          // Rendimento que fica no título (ACUMULADO): mede a diferença contra o que o
+          // extrato já soma, não contra o saldo anterior do cadastro. Assim, depois de
+          // salvar, aportes + rendimentos do extrato = saldo bruto do card. Com a regra
+          // antiga, qualquer sobra entre custo e saldo inicial nunca entrava no extrato.
+          let delta = newValue - oldValue;
+          if (formData.payoutType !== 'MENSAL') {
+            const { data: ledgerRows } = await supabase
+              .from('investment_movements')
+              .select('movement_type, amount')
+              .eq('asset_id', editingAsset.id);
+            delta = grossChangeToRecord(ledgerRows || [], oldValue, newValue);
+          }
 
           if (delta > 0) {
             const isAcumulado = formData.payoutType === 'ACUMULADO';
@@ -12621,6 +12681,34 @@ ${tabelaHtml}
               {/* Lista de movimentações */}
               <div className="space-y-2">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Histórico</label>
+                {!loadingInvestmentMovements && ledgerSummary && (
+                  <div className="bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 space-y-1 text-[11px]">
+                    <p className="text-[10px] text-slate-400 font-semibold">
+                      Os rendimentos do extrato são <b>brutos</b> (como no extrato da corretora). O IR só é
+                      descontado no resgate — o líquido abaixo é uma estimativa com a alíquota de hoje.
+                    </p>
+                    <div className="flex justify-between"><span className="text-slate-500">Aplicado</span><span className="font-bold text-slate-700">{formatCurrency(ledgerSummary.cost)}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Rendimento bruto</span><span className="font-bold text-emerald-600">{formatCurrency(ledgerSummary.grossYield)}</span></div>
+                    {ledgerSummary.tax > 0 && (
+                      <div className="flex justify-between"><span className="text-slate-500">IR estimado ({(ledgerSummary.taxRate * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%)</span><span className="font-bold text-rose-500">−{formatCurrency(ledgerSummary.tax)}</span></div>
+                    )}
+                    <div className="flex justify-between border-t border-slate-200 pt-1"><span className="text-slate-500">Saldo bruto / líquido</span><span className="font-black text-slate-800">{formatCurrency(ledgerSummary.gross)} / {formatCurrency(ledgerSummary.net)}</span></div>
+                    {ledgerSummary.gap !== null && Math.abs(ledgerSummary.gap) >= 0.01 && (
+                      <div className="mt-1 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5 space-y-1">
+                        <p className="text-[10px] text-amber-700 font-semibold">
+                          O extrato soma {formatCurrency(ledgerSummary.implied as number)}, mas o saldo bruto do card é {formatCurrency(ledgerSummary.gross)}.
+                          Faltam {formatCurrency(Math.abs(ledgerSummary.gap))} {ledgerSummary.gap > 0 ? 'de rendimento' : 'de ajuste'} registrados aqui.
+                        </p>
+                        <button
+                          onClick={() => handleReconcileLedgerGap(selectedInvestmentForLedger, ledgerSummary.gap as number)}
+                          className="text-[10px] font-black text-amber-800 uppercase tracking-widest hover:underline"
+                        >
+                          Registrar diferença no extrato
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {loadingInvestmentMovements && <p className="text-xs text-slate-400 font-semibold">Carregando...</p>}
                 {!loadingInvestmentMovements && investmentMovements.length === 0 && (
                   <p className="text-xs text-slate-400 font-semibold">Nenhuma movimentação registrada ainda.</p>
@@ -12655,9 +12743,16 @@ ${tabelaHtml}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className={`text-xs font-black ${Number(mv.amount) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                            {Number(mv.amount) >= 0 ? '+' : ''}{formatCurrency(Number(mv.amount))}
-                          </span>
+                          <div className="text-right">
+                            <span className={`text-xs font-black ${Number(mv.amount) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                              {Number(mv.amount) >= 0 ? '+' : ''}{formatCurrency(Number(mv.amount))}
+                            </span>
+                            {mv.movement_type === 'RENDIMENTO_ACUMULADO' && Number(mv.amount) > 0 && ledgerSummary && ledgerSummary.taxRate > 0 && (
+                              <p className="text-[9px] text-slate-400 font-semibold whitespace-nowrap">
+                                bruto · ≈ {formatCurrency(netOfTax(Number(mv.amount), ledgerSummary.taxRate))} líq.
+                              </p>
+                            )}
+                          </div>
                           <button
                             onClick={() => { setEditingMovementId(mv.id); setEditingMovementDraft({ amount: String(mv.amount), movement_date: mv.movement_date }); }}
                             className="text-slate-400 hover:text-slate-700"

@@ -1,22 +1,27 @@
 {
-  "version": "2026.09.28.2348",
-  "title": "Observação e tags no lançamento pelo cupom",
-  "date": "28/09/2026",
+  "version": "2026.09.29.0000",
+  "title": "Extrato do investimento fecha com o saldo do card",
+  "date": "29/09/2026",
   "benefits": [
     {
-      "title": "Observação e tags no cupom",
-      "desc": "Ao lançar um cupom ou print de compra, agora dá para escrever uma observação e colocar tags (opcionais), como no lançamento manual. O campo de tags sugere as que você já usa.",
-      "type": "recurso"
+      "title": "Rendimento certo ao editar o saldo",
+      "desc": "Ao atualizar o Saldo Bruto Atual de um investimento, o rendimento lançado no extrato agora é o que falta para o extrato bater com o saldo bruto — antes ele podia ficar menor e somar um valor diferente do card.",
+      "type": "correção"
     },
     {
-      "title": "Vale para cartão e para conta",
-      "desc": "No cartão, a observação e as tags entram direto na compra. Em conta, a compra passa por Conciliar: lá elas aparecem no item e entram na transação quando você confirma.",
+      "title": "Bruto e líquido lado a lado",
+      "desc": "O extrato mostra o resumo: aplicado, rendimento bruto, IR estimado e saldo bruto/líquido. Cada rendimento acumulado exibe também o valor líquido aproximado.",
+      "type": "melhoria"
+    },
+    {
+      "title": "Conserte extratos antigos com um toque",
+      "desc": "Se o extrato não somar o saldo bruto do card, aparece um aviso com o botão \"Registrar diferença no extrato\". Não mexe no saldo nem em conta nenhuma.",
       "type": "recurso"
     }
   ],
   "changes": [
-    "`pages/AIModule.tsx`: campos Observação e Tags (`TagsInput`, sugestões das tags do histórico); cada cupom novo começa com os campos vazios.",
-    "`AIReconcileService.saveDirectToCard` grava `notes`/`tags`; `saveToReconcileQueue` leva em `metadata.notes`/`metadata.tags`.",
-    "`pages/Reconcile.tsx`: mostra observação/tags do item e aplica em `transactions`/`card_transactions` ao confirmar — só quando existem, sem mudar os itens de extrato."
+    "`lib/investmentLedger.ts`: `ledgerImpliedGross`, `grossChangeToRecord`, `netOfTax` (+ `tests/investmentLedger.test.ts`).",
+    "`pages/Assets.tsx`: na edição de investimento ACUMULADO o delta é calculado contra a soma do extrato (aportes + acumulados + ajustes), não contra o `estimated_value` anterior; sem conciliação possível (resgate/amortização) mantém a regra antiga.",
+    "`pages/Assets.tsx`: resumo bruto/IR/líquido no modal de extrato, líquido estimado por rendimento acumulado e botão de conciliação (`handleReconcileLedgerGap`)."
   ]
 }
