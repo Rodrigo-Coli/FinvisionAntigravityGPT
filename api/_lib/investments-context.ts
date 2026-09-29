@@ -6,24 +6,16 @@
 // Segue o mesmo padrão já usado nos dois handlers: busca tudo antes da chamada ao
 // modelo (sem function calling) e injeta como texto formatado.
 
+import { resolveTaxRegime, taxRateFor, calendarDaysBetween, TAX_REGIME_LABEL } from '../../lib/investmentTax.js';
+
 const INVEST_TYPE_LABEL: Record<string, string> = {
   CDB: 'CDB', LCI_LCA: 'LCI/LCA', TESOURO: 'Tesouro', DEBENTURES: 'Debêntures',
   CRI_CRA: 'CRI/CRA', COE: 'COE', ACOES: 'Ações', FIIS: 'FIIs', FUNDOS: 'Fundos',
   CRIPTO: 'Cripto', PREVIDENCIA: 'Previdência', POUPANCA: 'Poupança', OUTROS: 'Outros'
 };
 
-// Tabela regressiva padrão de IR para renda fixa (Lei 11.033/2004) — mesma regra
-// duplicada em lib/financialEngine.ts (frontend) e pages/Assets.tsx; ver memória
-// project_finvision_2026-07-25_investimentos_revisao.md sobre revisão manual se a
-// Receita mudar a alíquota.
-function regressiveTaxRate(days: number, isExempt: boolean): number {
-  if (isExempt) return 0;
-  if (days <= 180) return 0.225;
-  if (days <= 360) return 0.20;
-  if (days <= 720) return 0.175;
-  return 0.15;
-}
-
+// Regras de IR (renda fixa regressiva, fundos, previdência, renda variável, isentos)
+// vêm do mesmo módulo que o app usa, para a IA falar o mesmo número do card.
 export async function buildInvestmentsContextSection(supabase: any, userId: string): Promise<string> {
   const { data: assets } = await supabase
     .from('physical_assets')
@@ -48,22 +40,21 @@ export async function buildInvestmentsContextSection(supabase: any, userId: stri
     totalGross += gross;
     const purchase = Number(meta.purchaseValue ?? meta.initialInvestmentAmount ?? gross);
     const typeLabel = INVEST_TYPE_LABEL[meta.investmentType] || meta.investmentType || 'Investimento';
-    const isVariableIncome = ['ACOES', 'FIIS', 'CRIPTO'].includes(meta.investmentType);
-    const isExempt = !!meta.isTaxExempt || ['LCI_LCA', 'CRI_CRA', 'POUPANCA'].includes(meta.investmentType);
+    const regime = resolveTaxRegime(meta);
 
     let daysHeld = 0;
     if (a.acquisition_date) {
-      daysHeld = Math.max(0, Math.floor((Date.now() - new Date(a.acquisition_date).getTime()) / 86400000));
+      const today = new Date().toISOString().substring(0, 10);
+      daysHeld = calendarDaysBetween(String(a.acquisition_date).substring(0, 10), today);
     }
 
     let irTexto: string;
-    if (isExempt) {
+    if (regime === 'ISENTO') {
       irTexto = 'isento';
-    } else if (isVariableIncome) {
-      irTexto = meta.investmentType === 'FIIS' ? '20% sobre o lucro (ganho de capital)' : '15% sobre o lucro (ganho de capital)';
     } else {
-      const taxRate = regressiveTaxRate(daysHeld, false);
-      irTexto = `${(taxRate * 100).toFixed(1)}% sobre o lucro (tabela regressiva, ${daysHeld} dias desde a aplicação)`;
+      const taxRate = taxRateFor(regime, daysHeld);
+      const base = meta.investmentType === 'PREVIDENCIA' && meta.pensionPlanType === 'PGBL' ? 'o valor total resgatado' : 'o lucro';
+      irTexto = `${(taxRate * 100).toFixed(1)}% sobre ${base} (${TAX_REGIME_LABEL[regime]}, ${daysHeld} dias desde a aplicação)`;
     }
 
     const vencimento = meta.vencimentoDate ? meta.vencimentoDate.split('-').reverse().join('/') : 'sem data definida';

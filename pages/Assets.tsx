@@ -61,6 +61,7 @@ import ConsortiumSection from '../components/assets/ConsortiumSection';
 import SearchableSelect from '../components/common/SearchableSelect';
 import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
+import { computeInvestmentTax, TAX_REGIME_LABEL } from '../lib/investmentTax';
 import { splitGrossChange, firstAporteDate, ledgerImpliedGross, netOfTax, periodResult, resolveResultPeriod, ResultPeriodPreset } from '../lib/investmentLedger';
 import { computeInstallmentAmount, buildInstallmentDate } from '../lib/amortization';
 import { SALE_FREQUENCY_OPTIONS, previewSaleInstallment, syncSaleInstallmentPlan, addSalePeriod, isSaleFrequency, readSalePlanSettings } from '../lib/saleInstallments';
@@ -507,6 +508,10 @@ const Assets: React.FC = () => {
     couponNextDate: '',
     status: 'ATIVO' as 'ATIVO' | 'RESGATADO',
     isTaxExempt: false,
+    // Regra de IR que o tipo sozinho não define (ver lib/investmentTax.ts).
+    fundTaxClass: 'LONGO_PRAZO' as 'LONGO_PRAZO' | 'CURTO_PRAZO' | 'ACOES',
+    pensionTaxTable: 'REGRESSIVA' as 'REGRESSIVA' | 'PROGRESSIVA',
+    pensionPlanType: 'VGBL' as 'VGBL' | 'PGBL',
     coeCapitalProtected: false,
     iconKey: '',
     brandModel: '',
@@ -979,46 +984,6 @@ const Assets: React.FC = () => {
     return map;
   }, [allInvestmentMovements]);
 
-  // Reparte o ganho do ativo entre os aportes (proporcional ao valor de cada um) e
-  // aplica a alíquota do prazo de custódia de cada aporte. Devolve o imposto total e a
-  // alíquota efetiva resultante, que é a que faz sentido mostrar na tela.
-  const computeLotBasedTax = (
-    lots: { amount: number; date: string }[],
-    totalCost: number,
-    totalGain: number,
-    isExempt: boolean
-  ) => {
-    const today = new Date();
-    const daysSince = (dateStr: string) => {
-      const d = new Date(`${(dateStr || '').substring(0, 10)}T12:00:00`);
-      if (isNaN(d.getTime())) return 0;
-      return Math.max(0, Math.floor((today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24)));
-    };
-
-    if (totalCost <= 0 || lots.length === 0) {
-      return { taxAmount: 0, effectiveRate: 0, weightedDays: 0, breakdown: [] as any[] };
-    }
-
-    let taxAmount = 0;
-    let weightedDays = 0;
-    const breakdown: { amount: number; date: string; days: number; rate: number; gain: number; tax: number }[] = [];
-
-    for (const lot of lots) {
-      const share = lot.amount / totalCost;
-      const days = daysSince(lot.date);
-      const rate = FinancialEngine.calculateRegressiveTaxRate(days, isExempt);
-      const gain = totalGain * share;
-      const tax = gain > 0 ? gain * rate : 0;
-      taxAmount += tax;
-      weightedDays += days * share;
-      breakdown.push({ amount: lot.amount, date: lot.date, days, rate, gain, tax });
-    }
-
-    taxAmount = Math.round(taxAmount * 100) / 100;
-    const effectiveRate = totalGain > 0 ? taxAmount / totalGain : 0;
-    return { taxAmount, effectiveRate, weightedDays: Math.round(weightedDays), breakdown };
-  };
-
   const enrichedPhysicalAssets = useMemo(() => {
     return activePhysicalAssets.map(p => {
       if (p.category === 'INVESTMENT') {
@@ -1083,11 +1048,13 @@ const Assets: React.FC = () => {
 
           const grossValue = Number(p.estimatedValue || 0);
           const grossYield = Math.max(0, grossValue - purchase);
-          // IR aporte a aporte: cada aplicação carrega a alíquota do seu próprio prazo.
-          const lotTax = computeLotBasedTax(lots, purchase, grossYield, isExempt);
+          // IR (e IOF) aporte a aporte, pela regra do tipo do ativo (lib/investmentTax):
+          // renda fixa regressiva, fundo de curto prazo/ações, previdência etc.
+          const lotTax = computeInvestmentTax({ meta, lots, cost: purchase, gross: grossValue, today: DateUtils.formatToISODate() });
           const taxAmount = lotTax.taxAmount;
+          const iofAmount = lotTax.iofAmount;
           const taxRate = lotTax.effectiveRate;
-          const netValue = Math.round((grossValue - taxAmount) * 100) / 100;
+          const netValue = Math.round((grossValue - taxAmount - iofAmount) * 100) / 100;
 
           return {
             ...p,
@@ -1100,7 +1067,10 @@ const Assets: React.FC = () => {
             taxBreakdown: lotTax.breakdown,
             taxRate,
             taxAmount,
-            daysElapsed: lots.length > 1 ? lotTax.weightedDays : calcs.daysElapsed,
+            iofAmount,
+            taxRegime: lotTax.regime,
+            // Dias corridos por data (sem erro de fuso/hora perto das faixas da tabela).
+            daysElapsed: lotTax.weightedDays,
             monthsElapsed: calcs.monthsElapsed,
             parsedAnnualRate,
             curveProjectedValue: calcs.grossValue
@@ -1140,10 +1110,13 @@ const Assets: React.FC = () => {
       cost,
       grossYield: Math.round((gross - cost) * 100) / 100,
       tax,
+      iof: Number(enriched.iofAmount || 0),
       taxRate: Number(enriched.taxRate || 0),
       net: Number(enriched.netValue ?? gross),
       implied,
-      gap: implied === null ? null : Math.round((gross - implied) * 100) / 100
+      // Em ativos MENSAL, edições antigas lançavam a valorização como "Juros recebidos"
+      // (que não entram na soma). Conciliar ali contaria a mesma alta duas vezes.
+      gap: implied === null || enriched.metadata?.payoutType === 'MENSAL' ? null : Math.round((gross - implied) * 100) / 100
     };
   }, [selectedInvestmentForLedger, enrichedPhysicalAssets, investmentMovements]);
 
@@ -3551,6 +3524,9 @@ const Assets: React.FC = () => {
         couponNextDate: formData.category === 'INVESTMENT' ? (formData.couponNextDate || '') : undefined,
         status: formData.category === 'INVESTMENT' ? (formData.status || 'ATIVO') : undefined,
         isTaxExempt: formData.category === 'INVESTMENT' ? !!formData.isTaxExempt : undefined,
+        fundTaxClass: formData.category === 'INVESTMENT' && formData.investmentType === 'FUNDOS' ? formData.fundTaxClass : undefined,
+        pensionTaxTable: formData.category === 'INVESTMENT' && formData.investmentType === 'PREVIDENCIA' ? formData.pensionTaxTable : undefined,
+        pensionPlanType: formData.category === 'INVESTMENT' && formData.investmentType === 'PREVIDENCIA' ? formData.pensionPlanType : undefined,
         coeCapitalProtected: formData.category === 'INVESTMENT' && formData.investmentType === 'COE' ? !!formData.coeCapitalProtected : undefined,
       };
 
@@ -3726,54 +3702,22 @@ const Assets: React.FC = () => {
           }
 
           if (delta > 0) {
-            const todayStr = DateUtils.formatToISODate();
-
-            if (isAcumulado) {
-              // Valorização que fica no título não passa por conta nenhuma: só aumenta o
-              // saldo bruto e fica registrada no extrato do investimento. Antes ela também
-              // virava uma receita "Rendimento automático" sem conta, que aparecia nas
-              // receitas como se o dinheiro tivesse entrado. Vira caixa só quando você
-              // lançar o resgate/juros recebido.
-              await supabase.from('investment_movements').insert([{
-                user_id: user.id,
-                asset_id: editingAsset.id,
-                movement_type: 'RENDIMENTO_ACUMULADO',
-                amount: delta,
-                movement_date: todayStr,
-                notes: 'Valorização do saldo bruto'
-              }]);
-            } else {
-              const catId = await ensureInvestmentCategory(user.id);
-              const { data: yieldTx } = await supabase.from('transactions').insert([{
-                user_id: user.id,
-                description: `Rendimento automático - ${formData.name}`,
-                amount: delta,
-                date: todayStr,
-                type: 'INCOME',
-                category: 'Investimentos',
-                subcategory: 'Rendimentos Mensais',
-                category_id: catId,
-                is_paid: true,
-                paid_amount: delta,
-                paid_at: todayStr,
-                account_id: formData.brokerAccountId || null,
-                account_name: brokers.find(b => b.id === formData.brokerAccountId)?.name || null,
-                metadata: {
-                  linked_asset_id: editingAsset.id,
-                  type: 'investment_yield',
-                  payout_type: formData.payoutType
-                }
-              }]).select('id').single();
-
-              await supabase.from('investment_movements').insert([{
-                user_id: user.id,
-                asset_id: editingAsset.id,
-                movement_type: 'RENDIMENTO_MENSAL',
-                amount: delta,
-                movement_date: todayStr,
-                linked_transaction_id: yieldTx?.id || null
-              }]);
-            }
+            // Valorização não passa por conta nenhuma: só aumenta o saldo bruto e fica
+            // registrada no extrato do investimento. Vira caixa quando você lançar o
+            // resgate ou os juros/cupom recebidos (pelo extrato).
+            //  · ACUMULADO: entra como "Rendimento Acumulado".
+            //  · MENSAL (ex.: FII, CRI que paga cupom): a alta do saldo é valorização da
+            //    cota/marcação a mercado, não cupom — entra como ajuste. Antes virava uma
+            //    receita "Rendimento automático" na conta da corretora, como se o dinheiro
+            //    tivesse caído.
+            await supabase.from('investment_movements').insert([{
+              user_id: user.id,
+              asset_id: editingAsset.id,
+              movement_type: isAcumulado ? 'RENDIMENTO_ACUMULADO' : 'AJUSTE_MANUAL',
+              amount: delta,
+              movement_date: DateUtils.formatToISODate(),
+              notes: isAcumulado ? 'Valorização do saldo bruto' : 'Valorização (marcação a mercado)'
+            }]);
           } else if (delta < 0) {
             // Ajuste manual (ex.: correção de marcação a mercado) — não mexe em caixa, só registra no extrato.
             await supabase.from('investment_movements').insert([{
@@ -4535,6 +4479,9 @@ const Assets: React.FC = () => {
       couponNextDate: '',
       status: 'ATIVO',
       isTaxExempt: false,
+      fundTaxClass: 'LONGO_PRAZO',
+      pensionTaxTable: 'REGRESSIVA',
+      pensionPlanType: 'VGBL',
       coeCapitalProtected: false,
       iconKey: '',
       brandModel: '',
@@ -4750,6 +4697,9 @@ const Assets: React.FC = () => {
       couponNextDate: meta.couponNextDate || '',
       status: meta.status || 'ATIVO',
       isTaxExempt: !!meta.isTaxExempt,
+      fundTaxClass: meta.fundTaxClass || 'LONGO_PRAZO',
+      pensionTaxTable: meta.pensionTaxTable || 'REGRESSIVA',
+      pensionPlanType: meta.pensionPlanType || 'VGBL',
       coeCapitalProtected: !!meta.coeCapitalProtected,
       iconKey: meta.iconKey || '',
       brandModel: meta.brandModel || '',
@@ -9543,6 +9493,7 @@ ${tabelaHtml}
                   const totalInvested = brokerInvestments.reduce((sum, inv) => sum + Number(inv.netValue || 0), 0);
                   const totalGross = brokerInvestments.reduce((sum, inv) => sum + Number(inv.estimatedValue || 0), 0);
                   const totalTax = brokerInvestments.reduce((sum, inv) => sum + Number(inv.taxAmount || 0), 0);
+                  const totalIof = brokerInvestments.reduce((sum, inv) => sum + Number((inv as any).iofAmount || 0), 0);
                   const brokerCash = Number(broker.initial_balance || 0);
                   const displayedTotal = brokerCash + totalInvested;
                   const isCollapsed = !!collapsedBrokers[broker.id];
@@ -9584,6 +9535,7 @@ ${tabelaHtml}
                             <div className="pl-[21px] text-[11px] text-indigo-400 font-medium leading-relaxed">
                               Bruto {formatCurrency(totalGross)}
                               {totalTax > 0 ? ` − IR estimado ${formatCurrency(totalTax)}` : ''}
+                              {totalIof > 0 ? ` − IOF ${formatCurrency(totalIof)}` : ''}
                               {brokerCash !== 0 ? ` + caixa livre ${formatCurrency(brokerCash)}` : ''}
                             </div>
                           </div>
@@ -9754,6 +9706,12 @@ ${tabelaHtml}
                                               {days} dias {aporteCount > 1 ? '(média)' : ''} (Alíquota de {taxRatePercent.toFixed(2).replace(/\.?0+$/, '')}%)
                                             </span>
                                           </div>
+                                          {(inv as any).taxRegime && (
+                                            <div className="flex justify-between text-[11px] text-slate-400">
+                                              <span>Regra de IR:</span>
+                                              <span className="font-semibold text-right">{TAX_REGIME_LABEL[(inv as any).taxRegime as keyof typeof TAX_REGIME_LABEL]}</span>
+                                            </div>
+                                          )}
                                           {aporteCount > 1 && taxBreakdown.length > 0 && (
                                             <div className="pl-3 border-l-2 border-slate-200 space-y-0.5">
                                               {taxBreakdown.map((b, i) => (
@@ -9776,9 +9734,15 @@ ${tabelaHtml}
                                             <span className="font-black">
                                               - {formatCurrency(taxAmt)} 
                                               <span className="text-[10px] font-normal text-slate-400 ml-1">
-                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : `${taxRatePercent.toFixed(2).replace(/\.?0+$/, '')}% sobre lucro${aporteCount > 1 ? ' (média dos aportes)' : ''}`})
+                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : `${taxRatePercent.toFixed(2).replace(/\.?0+$/, '')}% sobre ${invMeta.investmentType === 'PREVIDENCIA' && invMeta.pensionPlanType === 'PGBL' ? 'o valor total (PGBL)' : 'lucro'}${aporteCount > 1 ? ' (média dos aportes)' : ''}`})
                                               </span>
                                             </span>
+                                          </div>
+                                        )}
+                                        {Number((inv as any).iofAmount || 0) > 0 && (
+                                          <div className="flex justify-between text-rose-600 font-bold">
+                                            <span>IOF (resgate antes de 30 dias):</span>
+                                            <span className="font-black">- {formatCurrency(Number((inv as any).iofAmount))}</span>
                                           </div>
                                         )}
                                       </>
@@ -10001,6 +9965,12 @@ ${tabelaHtml}
                                               {days} dias {aporteCount > 1 ? '(média)' : ''} (Alíquota de {taxRatePercent.toFixed(2).replace(/\.?0+$/, '')}%)
                                             </span>
                                           </div>
+                                          {(inv as any).taxRegime && (
+                                            <div className="flex justify-between text-[11px] text-slate-400">
+                                              <span>Regra de IR:</span>
+                                              <span className="font-semibold text-right">{TAX_REGIME_LABEL[(inv as any).taxRegime as keyof typeof TAX_REGIME_LABEL]}</span>
+                                            </div>
+                                          )}
                                           {aporteCount > 1 && taxBreakdown.length > 0 && (
                                             <div className="pl-3 border-l-2 border-slate-200 space-y-0.5">
                                               {taxBreakdown.map((b, i) => (
@@ -10023,9 +9993,15 @@ ${tabelaHtml}
                                             <span className="font-black">
                                               - {formatCurrency(taxAmt)} 
                                               <span className="text-[10px] font-normal text-slate-400 ml-1">
-                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : `${taxRatePercent.toFixed(2).replace(/\.?0+$/, '')}% sobre lucro${aporteCount > 1 ? ' (média dos aportes)' : ''}`})
+                                                ({invMeta.investmentType === 'FIIS' ? '20% sobre lucro' : ['ACOES', 'CRIPTO'].includes(invMeta.investmentType) ? '15% sobre lucro' : `${taxRatePercent.toFixed(2).replace(/\.?0+$/, '')}% sobre ${invMeta.investmentType === 'PREVIDENCIA' && invMeta.pensionPlanType === 'PGBL' ? 'o valor total (PGBL)' : 'lucro'}${aporteCount > 1 ? ' (média dos aportes)' : ''}`})
                                               </span>
                                             </span>
+                                          </div>
+                                        )}
+                                        {Number((inv as any).iofAmount || 0) > 0 && (
+                                          <div className="flex justify-between text-rose-600 font-bold">
+                                            <span>IOF (resgate antes de 30 dias):</span>
+                                            <span className="font-black">- {formatCurrency(Number((inv as any).iofAmount))}</span>
                                           </div>
                                         )}
                                       </>
@@ -12038,6 +12014,48 @@ ${tabelaHtml}
                       </label>
                     </div>
 
+                    {formData.investmentType === 'FUNDOS' && !formData.isTaxExempt && (
+                      <div className="animate-in slide-in-from-top-2">
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Tributação do Fundo</label>
+                        <select
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          value={formData.fundTaxClass}
+                          onChange={(e) => setFormData({ ...formData, fundTaxClass: e.target.value as any })}
+                        >
+                          <option value="LONGO_PRAZO">Longo prazo — renda fixa/multimercado (22,5% → 15%)</option>
+                          <option value="CURTO_PRAZO">Curto prazo (22,5% até 180 dias, depois 20%)</option>
+                          <option value="ACOES">Fundo de ações (15%)</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {formData.investmentType === 'PREVIDENCIA' && !formData.isTaxExempt && (
+                      <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Tabela de IR</label>
+                          <select
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                            value={formData.pensionTaxTable}
+                            onChange={(e) => setFormData({ ...formData, pensionTaxTable: e.target.value as any })}
+                          >
+                            <option value="REGRESSIVA">Regressiva (35% → 10%)</option>
+                            <option value="PROGRESSIVA">Progressiva (15% na fonte)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Plano</label>
+                          <select
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                            value={formData.pensionPlanType}
+                            onChange={(e) => setFormData({ ...formData, pensionPlanType: e.target.value as any })}
+                          >
+                            <option value="VGBL">VGBL (IR só sobre o rendimento)</option>
+                            <option value="PGBL">PGBL (IR sobre o valor total)</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-4">
                       {!['ACOES', 'FIIS', 'CRIPTO'].includes(formData.investmentType) ? (
                         <div className="animate-in slide-in-from-top-2">
@@ -12830,6 +12848,9 @@ ${tabelaHtml}
                     <div className="flex justify-between"><span className="text-slate-500">Rendimento bruto</span><span className={`font-bold ${ledgerSummary.grossYield >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{formatCurrency(ledgerSummary.grossYield)}</span></div>
                     {ledgerSummary.tax > 0 && (
                       <div className="flex justify-between"><span className="text-slate-500">IR estimado ({(ledgerSummary.taxRate * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%)</span><span className="font-bold text-rose-500">−{formatCurrency(ledgerSummary.tax)}</span></div>
+                    )}
+                    {ledgerSummary.iof > 0 && (
+                      <div className="flex justify-between"><span className="text-slate-500">IOF (resgate antes de 30 dias)</span><span className="font-bold text-rose-500">−{formatCurrency(ledgerSummary.iof)}</span></div>
                     )}
                     <div className="flex justify-between border-t border-slate-200 pt-1"><span className="text-slate-500">Saldo bruto / líquido</span><span className="font-black text-slate-800">{formatCurrency(ledgerSummary.gross)} / {formatCurrency(ledgerSummary.net)}</span></div>
                     {ledgerSummary.gap !== null && Math.abs(ledgerSummary.gap) >= 0.01 && (

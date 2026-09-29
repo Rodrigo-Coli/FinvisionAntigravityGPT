@@ -1,6 +1,6 @@
 {
-  "version": "2026.09.29.0019",
-  "title": "Lucro dos investimentos por período e extrato que fecha com o card",
+  "version": "2026.09.29.0034",
+  "title": "Lucro por período, IR revisado e extrato que fecha com o card",
   "date": "29/09/2026",
   "benefits": [
     {
@@ -10,7 +10,12 @@
     },
     {
       "title": "Valorização não vira receita",
-      "desc": "Quando o saldo de um investimento que acumula sobe ou cai, isso fica só no investimento e no extrato dele — não aparece mais como receita. O dinheiro entra na conta quando você lança o resgate ou os juros recebidos.",
+      "desc": "Quando o saldo de um investimento sobe ou cai — inclusive FIIs e outros que pagam mensalmente — isso fica só no investimento e no extrato dele, sem aparecer como receita na conta. O dinheiro entra quando você lança o resgate ou os juros/cupom recebidos.",
+      "type": "correção"
+    },
+    {
+      "title": "IR estimado revisado",
+      "desc": "O líquido agora segue a regra de cada tipo: tabela regressiva na renda fixa (contando os dias pelo calendário), IOF nos primeiros 30 dias, fundos de curto prazo e de ações, previdência regressiva ou progressiva (PGBL tributa o total, VGBL só o rendimento). Com vários aportes, o lucro antigo não é mais tributado pela alíquota do aporte novo.",
       "type": "correção"
     },
     {
@@ -31,8 +36,9 @@
   ],
   "changes": [
     "`lib/investmentLedger.ts` (+ testes): `ledgerImpliedGross`, `splitGrossChange`, `firstAporteDate`, `periodResult`, `resolveResultPeriod`, `netOfTax`.",
+    "`lib/investmentTax.ts` (+ testes): regras de IR/IOF por tipo (`resolveTaxRegime`, `taxRateFor`, `iofRateFor`, `computeInvestmentTax`), dias corridos por data, rateio do rendimento por valor × dias. Substitui `computeLotBasedTax` em `pages/Assets.tsx` e a tabela duplicada em `api/_lib/investments-context.ts`. Novos campos no cadastro: `fundTaxClass`, `pensionTaxTable`, `pensionPlanType`.",
     "`pages/Assets.tsx`: painel \"Resultado dos Investimentos\" (`investmentPeriodResult`) a partir de `investment_movements`, com filtro de período e respeitando `getFilteredInvestments`.",
-    "`pages/Assets.tsx`: edição de investimento não-MENSAL não cria mais a transação INCOME \"Rendimento automático\"; grava só `RENDIMENTO_ACUMULADO`/`AJUSTE_MANUAL`. Diferença pré-existente entre extrato e saldo anterior vira movimentação separada datada no primeiro aporte. Fluxo modo \"Total\" soma `RENDIMENTO_ACUMULADO` sem transação vinculada.",
+    "`pages/Assets.tsx`: edição de investimento não cria mais a transação INCOME \"Rendimento automático\" (ACUMULADO nem MENSAL); grava `RENDIMENTO_ACUMULADO` (acumulado) ou `AJUSTE_MANUAL` (mensal/queda). Diferença pré-existente vira movimentação separada no primeiro aporte (só acumulado). Fluxo \"Total\" soma `RENDIMENTO_ACUMULADO` sem transação vinculada. Aviso de conciliação oculto em ativos MENSAL.",
     "`pages/Assets.tsx`: resumo bruto/IR/líquido e botão de conciliação no modal de extrato.",
     "`pages/Assets.tsx` (`handleAddMovement`): `AJUSTE_MANUAL` passa o valor com sinal para `applyMovementSideEffects`; conta escondida não é usada em `RENDIMENTO_ACUMULADO`/`AJUSTE_MANUAL`."
   ]
