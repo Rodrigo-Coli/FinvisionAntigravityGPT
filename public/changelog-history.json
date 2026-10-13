@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.10.13.0951",
+    "title": "Histórico de pagamentos acompanha a troca de conta",
+    "date": "13/10/2026",
+    "benefits": [
+      {
+        "title": "Conta corrigida aparece no histórico",
+        "desc": "Se você pagou um lançamento na conta errada e depois trocou para a certa, o Histórico de Pagamentos agora mostra a conta nova, em vez de continuar com a antiga.",
+        "type": "correcao"
+      },
+      {
+        "title": "Registro da alteração",
+        "desc": "A troca fica anotada no próprio histórico, com a data e o \"de → para\" (ex.: Conta alterada: Botmasters → Bradesco), sem somar valor nenhum.",
+        "type": "recurso"
+      },
+      {
+        "title": "Vale para parcelas e séries",
+        "desc": "Ao trocar a conta em várias parcelas de uma vez, o histórico de cada parcela já paga é corrigido também.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "`lib/partialPayment.ts`: `applyAccountChangeToHistory` corrige a conta dos pagamentos do próprio lançamento e acrescenta uma entrada `kind: 'account_change'` (amount 0, `from_account_name`).",
+      "`pages/History.tsx` (`handleUpdate`, campo `account_id`): grava o histórico corrigido no mesmo UPDATE; espelha no grupo de pagamento parcial; na edição em série corrige linha a linha as parcelas pagas.",
+      "`TransactionTable` e `PaymentModal`: exibem a linha \"Conta alterada: A → B\"."
+    ]
+  },
+  {
     "version": "2026.09.28.2348",
     "title": "Observação e tags no lançamento pelo cupom",
     "date": "28/09/2026",

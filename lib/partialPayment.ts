@@ -48,6 +48,13 @@ export interface PaymentHistoryEntry {
   date: string;
   account_name: string;
   amount: number;
+  /**
+   * Ausente = pagamento. `account_change` = registro de que a conta do
+   * lançamento foi corrigida depois do pagamento; não é dinheiro (amount 0).
+   */
+  kind?: 'payment' | 'account_change';
+  /** Só em `account_change`: a conta que estava antes da correção. */
+  from_account_name?: string;
 }
 
 /** Dinheiro em duas casas — evita o clássico 97000.000000000001 no restante. */
@@ -67,6 +74,74 @@ export const pickTransactionColumns = (row: Record<string, any>): Record<string,
 
 export const getPaymentHistory = (tx: Pick<Transaction, 'metadata'>): PaymentHistoryEntry[] =>
   Array.isArray(tx.metadata?.payment_history) ? tx.metadata!.payment_history : [];
+
+export const isAccountChangeEntry = (entry: PaymentHistoryEntry) => entry?.kind === 'account_change';
+
+const sameAccountName = (a?: string | null, b?: string | null) =>
+  String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+
+/**
+ * Troca de conta de um lançamento já pago (ou parcialmente pago).
+ *
+ * O saldo é recalculado pela conta do lançamento, então o dinheiro pago passa
+ * inteiro para a conta nova. O histórico tinha de acompanhar: antes ele
+ * continuava dizendo "Botmasters" depois de o usuário corrigir para "Bradesco".
+ *
+ * Duas coisas acontecem:
+ * - os pagamentos DESTE lançamento feitos pela conta antiga passam a mostrar a
+ *   conta nova (o histórico diz onde o dinheiro está de fato);
+ * - entra uma linha `account_change` com a data da correção e "de → para", para
+ *   ficar registrado que houve a troca.
+ *
+ * O histórico é compartilhado pelas linhas de um pagamento parcial dividido
+ * (cada uma mostra o extrato do grupo inteiro). Quando ele cobre mais dinheiro
+ * do que este lançamento pagou, só são corrigidos os pagamentos da data em que
+ * ESTE lançamento foi pago — os das outras linhas do grupo não mudaram de conta.
+ *
+ * Devolve `null` quando não há o que registrar (sem histórico, nada pago aqui,
+ * ou a conta não mudou de fato).
+ */
+export const applyAccountChangeToHistory = (params: {
+  history: PaymentHistoryEntry[];
+  oldAccountName?: string | null;
+  newAccountName?: string | null;
+  /** Quanto ESTE lançamento já pagou. */
+  paidAmount: number;
+  /** Data do pagamento deste lançamento (ISO, pode ter hora). */
+  paidDate?: string | null;
+  /** Data da correção (ISO, só a data). */
+  changedAt: string;
+}): PaymentHistoryEntry[] | null => {
+  const history = Array.isArray(params.history) ? params.history : [];
+  const oldName = String(params.oldAccountName || '').trim();
+  const newName = String(params.newAccountName || '').trim();
+  if (history.length === 0 || !newName) return null;
+  if (!(Number(params.paidAmount) > 0.005)) return null;
+  if (sameAccountName(oldName, newName)) return null;
+
+  const payments = history.filter(e => !isAccountChangeEntry(e));
+  const totalPaidInHistory = round2(payments.reduce((sum, e) => sum + Number(e.amount || 0), 0));
+  const ownsWholeHistory = totalPaidInHistory <= round2(params.paidAmount) + 0.01;
+  const paidDay = String(params.paidDate || '').split(/[ T]/)[0];
+
+  const updated = history.map(entry => {
+    if (isAccountChangeEntry(entry)) return entry;
+    if (!oldName || !sameAccountName(entry.account_name, oldName)) return entry;
+    if (!ownsWholeHistory && String(entry.date || '').split(/[ T]/)[0] !== paidDay) return entry;
+    return { ...entry, account_name: newName };
+  });
+
+  return [
+    ...updated,
+    {
+      kind: 'account_change',
+      date: params.changedAt,
+      account_name: newName,
+      from_account_name: oldName || undefined,
+      amount: 0
+    }
+  ];
+};
 
 export const newPartialPaymentGroupId = () =>
   'group-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
