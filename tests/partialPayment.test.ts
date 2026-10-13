@@ -8,6 +8,10 @@ import {
   describePaymentError,
   getPaymentHistory,
   applyAccountChangeToHistory,
+  applyDateChangeToHistory,
+  applyAmountChangeToHistory,
+  applyReopenToHistory,
+  describeHistoryEvent,
   round2
 } from '../lib/partialPayment';
 import { Transaction } from '../types';
@@ -289,5 +293,118 @@ describe('troca de conta de lançamento pago', () => {
     expect(second[0].account_name).toBe('Bradesco');
     expect(second[1]).toMatchObject({ from_account_name: 'Botmasters', account_name: 'Itaú' });
     expect(second[2]).toMatchObject({ from_account_name: 'Itaú', account_name: 'Bradesco' });
+  });
+});
+
+describe('troca de data de lançamento pago', () => {
+  const paid = { date: '2026-10-10', account_name: 'Bradesco', amount: 398.36 };
+
+  it('move o pagamento para a data nova e registra a alteração', () => {
+    const out = applyDateChangeToHistory({
+      history: [paid], oldDate: '2026-10-10T00:00:00', newDate: '2026-10-13',
+      paidAmount: 398.36, changedAt: '2026-10-14'
+    })!;
+    expect(out[0]).toEqual({ ...paid, date: '2026-10-13' });
+    expect(out[1]).toMatchObject({ kind: 'date_change', date: '2026-10-14', from_date: '2026-10-10', to_date: '2026-10-13', amount: 0 });
+  });
+
+  it('com vários pagamentos parciais, só muda o da data antiga', () => {
+    const history = [
+      { date: '2026-09-01', account_name: 'Bradesco', amount: 100 },
+      { date: '2026-10-10', account_name: 'Bradesco', amount: 50 }
+    ];
+    const out = applyDateChangeToHistory({
+      history, oldDate: '2026-10-10', newDate: '2026-10-12', paidAmount: 150, changedAt: '2026-10-14'
+    })!;
+    expect(out[0].date).toBe('2026-09-01');
+    expect(out[1].date).toBe('2026-10-12');
+  });
+
+  it('não registra nada se a data não mudou ou nada foi pago', () => {
+    expect(applyDateChangeToHistory({
+      history: [paid], oldDate: '2026-10-10', newDate: '2026-10-10', paidAmount: 398.36, changedAt: '2026-10-14'
+    })).toBeNull();
+    expect(applyDateChangeToHistory({
+      history: [paid], oldDate: '2026-10-10', newDate: '2026-10-11', paidAmount: 0, changedAt: '2026-10-14'
+    })).toBeNull();
+  });
+});
+
+describe('troca de valor de lançamento pago', () => {
+  it('quitado: o pagamento acompanha o novo valor', () => {
+    const out = applyAmountChangeToHistory({
+      history: [{ date: '2026-10-10', account_name: 'Bradesco', amount: 100 }],
+      oldAmount: 100, newAmount: 120, paidAmount: 100, paidDate: '2026-10-10',
+      adjustPayments: true, changedAt: '2026-10-14'
+    })!;
+    expect(out[0].amount).toBe(120);
+    expect(out[1]).toMatchObject({ kind: 'amount_change', from_amount: 100, to_amount: 120, amount: 0 });
+  });
+
+  it('redução desconta do último pagamento para trás sem ficar negativo', () => {
+    const out = applyAmountChangeToHistory({
+      history: [
+        { date: '2026-09-01', account_name: 'Bradesco', amount: 100 },
+        { date: '2026-10-01', account_name: 'Bradesco', amount: 30 }
+      ],
+      oldAmount: 130, newAmount: 80, paidAmount: 130, paidDate: '2026-10-01',
+      adjustPayments: true, changedAt: '2026-10-14'
+    })!;
+    expect(out[0].amount).toBe(80);
+    expect(out[1].amount).toBe(0);
+  });
+
+  it('parcialmente pago: pagamento intacto, só o registro', () => {
+    const history = [{ date: '2026-10-10', account_name: 'Bradesco', amount: 40 }];
+    const out = applyAmountChangeToHistory({
+      history, oldAmount: 100, newAmount: 120, paidAmount: 40, paidDate: '2026-10-10',
+      adjustPayments: false, changedAt: '2026-10-14'
+    })!;
+    expect(out[0]).toEqual(history[0]);
+    expect(out).toHaveLength(2);
+  });
+});
+
+describe('reabrir lançamento pago', () => {
+  it('mantém o pagamento como estornado e registra a reabertura', () => {
+    const out = applyReopenToHistory({
+      history: [{ date: '2026-10-10', account_name: 'Bradesco', amount: 398.36 }],
+      paidAmount: 398.36, paidDate: '2026-10-10', changedAt: '2026-10-14'
+    })!;
+    expect(out[0]).toMatchObject({ amount: 398.36, reversed: true });
+    expect(out[1]).toMatchObject({ kind: 'reopen', date: '2026-10-14', amount: 0 });
+  });
+
+  it('estornado não conta como pagamento nas correções seguintes', () => {
+    const reopened = applyReopenToHistory({
+      history: [{ date: '2026-10-10', account_name: 'Botmasters', amount: 100 }],
+      paidAmount: 100, paidDate: '2026-10-10', changedAt: '2026-10-11'
+    })!;
+    // Pago de novo, pela mesma conta, e depois a conta é corrigida.
+    const repaid = [...reopened, { date: '2026-10-12', account_name: 'Botmasters', amount: 100 }];
+    const out = applyAccountChangeToHistory({
+      history: repaid, oldAccountName: 'Botmasters', newAccountName: 'Bradesco',
+      paidAmount: 100, paidDate: '2026-10-12', changedAt: '2026-10-13'
+    })!;
+    expect(out[0].account_name).toBe('Botmasters'); // estornado fica como estava
+    expect(out[2].account_name).toBe('Bradesco');
+  });
+
+  it('sem histórico não inventa nada', () => {
+    expect(applyReopenToHistory({ history: [], paidAmount: 100, changedAt: '2026-10-14' })).toBeNull();
+  });
+});
+
+describe('texto das alterações', () => {
+  const fmt = (v: number) => `R$ ${v.toFixed(2)}`;
+  it('descreve cada tipo de registro', () => {
+    expect(describeHistoryEvent({ kind: 'account_change', date: '', account_name: 'Bradesco', from_account_name: 'Botmasters', amount: 0 }, fmt))
+      .toBe('Conta alterada: Botmasters → Bradesco');
+    expect(describeHistoryEvent({ kind: 'date_change', date: '', account_name: '', from_date: '2026-10-10', to_date: '2026-10-13', amount: 0 }, fmt))
+      .toBe('Data alterada: 10/10/2026 → 13/10/2026');
+    expect(describeHistoryEvent({ kind: 'amount_change', date: '', account_name: '', from_amount: 100, to_amount: 120, amount: 0 }, fmt))
+      .toBe('Valor alterado: R$ 100.00 → R$ 120.00');
+    expect(describeHistoryEvent({ kind: 'reopen', date: '', account_name: '', amount: 0 }, fmt))
+      .toBe('Reaberto — pagamento estornado');
   });
 });

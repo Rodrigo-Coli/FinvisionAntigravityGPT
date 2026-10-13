@@ -44,17 +44,28 @@ export const TRANSACTION_WRITABLE_COLUMNS = [
 
 export type TransactionWritableColumn = typeof TRANSACTION_WRITABLE_COLUMNS[number];
 
+export type PaymentHistoryEventKind = 'account_change' | 'date_change' | 'amount_change' | 'reopen';
+
 export interface PaymentHistoryEntry {
   date: string;
   account_name: string;
   amount: number;
   /**
-   * Ausente = pagamento. `account_change` = registro de que a conta do
-   * lançamento foi corrigida depois do pagamento; não é dinheiro (amount 0).
+   * Ausente (ou `payment`) = pagamento. Os demais são REGISTROS de alterações
+   * feitas depois do pagamento: não são dinheiro (amount 0) e nunca entram em
+   * soma nenhuma. `date` é o dia em que a alteração foi feita.
    */
-  kind?: 'payment' | 'account_change';
-  /** Só em `account_change`: a conta que estava antes da correção. */
+  kind?: 'payment' | PaymentHistoryEventKind;
+  /** `account_change`: a conta que estava antes da correção. */
   from_account_name?: string;
+  /** `date_change`: data do pagamento antes e depois. */
+  from_date?: string;
+  to_date?: string;
+  /** `amount_change`: valor do lançamento antes e depois. */
+  from_amount?: number;
+  to_amount?: number;
+  /** Pagamento desfeito ao reabrir o lançamento: continua visível, riscado. */
+  reversed?: boolean;
 }
 
 /** Dinheiro em duas casas — evita o clássico 97000.000000000001 no restante. */
@@ -75,31 +86,58 @@ export const pickTransactionColumns = (row: Record<string, any>): Record<string,
 export const getPaymentHistory = (tx: Pick<Transaction, 'metadata'>): PaymentHistoryEntry[] =>
   Array.isArray(tx.metadata?.payment_history) ? tx.metadata!.payment_history : [];
 
-export const isAccountChangeEntry = (entry: PaymentHistoryEntry) => entry?.kind === 'account_change';
+export const isPaymentEntry = (entry: PaymentHistoryEntry) => !entry?.kind || entry.kind === 'payment';
+
+/** Pagamento que ainda vale (não foi estornado ao reabrir). */
+export const isActivePayment = (entry: PaymentHistoryEntry) => isPaymentEntry(entry) && !entry.reversed;
 
 const sameAccountName = (a?: string | null, b?: string | null) =>
   String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+
+const dayOf = (value?: string | null) => String(value || '').split(/[ T]/)[0];
+
+/** Linha de registro de alteração (não é dinheiro). */
+const eventEntry = (
+  kind: PaymentHistoryEventKind,
+  changedAt: string,
+  extra: Partial<PaymentHistoryEntry> = {}
+): PaymentHistoryEntry => ({ kind, date: changedAt, account_name: '', amount: 0, ...extra });
+
+/**
+ * Quais linhas do histórico são pagamentos DESTE lançamento.
+ *
+ * O histórico é compartilhado pelas linhas de um pagamento parcial dividido
+ * (cada uma mostra o extrato do grupo inteiro). Quando ele cobre mais dinheiro
+ * do que este lançamento pagou, só contam os pagamentos da data em que ESTE
+ * lançamento foi pago — os das outras linhas do grupo não são dele.
+ */
+export const ownPaymentIndexes = (
+  history: PaymentHistoryEntry[],
+  paidAmount: number,
+  paidDate?: string | null
+): number[] => {
+  const active = history
+    .map((entry, idx) => ({ entry, idx }))
+    .filter(({ entry }) => isActivePayment(entry));
+  const total = round2(active.reduce((sum, { entry }) => sum + Number(entry.amount || 0), 0));
+  if (total <= round2(paidAmount) + 0.01) return active.map(({ idx }) => idx);
+  const paidDay = dayOf(paidDate);
+  return active.filter(({ entry }) => dayOf(entry.date) === paidDay).map(({ idx }) => idx);
+};
+
+/** Histórico vazio ou lançamento sem nada pago: não há o que registrar. */
+const nothingToRecord = (history: PaymentHistoryEntry[], paidAmount: number) =>
+  history.length === 0 || !(Number(paidAmount) > 0.005);
 
 /**
  * Troca de conta de um lançamento já pago (ou parcialmente pago).
  *
  * O saldo é recalculado pela conta do lançamento, então o dinheiro pago passa
- * inteiro para a conta nova. O histórico tinha de acompanhar: antes ele
- * continuava dizendo "Botmasters" depois de o usuário corrigir para "Bradesco".
+ * inteiro para a conta nova. O histórico acompanha: os pagamentos DESTE
+ * lançamento feitos pela conta antiga passam a mostrar a conta nova, e entra
+ * a linha "Conta alterada: A → B" com a data da correção.
  *
- * Duas coisas acontecem:
- * - os pagamentos DESTE lançamento feitos pela conta antiga passam a mostrar a
- *   conta nova (o histórico diz onde o dinheiro está de fato);
- * - entra uma linha `account_change` com a data da correção e "de → para", para
- *   ficar registrado que houve a troca.
- *
- * O histórico é compartilhado pelas linhas de um pagamento parcial dividido
- * (cada uma mostra o extrato do grupo inteiro). Quando ele cobre mais dinheiro
- * do que este lançamento pagou, só são corrigidos os pagamentos da data em que
- * ESTE lançamento foi pago — os das outras linhas do grupo não mudaram de conta.
- *
- * Devolve `null` quando não há o que registrar (sem histórico, nada pago aqui,
- * ou a conta não mudou de fato).
+ * Devolve `null` quando não há o que registrar.
  */
 export const applyAccountChangeToHistory = (params: {
   history: PaymentHistoryEntry[];
@@ -115,32 +153,136 @@ export const applyAccountChangeToHistory = (params: {
   const history = Array.isArray(params.history) ? params.history : [];
   const oldName = String(params.oldAccountName || '').trim();
   const newName = String(params.newAccountName || '').trim();
-  if (history.length === 0 || !newName) return null;
-  if (!(Number(params.paidAmount) > 0.005)) return null;
+  if (nothingToRecord(history, params.paidAmount) || !newName) return null;
   if (sameAccountName(oldName, newName)) return null;
 
-  const payments = history.filter(e => !isAccountChangeEntry(e));
-  const totalPaidInHistory = round2(payments.reduce((sum, e) => sum + Number(e.amount || 0), 0));
-  const ownsWholeHistory = totalPaidInHistory <= round2(params.paidAmount) + 0.01;
-  const paidDay = String(params.paidDate || '').split(/[ T]/)[0];
-
-  const updated = history.map(entry => {
-    if (isAccountChangeEntry(entry)) return entry;
-    if (!oldName || !sameAccountName(entry.account_name, oldName)) return entry;
-    if (!ownsWholeHistory && String(entry.date || '').split(/[ T]/)[0] !== paidDay) return entry;
-    return { ...entry, account_name: newName };
-  });
+  const own = new Set(ownPaymentIndexes(history, params.paidAmount, params.paidDate));
+  const updated = history.map((entry, idx) =>
+    own.has(idx) && oldName && sameAccountName(entry.account_name, oldName)
+      ? { ...entry, account_name: newName }
+      : entry
+  );
 
   return [
     ...updated,
-    {
-      kind: 'account_change',
-      date: params.changedAt,
+    eventEntry('account_change', params.changedAt, {
       account_name: newName,
-      from_account_name: oldName || undefined,
-      amount: 0
-    }
+      from_account_name: oldName || undefined
+    })
   ];
+};
+
+/**
+ * Data de um lançamento pago corrigida: o pagamento deste lançamento feito na
+ * data antiga passa para a nova, e entra "Data alterada: antiga → nova".
+ */
+export const applyDateChangeToHistory = (params: {
+  history: PaymentHistoryEntry[];
+  oldDate?: string | null;
+  newDate?: string | null;
+  paidAmount: number;
+  changedAt: string;
+}): PaymentHistoryEntry[] | null => {
+  const history = Array.isArray(params.history) ? params.history : [];
+  const oldDay = dayOf(params.oldDate);
+  const newDay = dayOf(params.newDate);
+  if (nothingToRecord(history, params.paidAmount) || !newDay || oldDay === newDay) return null;
+
+  // Só um pagamento muda: o da data antiga (o último, se houver mais de um).
+  const own = ownPaymentIndexes(history, params.paidAmount, oldDay)
+    .filter(idx => dayOf(history[idx].date) === oldDay);
+  const target = own.length > 0 ? own[own.length - 1] : -1;
+
+  const updated = history.map((entry, idx) => (idx === target ? { ...entry, date: newDay } : entry));
+  return [
+    ...updated,
+    eventEntry('date_change', params.changedAt, { from_date: oldDay || undefined, to_date: newDay })
+  ];
+};
+
+/**
+ * Valor de um lançamento pago corrigido.
+ *
+ * Quando o lançamento estava quitado, o valor pago acompanha o novo valor (é o
+ * que a tela já faz com `paid_amount`); o histórico ajusta os pagamentos deste
+ * lançamento pela diferença, a partir do último, para continuar somando o que
+ * foi pago. Parcialmente pago: o pagamento não muda, só fica o registro.
+ */
+export const applyAmountChangeToHistory = (params: {
+  history: PaymentHistoryEntry[];
+  oldAmount: number;
+  newAmount: number;
+  /** Quanto ESTE lançamento tinha pago antes da correção. */
+  paidAmount: number;
+  paidDate?: string | null;
+  /** O valor pago acompanha o novo valor (lançamento estava quitado). */
+  adjustPayments: boolean;
+  changedAt: string;
+}): PaymentHistoryEntry[] | null => {
+  const history = Array.isArray(params.history) ? params.history : [];
+  const oldAmount = round2(Math.abs(Number(params.oldAmount || 0)));
+  const newAmount = round2(Math.abs(Number(params.newAmount || 0)));
+  if (nothingToRecord(history, params.paidAmount) || oldAmount === newAmount) return null;
+
+  const updated = history.map(entry => ({ ...entry }));
+  if (params.adjustPayments) {
+    const own = ownPaymentIndexes(history, params.paidAmount, params.paidDate);
+    let delta = round2(newAmount - oldAmount);
+    for (let i = own.length - 1; i >= 0 && Math.abs(delta) > 0.005; i--) {
+      const entry = updated[own[i]];
+      const current = Number(entry.amount || 0);
+      // Aumento vai inteiro no último pagamento; redução desconta do último
+      // para trás sem deixar nenhum negativo.
+      const next = delta > 0 ? round2(current + delta) : round2(Math.max(0, current + delta));
+      delta = round2(delta - (next - current));
+      entry.amount = next;
+    }
+  }
+
+  return [
+    ...updated,
+    eventEntry('amount_change', params.changedAt, { from_amount: oldAmount, to_amount: newAmount })
+  ];
+};
+
+/**
+ * Reabrir = "isto não foi pago". Antes o histórico era apagado e não sobrava
+ * rastro do pagamento. Agora os pagamentos DESTE lançamento ficam marcados como
+ * estornados (continuam visíveis, riscados, e não valem mais) e entra a linha
+ * "Reaberto". O próximo pagamento entra embaixo, normalmente.
+ */
+export const applyReopenToHistory = (params: {
+  history: PaymentHistoryEntry[];
+  paidAmount: number;
+  paidDate?: string | null;
+  changedAt: string;
+}): PaymentHistoryEntry[] | null => {
+  const history = Array.isArray(params.history) ? params.history : [];
+  if (nothingToRecord(history, params.paidAmount)) return null;
+
+  const own = new Set(ownPaymentIndexes(history, params.paidAmount, params.paidDate));
+  const updated = history.map((entry, idx) => (own.has(idx) ? { ...entry, reversed: true } : entry));
+  return [...updated, eventEntry('reopen', params.changedAt)];
+};
+
+/** Texto de uma linha de registro (alteração), para as telas. */
+export const describeHistoryEvent = (
+  entry: PaymentHistoryEntry,
+  formatCurrency: (value: number) => string
+): string => {
+  const fmtDay = (value?: string) => (value ? new Date(dayOf(value) + 'T00:00:00').toLocaleDateString('pt-BR') : '-');
+  switch (entry.kind) {
+    case 'account_change':
+      return `Conta alterada: ${entry.from_account_name || 'Conta'} → ${entry.account_name || 'Conta'}`;
+    case 'date_change':
+      return `Data alterada: ${fmtDay(entry.from_date)} → ${fmtDay(entry.to_date)}`;
+    case 'amount_change':
+      return `Valor alterado: ${formatCurrency(Number(entry.from_amount || 0))} → ${formatCurrency(Number(entry.to_amount || 0))}`;
+    case 'reopen':
+      return 'Reaberto — pagamento estornado';
+    default:
+      return '';
+  }
 };
 
 export const newPartialPaymentGroupId = () =>

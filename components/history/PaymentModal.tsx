@@ -2,6 +2,7 @@ import React from 'react';
 import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Transaction } from '../../types';
 import { BankAccount } from '../../types';
+import { PaymentHistoryLine } from './PaymentHistoryLine';
 
 interface PaymentModalProps {
     show: boolean;
@@ -87,15 +88,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                             <div className="p-5 bg-slate-50 rounded-3xl border border-slate-100 space-y-3">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Histórico de Pagamentos Parciais</p>
                                 <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
-                                    {tx.metadata.payment_history.map((p: any, idx: number) => p.kind === 'account_change' ? (
-                                        <div key={idx} className="text-xs font-bold text-amber-600">
-                                            {new Date(p.date + 'T00:00:00').toLocaleDateString('pt-BR')} · Conta alterada: {p.from_account_name || 'Conta'} → {p.account_name || 'Conta'}
-                                        </div>
-                                    ) : (
-                                        <div key={idx} className="flex justify-between items-center text-xs font-bold text-slate-600">
-                                            <span>{new Date(p.date + 'T00:00:00').toLocaleDateString('pt-BR')} ({p.account_name || 'Conta'})</span>
-                                            <span className="text-emerald-600">{formatCurrency(p.amount)}</span>
-                                        </div>
+                                    {tx.metadata.payment_history.map((p: any, idx: number) => (
+                                        <PaymentHistoryLine key={idx} entry={p} formatCurrency={formatCurrency} className="text-xs font-bold text-slate-600" />
                                     ))}
                                 </div>
                             </div>

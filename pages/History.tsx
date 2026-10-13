@@ -18,6 +18,9 @@ import {
   buildConventionalUpdate,
   getPaymentHistory,
   applyAccountChangeToHistory,
+  applyDateChangeToHistory,
+  applyAmountChangeToHistory,
+  applyReopenToHistory,
   newPartialPaymentGroupId,
   describePaymentError,
   round2
@@ -1401,6 +1404,12 @@ const HistoryPage: React.FC = () => {
     }
   };
 
+  /** Quanto um lançamento já pagou (quitado sem `paid_amount` = valor cheio). */
+  const paidAmountOf = (row: { isPaid?: boolean; paidAmount?: number | null; amount?: number | null }) => {
+    const rawPaid = Number(row.paidAmount || 0);
+    return rawPaid > 0.005 ? rawPaid : (row.isPaid ? Math.abs(Number(row.amount || 0)) : 0);
+  };
+
   /**
    * Metadata de um lançamento pago cuja conta foi trocada: o histórico de
    * pagamentos passa a mostrar a conta nova e ganha a linha "conta alterada".
@@ -1415,13 +1424,11 @@ const HistoryPage: React.FC = () => {
     paidAt?: string | null;
     date?: string | null;
   }, newAccountName: string): Record<string, any> | null => {
-    const rawPaid = Number(row.paidAmount || 0);
-    const paidAmount = rawPaid > 0.005 ? rawPaid : (row.isPaid ? Math.abs(Number(row.amount || 0)) : 0);
     const history = applyAccountChangeToHistory({
       history: getPaymentHistory({ metadata: row.metadata || undefined } as any),
       oldAccountName: row.accountName,
       newAccountName,
-      paidAmount,
+      paidAmount: paidAmountOf(row),
       paidDate: row.paidAt || row.date,
       changedAt: DateUtils.formatToISODate()
     });
@@ -1542,6 +1549,37 @@ const HistoryPage: React.FC = () => {
         }
       }
 
+      // Data ou valor de um lançamento já pago corrigidos: o histórico de
+      // pagamentos acompanha e registra a alteração. Só na edição avulsa — na
+      // edição em série o patch vai igual para várias linhas, e o histórico é
+      // de cada uma.
+      if ((field === 'date' || field === 'amount') && !tx.metadata?.is_card
+        && (!confirmedScope || confirmedScope === 'ONLY_THIS')) {
+        const history = getPaymentHistory(tx);
+        const paidAmount = paidAmountOf(tx as any);
+        const changedAt = DateUtils.formatToISODate();
+        const newHistory = field === 'date'
+          ? applyDateChangeToHistory({ history, oldDate: tx.date, newDate: cleanValue, paidAmount, changedAt })
+          : applyAmountChangeToHistory({
+              history,
+              oldAmount: Number(tx.amount || 0),
+              newAmount: Number(patch.amount || 0),
+              paidAmount,
+              paidDate: (tx as any).paidAt || tx.date,
+              // Mesmo critério do `paid_amount` acima: só o quitado acompanha.
+              adjustPayments: patch.paid_amount !== undefined,
+              changedAt
+            });
+        if (newHistory) {
+          patch.metadata = { ...(patch.metadata || tx.metadata || {}), payment_history: newHistory };
+          // A data de um lançamento pago é a data do pagamento.
+          const paidAt = String((tx as any).paidAt || '').split(/[ T]/)[0];
+          if (field === 'date' && paidAt && paidAt === String(tx.date || '').split(/[ T]/)[0]) {
+            patch.paid_at = cleanValue;
+          }
+        }
+      }
+
       if (isProbablyOffline() && confirmedScope && confirmedScope !== 'ONLY_THIS') {
         toast("Edição em série indisponível offline.", 'warning');
         return;
@@ -1611,7 +1649,7 @@ const HistoryPage: React.FC = () => {
           // Pagamento parcial dividido: as outras linhas do grupo mostram o mesmo
           // histórico, então recebem a correção de conta também.
           const groupId = tx.metadata?.partial_payment_group_id;
-          if (field === 'account_id' && patch.metadata?.payment_history && groupId) {
+          if ((field === 'account_id' || field === 'date' || field === 'amount') && patch.metadata?.payment_history && groupId) {
             await syncGroupPaymentHistory(groupId, patch.metadata.payment_history, [id]);
           }
 
@@ -2331,9 +2369,11 @@ const HistoryPage: React.FC = () => {
 
   /**
    * Reabrir um lançamento é dizer "isto não foi pago". O `paid_amount` voltava a
-   * zero, mas o `payment_history` dentro do metadata continuava lá: o modal de
-   * pagamento seguia exibindo pagamentos que não valiam mais, e o pagamento
-   * seguinte era acrescentado ao final dessa lista fantasma, dobrando o extrato.
+   * zero, mas o `payment_history` continuava lá como se valesse: o modal seguia
+   * exibindo pagamentos que não valiam mais, e o pagamento seguinte dobrava o
+   * extrato. Depois o histórico passou a ser apagado, e aí não sobrava rastro do
+   * pagamento desfeito. Agora ele fica, marcado como estornado (`reversed`), com
+   * a linha "Reaberto" — e nada que soma pagamentos conta estornado.
    *
    * O VALOR não é restaurado aqui de propósito. Num lançamento que já foi
    * dividido, o valor cheio original está repartido entre ele e a diferença que
@@ -2342,7 +2382,16 @@ const HistoryPage: React.FC = () => {
    */
   const reopenPatch = (t: Transaction): Record<string, any> => {
     const meta: Record<string, any> = { ...(t.metadata || {}) };
-    delete meta.payment_history;
+    // Os pagamentos deste lançamento ficam no histórico como estornados (riscados,
+    // sem valer), com a linha "Reaberto". Sem histórico, nada a guardar.
+    const reopenedHistory = applyReopenToHistory({
+      history: getPaymentHistory(t),
+      paidAmount: paidAmountOf(t as any),
+      paidDate: (t as any).paidAt || t.date,
+      changedAt: DateUtils.formatToISODate()
+    });
+    if (reopenedHistory) meta.payment_history = reopenedHistory;
+    else delete meta.payment_history;
     delete meta.partial_payment_group_id;
 
     return {
