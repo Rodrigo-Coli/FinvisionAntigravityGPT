@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Loader2, Trash2, RotateCcw, Check, ChevronUp, ChevronDown, Search, Plus, X, Paperclip, Eye, Download, Upload, Pencil, Copy, SplitSquareHorizontal } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
 import { Transaction, BankAccount } from '../../types';
+import { PaymentHistoryLine } from './PaymentHistoryLine';
 import { SplitTransactionModal } from './SplitTransactionModal';
 import { normalizeStr } from '../../lib/stringUtils';
 
@@ -714,15 +715,8 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                             {t.metadata?.payment_history && Array.isArray(t.metadata.payment_history) && t.metadata.payment_history.length > 0 && (
                                                 <div className="p-2 bg-slate-50 border border-slate-100 rounded-xl space-y-1 text-[9px] font-bold text-slate-500 max-w-xs animate-in slide-in-from-top-1">
                                                     <p className="uppercase text-[8px] font-black text-slate-400 tracking-wider">Histórico de Pagamentos:</p>
-                                                    {t.metadata.payment_history.map((ph, phIdx) => ph.kind === 'account_change' ? (
-                                                        <div key={phIdx} className="text-amber-600">
-                                                            {ph.date ? new Date(ph.date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'} · Conta alterada: {ph.from_account_name || 'Conta'} → {ph.account_name || 'Conta'}
-                                                        </div>
-                                                    ) : (
-                                                        <div key={phIdx} className="flex justify-between items-center">
-                                                            <span>{ph.date ? new Date(ph.date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'} ({ph.account_name || 'Conta'})</span>
-                                                            <span className="text-emerald-600 font-extrabold">{formatCurrency(ph.amount)}</span>
-                                                        </div>
+                                                    {t.metadata.payment_history.map((ph, phIdx) => (
+                                                        <PaymentHistoryLine key={phIdx} entry={ph} formatCurrency={formatCurrency} />
                                                     ))}
                                                 </div>
                                             )}
@@ -1055,15 +1049,8 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                  {t.metadata?.payment_history && Array.isArray(t.metadata.payment_history) && t.metadata.payment_history.length > 0 && (
                                                      <div className="p-2 bg-slate-50 border border-slate-100 rounded-xl space-y-1 text-[9px] font-bold text-slate-500 max-w-xs animate-in slide-in-from-top-1">
                                                          <p className="uppercase text-[8px] font-black text-slate-400 tracking-wider">Histórico de Pagamentos:</p>
-                                                         {t.metadata.payment_history.map((ph, phIdx) => ph.kind === 'account_change' ? (
-                                                             <div key={phIdx} className="text-amber-600">
-                                                                 {ph.date ? new Date(ph.date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'} · Conta alterada: {ph.from_account_name || 'Conta'} → {ph.account_name || 'Conta'}
-                                                             </div>
-                                                         ) : (
-                                                             <div key={phIdx} className="flex justify-between items-center gap-4">
-                                                                 <span>{ph.date ? new Date(ph.date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'} ({ph.account_name || 'Conta'})</span>
-                                                                 <span className="text-emerald-600 font-extrabold">{formatCurrency(ph.amount)}</span>
-                                                             </div>
+                                                         {t.metadata.payment_history.map((ph, phIdx) => (
+                                                             <PaymentHistoryLine key={phIdx} entry={ph} formatCurrency={formatCurrency} />
                                                          ))}
                                                      </div>
                                                  )}
