@@ -17,6 +17,7 @@ import {
   buildSettledUpdate,
   buildConventionalUpdate,
   getPaymentHistory,
+  applyAccountChangeToHistory,
   newPartialPaymentGroupId,
   describePaymentError,
   round2
@@ -1400,6 +1401,33 @@ const HistoryPage: React.FC = () => {
     }
   };
 
+  /**
+   * Metadata de um lançamento pago cuja conta foi trocada: o histórico de
+   * pagamentos passa a mostrar a conta nova e ganha a linha "conta alterada".
+   * `null` quando não há histórico/pagamento a corrigir.
+   */
+  const accountChangeMetadata = (row: {
+    metadata?: Record<string, any> | null;
+    accountName?: string | null;
+    isPaid?: boolean;
+    paidAmount?: number | null;
+    amount?: number | null;
+    paidAt?: string | null;
+    date?: string | null;
+  }, newAccountName: string): Record<string, any> | null => {
+    const rawPaid = Number(row.paidAmount || 0);
+    const paidAmount = rawPaid > 0.005 ? rawPaid : (row.isPaid ? Math.abs(Number(row.amount || 0)) : 0);
+    const history = applyAccountChangeToHistory({
+      history: getPaymentHistory({ metadata: row.metadata || undefined } as any),
+      oldAccountName: row.accountName,
+      newAccountName,
+      paidAmount,
+      paidDate: row.paidAt || row.date,
+      changedAt: DateUtils.formatToISODate()
+    });
+    return history ? { ...(row.metadata || {}), payment_history: history } : null;
+  };
+
   const handleUpdate = async (id: string, field: string, value: any, confirmedScope?: SeriesScope) => {
     if (!supabase) return;
 
@@ -1505,6 +1533,13 @@ const HistoryPage: React.FC = () => {
       if (field === 'account_id') {
         const acc = accounts.find(a => a.id === cleanValue);
         if (acc) patch.account_name = acc.institution;
+
+        // Lançamento já pago trocando de conta: o histórico de pagamentos
+        // acompanha (antes ficava a conta antiga para sempre).
+        if (acc && !tx.metadata?.is_card && cleanValue !== tx.accountId) {
+          const newMeta = accountChangeMetadata(tx as any, acc.institution || '');
+          if (newMeta) patch.metadata = newMeta;
+        }
       }
 
       if (isProbablyOffline() && confirmedScope && confirmedScope !== 'ONLY_THIS') {
@@ -1572,6 +1607,13 @@ const HistoryPage: React.FC = () => {
           }
         } else {
           await FinanceService.updateTransaction(id, patch);
+
+          // Pagamento parcial dividido: as outras linhas do grupo mostram o mesmo
+          // histórico, então recebem a correção de conta também.
+          const groupId = tx.metadata?.partial_payment_group_id;
+          if (field === 'account_id' && patch.metadata?.payment_history && groupId) {
+            await syncGroupPaymentHistory(groupId, patch.metadata.payment_history, [id]);
+          }
 
           // Sync counterparts of transfer
           if (tx && tx.type === 'TRANSFER' && tx.metadata?.is_transfer) {
@@ -1755,13 +1797,50 @@ const HistoryPage: React.FC = () => {
             }
           }
         } else {
-          let updateQuery = supabase.from('transactions').update(patch).eq('is_deleted', false);
+          // Troca de conta em série: guarda o estado de antes das linhas já
+          // pagas para corrigir o histórico de pagamentos de cada uma depois.
+          let paidRowsBefore: any[] = [];
+          if (field === 'account_id' && patch.account_name) {
+            let paidQuery = supabase
+              .from('transactions')
+              .select('id, metadata, account_id, account_name, is_paid, paid_amount, amount, paid_at, date')
+              .eq('is_deleted', false)
+              .not('metadata->payment_history', 'is', null);
+            paidQuery = buildSeriesFilter(paidQuery, tx);
+            if (confirmedScope === 'THIS_AND_FUTURE') {
+              paidQuery = paidQuery.gte('date', tx?.date);
+            }
+            const { data: paidRows } = await paidQuery;
+            paidRowsBefore = paidRows || [];
+          }
+
+          // Na troca de conta a metadata (histórico) é por linha: não vai no lote.
+          const seriesPatch = field === 'account_id'
+            ? Object.fromEntries(Object.entries(patch).filter(([key]) => key !== 'metadata'))
+            : patch;
+          let updateQuery = supabase.from('transactions').update(seriesPatch).eq('is_deleted', false);
           updateQuery = buildSeriesFilter(updateQuery, tx);
           if (confirmedScope === 'THIS_AND_FUTURE') {
             updateQuery = updateQuery.gte('date', tx?.date);
           }
           const { error: err } = await updateQuery;
           if (err) throw err;
+
+          for (const row of paidRowsBefore) {
+            if (row.account_id === cleanValue) continue;
+            const newMeta = accountChangeMetadata({
+              metadata: row.metadata,
+              accountName: row.account_name,
+              isPaid: row.is_paid,
+              paidAmount: row.paid_amount,
+              amount: row.amount,
+              paidAt: row.paid_at,
+              date: row.date
+            }, patch.account_name);
+            if (!newMeta) continue;
+            const { error: histErr } = await supabase.from('transactions').update({ metadata: newMeta }).eq('id', row.id);
+            if (histErr) console.warn('Falha ao corrigir histórico de pagamentos em', row.id, histErr);
+          }
         }
 
         // Reload completo só quando altera parcelas e assinaturas (múltiplas linhas)

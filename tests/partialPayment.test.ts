@@ -7,6 +7,7 @@ import {
   buildConventionalUpdate,
   describePaymentError,
   getPaymentHistory,
+  applyAccountChangeToHistory,
   round2
 } from '../lib/partialPayment';
 import { Transaction } from '../types';
@@ -222,5 +223,71 @@ describe('utilitários', () => {
     });
     expect(msg).toContain('attachments');
     expect(describePaymentError({})).toBe('Erro ao processar pagamento.');
+  });
+});
+
+describe('troca de conta de lançamento pago', () => {
+  const paid = { date: '2026-10-13', account_name: 'Botmasters', amount: 398.36 };
+
+  it('corrige a conta do pagamento e registra a alteração', () => {
+    const out = applyAccountChangeToHistory({
+      history: [paid],
+      oldAccountName: 'Botmasters',
+      newAccountName: 'Bradesco',
+      paidAmount: 398.36,
+      paidDate: '2026-10-13',
+      changedAt: '2026-10-14'
+    });
+    expect(out).toEqual([
+      { date: '2026-10-13', account_name: 'Bradesco', amount: 398.36 },
+      { kind: 'account_change', date: '2026-10-14', account_name: 'Bradesco', from_account_name: 'Botmasters', amount: 0 }
+    ]);
+  });
+
+  it('não registra nada quando não há pagamento neste lançamento', () => {
+    // Diferença pendente de um parcial: carrega o histórico do grupo, mas não pagou nada.
+    expect(applyAccountChangeToHistory({
+      history: [paid], oldAccountName: 'Botmasters', newAccountName: 'Bradesco',
+      paidAmount: 0, changedAt: '2026-10-14'
+    })).toBeNull();
+  });
+
+  it('não registra nada quando a conta é a mesma ou não há histórico', () => {
+    expect(applyAccountChangeToHistory({
+      history: [paid], oldAccountName: 'botmasters ', newAccountName: 'Botmasters',
+      paidAmount: 398.36, changedAt: '2026-10-14'
+    })).toBeNull();
+    expect(applyAccountChangeToHistory({
+      history: [], oldAccountName: 'Botmasters', newAccountName: 'Bradesco',
+      paidAmount: 398.36, changedAt: '2026-10-14'
+    })).toBeNull();
+  });
+
+  it('em grupo de parcial, só corrige o pagamento deste lançamento', () => {
+    const history = [
+      { date: '2026-09-01', account_name: 'Botmasters', amount: 100 },
+      { date: '2026-10-01', account_name: 'Botmasters', amount: 50 }
+    ];
+    const out = applyAccountChangeToHistory({
+      history, oldAccountName: 'Botmasters', newAccountName: 'Bradesco',
+      paidAmount: 50, paidDate: '2026-10-01T00:00:00', changedAt: '2026-10-14'
+    })!;
+    expect(out[0].account_name).toBe('Botmasters');
+    expect(out[1].account_name).toBe('Bradesco');
+    expect(out[2]).toMatchObject({ kind: 'account_change', from_account_name: 'Botmasters' });
+  });
+
+  it('trocas seguidas acumulam o registro sem mexer nas anteriores', () => {
+    const first = applyAccountChangeToHistory({
+      history: [paid], oldAccountName: 'Botmasters', newAccountName: 'Itaú',
+      paidAmount: 398.36, paidDate: '2026-10-13', changedAt: '2026-10-14'
+    })!;
+    const second = applyAccountChangeToHistory({
+      history: first, oldAccountName: 'Itaú', newAccountName: 'Bradesco',
+      paidAmount: 398.36, paidDate: '2026-10-13', changedAt: '2026-10-15'
+    })!;
+    expect(second[0].account_name).toBe('Bradesco');
+    expect(second[1]).toMatchObject({ from_account_name: 'Botmasters', account_name: 'Itaú' });
+    expect(second[2]).toMatchObject({ from_account_name: 'Itaú', account_name: 'Bradesco' });
   });
 });

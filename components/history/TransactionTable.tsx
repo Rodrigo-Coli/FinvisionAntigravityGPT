@@ -714,7 +714,11 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                             {t.metadata?.payment_history && Array.isArray(t.metadata.payment_history) && t.metadata.payment_history.length > 0 && (
                                                 <div className="p-2 bg-slate-50 border border-slate-100 rounded-xl space-y-1 text-[9px] font-bold text-slate-500 max-w-xs animate-in slide-in-from-top-1">
                                                     <p className="uppercase text-[8px] font-black text-slate-400 tracking-wider">Histórico de Pagamentos:</p>
-                                                    {t.metadata.payment_history.map((ph, phIdx) => (
+                                                    {t.metadata.payment_history.map((ph, phIdx) => ph.kind === 'account_change' ? (
+                                                        <div key={phIdx} className="text-amber-600">
+                                                            {ph.date ? new Date(ph.date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'} · Conta alterada: {ph.from_account_name || 'Conta'} → {ph.account_name || 'Conta'}
+                                                        </div>
+                                                    ) : (
                                                         <div key={phIdx} className="flex justify-between items-center">
                                                             <span>{ph.date ? new Date(ph.date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'} ({ph.account_name || 'Conta'})</span>
                                                             <span className="text-emerald-600 font-extrabold">{formatCurrency(ph.amount)}</span>
@@ -1051,7 +1055,11 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                                  {t.metadata?.payment_history && Array.isArray(t.metadata.payment_history) && t.metadata.payment_history.length > 0 && (
                                                      <div className="p-2 bg-slate-50 border border-slate-100 rounded-xl space-y-1 text-[9px] font-bold text-slate-500 max-w-xs animate-in slide-in-from-top-1">
                                                          <p className="uppercase text-[8px] font-black text-slate-400 tracking-wider">Histórico de Pagamentos:</p>
-                                                         {t.metadata.payment_history.map((ph, phIdx) => (
+                                                         {t.metadata.payment_history.map((ph, phIdx) => ph.kind === 'account_change' ? (
+                                                             <div key={phIdx} className="text-amber-600">
+                                                                 {ph.date ? new Date(ph.date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'} · Conta alterada: {ph.from_account_name || 'Conta'} → {ph.account_name || 'Conta'}
+                                                             </div>
+                                                         ) : (
                                                              <div key={phIdx} className="flex justify-between items-center gap-4">
                                                                  <span>{ph.date ? new Date(ph.date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'} ({ph.account_name || 'Conta'})</span>
                                                                  <span className="text-emerald-600 font-extrabold">{formatCurrency(ph.amount)}</span>
