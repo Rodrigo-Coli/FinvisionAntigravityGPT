@@ -3,6 +3,7 @@ import { DateUtils } from '../lib/dateUtils';
 import { useEffect, useRef, useState } from 'react';
 import { BellRing, X } from 'lucide-react';
 import { supabase } from '../lib/supabase/client';
+import { detectCurrentInstallPlatform } from '../lib/installGuide';
 import {
   getSwRegistration,
   requestNotificationPermission,
@@ -92,8 +93,8 @@ export function PushManager() {
       || (window.navigator as any).standalone === true;
     if (isStandalone) return false;
 
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    if (isIOS) return !sessionStorage.getItem('ios-prompt-shown');
+    // Mesma detecção do aviso do iPhone (inclui o iPadOS que se apresenta como Mac).
+    if (detectCurrentInstallPlatform().os === 'ios') return !sessionStorage.getItem('ios-prompt-shown');
 
     return !localStorage.getItem('pwa-prompt-dismissed') && !!(window as any).__pwaInstallPrompt;
   };

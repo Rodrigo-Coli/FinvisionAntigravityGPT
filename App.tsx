@@ -49,6 +49,7 @@ const DemoMode      = lazy(() => import('./pages/DemoMode'));
 const Landing       = lazy(() => import('./pages/Landing'));
 const Terms         = lazy(() => import('./pages/Terms'));
 const Privacy       = lazy(() => import('./pages/Privacy'));
+const InstallApp    = lazy(() => import('./pages/InstallApp'));
 const PendingApproval = lazy(() => import('./pages/PendingApproval'));
 const Referrals      = lazy(() => import('./pages/Referrals'));
 
@@ -280,6 +281,7 @@ const App: React.FC = () => {
                       <Route path="/reset-password" element={<ResetPassword />} />
                       <Route path="/terms" element={<Terms />} />
                       <Route path="/privacy" element={<Privacy />} />
+                      <Route path="/instalar" element={<InstallApp />} />
 
                       {!session ? (
                         <>

@@ -214,6 +214,7 @@ export default function Landing() {
           <div className="flex gap-8 mb-10 border-b border-white/5 pb-10 w-full justify-center">
             <Link to="/terms" className="font-bold text-[10px] uppercase tracking-widest hover:text-white transition-colors">Termos de Uso</Link>
             <Link to="/privacy" className="font-bold text-[10px] uppercase tracking-widest hover:text-white transition-colors">Privacidade</Link>
+            <Link to="/instalar" className="font-bold text-[10px] uppercase tracking-widest hover:text-white transition-colors">Instalar o app</Link>
             <a href="mailto:suporte@automanow.com.br" className="font-bold text-[10px] uppercase tracking-widest hover:text-white transition-colors">Contato</a>
           </div>
 
