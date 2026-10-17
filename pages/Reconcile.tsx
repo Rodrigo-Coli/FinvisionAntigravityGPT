@@ -27,6 +27,7 @@ import { ImportedTransaction, MatchStatus, BankAccount } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { authHeaders } from '../lib/apiClient';
 import { DateUtils } from '../lib/dateUtils';
+import { stripLabsPrefix } from '../lib/receiptDescription';
 import { suspiciousDateReason, SUSPICIOUS_DATE_LABEL } from '../lib/receiptDate';
 import { ReconciliationService } from '../services/reconciliation.service';
 import { FinanceService } from '../services/finance.service';
@@ -251,7 +252,8 @@ const Reconcile: React.FC = () => {
       setImported((data || []).map((t: any) => ({
         id: t.id,
         date: t.date,
-        description: t.description,
+        // Itens do cupom gerados antes da mudança ainda trazem "Labs: ".
+        description: stripLabsPrefix(t.description),
         amount: Number(t.amount),
         status: t.status as MatchStatus,
         type: t.amount >= 0 ? 'credit' : 'debit',

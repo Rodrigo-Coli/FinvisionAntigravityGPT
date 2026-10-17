@@ -1,5 +1,33 @@
 [
   {
+    "version": "2026.10.17.1352",
+    "title": "Nome normal nas compras do cupom e IA mais resistente",
+    "date": "17/10/2026",
+    "benefits": [
+      {
+        "title": "Sem o \"Labs:\" na frente",
+        "desc": "O que você lança pelo cupom (Inteligência Labs) agora entra só com o nome do estabelecimento, por exemplo \"Medidag Gramado\" em vez de \"Labs: Medidag Gramado\", pela Conciliação ou direto no cartão. Os itens que já estavam em Conciliar também perdem o prefixo.",
+        "type": "usabilidade"
+      },
+      {
+        "title": "Leitura de extratos com reserva que funciona",
+        "desc": "Se a IA principal falhar ao ler um extrato de banco ou cartão, entra um modelo reserva mais novo. O reserva antigo tinha sido desativado pelo Google e não ajudava mais.",
+        "type": "correcao"
+      },
+      {
+        "title": "Aviso claro quando a IA está sem crédito",
+        "desc": "Em vez de \"A IA não retornou dados\", a importação de extrato avisa que os créditos da IA acabaram e que é preciso recarregar.",
+        "type": "usabilidade"
+      }
+    ],
+    "changes": [
+      "`lib/receiptDescription.ts` + `pages/AIModule.tsx`/`pages/Reconcile.tsx`: descrição do cupom sem \"Labs: \" (e a fila de Conciliar limpa o prefixo dos itens antigos).",
+      "`api/_lib/ai-models.ts`: modelos do Gemini centralizados — principal `gemini-2.5-flash`, reserva `gemini-3.8-flash` (o `gemini-2.0-flash` foi desativado pelo Google, 404). Trocáveis pelas variáveis `GEMINI_MODEL`/`GEMINI_FALLBACK_MODEL` na Vercel.",
+      "Conciliação de banco e cartão: crédito pré-pago esgotado (402) não tenta a reserva e devolve mensagem clara (`AI_BILLING_MESSAGE`).",
+      "Chat, WhatsApp, cupom, categorização e diagnóstico passam a ler o modelo de `ai-models.ts` (mesmo modelo de antes)."
+    ]
+  },
+  {
     "version": "2026.10.17.1046",
     "title": "Instalar o app no iPhone, passo a passo",
     "date": "17/10/2026",

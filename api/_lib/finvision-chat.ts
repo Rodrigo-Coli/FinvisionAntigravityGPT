@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
+import { GEMINI_PRIMARY_MODEL } from './ai-models.js';
 import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { requireUser } from './require-user.js';
@@ -141,7 +142,7 @@ Você NÃO recebe os dados financeiros do usuário prontos neste prompt. Em vez 
         let emptyRetries = 0;
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: GEMINI_PRIMARY_MODEL,
                 contents,
                 config: {
                     systemInstruction: systemPrompt,
@@ -149,7 +150,7 @@ Você NÃO recebe os dados financeiros do usuário prontos neste prompt. Em vez 
                     tools: [{ functionDeclarations: FINANCIAL_TOOL_DECLARATIONS as any }],
                 }
             });
-            await recordAiUsage(supabase, 'chat', userId, response, 'gemini-2.5-flash');
+            await recordAiUsage(supabase, 'chat', userId, response, GEMINI_PRIMARY_MODEL);
 
             const candidate = (response as any).candidates?.[0];
             const candidateParts = candidate?.content?.parts || [];

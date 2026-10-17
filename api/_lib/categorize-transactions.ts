@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
+import { GEMINI_PRIMARY_MODEL } from './ai-models.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { requireUser } from './require-user.js';
 
@@ -61,14 +62,14 @@ Importante:
     // estabelecimentos desconhecidos, pedimos o JSON só via instrução no
     // prompt e fazemos o parsing de forma tolerante abaixo.
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: GEMINI_PRIMARY_MODEL,
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         temperature: 0.2,
         tools: [{ googleSearch: {} }]
       }
     });
-    await recordAiUsage(supabase, 'categorize', userId, response, 'gemini-2.5-flash');
+    await recordAiUsage(supabase, 'categorize', userId, response, GEMINI_PRIMARY_MODEL);
 
     let text = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || "[]";
     text = text.trim();
