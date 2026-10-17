@@ -1,28 +1,28 @@
 {
-  "version": "2026.10.13.1728",
-  "title": "Histórico de pagamentos registra cada correção",
-  "date": "13/10/2026",
+  "version": "2026.10.17.1046",
+  "title": "Instalar o app no iPhone, passo a passo",
+  "date": "17/10/2026",
   "benefits": [
     {
-      "title": "Trocou a conta? O histórico acompanha",
-      "desc": "Se você pagou na conta errada e corrigiu, o Histórico de Pagamentos passa a mostrar a conta certa e anota a troca (ex.: Conta alterada: Botmasters → Bradesco). Vale também ao trocar a conta de várias parcelas de uma vez.",
+      "title": "Aviso do iPhone que funciona",
+      "desc": "No iPhone, a instalação é feita pelo menu do navegador, e o aviso antigo apontava para um botão que o iOS 26 escondeu. Agora ele mostra o caminho certo do seu navegador e o botão \"Ver passo a passo\" abre as instruções completas.",
       "type": "correcao"
     },
     {
-      "title": "Data e valor corrigidos também ficam registrados",
-      "desc": "Ao mudar a data ou o valor de um lançamento já pago, o pagamento no histórico é atualizado e entra uma linha com o antes e o depois (ex.: Valor alterado: R$ 100,00 → R$ 120,00).",
-      "type": "recurso"
+      "title": "Aberto pelo Instagram, Facebook ou WhatsApp?",
+      "desc": "Dentro desses apps não dá para instalar. O aviso explica isso e copia o link para você abrir no Safari.",
+      "type": "usabilidade"
     },
     {
-      "title": "Reabrir não apaga mais o que foi pago",
-      "desc": "Ao reabrir um lançamento, o pagamento continua no histórico, riscado como estornado, com a linha \"Reaberto\". Quando você pagar de novo, o novo pagamento aparece logo abaixo. Os registros não somam valor, então o saldo continua certo.",
-      "type": "melhoria"
+      "title": "Tutorial para todos os aparelhos",
+      "desc": "Nova página \"Instalar o app\" com o passo a passo para iPhone, Android e computador, em cada navegador (Safari, Chrome, Samsung Internet, Edge, Firefox). Está no rodapé da página inicial e em Configurações, e o link pode ser enviado para qualquer pessoa.",
+      "type": "recurso"
     }
   ],
   "changes": [
-    "`lib/partialPayment.ts`: `applyAccountChangeToHistory`, `applyDateChangeToHistory`, `applyAmountChangeToHistory` e `applyReopenToHistory` (puras). Registros com `kind` (`account_change`, `date_change`, `amount_change`, `reopen`), amount 0; pagamento estornado ganha `reversed: true`. `ownPaymentIndexes` separa os pagamentos do próprio lançamento dos das outras linhas de um parcial dividido.",
-    "`pages/History.tsx`: `handleUpdate` grava o histórico corrigido no mesmo UPDATE (conta, data e valor; data e valor só na edição avulsa; conta também em série, linha a linha) e espelha no grupo do parcial; `reopenPatch` mantém o histórico com os pagamentos estornados em vez de apagá-lo.",
-    "`components/history/PaymentHistoryLine.tsx`: linha única usada por `TransactionTable` e `PaymentModal` (pagamento, estornado riscado, registro em âmbar).",
-    "Node 24.x (`engines` e projeto na Vercel): o deploy da versão 2026.10.13.0951 foi recusado porque a Vercel descontinuou o Node 20.x, por isso ela nunca chegou ao app."
+    "`lib/installGuide.ts`: detecção de sistema/navegador pelo user agent (iPhone, iPad que se apresenta como Mac, Android, computador; Safari, Chrome, Edge, Firefox, Samsung Internet, navegador embutido de app) e o passo a passo de cada combinação. Safari 26+ usa o menu \"•••\".",
+    "`components/IOSInstallPrompt.tsx`: caminho do navegador em uso + botão \"Ver passo a passo\" (modal `components/install/InstallGuideModal.tsx`, em portal). Só iPhone/iPad; `PWAInstallPrompt` (Android/computador) não foi alterado.",
+    "Nova rota pública `#/instalar` (`pages/InstallApp.tsx`), link no rodapé da Landing e em Configurações → Notificações.",
+    "`PushManager`: mesma detecção de iOS do aviso (inclui o iPadOS que se apresenta como Mac) para não sobrepor o convite de notificações."
   ]
 }

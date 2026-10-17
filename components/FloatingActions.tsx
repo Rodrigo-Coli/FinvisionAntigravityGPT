@@ -12,7 +12,7 @@ const FloatingActions: React.FC<FloatingActionsProps> = ({ user }) => {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
 
-  const excludedPaths = ['/login', '/signup', '/forgot-password', '/reset-password', '/terms', '/privacy'];
+  const excludedPaths = ['/login', '/signup', '/forgot-password', '/reset-password', '/terms', '/privacy', '/instalar'];
 
   if (excludedPaths.includes(location.pathname)) {
     return null;

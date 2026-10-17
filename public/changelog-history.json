@@ -1,5 +1,33 @@
 [
   {
+    "version": "2026.10.17.1046",
+    "title": "Instalar o app no iPhone, passo a passo",
+    "date": "17/10/2026",
+    "benefits": [
+      {
+        "title": "Aviso do iPhone que funciona",
+        "desc": "No iPhone, a instalação é feita pelo menu do navegador, e o aviso antigo apontava para um botão que o iOS 26 escondeu. Agora ele mostra o caminho certo do seu navegador e o botão \"Ver passo a passo\" abre as instruções completas.",
+        "type": "correcao"
+      },
+      {
+        "title": "Aberto pelo Instagram, Facebook ou WhatsApp?",
+        "desc": "Dentro desses apps não dá para instalar. O aviso explica isso e copia o link para você abrir no Safari.",
+        "type": "usabilidade"
+      },
+      {
+        "title": "Tutorial para todos os aparelhos",
+        "desc": "Nova página \"Instalar o app\" com o passo a passo para iPhone, Android e computador, em cada navegador (Safari, Chrome, Samsung Internet, Edge, Firefox). Está no rodapé da página inicial e em Configurações, e o link pode ser enviado para qualquer pessoa.",
+        "type": "recurso"
+      }
+    ],
+    "changes": [
+      "`lib/installGuide.ts`: detecção de sistema/navegador pelo user agent (iPhone, iPad que se apresenta como Mac, Android, computador; Safari, Chrome, Edge, Firefox, Samsung Internet, navegador embutido de app) e o passo a passo de cada combinação. Safari 26+ usa o menu \"•••\".",
+      "`components/IOSInstallPrompt.tsx`: caminho do navegador em uso + botão \"Ver passo a passo\" (modal `components/install/InstallGuideModal.tsx`, em portal). Só iPhone/iPad; `PWAInstallPrompt` (Android/computador) não foi alterado.",
+      "Nova rota pública `#/instalar` (`pages/InstallApp.tsx`), link no rodapé da Landing e em Configurações → Notificações.",
+      "`PushManager`: mesma detecção de iOS do aviso (inclui o iPadOS que se apresenta como Mac) para não sobrepor o convite de notificações."
+    ]
+  },
+  {
     "version": "2026.10.13.1728",
     "title": "Histórico de pagamentos registra cada correção",
     "date": "13/10/2026",

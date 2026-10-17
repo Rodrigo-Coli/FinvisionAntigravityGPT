@@ -1270,6 +1270,12 @@ const SettingsPage: React.FC = () => {
                       <li>Toque em <span className="font-black">&quot;Compartilhar&quot; → &quot;Adicionar à Tela de Início&quot;</span> (iOS) ou <span className="font-black">&quot;Instalar app&quot;</span> (Android)</li>
                       <li>Abra o app instalado e ative as notificações aqui</li>
                     </ol>
+                    <a
+                      href="#/instalar"
+                      className="mt-2 flex items-center justify-center min-h-[40px] bg-white border border-amber-200 text-amber-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-100 transition-all"
+                    >
+                      📲 Passo a passo para cada aparelho e navegador
+                    </a>
                   </div>
                 </div>
 
