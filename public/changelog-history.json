@@ -1,5 +1,28 @@
 [
   {
+    "version": "2026.10.17.1331",
+    "title": "Compras do cupom com o nome normal",
+    "date": "17/10/2026",
+    "benefits": [
+      {
+        "title": "Sem o \"Labs:\" na frente",
+        "desc": "O que você lança pelo cupom (Inteligência Labs) agora entra só com o nome do estabelecimento, por exemplo \"Medidag Gramado\" em vez de \"Labs: Medidag Gramado\", tanto pela Conciliação quanto direto no cartão.",
+        "type": "usabilidade"
+      },
+      {
+        "title": "Vale também para o que já estava em Conciliar",
+        "desc": "Os itens do cupom que já estavam esperando em Conciliar aparecem e são confirmados sem o \"Labs:\".",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "`lib/receiptDescription.ts`: `buildReceiptDescription` (nome do estabelecimento + `[MOEDA]` fora do BRL, sem prefixo nem espaço sobrando) e `stripLabsPrefix`.",
+      "`pages/AIModule.tsx`: usa `buildReceiptDescription` no envio para Conciliar e no lançamento direto no cartão.",
+      "`pages/Reconcile.tsx`: a fila tira o \"Labs: \" das descrições antigas ao carregar (o que é confirmado vai para Transações sem o prefixo).",
+      "Lançamentos já gravados em Transações não foram alterados."
+    ]
+  },
+  {
     "version": "2026.10.17.1046",
     "title": "Instalar o app no iPhone, passo a passo",
     "date": "17/10/2026",
