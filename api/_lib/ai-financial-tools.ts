@@ -11,7 +11,7 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { buildInvestmentsContextSection } from './investments-context.js';
 import { recordAiUsage } from './ai-usage.js';
-import { GEMINI_PRIMARY_MODEL } from './ai-models.js';
+import { generateWithFallback } from './ai-models.js';
 
 const fmt = (v: number) => Number(v || 0).toFixed(2);
 
@@ -378,12 +378,11 @@ async function toolGetLiabilitiesDetail(supabase: any, userId: string) {
 
 async function toolSearchMarketData(supabase: any, userId: string, args: any, geminiKey: string) {
   const ai = new GoogleGenAI({ apiKey: geminiKey });
-  const response = await ai.models.generateContent({
-    model: GEMINI_PRIMARY_MODEL,
+  const { response, model: responseModel } = await generateWithFallback(ai, {
     contents: [{ role: 'user', parts: [{ text: String(args.query || '') }] }],
     config: { tools: [{ googleSearch: {} }], temperature: 0.2 },
   });
-  await recordAiUsage(supabase, 'ai_tool_search_market_data', userId, response, GEMINI_PRIMARY_MODEL);
+  await recordAiUsage(supabase, 'ai_tool_search_market_data', userId, response, responseModel);
   const text = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
   return { result: text || 'Nenhum dado encontrado.' };
 }

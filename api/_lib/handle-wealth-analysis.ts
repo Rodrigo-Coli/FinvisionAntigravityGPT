@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
-import { GEMINI_PRIMARY_MODEL } from './ai-models.js';
+import { generateWithFallback } from './ai-models.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { requireUser } from './require-user.js';
 
@@ -93,12 +93,11 @@ export async function handleWealthAnalysis(req: any, res: any) {
 
         const userPrompt = `Analise o patrimônio financeiro completo do usuário e forneça um diagnóstico patrimonial completo:\n\n## DADOS FINANCEIROS DO USUÁRIO\n\n**CONTAS E INVESTIMENTOS (Total: R$ ${totalFinancial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}):**\n- ${accountsSummary || 'Nenhuma conta cadastrada'}\n\n**BENS FÍSICOS (Total: R$ ${totalPhysical.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}):**\n- ${physicalSummary || 'Nenhum bem físico cadastrado'}\n\n**DÍVIDAS E PASSIVOS (Total: R$ ${totalLiabilities.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}):**\n- ${liabilitiesSummary || 'Nenhum passivo cadastrado'}\n\n**FLUXO DE CAIXA (Média 3 meses):**\n- Renda Mensal Média: R$ ${avgMonthlyIncome.toLocaleString('pt-BR')}\n- Gastos Mensais Médios: R$ ${avgMonthlyExpense.toLocaleString('pt-BR')}\n- Poupança Mensal: R$ ${avgMonthlySavings.toLocaleString('pt-BR')}\n- Comprometimento com Dívidas: ${debtToIncome}% da renda\n\n**RESUMO PATRIMONIAL:**\n- Patrimônio Bruto (Ativos): R$ ${totalAssets.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n- Total de Dívidas: R$ ${totalLiabilities.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n- **Patrimônio Líquido Real: R$ ${netWorth.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}**\n\nCom base nesses dados, forneça:\n1. 🏦 Score de Saúde Financeira (0-100)\n2. 📊 Análise de Dívidas vs Investimentos (comente especificamente sobre a viabilidade de aportes e a sustentabilidade das parcelas de obras de imóveis Na Planta e consórcios comparado às suas sobras de caixa)\n3. ⚠️ Alertas e Riscos (atente para atos ou balões pendentes nos imóveis Na Planta)\n4. 🎯 Plano de Ação (3 prioridades)\n5. 💡 Oportunidades Identificadas`;
 
-        const response = await ai.models.generateContent({
-            model: GEMINI_PRIMARY_MODEL,
+        const { response, model: responseModel } = await generateWithFallback(ai, {
             contents: [{ parts: [{ text: userPrompt }] }],
             config: { systemInstruction: systemPrompt, temperature: 0.7 }
         });
-        await recordAiUsage(supabase, 'wealth_analysis', userId, response, GEMINI_PRIMARY_MODEL);
+        await recordAiUsage(supabase, 'wealth_analysis', userId, response, responseModel);
 
         const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
         if (!rawText) throw new Error('Zyvion AI não retornou análise.');

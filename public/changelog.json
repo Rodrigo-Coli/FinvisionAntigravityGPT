@@ -1,7 +1,7 @@
 {
-  "version": "2026.10.17.1352",
-  "title": "Nome normal nas compras do cupom e IA mais resistente",
-  "date": "17/10/2026",
+  "version": "2026.10.18.0001",
+  "title": "Nome normal nas compras do cupom e IA com reservas",
+  "date": "18/10/2026",
   "benefits": [
     {
       "title": "Sem o \"Labs:\" na frente",
@@ -9,20 +9,19 @@
       "type": "usabilidade"
     },
     {
-      "title": "Leitura de extratos com reserva que funciona",
-      "desc": "Se a IA principal falhar ao ler um extrato de banco ou cartão, entra um modelo reserva mais novo. O reserva antigo tinha sido desativado pelo Google e não ajudava mais.",
+      "title": "IA com vários modelos de reserva",
+      "desc": "Leitura de extratos, cupom, chat e WhatsApp agora têm uma fila de modelos de IA: se um estiver no limite de uso ou fora do ar, o próximo assume sozinho, sem você perceber.",
       "type": "correcao"
     },
     {
       "title": "Aviso claro quando a IA está sem crédito",
-      "desc": "Em vez de \"A IA não retornou dados\", a importação de extrato avisa que os créditos da IA acabaram e que é preciso recarregar.",
+      "desc": "Em vez de \"A IA não retornou dados\", aparece que os créditos da IA acabaram e que é preciso recarregar.",
       "type": "usabilidade"
     }
   ],
   "changes": [
     "`lib/receiptDescription.ts` + `pages/AIModule.tsx`/`pages/Reconcile.tsx`: descrição do cupom sem \"Labs: \" (e a fila de Conciliar limpa o prefixo dos itens antigos).",
-    "`api/_lib/ai-models.ts`: modelos do Gemini centralizados — principal `gemini-2.5-flash`, reserva `gemini-3.8-flash` (o `gemini-2.0-flash` foi desativado pelo Google, 404). Trocáveis pelas variáveis `GEMINI_MODEL`/`GEMINI_FALLBACK_MODEL` na Vercel.",
-    "Conciliação de banco e cartão: crédito pré-pago esgotado (402) não tenta a reserva e devolve mensagem clara (`AI_BILLING_MESSAGE`).",
-    "Chat, WhatsApp, cupom, categorização e diagnóstico passam a ler o modelo de `ai-models.ts` (mesmo modelo de antes)."
+    "`api/_lib/ai-models.ts`: fila `gemini-2.5-flash` → `gemini-3.8-flash` → `gemini-3.7-flash` → `gemini-3.6-flash` → `gemini-3-flash` → `gemini-2.5-flash-lite` (o `gemini-2.0-flash` foi desativado pelo Google). Trocável por `GEMINI_MODEL` e `GEMINI_FALLBACK_MODELS` (lista separada por vírgula) na Vercel.",
+    "`generateWithFallback`: passa ao próximo modelo em 429/404/5xx/rede; para em 402 (crédito esgotado, com `AI_BILLING_MESSAGE`) e em 400/401/403. Usado em chat, WhatsApp (6 pontos), cupom, categorização, diagnóstico e busca de mercado; a conciliação de banco/cartão usa a mesma fila."
   ]
 }
