@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
+import { generateWithFallback } from './ai-models.js';
 import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 
@@ -1025,14 +1026,13 @@ async function handleInteractiveFinancialQuery(
         }
         `;
 
-        const dateResponse = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+        const { response: dateResponse, model: dateResponseModel } = await generateWithFallback(ai, {
           contents: [{ role: 'user', parts: [{ text: dateExtractionPrompt }] }],
           config: {
             responseMimeType: "application/json"
           }
         });
-        await recordAiUsage(supabase, 'whatsapp_date_extraction', userId, dateResponse, 'gemini-2.5-flash');
+        await recordAiUsage(supabase, 'whatsapp_date_extraction', userId, dateResponse, dateResponseModel);
 
         const dateRaw = (dateResponse as any).text || (dateResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
         const dateClean = dateRaw.replace(/```json|```/g, "").trim();
@@ -1109,8 +1109,7 @@ Hoje é ${dataHoje}.
   // é repetida até 2 vezes em vez de virar "não consegui" na hora.
   let emptyRetries = 0;
   for (let round = 0; round < 5; round++) {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+    const { response, model: responseModel } = await generateWithFallback(ai, {
       contents,
       config: {
         systemInstruction: systemPrompt,
@@ -1118,7 +1117,7 @@ Hoje é ${dataHoje}.
         tools: [{ functionDeclarations: FINANCIAL_TOOL_DECLARATIONS as any }],
       }
     });
-    await recordAiUsage(supabase, 'whatsapp_query', userId, response, 'gemini-2.5-flash');
+    await recordAiUsage(supabase, 'whatsapp_query', userId, response, responseModel);
 
     const candidate = (response as any).candidates?.[0];
     const candidateParts = candidate?.content?.parts || [];
@@ -1516,8 +1515,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       Retorne apenas a transcrição do áudio em formato de texto simples, sem aspas, comentários ou decorações em português.
       `;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+      const { response, model: responseModel } = await generateWithFallback(ai, {
         contents: [{
           parts: [
             { text: voicePrompt },
@@ -1525,7 +1523,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           ]
         }]
       });
-      await recordAiUsage(supabase, 'whatsapp_voice_transcription', userId, response, 'gemini-2.5-flash');
+      await recordAiUsage(supabase, 'whatsapp_voice_transcription', userId, response, responseModel);
 
       const transcribedText = ((response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
       
@@ -2546,8 +2544,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       `;
 
       const cleanMimeType = media.mimeType.split(';')[0].trim();
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+      const { response, model: responseModel } = await generateWithFallback(ai, {
         contents: [{
           parts: [
             { text: ocrPrompt },
@@ -2558,7 +2555,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
           responseMimeType: "application/json"
         }
       });
-      await recordAiUsage(supabase, 'whatsapp_receipt_ocr', userId, response, 'gemini-2.5-flash');
+      await recordAiUsage(supabase, 'whatsapp_receipt_ocr', userId, response, responseModel);
 
       const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
       if (!rawText) throw new Error('AI response empty');
@@ -2857,14 +2854,13 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
       - Se for conversa casual, use "CHAT".
       `;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+      const { response, model: responseModel } = await generateWithFallback(ai, {
         contents: [{ role: 'user', parts: [{ text: classificationPrompt }] }],
         config: {
           responseMimeType: "application/json"
         }
       });
-      await recordAiUsage(supabase, 'whatsapp_classifier', userId, response, 'gemini-2.5-flash');
+      await recordAiUsage(supabase, 'whatsapp_classifier', userId, response, responseModel);
 
       const rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
       const cleanJson = rawText.replace(/```json|```/g, "").trim();
@@ -2981,15 +2977,14 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               parts: [{ text: text }]
             });
 
-            const chatResponse = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
+            const { response: chatResponse, model: chatResponseModel } = await generateWithFallback(ai, {
               contents: chatContents,
               config: {
                 systemInstruction: systemPromptChat,
                 temperature: 0.7,
               }
             });
-            await recordAiUsage(supabase, 'whatsapp_chat_smalltalk', userId, chatResponse, 'gemini-2.5-flash');
+            await recordAiUsage(supabase, 'whatsapp_chat_smalltalk', userId, chatResponse, chatResponseModel);
 
             chatReply = (chatResponse as any).text || (chatResponse as any).candidates?.[0]?.content?.parts?.[0]?.text || 'Olá! Sou a Zyvion AI. Como posso te ajudar com suas finanças hoje?';
           }

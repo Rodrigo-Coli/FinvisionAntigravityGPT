@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
+import { geminiModelChain, isAiBillingError, AI_BILLING_MESSAGE } from './ai-models.js';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { StatementTemplateHelper } from './statement-template-helper.js';
@@ -90,8 +91,10 @@ RETORNE APENAS JSON NO FORMATO:
         contents = [{ parts: [{ text: promptWithDate }, { text: `CONTEÚDO:\n${buffer.toString('utf-8').substring(0, 30000)}` }] }];
       }
 
-      const fallbackModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+      // Principal e reserva vêm de ai-models.ts (a reserva antiga, 2.0-flash, foi desativada pelo Google).
+      const fallbackModels = geminiModelChain();
       let rawText = '';
+      let billingDepleted = false;
       for (const modelName of fallbackModels) {
         try {
           const response = await ai.models.generateContent({
@@ -138,8 +141,14 @@ RETORNE APENAS JSON NO FORMATO:
           await recordAiUsage(supabase, 'card_reconcile', imp.user_id, response, modelName);
           rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
           if (rawText) break;
-        } catch (e) { console.error(`Falha no modelo ${modelName}:`, e); }
+        } catch (e) {
+          console.error(`Falha no modelo ${modelName}:`, e);
+          // Sem crédito, nenhum modelo responde: não adianta tentar a reserva.
+          if (isAiBillingError(e)) { billingDepleted = true; break; }
+        }
       }
+
+      if (!rawText && billingDepleted) throw new Error(AI_BILLING_MESSAGE);
 
       if (!rawText) throw new Error('A IA não retornou dados.');
       const parsedData = JSON.parse(rawText.replace(/```json|```/g, "").trim());

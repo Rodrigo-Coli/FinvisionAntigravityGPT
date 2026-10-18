@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
+import { generateWithFallback } from './ai-models.js';
 import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { requireUser } from './require-user.js';
@@ -140,8 +141,7 @@ Você NÃO recebe os dados financeiros do usuário prontos neste prompt. Em vez 
         // agora a rodada é repetida até 2 vezes antes de desistir.
         let emptyRetries = 0;
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+            const { response, model: responseModel } = await generateWithFallback(ai, {
                 contents,
                 config: {
                     systemInstruction: systemPrompt,
@@ -149,7 +149,7 @@ Você NÃO recebe os dados financeiros do usuário prontos neste prompt. Em vez 
                     tools: [{ functionDeclarations: FINANCIAL_TOOL_DECLARATIONS as any }],
                 }
             });
-            await recordAiUsage(supabase, 'chat', userId, response, 'gemini-2.5-flash');
+            await recordAiUsage(supabase, 'chat', userId, response, responseModel);
 
             const candidate = (response as any).candidates?.[0];
             const candidateParts = candidate?.content?.parts || [];

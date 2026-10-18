@@ -7,6 +7,7 @@ import { ExtractedReceipt, Profile } from '../types';
 import { supabase } from './../lib/supabase/client';
 import { authHeaders } from '../lib/apiClient';
 import { DateUtils } from '../lib/dateUtils';
+import { buildReceiptDescription } from '../lib/receiptDescription';
 import { useToast } from '../contexts/ToastContext';
 import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 import { SearchableInput } from '../components/common/SearchableInput';
@@ -487,7 +488,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       const cleanNotes = purchaseNotes.trim();
       const cleanTags = parseTags(purchaseTags);
       rememberTags(cleanTags);
-      const description = `Labs: ${receipt.merchant} ${receipt.currency !== 'BRL' ? '[' + receipt.currency + ']' : ''}`;
+      const description = buildReceiptDescription(receipt.merchant, receipt.currency);
 
       if (targetType === 'card') {
         // Fluxo direto: salva no cartão sem passar pelo Reconcile

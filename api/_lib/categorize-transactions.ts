@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
+import { generateWithFallback } from './ai-models.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { requireUser } from './require-user.js';
 
@@ -60,15 +61,14 @@ Importante:
     // is unsupported"). Como precisamos do Google Search para reconhecer
     // estabelecimentos desconhecidos, pedimos o JSON só via instrução no
     // prompt e fazemos o parsing de forma tolerante abaixo.
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+    const { response, model: responseModel } = await generateWithFallback(ai, {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         temperature: 0.2,
         tools: [{ googleSearch: {} }]
       }
     });
-    await recordAiUsage(supabase, 'categorize', userId, response, 'gemini-2.5-flash');
+    await recordAiUsage(supabase, 'categorize', userId, response, responseModel);
 
     let text = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || "[]";
     text = text.trim();

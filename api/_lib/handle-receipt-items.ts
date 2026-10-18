@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
+import { generateWithFallback } from './ai-models.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { Buffer } from 'node:buffer';
 import { requireUser } from './require-user.js';
@@ -75,7 +76,6 @@ export async function handleReceiptItems(req: any, res: any) {
     `;
 
     const ai = new GoogleGenAI({ apiKey: geminiKey });
-    const model = 'gemini-2.5-flash';
 
         // A IA não sabe a data de hoje: sem isso, print sem ano (notificação do
         // banco: "28 de set.") virava 2023 e a compra sumia do app.
@@ -99,8 +99,7 @@ export async function handleReceiptItems(req: any, res: any) {
         // Gemini eventualmente devolve texto fora do formato ou omite "items" em notas
         // fiscais mais ruidosas (DANFE com blocos de ICMS/FCP por item), o que quebrava
         // o parse no servidor ou o .map() no front.
-        const response = await ai.models.generateContent({
-            model,
+        const { response, model: responseModel } = await generateWithFallback(ai, {
             contents,
             config: {
                 responseMimeType: "application/json",
@@ -134,7 +133,7 @@ export async function handleReceiptItems(req: any, res: any) {
                 }
             }
         });
-        await recordAiUsage(supabase, 'receipt_items', userId, response, 'gemini-2.5-flash');
+        await recordAiUsage(supabase, 'receipt_items', userId, response, responseModel);
 
         if (!response) {
             throw new Error('A IA não retornou nenhuma resposta.');
