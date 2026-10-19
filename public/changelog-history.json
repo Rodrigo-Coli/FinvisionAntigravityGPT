@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.10.19.1507",
+    "title": "IA usa o plano gratuito primeiro",
+    "date": "19/10/2026",
+    "benefits": [
+      {
+        "title": "Plano gratuito antes do pago",
+        "desc": "Leitura de extratos, cupom, chat e WhatsApp agora usam primeiro a cota gratuita da IA, passando pelos modelos em ordem. Só quando todos os gratuitos chegam ao limite o app usa o plano pago, então você continua sem interrupção.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Mais rápido quando um modelo esgota",
+        "desc": "Modelo gratuito que bateu o limite fica de fora por um tempo, em vez de ser tentado em toda chamada.",
+        "type": "rapidez"
+      }
+    ],
+    "changes": [
+      "`api/_lib/ai-models.ts`: duas camadas — chave gratuita (`GEMINI_API_KEY_FREE`, fila `GEMINI_FREE_MODELS`, padrão Flash Lite → Flash) e chave paga (`GEMINI_API_KEY`, fila `GEMINI_MODEL` + `GEMINI_FALLBACK_MODELS`). Sem chave gratuita, só a paga (como antes).",
+      "Gratuito esgotado (429) fica em pausa (cota do dia: 1h; por minuto: o tempo que o Google indicar; modelo inexistente: 6h). Chave gratuita inválida pula para a paga. 402 na paga devolve a mensagem de crédito esgotado.",
+      "Conciliação de banco/cartão passa a usar `generateWithFallback` (resposta vazia também troca de modelo). O registro de uso grava `modelo@free` ou `modelo@paid`."
+    ]
+  },
+  {
     "version": "2026.10.18.0001",
     "title": "Nome normal nas compras do cupom e IA com reservas",
     "date": "18/10/2026",

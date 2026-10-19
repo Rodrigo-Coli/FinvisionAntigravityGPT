@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
 import { recordAiUsage } from './ai-usage.js';
-import { geminiModelChain, isAiBillingError, AI_BILLING_MESSAGE } from './ai-models.js';
+import { generateWithFallback } from './ai-models.js';
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { StatementTemplateHelper } from './statement-template-helper.js';
@@ -91,64 +91,53 @@ RETORNE APENAS JSON NO FORMATO:
         contents = [{ parts: [{ text: promptWithDate }, { text: `CONTEÚDO:\n${buffer.toString('utf-8').substring(0, 30000)}` }] }];
       }
 
-      // Principal e reserva vêm de ai-models.ts (a reserva antiga, 2.0-flash, foi desativada pelo Google).
-      const fallbackModels = geminiModelChain();
-      let rawText = '';
-      let billingDepleted = false;
-      for (const modelName of fallbackModels) {
-        try {
-          const response = await ai.models.generateContent({
-            model: modelName, contents,
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: {
+      // Fila gratuita primeiro, paga no fim (ai-models.ts). Resposta vazia
+      // também passa para o próximo modelo; crédito pago esgotado (402) lança
+      // a mensagem clara para o usuário.
+      const textOf = (r: any) => r?.text || r?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const { response, model: usedModel } = await generateWithFallback(ai, {
+        contents,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              transactions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    date: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    amount: { type: Type.NUMBER },
+                    merchant_normalized: { type: Type.STRING },
+                    installment_number: { type: Type.INTEGER },
+                    installment_total: { type: Type.INTEGER },
+                    category_name: { type: Type.STRING }
+                  },
+                  required: ["date", "description", "amount"]
+                }
+              },
+              template: {
                 type: Type.OBJECT,
                 properties: {
-                  transactions: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        date: { type: Type.STRING },
-                        description: { type: Type.STRING },
-                        amount: { type: Type.NUMBER },
-                        merchant_normalized: { type: Type.STRING },
-                        installment_number: { type: Type.INTEGER },
-                        installment_total: { type: Type.INTEGER },
-                        category_name: { type: Type.STRING }
-                      },
-                      required: ["date", "description", "amount"]
-                    }
-                  },
-                  template: {
-                    type: Type.OBJECT,
-                    properties: {
-                      file_type: { type: Type.STRING },
-                      header_row_index: { type: Type.INTEGER },
-                      date_column_index: { type: Type.INTEGER },
-                      description_column_index: { type: Type.INTEGER },
-                      amount_column_index: { type: Type.INTEGER },
-                      date_format: { type: Type.STRING },
-                      decimal_separator: { type: Type.STRING }
-                    }
-                  }
-                },
-                required: ["transactions"]
+                  file_type: { type: Type.STRING },
+                  header_row_index: { type: Type.INTEGER },
+                  date_column_index: { type: Type.INTEGER },
+                  description_column_index: { type: Type.INTEGER },
+                  amount_column_index: { type: Type.INTEGER },
+                  date_format: { type: Type.STRING },
+                  decimal_separator: { type: Type.STRING }
+                }
               }
-            }
-          });
-          // Com o user_id o limite do plano para conciliação passa a contar.
-          await recordAiUsage(supabase, 'card_reconcile', imp.user_id, response, modelName);
-          rawText = (response as any).text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text || '';
-          if (rawText) break;
-        } catch (e) {
-          console.error(`Falha no modelo ${modelName}:`, e);
-          // Sem crédito, nenhum modelo responde: não adianta tentar a reserva.
-          if (isAiBillingError(e)) { billingDepleted = true; break; }
+            },
+            required: ["transactions"]
+          }
         }
-      }
-
-      if (!rawText && billingDepleted) throw new Error(AI_BILLING_MESSAGE);
+      }, { accept: r => !!textOf(r) });
+      // Com o user_id o limite do plano para conciliação passa a contar.
+      await recordAiUsage(supabase, 'card_reconcile', imp.user_id, response, usedModel);
+      const rawText = textOf(response);
 
       if (!rawText) throw new Error('A IA não retornou dados.');
       const parsedData = JSON.parse(rawText.replace(/```json|```/g, "").trim());
