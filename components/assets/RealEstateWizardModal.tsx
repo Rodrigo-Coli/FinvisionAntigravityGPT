@@ -6,6 +6,7 @@ import { X, Plus, Trash2, Upload, Loader2, Building2, Wallet, ArrowRight, Trendi
 import { Liability } from '../../types';
 import { syncRentalTransactions, syncCondoIptuTransactions, PayerOption } from './realEstatePropertySync';
 import { getSessionUser } from '../../lib/session';
+import { findCategoryByName } from '../../lib/categoryResolver';
 
 interface RealEstateWizardModalProps {
   onClose: () => void;
@@ -330,12 +331,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
 
       // 2. Resolve or create "Ativos Imobiliários" category
       let categoryId = null;
-      const { data: existingCat } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('name', 'Ativos Imobiliários')
-        .maybeSingle();
+      const { data: existingCat } = await findCategoryByName(supabase, user.id, 'Ativos Imobiliários');
 
       if (existingCat) {
         categoryId = existingCat.id;

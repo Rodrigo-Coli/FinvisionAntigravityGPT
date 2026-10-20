@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase/client';
 import { DateUtils } from '../../lib/dateUtils';
+import { findCategoryByName } from '../../lib/categoryResolver';
 
 // ============================================================
 // Motor único de geração de lançamentos recorrentes de imóveis
@@ -76,8 +77,7 @@ export async function syncRentalTransactions(params: RentalSyncParams): Promise<
 
     const categoryName = 'Receita Operacional Imobiliária';
     let catId = '';
-    const { data: existingCat } = await supabase
-      .from('categories').select('id').eq('user_id', userId).eq('name', categoryName).maybeSingle();
+    const { data: existingCat } = await findCategoryByName(supabase, userId, categoryName);
     if (existingCat) {
       catId = existingCat.id;
     } else {
@@ -190,11 +190,11 @@ export async function syncCondoIptuTransactions(params: CondoIptuSyncParams): Pr
     const existingTxs = allTxs || [];
 
     let catId = '';
-    const { data: catRes } = await supabase.from('categories').select('id').eq('user_id', userId).eq('name', 'Ativos Imobiliários').maybeSingle();
+    const { data: catRes } = await findCategoryByName(supabase, userId, 'Ativos Imobiliários');
     if (catRes) catId = catRes.id;
 
     let rentCatId = '';
-    const { data: rentCatRes } = await supabase.from('categories').select('id').eq('user_id', userId).eq('name', 'Receita Operacional Imobiliária').maybeSingle();
+    const { data: rentCatRes } = await findCategoryByName(supabase, userId, 'Receita Operacional Imobiliária');
     if (rentCatRes) rentCatId = rentCatRes.id;
 
     // 1. CONDOMÍNIO

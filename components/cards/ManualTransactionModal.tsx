@@ -107,9 +107,9 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
     const canDivide = !isInstallment && !isRecurring;
     const txAmountAbs = Math.abs(typeof txAmount === 'number' ? txAmount : (parseFloat(String(txAmount || '0').replace(',', '.')) || 0));
 
-    const descQuery = (txDescription || '').toLowerCase().trim();
+    const descQuery = normalizeStr(txDescription || '');
     const suggestions = descQuery.length >= 2
-        ? recentTxs.filter(t => (t.description || '').toLowerCase().includes(descQuery)).slice(0, 5)
+        ? recentTxs.filter(t => normalizeStr(t.description || '').includes(descQuery)).slice(0, 5)
         : [];
 
     const applySuggestion = (s: { description: string; category_id?: string; category?: string; subcategory?: string }) => {

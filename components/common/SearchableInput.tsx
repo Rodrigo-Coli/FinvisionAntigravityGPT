@@ -56,7 +56,14 @@ export const SearchableInput: React.FC<SearchableInputProps> = ({
 
     const matches = useMemo(() => {
         const term = normalizeStr(value || '');
-        const unique = Array.from(new Set(options.filter(Boolean)));
+        // "Moradia" e "moradia " são a mesma opção: aparece uma vez só.
+        const seen = new Set<string>();
+        const unique = options.filter(opt => {
+            const key = opt ? normalizeStr(opt) : '';
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
 
         // Sem nada digitado, mostra tudo (o campo funciona como uma lista).
         if (!term) return unique.sort((a, b) => a.localeCompare(b, 'pt-BR'));

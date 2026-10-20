@@ -266,6 +266,14 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const handleCreateCategory = async () => {
     const trimmed = newCategoryName.trim();
     if (!trimmed || !supabase || !user) return;
+    // Já existe com outra grafia ("saude" x "Saúde"): usa a existente.
+    const existing = categories.find((c: any) => normalizeStr(c.name || '') === normalizeStr(trimmed));
+    if (existing) {
+      setConfirmCategoryName(existing.name);
+      setIsCreatingCategory(false);
+      setNewCategoryName('');
+      return;
+    }
     setIsSavingCategory(true);
     try {
       const { data, error } = await supabase.from('categories').insert({ user_id: user.id, name: trimmed, type: 'EXPENSE', color: 'bg-brand-50 text-brand-600' }).select('id, name').single();
@@ -543,7 +551,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
   const filteredComparisonProducts = comparisonData
     .filter((p: any) => !targetSegment || p.merchantCategory === targetSegment)
-    .filter((p: any) => !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    .filter((p: any) => !searchTerm || normalizeStr(p.name || '').includes(normalizeStr(searchTerm)));
 
   return (
     <>

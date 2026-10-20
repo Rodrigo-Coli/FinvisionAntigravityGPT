@@ -405,7 +405,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         const seenCategories = new Set<string>();
         for (const c of rawList) {
           if (!c.name) continue;
-          const nameTrimmed = c.name.trim().toLowerCase();
+          const nameTrimmed = normalizeStr(c.name);
           if (!seenCategories.has(nameTrimmed)) {
             seenCategories.add(nameTrimmed);
             uniqueCategories.push(c);
@@ -423,7 +423,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
           const seenCategories = new Set<string>();
           for (const c of rawList) {
             if (!c.name) continue;
-            const nameTrimmed = c.name.trim().toLowerCase();
+            const nameTrimmed = normalizeStr(c.name);
             if (!seenCategories.has(nameTrimmed)) {
               seenCategories.add(nameTrimmed);
               uniqueCategories.push(c);
@@ -443,7 +443,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
           const seenCategories = new Set<string>();
           for (const c of rawList) {
             if (!c.name) continue;
-            const nameTrimmed = c.name.trim().toLowerCase();
+            const nameTrimmed = normalizeStr(c.name);
             if (!seenCategories.has(nameTrimmed)) {
               seenCategories.add(nameTrimmed);
               uniqueCategories.push(c);
@@ -465,6 +465,10 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       // travando o botão antes de qualquer verificação de offline abaixo.
       const user = await getSessionUser(supabase);
       if (!user) return;
+
+      // Já existe com outra grafia ("saude" x "Saúde"): usa a existente.
+      const existing = categories.find((c: any) => normalizeStr(c.name || '') === normalizeStr(name));
+      if (existing) return existing;
       
       const { data, error } = await supabase
         .from('categories')
@@ -1204,7 +1208,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       // Resolve categoryName (txCategory) to category_id, auto-creating if it doesn't exist
       let resolvedCategoryId: string | null = null;
       if (txCategory.trim()) {
-        const catObj = categories.find(c => c.name.toLowerCase().trim() === txCategory.toLowerCase().trim());
+        const catObj = categories.find(c => normalizeStr(c.name || '') === normalizeStr(txCategory));
         if (catObj) {
           resolvedCategoryId = catObj.id;
         } else if (!offline) {
@@ -2340,12 +2344,13 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
 
                   <TransactionList
                     transactions={transactions.filter(t => {
-                      const q = searchQuery.toLowerCase();
+                      const q = normalizeStr(searchQuery || '');
                       const matchesSearch = !q
-                        || t.description?.toLowerCase().includes(q)
-                        || (t.subcategory || '').toLowerCase().includes(q)
-                        || (t.owner_name || '').toLowerCase().includes(q)
-                        || (t.notes || '').toLowerCase().includes(q);
+                        || normalizeStr(t.description || '').includes(q)
+                        || normalizeStr(t.category || '').includes(q)
+                        || normalizeStr(t.subcategory || '').includes(q)
+                        || normalizeStr(t.owner_name || '').includes(q)
+                        || normalizeStr(t.notes || '').includes(q);
                       const matchesCategory = filterCategory === 'ALL' || t.category_id === filterCategory;
                       const matchesSubcategory = filterSubcategory === 'ALL' || t.subcategory === filterSubcategory;
                       const matchesOwner = filterOwner === 'ALL' || (t.owner_name || 'Pessoal') === filterOwner;

@@ -4,6 +4,7 @@ import { recordAiUsage } from './ai-usage.js';
 import { generateWithFallback } from './ai-models.js';
 import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
+import { findCategoryByName } from './category-resolver.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -1744,7 +1745,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                 }
 
                 if (patch.category) {
-                  const { data: catData } = await supabase.from('categories').select('id').eq('user_id', userId).ilike('name', patch.category).maybeSingle();
+                  const { data: catData } = await findCategoryByName(supabase, userId, patch.category);
                   if (catData) updatePayload.category_id = catData.id;
                 }
 
@@ -1983,7 +1984,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               }
 
               if (patch.category) {
-                const { data: catData } = await supabase.from('categories').select('id').eq('user_id', userId).ilike('name', patch.category).maybeSingle();
+                const { data: catData } = await findCategoryByName(supabase, userId, patch.category);
                 if (catData) updatePayload.category_id = catData.id;
               }
 
@@ -2026,7 +2027,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                   const targetStmtId = await getOrCreateStatementHelper(userId, selectedCard.id, op.transaction.date || new Date().toISOString().split('T')[0]);
                   let categoryId = null;
                   if (op.transaction.category) {
-                    const { data: catData } = await supabase.from('categories').select('id').eq('user_id', userId).ilike('name', op.transaction.category).maybeSingle();
+                    const { data: catData } = await findCategoryByName(supabase, userId, op.transaction.category);
                     if (catData) categoryId = catData.id;
                   }
                   await supabase.from('card_transactions').insert({
@@ -2123,7 +2124,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
                   }
 
                   if (patch.category) {
-                    const { data: catData } = await supabase.from('categories').select('id').eq('user_id', userId).ilike('name', patch.category).maybeSingle();
+                    const { data: catData } = await findCategoryByName(supabase, userId, patch.category);
                     if (catData) updatePayload.category_id = catData.id;
                   }
 
@@ -2172,12 +2173,7 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
               const targetStmtId = await getOrCreateStatementHelper(userId, selectedCard.id, tx.date || new Date().toISOString().split('T')[0]);
               let categoryId = null;
               if (tx.category) {
-                const { data: catData } = await supabase
-                  .from('categories')
-                  .select('id')
-                  .eq('user_id', userId)
-                  .ilike('name', tx.category)
-                  .maybeSingle();
+                const { data: catData } = await findCategoryByName(supabase, userId, tx.category);
                 if (catData) categoryId = catData.id;
               }
 

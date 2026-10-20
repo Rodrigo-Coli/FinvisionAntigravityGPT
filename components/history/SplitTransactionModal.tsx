@@ -3,6 +3,8 @@ import { X, Loader2, AlertCircle, Plus, Trash2, SplitSquareHorizontal } from 'lu
 import { formatCurrency } from '../../lib/historyUtils';
 import { SplitTransactionService, SplitSourceType, SplitDraft } from '../../services/splitTransaction.service';
 import { ReconciliationService } from '../../services/reconciliation.service';
+import { SearchableInput } from '../common/SearchableInput';
+import { normalizeStr } from '../../lib/stringUtils';
 
 interface SplitRow {
     key: string;
@@ -177,17 +179,13 @@ export const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({
                                     <div key={row.key} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
                                         <div className="flex items-center gap-2">
                                             <div className="flex-1 relative">
-                                                <input
-                                                    list={`split-categories-${row.key}`}
+                                                <SearchableInput
+                                                    options={categoryObjects.map(c => c.name)}
                                                     value={row.category}
-                                                    onFocus={(e) => e.target.select()}
-                                                    onChange={(e) => updateRow(row.key, { category: e.target.value })}
+                                                    onChange={(v) => updateRow(row.key, { category: v })}
                                                     placeholder="Categoria"
                                                     className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 text-sm outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
                                                 />
-                                                <datalist id={`split-categories-${row.key}`}>
-                                                    {categoryObjects.map(c => <option key={c.name} value={c.name} />)}
-                                                </datalist>
                                             </div>
                                             <button
                                                 type="button"
@@ -201,17 +199,13 @@ export const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({
                                         </div>
                                         <div className="grid grid-cols-2 gap-2">
                                             <div className="relative">
-                                                <input
-                                                    list={`split-subcategories-${row.key}`}
+                                                <SearchableInput
+                                                    options={subcategories.filter(s => normalizeStr(s.category_name || '') === normalizeStr(row.category || '')).map(s => s.name)}
                                                     value={row.subcategory}
-                                                    onFocus={(e) => e.target.select()}
-                                                    onChange={(e) => updateRow(row.key, { subcategory: e.target.value })}
+                                                    onChange={(v) => updateRow(row.key, { subcategory: v })}
                                                     placeholder="Subcategoria"
                                                     className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl font-semibold text-slate-600 text-xs outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
                                                 />
-                                                <datalist id={`split-subcategories-${row.key}`}>
-                                                    {subcategories.filter(s => s.category_name === row.category).map(s => <option key={s.id} value={s.name} />)}
-                                                </datalist>
                                             </div>
                                             <input
                                                 type="text"

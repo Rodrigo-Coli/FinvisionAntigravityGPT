@@ -25,6 +25,17 @@ export interface LedgerAccount { id: string; institution: string }
 
 export const NO_ACCOUNT = '__none__';
 
+/** "Moradia" e "moradia " são o mesmo nome: fica a primeira grafia. */
+const uniqueByName = (names: string[]): string[] => {
+  const seen = new Set<string>();
+  return names.filter(name => {
+    const key = normalizeStr(name || '');
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
 export function useLedgerOptions(enabled: boolean) {
   const [accounts, setAccounts] = useState<LedgerAccount[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -58,7 +69,7 @@ export function useLedgerOptions(enabled: boolean) {
         );
 
         const cats = (catRes.data || []).filter((c: any) => c.name && c.is_archived !== true);
-        setCategories(Array.from(new Set<string>(cats.map((c: any) => String(c.name)))).sort((a, b) => a.localeCompare(b, 'pt-BR')));
+        setCategories(uniqueByName(cats.map((c: any) => String(c.name))).sort((a, b) => a.localeCompare(b, 'pt-BR')));
         setSubcategories(
           (subRes.data || [])
             .map((s: any) => ({ name: s.name, category_name: cats.find((c: any) => c.id === s.category_id)?.name }))
@@ -83,9 +94,9 @@ export function useLedgerOptions(enabled: boolean) {
   const subcategoriesFor = useCallback((category: string): string[] => {
     const key = normalizeStr(category || '');
     if (!key) return [];
-    return Array.from(new Set(
+    return uniqueByName(
       subcategories.filter(s => normalizeStr(s.category_name || '') === key).map(s => s.name)
-    )).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [subcategories]);
 
   /** Categoria/subcategoria que o usuário já usou para descrições parecidas. */

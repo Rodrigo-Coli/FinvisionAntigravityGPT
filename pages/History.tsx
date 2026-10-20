@@ -43,6 +43,7 @@ import { HistoryCharts } from '../components/history/HistoryCharts';
 import { DreReportModal } from '../components/history/DreReportModal';
 import ContextualHelp from '../components/ContextualHelp';
 import { ArrowDownRight, ArrowUpRight, Wallet, Building2 } from 'lucide-react';
+import { findCategoryByName } from '../lib/categoryResolver';
 
 // Initial fallback categories
 const DEFAULT_CATEGORIES = [
@@ -1626,12 +1627,7 @@ const HistoryPage: React.FC = () => {
         if (tx?.metadata?.is_card) {
           let cardPatch = { ...patch };
           if (field === 'category') {
-            const { data: catRecord } = await supabase
-              .from('categories')
-              .select('id')
-              .eq('user_id', user.id)
-              .ilike('name', cleanValue)
-              .maybeSingle();
+            const { data: catRecord } = await findCategoryByName(supabase, user.id, cleanValue);
             if (catRecord) {
               cardPatch.category_id = catRecord.id;
               cardPatch.category = cleanValue;
@@ -2959,8 +2955,14 @@ const HistoryPage: React.FC = () => {
       // getSessionUser (e não auth.getSession): lê a sessão do aparelho com prazo.
       const user = await getSessionUser(supabase);
       if (!user) return;
-      await supabase.from('categories').insert({ user_id: user.id, name, type, color: 'bg-brand-50 text-brand-600' });
+      // Já existe (mesmo nome, com ou sem acento): usa ela — e, se era do
+      // outro tipo, passa a aparecer nos dois. Só cria quando não há nenhuma.
+      const { data: existing } = await findCategoryByName(supabase, user.id, name, type);
+      if (!existing) {
+        await supabase.from('categories').insert({ user_id: user.id, name, type, color: 'bg-brand-50 text-brand-600' });
+      }
       await fetchData(); // Refetch the list
+      return existing?.name || name;
     } catch (err) { toast('Erro ao criar categoria inline.', 'error'); }
   };
 

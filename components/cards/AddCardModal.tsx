@@ -1,5 +1,7 @@
 import React from 'react';
 import { X, Loader2, CheckCircle2, Star } from 'lucide-react';
+import { SearchableInput } from '../common/SearchableInput';
+import { normalizeStr } from '../../lib/stringUtils';
 
 interface AddCardModalProps {
     show: boolean;
@@ -210,31 +212,25 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Categoria Padrão</label>
-                                    <input
-                                        list="card-categories-list"
+                                    <SearchableInput
+                                        options={categories.map(c => c.name)}
                                         value={defaultCategory}
-                                        onChange={(e) => setDefaultCategory(e.target.value)}
+                                        onChange={setDefaultCategory}
                                         placeholder="Ex: Pessoal"
                                         className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-xs"
                                     />
-                                    <datalist id="card-categories-list">
-                                        {categories.map(c => <option key={c.id} value={c.name} />)}
-                                    </datalist>
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Subcategoria</label>
-                                    <input
-                                        list="card-subcategories-list"
+                                    <SearchableInput
+                                        options={subcategories
+                                            .filter(s => !defaultCategory || normalizeStr(s.category_name || '') === normalizeStr(defaultCategory))
+                                            .map(s => s.name)}
                                         value={defaultSubcategory}
-                                        onChange={(e) => setDefaultSubcategory(e.target.value)}
+                                        onChange={setDefaultSubcategory}
                                         placeholder="Opcional"
                                         className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-xs"
                                     />
-                                    <datalist id="card-subcategories-list">
-                                        {subcategories.filter(s => !defaultCategory || s.category_name === defaultCategory).map(s => (
-                                            <option key={s.id} value={s.name} />
-                                        ))}
-                                    </datalist>
                                 </div>
                             </div>
                             <p className="text-[9px] text-slate-400 font-medium italic ml-1">

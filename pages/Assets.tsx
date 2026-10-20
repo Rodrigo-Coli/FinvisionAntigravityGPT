@@ -68,6 +68,7 @@ import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 import { SearchableInput } from '../components/common/SearchableInput';
 import { useLedgerOptions, NO_ACCOUNT } from '../components/assets/useLedgerOptions';
 import { ReconciliationService } from '../services/reconciliation.service';
+import { findCategoryByName } from '../lib/categoryResolver';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -1694,12 +1695,7 @@ const Assets: React.FC = () => {
 
   const getOrCreateCategory = async (userId: string, name: string, type: 'INCOME' | 'EXPENSE', color: string) => {
     if (!supabase) return null;
-    const { data } = await supabase.from('categories')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('name', name)
-      .eq('type', type)
-      .maybeSingle();
+    const { data } = await findCategoryByName(supabase, userId, name, type);
     if (data) return data.id;
     const { data: newCat } = await supabase.from('categories').insert({
       user_id: userId,
@@ -2050,12 +2046,7 @@ const Assets: React.FC = () => {
       let catId = '';
       
       // Buscar ou criar categoria "Ativos Físicos"
-      const { data: existingCat } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('name', categoryName)
-        .maybeSingle();
+      const { data: existingCat } = await findCategoryByName(supabase, userId, categoryName);
 
       if (existingCat) {
         catId = existingCat.id;
@@ -2148,12 +2139,7 @@ const Assets: React.FC = () => {
 
         // Registrar recebimento da venda
         let revenueCatId = '';
-        const { data: revCat } = await supabase
-          .from('categories')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('name', 'Venda de Ativos')
-          .maybeSingle();
+        const { data: revCat } = await findCategoryByName(supabase, userId, 'Venda de Ativos');
         if (revCat) {
           revenueCatId = revCat.id;
         } else {
@@ -2436,12 +2422,7 @@ const Assets: React.FC = () => {
       let catId = '';
       
       // Buscar ou criar categoria "Patrimônio"
-      const { data: existingCat } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('name', categoryName)
-        .maybeSingle();
+      const { data: existingCat } = await findCategoryByName(supabase, userId, categoryName);
 
       if (existingCat) {
         catId = existingCat.id;
@@ -2515,12 +2496,7 @@ const Assets: React.FC = () => {
 
         // Registrar recebimento da venda
         let revenueCatId = '';
-        const { data: revCat } = await supabase
-          .from('categories')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('name', 'Venda de Ativos')
-          .maybeSingle();
+        const { data: revCat } = await findCategoryByName(supabase, userId, 'Venda de Ativos');
         if (revCat) {
           revenueCatId = revCat.id;
         } else {
@@ -2609,12 +2585,7 @@ const Assets: React.FC = () => {
         const rendimentoLiquido = Math.max(0, rendimento - platFee);
         
         let rentalCatId = '';
-        const { data: rentCat } = await supabase
-          .from('categories')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('name', 'Rendimento de Bens Físicos')
-          .maybeSingle();
+        const { data: rentCat } = await findCategoryByName(supabase, userId, 'Rendimento de Bens Físicos');
 
         if (rentCat) {
           rentalCatId = rentCat.id;
@@ -2846,12 +2817,7 @@ const Assets: React.FC = () => {
 
       // 3. Criar Transação de Receita
       let catId = null;
-      const { data: catRes } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('name', 'Investimentos')
-        .maybeSingle();
+      const { data: catRes } = await findCategoryByName(supabase, user.id, 'Investimentos');
 
       if (catRes) {
         catId = catRes.id;
@@ -2999,12 +2965,7 @@ const Assets: React.FC = () => {
   // Garante que a categoria "Investimentos" existe e devolve o id.
   const ensureInvestmentCategory = async (userId: string): Promise<string | null> => {
     if (!supabase) return null;
-    const { data: existing } = await supabase
-      .from('categories')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('name', 'Investimentos')
-      .maybeSingle();
+    const { data: existing } = await findCategoryByName(supabase, userId, 'Investimentos');
     if (existing) return existing.id;
     const { data: created } = await supabase
       .from('categories')
@@ -3522,12 +3483,7 @@ const Assets: React.FC = () => {
           }
 
           let catId = null;
-          const { data: catRes } = await supabase
-            .from('categories')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('name', 'Investimentos')
-            .maybeSingle();
+          const { data: catRes } = await findCategoryByName(supabase, user.id, 'Investimentos');
 
           if (catRes) {
             catId = catRes.id;
@@ -3627,12 +3583,7 @@ const Assets: React.FC = () => {
             const subcat = isAcumulado ? 'Rendimentos Acumulados' : 'Rendimentos Mensais';
             
             let catId = null;
-            const { data: catRes } = await supabase
-              .from('categories')
-              .select('id')
-              .eq('user_id', user.id)
-              .eq('name', 'Investimentos')
-              .maybeSingle();
+            const { data: catRes } = await findCategoryByName(supabase, user.id, 'Investimentos');
             
             if (catRes) {
               catId = catRes.id;
@@ -3892,12 +3843,7 @@ const Assets: React.FC = () => {
 
         if (isNewInvestmentRedemption && newAsset && value > 0) {
           let catId = null;
-          const { data: catRes } = await supabase
-            .from('categories')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('name', 'Investimentos')
-            .maybeSingle();
+          const { data: catRes } = await findCategoryByName(supabase, user.id, 'Investimentos');
 
           if (catRes) {
             catId = catRes.id;
@@ -3979,8 +3925,7 @@ const Assets: React.FC = () => {
         if (formData.isLoan && newAsset && loanPrincipalVal > 0) {
           const catName = 'Empréstimos/Investimentos';
           let catId = '';
-          const { data: existingCat } = await supabase.from('categories')
-            .select('id').eq('user_id', user.id).eq('name', catName).single();
+          const { data: existingCat } = await findCategoryByName(supabase, user.id, catName);
           if (existingCat) {
             catId = existingCat.id;
           } else {
@@ -4145,12 +4090,7 @@ const Assets: React.FC = () => {
         // 2. Comissão de venda (se houver)
         if (comission > 0) {
           let catId = null;
-          const { data: catRes } = await supabase
-            .from('categories')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('name', 'Ativos Imobiliários')
-            .maybeSingle();
+          const { data: catRes } = await findCategoryByName(supabase, user.id, 'Ativos Imobiliários');
           if (catRes) catId = catRes.id;
 
           await supabase.from('transactions').insert([{
@@ -4171,12 +4111,7 @@ const Assets: React.FC = () => {
 
         // 3. Receita da venda
         let revenueCatId = null;
-        const { data: revCat } = await supabase
-          .from('categories')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('name', 'Outras Receitas')
-          .maybeSingle();
+        const { data: revCat } = await findCategoryByName(supabase, user.id, 'Outras Receitas');
         if (revCat) {
           revenueCatId = revCat.id;
         } else {
@@ -5346,12 +5281,7 @@ ${tabelaHtml}
 
       if (hasHistory && paidAmount > 0) {
         const categoryName = 'Financiamento/Dívida';
-        const { data: existingCat } = await supabase
-          .from('categories')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('name', categoryName)
-          .single();
+        const { data: existingCat } = await findCategoryByName(supabase, userId, categoryName);
 
         let catId = existingCat?.id || null;
         if (!existingCat) {
@@ -5577,8 +5507,7 @@ ${tabelaHtml}
             const isLinkedRealEstateFinancing = liabilityFormData.type === 'MORTGAGE' && !!liabilityFormData.linkedAssetId;
             const categoryName = isLinkedRealEstateFinancing ? 'Ativos Imobiliários' : 'Financiamento/Dívida';
             let regenCatId: string | null = null;
-            const { data: regenCat } = await supabase.from('categories')
-              .select('id').eq('user_id', user.id).eq('name', categoryName).maybeSingle();
+            const { data: regenCat } = await findCategoryByName(supabase, user.id, categoryName);
             if (regenCat) {
               regenCatId = regenCat.id;
             } else {
@@ -5691,8 +5620,7 @@ ${tabelaHtml}
             const isLinkedRealEstateFinancing = liabilityFormData.type === 'MORTGAGE' && !!liabilityFormData.linkedAssetId;
             const categoryName = isLinkedRealEstateFinancing ? 'Ativos Imobiliários' : 'Financiamento/Dívida';
 
-            const { data: existingCat } = await supabase.from('categories')
-              .select('id').eq('user_id', user.id).eq('name', categoryName).single();
+            const { data: existingCat } = await findCategoryByName(supabase, user.id, categoryName);
 
             let catId = '';
             if (!existingCat) {
@@ -5939,12 +5867,7 @@ ${tabelaHtml}
 
       let catId = '';
       const categoryName = newTxForm.category || 'Financiamento/Dívida';
-      const { data: catRes } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('name', categoryName)
-        .single();
+      const { data: catRes } = await findCategoryByName(supabase, user.id, categoryName);
       if (catRes) {
         catId = catRes.id;
       } else {
@@ -6143,12 +6066,7 @@ ${tabelaHtml}
 
       // Ensure Category exists or get its id
       let catId = '';
-      const { data: catRes } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('name', newTxForm.category)
-        .single();
+      const { data: catRes } = await findCategoryByName(supabase, user.id, newTxForm.category, newTxForm.type);
       if (catRes) {
         catId = catRes.id;
       } else {
