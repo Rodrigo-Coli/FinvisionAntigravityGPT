@@ -399,13 +399,14 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         if (!user) return;
         const { data, error } = await supabase
           .from('categories')
-          .select('id, name')
+          .select('id, name, is_archived')
           .eq('user_id', user.id)
           .order('name', { ascending: true });
         if (error) throw error;
 
-        // Deduplicate categories by name
-        const rawList = data || [];
+        // Deduplicate categories by name (arquivadas ficam fora: senão a lista
+        // podia ficar com o id de uma duplicada arquivada no lugar da ativa)
+        const rawList = (data || []).filter((c: any) => c.is_archived !== true);
         const uniqueCategories: any[] = [];
         const seenCategories = new Set<string>();
         for (const c of rawList) {
@@ -753,7 +754,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       }
     }
     return Array.from(groups.values())
-      .map(g => ({ ...g, status: g.total_amount > 0 && g.paid_amount >= g.total_amount ? 'PAID' : 'OPEN' }))
+      // Zerada conta como paga: nada a pagar não é fatura em aberto.
+      .map(g => ({ ...g, status: g.total_amount <= 0 || g.paid_amount >= g.total_amount ? 'PAID' : 'OPEN' }))
       .sort((a, b) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime());
   };
 
@@ -907,8 +909,23 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         // seleção que sobrasse de outro cartão trazia os lançamentos daquele outro
         // cartão para a tela do atual. Como a fatura pertence a um cartão só, somar o
         // filtro de cartão não muda o resultado legítimo e fecha essa porta.
-        query = query.eq('card_id', cardId);
-        if (statementId) query = query.eq('statement_id', statementId);
+        //
+        // Exceção: compra do ADICIONAL que entrou na fatura do titular (quando o
+        // adicional ainda somava na fatura dele). Ela está na fatura, entra no total,
+        // mas o filtro por cartão a escondia — a fatura 05/2026 do titular mostrava
+        // R$ 824,78 e nenhuma compra. Por isso, se a fatura é DESTE cartão, a lista é
+        // a fatura inteira; e "Todo o Histórico" inclui o que está nas faturas dele.
+        const pool = statementsOverride || statements;
+        const ownStatementIds = pool.filter((s: any) => s.card_id === cardId && s.id).map((s: any) => s.id);
+        if (statementId && ownStatementIds.includes(statementId)) {
+          query = query.eq('statement_id', statementId);
+        } else if (statementId) {
+          query = query.eq('card_id', cardId).eq('statement_id', statementId);
+        } else if (ownStatementIds.length > 0) {
+          query = query.or(`card_id.eq.${cardId},statement_id.in.(${ownStatementIds.join(',')})`);
+        } else {
+          query = query.eq('card_id', cardId);
+        }
       }
 
       const { data, error } = await query;
@@ -2017,7 +2034,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     const s = String(currentStatement?.status || '').toUpperCase();
     if (!s) return null;
     const base = 'px-2 py-0.5 rounded text-[9px] font-black uppercase border';
-    if (s === 'PAID' || (statementTotal > 0 && statementOpen === 0)) return <span className={`${base} bg-emerald-50 text-emerald-700 border-emerald-100`}>Paga</span>;
+    // Zerada (nada a pagar) aparece como paga, nunca como "Aberta".
+    if (s === 'PAID' || statementOpen === 0) return <span className={`${base} bg-emerald-50 text-emerald-700 border-emerald-100`}>Paga</span>;
     if (s === 'DUE') return <span className={`${base} bg-rose-50 text-rose-700 border-rose-100`}>Vencendo</span>;
     if (s === 'OPEN' || s === 'PENDING') return <span className={`${base} bg-brand-50 text-brand-600 border-brand-100`}>Aberta</span>;
     return <span className={`${base} bg-slate-50 text-slate-600 border-slate-100`}>{s}</span>;

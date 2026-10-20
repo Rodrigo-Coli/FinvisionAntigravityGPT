@@ -1,12 +1,17 @@
 [
   {
-    "version": "2026.10.20.1028",
-    "title": "Cartão titular e adicional, categorias sem duplicadas e busca sem acento",
+    "version": "2026.10.20.1051",
+    "title": "Cartões titular e adicional, situação das faturas e categorias unificadas",
     "date": "20/10/2026",
     "benefits": [
       {
         "title": "Fatura certa ao abrir só o cartão titular",
-        "desc": "O cartão abria numa fatura antiga e vazia (de 2020) quando a do mês seguinte ainda não existia, e as faturas recentes apareciam fora de ordem. Agora ele abre na fatura do mês e lista as outras na ordem certa.",
+        "desc": "O cartão abria numa fatura antiga e vazia (de 2020) quando a do mês seguinte ainda não existia. Agora abre na fatura do mês, com as outras na ordem certa.",
+        "type": "correcao"
+      },
+      {
+        "title": "Compras do adicional dentro da fatura do titular",
+        "desc": "Quando o adicional somava na fatura do titular, essas compras entravam no total mas não apareciam na lista vendo só o titular. Agora a lista mostra a fatura inteira, batendo com o total.",
         "type": "correcao"
       },
       {
@@ -15,28 +20,34 @@
         "type": "correcao"
       },
       {
-        "title": "Aviso de faturas pendentes só com as passadas",
-        "desc": "O aviso de \"faturas anteriores pendentes\" não conta mais as parcelas futuras já lançadas.",
+        "title": "Abertas, fechadas e pagas",
+        "desc": "No seletor de período cada fatura mostra se está Aberta, Fechada (esperando pagamento) ou Paga, e dá para listar só as de uma situação.",
+        "type": "recurso"
+      },
+      {
+        "title": "Fatura zerada não é conta em aberto",
+        "desc": "Fatura sem valor aparece como paga e não fica mais como conta a pagar de R$ 0,00 no Histórico. O aviso de faturas pendentes também não conta parcelas futuras.",
         "type": "correcao"
       },
       {
-        "title": "Busca sem acento",
-        "desc": "Digitar \"saude\" encontra \"Saúde\", \"alimentacao\" encontra \"Alimentação\" — nas configurações de categorias, na conciliação, na divisão de lançamentos, no cadastro de cartão e nas buscas por descrição.",
+        "title": "Categorias unificadas",
+        "desc": "Categorias repetidas (Ativos Físicos, Investimento, Alimentação, Moradia, Transporte e outras) viraram uma só, com todos os lançamentos, valores e datas preservados. A que serve para entrada e saída aparece em Receitas e em Despesas.",
+        "type": "correcao"
+      },
+      {
+        "title": "Busca sem acento e sem novas duplicadas",
+        "desc": "Digitar \"saude\" encontra \"Saúde\". E lançar com uma categoria escrita de outro jeito (acento, maiúscula, espaço) usa a que já existe.",
         "type": "usabilidade"
-      },
-      {
-        "title": "Sem novas categorias duplicadas",
-        "desc": "Ao lançar com uma categoria que já existe escrita de outro jeito (com ou sem acento, maiúscula ou espaço), o app usa a existente. Uma categoria usada em receita e em despesa aparece nas duas listas, sem cópia para cada lado, e nomes repetidos aparecem uma vez só.",
-        "type": "correcao"
       }
     ],
     "changes": [
-      "`lib/cardStatements.ts`: `pickCurrentStatement` — sem fatura do período-alvo, a aberta mais próxima dele (antes: a aberta mais antiga, que podia ser uma vazia de 2020); usada em `CreditCardsSection.loadCardContext` e no resumo de cartões do Painel (`dashboard.service.ts`).",
-      "Visão consolidada: `familyStatements` guarda as faturas reais da família; o seletor de fatura de cada lançamento (`TransactionList`) usa essas, filtradas pelo cartão do lançamento (`statementOptionsForTx`), em vez das faturas somadas `combined:*`, que não batiam com o `statement_id`.",
-      "Aviso de faturas pendentes: só as anteriores à fatura vista.",
-      "`lib/categoryResolver.ts` (+ cópia `api/_lib/category-resolver.ts`): `findCategoryByName` compara o nome normalizado, aceita mais de uma linha igual (o `maybeSingle()` falhava e a tela criava outra) e, se a existente é do outro tipo, passa o `type` para nulo (vale para receita e despesa). Usado em bens, imóveis, Histórico, `finance.service`, WhatsApp e importação.",
-      "`pages/Settings.tsx`: categoria sem tipo nas duas abas; criar com nome existente só do outro tipo amplia a existente; renomear bloqueia nome de qualquer outra; busca com `normalizeStr`; `ensureInvestmentCategoriesAndSubcategories` mantém uma \"Investimento\" sem tipo.",
-      "`<datalist>` (filtro do navegador, sensível a acento) trocado por `SearchableInput` em Conciliação, divisão de lançamento e cadastro de cartão; opções repetidas (mesmo nome normalizado) aparecem uma vez; buscas por descrição/conta com `normalizeStr`."
+      "`lib/cardStatements.ts`: `pickCurrentStatement` (sem fatura do período, a aberta mais próxima; zerada não conta como aberta), `isSettledStatement`/`statementSituation` (Aberta/Fechada/Paga; zerada = paga), `statementOptionsForTx`. Usado em `CreditCardsSection`, `StatementPicker` e no resumo de cartões do Painel.",
+      "`CreditCardsSection.fetchTransactions` (titular sozinho): fatura do próprio cartão lista pelo `statement_id` (inclui compras do adicional que entraram nela); \"Todo o Histórico\" inclui o que está nas faturas do cartão.",
+      "Consolidado: `familyStatements` (faturas reais da família) no seletor de fatura de cada lançamento; faturas somadas zeradas ficam como pagas; aviso de pendentes só com as anteriores à fatura vista; selo \"Paga\" quando não há nada a pagar.",
+      "`StatementPicker`: selo de situação em cada fatura e filtro Todas/Abertas/Fechadas/Pagas.",
+      "`FinanceService.syncStatementToHistory`: espelho de fatura zerada e não paga fica `is_deleted` (volta no próximo sync se a fatura ganhar valor). Banco: 3 espelhos de R$ 0,00 escondidos.",
+      "`lib/categoryResolver.ts` (+ `api/_lib/category-resolver.ts`): busca de categoria pelo nome normalizado, sem falhar com duplicadas e ampliando para receita+despesa; Configurações mostram categoria sem tipo nas duas abas; `<datalist>` trocado por `SearchableInput`; buscas com `normalizeStr`; listas do cartão e da Conciliação sem categorias arquivadas.",
+      "Banco: 10 grupos de categorias duplicadas unificados (lançamentos, compras de cartão, divisões e subcategorias apontados para a que ficou; backup em `_backup_categorias_unificadas_20261020`); as 12 duplicadas, já vazias, foram arquivadas."
     ]
   },
   {

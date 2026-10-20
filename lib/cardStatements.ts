@@ -10,7 +10,8 @@
  *
  * Agora, sem a do período-alvo, fica a aberta MAIS PRÓXIMA dele (no empate, a
  * anterior — é a que vence primeiro); sem nenhuma aberta, a mais próxima de
- * qualquer situação. As antigas em aberto continuam no aviso de pendentes.
+ * qualquer situação. Zerada não conta como aberta. As antigas em aberto
+ * continuam no aviso de pendentes.
  */
 
 export interface StatementLike {
@@ -18,9 +19,35 @@ export interface StatementLike {
   year: number;
   month: number;
   status?: string | null;
+  total_amount?: number | string | null;
+  paid_amount?: number | string | null;
+  closing_date?: string | null;
 }
 
 const OPEN_STATUSES = ['OPEN', 'DUE', 'PENDING'];
+
+const money = (v: unknown) => Math.round((Number(v) || 0) * 100) / 100;
+
+/**
+ * Fatura quitada: paga, ou ZERADA (nada a pagar não é conta em aberto — uma
+ * fatura vazia de 2020 aparecia como "aberta" e virava a fatura atual).
+ */
+export const isSettledStatement = (s: StatementLike): boolean => {
+  const total = money(s.total_amount);
+  if (String(s.status || '').toUpperCase() === 'PAID') return true;
+  if (total <= 0) return true;
+  return money(s.paid_amount) >= total;
+};
+
+export type StatementSituation = 'ABERTA' | 'FECHADA' | 'PAGA';
+
+/** Paga (ou zerada), fechada esperando pagamento, ou aberta recebendo compras. */
+export function statementSituation(s: StatementLike, today: Date = new Date()): StatementSituation {
+  if (isSettledStatement(s)) return 'PAGA';
+  const closing = String(s.closing_date || '').slice(0, 10);
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  return closing && closing < todayStr ? 'FECHADA' : 'ABERTA';
+}
 
 const keyOf = (s: { year: number; month: number }) => Number(s.year) * 12 + Number(s.month);
 
@@ -42,7 +69,8 @@ export function pickCurrentStatement<T extends StatementLike>(
   if (exact) return exact;
 
   const target = targetYear * 12 + targetMonth;
-  const open = statements.filter(s => OPEN_STATUSES.includes(String(s.status || '').toUpperCase()));
+  // Zerada não conta como aberta (ver isSettledStatement).
+  const open = statements.filter(s => OPEN_STATUSES.includes(String(s.status || '').toUpperCase()) && !isSettledStatement(s));
   return nearest(open, target) || nearest(statements, target);
 }
 
@@ -68,5 +96,9 @@ export function statementOptionsForTx<T extends StatementLike & { card_id?: stri
   statements: T[],
   tx: { card_id?: string | null; statement_id?: string | null }
 ): T[] {
-  return statements.filter(s => !s.card_id || !tx.card_id || s.card_id === tx.card_id || s.id === tx.statement_id);
+  // Cartões cujas faturas valem para o lançamento: o dele e o dono da fatura em
+  // que ele está (compra do adicional que entrou na fatura do titular pode ser
+  // movida entre as faturas do titular).
+  const holder = statements.find(s => s.id === tx.statement_id)?.card_id;
+  return statements.filter(s => !s.card_id || !tx.card_id || s.card_id === tx.card_id || (!!holder && s.card_id === holder));
 }

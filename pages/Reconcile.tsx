@@ -148,7 +148,9 @@ const Reconcile: React.FC = () => {
     const { data: { session } } = await supabase.auth.getSession();
     const user = session?.user;
     if (!user) return;
-    const { data: cats } = await supabase.from('categories').select('id, name').eq('user_id', user.id);
+    // Arquivadas ficam fora da lista (ex.: as duplicadas que foram unificadas).
+    const { data: allCats } = await supabase.from('categories').select('id, name, is_archived').eq('user_id', user.id);
+    const cats = (allCats || []).filter((c: any) => c.is_archived !== true);
     const { data: subs } = await supabase.from('subcategories').select('*').eq('user_id', user.id);
     if (subs && cats) {
       const mapped = subs.map((s: any) => {

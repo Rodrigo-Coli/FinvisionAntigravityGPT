@@ -779,7 +779,10 @@ export const FinanceService = {
           card_statement_id: statementId,
           is_provision: true
         },
-        is_deleted: false
+        // Fatura zerada e não paga não é conta a pagar: o espelho sai do
+        // Histórico (fica guardado como removido) e volta sozinho no próximo
+        // sync se a fatura ganhar valor.
+        is_deleted: !isPaidFinal && amount <= 0
       };
 
       if (queryTx) {
