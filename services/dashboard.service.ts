@@ -3,6 +3,7 @@ import { DashboardData } from '../types';
 import { projectionService } from './projection.service';
 import { safeStorage } from '../lib/safeStorage';
 import { getSessionUser } from '../lib/session';
+import { pickCurrentStatement as pickStatementFor, targetStatementPeriod } from '../lib/cardStatements';
 
 export const DashboardService = {
   getSummary: async (): Promise<DashboardData> => {
@@ -82,26 +83,8 @@ export const DashboardService = {
     const pickCurrentStatement = (card: any) => {
       const mine = allStatements.filter((s: any) => s.card_id === card.id);
       if (mine.length === 0) return null;
-
-      const now = new Date();
-      let targetMonth = now.getMonth(); // 0-indexed
-      let targetYear = now.getFullYear();
-      if (card.closing_day && now.getDate() > Number(card.closing_day)) {
-        targetMonth++;
-        if (targetMonth > 11) { targetMonth = 0; targetYear++; }
-      }
-
-      const exact = mine.find((s: any) => Number(s.month) === targetMonth + 1 && Number(s.year) === targetYear);
-      if (exact) return exact;
-
-      // Sem fatura do período: a próxima a vencer entre as abertas.
-      const open = mine
-        .filter((s: any) => ['OPEN', 'DUE', 'PENDING'].includes(s.status))
-        .sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
-      if (open.length > 0) return open[0];
-
-      // Último recurso: a fatura mais recente que existir.
-      return [...mine].sort((a: any, b: any) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime())[0];
+      const { year, month } = targetStatementPeriod(new Date(), Number(card.closing_day) || null);
+      return pickStatementFor<any>(mine, year, month) || null;
     };
 
     const creditCardsSummary = displayCards.map((card: any) => {

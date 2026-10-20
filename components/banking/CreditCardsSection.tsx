@@ -19,6 +19,7 @@ import { TransactionList } from '../cards/TransactionList';
 import { AddCardModal } from '../cards/AddCardModal';
 import { ManualTransactionModal } from '../cards/ManualTransactionModal';
 import { StatementPicker } from '../cards/StatementPicker';
+import { pickCurrentStatement, targetStatementPeriod } from '../../lib/cardStatements';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import PlanUpgradeModal from '../subscription/PlanUpgradeModal';
 import { PayStatementModal } from '../cards/PayStatementModal';
@@ -58,6 +59,10 @@ const CreditCardsSection: React.FC = () => {
   // para editar/arquivar/etc.), mas statements/transactions passam a agregar todos
   // os ids desta lista, ignorando o antigo sums_into_invoice.
   const [combinedCardIds, setCombinedCardIds] = useState<string[] | null>(null);
+  // Na visão consolidada, `statements` são faturas somadas (não existem no banco).
+  // Estas são as faturas reais de cada cartão da família: é delas que o lançamento
+  // escolhe a sua (ele guarda o id da fatura real do próprio cartão).
+  const [familyStatements, setFamilyStatements] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   // Histórico recente de lançamentos do cartão (para sugestões de descrição que preenchem categoria/subcategoria)
   const [recentTxs, setRecentTxs] = useState<any[]>([]);
@@ -692,40 +697,13 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       // Priorizamos o selectedCard se o ID bater, para evitar falha se o array 'cards' ainda estiver carregando
       const card = (selectedCard?.id === cardId ? selectedCard : cards.find(c => c.id === cardId));
 
-      const now = new Date();
-      const localDay = now.getDate();
-      let localMonth = now.getMonth(); // 0-indexed (Fev = 1)
-      let localYear = now.getFullYear();
+      // Regra de Fechamento: se passou do dia de fechamento, a compra cai na próxima fatura
+      const { year: targetYear, month: targetMonth } = targetStatementPeriod(new Date(), card?.closing_day);
 
-      // Regra de Fechamento: Se passou do dia de fechamento, a compra cai na próxima fatura
-      if (card?.closing_day && localDay > card.closing_day) {
-        localMonth++;
-        if (localMonth > 11) {
-          localMonth = 0;
-          localYear++;
-        }
-      }
-
-      const targetMonth = localMonth + 1; // 1-indexed para o banco
-      const targetYear = localYear;
-
-
-
-      // 2. Tentar encontrar a fatura que corresponde EXATAMENTE a este período de uso
-      let current = allStatements.find((s: any) => s.month === targetMonth && s.year === targetYear);
-
-      // 3. Fallback inteligente: Se não houver fatura do mês atual, pega a fatura aberta mais antiga/próxima (a que deve ser paga logo)
-      if (!current) {
-        const openStatements = [...allStatements]
-          .filter(s => ['OPEN', 'DUE', 'PENDING'].includes(s.status))
-          .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
-        current = openStatements[0];
-      }
-
-      // 4. Último recurso: A fatura mais recente do banco
-      if (!current) {
-        current = allStatements[0];
-      }
+      // 2. A fatura do período-alvo; sem ela, a aberta mais próxima dele (e não a
+      // aberta mais ANTIGA: uma fatura vazia de 2020 esquecida em aberto fazia a
+      // tela abrir em 2020, sem as compras do mês). Ver lib/cardStatements.ts.
+      const current = pickCurrentStatement(allStatements, targetYear, targetMonth);
 
       setCurrentStatement(current || null);
       // Memoriza a fatura atual "de verdade" para o seletor sempre conseguir voltar a ela
@@ -787,6 +765,12 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     if (cachedData.length > 0) {
       setStatements(cachedData);
     }
+    const rawCacheKey = `${cacheKey}_raw`;
+    if (familyIds) {
+      try { setFamilyStatements(JSON.parse(localStorage.getItem(rawCacheKey) || '[]')); } catch { setFamilyStatements([]); }
+    } else {
+      setFamilyStatements([]);
+    }
 
     if (!supabase || isProbablyOffline()) return cachedData;
     try {
@@ -800,6 +784,10 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       if (error) throw error;
       const result = familyIds ? buildCombinedStatements(data || [], cardId) : (data || []);
       localStorage.setItem(cacheKey, JSON.stringify(result));
+      if (familyIds) {
+        setFamilyStatements(data || []);
+        localStorage.setItem(rawCacheKey, JSON.stringify(data || []));
+      }
       setStatements(result);
       return result;
     } catch (err) {
@@ -2035,10 +2023,13 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     return <span className={`${base} bg-slate-50 text-slate-600 border-slate-100`}>{s}</span>;
   })();
 
+  // Só as ANTERIORES à fatura vista: o aviso fala de "períodos passados", e as
+  // futuras (parcelas já lançadas) também ficam "abertas" — não são pendência.
   const otherOpenStatements = statements.filter(s => 
     s.id !== currentStatement?.id && 
     ['OPEN', 'DUE', 'PENDING'].includes(s.status) && 
-    Number(s.total_amount || 0) > Number(s.paid_amount || 0)
+    Number(s.total_amount || 0) > Number(s.paid_amount || 0) &&
+    (!currentStatement || (s.year * 12 + s.month) < (currentStatement.year * 12 + currentStatement.month))
   );
 
   // Sugestões de tag: as da fatura aberta MAIS o catálogo local (tags já vistas
@@ -2373,7 +2364,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
                     onDeleteAttachment={handleDeleteAttachment}
                     onViewAttachment={handleViewAttachment}
                     showStatementScope={selectedStatementId !== 'ALL'}
-                    statements={statements}
+                    statements={combinedCardIds ? familyStatements : statements}
                     isLocked={currentStatement?.status === 'PAID'}
                   />
                 </div>

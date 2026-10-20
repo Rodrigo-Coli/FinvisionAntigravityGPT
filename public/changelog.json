@@ -1,17 +1,22 @@
 {
-  "version": "2026.10.19.2345",
-  "title": "Categorias sem duplicadas e busca sem acento",
-  "date": "19/10/2026",
+  "version": "2026.10.20.1028",
+  "title": "Cartão titular e adicional, categorias sem duplicadas e busca sem acento",
+  "date": "20/10/2026",
   "benefits": [
     {
-      "title": "Uma categoria só para cada nome",
-      "desc": "Categorias que estavam repetidas (como Ativos Físicos, Investimento, Alimentação, Moradia e Transporte) foram juntadas numa só, com todos os lançamentos, valores e datas preservados. Agora aparece só uma opção em transações, cartões, veículos, imóveis e no resto do app.",
+      "title": "Fatura certa ao abrir só o cartão titular",
+      "desc": "O cartão abria numa fatura antiga e vazia (de 2020) quando a do mês seguinte ainda não existia, e as faturas recentes apareciam fora de ordem. Agora ele abre na fatura do mês e lista as outras na ordem certa.",
       "type": "correcao"
     },
     {
-      "title": "Aparece em Receitas e em Despesas",
-      "desc": "Quando a mesma categoria é usada para entrada e saída de dinheiro, ela passa a aparecer nas duas listas, sem precisar de uma cópia para cada lado.",
-      "type": "usabilidade"
+      "title": "Fatura dos lançamentos no consolidado",
+      "desc": "Vendo titular + adicionais juntos, cada lançamento mostrava \"Nenhuma fatura\". Agora mostra a fatura em que ele está, e dá para trocá-la ali mesmo.",
+      "type": "correcao"
+    },
+    {
+      "title": "Aviso de faturas pendentes só com as passadas",
+      "desc": "O aviso de \"faturas anteriores pendentes\" não conta mais as parcelas futuras já lançadas.",
+      "type": "correcao"
     },
     {
       "title": "Busca sem acento",
@@ -19,18 +24,17 @@
       "type": "usabilidade"
     },
     {
-      "title": "Sem novas duplicadas",
-      "desc": "Ao lançar algo com uma categoria que já existe escrita de outro jeito (com ou sem acento, maiúscula ou espaço), o app usa a existente em vez de criar outra.",
+      "title": "Sem novas categorias duplicadas",
+      "desc": "Ao lançar com uma categoria que já existe escrita de outro jeito (com ou sem acento, maiúscula ou espaço), o app usa a existente. Uma categoria usada em receita e em despesa aparece nas duas listas, sem cópia para cada lado, e nomes repetidos aparecem uma vez só.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "`lib/categoryResolver.ts` (+ cópia `api/_lib/category-resolver.ts`): `findCategoryByName` compara o nome normalizado (acento/maiúscula/espaço), aceita mais de uma linha igual (o `maybeSingle()` falhava e a tela criava outra) e, se a existente é do outro tipo, passa o `type` para nulo (vale para receita e despesa).",
-    "Buscas por nome exato trocadas por `findCategoryByName` em `pages/Assets.tsx`, `RealEstateDetailModal`, `RealEstateWizardModal`, `realEstatePropertySync`, `History.tsx`, `finance.service.ts`, `whatsapp-webhook` e importação de banco/cartão.",
-    "`pages/Settings.tsx`: categoria sem tipo aparece nas duas abas; criar com nome que existe só do outro tipo amplia a existente; renomear bloqueia nome de qualquer outra; busca com `normalizeStr`; `ensureInvestmentCategoriesAndSubcategories` mantém uma \"Investimento\" sem tipo em vez de duas.",
-    "`SearchableInput`, `useLedgerOptions`, seletor de categoria do Histórico/novo lançamento: opções repetidas (mesmo nome normalizado) aparecem uma vez.",
-    "`<datalist>` (filtro do navegador, sensível a acento) trocado por `SearchableInput` em Conciliação, divisão de lançamento e cadastro de cartão; buscas por descrição/conta com `normalizeStr`.",
-    "Criação inline de categoria (cartão, IA, Histórico) usa a existente quando o nome normalizado já existe.",
-    "Banco: 10 grupos de categorias duplicadas unificados (lançamentos, compras de cartão, divisões, orçamentos e subcategorias apontados para a que ficou), com backup antes."
+    "`lib/cardStatements.ts`: `pickCurrentStatement` — sem fatura do período-alvo, a aberta mais próxima dele (antes: a aberta mais antiga, que podia ser uma vazia de 2020); usada em `CreditCardsSection.loadCardContext` e no resumo de cartões do Painel (`dashboard.service.ts`).",
+    "Visão consolidada: `familyStatements` guarda as faturas reais da família; o seletor de fatura de cada lançamento (`TransactionList`) usa essas, filtradas pelo cartão do lançamento (`statementOptionsForTx`), em vez das faturas somadas `combined:*`, que não batiam com o `statement_id`.",
+    "Aviso de faturas pendentes: só as anteriores à fatura vista.",
+    "`lib/categoryResolver.ts` (+ cópia `api/_lib/category-resolver.ts`): `findCategoryByName` compara o nome normalizado, aceita mais de uma linha igual (o `maybeSingle()` falhava e a tela criava outra) e, se a existente é do outro tipo, passa o `type` para nulo (vale para receita e despesa). Usado em bens, imóveis, Histórico, `finance.service`, WhatsApp e importação.",
+    "`pages/Settings.tsx`: categoria sem tipo nas duas abas; criar com nome existente só do outro tipo amplia a existente; renomear bloqueia nome de qualquer outra; busca com `normalizeStr`; `ensureInvestmentCategoriesAndSubcategories` mantém uma \"Investimento\" sem tipo.",
+    "`<datalist>` (filtro do navegador, sensível a acento) trocado por `SearchableInput` em Conciliação, divisão de lançamento e cadastro de cartão; opções repetidas (mesmo nome normalizado) aparecem uma vez; buscas por descrição/conta com `normalizeStr`."
   ]
 }
