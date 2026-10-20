@@ -1,51 +1,29 @@
 {
-  "version": "2026.10.20.1051",
-  "title": "Cartões titular e adicional, situação das faturas e categorias unificadas",
+  "version": "2026.10.20.1146",
+  "title": "Tags em Configurações: criar, arquivar e excluir",
   "date": "20/10/2026",
   "benefits": [
     {
-      "title": "Fatura certa ao abrir só o cartão titular",
-      "desc": "O cartão abria numa fatura antiga e vazia (de 2020) quando a do mês seguinte ainda não existia. Agora abre na fatura do mês, com as outras na ordem certa.",
-      "type": "correcao"
-    },
-    {
-      "title": "Compras do adicional dentro da fatura do titular",
-      "desc": "Quando o adicional somava na fatura do titular, essas compras entravam no total mas não apareciam na lista vendo só o titular. Agora a lista mostra a fatura inteira, batendo com o total.",
-      "type": "correcao"
-    },
-    {
-      "title": "Fatura dos lançamentos no consolidado",
-      "desc": "Vendo titular + adicionais juntos, cada lançamento mostrava \"Nenhuma fatura\". Agora mostra a fatura em que ele está, e dá para trocá-la ali mesmo.",
-      "type": "correcao"
-    },
-    {
-      "title": "Abertas, fechadas e pagas",
-      "desc": "No seletor de período cada fatura mostra se está Aberta, Fechada (esperando pagamento) ou Paga, e dá para listar só as de uma situação.",
+      "title": "Tela de Tags em Configurações",
+      "desc": "Em Ajustes > Tags você vê todas as tags, quantos lançamentos usam cada uma, e pode criar, arquivar ou excluir.",
       "type": "recurso"
     },
     {
-      "title": "Fatura zerada não é conta em aberto",
-      "desc": "Fatura sem valor aparece como paga e não fica mais como conta a pagar de R$ 0,00 no Histórico. O aviso de faturas pendentes também não conta parcelas futuras.",
-      "type": "correcao"
-    },
-    {
-      "title": "Categorias unificadas",
-      "desc": "Categorias repetidas (Ativos Físicos, Investimento, Alimentação, Moradia, Transporte e outras) viraram uma só, com todos os lançamentos, valores e datas preservados. A que serve para entrada e saída aparece em Receitas e em Despesas.",
-      "type": "correcao"
-    },
-    {
-      "title": "Busca sem acento e sem novas duplicadas",
-      "desc": "Digitar \"saude\" encontra \"Saúde\". E lançar com uma categoria escrita de outro jeito (acento, maiúscula, espaço) usa a que já existe.",
+      "title": "Arquivar tira das sugestões",
+      "desc": "Tag arquivada não aparece mais para tocar na hora de lançar. Os lançamentos antigos continuam com ela, e o filtro do Histórico ainda a encontra.",
       "type": "usabilidade"
+    },
+    {
+      "title": "Excluir tira dos lançamentos",
+      "desc": "Excluir uma tag a retira de todos os lançamentos (banco e cartão), com aviso de quantos serão afetados. Os lançamentos continuam, só sem a tag.",
+      "type": "recurso"
     }
   ],
   "changes": [
-    "`lib/cardStatements.ts`: `pickCurrentStatement` (sem fatura do período, a aberta mais próxima; zerada não conta como aberta), `isSettledStatement`/`statementSituation` (Aberta/Fechada/Paga; zerada = paga), `statementOptionsForTx`. Usado em `CreditCardsSection`, `StatementPicker` e no resumo de cartões do Painel.",
-    "`CreditCardsSection.fetchTransactions` (titular sozinho): fatura do próprio cartão lista pelo `statement_id` (inclui compras do adicional que entraram nela); \"Todo o Histórico\" inclui o que está nas faturas do cartão.",
-    "Consolidado: `familyStatements` (faturas reais da família) no seletor de fatura de cada lançamento; faturas somadas zeradas ficam como pagas; aviso de pendentes só com as anteriores à fatura vista; selo \"Paga\" quando não há nada a pagar.",
-    "`StatementPicker`: selo de situação em cada fatura e filtro Todas/Abertas/Fechadas/Pagas.",
-    "`FinanceService.syncStatementToHistory`: espelho de fatura zerada e não paga fica `is_deleted` (volta no próximo sync se a fatura ganhar valor). Banco: 3 espelhos de R$ 0,00 escondidos.",
-    "`lib/categoryResolver.ts` (+ `api/_lib/category-resolver.ts`): busca de categoria pelo nome normalizado, sem falhar com duplicadas e ampliando para receita+despesa; Configurações mostram categoria sem tipo nas duas abas; `<datalist>` trocado por `SearchableInput`; buscas com `normalizeStr`; listas do cartão e da Conciliação sem categorias arquivadas.",
-    "Banco: 10 grupos de categorias duplicadas unificados (lançamentos, compras de cartão, divisões e subcategorias apontados para a que ficou; backup em `_backup_categorias_unificadas_20261020`); as 12 duplicadas, já vazias, foram arquivadas."
+    "Banco: tabela `tags` (RLS do dono, nome único sem acento/maiúscula) e funções `tag_usage_counts()` / `remove_tag_from_entries(p_tag)` — `supabase/2026-10-20_tags.sql`.",
+    "`services/tags.service.ts`: `syncTagSettings` (cópia no aparelho, no máximo a cada 5 min), `listTags`, `createTag`, `setTagArchived`, `deleteTag`.",
+    "`lib/tagUtils.ts`: cadastro local (`created`/`archived`); `getKnownTags`/`suggestTags` sem as arquivadas; `forgetTag` ao excluir. `TagsInput` sincroniza ao abrir e não sugere arquivadas.",
+    "`components/settings/TagsSettings.tsx` + seção `tags` em Configurações e no menu lateral.",
+    "Histórico: o filtro de tags continua listando as arquivadas (`collectTags`), separado das sugestões."
   ]
 }

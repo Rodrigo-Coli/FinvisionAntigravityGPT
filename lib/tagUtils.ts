@@ -118,13 +118,77 @@ const KNOWN_TAGS_KEY = 'finvision_known_tags';
 /** Teto do catálogo: evita crescer sem limite no localStorage. */
 const KNOWN_TAGS_LIMIT = 400;
 
-/** Tags já conhecidas neste aparelho, em ordem alfabética. */
+/**
+ * Cadastro de tags (Configurações > Tags)
+ * ---------------------------------------
+ * Sem cadastro, toda tag já usada virava sugestão para sempre: criou uma vez,
+ * ficava aparecendo para tocar em todo lançamento. O cadastro mora na tabela
+ * `tags` (services/tags.service.ts) e uma cópia fica aqui no aparelho, para as
+ * sugestões funcionarem offline e sem esperar a rede:
+ * - `created`: tags criadas em Configurações (sugeridas mesmo sem uso);
+ * - `archived`: tags arquivadas — NUNCA são sugeridas. Os lançamentos que já
+ *   as têm continuam com elas (e o filtro do Histórico ainda as encontra).
+ */
+const TAG_SETTINGS_KEY = 'finvision_tag_settings';
+
+export interface TagSettings { created: string[]; archived: string[] }
+
+export function getTagSettings(): TagSettings {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TAG_SETTINGS_KEY) || '{}');
+    return { created: parseTags(parsed?.created), archived: parseTags(parsed?.archived) };
+  } catch {
+    return { created: [], archived: [] };
+  }
+}
+
+export function saveTagSettings(settings: TagSettings): void {
+  try {
+    localStorage.setItem(TAG_SETTINGS_KEY, JSON.stringify({
+      created: parseTags(settings.created),
+      archived: parseTags(settings.archived)
+    }));
+  } catch { /* sem storage: vale só nesta sessão */ }
+}
+
+/** A tag está arquivada (não deve ser sugerida)? */
+export function isTagArchived(tag: string, settings: TagSettings = getTagSettings()): boolean {
+  const key = normalizeTag(tag);
+  return settings.archived.some(t => normalizeTag(t) === key);
+}
+
+/** Tira as arquivadas de uma lista de sugestões. */
+export function withoutArchivedTags(tags: string[], settings: TagSettings = getTagSettings()): string[] {
+  if (settings.archived.length === 0) return tags;
+  const archived = new Set(settings.archived.map(normalizeTag));
+  return tags.filter(t => !archived.has(normalizeTag(t)));
+}
+
+/** Esquece a tag no catálogo do aparelho (ela foi excluída). */
+export function forgetTag(tag: string): void {
+  const key = normalizeTag(tag);
+  try {
+    const raw = localStorage.getItem(KNOWN_TAGS_KEY);
+    const list = parseTags(raw ? JSON.parse(raw) : []);
+    localStorage.setItem(KNOWN_TAGS_KEY, JSON.stringify(list.filter(t => normalizeTag(t) !== key)));
+  } catch { /* nada a fazer */ }
+  const settings = getTagSettings();
+  saveTagSettings({
+    created: settings.created.filter(t => normalizeTag(t) !== key),
+    archived: settings.archived.filter(t => normalizeTag(t) !== key)
+  });
+}
+
+/** Tags já conhecidas neste aparelho (sem as arquivadas), em ordem alfabética. */
 export function getKnownTags(): string[] {
   try {
     const raw = localStorage.getItem(KNOWN_TAGS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return parseTags(Array.isArray(parsed) ? parsed : []);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const settings = getTagSettings();
+    return withoutArchivedTags(
+      parseTags([...(Array.isArray(parsed) ? parsed : []), ...settings.created]),
+      settings
+    ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   } catch {
     return []; // storage indisponível (modo privado, cota): segue sem sugestões
   }
@@ -139,7 +203,9 @@ export function rememberTags(input: unknown): string[] {
   const incoming = parseTags(input);
   if (incoming.length === 0) return getKnownTags();
 
-  const merged = parseTags([...getKnownTags(), ...incoming])
+  let stored: string[] = [];
+  try { stored = parseTags(JSON.parse(localStorage.getItem(KNOWN_TAGS_KEY) || '[]')); } catch { stored = []; }
+  const merged = parseTags([...stored, ...incoming])
     .sort((a, b) => a.localeCompare(b, 'pt-BR'))
     .slice(0, KNOWN_TAGS_LIMIT);
 
@@ -148,7 +214,7 @@ export function rememberTags(input: unknown): string[] {
   } catch {
     /* cota estourada: as sugestões desta sessão continuam valendo em memória */
   }
-  return merged;
+  return getKnownTags();
 }
 
 /**
@@ -159,5 +225,5 @@ export function rememberTags(input: unknown): string[] {
 export function suggestTags(...rowGroups: any[][]): string[] {
   const onScreen = collectTags(...rowGroups);
   const known = onScreen.length > 0 ? rememberTags(onScreen) : getKnownTags();
-  return parseTags([...onScreen, ...known]).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return withoutArchivedTags(parseTags([...onScreen, ...known])).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
