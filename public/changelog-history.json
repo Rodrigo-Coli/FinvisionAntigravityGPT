@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.10.19.2310",
+    "title": "Lançamentos de veículos e imóveis com conta e categorias",
+    "date": "19/10/2026",
+    "benefits": [
+      {
+        "title": "Escolha a conta do lançamento",
+        "desc": "No extrato do veículo, dos outros bens e no lançador de gastos do imóvel agora você escolhe de qual conta saiu (ou entrou) o dinheiro. O saldo do banco passa a acompanhar. Se não quiser mexer no saldo, há a opção \"Sem conta\".",
+        "type": "correcao"
+      },
+      {
+        "title": "Categorias e subcategorias que você já usa",
+        "desc": "Os campos de categoria e subcategoria mostram as que já existem enquanto você digita, e ainda dá para criar uma nova.",
+        "type": "usabilidade"
+      },
+      {
+        "title": "Sugestão pela descrição",
+        "desc": "Ao escrever a descrição, o app sugere a categoria e a subcategoria que você já usou em lançamentos parecidos. É só tocar para usar.",
+        "type": "recurso"
+      }
+    ],
+    "changes": [
+      "`components/assets/useLedgerOptions.ts`: carrega contas ativas, categorias/subcategorias e o histórico classificado quando o formulário abre; `suggestFor` usa `suggestCategory` (mesma regra do cupom).",
+      "`pages/Assets.tsx` (extrato do card): `SearchableInput` em categoria/subcategoria, chip de sugestão, seletor de conta (obrigatório no lançamento atual; \"Sem conta\" explícito); grava `account_id`/`account_name`, cria a subcategoria nova e recalcula o saldo da conta.",
+      "`components/assets/RealEstateDetailModal.tsx` (Registrar Gasto): o tipo continua definindo `property_tx_type`; categoria/subcategoria editáveis com sugestões, conta do lançamento e recálculo do saldo quando pago."
+    ]
+  },
+  {
     "version": "2026.10.19.1507",
     "title": "IA usa o plano gratuito primeiro",
     "date": "19/10/2026",

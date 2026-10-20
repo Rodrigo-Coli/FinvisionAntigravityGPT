@@ -65,6 +65,9 @@ import { computeInstallmentAmount, buildInstallmentDate } from '../lib/amortizat
 import { SALE_FREQUENCY_OPTIONS, previewSaleInstallment, syncSaleInstallmentPlan, addSalePeriod, isSaleFrequency, readSalePlanSettings } from '../lib/saleInstallments';
 import { useToast } from '../contexts/ToastContext';
 import { useReconnectRefresh } from '../lib/useReconnectRefresh';
+import { SearchableInput } from '../components/common/SearchableInput';
+import { useLedgerOptions, NO_ACCOUNT } from '../components/assets/useLedgerOptions';
+import { ReconciliationService } from '../services/reconciliation.service';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -339,6 +342,9 @@ const Assets: React.FC = () => {
   const [liabilityExtratoLoading, setLiabilityExtratoLoading] = useState(false);
   const [showExtratoModal, setShowExtratoModal] = useState(false);
   const [isAddingExtratoTx, setIsAddingExtratoTx] = useState(false);
+  // Contas, categorias/subcategorias existentes e sugestão pelo histórico — só
+  // carregam quando o formulário de lançamento do extrato abre.
+  const ledgerOptions = useLedgerOptions(isAddingExtratoTx);
   // Edição inline de um lançamento já registrado no extrato.
   const [editingExtratoTxId, setEditingExtratoTxId] = useState<string | null>(null);
   const [editingExtratoDraft, setEditingExtratoDraft] = useState<{ description: string; amount: string; date: string } | null>(null);
@@ -566,15 +572,29 @@ const Assets: React.FC = () => {
   });
 
   // Modal new transaction local form
-  const [newTxForm, setNewTxForm] = useState({
+  // `accountId`: conta bancária do lançamento ('' = ainda não escolhida,
+  // NO_ACCOUNT = de propósito sem conta). Opcional no tipo porque os outros
+  // formulários que reutilizam este estado (passivos) não têm o campo.
+  const [newTxForm, setNewTxForm] = useState<{
+    description: string;
+    amount: string;
+    type: 'INCOME' | 'EXPENSE';
+    date: string;
+    isHistorical: boolean;
+    category: string;
+    subcategory: string;
+    isCapitalized: boolean;
+    accountId?: string;
+  }>({
     description: '',
     amount: '',
-    type: 'EXPENSE' as 'INCOME' | 'EXPENSE',
+    type: 'EXPENSE',
     date: DateUtils.formatToISODate(),
     isHistorical: false,
     category: 'Outros',
     subcategory: '',
-    isCapitalized: false
+    isCapitalized: false,
+    accountId: ''
   });
 
   // INCC Fetcher
@@ -6110,6 +6130,17 @@ ${tabelaHtml}
         return;
       }
 
+      // Conta do lançamento: antes não havia o campo e o lançamento entrava
+      // pago sem conta nenhuma — o saldo do banco não se mexia. Lançamento
+      // atual exige a escolha (uma conta ou "Sem conta" de propósito); o
+      // passado pode ficar sem, porque costuma ser anterior ao saldo inicial.
+      const chosenAccount = newTxForm.accountId || '';
+      if (!chosenAccount && !newTxForm.isHistorical && ledgerOptions.accounts.length > 0) {
+        toast('Escolha a conta de onde saiu ou entrou o dinheiro (ou "Sem conta").', 'warning');
+        return;
+      }
+      const accountId = chosenAccount && chosenAccount !== NO_ACCOUNT ? chosenAccount : null;
+
       // Ensure Category exists or get its id
       let catId = '';
       const { data: catRes } = await supabase
@@ -6144,6 +6175,13 @@ ${tabelaHtml}
         metadata.type = 'short_stay_income';
       }
 
+      // Subcategoria digitada que ainda não existe passa a existir (como no
+      // Histórico), para aparecer nas sugestões da próxima vez.
+      const subcategory = (newTxForm.subcategory || '').trim();
+      if (catId && subcategory) {
+        try { await ReconciliationService.ensureSubcategoryExists(catId, subcategory); } catch { /* sugestão, não bloqueia */ }
+      }
+
       // Save Transaction
       const { error } = await supabase
         .from('transactions')
@@ -6154,8 +6192,10 @@ ${tabelaHtml}
           date: newTxForm.date,
           type: newTxForm.type,
           category: newTxForm.category,
-          subcategory: newTxForm.subcategory || null,
+          subcategory: subcategory || null,
           category_id: catId || null,
+          account_id: accountId,
+          account_name: accountId ? ledgerOptions.accountName(accountId) : null,
           is_paid: true,
           paid_amount: amt,
           paid_at: newTxForm.date,
@@ -6163,6 +6203,11 @@ ${tabelaHtml}
         }]);
 
       if (error) throw error;
+
+      // Pago com conta: o saldo daquela conta muda agora.
+      if (accountId) {
+        try { await supabase.rpc('recalculate_account_balance', { p_account_id: accountId }); } catch { /* o gatilho do banco também recalcula */ }
+      }
 
       // Reset transaction form and reload data
       setIsAddingExtratoTx(false);
@@ -6174,7 +6219,8 @@ ${tabelaHtml}
         isHistorical: false,
         category: 'Outros',
         subcategory: '',
-        isCapitalized: false
+        isCapitalized: false,
+        accountId: ''
       });
       
       // Update selected asset representation locally to reflect the new transaction
@@ -12991,21 +13037,64 @@ ${tabelaHtml}
                       </div>
                       <div>
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Categoria</label>
-                        <input
+                        {/* Lista as categorias que já existem; digitar uma nova continua permitido. */}
+                        <SearchableInput
                           className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                           value={newTxForm.category}
-                          onChange={e => setNewTxForm({ ...newTxForm, category: e.target.value })}
+                          options={ledgerOptions.categories}
+                          onChange={v => setNewTxForm({ ...newTxForm, category: v })}
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Subcategoria</label>
-                        <input
+                        <SearchableInput
                           className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                           placeholder="Ex: Manutenção"
                           value={newTxForm.subcategory}
-                          onChange={e => setNewTxForm({ ...newTxForm, subcategory: e.target.value })}
+                          options={ledgerOptions.subcategoriesFor(newTxForm.category)}
+                          onChange={v => setNewTxForm({ ...newTxForm, subcategory: v })}
                         />
                       </div>
+                    </div>
+
+                    {(() => {
+                      // Sugestão pelo histórico: o que já foi usado para descrições parecidas.
+                      const sug = ledgerOptions.suggestFor(newTxForm.description);
+                      if (!sug) return null;
+                      const same = sug.category === newTxForm.category && (sug.subcategory || '') === (newTxForm.subcategory || '');
+                      if (same) return null;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setNewTxForm({ ...newTxForm, category: sug.category, subcategory: sug.subcategory || '' })}
+                          className="w-full text-left text-[11px] font-bold text-brand-700 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2"
+                        >
+                          Sugestão: {sug.category}{sug.subcategory ? ` › ${sug.subcategory}` : ''}
+                          <span className="font-medium text-slate-500"> (como em "{sug.basedOn}") — tocar para usar</span>
+                        </button>
+                      );
+                    })()}
+
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">
+                        Conta {newTxForm.type === 'INCOME' ? 'que recebeu' : 'que pagou'}
+                      </label>
+                      <select
+                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                        value={newTxForm.accountId || ''}
+                        onChange={e => setNewTxForm({ ...newTxForm, accountId: e.target.value })}
+                      >
+                        <option value="">Selecione a conta…</option>
+                        {ledgerOptions.accounts.map(a => (
+                          <option key={a.id} value={a.id}>{a.institution}</option>
+                        ))}
+                        <option value={NO_ACCOUNT}>Sem conta (não mexe no saldo do banco)</option>
+                      </select>
+                      {newTxForm.isHistorical && newTxForm.accountId && newTxForm.accountId !== NO_ACCOUNT && (
+                        <p className="text-[10px] text-amber-600 font-bold mt-1">
+                          Lançamento passado com conta entra no saldo atual dessa conta.
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex justify-between items-center pt-2">
