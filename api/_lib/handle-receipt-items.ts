@@ -41,7 +41,26 @@ export async function handleReceiptItems(req: any, res: any) {
 
     if (inputFiles.length === 0) return res.status(400).json({ error: 'Arquivo(s) obrigatório(s)' });
 
+    // Fotos grandes demais para o corpo do pedido (limite ~4,5MB da Vercel) vêm
+    // pelo Storage: { storagePath, bucket }. Só da pasta do próprio usuário.
+    const storedPaths: string[] = [];
+    for (const f of inputFiles) {
+        if (!f || f.base64 || !f.storagePath) continue;
+        const path = String(f.storagePath);
+        if (f.bucket !== 'finvision-documents' || !path.startsWith(`receipts/${userId}/`) || path.includes('..')) {
+            return res.status(403).json({ error: 'Arquivo do cupom inválido.' });
+        }
+        storedPaths.push(path);
+    }
+
     try {
+        for (const f of inputFiles) {
+            if (!f || f.base64 || !f.storagePath) continue;
+            const { data: blob, error: dlErr } = await supabase.storage.from('finvision-documents').download(String(f.storagePath));
+            if (dlErr || !blob) throw new Error(`Não foi possível ler a foto enviada: ${dlErr?.message || 'arquivo vazio'}`);
+            f.base64 = Buffer.from(await blob.arrayBuffer()).toString('base64');
+        }
+
         const limitCheck = await checkAiActionAllowed(supabase, userId, 'receipt_items');
         if (!limitCheck.allowed) {
             return res.status(429).json({ error: limitCheck.message, limitReached: true });
@@ -215,5 +234,11 @@ export async function handleReceiptItems(req: any, res: any) {
             ? err.message
             : 'Falha inesperada ao processar o cupom. Tente novamente em instantes.';
         return res.status(500).json({ error: message });
+    } finally {
+        // A foto que veio pelo Storage era só para esta leitura.
+        if (storedPaths.length > 0) {
+            try { await supabase.storage.from('finvision-documents').remove(storedPaths); }
+            catch (e) { console.warn('[AI-Labs] Não apagou a foto temporária do cupom:', e); }
+        }
     }
 }

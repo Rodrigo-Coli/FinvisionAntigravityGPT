@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { parseTags, formatTags, normalizeTag, getKnownTags, rememberTags } from '../../lib/tagUtils';
+import { parseTags, formatTags, normalizeTag, getKnownTags, rememberTags, withoutArchivedTags } from '../../lib/tagUtils';
+import { syncTagSettings } from '../../services/tags.service';
 
 interface TagsInputProps {
     value: string[] | undefined;
@@ -72,6 +73,14 @@ export const TagsInput: React.FC<TagsInputProps> = ({
         setKnownTags(rememberTags(suggestions));
     }, [suggestionsKey]);
 
+    // Cadastro de tags (Configurações > Tags): traz do banco as criadas e as
+    // arquivadas — arquivada não aparece mais como sugestão.
+    useEffect(() => {
+        let alive = true;
+        syncTagSettings().then(() => { if (alive) setKnownTags(getKnownTags()); });
+        return () => { alive = false; };
+    }, []);
+
     const handleChange = (raw: string) => {
         setDraft(raw); // o que aparece na tela é exatamente o que foi digitado
         const parsed = parseTags(raw);
@@ -96,7 +105,7 @@ export const TagsInput: React.FC<TagsInputProps> = ({
      * vírgula (digitar "mac" restringe para "Maceió.26").
      */
     const visibleSuggestions = useMemo(() => {
-        const pool = parseTags([...suggestions, ...knownTags]);
+        const pool = withoutArchivedTags(parseTags([...suggestions, ...knownTags]));
         if (pool.length === 0) return [];
 
         const chosen = new Set(selected.map(normalizeTag));
@@ -117,7 +126,7 @@ export const TagsInput: React.FC<TagsInputProps> = ({
         setKnownTags(rememberTags(next));
     };
 
-    const allSuggestions = parseTags([...suggestions, ...knownTags]);
+    const allSuggestions = withoutArchivedTags(parseTags([...suggestions, ...knownTags]));
 
     return (
         <>

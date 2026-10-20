@@ -54,6 +54,7 @@ import CancelSubscriptionModal from '../components/subscription/CancelSubscripti
 import { useToast } from '../contexts/ToastContext';
 import { normalizeStr } from '../lib/stringUtils';
 import { pickCategoryMatch, categoryFitsType } from '../lib/categoryResolver';
+import { TagsSettings } from '../components/settings/TagsSettings';
 
 /**
  * Garante a categoria "Investimento" (usada nas análises) e suas subcategorias.
@@ -110,8 +111,8 @@ export const ensureInvestmentCategoriesAndSubcategories = async (userId: string)
 
 const SettingsPage: React.FC = () => {
   const { toast } = useToast();
-  type SettingsSection = 'general' | 'navigation' | 'categories' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription' | 'changelog';
-  const SETTINGS_SECTIONS: SettingsSection[] = ['general', 'navigation', 'categories', 'establishments', 'products', 'backup', 'currencies', 'rates', 'entities', 'subscription', 'changelog'];
+  type SettingsSection = 'general' | 'navigation' | 'categories' | 'tags' | 'establishments' | 'products' | 'backup' | 'currencies' | 'rates' | 'entities' | 'subscription' | 'changelog';
+  const SETTINGS_SECTIONS: SettingsSection[] = ['general', 'navigation', 'categories', 'tags', 'establishments', 'products', 'backup', 'currencies', 'rates', 'entities', 'subscription', 'changelog'];
   const { subscription, loadingSub } = useSubscription();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -824,6 +825,7 @@ const SettingsPage: React.FC = () => {
     { id: 'navigation', label: 'Navegação', icon: <Navigation size={18} /> },
     { id: 'subscription', label: 'Meu Plano', icon: <Gem size={18} /> },
     { id: 'categories', label: 'Categorias', icon: <Tags size={18} /> },
+    { id: 'tags', label: 'Tags', icon: <Tag size={18} /> },
     { id: 'entities', label: 'Perfis / Donos', icon: <Building2 size={18} /> },
     { id: 'establishments', label: 'Estabelecimentos', icon: <Store size={18} /> },
     { id: 'rates', label: 'Taxas e Conversão', icon: <Percent size={18} /> },
@@ -1659,6 +1661,8 @@ const SettingsPage: React.FC = () => {
               </div>
             </div>
           )}
+
+          {activeSection === 'tags' && <TagsSettings />}
 
           {activeSection === 'entities' && (
             <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden border-b-4 border-b-slate-100 animate-in slide-in-from-bottom-4 duration-500">

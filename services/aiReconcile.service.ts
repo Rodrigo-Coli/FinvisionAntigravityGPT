@@ -22,6 +22,19 @@ const COMPRESSION_STEPS: Array<[number, number]> = [[1600, 0.8], [1100, 0.6]];
 
 export type EncodedFile = { base64: string; mimeType: string; fileName: string };
 
+/**
+ * Arquivo que foi pelo armazenamento em vez de ir no corpo do pedido. A Vercel
+ * recusa corpo acima de ~4,5MB; quando a foto não pôde ser reduzida (navegador
+ * sem memória para abrir uma foto de 50MP, ou HEIC), ela sobe para o Storage e
+ * a API baixa de lá. Ver handle-receipt-items.ts.
+ */
+export type StoredFile = { storagePath: string; bucket: string; mimeType: string; fileName: string };
+
+const RECEIPT_BUCKET = 'finvision-documents';
+// Acima disso nem pelo Storage: o pedido ao Gemini tem teto de ~20MB e o
+// base64 cresce ~1,37x.
+const MAX_STORED_FILE_BYTES = 14 * 1024 * 1024;
+
 // Formatos que o Gemini aceita como inlineData de imagem. HEIC/HEIF entram aqui
 // porque a câmera de vários aparelhos salva nesse formato e o navegador não
 // consegue decodificá-lo no <canvas> — nesse caso mandamos os bytes originais.
@@ -122,7 +135,20 @@ export const AIReconcileService = {
     for (const file of fileArray) {
       encodedFiles.push(await this.encodeFileForAI(file));
     }
-    assertPayloadWithinLimit(encodedFiles.map((f) => f.base64));
+
+    // Passou do limite de envio? As maiores vão pelo armazenamento, até caber.
+    const payload: Array<EncodedFile | StoredFile> = [...encodedFiles];
+    const sizeOf = () => payload.reduce((sum, f) => sum + ('base64' in f ? f.base64.length : 0), 0);
+    if (sizeOf() > MAX_UPLOAD_BASE64_CHARS) {
+      const order = encodedFiles
+        .map((f, i) => ({ i, len: f.base64.length }))
+        .sort((a, b) => b.len - a.len);
+      for (const { i } of order) {
+        if (sizeOf() <= MAX_UPLOAD_BASE64_CHARS) break;
+        payload[i] = await this.uploadReceiptForAI(fileArray[i], encodedFiles[i]);
+      }
+    }
+    assertPayloadWithinLimit(payload.map((f) => ('base64' in f ? f.base64 : '')));
 
     const baseUrl = getApiBaseUrl();
     const url = `${baseUrl}/api/handle-receipt-items`;
@@ -130,7 +156,7 @@ export const AIReconcileService = {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-      body: JSON.stringify({ files: encodedFiles }),
+      body: JSON.stringify({ files: payload }),
     });
 
     if (!res.ok) {
@@ -471,7 +497,19 @@ export const AIReconcileService = {
     if (typeof createImageBitmap !== 'function') return null;
     let bitmap: ImageBitmap | null = null;
     try {
-      bitmap = await createImageBitmap(file);
+      // Decodifica JÁ reduzida: abrir uma foto de 50MP inteira pede ~200MB de
+      // memória, e no Android isso falhava — a foto ia original (8MB+) e
+      // estourava o limite de envio. Com resizeWidth só a versão pequena é
+      // montada (a altura segue a proporção; o canvas ajusta o lado maior).
+      // Arquivo pequeno (print, foto já reduzida) decodifica inteiro, sem ampliar.
+      if (file.size > 1_500_000) {
+        try {
+          bitmap = await createImageBitmap(file, { resizeWidth: maxDimension, resizeQuality: 'high' } as ImageBitmapOptions);
+        } catch {
+          bitmap = null;
+        }
+      }
+      if (!bitmap || !bitmap.width) bitmap = await createImageBitmap(file);
       return this.drawToJpegBase64(bitmap, bitmap.width, bitmap.height, maxDimension, quality);
     } catch (e) {
       console.warn('[AI-Labs] createImageBitmap falhou:', e);
@@ -512,6 +550,29 @@ export const AIReconcileService = {
         finish(null);
       }
     });
+  },
+
+  /**
+   * Sobe o cupom para o Storage (pasta do usuário) para a API ler de lá. Vai o
+   * original — a versão reduzida não existe quando o navegador não conseguiu
+   * abrir a foto. A API apaga o arquivo depois da leitura.
+   */
+  async uploadReceiptForAI(file: File, encoded: EncodedFile): Promise<StoredFile> {
+    if (!supabase) throw new Error('Armazenamento indisponível para enviar a foto.');
+    if (file.size > MAX_STORED_FILE_BYTES) {
+      const mb = (file.size / 1_048_576).toFixed(1);
+      throw new Error(`A foto "${file.name}" tem ${mb}MB, grande demais para leitura. Tire a foto com resolução menor (ou faça um print do cupom) e tente de novo.`);
+    }
+    const user = await getSessionUser(supabase);
+    if (!user) throw new Error('Faça login novamente para enviar o cupom.');
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+    const storagePath = `receipts/${user.id}/scan_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await supabase.storage.from(RECEIPT_BUCKET).upload(storagePath, file, {
+      contentType: encoded.mimeType,
+      upsert: false
+    });
+    if (error) throw new Error(`Não foi possível enviar a foto do cupom: ${error.message}`);
+    return { storagePath, bucket: RECEIPT_BUCKET, mimeType: encoded.mimeType, fileName: file.name };
   },
 
   async encodeFileForAI(file: File): Promise<EncodedFile> {

@@ -139,3 +139,39 @@ describe('catálogo local de tags — por que o campo não sugeria nada', () => 
     expect(getKnownTags()).toEqual(['casa']);
   });
 });
+
+describe('cadastro de tags: arquivada não é sugerida', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('tag arquivada some das sugestões, mesmo estando nos lançamentos', async () => {
+    const { saveTagSettings } = await import('../lib/tagUtils');
+    rememberTags(['Maceió.26', 'UP']);
+    saveTagSettings({ created: [], archived: ['maceio.26'] });
+    expect(getKnownTags()).toEqual(['UP']);
+    expect(suggestTags([{ tags: ['Maceió.26'] }, { tags: ['Reforma'] }])).toEqual(['Reforma', 'UP']);
+  });
+
+  it('tag criada em Configurações é sugerida mesmo sem uso', async () => {
+    const { saveTagSettings } = await import('../lib/tagUtils');
+    saveTagSettings({ created: ['Viagem.27'], archived: [] });
+    expect(getKnownTags()).toEqual(['Viagem.27']);
+  });
+
+  it('excluída sai do catálogo e do cadastro do aparelho', async () => {
+    const { saveTagSettings, forgetTag, getTagSettings } = await import('../lib/tagUtils');
+    rememberTags(['Reforma', 'UP']);
+    saveTagSettings({ created: ['Reforma'], archived: ['UP'] });
+    forgetTag('reforma');
+    forgetTag('up');
+    expect(getKnownTags()).toEqual([]);
+    expect(getTagSettings()).toEqual({ created: [], archived: [] });
+  });
+
+  it('o filtro do Histórico continua achando a arquivada (collectTags não filtra)', async () => {
+    const { saveTagSettings } = await import('../lib/tagUtils');
+    saveTagSettings({ created: [], archived: ['UP'] });
+    expect(collectTags([{ tags: ['UP'] }])).toEqual(['UP']);
+  });
+});

@@ -1,6 +1,25 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { AIReconcileService } from '../services/aiReconcile.service';
 
+// Storage falso: registra o que subiu (foto grande vai pelo armazenamento).
+const storageMock = vi.hoisted(() => ({ uploads: [] as string[], fail: false }));
+vi.mock('../lib/supabase/client', () => ({
+  supabase: {
+    storage: {
+      from: () => ({
+        upload: async (path: string) => {
+          if (storageMock.fail) return { error: { message: 'sem permissão' } };
+          storageMock.uploads.push(path);
+          return { error: null };
+        }
+      })
+    }
+  },
+  isSupabaseConfigured: true
+}));
+vi.mock('../lib/session', () => ({ getSessionUser: async () => ({ id: 'user-1' }) }));
+vi.mock('../lib/apiClient', () => ({ authHeaders: async () => ({}) }));
+
 // Helpers ---------------------------------------------------------------
 
 const bytes = (...values: Array<number | string>) => {
@@ -206,8 +225,27 @@ describe('encodeFileForAI', () => {
 });
 
 describe('processReceiptItems', () => {
-  it('barra o envio antes do fetch quando o payload excede o limite da Vercel', async () => {
+  it('acima do limite de envio, as fotos maiores vão pelo armazenamento (não recusa)', async () => {
     // Dois arquivos que passam sozinhos, mas estouram somados.
+    storageMock.uploads = [];
+    storageMock.fail = false;
+    (globalThis as any).createImageBitmap = vi.fn(async () => ({ width: 1080, height: 2340, close: () => { } }));
+    stubCanvas(() => `data:image/jpeg;base64,${'A'.repeat(3_000_000)}`);
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [] }) });
+    (globalThis as any).fetch = fetchSpy;
+
+    const files = [makeFile('a.jpg', 'image/jpeg', JPEG_BYTES), makeFile('b.jpg', 'image/jpeg', JPEG_BYTES)];
+    await AIReconcileService.processReceiptItems(files, 'user-1');
+
+    expect(storageMock.uploads).toHaveLength(1);
+    expect(storageMock.uploads[0]).toMatch(/^receipts\/user-1\/scan_/);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    expect(body.files.filter((f: any) => f.storagePath)).toHaveLength(1);
+    expect(body.files.filter((f: any) => f.base64)).toHaveLength(1);
+  });
+
+  it('se o armazenamento falhar, avisa antes de enviar', async () => {
+    storageMock.fail = true;
     (globalThis as any).createImageBitmap = vi.fn(async () => ({ width: 1080, height: 2340, close: () => { } }));
     stubCanvas(() => `data:image/jpeg;base64,${'A'.repeat(3_000_000)}`);
     const fetchSpy = vi.fn();
@@ -217,8 +255,9 @@ describe('processReceiptItems', () => {
     const err = await AIReconcileService.processReceiptItems(files, 'user-1').then(() => null, (e) => e);
 
     expect(err).toBeInstanceOf(Error);
-    expect(err.message).toContain('limite de envio');
+    expect(err.message).toContain('Não foi possível enviar a foto');
     expect(fetchSpy).not.toHaveBeenCalled();
+    storageMock.fail = false;
   });
 
   it('traduz o 413 da Vercel (resposta em HTML, sem JSON) numa mensagem útil', async () => {

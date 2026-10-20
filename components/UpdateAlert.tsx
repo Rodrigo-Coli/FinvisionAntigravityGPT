@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw, X, Sparkles, Shield, Zap, TrendingUp, Cpu, Check } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
@@ -118,6 +118,32 @@ export const UpdateAlert: React.FC = () => {
       clearInterval(id);
     };
   }, []);
+
+  // Baixa a atualização EM SEGUNDO PLANO assim que se sabe que existe.
+  //
+  // Antes, quando a versão nova era percebida pelo version.json antes do
+  // service worker, o botão apagava todos os caches e recarregava: o app
+  // inteiro (~3,4MB) era baixado de novo com a tela parada — no 4G, demorava.
+  // Agora o SW novo é buscado já com o aviso aberto; enquanto a pessoa lê as
+  // novidades ele baixa, e o toque em "Atualizar" só troca de versão.
+  const needRefreshRef = useRef(needRefresh);
+  needRefreshRef.current = needRefresh;
+  useEffect(() => {
+    if (!versionMismatch || needRefresh || !('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.getRegistration()
+      .then(reg => reg?.update())
+      .catch((err: any) => console.warn('[SW] Falha ao baixar a atualização em segundo plano:', err));
+  }, [versionMismatch, needRefresh]);
+
+  /** Espera o SW novo terminar de baixar (até `ms`). */
+  const waitForDownloadedUpdate = (ms: number) => new Promise<boolean>(resolve => {
+    if (needRefreshRef.current) return resolve(true);
+    const started = Date.now();
+    const id = setInterval(() => {
+      if (needRefreshRef.current) { clearInterval(id); resolve(true); }
+      else if (Date.now() - started > ms) { clearInterval(id); resolve(false); }
+    }, 250);
+  });
 
   // Monitorar necessidade de atualização e buscar metadados frescos bypassando cache
   useEffect(() => {
@@ -287,8 +313,12 @@ export const UpdateAlert: React.FC = () => {
               onClick={async () => {
                 setIsUpdating(true);
 
-                if (needRefresh) {
-                  // Caminho normal: existe um SW novo esperando para assumir.
+                // A atualização ainda está baixando em segundo plano? Espera um
+                // pouco por ela — é bem mais rápido que apagar tudo e baixar de novo.
+                const ready = needRefresh || await waitForDownloadedUpdate(8000);
+
+                if (ready) {
+                  // Caminho normal: existe um SW novo, já baixado, esperando para assumir.
                   updateServiceWorker(true);
                 } else {
                   // iOS: o SW não sinalizou, então trocar de versão por ele não
@@ -311,7 +341,7 @@ export const UpdateAlert: React.FC = () => {
 
                 // Rede de segurança: se a transição do SW não recarregar sozinha,
                 // recarregamos na mão.
-                setTimeout(() => window.location.reload(), needRefresh ? 2000 : 400);
+                setTimeout(() => window.location.reload(), ready ? 2000 : 400);
               }}
               disabled={isUpdating}
               className="w-full py-3.5 bg-brand-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-brand-700 active:scale-98 transition-all flex items-center justify-center gap-2 shadow-lg shadow-brand-500/25 disabled:opacity-50"

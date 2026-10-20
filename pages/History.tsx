@@ -7,7 +7,7 @@ import { Transaction, TransactionType, BankAccount, TransactionSplit } from '../
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { offlineQueue, isOfflineId } from '../lib/offlineQueue.service';
 import { isNetworkFailure, isHardNetworkFailure, isProbablyOffline, markNetworkFailure, markNetworkSuccess, withTimeout, NETWORK_TIMEOUT_MS } from '../lib/connectivity';
-import { parseTags, suggestTags, matchesAnyTag, rememberTags } from '../lib/tagUtils';
+import { parseTags, suggestTags, matchesAnyTag, rememberTags, collectTags } from '../lib/tagUtils';
 import { getSessionUser } from '../lib/session';
 import { authHeaders } from '../lib/apiClient';
 import { SearchableInput } from '../components/common/SearchableInput';
@@ -300,6 +300,9 @@ const HistoryPage: React.FC = () => {
   const [owners, setOwners] = useState<string[]>(['Pessoal']);
   // Tags já usadas na conta: alimentam o filtro e as sugestões de digitação.
   const [availableTags, setAvailableTags] = useState<string[]>([]);
+  // Filtro: todas as tags dos lançamentos, INCLUSIVE as arquivadas (arquivar só
+  // tira das sugestões; os lançamentos antigos continuam achados pelo filtro).
+  const [filterTagOptions, setFilterTagOptions] = useState<string[]>([]);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const lastRequestId = useRef(0);
   const isFirstLoad = useRef(true);
@@ -655,6 +658,7 @@ const HistoryPage: React.FC = () => {
         // digitação — sem sugestão, o mesmo assunto acabava gravado de três jeitos
         // ("Maceió.26", "Maceio.26", "Maceió.2026") e o filtro não juntava nada.
         setAvailableTags(suggestTags(txs || [], cardTxs || []));
+        setFilterTagOptions(collectTags(txs || [], cardTxs || []));
 
         // Initialize filters on first load (owner profiles and accounts)
         if (isFirstLoad.current) {
@@ -3461,7 +3465,7 @@ const HistoryPage: React.FC = () => {
         filterCategory={filterCategory} setFilterCategory={setFilterCategory} filterSubcategory={filterSubcategory} setFilterSubcategory={setFilterSubcategory} startDate={startDate} setStartDate={setStartDate}
         endDate={endDate} setEndDate={setEndDate} minPrice={minPrice} setMinPrice={setMinPrice} maxPrice={maxPrice} setMaxPrice={setMaxPrice}
         filterOwner={filterOwner} setFilterOwner={setFilterOwner} owners={owners}
-        filterTag={filterTag} setFilterTag={setFilterTag} tags={availableTags}
+        filterTag={filterTag} setFilterTag={setFilterTag} tags={parseTags([...filterTagOptions, ...availableTags]).sort((a, b) => a.localeCompare(b, 'pt-BR'))}
         filterOrigin={filterOrigin} setFilterOrigin={setFilterOrigin}
         categories={availableCategories} subcategories={Array.from(new Set(subcategories.map(s => s.name?.trim()))).filter(Boolean).sort()} accounts={accounts} cards={cards} resetFilters={resetFilters}
       />

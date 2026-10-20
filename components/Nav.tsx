@@ -56,6 +56,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
     { id: 'navigation', label: 'Navegação', icon: <Navigation size={16} /> },
     { id: 'subscription', label: 'Meu Plano', icon: <Gem size={16} /> },
     { id: 'categories', label: 'Categorias', icon: <Tags size={16} /> },
+    { id: 'tags', label: 'Tags', icon: <Tag size={16} /> },
     { id: 'entities', label: 'Perfis / Donos', icon: <Building2 size={16} /> },
     { id: 'establishments', label: 'Estabelecimentos', icon: <Store size={16} /> },
     { id: 'rates', label: 'Taxas e Conversão', icon: <Percent size={16} /> },
