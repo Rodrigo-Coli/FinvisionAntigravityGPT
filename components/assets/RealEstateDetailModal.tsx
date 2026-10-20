@@ -6,6 +6,9 @@ import { DateUtils } from '../../lib/dateUtils';
 import * as XLSX from 'xlsx';
 import { syncRentalTransactions as sharedSyncRentalTransactions, syncCondoIptuTransactions } from './realEstatePropertySync';
 import { getSessionUser } from '../../lib/session';
+import { SearchableInput } from '../common/SearchableInput';
+import { useLedgerOptions, NO_ACCOUNT } from './useLedgerOptions';
+import { ReconciliationService } from '../../services/reconciliation.service';
 
 // Trava global contra salvamento concorrente. syncRentalTransactions/syncExpenseProvisions
 // apagam as parcelas futuras e recriam do zero a cada chamada — se handleSaveChanges rodar
@@ -128,6 +131,16 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [quickTxDate, setQuickTxDate] = useState(DateUtils.formatToISODate(new Date()));
   const [quickTxDescription, setQuickTxDescription] = useState('');
   const [quickTxIsPaid, setQuickTxIsPaid] = useState(true);
+  // Categoria/subcategoria editáveis (com as existentes como sugestão) e a
+  // conta do lançamento — antes eram fixas e o gasto entrava sem conta, sem
+  // mexer no saldo do banco.
+  const QUICK_TX_SUBCATEGORY: Record<string, string> = {
+    CONDO: 'Condomínio', IPTU: 'IPTU', RENOVATION: 'Reforma', MAINTENANCE: 'Manutenção/Reparos', OTHER: ''
+  };
+  const [quickTxCategory, setQuickTxCategory] = useState('Ativos Imobiliários');
+  const [quickTxSubcategory, setQuickTxSubcategory] = useState(QUICK_TX_SUBCATEGORY.MAINTENANCE);
+  const [quickTxAccountId, setQuickTxAccountId] = useState('');
+  const ledgerOptions = useLedgerOptions(showQuickTxForm);
 
   // Period filtering state for yield
   const [filterPeriod, setFilterPeriod] = useState<'ALL' | 'MONTH' | 'YEAR' | 'CUSTOM'>('ALL');
@@ -880,20 +893,18 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       const user = await getSessionUser(supabase);
       if (!user) return;
 
-      let categoryName = 'Ativos Imobiliários';
-      let subcatName = '';
+      // O tipo continua definindo `property_tx_type` (usado nos cálculos do
+      // imóvel); categoria e subcategoria agora são as que o usuário escolheu.
+      const categoryName = quickTxCategory.trim() || 'Ativos Imobiliários';
+      const subcatName = quickTxSubcategory.trim()
+        || (quickTxType === 'OTHER' ? (quickTxDescription || 'Outros') : QUICK_TX_SUBCATEGORY[quickTxType]);
 
-      if (quickTxType === 'CONDO') {
-        subcatName = 'Condomínio';
-      } else if (quickTxType === 'IPTU') {
-        subcatName = 'IPTU';
-      } else if (quickTxType === 'RENOVATION') {
-        subcatName = 'Reforma';
-      } else if (quickTxType === 'MAINTENANCE') {
-        subcatName = 'Manutenção/Reparos';
-      } else {
-        subcatName = quickTxDescription || 'Outros';
+      // Gasto pago precisa dizer de que conta saiu (ou "Sem conta" de propósito).
+      if (quickTxIsPaid && !quickTxAccountId && ledgerOptions.accounts.length > 0) {
+        alert('Escolha a conta de onde saiu o dinheiro (ou "Sem conta").');
+        return;
       }
+      const accountId = quickTxAccountId && quickTxAccountId !== NO_ACCOUNT ? quickTxAccountId : null;
 
       // Check category
       let catId = '';
@@ -922,9 +933,15 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
 
       const todayStr = new Date().toISOString();
 
+      if (catId && subcatName) {
+        try { await ReconciliationService.ensureSubcategoryExists(catId, subcatName); } catch { /* sugestão, não bloqueia */ }
+      }
+
       await supabase.from('transactions').insert([{
         user_id: user.id,
-        description: `${subcatName} - ${name}`,
+        account_id: accountId,
+        account_name: accountId ? ledgerOptions.accountName(accountId) : null,
+        description: `${quickTxType === 'OTHER' && quickTxDescription ? quickTxDescription : subcatName} - ${name}`,
         amount: amt,
         date: quickTxDate,
         type: 'EXPENSE',
@@ -939,6 +956,10 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
           property_tx_type: quickTxType
         }
       }]);
+
+      if (accountId && quickTxIsPaid) {
+        try { await supabase.rpc('recalculate_account_balance', { p_account_id: accountId }); } catch { /* o gatilho do banco também recalcula */ }
+      }
 
       setShowQuickTxForm(false);
       setQuickTxAmount('');
@@ -1776,8 +1797,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
             {showQuickTxForm && (
               <form onSubmit={handleAddQuickTx} className="p-6 bg-slate-50 border border-slate-200 rounded-3xl grid grid-cols-1 sm:grid-cols-3 md:grid-cols-5 gap-4 items-end animate-in slide-in-from-top-2 print:hidden">
                 <div className="space-y-1">
-                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Subcategoria de Gasto</label>
-                  <select className="w-full h-10 px-3 bg-white border rounded-xl text-xs font-bold" value={quickTxType} onChange={e => setQuickTxType(e.target.value as any)}>
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Tipo de Gasto</label>
+                  <select className="w-full h-10 px-3 bg-white border rounded-xl text-xs font-bold" value={quickTxType} onChange={e => { setQuickTxType(e.target.value as any); setQuickTxSubcategory(QUICK_TX_SUBCATEGORY[e.target.value] || ''); }}>
                     <option value="CONDO">Condomínio</option>
                     <option value="IPTU">IPTU</option>
                     <option value="RENOVATION">Reforma (Custo Capital)</option>
@@ -1790,12 +1811,41 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   <div className="space-y-1">
                     <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Descrição Customizada</label>
                     <input required className="w-full h-10 px-3 bg-white border rounded-xl text-xs" value={quickTxDescription} onChange={e => setQuickTxDescription(e.target.value)} placeholder="Ex: Pintura interna" />
+                    {(() => {
+                      // Sugestão pelo histórico: o que já foi usado para descrições parecidas.
+                      const sug = ledgerOptions.suggestFor(quickTxDescription);
+                      if (!sug || (sug.category === quickTxCategory && (sug.subcategory || '') === quickTxSubcategory)) return null;
+                      return (
+                        <button type="button" onClick={() => { setQuickTxCategory(sug.category); setQuickTxSubcategory(sug.subcategory || ''); }} className="w-full text-left text-[10px] font-bold text-brand-700 bg-brand-50 border border-brand-100 rounded-lg px-2 py-1.5">
+                          Sugestão: {sug.category}{sug.subcategory ? ` › ${sug.subcategory}` : ''} — tocar para usar
+                        </button>
+                      );
+                    })()}
                   </div>
                 )}
 
                 <div className="space-y-1">
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor (R$)</label>
                   <input required className="w-full h-10 px-3 bg-white border rounded-xl text-xs" type="number" step="0.01" value={quickTxAmount} onChange={e => setQuickTxAmount(e.target.value)} placeholder="0.00" />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Categoria</label>
+                  <SearchableInput className="w-full h-10 px-3 bg-white border rounded-xl text-xs font-bold" value={quickTxCategory} options={ledgerOptions.categories} onChange={setQuickTxCategory} />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Subcategoria</label>
+                  <SearchableInput className="w-full h-10 px-3 bg-white border rounded-xl text-xs font-bold" value={quickTxSubcategory} placeholder="Ex: Manutenção" options={ledgerOptions.subcategoriesFor(quickTxCategory)} onChange={setQuickTxSubcategory} />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Conta que pagou</label>
+                  <select className="w-full h-10 px-3 bg-white border rounded-xl text-xs font-bold" value={quickTxAccountId} onChange={e => setQuickTxAccountId(e.target.value)}>
+                    <option value="">Selecione a conta…</option>
+                    {ledgerOptions.accounts.map(a => <option key={a.id} value={a.id}>{a.institution}</option>)}
+                    <option value={NO_ACCOUNT}>Sem conta (não mexe no saldo)</option>
+                  </select>
                 </div>
 
                 <div className="space-y-1">
