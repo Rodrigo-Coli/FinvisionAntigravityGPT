@@ -1,6 +1,6 @@
 {
-  "version": "2026.10.20.1146",
-  "title": "Tags em Configurações: criar, arquivar e excluir",
+  "version": "2026.10.20.1430",
+  "title": "Tags em Configurações, foto de cupom grande e atualização mais rápida",
   "date": "20/10/2026",
   "benefits": [
     {
@@ -17,6 +17,16 @@
       "title": "Excluir tira dos lançamentos",
       "desc": "Excluir uma tag a retira de todos os lançamentos (banco e cartão), com aviso de quantos serão afetados. Os lançamentos continuam, só sem a tag.",
       "type": "recurso"
+    },
+    {
+      "title": "Foto de cupom grande não dá mais erro",
+      "desc": "Foto de câmera em alta resolução (8MB ou mais) dava \"acima do limite de envio\". Agora o app reduz a foto com menos memória e, se ainda for grande, envia por outro caminho, sem esse limite. A foto temporária é apagada depois da leitura.",
+      "type": "correcao"
+    },
+    {
+      "title": "Atualização mais rápida",
+      "desc": "A nova versão começa a baixar em segundo plano assim que o aviso aparece. Ao tocar em \"Atualizar agora\", o app só troca de versão, sem baixar tudo de novo.",
+      "type": "usabilidade"
     }
   ],
   "changes": [
@@ -24,6 +34,9 @@
     "`services/tags.service.ts`: `syncTagSettings` (cópia no aparelho, no máximo a cada 5 min), `listTags`, `createTag`, `setTagArchived`, `deleteTag`.",
     "`lib/tagUtils.ts`: cadastro local (`created`/`archived`); `getKnownTags`/`suggestTags` sem as arquivadas; `forgetTag` ao excluir. `TagsInput` sincroniza ao abrir e não sugere arquivadas.",
     "`components/settings/TagsSettings.tsx` + seção `tags` em Configurações e no menu lateral.",
-    "Histórico: o filtro de tags continua listando as arquivadas (`collectTags`), separado das sugestões."
+    "Histórico: o filtro de tags continua listando as arquivadas (`collectTags`), separado das sugestões.",
+    "`AIReconcileService`: `createImageBitmap` com `resizeWidth` (decodifica já reduzida — foto de 50MP falhava por memória e ia original); acima do limite de ~4,5MB da Vercel, os maiores arquivos sobem para o Storage (`finvision-documents/receipts/<user>/scan_*`) e vão como `{ storagePath, bucket }`.",
+    "`handle-receipt-items`: aceita `storagePath` (só da pasta do próprio usuário), baixa com a chave de serviço e apaga o arquivo temporário no fim.",
+    "`UpdateAlert`: com a versão nova detectada, `registration.update()` baixa o service worker em segundo plano; o botão espera até 8s por ele antes de cair no caminho lento (apagar caches e recarregar)."
   ]
 }
