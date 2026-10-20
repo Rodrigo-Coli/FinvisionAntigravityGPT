@@ -32,6 +32,8 @@ import { suspiciousDateReason, SUSPICIOUS_DATE_LABEL } from '../lib/receiptDate'
 import { ReconciliationService } from '../services/reconciliation.service';
 import { FinanceService } from '../services/finance.service';
 import { useToast } from '../contexts/ToastContext';
+import { SearchableInput } from '../components/common/SearchableInput';
+import { normalizeStr } from '../lib/stringUtils';
 import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 
 const Reconcile: React.FC = () => {
@@ -146,7 +148,9 @@ const Reconcile: React.FC = () => {
     const { data: { session } } = await supabase.auth.getSession();
     const user = session?.user;
     if (!user) return;
-    const { data: cats } = await supabase.from('categories').select('id, name').eq('user_id', user.id);
+    // Arquivadas ficam fora da lista (ex.: as duplicadas que foram unificadas).
+    const { data: allCats } = await supabase.from('categories').select('id, name, is_archived').eq('user_id', user.id);
+    const cats = (allCats || []).filter((c: any) => c.is_archived !== true);
     const { data: subs } = await supabase.from('subcategories').select('*').eq('user_id', user.id);
     if (subs && cats) {
       const mapped = subs.map((s: any) => {
@@ -630,7 +634,7 @@ const Reconcile: React.FC = () => {
   };
 
   const filteredImported = imported.filter(item => {
-    const matchesSearch = item.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = normalizeStr(item.description || '').includes(normalizeStr(searchTerm));
     const matchesDuplicate = showOnlyDuplicates ? item.potential_duplicate : true;
     if (!matchesSearch || !matchesDuplicate) return false;
 
@@ -1110,36 +1114,31 @@ const Reconcile: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 flex-1">
-                  <input
-                    list="categories-list"
+                  <SearchableInput
                     value={bulkCategory}
+                    options={categories}
                     className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500"
-                    onChange={(e) => {
-                      setBulkCategory(e.target.value);
-                      applyBulkEdit('category', e.target.value);
+                    onChange={(val) => {
+                      setBulkCategory(val);
+                      applyBulkEdit('category', val);
                     }}
                     placeholder="Definir Categoria..."
                   />
 
                   {bulkCategory && (
-                    <input
-                      list="subcategories-bulk-list"
+                    <SearchableInput
                       value={bulkSubcategory}
+                      options={subcategories
+                        .filter(s => normalizeStr(s.category_name || '') === normalizeStr(bulkCategory))
+                        .map((s: any) => s.name)}
                       className="bg-slate-800 text-white text-[9px] font-bold uppercase p-2 rounded-lg outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-auto min-w-[120px] placeholder:text-slate-500"
-                      onChange={(e) => {
-                        setBulkSubcategory(e.target.value);
-                        applyBulkEdit('subcategory', e.target.value);
+                      onChange={(val) => {
+                        setBulkSubcategory(val);
+                        applyBulkEdit('subcategory', val);
                       }}
                       placeholder="Definir Subcategoria..."
                     />
                   )}
-
-                  <datalist id="subcategories-bulk-list">
-                    {subcategories
-                      .filter(s => s.category_name === bulkCategory)
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((s: any) => <option key={s.id} value={s.name} />)}
-                  </datalist>
 
                   <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
                     <button
@@ -1299,9 +1298,9 @@ const Reconcile: React.FC = () => {
                                   className="w-full bg-slate-50 border-none rounded-xl text-xs font-bold p-2 outline-none focus:ring-2 focus:ring-brand-500"
                                 />
                                 {showSuggestionsId === item.id && (() => {
-                                  const query = (editForm.description || '').toLowerCase().trim();
+                                  const query = normalizeStr(editForm.description || '');
                                   const filteredSuggestions = query.length >= 2
-                                    ? recentTxs.filter(tx => (tx.description || '').toLowerCase().includes(query)).slice(0, 5)
+                                    ? recentTxs.filter(tx => normalizeStr(tx.description || '').includes(query)).slice(0, 5)
                                     : [];
                                   if (filteredSuggestions.length === 0) return null;
                                   return (
@@ -1451,12 +1450,10 @@ const Reconcile: React.FC = () => {
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Categoria</p>
                             <div className="relative">
                               <Tag size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
-                              <input
-                                list="categories-list"
+                              <SearchableInput
                                 value={categoryValue}
-                                onFocus={e => e.target.select()}
-                                onChange={e => {
-                                  const val = e.target.value;
+                                options={categories}
+                                onChange={val => {
                                   if (isEditing) setEditForm({ ...editForm, category: val });
                                   else {
                                     startEditing(item, val);
@@ -1470,12 +1467,12 @@ const Reconcile: React.FC = () => {
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Subcategoria</p>
                             <div className="relative">
                               <Tag size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
-                              <input
-                                list={`subcategories-list-${item.id}`}
+                              <SearchableInput
                                 value={isEditing ? editForm.subcategory : ((item as any).subcategory || '')}
-                                onFocus={e => e.target.select()}
-                                onChange={e => {
-                                  const val = e.target.value;
+                                options={subcategories
+                                  .filter(s => normalizeStr(s.category_name || '') === normalizeStr(categoryValue || ''))
+                                  .map((s: any) => s.name)}
+                                onChange={val => {
                                   if (isEditing) setEditForm({ ...editForm, subcategory: val });
                                   else {
                                     startEditing(item, categoryValue);
@@ -1486,11 +1483,6 @@ const Reconcile: React.FC = () => {
                                 className="w-full pl-8 bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-1 focus:ring-brand-500"
                               />
                             </div>
-                            <datalist id={`subcategories-list-${item.id}`}>
-                              {subcategories.filter(s => s.category_name === categoryValue).sort((a, b) => a.name.localeCompare(b.name)).map((s: any) => (
-                                <option key={s.id} value={s.name} />
-                              ))}
-                            </datalist>
                           </div>
 
                           {/* Col 4: Entity (Owner) */}
@@ -1598,9 +1590,6 @@ const Reconcile: React.FC = () => {
           )}
         </div>
       </div>
-      <datalist id="categories-list">
-        {categories.map(c => <option key={c} value={c} />)}
-      </datalist>
 
       <datalist id="accounts-list-full">
         {realAccounts.map(a => <option key={a.id} value={a.institution} />)}

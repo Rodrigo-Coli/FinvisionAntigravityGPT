@@ -13,7 +13,7 @@ interface TransactionTableProps {
     accounts: BankAccount[];
     categoryObjects: { name: string; type?: 'INCOME' | 'EXPENSE' }[];
     subcategories: { id: string; name: string; category_name?: string }[];
-    onCreateCategory: (name: string, type: 'INCOME' | 'EXPENSE') => Promise<void>;
+    onCreateCategory: (name: string, type: 'INCOME' | 'EXPENSE') => Promise<string | void>;
     editingRow: { id: string; field: string } | null;
     setEditingRow: (v: { id: string; field: string } | null) => void;
     editValue: any;
@@ -61,7 +61,7 @@ interface CategoryPickerProps {
     transactionType: 'INCOME' | 'EXPENSE' | string;
     categoryObjects: { name: string; type?: 'INCOME' | 'EXPENSE' }[];
     onSelect: (cat: string) => void;
-    onCreateCategory: (name: string, type: 'INCOME' | 'EXPENSE') => Promise<void>;
+    onCreateCategory: (name: string, type: 'INCOME' | 'EXPENSE') => Promise<string | void>;
 }
 
 const CategoryPicker: React.FC<CategoryPickerProps> = ({ value, transactionType, categoryObjects, onSelect, onCreateCategory }) => {
@@ -88,14 +88,16 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({ value, transactionType,
         // normalizeStr em vez de toLowerCase: sem isso, digitar "alimentacao"
         // não encontrava "Alimentação" e o usuário criava uma categoria duplicada.
         .filter(c => normalizeStr(c.name).includes(normalizeStr(search)))
+        // Mesmo nome com grafia diferente aparece uma vez só.
+        .filter((c, i, arr) => arr.findIndex(o => normalizeStr(o.name) === normalizeStr(c.name)) === i)
         .sort((a, b) => a.name.localeCompare(b.name));
 
     const handleCreate = async () => {
         if (!newName.trim()) return;
         setSaving(true);
         try {
-            await onCreateCategory(newName.trim(), txType);
-            onSelect(newName.trim());
+            const saved = await onCreateCategory(newName.trim(), txType);
+            onSelect(saved || newName.trim());
             setCreating(false); setNewName(''); setOpen(false);
         } finally { setSaving(false); }
     };
@@ -306,7 +308,7 @@ const AccountPicker: React.FC<AccountPickerProps> = ({ value, accounts, onSelect
     }, []);
 
     const filtered = accounts
-        .filter(a => a.institution.toLowerCase().includes(search.toLowerCase()))
+        .filter(a => normalizeStr(a.institution || '').includes(normalizeStr(search)))
         .sort((a, b) => a.institution.localeCompare(b.institution));
 
     // Find current label to display
@@ -419,7 +421,7 @@ const OwnerPicker: React.FC<OwnerPickerProps> = ({ value, allOwners, onSelect, c
     }, []);
 
     const options = allOwners
-        .filter(o => o.toLowerCase().includes(search.toLowerCase()))
+        .filter(o => normalizeStr(o || '').includes(normalizeStr(search)))
         .sort((a, b) => a.localeCompare(b));
 
     const handleCreate = () => {

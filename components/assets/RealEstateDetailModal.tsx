@@ -9,6 +9,7 @@ import { getSessionUser } from '../../lib/session';
 import { SearchableInput } from '../common/SearchableInput';
 import { useLedgerOptions, NO_ACCOUNT } from './useLedgerOptions';
 import { ReconciliationService } from '../../services/reconciliation.service';
+import { findCategoryByName } from '../../lib/categoryResolver';
 
 // Trava global contra salvamento concorrente. syncRentalTransactions/syncExpenseProvisions
 // apagam as parcelas futuras e recriam do zero a cada chamada — se handleSaveChanges rodar
@@ -361,12 +362,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       if (isRented && rentalType === 'short_stay') {
         const categoryName = 'Receita Operacional Imobiliária';
         let catId = '';
-        const { data: existingCat } = await supabase
-          .from('categories')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('name', categoryName)
-          .maybeSingle();
+        const { data: existingCat } = await findCategoryByName(supabase, userId, categoryName);
         if (existingCat) {
           catId = existingCat.id;
         } else {
@@ -557,12 +553,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         // 2. Comissão de venda (se houver)
         if (comission > 0) {
           let catId = null;
-          const { data: catRes } = await supabase
-            .from('categories')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('name', 'Ativos Imobiliários')
-            .maybeSingle();
+          const { data: catRes } = await findCategoryByName(supabase, user.id, 'Ativos Imobiliários');
           if (catRes) catId = catRes.id;
 
           await supabase.from('transactions').insert([{
@@ -583,12 +574,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
 
         // 3. Receita da venda
         let revenueCatId = null;
-        const { data: revCat } = await supabase
-          .from('categories')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('name', 'Venda de Ativos')
-          .maybeSingle();
+        const { data: revCat } = await findCategoryByName(supabase, user.id, 'Venda de Ativos');
         if (revCat) {
           revenueCatId = revCat.id;
         } else {
@@ -908,12 +894,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
 
       // Check category
       let catId = '';
-      const { data: catRes } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('name', categoryName)
-        .maybeSingle();
+      const { data: catRes } = await findCategoryByName(supabase, user.id, categoryName);
 
       if (catRes) {
         catId = catRes.id;

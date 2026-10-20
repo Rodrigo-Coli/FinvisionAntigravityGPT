@@ -52,90 +52,54 @@ import UsageMeter from '../components/subscription/UsageMeter';
 import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 import CancelSubscriptionModal from '../components/subscription/CancelSubscriptionModal';
 import { useToast } from '../contexts/ToastContext';
+import { normalizeStr } from '../lib/stringUtils';
+import { pickCategoryMatch, categoryFitsType } from '../lib/categoryResolver';
 
+/**
+ * Garante a categoria "Investimento" (usada nas análises) e suas subcategorias.
+ *
+ * Antes criava DUAS "Investimento" — uma de despesa e outra de receita — e,
+ * como a busca era pelo nome exato, ainda recriava se a existente estivesse
+ * "sem tipo". Agora é UMA só, sem tipo (aparece em receitas e despesas): se já
+ * existir qualquer "Investimento", usa ela; só cria quando não há nenhuma.
+ */
 export const ensureInvestmentCategoriesAndSubcategories = async (userId: string) => {
   if (!supabase) return;
   try {
-    // 1. Get existing 'Investimento' categories
-    const { data: existingCats } = await supabase
+    const { data: allCats } = await supabase
       .from('categories')
-      .select('id, name, type')
-      .eq('user_id', userId)
-      .eq('name', 'Investimento')
-      .eq('is_archived', false);
+      .select('id, name, type, is_archived')
+      .eq('user_id', userId);
 
-    const cats = existingCats || [];
-    let expCat = cats.find((c: any) => c.type === 'EXPENSE');
-    let incCat = cats.find((c: any) => c.type === 'INCOME');
+    const found = pickCategoryMatch(allCats || [], 'Investimento');
+    if (found?.is_archived) return; // arquivada pelo usuário: não ressuscita
 
-    // Create Expense category if missing
-    if (!expCat) {
-      const { data: newExp, error } = await supabase
+    let invCatId = found?.id || '';
+    if (!found) {
+      const { data: created, error } = await supabase
         .from('categories')
-        .insert({
-          user_id: userId,
-          name: 'Investimento',
-          type: 'EXPENSE',
-          color: 'bg-brand-50 text-brand-600',
-          is_archived: false
-        })
+        .insert({ user_id: userId, name: 'Investimento', type: null, color: 'bg-brand-50 text-brand-600', is_archived: false })
         .select('id')
         .single();
-      if (!error && newExp) expCat = { id: newExp.id, name: 'Investimento', type: 'EXPENSE' };
+      if (error || !created) return;
+      invCatId = created.id;
+    } else if (found.type) {
+      // Existia só de um tipo: passa a valer para receita e despesa.
+      await supabase.from('categories').update({ type: null }).eq('id', found.id);
     }
-
-    // Create Income category if missing
-    if (!incCat) {
-      const { data: newInc, error } = await supabase
-        .from('categories')
-        .insert({
-          user_id: userId,
-          name: 'Investimento',
-          type: 'INCOME',
-          color: 'bg-brand-50 text-brand-600',
-          is_archived: false
-        })
-        .select('id')
-        .single();
-      if (!error && newInc) incCat = { id: newInc.id, name: 'Investimento', type: 'INCOME' };
-    }
-
-    // 2. Fetch existing subcategories under both categories
-    const activeCatIds = [];
-    if (expCat) activeCatIds.push(expCat.id);
-    if (incCat) activeCatIds.push(incCat.id);
-
-    if (activeCatIds.length === 0) return;
 
     const { data: existingSubs } = await supabase
       .from('subcategories')
-      .select('id, name, category_id')
+      .select('name')
       .eq('user_id', userId)
-      .in('category_id', activeCatIds);
+      .eq('category_id', invCatId);
 
-    const subs = existingSubs || [];
-    const inserts = [];
+    const have = new Set((existingSubs || []).map((s: any) => normalizeStr(s.name || '')));
+    const required = ['Aplicações', 'Resgate de Capital', 'Juros Recebidos', 'Juros Acumulados'];
+    const inserts = required
+      .filter(name => !have.has(normalizeStr(name)))
+      .map(name => ({ user_id: userId, category_id: invCatId, name }));
 
-    // Check expense subcategories
-    if (expCat) {
-      const hasApp = subs.some((s: any) => s.category_id === expCat.id && s.name === 'Aplicações');
-      if (!hasApp) {
-        inserts.push({ user_id: userId, category_id: expCat.id, name: 'Aplicações' });
-      }
-    }
-
-    // Check income subcategories
-    if (incCat) {
-      const requiredIncomeSubs = ['Resgate de Capital', 'Juros Recebidos', 'Juros Acumulados'];
-      for (const subName of requiredIncomeSubs) {
-        const hasSub = subs.some((s: any) => s.category_id === incCat.id && s.name === subName);
-        if (!hasSub) {
-          inserts.push({ user_id: userId, category_id: incCat.id, name: subName });
-        }
-      }
-    }
-
-    // Bulk insert subcategories if any is missing
     if (inserts.length > 0) {
       await supabase.from('subcategories').insert(inserts);
     }
@@ -413,10 +377,23 @@ const SettingsPage: React.FC = () => {
     }
     if (!supabase) return;
 
-    // Check duplicate
-    const exists = categories.some(c => c.name.trim().toLowerCase() === trimmed.toLowerCase() && c.type === categoryTab);
-    if (exists) {
-      toast('Esta categoria já existe.', 'warning');
+    // Mesmo nome = mesma categoria (sem olhar acento, maiúscula ou espaço).
+    const existing = pickCategoryMatch(categories, trimmed, categoryTab);
+    if (existing) {
+      if (categoryFitsType(existing, categoryTab)) {
+        toast(existing.is_archived ? `"${existing.name}" já existe e está arquivada.` : `"${existing.name}" já existe.`, 'warning');
+        return;
+      }
+      // Existe só do outro tipo: passa a valer para os dois, sem criar gêmea.
+      try {
+        await supabase.from('categories').update({ type: null }).eq('id', existing.id);
+        setNewCatName('');
+        setIsAddingCat(false);
+        fetchData();
+        toast(`"${existing.name}" já existia e agora aparece em Receitas e Despesas.`, 'success');
+      } catch (err) {
+        toast('Erro ao adicionar categoria.', 'error');
+      }
       return;
     }
 
@@ -482,7 +459,8 @@ const SettingsPage: React.FC = () => {
     }
 
     // Check duplicate
-    const exists = categories.some(c => c.id !== editingCatId && c.name.trim().toLowerCase() === trimmed.toLowerCase() && c.type === cat?.type);
+    // Renomear para o nome de outra categoria (de qualquer tipo) criaria duplicata.
+    const exists = categories.some(c => c.id !== editingCatId && normalizeStr(c.name || '') === normalizeStr(trimmed));
     if (exists) {
       toast('Esta categoria já existe.', 'warning');
       return;
@@ -1444,8 +1422,8 @@ const SettingsPage: React.FC = () => {
                   </div>
                 )}
                 {categories
-                  .filter(c => (c.type === categoryTab || (!c.type && categoryTab === 'EXPENSE')))
-                  .filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase()))
+                  .filter(c => (!c.type || c.type === categoryTab))
+                  .filter(c => normalizeStr(c.name || '').includes(normalizeStr(catSearch)))
                   .map(cat => (
                     <div key={cat.id} className="flex flex-col border-b border-slate-50 last:border-0 group">
                       <div className={`p-6 lg:p-8 flex items-center justify-between hover:bg-slate-50/50 transition-all cursor-pointer ${cat.is_archived ? 'opacity-50 grayscale' : ''}`} onClick={() => setExpandedCat(expandedCat === cat.id ? null : cat.id)}>
@@ -1524,7 +1502,7 @@ const SettingsPage: React.FC = () => {
                       )}
                     </div>
                   ))}
-                {categories.filter(c => (c.type === categoryTab || (!c.type && categoryTab === 'EXPENSE'))).filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase())).length === 0 && !isAddingCat && (
+                {categories.filter(c => (!c.type || c.type === categoryTab)).filter(c => normalizeStr(c.name || '').includes(normalizeStr(catSearch))).length === 0 && !isAddingCat && (
                   <div className="p-10 text-center text-slate-500 text-sm font-medium">Nenhuma categoria encontrada.</div>
                 )}
               </div>

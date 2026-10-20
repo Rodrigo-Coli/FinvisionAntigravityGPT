@@ -49,7 +49,7 @@ interface AddTransactionModalProps {
     subcategories: { id: string, name: string, category_name?: string }[];
     /** Tags já usadas na conta, sugeridas na digitação. */
     availableTags?: string[];
-    onCreateCategory: (name: string, type: 'INCOME' | 'EXPENSE') => Promise<void>;
+    onCreateCategory: (name: string, type: 'INCOME' | 'EXPENSE') => Promise<string | void>;
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
@@ -229,7 +229,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     };
 
     const filteredCategories = categoryObjects.filter(
-        (c: any) => !c.type || c.type === form.type
+        (c: any, i: number, arr: any[]) => (!c.type || c.type === form.type)
+            // Mesmo nome com grafia diferente aparece uma vez só.
+            && arr.findIndex((o: any) => (!o.type || o.type === form.type) && normalizeStr(o.name) === normalizeStr(c.name)) === i
     );
 
     // normalizeStr em vez de toLowerCase: sem isso "agua" nao encontrava "Água"
@@ -260,8 +262,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         if (!newCategoryName.trim()) return;
         setIsSavingCategory(true);
         try {
-            await onCreateCategory(newCategoryName.trim(), form.type);
-            setAddField('category', newCategoryName.trim());
+            const saved = await onCreateCategory(newCategoryName.trim(), form.type);
+            setAddField('category', saved || newCategoryName.trim());
             setIsCreatingCategory(false);
             setNewCategoryName('');
         } finally {

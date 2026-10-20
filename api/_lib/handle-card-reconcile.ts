@@ -8,6 +8,7 @@ import { StatementTemplateHelper } from './statement-template-helper.js';
 import { extractTrailingMinusAmounts, applyTrailingMinusCorrection } from './statement-sign-check.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { requireUser } from './require-user.js';
+import { findCategoryByName } from './category-resolver.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -182,7 +183,7 @@ RETORNE APENAS JSON NO FORMATO:
           const catsKey = (t.category_name || t.category || 'Outros').toUpperCase();
           let catsId = categoryCache.get(catsKey);
           if (!catsId) {
-            const { data: exCat } = await supabase.from('categories').select('id').ilike('name', t.category_name || t.category || 'Outros').eq('user_id', imp.user_id).maybeSingle();
+            const { data: exCat } = await findCategoryByName(supabase, imp.user_id, t.category_name || t.category || 'Outros');
             if (exCat) catsId = exCat.id;
             else { const { data: newCat } = await supabase.from('categories').insert({ user_id: imp.user_id, name: t.category_name || t.category || 'Outros', color: '#ef4444', icon: 'Tag' }).select('id').single(); catsId = newCat?.id; }
             if (catsId) categoryCache.set(catsKey, catsId);

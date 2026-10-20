@@ -19,6 +19,7 @@ import { TransactionList } from '../cards/TransactionList';
 import { AddCardModal } from '../cards/AddCardModal';
 import { ManualTransactionModal } from '../cards/ManualTransactionModal';
 import { StatementPicker } from '../cards/StatementPicker';
+import { pickCurrentStatement, targetStatementPeriod } from '../../lib/cardStatements';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import PlanUpgradeModal from '../subscription/PlanUpgradeModal';
 import { PayStatementModal } from '../cards/PayStatementModal';
@@ -58,6 +59,10 @@ const CreditCardsSection: React.FC = () => {
   // para editar/arquivar/etc.), mas statements/transactions passam a agregar todos
   // os ids desta lista, ignorando o antigo sums_into_invoice.
   const [combinedCardIds, setCombinedCardIds] = useState<string[] | null>(null);
+  // Na visão consolidada, `statements` são faturas somadas (não existem no banco).
+  // Estas são as faturas reais de cada cartão da família: é delas que o lançamento
+  // escolhe a sua (ele guarda o id da fatura real do próprio cartão).
+  const [familyStatements, setFamilyStatements] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   // Histórico recente de lançamentos do cartão (para sugestões de descrição que preenchem categoria/subcategoria)
   const [recentTxs, setRecentTxs] = useState<any[]>([]);
@@ -394,18 +399,19 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         if (!user) return;
         const { data, error } = await supabase
           .from('categories')
-          .select('id, name')
+          .select('id, name, is_archived')
           .eq('user_id', user.id)
           .order('name', { ascending: true });
         if (error) throw error;
 
-        // Deduplicate categories by name
-        const rawList = data || [];
+        // Deduplicate categories by name (arquivadas ficam fora: senão a lista
+        // podia ficar com o id de uma duplicada arquivada no lugar da ativa)
+        const rawList = (data || []).filter((c: any) => c.is_archived !== true);
         const uniqueCategories: any[] = [];
         const seenCategories = new Set<string>();
         for (const c of rawList) {
           if (!c.name) continue;
-          const nameTrimmed = c.name.trim().toLowerCase();
+          const nameTrimmed = normalizeStr(c.name);
           if (!seenCategories.has(nameTrimmed)) {
             seenCategories.add(nameTrimmed);
             uniqueCategories.push(c);
@@ -423,7 +429,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
           const seenCategories = new Set<string>();
           for (const c of rawList) {
             if (!c.name) continue;
-            const nameTrimmed = c.name.trim().toLowerCase();
+            const nameTrimmed = normalizeStr(c.name);
             if (!seenCategories.has(nameTrimmed)) {
               seenCategories.add(nameTrimmed);
               uniqueCategories.push(c);
@@ -443,7 +449,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
           const seenCategories = new Set<string>();
           for (const c of rawList) {
             if (!c.name) continue;
-            const nameTrimmed = c.name.trim().toLowerCase();
+            const nameTrimmed = normalizeStr(c.name);
             if (!seenCategories.has(nameTrimmed)) {
               seenCategories.add(nameTrimmed);
               uniqueCategories.push(c);
@@ -465,6 +471,10 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       // travando o botão antes de qualquer verificação de offline abaixo.
       const user = await getSessionUser(supabase);
       if (!user) return;
+
+      // Já existe com outra grafia ("saude" x "Saúde"): usa a existente.
+      const existing = categories.find((c: any) => normalizeStr(c.name || '') === normalizeStr(name));
+      if (existing) return existing;
       
       const { data, error } = await supabase
         .from('categories')
@@ -688,40 +698,13 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       // Priorizamos o selectedCard se o ID bater, para evitar falha se o array 'cards' ainda estiver carregando
       const card = (selectedCard?.id === cardId ? selectedCard : cards.find(c => c.id === cardId));
 
-      const now = new Date();
-      const localDay = now.getDate();
-      let localMonth = now.getMonth(); // 0-indexed (Fev = 1)
-      let localYear = now.getFullYear();
+      // Regra de Fechamento: se passou do dia de fechamento, a compra cai na próxima fatura
+      const { year: targetYear, month: targetMonth } = targetStatementPeriod(new Date(), card?.closing_day);
 
-      // Regra de Fechamento: Se passou do dia de fechamento, a compra cai na próxima fatura
-      if (card?.closing_day && localDay > card.closing_day) {
-        localMonth++;
-        if (localMonth > 11) {
-          localMonth = 0;
-          localYear++;
-        }
-      }
-
-      const targetMonth = localMonth + 1; // 1-indexed para o banco
-      const targetYear = localYear;
-
-
-
-      // 2. Tentar encontrar a fatura que corresponde EXATAMENTE a este período de uso
-      let current = allStatements.find((s: any) => s.month === targetMonth && s.year === targetYear);
-
-      // 3. Fallback inteligente: Se não houver fatura do mês atual, pega a fatura aberta mais antiga/próxima (a que deve ser paga logo)
-      if (!current) {
-        const openStatements = [...allStatements]
-          .filter(s => ['OPEN', 'DUE', 'PENDING'].includes(s.status))
-          .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
-        current = openStatements[0];
-      }
-
-      // 4. Último recurso: A fatura mais recente do banco
-      if (!current) {
-        current = allStatements[0];
-      }
+      // 2. A fatura do período-alvo; sem ela, a aberta mais próxima dele (e não a
+      // aberta mais ANTIGA: uma fatura vazia de 2020 esquecida em aberto fazia a
+      // tela abrir em 2020, sem as compras do mês). Ver lib/cardStatements.ts.
+      const current = pickCurrentStatement(allStatements, targetYear, targetMonth);
 
       setCurrentStatement(current || null);
       // Memoriza a fatura atual "de verdade" para o seletor sempre conseguir voltar a ela
@@ -771,7 +754,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       }
     }
     return Array.from(groups.values())
-      .map(g => ({ ...g, status: g.total_amount > 0 && g.paid_amount >= g.total_amount ? 'PAID' : 'OPEN' }))
+      // Zerada conta como paga: nada a pagar não é fatura em aberto.
+      .map(g => ({ ...g, status: g.total_amount <= 0 || g.paid_amount >= g.total_amount ? 'PAID' : 'OPEN' }))
       .sort((a, b) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime());
   };
 
@@ -782,6 +766,12 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     const cachedData = cached ? JSON.parse(cached) : [];
     if (cachedData.length > 0) {
       setStatements(cachedData);
+    }
+    const rawCacheKey = `${cacheKey}_raw`;
+    if (familyIds) {
+      try { setFamilyStatements(JSON.parse(localStorage.getItem(rawCacheKey) || '[]')); } catch { setFamilyStatements([]); }
+    } else {
+      setFamilyStatements([]);
     }
 
     if (!supabase || isProbablyOffline()) return cachedData;
@@ -796,6 +786,10 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       if (error) throw error;
       const result = familyIds ? buildCombinedStatements(data || [], cardId) : (data || []);
       localStorage.setItem(cacheKey, JSON.stringify(result));
+      if (familyIds) {
+        setFamilyStatements(data || []);
+        localStorage.setItem(rawCacheKey, JSON.stringify(data || []));
+      }
       setStatements(result);
       return result;
     } catch (err) {
@@ -915,8 +909,23 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         // seleção que sobrasse de outro cartão trazia os lançamentos daquele outro
         // cartão para a tela do atual. Como a fatura pertence a um cartão só, somar o
         // filtro de cartão não muda o resultado legítimo e fecha essa porta.
-        query = query.eq('card_id', cardId);
-        if (statementId) query = query.eq('statement_id', statementId);
+        //
+        // Exceção: compra do ADICIONAL que entrou na fatura do titular (quando o
+        // adicional ainda somava na fatura dele). Ela está na fatura, entra no total,
+        // mas o filtro por cartão a escondia — a fatura 05/2026 do titular mostrava
+        // R$ 824,78 e nenhuma compra. Por isso, se a fatura é DESTE cartão, a lista é
+        // a fatura inteira; e "Todo o Histórico" inclui o que está nas faturas dele.
+        const pool = statementsOverride || statements;
+        const ownStatementIds = pool.filter((s: any) => s.card_id === cardId && s.id).map((s: any) => s.id);
+        if (statementId && ownStatementIds.includes(statementId)) {
+          query = query.eq('statement_id', statementId);
+        } else if (statementId) {
+          query = query.eq('card_id', cardId).eq('statement_id', statementId);
+        } else if (ownStatementIds.length > 0) {
+          query = query.or(`card_id.eq.${cardId},statement_id.in.(${ownStatementIds.join(',')})`);
+        } else {
+          query = query.eq('card_id', cardId);
+        }
       }
 
       const { data, error } = await query;
@@ -1204,7 +1213,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       // Resolve categoryName (txCategory) to category_id, auto-creating if it doesn't exist
       let resolvedCategoryId: string | null = null;
       if (txCategory.trim()) {
-        const catObj = categories.find(c => c.name.toLowerCase().trim() === txCategory.toLowerCase().trim());
+        const catObj = categories.find(c => normalizeStr(c.name || '') === normalizeStr(txCategory));
         if (catObj) {
           resolvedCategoryId = catObj.id;
         } else if (!offline) {
@@ -2025,16 +2034,20 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     const s = String(currentStatement?.status || '').toUpperCase();
     if (!s) return null;
     const base = 'px-2 py-0.5 rounded text-[9px] font-black uppercase border';
-    if (s === 'PAID' || (statementTotal > 0 && statementOpen === 0)) return <span className={`${base} bg-emerald-50 text-emerald-700 border-emerald-100`}>Paga</span>;
+    // Zerada (nada a pagar) aparece como paga, nunca como "Aberta".
+    if (s === 'PAID' || statementOpen === 0) return <span className={`${base} bg-emerald-50 text-emerald-700 border-emerald-100`}>Paga</span>;
     if (s === 'DUE') return <span className={`${base} bg-rose-50 text-rose-700 border-rose-100`}>Vencendo</span>;
     if (s === 'OPEN' || s === 'PENDING') return <span className={`${base} bg-brand-50 text-brand-600 border-brand-100`}>Aberta</span>;
     return <span className={`${base} bg-slate-50 text-slate-600 border-slate-100`}>{s}</span>;
   })();
 
+  // Só as ANTERIORES à fatura vista: o aviso fala de "períodos passados", e as
+  // futuras (parcelas já lançadas) também ficam "abertas" — não são pendência.
   const otherOpenStatements = statements.filter(s => 
     s.id !== currentStatement?.id && 
     ['OPEN', 'DUE', 'PENDING'].includes(s.status) && 
-    Number(s.total_amount || 0) > Number(s.paid_amount || 0)
+    Number(s.total_amount || 0) > Number(s.paid_amount || 0) &&
+    (!currentStatement || (s.year * 12 + s.month) < (currentStatement.year * 12 + currentStatement.month))
   );
 
   // Sugestões de tag: as da fatura aberta MAIS o catálogo local (tags já vistas
@@ -2340,12 +2353,13 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
 
                   <TransactionList
                     transactions={transactions.filter(t => {
-                      const q = searchQuery.toLowerCase();
+                      const q = normalizeStr(searchQuery || '');
                       const matchesSearch = !q
-                        || t.description?.toLowerCase().includes(q)
-                        || (t.subcategory || '').toLowerCase().includes(q)
-                        || (t.owner_name || '').toLowerCase().includes(q)
-                        || (t.notes || '').toLowerCase().includes(q);
+                        || normalizeStr(t.description || '').includes(q)
+                        || normalizeStr(t.category || '').includes(q)
+                        || normalizeStr(t.subcategory || '').includes(q)
+                        || normalizeStr(t.owner_name || '').includes(q)
+                        || normalizeStr(t.notes || '').includes(q);
                       const matchesCategory = filterCategory === 'ALL' || t.category_id === filterCategory;
                       const matchesSubcategory = filterSubcategory === 'ALL' || t.subcategory === filterSubcategory;
                       const matchesOwner = filterOwner === 'ALL' || (t.owner_name || 'Pessoal') === filterOwner;
@@ -2368,7 +2382,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
                     onDeleteAttachment={handleDeleteAttachment}
                     onViewAttachment={handleViewAttachment}
                     showStatementScope={selectedStatementId !== 'ALL'}
-                    statements={statements}
+                    statements={combinedCardIds ? familyStatements : statements}
                     isLocked={currentStatement?.status === 'PAID'}
                   />
                 </div>

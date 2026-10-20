@@ -5,6 +5,7 @@ import { DateUtils } from '../lib/dateUtils';
 import { getSessionUser } from '../lib/session';
 import { isNetworkFailure, isProbablyOffline, markNetworkSuccess, withTimeout, NETWORK_TIMEOUT_MS } from '../lib/connectivity';
 import { isOfflineId } from '../lib/offlineQueue.service';
+import { findCategoryByName } from '../lib/categoryResolver';
 
 // PROPAGAÇÃO REVERSA: quando uma parcela vinculada a um passivo é editada/paga/excluída em
 // Transações, recalcula o saldo devedor e o nº de parcelas restantes do passivo a partir das
@@ -479,12 +480,7 @@ export const FinanceService = {
       const user = await getSessionUser(supabase);
       if (!user) return;
 
-      const { data: existing } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('user_id', user.id)
-        .ilike('name', name)
-        .maybeSingle();
+      const { data: existing } = await findCategoryByName(supabase, user.id, name);
 
       if (!existing) {
         await supabase.from('categories').insert({
@@ -783,7 +779,10 @@ export const FinanceService = {
           card_statement_id: statementId,
           is_provision: true
         },
-        is_deleted: false
+        // Fatura zerada e não paga não é conta a pagar: o espelho sai do
+        // Histórico (fica guardado como removido) e volta sozinho no próximo
+        // sync se a fatura ganhar valor.
+        is_deleted: !isPaidFinal && amount <= 0
       };
 
       if (queryTx) {

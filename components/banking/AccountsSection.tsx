@@ -27,7 +27,7 @@ import {
 import { BankAccount, AccountType } from '../../types';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
 import { DateUtils } from '../../lib/dateUtils';
-import { findCloseMatch } from '../../lib/stringUtils';
+import { findCloseMatch, normalizeStr } from '../../lib/stringUtils';
 import { useToast } from '../../contexts/ToastContext';
 import { isProbablyOffline } from '../../lib/connectivity';
 import { getSessionUser } from '../../lib/session';
@@ -570,7 +570,7 @@ const AccountsSection: React.FC = () => {
   };
 
   const filteredAccounts = accounts.filter(acc => {
-    const matchesSearch = acc.institution.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = normalizeStr(acc.institution || '').includes(normalizeStr(searchQuery || ''));
     const matchesType = filterType === 'ALL' || acc.type === filterType;
     const matchesStatus = filterStatus === 'ALL' || (filterStatus === 'ACTIVE' ? !acc.isArchived : acc.isArchived);
     const matchesCurrency = filterCurrency === 'ALL' || acc.currency === filterCurrency;

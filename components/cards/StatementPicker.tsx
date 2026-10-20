@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Search, Check, Calendar } from 'lucide-react';
 import { DateUtils } from '../../lib/dateUtils';
+import { statementSituation, StatementSituation } from '../../lib/cardStatements';
 
 interface Statement {
     id: string;
@@ -8,7 +9,25 @@ interface Statement {
     month: number;
     due_date?: string;
     status?: string;
+    closing_date?: string | null;
+    total_amount?: number | string | null;
+    paid_amount?: number | string | null;
 }
+
+type SituationFilter = 'TODAS' | StatementSituation;
+
+const SITUATION_FILTERS: { key: SituationFilter; label: string }[] = [
+    { key: 'TODAS', label: 'Todas' },
+    { key: 'ABERTA', label: 'Abertas' },
+    { key: 'FECHADA', label: 'Fechadas' },
+    { key: 'PAGA', label: 'Pagas' }
+];
+
+const SITUATION_TAG: Record<StatementSituation, { label: string; className: string }> = {
+    ABERTA: { label: 'Aberta', className: 'bg-brand-50 text-brand-600 border-brand-100' },
+    FECHADA: { label: 'Fechada', className: 'bg-amber-50 text-amber-700 border-amber-100' },
+    PAGA: { label: 'Paga', className: 'bg-emerald-50 text-emerald-700 border-emerald-100' }
+};
 
 interface StatementPickerProps {
     statements: Statement[];
@@ -23,10 +42,14 @@ const normalize = (val: string) => val.normalize('NFD').replace(/[̀-ͯ]/g, '').
  * Seletor de fatura pesquisável. Substitui o <select> nativo que listava as faturas
  * futuras antes das próximas/recentes. Agrupa em Atual, Anteriores (mais recente primeiro)
  * e Próximas (mais próxima primeiro), e permite digitar o mês/ano para filtrar.
+ *
+ * Cada fatura mostra a situação — Aberta (recebendo compras), Fechada (esperando
+ * pagamento) ou Paga (zerada conta como paga) — e dá para listar só uma delas.
  */
 export const StatementPicker: React.FC<StatementPickerProps> = ({ statements, value, realCurrentStatementId, onChange }) => {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
+    const [situation, setSituation] = useState<SituationFilter>('TODAS');
     const ref = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -62,6 +85,7 @@ export const StatementPicker: React.FC<StatementPickerProps> = ({ statements, va
     }, [statements, realCurrentStatementId, refKey]);
 
     const matchesSearch = (s: Statement) => {
+        if (situation !== 'TODAS' && statementSituation(s) !== situation) return false;
         if (!search.trim()) return true;
         return normalize(DateUtils.formatStatementLabel(s)).includes(normalize(search));
     };
@@ -80,18 +104,30 @@ export const StatementPicker: React.FC<StatementPickerProps> = ({ statements, va
         onChange(val);
         setOpen(false);
         setSearch('');
+        setSituation('TODAS');
     };
 
-    const Row: React.FC<{ label: string; selected: boolean; onClick: () => void }> = ({ label, selected, onClick }) => (
+    const Tag: React.FC<{ s?: Statement }> = ({ s }) => {
+        if (!s) return null;
+        const tag = SITUATION_TAG[statementSituation(s)];
+        return <span className={`px-1.5 py-0.5 rounded border text-[8px] font-black uppercase tracking-wider ${tag.className}`}>{tag.label}</span>;
+    };
+
+    const Row: React.FC<{ label: string; selected: boolean; onClick: () => void; stmt?: Statement }> = ({ label, selected, onClick, stmt }) => (
         <button
             type="button"
             onClick={onClick}
             className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors ${selected ? 'text-brand-600' : 'text-slate-700'}`}
         >
             <span className="truncate uppercase tracking-wide">{label}</span>
-            {selected && <Check size={14} className="text-brand-600 shrink-0" />}
+            <span className="flex items-center gap-2 shrink-0">
+                <Tag s={stmt} />
+                {selected && <Check size={14} className="text-brand-600 shrink-0" />}
+            </span>
         </button>
     );
+
+    const filtering = !!search.trim() || situation !== 'TODAS';
 
     return (
         <div ref={ref} className="relative w-full sm:w-auto min-w-[200px]">
@@ -117,21 +153,40 @@ export const StatementPicker: React.FC<StatementPickerProps> = ({ statements, va
                                 onChange={e => setSearch(e.target.value)}
                             />
                         </div>
+                        <div className="flex gap-1 mt-2" role="tablist" aria-label="Situação da fatura">
+                            {SITUATION_FILTERS.map(f => (
+                                <button
+                                    key={f.key}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={situation === f.key}
+                                    onClick={() => setSituation(f.key)}
+                                    style={{ touchAction: 'manipulation' }}
+                                    className={`flex-1 min-h-[32px] rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors ${situation === f.key ? 'bg-brand-600 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+                                >
+                                    {f.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     <div className="max-h-64 overflow-y-auto">
-                        {!search.trim() && (
+                        {!filtering && (
                             <>
-                                <Row label="Fatura Atual" selected={value === 'CURRENT'} onClick={() => select('CURRENT')} />
+                                <Row label="Fatura Atual" selected={value === 'CURRENT'} onClick={() => select('CURRENT')} stmt={currentStmt} />
                                 <Row label="Todo o Histórico" selected={value === 'ALL'} onClick={() => select('ALL')} />
                             </>
+                        )}
+                        {/* Filtrando, a atual entra na lista como as outras (pelo mês). */}
+                        {filtering && currentStmt && matchesSearch(currentStmt) && (
+                            <Row label={`${DateUtils.formatStatementLabel(currentStmt)} (atual)`} selected={value === 'CURRENT' || value === currentStmt.id} onClick={() => select('CURRENT')} stmt={currentStmt} />
                         )}
 
                         {filteredPrev.length > 0 && (
                             <>
                                 <p className="px-4 pt-2 pb-1 text-[9px] font-black text-slate-300 uppercase tracking-widest">Anteriores</p>
                                 {filteredPrev.map(s => (
-                                    <Row key={s.id} label={DateUtils.formatStatementLabel(s)} selected={value === s.id} onClick={() => select(s.id)} />
+                                    <Row key={s.id} label={DateUtils.formatStatementLabel(s)} selected={value === s.id} onClick={() => select(s.id)} stmt={s} />
                                 ))}
                             </>
                         )}
@@ -140,12 +195,12 @@ export const StatementPicker: React.FC<StatementPickerProps> = ({ statements, va
                             <>
                                 <p className="px-4 pt-2 pb-1 text-[9px] font-black text-slate-300 uppercase tracking-widest">Próximas</p>
                                 {filteredUp.map(s => (
-                                    <Row key={s.id} label={DateUtils.formatStatementLabel(s)} selected={value === s.id} onClick={() => select(s.id)} />
+                                    <Row key={s.id} label={DateUtils.formatStatementLabel(s)} selected={value === s.id} onClick={() => select(s.id)} stmt={s} />
                                 ))}
                             </>
                         )}
 
-                        {search.trim() && filteredPrev.length === 0 && filteredUp.length === 0 && (
+                        {filtering && filteredPrev.length === 0 && filteredUp.length === 0 && !(currentStmt && matchesSearch(currentStmt)) && (
                             <p className="px-4 py-4 text-xs text-slate-300 text-center">Nenhuma fatura encontrada</p>
                         )}
                     </div>

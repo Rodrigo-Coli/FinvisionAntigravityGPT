@@ -1,27 +1,51 @@
 {
-  "version": "2026.10.19.2310",
-  "title": "Lançamentos de veículos e imóveis com conta e categorias",
-  "date": "19/10/2026",
+  "version": "2026.10.20.1051",
+  "title": "Cartões titular e adicional, situação das faturas e categorias unificadas",
+  "date": "20/10/2026",
   "benefits": [
     {
-      "title": "Escolha a conta do lançamento",
-      "desc": "No extrato do veículo, dos outros bens e no lançador de gastos do imóvel agora você escolhe de qual conta saiu (ou entrou) o dinheiro. O saldo do banco passa a acompanhar. Se não quiser mexer no saldo, há a opção \"Sem conta\".",
+      "title": "Fatura certa ao abrir só o cartão titular",
+      "desc": "O cartão abria numa fatura antiga e vazia (de 2020) quando a do mês seguinte ainda não existia. Agora abre na fatura do mês, com as outras na ordem certa.",
       "type": "correcao"
     },
     {
-      "title": "Categorias e subcategorias que você já usa",
-      "desc": "Os campos de categoria e subcategoria mostram as que já existem enquanto você digita, e ainda dá para criar uma nova.",
-      "type": "usabilidade"
+      "title": "Compras do adicional dentro da fatura do titular",
+      "desc": "Quando o adicional somava na fatura do titular, essas compras entravam no total mas não apareciam na lista vendo só o titular. Agora a lista mostra a fatura inteira, batendo com o total.",
+      "type": "correcao"
     },
     {
-      "title": "Sugestão pela descrição",
-      "desc": "Ao escrever a descrição, o app sugere a categoria e a subcategoria que você já usou em lançamentos parecidos. É só tocar para usar.",
+      "title": "Fatura dos lançamentos no consolidado",
+      "desc": "Vendo titular + adicionais juntos, cada lançamento mostrava \"Nenhuma fatura\". Agora mostra a fatura em que ele está, e dá para trocá-la ali mesmo.",
+      "type": "correcao"
+    },
+    {
+      "title": "Abertas, fechadas e pagas",
+      "desc": "No seletor de período cada fatura mostra se está Aberta, Fechada (esperando pagamento) ou Paga, e dá para listar só as de uma situação.",
       "type": "recurso"
+    },
+    {
+      "title": "Fatura zerada não é conta em aberto",
+      "desc": "Fatura sem valor aparece como paga e não fica mais como conta a pagar de R$ 0,00 no Histórico. O aviso de faturas pendentes também não conta parcelas futuras.",
+      "type": "correcao"
+    },
+    {
+      "title": "Categorias unificadas",
+      "desc": "Categorias repetidas (Ativos Físicos, Investimento, Alimentação, Moradia, Transporte e outras) viraram uma só, com todos os lançamentos, valores e datas preservados. A que serve para entrada e saída aparece em Receitas e em Despesas.",
+      "type": "correcao"
+    },
+    {
+      "title": "Busca sem acento e sem novas duplicadas",
+      "desc": "Digitar \"saude\" encontra \"Saúde\". E lançar com uma categoria escrita de outro jeito (acento, maiúscula, espaço) usa a que já existe.",
+      "type": "usabilidade"
     }
   ],
   "changes": [
-    "`components/assets/useLedgerOptions.ts`: carrega contas ativas, categorias/subcategorias e o histórico classificado quando o formulário abre; `suggestFor` usa `suggestCategory` (mesma regra do cupom).",
-    "`pages/Assets.tsx` (extrato do card): `SearchableInput` em categoria/subcategoria, chip de sugestão, seletor de conta (obrigatório no lançamento atual; \"Sem conta\" explícito); grava `account_id`/`account_name`, cria a subcategoria nova e recalcula o saldo da conta.",
-    "`components/assets/RealEstateDetailModal.tsx` (Registrar Gasto): o tipo continua definindo `property_tx_type`; categoria/subcategoria editáveis com sugestões, conta do lançamento e recálculo do saldo quando pago."
+    "`lib/cardStatements.ts`: `pickCurrentStatement` (sem fatura do período, a aberta mais próxima; zerada não conta como aberta), `isSettledStatement`/`statementSituation` (Aberta/Fechada/Paga; zerada = paga), `statementOptionsForTx`. Usado em `CreditCardsSection`, `StatementPicker` e no resumo de cartões do Painel.",
+    "`CreditCardsSection.fetchTransactions` (titular sozinho): fatura do próprio cartão lista pelo `statement_id` (inclui compras do adicional que entraram nela); \"Todo o Histórico\" inclui o que está nas faturas do cartão.",
+    "Consolidado: `familyStatements` (faturas reais da família) no seletor de fatura de cada lançamento; faturas somadas zeradas ficam como pagas; aviso de pendentes só com as anteriores à fatura vista; selo \"Paga\" quando não há nada a pagar.",
+    "`StatementPicker`: selo de situação em cada fatura e filtro Todas/Abertas/Fechadas/Pagas.",
+    "`FinanceService.syncStatementToHistory`: espelho de fatura zerada e não paga fica `is_deleted` (volta no próximo sync se a fatura ganhar valor). Banco: 3 espelhos de R$ 0,00 escondidos.",
+    "`lib/categoryResolver.ts` (+ `api/_lib/category-resolver.ts`): busca de categoria pelo nome normalizado, sem falhar com duplicadas e ampliando para receita+despesa; Configurações mostram categoria sem tipo nas duas abas; `<datalist>` trocado por `SearchableInput`; buscas com `normalizeStr`; listas do cartão e da Conciliação sem categorias arquivadas.",
+    "Banco: 10 grupos de categorias duplicadas unificados (lançamentos, compras de cartão, divisões e subcategorias apontados para a que ficou; backup em `_backup_categorias_unificadas_20261020`); as 12 duplicadas, já vazias, foram arquivadas."
   ]
 }

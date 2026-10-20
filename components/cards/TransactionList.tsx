@@ -3,6 +3,7 @@ import { Clock, Plus, Loader2, Tags, Trash2, Paperclip, SplitSquareHorizontal } 
 import { DateUtils } from '../../lib/dateUtils';
 import { SplitTransactionModal } from '../history/SplitTransactionModal';
 import { SearchableInput } from '../common/SearchableInput';
+import { statementOptionsForTx } from '../../lib/cardStatements';
 
 interface TransactionListProps {
     transactions: any[];
@@ -226,7 +227,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                         className="flex-1 min-w-0 text-xs font-black uppercase text-slate-500 dark:text-slate-300 bg-white dark:bg-brand-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                     >
                                         <option value="">Nenhuma Fatura</option>
-                                        {statements.map(s => (
+                                        {statementOptionsForTx(statements, tx).map(s => (
                                             <option key={s.id} value={s.id}>
                                                 {DateUtils.formatMonthYear(s.year, s.month)}
                                             </option>
@@ -401,7 +402,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                                 className="w-full text-[10px] font-black uppercase text-slate-500 dark:text-slate-300 bg-white dark:bg-brand-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                             >
                                                 <option value="">Nenhuma Fatura</option>
-                                                {statements.map(s => (
+                                                {statementOptionsForTx(statements, tx).map(s => (
                                                     <option key={s.id} value={s.id}>
                                                         {DateUtils.formatMonthYear(s.year, s.month)}
                                                     </option>
