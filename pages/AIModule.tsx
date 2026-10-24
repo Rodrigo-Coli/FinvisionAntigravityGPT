@@ -16,6 +16,7 @@ import { sanitizeReceiptDate } from '../lib/receiptDate';
 import { suggestCategory, ClassifiedTx, CategorySuggestion } from '../lib/categorySuggestion';
 import { TagsInput } from '../components/common/TagsInput';
 import { parseTags, rememberTags, suggestTags } from '../lib/tagUtils';
+import { sanitizeMoneyTyping, parseMoneyInput, formatMoneyInput } from '../lib/moneyInput';
 
 // Helper to parse markdown into semantically correct HTML (protects lists and bolds)
 const parseMarkdownToReact = (text: string) => {
@@ -86,7 +87,15 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [receipt, setReceipt] = useState<ExtractedReceipt | null>(null);
   const [reconcileMode, setReconcileMode] = useState<'total' | 'partial' | 'items'>('total');
-  const [partialValue, setPartialValue] = useState<number>(0);
+  const [partialValue, setPartialValueNumber] = useState<number>(0);
+  // O que está DIGITADO no campo do valor parcial (ver lib/moneyInput.ts):
+  // separado do número para a vírgula não sumir enquanto se digita.
+  const [partialText, setPartialText] = useState<string>('');
+  /** Valor vindo de fora do campo (cupom lido, toque nos itens): número e texto juntos. */
+  const setPartialValue = (value: number) => {
+    setPartialValueNumber(value);
+    setPartialText(formatMoneyInput(value));
+  };
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'done'>('idle');
   // Data da compra, sempre visível e editável antes de lançar. A IA chutava o
   // ano quando a imagem não trazia (2023 em vez de 2026) e a compra sumia do
@@ -705,12 +714,13 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                         type="text"
                         inputMode="decimal"
                         placeholder="Ex: 50,00"
-                        value={partialValue === 0 ? '' : partialValue.toString().replace('.', ',')}
+                        value={partialText}
                         onChange={(e) => {
-                          let val = e.target.value.replace(/[^0-9,.]/g, '').replace(',', '.');
-                          const num = parseFloat(val);
-                          setPartialValue(isNaN(num) ? 0 : num);
+                          const typed = sanitizeMoneyTyping(e.target.value);
+                          setPartialText(typed);
+                          setPartialValueNumber(parseMoneyInput(typed));
                         }}
+                        onBlur={() => setPartialText(formatMoneyInput(partialValue))}
                         className="w-full h-12 bg-slate-50 border border-slate-200 rounded-xl px-4 font-bold text-slate-900 focus:ring-2 focus:ring-brand-500"
                       />
                     </div>

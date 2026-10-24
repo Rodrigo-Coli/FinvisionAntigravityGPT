@@ -1,5 +1,21 @@
 [
   {
+    "version": "2026.10.21.2159",
+    "title": "Vírgula no valor parcial do cupom",
+    "date": "21/10/2026",
+    "benefits": [
+      {
+        "title": "Centavos no valor parcial do cupom",
+        "desc": "Ao lançar só parte de um cupom lido (modo Parcial), a vírgula sumia ao digitar e 190,96 ficava 190. Agora o valor aceita vírgula (ou ponto) e os centavos entram certinho.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`lib/moneyInput.ts`: `sanitizeMoneyTyping`, `parseMoneyInput` (\"190,96\", \"1.234,56\", \"190.96\") e `formatMoneyInput`.",
+      "`pages/AIModule.tsx`: o campo \"Valor Parcial a Conciliar\" guarda o texto digitado (`partialText`) separado do número; antes o número reescrevia o texto a cada tecla e a vírgula sumia."
+    ]
+  },
+  {
     "version": "2026.10.20.1430",
     "title": "Tags em Configurações, foto de cupom grande e atualização mais rápida",
     "date": "20/10/2026",
