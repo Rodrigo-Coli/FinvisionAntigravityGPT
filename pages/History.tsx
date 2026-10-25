@@ -199,6 +199,14 @@ const matchesAccountFilter = (t: any, selected: string[]): boolean => {
 // isCapitalizedMovement (lançamentos de patrimônio que ficam fora dos gráficos/totais) foi
 // movido para lib/historyUtils.ts e é importado no topo — mesma regra do Painel e Relatórios.
 
+/** Receita ou despesa — mesma regra da Análise do Período (HistoryCharts). */
+const txKind = (t: any): 'INCOME' | 'EXPENSE' | null => {
+  const type = String(t?.type || '').toUpperCase();
+  if (type === 'EXPENSE' || type === 'BILL_PAYMENT' || (type === 'ADJUSTMENT' && Number(t?.amount) < 0)) return 'EXPENSE';
+  if (type === 'INCOME' || (type === 'ADJUSTMENT' && Number(t?.amount) >= 0)) return 'INCOME';
+  return null;
+};
+
 const getQueryParam = (name: string): string | null => {
   let search = window.location.search;
   if (!search && window.location.hash) {
@@ -264,6 +272,11 @@ const HistoryPage: React.FC = () => {
     const acc = getQueryParam('account');
     return acc ? [acc] : [];
   });
+  // Tipo escolhido ao tocar numa categoria da Análise do Período (lista de
+  // Receitas ou de Despesas). Uma categoria pode ter os dois tipos (ex.:
+  // "Prestação de Serviços"): sem isto, tocar na categoria em Receitas trazia
+  // também as despesas dela. Vale só para a lista, com a mesma regra do gráfico.
+  const [filterKind, setFilterKind] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [filterCategory, setFilterCategory] = useState<string[]>(() => {
     const cat = getQueryParam('category');
     return cat ? [cat] : [];
@@ -980,6 +993,9 @@ const HistoryPage: React.FC = () => {
         if (filterType !== 'ALL') {
           combined = combined.filter((t: any) => t.type === filterType);
         }
+        if (filterKind !== 'ALL') {
+          combined = combined.filter((t: any) => txKind(t) === filterKind);
+        }
         if (filterAccount.length > 0) {
           // Idem: compras de cartão casam pelo card_id, não pelo account_id.
           combined = combined.filter((t: any) => matchesAccountFilter(t, filterAccount));
@@ -1384,7 +1400,7 @@ const HistoryPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [filterType, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, JSON.stringify(filterTag), filterOrigin, page, sortField, sortDirection, debouncedSearch]);
+  }, [filterType, filterKind, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, JSON.stringify(filterTag), filterOrigin, page, sortField, sortDirection, debouncedSearch]);
 
   const refreshCharts = useCallback(async () => {
     await fetchData(true);
@@ -1394,7 +1410,12 @@ const HistoryPage: React.FC = () => {
   useEffect(() => {
     setPage(0);
     setSelectedIds(new Set());
-  }, [filterType, JSON.stringify(filterAccount), JSON.stringify(filterCategory), JSON.stringify(filterSubcategory), startDate, endDate, minPrice, maxPrice, JSON.stringify(filterOwner), JSON.stringify(filterTag), sortField, sortDirection, debouncedSearch]);
+  }, [filterType, filterKind, JSON.stringify(filterAccount), JSON.stringify(filterCategory), JSON.stringify(filterSubcategory), startDate, endDate, minPrice, maxPrice, JSON.stringify(filterOwner), JSON.stringify(filterTag), sortField, sortDirection, debouncedSearch]);
+
+  // Sem categoria escolhida, o tipo do clique na Análise não faz mais sentido.
+  useEffect(() => {
+    if (filterCategory.length === 0 && filterKind !== 'ALL') setFilterKind('ALL');
+  }, [JSON.stringify(filterCategory)]);
 
   useEffect(() => {
     if (isSupabaseConfigured) fetchData();
@@ -2086,7 +2107,7 @@ const HistoryPage: React.FC = () => {
   };
 
   const resetFilters = () => {
-    setFilterType('ALL'); setFilterCategory([]);
+    setFilterType('ALL'); setFilterKind('ALL'); setFilterCategory([]);
     setFilterSubcategory([]); setFilterOrigin('ALL'); setFilterTag([]);
     setStartDate(DateUtils.formatToISODate(firstDay));
     setEndDate(DateUtils.formatToISODate(lastDay));
@@ -2129,7 +2150,10 @@ const HistoryPage: React.FC = () => {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds(new Set(transactions.map(t => t.id)));
+      // Só o que está NA LISTA: com "Recebidos"/"Abertos" ou "só duplicados",
+      // marcar `transactions` inteiro incluía lançamentos escondidos, e a edição
+      // em massa (categoria, conta…) alterava também o que não estava à vista.
+      setSelectedIds(new Set(viewFiltered.map(t => t.id)));
     } else {
       setSelectedIds(new Set());
     }
@@ -3682,8 +3706,9 @@ const HistoryPage: React.FC = () => {
         setSelectedTimelineCategories={setSelectedTimelineCategories}
         startDate={startDate}
         endDate={endDate}
-        onCategoryClick={(cat) => {
+        onCategoryClick={(cat, kind) => {
           setFilterCategory([cat]);
+          setFilterKind(kind || 'ALL');
           window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
         }}
         onMonthClick={(month, year) => {
@@ -3695,6 +3720,22 @@ const HistoryPage: React.FC = () => {
       />
 
       <div />
+
+      {filterKind !== 'ALL' && (
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-brand-50 border border-brand-100 rounded-2xl text-xs font-bold text-brand-700">
+          <span>
+            Mostrando só {filterKind === 'INCOME' ? 'receitas' : 'despesas'}
+            {filterCategory.length === 1 ? ` de ${filterCategory[0]}` : ''}
+          </span>
+          <button
+            type="button"
+            onClick={() => setFilterKind('ALL')}
+            className="ml-auto px-3 py-1 rounded-lg bg-white border border-brand-200 text-[10px] font-black uppercase tracking-wider hover:bg-brand-100"
+          >
+            ✕ Mostrar receitas e despesas
+          </button>
+        </div>
+      )}
 
       <TransactionTable
         transactions={viewFiltered} isLoading={isLoading} accounts={accounts}

@@ -1,15 +1,22 @@
 {
-  "version": "2026.10.25.1043",
-  "title": "Busca na categoria do lançamento",
+  "version": "2026.10.25.1155",
+  "title": "Categoria da análise filtra receita ou despesa",
   "date": "25/10/2026",
   "benefits": [
     {
-      "title": "Digitar para achar a categoria",
-      "desc": "Ao trocar a categoria ou subcategoria de um lançamento nas Transações, a lista às vezes abria cortada, sem o campo de busca — só dava para rolar. Agora ela abre por cima de tudo, com a busca sempre visível para ir digitando.",
+      "title": "Tocar numa categoria de Receitas traz só receitas",
+      "desc": "Na Análise do Período, tocar numa categoria da lista de Receitas (ou de Despesas) agora mostra só esse tipo — antes, uma categoria com os dois (como Prestação de Serviços) trazia receitas e despesas juntas. Um aviso mostra o filtro, com um botão para ver tudo de novo.",
+      "type": "correcao"
+    },
+    {
+      "title": "\"Selecionar todos\" só o que está na lista",
+      "desc": "Com \"Recebidos\" ou \"Abertos\" ativos, selecionar todos marcava também lançamentos escondidos — e a edição em massa alterava o que não estava à vista. Agora marca só o que aparece.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "`TransactionTable`: listas de categoria e subcategoria em portal com posição fixa (`useFixedDropdownCoords`), o mesmo padrão da lista de conta; antes eram absolutas dentro do cartão do lançamento, que cortava o topo (onde fica a busca) ao abrir para cima."
+    "`History.tsx`: `filterKind` (INCOME/EXPENSE) definido pelo clique na categoria da Análise (`onCategoryClick(cat, kind)`), aplicado só à lista com a regra do gráfico (`txKind`: despesa inclui BILL_PAYMENT e ajuste negativo); aviso com \"✕ Mostrar receitas e despesas\"; zera sem categoria e no Limpar.",
+    "`handleSelectAll` usa `viewFiltered` (lista à vista) em vez de `transactions`.",
+    "Banco: 20 receitas restantes de \"Prestação de Serviços\" passaram para \"Salário\" (as 13 despesas da categoria ficaram como estavam)."
   ]
 }
