@@ -1,5 +1,20 @@
 [
   {
+    "version": "2026.10.25.1043",
+    "title": "Busca na categoria do lançamento",
+    "date": "25/10/2026",
+    "benefits": [
+      {
+        "title": "Digitar para achar a categoria",
+        "desc": "Ao trocar a categoria ou subcategoria de um lançamento nas Transações, a lista às vezes abria cortada, sem o campo de busca — só dava para rolar. Agora ela abre por cima de tudo, com a busca sempre visível para ir digitando.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`TransactionTable`: listas de categoria e subcategoria em portal com posição fixa (`useFixedDropdownCoords`), o mesmo padrão da lista de conta; antes eram absolutas dentro do cartão do lançamento, que cortava o topo (onde fica a busca) ao abrir para cima."
+    ]
+  },
+  {
     "version": "2026.10.25.1037",
     "title": "Imóvel na planta: o que falta pagar é dívida",
     "date": "25/10/2026",
