@@ -1,22 +1,29 @@
 {
-  "version": "2026.10.25.0956",
-  "title": "Notificação diária abre só os pendentes avisados",
+  "version": "2026.10.25.1037",
+  "title": "Imóvel na planta: o que falta pagar é dívida",
   "date": "25/10/2026",
   "benefits": [
     {
-      "title": "Aviso diário abre filtrado",
-      "desc": "Ao tocar na notificação de contas e receitas pendentes, as Transações abrem só com os pendentes do aviso (vencidos nos últimos 7 dias, de hoje e de amanhã), mesmo com o app já aberto.",
+      "title": "Patrimônio do imóvel na planta",
+      "desc": "O imóvel na planta entra pelo valor, e tudo o que ainda falta pagar (parcelas até a entrega e o saldo da entrega) entra em Dívidas. Assim o patrimônio líquido fica no que você já pagou (mais a valorização). Vale para Patrimônio e para o Painel.",
       "type": "correcao"
     },
     {
-      "title": "\"Todo o Período\" na análise",
-      "desc": "Com o período \"Tudo\", a Análise do Período mostra \"Todo o Período\" em vez de \"janeiro de 1 → dezembro de 9999\".",
+      "title": "Como recalcular parcelas",
+      "desc": "Em Patrimônio > Passivos há um passo a passo para recalcular as parcelas futuras de um financiamento quando houver erro ou o banco mudar o saldo.",
+      "type": "usabilidade"
+    },
+    {
+      "title": "\"Atualizar mais tarde\" respeitado",
+      "desc": "Depois de dispensar o aviso de atualização, ele não reabre sozinho quando o download termina; volta na próxima vez que o app for aberto.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "`notify-bills-due`: a URL do push leva `status=PENDING`, `startDate` (7 dias atrás) e `endDate` (amanhã).",
-    "`src/sw.js` (notificationclick): com o app aberto, manda `NAVIGATE` por `postMessage` (o `client.navigate()` falhava em silêncio em janela não controlada) e foca; `App.tsx` ouve e troca o hash.",
-    "`HistoryCharts`: datas-sentinela de \"Tudo\" viram \"Todo o Período\" / \"Até …\" / \"A partir de …\"."
+    "`lib/plantaDebt.ts`: `plantaRemainingDebt` = saldo da entrega (sem passivo vinculado) + entrada/intermediárias/construtora não pagas fora de passivo.",
+    "Patrimônio (`Assets.tsx`): imóvel na planta pelo valor cheio; dívida da planta somada em `totalLiabilities` (card Dívidas mostra quanto é da planta). Antes: valor − saldo da entrega, com parcelas a vencer contando como patrimônio e possível desconto duplo quando havia passivo vinculado.",
+    "Painel (`dashboard.service.ts`): mesma regra (antes o imóvel na planta entrava cheio, sem dívida).",
+    "Patrimônio > Passivos: ajuda \"como recalcular\" (Editar → conferir saldo/juros/SAC/parcelas → Recalcular as parcelas futuras ao salvar).",
+    "`UpdateAlert`: dispensa vale até reabrir o app; o fim do download em segundo plano não reabre o aviso."
   ]
 }
