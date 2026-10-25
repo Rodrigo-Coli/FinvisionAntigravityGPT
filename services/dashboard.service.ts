@@ -5,6 +5,7 @@ import { safeStorage } from '../lib/safeStorage';
 import { getSessionUser } from '../lib/session';
 import { pickCurrentStatement as pickStatementFor, targetStatementPeriod } from '../lib/cardStatements';
 import { ownerKey } from '../lib/ownerUtils';
+import { plantaRemainingDebt } from '../lib/plantaDebt';
 
 export const DashboardService = {
   getSummary: async (): Promise<DashboardData> => {
@@ -27,7 +28,7 @@ export const DashboardService = {
     ] = await Promise.all([
       sb.from('accounts').select('current_balance, type, include_in_dashboard').eq('user_id', user.id).eq('is_archived', false),
       sb.from('cards').select('id, brand, name, limit_total, last4, is_additional, parent_card_id, sums_into_invoice').eq('user_id', user.id).eq('is_archived', false),
-      sb.from('physical_assets').select('estimated_value, category').eq('user_id', user.id),
+      sb.from('physical_assets').select('id, estimated_value, category, metadata').eq('user_id', user.id),
       sb.from('entities').select('name').eq('user_id', user.id).eq('include_in_totals', false),
       sb.from('transactions').select('date, amount, type, owner_name, metadata').eq('user_id', user.id).eq('is_deleted', false).gte('date', new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString()),
       sb.from('liabilities').select('*').eq('user_id', user.id),
@@ -167,6 +168,25 @@ export const DashboardService = {
 
     // 7. Liabilities (Debts/Passivos)
     let totalLiabilities = 0;
+
+    // Imóvel na planta: o que falta pagar até a entrega (e o saldo da entrega,
+    // se ainda não virou passivo) também é dívida — mesma regra da tela de
+    // Patrimônio (lib/plantaDebt.ts). Antes o Painel contava o imóvel cheio.
+    const plantaAssets = physicalAssets.filter((a: any) => a.category === 'REAL_ESTATE' && a.metadata?.propertyStage === 'PLANTA' && !a.metadata?.isLoan);
+    if (plantaAssets.length > 0) {
+      const { data: plantaTxs } = await sb
+        .from('transactions')
+        .select('type, amount, paid_amount, is_paid, is_deleted, liability_id, metadata')
+        .eq('user_id', user.id)
+        .eq('is_deleted', false)
+        .eq('is_paid', false)
+        .in('metadata->>linked_asset_id', plantaAssets.map((a: any) => a.id));
+      for (const asset of plantaAssets) {
+        const linked = (plantaTxs || []).filter((t: any) => t.metadata?.linked_asset_id === asset.id);
+        const hasLinkedLiability = liabilitiesData.some((l: any) => l.linked_asset_id === asset.id && !l.is_archived);
+        totalLiabilities += plantaRemainingDebt(asset, linked, hasLinkedLiability).total;
+      }
+    }
     const liabilitiesForProj: any[] = [];
     const realEstateLiabilitiesForProj: any[] = [];
     if (liabilitiesData) {

@@ -70,6 +70,7 @@ import { useLedgerOptions, NO_ACCOUNT } from '../components/assets/useLedgerOpti
 import { ReconciliationService } from '../services/reconciliation.service';
 import { findCategoryByName } from '../lib/categoryResolver';
 import { DateInput } from '../components/common/DateInput';
+import { plantaRemainingDebt } from '../lib/plantaDebt';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -6245,18 +6246,23 @@ ${tabelaHtml}
   };
 
   // Totals calculations
+  // Imóvel na planta entra pelo valor; o que falta pagar (saldo da entrega sem
+  // passivo + parcelas ainda não pagas até a entrega) vai para Dívidas. Assim o
+  // patrimônio líquido dele é o que já foi pago (+ valorização). Antes só o
+  // saldo da entrega era descontado — as parcelas a vencer contavam como dono.
+  const plantaDebtTotal = enrichedPhysicalAssets
+    .filter(p => p.category === 'REAL_ESTATE' && p.metadata?.propertyStage === 'PLANTA' && !p.metadata?.isLoan)
+    .reduce((acc, p) => {
+      const hasLinkedLiability = activeLiabilities.some(l => l.linkedAssetId === p.id);
+      return acc + plantaRemainingDebt(p, linkedTransactionsMap.get(p.id) || [], hasLinkedLiability).total;
+    }, 0);
+
   const totalPhysical = enrichedPhysicalAssets
     .filter(p => p.category !== 'INVESTMENT' && !p.metadata?.isLoan)
-    .reduce((acc, curr) => {
-      if (curr.category === 'REAL_ESTATE' && curr.metadata?.propertyStage === 'PLANTA') {
-        const meta = curr.metadata || {};
-        return acc + curr.estimatedValue - (Number(meta.deliveryBalance) || 0);
-      }
-      return acc + curr.estimatedValue;
-    }, 0);
+    .reduce((acc, curr) => acc + curr.estimatedValue, 0);
   
   const totalFinancial = dynamicBrokers.reduce((acc, curr) => acc + curr.balance, 0);
-  const totalLiabilities = activeLiabilities.reduce((acc, curr) => acc + curr.remainingBalance, 0);
+  const totalLiabilities = activeLiabilities.reduce((acc, curr) => acc + curr.remainingBalance, 0) + plantaDebtTotal;
 
   const totalLoans = enrichedPhysicalAssets
     .filter(p => p.metadata?.isLoan)
@@ -6938,6 +6944,9 @@ ${tabelaHtml}
                         {formatCurrency(totalLiabilities)}
                       </h4>
                       <span className="text-xs sm:text-[11px] font-bold text-red-400 uppercase tracking-widest">Saldo Devedor</span>
+                      {plantaDebtTotal > 0 && (
+                        <span className="block text-[10px] font-bold text-red-400/80 mt-0.5">Inclui {formatCurrency(plantaDebtTotal)} a pagar de imóveis na planta</span>
+                      )}
                     </div>
                   </button>
                 )}
@@ -9860,6 +9869,30 @@ ${tabelaHtml}
                 Exibir passivos arquivados
               </label>
             </div>
+
+            {/* Como corrigir parcelas: alterar "esta e as próximas" copia o mesmo
+                valor para todas (não recalcula juros) — o caminho certo é este. */}
+            <details className="bg-brand-50/50 border border-brand-100 rounded-2xl px-4 py-3 text-xs text-slate-600">
+              <summary className="cursor-pointer font-bold text-brand-700 select-none">
+                Parcelas erradas ou o banco mudou o saldo? Veja como recalcular
+              </summary>
+              <ol className="list-decimal pl-5 mt-2 space-y-1 leading-relaxed">
+                <li>Toque no passivo (ex.: o financiamento) e em <strong>Editar</strong>.</li>
+                <li>Confira o <strong>saldo devedor atual</strong> (o do extrato do banco é o mais preciso), a <strong>taxa de juros</strong>, o tipo (<strong>SAC</strong> ou <strong>Price</strong>), as <strong>parcelas restantes</strong> e o <strong>dia do vencimento</strong>.</li>
+                <li>Marque <strong>"Recalcular as parcelas futuras ao salvar"</strong> e salve.</li>
+              </ol>
+              <p className="mt-2 leading-relaxed">
+                O app recria as parcelas ainda não pagas (de hoje em diante) calculando os juros mês a mês sobre o saldo devedor — no SAC elas voltam a diminuir.
+                Parcelas pagas não mudam; confira se sobrou alguma vencida e não paga com valor errado.
+                Evite <strong>"alterar esta e as próximas"</strong> numa parcela de financiamento: isso copia o mesmo valor para todas.
+              </p>
+            </details>
+
+            {plantaDebtTotal > 0 && (
+              <p className="text-[11px] font-bold text-slate-500">
+                O total de Dívidas inclui também {formatCurrency(plantaDebtTotal)} a pagar de imóveis na planta (parcelas até a entrega e saldo da entrega). Esses valores aparecem no próprio imóvel.
+              </p>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {liabilities.filter(l => showArchivedLiabilities ? true : !l.is_archived).map(liability => {

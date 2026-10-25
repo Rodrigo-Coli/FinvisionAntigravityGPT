@@ -24,7 +24,15 @@ const formatText = (text: string) => {
 };
 
 export const UpdateAlert: React.FC = () => {
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissedState] = useState(false);
+  // "Atualizar mais tarde" (ou tocar fora): vale até o app ser aberto de novo.
+  // Sem isto, o fim do download em segundo plano (needRefresh) reabria o aviso
+  // logo depois de a pessoa ter dispensado. Versão NOVA no servidor reabre.
+  const dismissedByUserRef = useRef(false);
+  const setDismissed = (value: boolean) => {
+    if (value) dismissedByUserRef.current = true;
+    setDismissedState(value);
+  };
   const [changelog, setChangelog] = useState<ChangelogData | null>(null);
   const [serverVersion, setServerVersion] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
@@ -92,7 +100,7 @@ export const UpdateAlert: React.FC = () => {
         setVersionMismatch(prev => {
           // Só reabre o aviso quando a versão MUDA; sem isso, cada verificação
           // desfazia o 'Atualizar mais tarde' do usuário.
-          if (stale && !prev) setDismissed(false);
+          if (stale && !prev) { dismissedByUserRef.current = false; setDismissedState(false); }
           return stale;
         });
 
@@ -163,7 +171,7 @@ export const UpdateAlert: React.FC = () => {
         console.warn('[SW] Erro ao obter dados de atualização:', err);
       });
       
-      setDismissed(false);
+      if (!dismissedByUserRef.current) setDismissedState(false);
     }
   }, [needRefresh]);
 
