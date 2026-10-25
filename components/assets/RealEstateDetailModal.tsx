@@ -11,6 +11,7 @@ import { useLedgerOptions, NO_ACCOUNT } from './useLedgerOptions';
 import { ReconciliationService } from '../../services/reconciliation.service';
 import { findCategoryByName } from '../../lib/categoryResolver';
 import { parseMoneyInput, sanitizeMoneyTyping } from '../../lib/moneyInput';
+import { DateInput } from '../common/DateInput';
 
 // Trava global contra salvamento concorrente. syncRentalTransactions/syncExpenseProvisions
 // apagam as parcelas futuras e recriam do zero a cada chamada — se handleSaveChanges rodar
@@ -1115,7 +1116,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
 
                 <div className="space-y-1">
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data de Aquisição / Compra</label>
-                  <input className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" type="date" value={acquisitionDate} onChange={e => setAcquisitionDate(e.target.value)} />
+                  <DateInput className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs" value={acquisitionDate} onChange={e => setAcquisitionDate(e.target.value)} />
                 </div>
 
                 {/* Histórico de Evolução de Valor */}
@@ -1146,7 +1147,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                       </div>
                       <div className="space-y-1">
                         <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Próx. Venc. Condo</label>
-                        <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="date" value={condoNextDate} onChange={e => setCondoNextDate(e.target.value)} />
+                        <DateInput className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" value={condoNextDate} onChange={e => setCondoNextDate(e.target.value)} />
                       </div>
                     </div>
 
@@ -1165,7 +1166,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                       </div>
                       <div className="space-y-1 col-span-2">
                         <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Próx. Venc. IPTU</label>
-                        <input className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" type="date" value={iptuNextDate} onChange={e => setIptuNextDate(e.target.value)} />
+                        <DateInput className="w-full h-9 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 outline-none text-xs" value={iptuNextDate} onChange={e => setIptuNextDate(e.target.value)} />
                       </div>
                     </div>
                   </div>
@@ -1263,9 +1264,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                     {salePaymentMethod === 'A_VISTA' && (
                       <div className="space-y-1 animate-in slide-in-from-top-2">
                         <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data de Recebimento</label>
-                        <input
-                          type="date"
-                          className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs"
+                        <DateInput className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs"
                           value={saleDate}
                           onChange={(e) => setSaleDate(e.target.value)}
                         />
@@ -1287,9 +1286,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                         </div>
                         <div className="space-y-1">
                           <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data do Recebimento</label>
-                          <input
-                            type="date"
-                            className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs"
+                          <DateInput className="w-full h-10 px-4 bg-white border rounded-xl font-bold text-slate-900 outline-none text-xs"
                             value={saleDate}
                             onChange={(e) => setSaleDate(e.target.value)}
                           />
@@ -1568,7 +1565,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                           </div>
                           <div className="space-y-1">
                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data Inicial de Cobrança</label>
-                            <input className="w-full h-9 px-3 bg-white border rounded-lg font-bold text-xs" type="date" value={rentalDate} onChange={e => setRentalDate(e.target.value)} />
+                            <DateInput className="w-full h-9 px-3 bg-white border rounded-lg font-bold text-xs" value={rentalDate} onChange={e => setRentalDate(e.target.value)} />
                           </div>
                           <div className="space-y-1">
                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Taxa ADM (R$)</label>
@@ -1630,10 +1627,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                               </div>
                               <div className="space-y-1">
                                 <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data</label>
-                                <input 
-                                  className="w-full h-8 px-2 bg-white border rounded-lg text-xs font-bold" 
-                                  type="date" 
-                                  value={newBookingDate} 
+                                <DateInput 
+                                  className="w-full h-8 px-2 bg-white border rounded-lg text-xs font-bold" value={newBookingDate} 
                                   onChange={e => setNewBookingDate(e.target.value)} 
                                 />
                               </div>
@@ -1789,11 +1784,11 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                   <>
                     <div className="space-y-1">
                       <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data Início</label>
-                      <input className="w-full h-9 px-3 bg-white border rounded-lg text-xs" type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
+                      <DateInput className="w-full h-9 px-3 bg-white border rounded-lg text-xs" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data Fim</label>
-                      <input className="w-full h-9 px-3 bg-white border rounded-lg text-xs" type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
+                      <DateInput className="w-full h-9 px-3 bg-white border rounded-lg text-xs" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
                     </div>
                   </>
                 )}
@@ -1874,7 +1869,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
 
                 <div className="space-y-1">
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data do Lançamento</label>
-                  <input required className="w-full h-10 px-3 bg-white border rounded-xl text-xs" type="date" value={quickTxDate} onChange={e => setQuickTxDate(e.target.value)} />
+                  <DateInput required className="w-full h-10 px-3 bg-white border rounded-xl text-xs" value={quickTxDate} onChange={e => setQuickTxDate(e.target.value)} />
                 </div>
 
                 <div className="flex items-center gap-2 h-10">

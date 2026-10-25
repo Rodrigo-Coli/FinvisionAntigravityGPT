@@ -45,6 +45,7 @@ import ContextualHelp from '../components/ContextualHelp';
 import { ArrowDownRight, ArrowUpRight, Wallet, Building2 } from 'lucide-react';
 import { findCategoryByName } from '../lib/categoryResolver';
 import { ownerKey, uniqueOwners, matchesOwnerFilter } from '../lib/ownerUtils';
+import { DateInput } from '../components/common/DateInput';
 
 // Initial fallback categories
 const DEFAULT_CATEGORIES = [
@@ -3522,9 +3523,9 @@ const HistoryPage: React.FC = () => {
         {/* Row 2: Custom date range picker */}
         <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl border border-slate-100 w-full sm:w-auto">
           <Calendar size={14} className="text-slate-400 shrink-0" />
-          <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
+          <DateInput value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
           <span className="text-slate-300 shrink-0">–</span>
-          <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
+          <DateInput value={endDate} onChange={e => { setEndDate(e.target.value); setPage(0); }} className="bg-transparent text-[11px] font-bold outline-none flex-1 min-w-0" />
         </div>
       </div>
 
@@ -3570,16 +3571,12 @@ const HistoryPage: React.FC = () => {
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-xs">
-                  <input 
-                    type="date" 
-                    value={slot.startDate} 
+                  <DateInput value={slot.startDate} 
                     onChange={e => updateComparisonSlot(slot.id, 'startDate', e.target.value)} 
                     className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-medium outline-none focus:border-indigo-400"
                   />
                   <span className="text-slate-400">–</span>
-                  <input 
-                    type="date" 
-                    value={slot.endDate} 
+                  <DateInput value={slot.endDate} 
                     onChange={e => updateComparisonSlot(slot.id, 'endDate', e.target.value)} 
                     className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-medium outline-none focus:border-indigo-400"
                   />

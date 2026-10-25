@@ -1,22 +1,27 @@
 {
-  "version": "2026.10.25.0236",
-  "title": "Filtro de pessoa sem repetidos e completo",
+  "version": "2026.10.25.0332",
+  "title": "Datas: digite os números ou abra o calendário",
   "date": "25/10/2026",
   "benefits": [
     {
-      "title": "Uma \"Pessoal\" só no filtro",
-      "desc": "A lista de Pessoa ou empresa mostrava \"pessoal\" e \"Pessoal\" como duas pessoas. Agora nomes iguais (com ou sem acento, maiúscula ou espaço) aparecem uma vez.",
-      "type": "correcao"
+      "title": "Digitar a data",
+      "desc": "Em todos os campos de data do app, ao tocar abre o teclado numérico: digite só os números (25102026) e as barras entram sozinhas (25/10/2026).",
+      "type": "usabilidade"
     },
     {
-      "title": "Filtrar Pessoal traz todos os lançamentos",
-      "desc": "Filtrando Pessoal, os lançamentos sem pessoa definida e os gravados com outra grafia ficavam de fora — a maior parte sumia. Agora entram todos. Vale para Histórico, Relatórios e Cartões.",
+      "title": "Calendário no ícone",
+      "desc": "O ícone de calendário ao lado do campo abre o calendário do celular, para quem prefere escolher.",
+      "type": "usabilidade"
+    },
+    {
+      "title": "\"Tudo\" sem datas estranhas",
+      "desc": "No Histórico, o período \"Tudo\" não mostra mais 01/01/0001 – 31/12/9999: os campos ficam vazios.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "`lib/ownerUtils.ts`: `ownerKey` (sem acento/maiúscula/espaço; vazio = Pessoal), `uniqueOwners`, `matchesOwnerFilter`.",
-    "Histórico (lista, gráficos, comparação), Relatórios e Cartões filtram com `matchesOwnerFilter`; listas de pessoas com `uniqueOwners` (inclui `FinanceService.getEntities`).",
-    "Perfis que não contam nos totais (Painel, projeção, Home) comparados por `ownerKey`."
+    "`components/common/DateInput.tsx`: campo de texto com máscara DD/MM/AAAA (teclado numérico), emite AAAA-MM-DD só com data completa e válida (ou vazio), ícone abre o seletor nativo (`showPicker`); `onChange`/`onBlur` com a mesma forma do input antigo (`e.target.value`).",
+    "Os 71 `<input type=\"date\">` de 19 telas trocados por `DateInput`.",
+    "`tests/dateInput.test.ts`: máscara, validação (31/02, mês 13) e datas-sentinela."
   ]
 }

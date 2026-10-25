@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Landmark, Loader2 } from 'lucide-react';
+import { DateInput } from '../common/DateInput';
 
 interface PayStatementModalProps {
     show: boolean;
@@ -96,9 +97,7 @@ export const PayStatementModal: React.FC<PayStatementModalProps> = ({
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Data do Pagamento</label>
-                                <input
-                                    type="date"
-                                    value={payDate}
+                                <DateInput value={payDate}
                                     onChange={(e) => setPayDate(e.target.value)}
                                     className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
                                 />

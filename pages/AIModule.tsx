@@ -17,6 +17,7 @@ import { suggestCategory, ClassifiedTx, CategorySuggestion } from '../lib/catego
 import { TagsInput } from '../components/common/TagsInput';
 import { parseTags, rememberTags, suggestTags } from '../lib/tagUtils';
 import { sanitizeMoneyTyping, parseMoneyInput, formatMoneyInput } from '../lib/moneyInput';
+import { DateInput } from '../components/common/DateInput';
 
 // Helper to parse markdown into semantically correct HTML (protects lists and bolds)
 const parseMarkdownToReact = (text: string) => {
@@ -737,9 +738,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   <div className="space-y-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Data da compra</label>
-                      <input
-                        type="date"
-                        value={purchaseDate}
+                      <DateInput value={purchaseDate}
                         max={DateUtils.formatToISODate()}
                         onChange={(e) => { setPurchaseDate(e.target.value); setPurchaseDateAdjusted(false); }}
                         className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-brand-500 outline-none"

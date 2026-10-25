@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, Filter, X, ChevronDown, Calendar, CreditCard, Tag, DollarSign, User, Check } from 'lucide-react';
 import { BankAccount } from '../../types';
+import { DateInput } from '../common/DateInput';
 
 
 interface MultiSelectProps {
@@ -249,8 +250,8 @@ export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
                             <Calendar size={12} /> Período
                         </label>
                         <div className="flex gap-2">
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full h-11 px-3 bg-slate-50 border border-slate-50 rounded-lg text-xs font-bold outline-none focus:border-brand-500" />
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full h-11 px-3 bg-slate-50 border border-slate-50 rounded-lg text-xs font-bold outline-none focus:border-brand-500" />
+                            <DateInput value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full h-11 px-3 bg-slate-50 border border-slate-50 rounded-lg text-xs font-bold outline-none focus:border-brand-500" />
+                            <DateInput value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full h-11 px-3 bg-slate-50 border border-slate-50 rounded-lg text-xs font-bold outline-none focus:border-brand-500" />
                         </div>
                     </div>
 

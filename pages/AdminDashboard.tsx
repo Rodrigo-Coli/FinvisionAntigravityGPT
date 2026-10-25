@@ -17,6 +17,7 @@ import LandingSettingsPanel from '../components/admin/LandingSettingsPanel';
 import { useToast } from '../contexts/ToastContext';
 import { isSuperadmin } from '../lib/authUtils';
 import { Profile } from '../types';
+import { DateInput } from '../components/common/DateInput';
 
 // ─── Catálogo de features dos planos ────────────────────────────────────────
 // As 8 chaves com `aiUsageCategory` são as que realmente geram custo de IA e
@@ -1166,11 +1167,11 @@ export default function AdminDashboard({ user }: { user?: Profile | null }) {
                 )}
                 <div>
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Data de início</label>
-                  <input type="date" value={newCampaign.starts_at} onChange={e => setNewCampaign(p => ({ ...p, starts_at: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none focus:border-brand-500" />
+                  <DateInput value={newCampaign.starts_at} onChange={e => setNewCampaign(p => ({ ...p, starts_at: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none focus:border-brand-500" />
                 </div>
                 <div>
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Data de fim (opcional)</label>
-                  <input type="date" value={newCampaign.ends_at} onChange={e => setNewCampaign(p => ({ ...p, ends_at: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none focus:border-brand-500" />
+                  <DateInput value={newCampaign.ends_at} onChange={e => setNewCampaign(p => ({ ...p, ends_at: e.target.value }))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none focus:border-brand-500" />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Texto do Banner no App (opcional)</label>

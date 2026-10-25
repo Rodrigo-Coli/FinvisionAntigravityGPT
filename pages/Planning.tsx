@@ -9,6 +9,7 @@ import { SplitTransactionService } from '../services/splitTransaction.service';
 import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 import { isProbablyOffline } from '../lib/connectivity';
 import { getSessionUser } from '../lib/session';
+import { DateInput } from '../components/common/DateInput';
 
 const BUDGET_COLORS = [
   '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'
@@ -824,9 +825,7 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Prazo Estimado</label>
-                  <input
-                    type="date"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                  <DateInput className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
                     value={goalFormData.deadline}
                     onChange={e => setGoalFormData({ ...goalFormData, deadline: e.target.value })}
                   />

@@ -35,6 +35,7 @@ import { useToast } from '../contexts/ToastContext';
 import { SearchableInput } from '../components/common/SearchableInput';
 import { normalizeStr } from '../lib/stringUtils';
 import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
+import { DateInput } from '../components/common/DateInput';
 
 const Reconcile: React.FC = () => {
   const navigate = useNavigate();
@@ -1245,9 +1246,7 @@ const Reconcile: React.FC = () => {
                           {/* Col 1: Desc & Date */}
                           <div className="lg:col-span-2 space-y-1">
                             {isEditing ? (
-                              <input
-                                type="date"
-                                value={editForm.date || item.date}
+                              <DateInput value={editForm.date || item.date}
                                 onChange={e => setEditForm({ ...editForm, date: e.target.value })}
                                 className="w-full bg-slate-50 border-none rounded-xl text-[10px] font-bold p-2 outline-none focus:ring-2 focus:ring-brand-500 mb-1"
                               />

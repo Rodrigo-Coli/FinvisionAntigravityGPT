@@ -4,6 +4,7 @@ import { DateUtils } from '../../lib/dateUtils';
 import { SplitTransactionModal } from '../history/SplitTransactionModal';
 import { SearchableInput } from '../common/SearchableInput';
 import { statementOptionsForTx } from '../../lib/cardStatements';
+import { DateInput } from '../common/DateInput';
 
 interface TransactionListProps {
     transactions: any[];
@@ -106,9 +107,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             <div key={tx.id} className="p-4 space-y-3">
                                 {/* Data + Valor */}
                                 <div className="flex items-center justify-between gap-2">
-                                    <input
-                                        type="date"
-                                        value={String(tx.date).slice(0, 10)}
+                                    <DateInput value={String(tx.date).slice(0, 10)}
                                         onChange={(e) => onUpdateTxLocal(tx.id, { date: e.target.value })}
                                         onBlur={(e) => onSaveTxPatch(tx.id, { date: e.target.value })}
                                         className="compact-date-input text-xs font-mono font-bold bg-transparent border border-slate-200 dark:border-slate-700 dark:text-slate-200 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
@@ -312,9 +311,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                     <div className="grid grid-cols-12 gap-2 px-6 py-4 items-center">
                                         {/* Date (col-span-2 with hidden calendar icon indicator) */}
                                         <div className="col-span-2">
-                                            <input
-                                                type="date"
-                                                value={String(tx.date).slice(0, 10)}
+                                            <DateInput value={String(tx.date).slice(0, 10)}
                                                 onChange={(e) => onUpdateTxLocal(tx.id, { date: e.target.value })}
                                                 onBlur={(e) => onSaveTxPatch(tx.id, { date: e.target.value })}
                                                 className="compact-date-input w-full text-[10px] font-mono font-bold bg-transparent dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
