@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.10.25.0956",
+    "title": "Notificação diária abre só os pendentes avisados",
+    "date": "25/10/2026",
+    "benefits": [
+      {
+        "title": "Aviso diário abre filtrado",
+        "desc": "Ao tocar na notificação de contas e receitas pendentes, as Transações abrem só com os pendentes do aviso (vencidos nos últimos 7 dias, de hoje e de amanhã), mesmo com o app já aberto.",
+        "type": "correcao"
+      },
+      {
+        "title": "\"Todo o Período\" na análise",
+        "desc": "Com o período \"Tudo\", a Análise do Período mostra \"Todo o Período\" em vez de \"janeiro de 1 → dezembro de 9999\".",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`notify-bills-due`: a URL do push leva `status=PENDING`, `startDate` (7 dias atrás) e `endDate` (amanhã).",
+      "`src/sw.js` (notificationclick): com o app aberto, manda `NAVIGATE` por `postMessage` (o `client.navigate()` falhava em silêncio em janela não controlada) e foca; `App.tsx` ouve e troca o hash.",
+      "`HistoryCharts`: datas-sentinela de \"Tudo\" viram \"Todo o Período\" / \"Até …\" / \"A partir de …\"."
+    ]
+  },
+  {
     "version": "2026.10.25.0332",
     "title": "Datas: digite os números ou abra o calendário",
     "date": "25/10/2026",

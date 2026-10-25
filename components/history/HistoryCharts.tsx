@@ -355,7 +355,12 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
             const d = new Date(iso + 'T00:00:00');
             return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
         };
-        if (!internalStartDate && !internalEndDate) return 'Todo o Período';
+        // "Tudo" usa datas-sentinela (0001-01-01 a 9999-12-31): mostrar "janeiro de 1 → dezembro de 9999" não diz nada.
+        const isOpenStart = !internalStartDate || Number(internalStartDate.slice(0, 4)) < 1000;
+        const isOpenEnd = !internalEndDate || Number(internalEndDate.slice(0, 4)) >= 9999;
+        if (isOpenStart && isOpenEnd) return 'Todo o Período';
+        if (isOpenStart) return `Até ${fmt(internalEndDate)}`;
+        if (isOpenEnd) return `A partir de ${fmt(internalStartDate)}`;
         if (internalStartDate && internalEndDate) {
             // If same month → show just that month
             const s = new Date(internalStartDate + 'T00:00:00');
