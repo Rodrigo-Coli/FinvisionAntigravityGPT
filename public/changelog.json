@@ -1,22 +1,28 @@
 {
-  "version": "2026.10.25.1155",
-  "title": "Categoria da análise filtra receita ou despesa",
+  "version": "2026.10.25.1229",
+  "title": "Lance de consórcio recalcula as parcelas",
   "date": "25/10/2026",
   "benefits": [
     {
-      "title": "Tocar numa categoria de Receitas traz só receitas",
-      "desc": "Na Análise do Período, tocar numa categoria da lista de Receitas (ou de Despesas) agora mostra só esse tipo — antes, uma categoria com os dois (como Prestação de Serviços) trazia receitas e despesas juntas. Um aviso mostra o filtro, com um botão para ver tudo de novo.",
-      "type": "correcao"
+      "title": "Registrar lance no consórcio",
+      "desc": "No cartão do consórcio, o botão \"Lance\" registra o valor pago e a conta de onde saiu. Você escolhe o que a administradora fez: reduzir o prazo (saem as últimas parcelas) ou reduzir o valor da parcela (as parcelas futuras ficam menores). O saldo devedor cai pelo valor do lance.",
+      "type": "novidade"
     },
     {
-      "title": "\"Selecionar todos\" só o que está na lista",
-      "desc": "Com \"Recebidos\" ou \"Abertos\" ativos, selecionar todos marcava também lançamentos escondidos — e a edição em massa alterava o que não estava à vista. Agora marca só o que aparece.",
-      "type": "correcao"
+      "title": "Prévia antes de confirmar e número exato da administradora",
+      "desc": "Antes de gravar, a tela mostra quantas parcelas saem ou o novo valor, e como fica o saldo devedor. Se a administradora informou o número exato (parcelas que sobram ou novo valor), é só digitar — ele vale mais que a estimativa. Parcelas pagas, vencidas ou com pagamento parcial nunca mudam.",
+      "type": "novidade"
+    },
+    {
+      "title": "Dá para desfazer o último lance",
+      "desc": "Errou o valor ou o tipo? \"Desfazer último lance\" devolve as parcelas e o saldo devedor como estavam e retira o lance da conta.",
+      "type": "melhoria"
     }
   ],
   "changes": [
-    "`History.tsx`: `filterKind` (INCOME/EXPENSE) definido pelo clique na categoria da Análise (`onCategoryClick(cat, kind)`), aplicado só à lista com a regra do gráfico (`txKind`: despesa inclui BILL_PAYMENT e ajuste negativo); aviso com \"✕ Mostrar receitas e despesas\"; zera sem categoria e no Limpar.",
-    "`handleSelectAll` usa `viewFiltered` (lista à vista) em vez de `transactions`.",
-    "Banco: 20 receitas restantes de \"Prestação de Serviços\" passaram para \"Salário\" (as 13 despesas da categoria ficaram como estavam)."
+    "`lib/consortiumBid.ts`: `planConsortiumBid` (REDUCE_TERM retira as últimas parcelas cobertas pelo lance ou deixa N; REDUCE_INSTALLMENT divide o restante ou usa o valor informado); só parcelas futuras, não pagas e sem pagamento parcial.",
+    "`components/assets/ConsortiumBidModal.tsx`: grava o lance (EXPENSE paga, categoria Consórcio/Lance, `metadata.type = consortium_bid`, vinculado ao passivo), oculta (`is_deleted`) ou reajusta as parcelas, guarda o histórico em `consortiums.metadata.bids` e abate o passivo por delta (saldo − lance, parcelas restantes − retiradas) — não pela soma das parcelas, que em vários consórcios é bem menor que o saldo real. Falha no meio desfaz o que já foi gravado; \"Desfazer último lance\" reverte tudo.",
+    "`ConsortiumSection.tsx`: botão \"Lance\" no cartão (exceto quitado).",
+    "Testes: `tests/consortiumBid.test.ts` e `tests/consortiumBidModal.test.tsx` (gravação, desfazer e reversão em falha contra banco em memória)."
   ]
 }
