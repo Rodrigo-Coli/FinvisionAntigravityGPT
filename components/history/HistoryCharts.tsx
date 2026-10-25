@@ -12,7 +12,8 @@ interface HistoryChartsProps {
     setSelectedTimelineCategories?: (cats: string[] | ((prev: string[]) => string[])) => void;
     startDate?: string;
     endDate?: string;
-    onCategoryClick?: (category: string) => void;
+    /** `kind`: tocou na lista de Receitas ou de Despesas (a lista filtra o tipo). */
+    onCategoryClick?: (category: string, kind?: 'INCOME' | 'EXPENSE') => void;
     onMonthClick?: (month: string, year: number) => void;
 }
 
@@ -543,7 +544,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                             className="group cursor-pointer hover:bg-slate-50 transition-colors rounded-xl p-2 -m-2"
                                             onClick={() => {
                                                 setExpandedCategory(prev => (prev?.name === cat.name && prev.kind === 'income') ? null : { name: cat.name, kind: 'income' });
-                                                onCategoryClick?.(cat.name);
+                                                onCategoryClick?.(cat.name, 'INCOME');
                                             }}
                                         >
                                             <div className="flex justify-between items-end mb-1">
@@ -608,7 +609,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                             className="group cursor-pointer hover:bg-slate-50 transition-colors rounded-xl p-2 -m-2"
                                             onClick={() => {
                                                 setExpandedCategory(prev => (prev?.name === cat.name && prev.kind === 'expense') ? null : { name: cat.name, kind: 'expense' });
-                                                onCategoryClick?.(cat.name);
+                                                onCategoryClick?.(cat.name, 'EXPENSE');
                                             }}
                                         >
                                             <div className="flex justify-between items-end mb-1">
