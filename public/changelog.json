@@ -1,29 +1,15 @@
 {
-  "version": "2026.10.25.1037",
-  "title": "Imóvel na planta: o que falta pagar é dívida",
+  "version": "2026.10.25.1043",
+  "title": "Busca na categoria do lançamento",
   "date": "25/10/2026",
   "benefits": [
     {
-      "title": "Patrimônio do imóvel na planta",
-      "desc": "O imóvel na planta entra pelo valor, e tudo o que ainda falta pagar (parcelas até a entrega e o saldo da entrega) entra em Dívidas. Assim o patrimônio líquido fica no que você já pagou (mais a valorização). Vale para Patrimônio e para o Painel.",
-      "type": "correcao"
-    },
-    {
-      "title": "Como recalcular parcelas",
-      "desc": "Em Patrimônio > Passivos há um passo a passo para recalcular as parcelas futuras de um financiamento quando houver erro ou o banco mudar o saldo.",
-      "type": "usabilidade"
-    },
-    {
-      "title": "\"Atualizar mais tarde\" respeitado",
-      "desc": "Depois de dispensar o aviso de atualização, ele não reabre sozinho quando o download termina; volta na próxima vez que o app for aberto.",
+      "title": "Digitar para achar a categoria",
+      "desc": "Ao trocar a categoria ou subcategoria de um lançamento nas Transações, a lista às vezes abria cortada, sem o campo de busca — só dava para rolar. Agora ela abre por cima de tudo, com a busca sempre visível para ir digitando.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "`lib/plantaDebt.ts`: `plantaRemainingDebt` = saldo da entrega (sem passivo vinculado) + entrada/intermediárias/construtora não pagas fora de passivo.",
-    "Patrimônio (`Assets.tsx`): imóvel na planta pelo valor cheio; dívida da planta somada em `totalLiabilities` (card Dívidas mostra quanto é da planta). Antes: valor − saldo da entrega, com parcelas a vencer contando como patrimônio e possível desconto duplo quando havia passivo vinculado.",
-    "Painel (`dashboard.service.ts`): mesma regra (antes o imóvel na planta entrava cheio, sem dívida).",
-    "Patrimônio > Passivos: ajuda \"como recalcular\" (Editar → conferir saldo/juros/SAC/parcelas → Recalcular as parcelas futuras ao salvar).",
-    "`UpdateAlert`: dispensa vale até reabrir o app; o fim do download em segundo plano não reabre o aviso."
+    "`TransactionTable`: listas de categoria e subcategoria em portal com posição fixa (`useFixedDropdownCoords`), o mesmo padrão da lista de conta; antes eram absolutas dentro do cartão do lançamento, que cortava o topo (onde fica a busca) ao abrir para cima."
   ]
 }

@@ -56,6 +56,28 @@ function useDropdownDirection(open: boolean) {
     return { triggerRef, openUp };
 }
 
+/**
+ * Posição fixa (na tela) para a lista aberta por cima de tudo, num portal.
+ * As listas de categoria/subcategoria eram absolutas DENTRO do cartão do
+ * lançamento, que corta o que passa da borda: abrindo para cima, o campo de
+ * busca (no topo da lista) ficava escondido — parecia só uma lista para rolar.
+ * Mesmo padrão da lista de conta (AccountPicker).
+ */
+function useFixedDropdownCoords(open: boolean, triggerRef: React.RefObject<HTMLDivElement>, width: number) {
+    const [coords, setCoords] = useState({ top: 0, bottom: 0, left: 0 });
+    useEffect(() => {
+        if (!open || !triggerRef.current) return;
+        const rect = triggerRef.current.getBoundingClientRect();
+        const maxLeft = Math.max(8, window.innerWidth - width - 8);
+        setCoords({
+            top: rect.bottom + 4,
+            bottom: window.innerHeight - rect.top + 4,
+            left: Math.min(Math.max(8, rect.left), maxLeft)
+        });
+    }, [open]);
+    return coords;
+}
+
 // ─── Category Picker ──────────────────────────────────────────────────────────
 interface CategoryPickerProps {
     value: string;
@@ -72,12 +94,14 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({ value, transactionType,
     const [newName, setNewName] = useState('');
     const [saving, setSaving] = useState(false);
     const { triggerRef, openUp } = useDropdownDirection(open);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+    const coords = useFixedDropdownCoords(open, triggerRef, 224);
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
-            if (triggerRef.current && !triggerRef.current.contains(e.target as Node)) {
-                setOpen(false); setCreating(false); setSearch(''); setNewName('');
-            }
+            const target = e.target as Node;
+            if (triggerRef.current?.contains(target) || dropdownRef.current?.contains(target)) return;
+            setOpen(false); setCreating(false); setSearch(''); setNewName('');
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
@@ -114,10 +138,19 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({ value, transactionType,
                 <ChevronDown size={9} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
 
-            {open && (
-                <div 
-                    style={{ minWidth: '224px', width: 'max-content' }}
-                    className={`absolute z-50 ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden w-56 animate-in fade-in duration-150`}
+            {open && createPortal(
+                <div
+                    ref={dropdownRef}
+                    style={{
+                        position: 'fixed',
+                        top: openUp ? 'auto' : coords.top,
+                        bottom: openUp ? coords.bottom : 'auto',
+                        left: coords.left,
+                        minWidth: '224px',
+                        width: 'max-content',
+                        maxWidth: 'calc(100vw - 16px)'
+                    }}
+                    className="z-[9999] bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-150"
                 >
                     <div className="p-2 border-b border-slate-50 space-y-1.5">
                         <div className="relative">
@@ -167,7 +200,8 @@ const CategoryPicker: React.FC<CategoryPickerProps> = ({ value, transactionType,
                             <p className="px-3 py-4 text-xs text-slate-300 text-center">Nenhuma categoria encontrada</p>
                         )}
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
@@ -185,12 +219,14 @@ const SubcategoryPicker: React.FC<SubcategoryPickerProps> = ({ value, parentCate
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
     const { triggerRef, openUp } = useDropdownDirection(open);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+    const coords = useFixedDropdownCoords(open, triggerRef, 192);
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
-            if (triggerRef.current && !triggerRef.current.contains(e.target as Node)) {
-                setOpen(false); setSearch('');
-            }
+            const target = e.target as Node;
+            if (triggerRef.current?.contains(target) || dropdownRef.current?.contains(target)) return;
+            setOpen(false); setSearch('');
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
@@ -215,10 +251,19 @@ const SubcategoryPicker: React.FC<SubcategoryPickerProps> = ({ value, parentCate
                 <ChevronDown size={9} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
 
-            {open && (
-                <div 
-                    style={{ minWidth: '192px', width: 'max-content' }}
-                    className={`absolute z-50 ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden w-48 animate-in fade-in duration-150`}
+            {open && createPortal(
+                <div
+                    ref={dropdownRef}
+                    style={{
+                        position: 'fixed',
+                        top: openUp ? 'auto' : coords.top,
+                        bottom: openUp ? coords.bottom : 'auto',
+                        left: coords.left,
+                        minWidth: '192px',
+                        width: 'max-content',
+                        maxWidth: 'calc(100vw - 16px)'
+                    }}
+                    className="z-[9999] bg-white border border-slate-100 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-150"
                 >
                     <div className="p-2 border-b border-slate-50 space-y-1.5">
                         <div className="relative">
@@ -262,7 +307,8 @@ const SubcategoryPicker: React.FC<SubcategoryPickerProps> = ({ value, parentCate
                             <p className="px-3 py-4 text-xs text-slate-300 text-center">Nenhuma subcategoria</p>
                         )}
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
