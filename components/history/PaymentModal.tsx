@@ -3,6 +3,7 @@ import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Transaction } from '../../types';
 import { BankAccount } from '../../types';
 import { PaymentHistoryLine } from './PaymentHistoryLine';
+import { DateInput } from '../common/DateInput';
 
 interface PaymentModalProps {
     show: boolean;
@@ -118,9 +119,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data do Pagamento</label>
-                            <input
-                                type="date"
-                                value={payDate}
+                            <DateInput value={payDate}
                                 onChange={(e) => setPayDate(e.target.value)}
                                 className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
                             />
@@ -156,9 +155,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                             {splitRemainder && (
                                 <div className="space-y-2 pt-3 border-t border-slate-200/60 animate-in slide-in-from-top-2">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data de Vencimento do Restante</label>
-                                    <input
-                                        type="date"
-                                        value={payRemainderDate}
+                                    <DateInput value={payRemainderDate}
                                         onChange={(e) => setPayRemainderDate(e.target.value)}
                                         className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all text-sm"
                                     />

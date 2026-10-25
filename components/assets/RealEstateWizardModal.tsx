@@ -7,6 +7,7 @@ import { Liability } from '../../types';
 import { syncRentalTransactions, syncCondoIptuTransactions, PayerOption } from './realEstatePropertySync';
 import { getSessionUser } from '../../lib/session';
 import { findCategoryByName } from '../../lib/categoryResolver';
+import { DateInput } from '../common/DateInput';
 
 interface RealEstateWizardModalProps {
   onClose: () => void;
@@ -702,7 +703,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-4">Data de Compra / Aquisição</label>
-                    <input type="date" className="w-full h-12 px-6 bg-slate-50 border rounded-2xl font-bold text-slate-900 outline-none text-sm" value={acquisitionDate} onChange={e => setAcquisitionDate(e.target.value)} />
+                    <DateInput className="w-full h-12 px-6 bg-slate-50 border rounded-2xl font-bold text-slate-900 outline-none text-sm" value={acquisitionDate} onChange={e => setAcquisitionDate(e.target.value)} />
                   </div>
                </div>
             </div>
@@ -722,7 +723,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Data Inicial</label>
-                      <input type="date" className="w-full h-12 px-5 bg-white border rounded-xl font-bold outline-none text-sm" value={inputDownDate} onChange={e => setInputDownDate(e.target.value)} />
+                      <DateInput className="w-full h-12 px-5 bg-white border rounded-xl font-bold outline-none text-sm" value={inputDownDate} onChange={e => setInputDownDate(e.target.value)} />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Periodicidade</label>
@@ -774,7 +775,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Data Inicial</label>
-                      <input type="date" className="w-full h-12 px-5 bg-white border rounded-xl font-bold outline-none text-sm" value={inputBalloonDate} onChange={e => setInputBalloonDate(e.target.value)} />
+                      <DateInput className="w-full h-12 px-5 bg-white border rounded-xl font-bold outline-none text-sm" value={inputBalloonDate} onChange={e => setInputBalloonDate(e.target.value)} />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Periodicidade</label>
@@ -833,9 +834,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Data da 1ª parcela</label>
-                      <input 
-                        type="date" 
-                        className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" 
+                      <DateInput className="w-full h-12 px-5 bg-white border border-slate-200 rounded-xl font-bold outline-none text-sm" 
                         value={constructorStartDate} 
                         onChange={e => setConstructorStartDate(e.target.value)} 
                       />
@@ -963,7 +962,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                             </div>
                             <div className="space-y-1.5">
                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Dia do Recebimento</label>
-                              <input className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" type="date" value={rentalDate} onChange={e => setRentalDate(e.target.value)} />
+                              <DateInput className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={rentalDate} onChange={e => setRentalDate(e.target.value)} />
                             </div>
                             <div className="space-y-1.5">
                               <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Desconto (opcional)</label>
@@ -987,7 +986,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Condomínio</label>
                         <div className="grid grid-cols-2 gap-2">
                           <input className="h-10 px-4 bg-white border rounded-xl text-xs font-bold" type="number" value={condoFee} onChange={e => setCondoFee(e.target.value)} placeholder="Valor mensal (R$)" />
-                          <input className="h-10 px-4 bg-white border rounded-xl text-xs font-bold" type="date" value={condoNextDate} onChange={e => setCondoNextDate(e.target.value)} />
+                          <DateInput className="h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={condoNextDate} onChange={e => setCondoNextDate(e.target.value)} />
                         </div>
                         <select className="w-full h-10 px-3 bg-white border rounded-xl text-[10px] font-bold outline-none" value={condoPayer} onChange={e => setCondoPayer(e.target.value as PayerOption)}>
                           <option value="PROPRIETARIO">Eu pago (proprietário)</option>
@@ -999,7 +998,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">IPTU</label>
                         <div className="grid grid-cols-2 gap-2">
                           <input className="h-10 px-4 bg-white border rounded-xl text-xs font-bold" type="number" value={iptuFee} onChange={e => setIptuFee(e.target.value)} placeholder="Valor (R$)" />
-                          <input className="h-10 px-4 bg-white border rounded-xl text-xs font-bold" type="date" value={iptuNextDate} onChange={e => setIptuNextDate(e.target.value)} />
+                          <DateInput className="h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={iptuNextDate} onChange={e => setIptuNextDate(e.target.value)} />
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <select className="h-10 px-2 bg-white border rounded-xl text-[10px] font-bold outline-none" value={iptuFrequency} onChange={e => setIptuFrequency(e.target.value as any)}>
@@ -1076,7 +1075,7 @@ export const RealEstateWizardModal: React.FC<RealEstateWizardModalProps> = ({ on
                           </div>
                           <div className="space-y-1.5">
                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Data 1ª Parcela</label>
-                             <input type="date" className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingStartDate} onChange={e => setFinancingStartDate(e.target.value)} />
+                             <DateInput className="w-full h-10 px-4 bg-white border rounded-xl text-xs font-bold" value={financingStartDate} onChange={e => setFinancingStartDate(e.target.value)} />
                           </div>
                        </div>
 

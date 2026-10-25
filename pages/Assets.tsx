@@ -69,6 +69,7 @@ import { SearchableInput } from '../components/common/SearchableInput';
 import { useLedgerOptions, NO_ACCOUNT } from '../components/assets/useLedgerOptions';
 import { ReconciliationService } from '../services/reconciliation.service';
 import { findCategoryByName } from '../lib/categoryResolver';
+import { DateInput } from '../components/common/DateInput';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -6750,9 +6751,9 @@ ${tabelaHtml}
                 </div>
                 {fluxoPeriodMode === 'CUSTOM' && (
                   <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
-                    <input type="date" className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" value={fluxoStartDate} onChange={e => setFluxoStartDate(e.target.value)} />
+                    <DateInput className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" value={fluxoStartDate} onChange={e => setFluxoStartDate(e.target.value)} />
                     <span className="text-slate-400 text-xs">até</span>
-                    <input type="date" className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" value={fluxoEndDate} onChange={e => setFluxoEndDate(e.target.value)} />
+                    <DateInput className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" value={fluxoEndDate} onChange={e => setFluxoEndDate(e.target.value)} />
                   </div>
                 )}
               </div>
@@ -7758,9 +7759,9 @@ ${tabelaHtml}
                 
                 {cardPeriod === 'CUSTOM' && (
                   <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
-                    <input type="date" className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" value={cardStartDate} onChange={e => setCardStartDate(e.target.value)} />
+                    <DateInput className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" value={cardStartDate} onChange={e => setCardStartDate(e.target.value)} />
                     <span className="text-slate-400 text-xs">até</span>
-                    <input type="date" className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" value={cardEndDate} onChange={e => setCardEndDate(e.target.value)} />
+                    <DateInput className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" value={cardEndDate} onChange={e => setCardEndDate(e.target.value)} />
                   </div>
                 )}
               </div>
@@ -10203,9 +10204,7 @@ ${tabelaHtml}
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">
                       {formData.category === 'INVESTMENT' ? 'Data de Aplicação' : 'Data de Aquisição'}
                     </label>
-                    <input
-                      type="date"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                    <DateInput className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                       value={formData.acquisitionDate}
                       onChange={(e) => setFormData({ ...formData, acquisitionDate: e.target.value })}
                     />
@@ -10821,9 +10820,7 @@ ${tabelaHtml}
                             {formData.salePaymentMethod === 'A_VISTA' && (
                               <div className="animate-in slide-in-from-top-2">
                                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Recebimento</label>
-                                <input
-                                  type="date"
-                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
+                                <DateInput className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                                   value={formData.saleDate}
                                   onChange={(e) => setFormData({ ...formData, saleDate: e.target.value })}
                                 />
@@ -10866,9 +10863,7 @@ ${tabelaHtml}
                                     </div>
                                     <div>
                                       <label className={labelCls}>Data da Entrada</label>
-                                      <input
-                                        type="date"
-                                        className={inputCls}
+                                      <DateInput className={inputCls}
                                         value={formData.saleDownPaymentDate}
                                         onChange={(e) => setFormData({ ...formData, saleDownPaymentDate: e.target.value })}
                                         disabled={downVal <= 0}
@@ -10904,9 +10899,7 @@ ${tabelaHtml}
                                   <div className="grid grid-cols-2 gap-4">
                                     <div>
                                       <label className={labelCls}>Cobrança a partir de</label>
-                                      <input
-                                        type="date"
-                                        className={inputCls}
+                                      <DateInput className={inputCls}
                                         value={formData.saleFirstInstallmentDate}
                                         onChange={(e) => setFormData({ ...formData, saleFirstInstallmentDate: e.target.value })}
                                       />
@@ -10977,9 +10970,7 @@ ${tabelaHtml}
                                 </div>
                                 <div>
                                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data do Recebimento</label>
-                                  <input
-                                    type="date"
-                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
+                                  <DateInput className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/20"
                                     value={formData.saleDate}
                                     onChange={(e) => setFormData({ ...formData, saleDate: e.target.value })}
                                   />
@@ -11166,9 +11157,7 @@ ${tabelaHtml}
                               </div>
                               <div>
                                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Inicial</label>
-                                <input
-                                  type="date"
-                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
+                                <DateInput className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
                                   value={formData.rentalDate}
                                   onChange={(e) => setFormData({ ...formData, rentalDate: e.target.value })}
                                 />
@@ -11235,9 +11224,7 @@ ${tabelaHtml}
                           </div>
                           <div>
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Próx. Vencimento</label>
-                            <input
-                              type="date"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                            <DateInput className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                               value={formData.condoNextDate}
                               onChange={(e) => setFormData({ ...formData, condoNextDate: e.target.value })}
                             />
@@ -11279,9 +11266,7 @@ ${tabelaHtml}
                           </div>
                           <div>
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Próx. Vencimento</label>
-                            <input
-                              type="date"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
+                            <DateInput className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold"
                               value={formData.iptuNextDate}
                               onChange={(e) => setFormData({ ...formData, iptuNextDate: e.target.value })}
                             />
@@ -11465,10 +11450,8 @@ ${tabelaHtml}
                           </div>
                           <div>
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Data de Concessão</label>
-                            <input
-                              required
-                              type="date"
-                              className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
+                            <DateInput
+                              required className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1 text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
                               value={formData.acquisitionDate}
                               onChange={(e) => setFormData({ ...formData, acquisitionDate: e.target.value })}
                             />
@@ -11766,9 +11749,7 @@ ${tabelaHtml}
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Próximo Pagamento</label>
-                          <input
-                            type="date"
-                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          <DateInput className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                             value={formData.couponNextDate}
                             onChange={(e) => setFormData({ ...formData, couponNextDate: e.target.value })}
                           />
@@ -11807,9 +11788,7 @@ ${tabelaHtml}
                       {!['ACOES', 'FIIS', 'CRIPTO'].includes(formData.investmentType) ? (
                         <div className="animate-in slide-in-from-top-2">
                           <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Data de Vencimento (Opcional)</label>
-                          <input
-                            type="date"
-                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                          <DateInput className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
                             value={formData.vencimentoDate}
                             onChange={(e) => setFormData({ ...formData, vencimentoDate: e.target.value })}
                           />
@@ -11868,9 +11847,7 @@ ${tabelaHtml}
               </div>
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Data do Pagamento</label>
-                <input
-                  type="date"
-                  value={loanPaymentModal.date}
+                <DateInput value={loanPaymentModal.date}
                   onChange={e => setLoanPaymentModal(p => p ? { ...p, date: e.target.value } : null)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all"
                 />
@@ -12299,9 +12276,7 @@ ${tabelaHtml}
                         </div>
                         <div>
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Inicial</label>
-                          <input
-                            type="date"
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
+                          <DateInput className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
                             value={realEstateManageForm.rentalDate}
                             onChange={(e) => setRealEstateManageForm({ ...realEstateManageForm, rentalDate: e.target.value })}
                           />
@@ -12531,9 +12506,7 @@ ${tabelaHtml}
                     value={newMovementForm.amount}
                     onChange={(e) => setNewMovementForm({ ...newMovementForm, amount: e.target.value })}
                   />
-                  <input
-                    type="date"
-                    className="bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold"
+                  <DateInput className="bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold"
                     value={newMovementForm.movement_date}
                     onChange={(e) => setNewMovementForm({ ...newMovementForm, movement_date: e.target.value })}
                   />
@@ -12593,9 +12566,7 @@ ${tabelaHtml}
                   <div key={mv.id} className="flex items-center justify-between gap-2 bg-white border border-slate-100 rounded-xl px-3 py-2">
                     {editingMovementId === mv.id ? (
                       <div className="flex items-center gap-2 flex-1">
-                        <input
-                          type="date"
-                          className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold w-32"
+                        <DateInput className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold w-32"
                           value={editingMovementDraft?.movement_date || ''}
                           onChange={(e) => setEditingMovementDraft(d => d ? { ...d, movement_date: e.target.value } : d)}
                         />
@@ -12946,9 +12917,7 @@ ${tabelaHtml}
                       </div>
                       <div>
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Data</label>
-                        <input
-                          type="date"
-                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
+                        <DateInput className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
                           value={newTxForm.date}
                           onChange={e => setNewTxForm({ ...newTxForm, date: e.target.value })}
                         />
@@ -13060,9 +13029,7 @@ ${tabelaHtml}
                             </div>
                             <div>
                               <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Data</label>
-                              <input
-                                type="date"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                              <DateInput className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
                                 value={editingExtratoDraft.date}
                                 onChange={e => setEditingExtratoDraft({ ...editingExtratoDraft, date: e.target.value })}
                               />
@@ -13453,9 +13420,7 @@ ${tabelaHtml}
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data 1ª Parcela</label>
-                    <input
-                      type="date"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
+                    <DateInput className="w-full bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500/20"
                       value={liabilityFormData.firstInstallmentDate}
                       onChange={(e) => setLiabilityFormData({ ...liabilityFormData, firstInstallmentDate: e.target.value })}
                     />
@@ -13773,9 +13738,7 @@ ${tabelaHtml}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Data</label>
-                        <input
-                          type="date"
-                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
+                        <DateInput className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold"
                           value={newTxForm.date}
                           onChange={e => setNewTxForm({ ...newTxForm, date: e.target.value })}
                         />

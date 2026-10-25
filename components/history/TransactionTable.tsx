@@ -6,6 +6,7 @@ import { Transaction, BankAccount } from '../../types';
 import { PaymentHistoryLine } from './PaymentHistoryLine';
 import { SplitTransactionModal } from './SplitTransactionModal';
 import { normalizeStr } from '../../lib/stringUtils';
+import { DateInput } from '../common/DateInput';
 
 interface TransactionTableProps {
     transactions: Transaction[];
@@ -609,7 +610,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                     <div className="flex items-center justify-between">
                                         {/* DATE */}
                                         {editingRow?.id === t.id && editingRow.field === 'date' ? (
-                                            <input type="date" autoFocus
+                                            <DateInput autoFocus
                                                 className="w-[110px] h-8 px-2 text-xs font-bold text-slate-600 bg-white border border-brand-500 rounded outline-none"
                                                 value={editValue.split('T')[0]}
                                                 onChange={e => setEditValue(e.target.value)}
@@ -1007,7 +1008,7 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         {editingRow?.id === t.id && editingRow.field === 'date' ? (
-                                            <input type="date" autoFocus
+                                            <DateInput autoFocus
                                                 className="w-[120px] h-8 px-2 text-xs font-bold text-slate-600 bg-white border border-brand-500 rounded outline-none"
                                                 value={editValue.split('T')[0]}
                                                 onChange={e => setEditValue(e.target.value)}

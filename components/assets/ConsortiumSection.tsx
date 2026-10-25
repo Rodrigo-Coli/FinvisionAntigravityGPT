@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
 import { useToast } from '../../contexts/ToastContext';
+import { DateInput } from '../common/DateInput';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 type ConsortiumStatus = 'WAITING' | 'CONTEMPLATED' | 'CREDIT_USED' | 'SETTLED';
@@ -443,7 +444,7 @@ const ConsortiumWizard: React.FC<{
                 </div>
                 <div>
                   <label className={label}>Data de início</label>
-                  <input type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} className={inp} />
+                  <DateInput value={form.start_date} onChange={e => set('start_date', e.target.value)} className={inp} />
                 </div>
               </div>
               <div>
@@ -515,7 +516,7 @@ const ConsortiumWizard: React.FC<{
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={label}>Data da Contemplação</label>
-                  <input type="date" value={form.contemplated_at} onChange={e => set('contemplated_at', e.target.value)} className={inp} />
+                  <DateInput value={form.contemplated_at} onChange={e => set('contemplated_at', e.target.value)} className={inp} />
                 </div>
                 <div>
                   <label className={label}>Forma de Contemplação</label>
@@ -543,7 +544,7 @@ const ConsortiumWizard: React.FC<{
               )}
               <div>
                 <label className={label}>Prazo para usar a carta (data limite)</label>
-                <input type="date" value={form.credit_letter_expiry_date} onChange={e => set('credit_letter_expiry_date', e.target.value)} className={inp} />
+                <DateInput value={form.credit_letter_expiry_date} onChange={e => set('credit_letter_expiry_date', e.target.value)} className={inp} />
                 <p className="text-[9px] text-slate-400 mt-1">A carta tem prazo para ser utilizada após a contemplação</p>
               </div>
               <div>

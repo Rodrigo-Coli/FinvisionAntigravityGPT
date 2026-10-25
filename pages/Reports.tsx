@@ -15,6 +15,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 import { matchesOwnerFilter, uniqueOwners } from '../lib/ownerUtils';
+import { DateInput } from '../components/common/DateInput';
 
 const normalize = normalizeStr;
 const fmtCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
@@ -720,18 +721,14 @@ const Reports: React.FC = () => {
         <div className="flex bg-white p-2 rounded-2xl border border-slate-100 shadow-sm gap-2">
           <div className="flex flex-col px-3 border-r border-slate-50">
             <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Início</span>
-            <input
-              type="date"
-              value={dateRange.start}
+            <DateInput value={dateRange.start}
               onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
               className="text-xs font-bold text-slate-900 outline-none bg-transparent cursor-pointer"
             />
           </div>
           <div className="flex flex-col px-3">
             <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Fim</span>
-            <input
-              type="date"
-              value={dateRange.end}
+            <DateInput value={dateRange.end}
               onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
               className="text-xs font-bold text-slate-900 outline-none bg-transparent cursor-pointer"
             />

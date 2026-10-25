@@ -31,6 +31,7 @@ import { findCloseMatch, normalizeStr } from '../../lib/stringUtils';
 import { useToast } from '../../contexts/ToastContext';
 import { isProbablyOffline } from '../../lib/connectivity';
 import { getSessionUser } from '../../lib/session';
+import { DateInput } from '../common/DateInput';
 
 const COLORS = [
   { name: 'Blue', hex: '#3b82f6' },
@@ -982,9 +983,7 @@ const AccountsSection: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data</label>
-                    <input
-                      type="date"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold outline-none focus:border-brand-500"
+                    <DateInput className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold outline-none focus:border-brand-500"
                       value={transferDate}
                       onChange={(e) => setTransferDate(e.target.value)}
                     />

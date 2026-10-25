@@ -4,6 +4,7 @@ import { Transaction, TransactionSplit } from '../../types';
 import { HistoryUtils } from '../../lib/historyUtils';
 import { explodeTransactionsForCategoryAgg } from '../../lib/transactionSplitUtils';
 import { SplitTransactionService } from '../../services/splitTransaction.service';
+import { DateInput } from '../common/DateInput';
 
 interface HistoryChartsProps {
     transactions: Transaction[];
@@ -423,9 +424,9 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                 <div className="flex flex-wrap items-center gap-4 p-4 bg-slate-50 rounded-2xl mb-8 animate-in slide-in-from-top-2">
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Período Gráfico:</span>
-                        <input type="date" value={internalStartDate} onChange={e => setInternalStartDate(e.target.value)} className="bg-white border border-slate-100 rounded-lg px-2 py-1.5 text-[10px] font-bold outline-none" />
+                        <DateInput value={internalStartDate} onChange={e => setInternalStartDate(e.target.value)} className="bg-white border border-slate-100 rounded-lg px-2 py-1.5 text-[10px] font-bold outline-none" />
                         <span className="text-slate-300">/</span>
-                        <input type="date" value={internalEndDate} onChange={e => setInternalEndDate(e.target.value)} className="bg-white border border-slate-100 rounded-lg px-2 py-1.5 text-[10px] font-bold outline-none" />
+                        <DateInput value={internalEndDate} onChange={e => setInternalEndDate(e.target.value)} className="bg-white border border-slate-100 rounded-lg px-2 py-1.5 text-[10px] font-bold outline-none" />
                     </div>
                     {activeTab === 'mom' && (
                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 border-l border-slate-200 pl-4 w-full sm:w-auto">
@@ -490,9 +491,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                 placeholder="Nome do Slot"
                             />
                             <div className="flex items-center gap-1">
-                                <input
-                                    type="date"
-                                    value={slot.start}
+                                <DateInput value={slot.start}
                                     onChange={e => {
                                         const next = [...customSlots];
                                         next[idx].start = e.target.value;
@@ -501,9 +500,7 @@ export const HistoryCharts: React.FC<HistoryChartsProps> = ({
                                     className="flex-1 text-[9px] font-medium text-slate-500 outline-none bg-slate-50 border border-slate-100 rounded-lg px-2 py-1"
                                 />
                                 <span className="text-slate-300">/</span>
-                                <input
-                                    type="date"
-                                    value={slot.end}
+                                <DateInput value={slot.end}
                                     onChange={e => {
                                         const next = [...customSlots];
                                         next[idx].end = e.target.value;

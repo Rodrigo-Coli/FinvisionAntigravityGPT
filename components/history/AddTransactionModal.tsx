@@ -10,6 +10,7 @@ import { TagsInput } from '../common/TagsInput';
 import { SearchableInput } from '../common/SearchableInput';
 import { normalizeStr } from '../../lib/stringUtils';
 import { isProbablyOffline } from '../../lib/connectivity';
+import { DateInput } from '../common/DateInput';
 
 // Quantas transacoes passadas varrer para montar as sugestoes de descricao.
 // Como a lista e deduplicada por descricao, o numero de sugestoes distintas fica
@@ -292,9 +293,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data</label>
-                                <input
-                                    type="date"
-                                    value={form.date}
+                                <DateInput value={form.date}
                                     onChange={(e) => setAddField('date', e.target.value)}
                                     className="w-full h-14 px-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
                                 />

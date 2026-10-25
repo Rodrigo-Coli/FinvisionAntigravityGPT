@@ -5,6 +5,7 @@ import { SplitDraft } from '../../services/splitTransaction.service';
 import { TagsInput } from '../common/TagsInput';
 import { SearchableInput } from '../common/SearchableInput';
 import { normalizeStr } from '../../lib/stringUtils';
+import { DateInput } from '../common/DateInput';
 
 interface ManualTransactionModalProps {
     show: boolean;
@@ -186,9 +187,7 @@ export const ManualTransactionModal: React.FC<ManualTransactionModalProps> = ({
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Data da Compra</label>
-                                <input
-                                    type="date"
-                                    value={txDate}
+                                <DateInput value={txDate}
                                     onChange={(e) => setTxDate(e.target.value)}
                                     className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all"
                                 />

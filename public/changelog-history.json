@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.10.25.0332",
+    "title": "Datas: digite os números ou abra o calendário",
+    "date": "25/10/2026",
+    "benefits": [
+      {
+        "title": "Digitar a data",
+        "desc": "Em todos os campos de data do app, ao tocar abre o teclado numérico: digite só os números (25102026) e as barras entram sozinhas (25/10/2026).",
+        "type": "usabilidade"
+      },
+      {
+        "title": "Calendário no ícone",
+        "desc": "O ícone de calendário ao lado do campo abre o calendário do celular, para quem prefere escolher.",
+        "type": "usabilidade"
+      },
+      {
+        "title": "\"Tudo\" sem datas estranhas",
+        "desc": "No Histórico, o período \"Tudo\" não mostra mais 01/01/0001 – 31/12/9999: os campos ficam vazios.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`components/common/DateInput.tsx`: campo de texto com máscara DD/MM/AAAA (teclado numérico), emite AAAA-MM-DD só com data completa e válida (ou vazio), ícone abre o seletor nativo (`showPicker`); `onChange`/`onBlur` com a mesma forma do input antigo (`e.target.value`).",
+      "Os 71 `<input type=\"date\">` de 19 telas trocados por `DateInput`.",
+      "`tests/dateInput.test.ts`: máscara, validação (31/02, mês 13) e datas-sentinela."
+    ]
+  },
+  {
     "version": "2026.10.25.0236",
     "title": "Filtro de pessoa sem repetidos e completo",
     "date": "25/10/2026",
