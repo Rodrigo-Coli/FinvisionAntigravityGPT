@@ -4,6 +4,7 @@ import { projectionService } from './projection.service';
 import { safeStorage } from '../lib/safeStorage';
 import { getSessionUser } from '../lib/session';
 import { pickCurrentStatement as pickStatementFor, targetStatementPeriod } from '../lib/cardStatements';
+import { ownerKey } from '../lib/ownerUtils';
 
 export const DashboardService = {
   getSummary: async (): Promise<DashboardData> => {
@@ -109,7 +110,7 @@ export const DashboardService = {
       totalAssets += val;
     });
 
-    const excludedSet = new Set((excludedEntities || []).map((e: any) => e.name));
+    const excludedSet = new Set((excludedEntities || []).map((e: any) => ownerKey(e.name)));
 
     // 4. Cash Flow & Metrics
     const cashFlow: any[] = [];
@@ -122,7 +123,7 @@ export const DashboardService = {
     if (txs) {
       const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
       const grouped = txs.reduce((acc: any, tx: any) => {
-        if (tx.owner_name && excludedSet.has(tx.owner_name)) return acc;
+        if (tx.owner_name && excludedSet.has(ownerKey(tx.owner_name))) return acc;
         if (tx.metadata?.is_historical === true || tx.metadata?.is_historical === 'true') return acc;
         if (tx.metadata?.isCapitalized === true || tx.metadata?.type === 'asset_purchase') return acc;
  
@@ -192,7 +193,7 @@ export const DashboardService = {
 
     // 7.5 Projected Cash Flow (Advanced Engine)
     const filteredFutureTxs = (futureTxs || []).filter((tx: any) => {
-      if (tx.owner_name && excludedSet.has(tx.owner_name)) return false;
+      if (tx.owner_name && excludedSet.has(ownerKey(tx.owner_name))) return false;
       if (tx.metadata?.is_historical === true || tx.metadata?.is_historical === 'true') return false;
       return true;
     });

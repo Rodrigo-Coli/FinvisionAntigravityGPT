@@ -10,6 +10,7 @@ import { useReconnectRefresh } from '../../lib/useReconnectRefresh';
 import { ReconciliationService } from '../../services/reconciliation.service';
 import { DateUtils } from '../../lib/dateUtils';
 import { findCloseMatch, normalizeStr } from '../../lib/stringUtils';
+import { matchesOwnerFilter, uniqueOwners as uniqueOwnerNames } from '../../lib/ownerUtils';
 import { getSessionUser } from '../../lib/session';
 
 // Modular Components
@@ -649,7 +650,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         const ownersList = ['Pessoal', ...(data || []).map((o: any) => o.name)];
 
         // Deduplicate owners
-        const uniqueOwners = Array.from(new Set(ownersList.map((o: string) => o.trim()))).filter(Boolean) as string[];
+        const uniqueOwners = uniqueOwnerNames(ownersList);
 
         setOwners(uniqueOwners);
         localStorage.setItem('finvision_cached_owners_cc', JSON.stringify(uniqueOwners));
@@ -658,7 +659,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
                        localStorage.getItem('finvision_cached_owners');
         if (cached) {
           const parsed = JSON.parse(cached) as string[];
-          const uniqueOwners = Array.from(new Set(parsed.map((o: string) => o.trim()))).filter(Boolean) as string[];
+          const uniqueOwners = uniqueOwnerNames(parsed);
           setOwners(uniqueOwners);
         }
       }
@@ -669,7 +670,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
       if (cached) {
         try {
           const parsed = JSON.parse(cached) as string[];
-          const uniqueOwners = Array.from(new Set(parsed.map((o: string) => o.trim()))).filter(Boolean) as string[];
+          const uniqueOwners = uniqueOwnerNames(parsed);
           setOwners(uniqueOwners);
         } catch (e) {
           setOwners(['Pessoal']);
@@ -2362,7 +2363,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
                         || normalizeStr(t.notes || '').includes(q);
                       const matchesCategory = filterCategory === 'ALL' || t.category_id === filterCategory;
                       const matchesSubcategory = filterSubcategory === 'ALL' || t.subcategory === filterSubcategory;
-                      const matchesOwner = filterOwner === 'ALL' || (t.owner_name || 'Pessoal') === filterOwner;
+                      const matchesOwner = filterOwner === 'ALL' || matchesOwnerFilter(t.owner_name, [filterOwner]);
                       const absVal = Math.abs(Number(t.amount || 0));
                       const matchesMin = minValue === '' || absVal >= Number(minValue);
                       const matchesMax = maxValue === '' || absVal <= Number(maxValue);

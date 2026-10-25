@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.10.25.0236",
+    "title": "Filtro de pessoa sem repetidos e completo",
+    "date": "25/10/2026",
+    "benefits": [
+      {
+        "title": "Uma \"Pessoal\" só no filtro",
+        "desc": "A lista de Pessoa ou empresa mostrava \"pessoal\" e \"Pessoal\" como duas pessoas. Agora nomes iguais (com ou sem acento, maiúscula ou espaço) aparecem uma vez.",
+        "type": "correcao"
+      },
+      {
+        "title": "Filtrar Pessoal traz todos os lançamentos",
+        "desc": "Filtrando Pessoal, os lançamentos sem pessoa definida e os gravados com outra grafia ficavam de fora — a maior parte sumia. Agora entram todos. Vale para Histórico, Relatórios e Cartões.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`lib/ownerUtils.ts`: `ownerKey` (sem acento/maiúscula/espaço; vazio = Pessoal), `uniqueOwners`, `matchesOwnerFilter`.",
+      "Histórico (lista, gráficos, comparação), Relatórios e Cartões filtram com `matchesOwnerFilter`; listas de pessoas com `uniqueOwners` (inclui `FinanceService.getEntities`).",
+      "Perfis que não contam nos totais (Painel, projeção, Home) comparados por `ownerKey`."
+    ]
+  },
+  {
     "version": "2026.10.24.1104",
     "title": "Receitas no lançador do imóvel (devolução de distrato)",
     "date": "24/10/2026",

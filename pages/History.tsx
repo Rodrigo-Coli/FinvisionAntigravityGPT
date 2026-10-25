@@ -44,6 +44,7 @@ import { DreReportModal } from '../components/history/DreReportModal';
 import ContextualHelp from '../components/ContextualHelp';
 import { ArrowDownRight, ArrowUpRight, Wallet, Building2 } from 'lucide-react';
 import { findCategoryByName } from '../lib/categoryResolver';
+import { ownerKey, uniqueOwners, matchesOwnerFilter } from '../lib/ownerUtils';
 
 // Initial fallback categories
 const DEFAULT_CATEGORIES = [
@@ -650,8 +651,9 @@ const HistoryPage: React.FC = () => {
         setAllCardMeta(uniqueCardDefs.map(mapCardDef));
         setCardStatements((cardStatements || []).map((s: any) => ({ id: s.id, due_date: String(s.due_date || '').split('T')[0] })));
 
-        const deduplicatedOwners = Array.from(new Set((entities || []).map((o: string) => o.trim()))).filter(Boolean);
-        setOwners(deduplicatedOwners.sort((a, b) => a.localeCompare(b)));
+        // "pessoal" e "Pessoal" são a mesma pessoa (ver lib/ownerUtils).
+        const deduplicatedOwners = uniqueOwners(entities || []);
+        setOwners(deduplicatedOwners);
 
         // Tags de banco e cartão juntas, agrupando variações de acento/caixa sob a
         // grafia mais usada. É o que abastece o filtro de tags e as sugestões de
@@ -688,9 +690,9 @@ const HistoryPage: React.FC = () => {
 
           // 2. Initialize filterOwner if there are excluded profiles
           if (filterOwner.length === 0) {
-            const excludedSet = new Set((entityObjs || []).filter((e: any) => e.include_in_totals === false).map((e: any) => e.name));
+            const excludedSet = new Set((entityObjs || []).filter((e: any) => e.include_in_totals === false).map((e: any) => ownerKey(e.name)));
             if (excludedSet.size > 0) {
-              const defaultOwners = deduplicatedOwners.filter((name: string) => !excludedSet.has(name));
+              const defaultOwners = deduplicatedOwners.filter((name: string) => !excludedSet.has(ownerKey(name)));
               setFilterOwner(defaultOwners);
               didInitializeFilters = true;
             }
@@ -905,7 +907,7 @@ const HistoryPage: React.FC = () => {
           combinedForChart = combinedForChart.filter((t: any) => matchesSplitAwareFilter(t, filterSubcategory, 'subcategory'));
         }
         if (filterOwner.length > 0) {
-          combinedForChart = combinedForChart.filter((t: any) => filterOwner.includes(t.owner_name));
+          combinedForChart = combinedForChart.filter((t: any) => matchesOwnerFilter(t.owner_name, filterOwner));
         }
         if (filterTag.length > 0) {
           combinedForChart = combinedForChart.filter((t: any) => matchesAnyTag(t.tags, filterTag));
@@ -988,7 +990,7 @@ const HistoryPage: React.FC = () => {
           combined = combined.filter((t: any) => matchesSplitAwareFilter(t, filterSubcategory, 'subcategory'));
         }
         if (filterOwner.length > 0) {
-          combined = combined.filter((t: any) => filterOwner.includes(t.owner_name));
+          combined = combined.filter((t: any) => matchesOwnerFilter(t.owner_name, filterOwner));
         }
         if (filterTag.length > 0) {
           combined = combined.filter((t: any) => matchesAnyTag(t.tags, filterTag));
@@ -2104,9 +2106,9 @@ const HistoryPage: React.FC = () => {
     if (cachedObjs) {
       try {
         const objs = JSON.parse(cachedObjs);
-        const excludedSet = new Set(objs.filter((e: any) => e.include_in_totals === false).map((e: any) => e.name));
+        const excludedSet = new Set(objs.filter((e: any) => e.include_in_totals === false).map((e: any) => ownerKey(e.name)));
         if (excludedSet.size > 0) {
-          const activeOwners = owners.filter(name => !excludedSet.has(name));
+          const activeOwners = owners.filter(name => !excludedSet.has(ownerKey(name)));
           setFilterOwner(activeOwners);
           return;
         }
@@ -3109,7 +3111,7 @@ const HistoryPage: React.FC = () => {
       combined = combined.filter((t: any) => filterSubcategory.includes(t.subcategory));
     }
     if (filterOwner.length > 0) {
-      combined = combined.filter((t: any) => filterOwner.includes(t.owner_name));
+      combined = combined.filter((t: any) => matchesOwnerFilter(t.owner_name, filterOwner));
     }
     if (filterTag.length > 0) {
       combined = combined.filter((t: any) => matchesAnyTag(t.tags, filterTag));

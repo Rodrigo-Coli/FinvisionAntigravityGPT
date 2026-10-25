@@ -6,6 +6,7 @@ import { getSessionUser } from '../lib/session';
 import { isNetworkFailure, isProbablyOffline, markNetworkSuccess, withTimeout, NETWORK_TIMEOUT_MS } from '../lib/connectivity';
 import { isOfflineId } from '../lib/offlineQueue.service';
 import { findCategoryByName } from '../lib/categoryResolver';
+import { uniqueOwners } from '../lib/ownerUtils';
 
 // PROPAGAÇÃO REVERSA: quando uma parcela vinculada a um passivo é editada/paga/excluída em
 // Transações, recalcula o saldo devedor e o nº de parcelas restantes do passivo a partir das
@@ -277,7 +278,8 @@ export const FinanceService = {
         ...(cardTxData || []).map((t: any) => t.owner_name)
       ];
 
-      return Array.from(new Set(allOwners.filter(Boolean))).sort() as string[];
+      // "pessoal" e "Pessoal" viram uma pessoa só (ver lib/ownerUtils).
+      return uniqueOwners(allOwners);
     } catch (e) {
       return ['Pessoal'];
     }

@@ -32,6 +32,7 @@ import { useSubscription } from '../contexts/SubscriptionContext';
 import UsageMeter from '../components/subscription/UsageMeter';
 import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 import { isProbablyOffline } from '../lib/connectivity';
+import { ownerKey } from '../lib/ownerUtils';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
   const [data, setData] = useState<DashboardData | null>(() => DashboardService.getCachedSummary());
@@ -238,7 +239,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           .eq('user_id', user.id)
           .eq('include_in_totals', false);
 
-        const excludedSet = new Set((excludedEntities || []).map((e: any) => e.name));
+        const excludedSet = new Set((excludedEntities || []).map((e: any) => ownerKey(e.name)));
 
         // Não mesclamos card_transactions aqui: o BILL_PAYMENT em transactions já
         // representa o total pago ao cartão. Somar as compras individuais junto causaria
@@ -247,7 +248,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
           console.error("Error fetching transactions:", txError);
           if (!data) setError('Erro ao carregar transações.');
         } else {
-          const allTxs = (txs || []).filter((t: any) => !t.owner_name || !excludedSet.has(t.owner_name));
+          const allTxs = (txs || []).filter((t: any) => !t.owner_name || !excludedSet.has(ownerKey(t.owner_name)));
           setTransactions(allTxs);
           localStorage.setItem('finvision_cached_home_txs', JSON.stringify(allTxs));
         }

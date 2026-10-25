@@ -1,27 +1,22 @@
 {
-  "version": "2026.10.24.1104",
-  "title": "Receitas no lançador do imóvel (devolução de distrato)",
-  "date": "24/10/2026",
+  "version": "2026.10.25.0236",
+  "title": "Filtro de pessoa sem repetidos e completo",
+  "date": "25/10/2026",
   "benefits": [
     {
-      "title": "Lançar receita no imóvel",
-      "desc": "O \"Registrar Gasto / Receita\" do imóvel agora tem também Devolução / Distrato, Aluguel recebido e Outras Receitas. A receita entra como entrada de dinheiro, na conta que recebeu.",
-      "type": "recurso"
+      "title": "Uma \"Pessoal\" só no filtro",
+      "desc": "A lista de Pessoa ou empresa mostrava \"pessoal\" e \"Pessoal\" como duas pessoas. Agora nomes iguais (com ou sem acento, maiúscula ou espaço) aparecem uma vez.",
+      "type": "correcao"
     },
     {
-      "title": "Devolução no balanço do ativo",
-      "desc": "No Balanço do Ativo aparecem o valor devolvido e o saldo líquido (pago − devolvido). Quando a devolução cobre tudo o que foi pago, o saldo fica zerado em verde. A devolução não conta como aluguel na rentabilidade.",
-      "type": "recurso"
-    },
-    {
-      "title": "Vírgula no valor",
-      "desc": "O valor do lançamento do imóvel aceita vírgula (ex.: 190,96).",
+      "title": "Filtrar Pessoal traz todos os lançamentos",
+      "desc": "Filtrando Pessoal, os lançamentos sem pessoa definida e os gravados com outra grafia ficavam de fora — a maior parte sumia. Agora entram todos. Vale para Histórico, Relatórios e Cartões.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "`RealEstateDetailModal`: tipos de receita (`REFUND`, `RENT`, `OTHER_INCOME`) no lançador rápido, gravados como `INCOME` (`metadata.type` `asset_refund` / `rental_income`); rótulos de conta e de situação conforme o tipo; categoria procurada/criada com o tipo do lançamento.",
-    "Balanço do Ativo: `refundsReceived` (devoluções pagas) e saldo líquido; devolução fora de `rentIncomes` da rentabilidade.",
-    "Valor do lançador com `sanitizeMoneyTyping`/`parseMoneyInput` (aceita vírgula)."
+    "`lib/ownerUtils.ts`: `ownerKey` (sem acento/maiúscula/espaço; vazio = Pessoal), `uniqueOwners`, `matchesOwnerFilter`.",
+    "Histórico (lista, gráficos, comparação), Relatórios e Cartões filtram com `matchesOwnerFilter`; listas de pessoas com `uniqueOwners` (inclui `FinanceService.getEntities`).",
+    "Perfis que não contam nos totais (Painel, projeção, Home) comparados por `ownerKey`."
   ]
 }

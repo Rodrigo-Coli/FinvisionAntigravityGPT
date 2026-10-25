@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase/client';
 import { CashFlowProjectionItem } from '../types';
+import { ownerKey } from '../lib/ownerUtils';
 
 export const projectionService = {
   // Novo método async para o Dashboard
@@ -34,7 +35,7 @@ export const projectionService = {
     const cardStatements = cardStatementsRes.data || [];
     const liabilities = liabilitiesRes.data || [];
 
-    const excludedSet = new Set(excludedEntities.map((e: any) => e.name));
+    const excludedSet = new Set(excludedEntities.map((e: any) => ownerKey(e.name)));
 
     const monthlyData: Record<string, { income: number; expense: number; overdueIncome: number; overdueExpense: number }> = {};
     const generatedRecurrences = new Set<string>();
@@ -64,7 +65,7 @@ export const projectionService = {
 
     // 1. Pending Transactions (Including Overdue)
     (pendingTx || []).forEach((t: any) => {
-        if (t.owner_name && excludedSet.has(t.owner_name)) return;
+        if (t.owner_name && excludedSet.has(ownerKey(t.owner_name))) return;
         if (t.metadata?.is_historical === true || t.metadata?.is_historical === 'true') return;
         // Prevenir dupla contagem de faturas de cartão: o lançamento espelho da fatura
         // (metadata.is_provision) já é projetado no bloco 3, direto de card_statements.
@@ -88,7 +89,7 @@ export const projectionService = {
     if (recurringTx) {
         const latestByGroup: Record<string, any> = {};
         recurringTx.forEach((t: any) => {
-            if (t.owner_name && excludedSet.has(t.owner_name)) return;
+            if (t.owner_name && excludedSet.has(ownerKey(t.owner_name))) return;
             if (t.metadata?.is_historical === true || t.metadata?.is_historical === 'true') return;
             // Idem acima: fatura espelho já entra pelo bloco 3 (card_statements).
             if (t.metadata?.is_provision === true) return;
@@ -97,7 +98,7 @@ export const projectionService = {
             }
         });
         Object.values(latestByGroup).forEach((baseTx: any) => {
-            if (baseTx.owner_name && excludedSet.has(baseTx.owner_name)) return;
+            if (baseTx.owner_name && excludedSet.has(ownerKey(baseTx.owner_name))) return;
             let currentDate = new Date(baseTx.date);
             // Move to future if needed
             if (currentDate < today) {

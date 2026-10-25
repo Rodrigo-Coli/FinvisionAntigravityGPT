@@ -14,6 +14,7 @@ import { getSessionUser } from '../lib/session';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useReconnectRefresh } from '../lib/useReconnectRefresh';
+import { matchesOwnerFilter, uniqueOwners } from '../lib/ownerUtils';
 
 const normalize = normalizeStr;
 const fmtCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
@@ -137,7 +138,7 @@ const Reports: React.FC = () => {
         ])) as string[];
         setSubcategories(uniqueSubs.sort());
       }
-      if (Array.isArray(ownersRes) && ownersRes.length > 0) setOwners(ownersRes);
+      if (Array.isArray(ownersRes) && ownersRes.length > 0) setOwners(uniqueOwners(ownersRes));
     } catch (e) {
       console.error('Erro ao buscar filtros:', e);
     } finally {
@@ -292,7 +293,7 @@ const Reports: React.FC = () => {
       // ── Filtros "planos" (não dependem de divisão em categorias) ──
       const bankPassesOtherFilters = (t: any): boolean => {
         if (filterAccount.length > 0 && !filterAccount.includes(t.account_id)) return false;
-        if (filterOwner.length > 0 && !filterOwner.includes(t.owner_name || 'Pessoal')) return false;
+        if (!matchesOwnerFilter(t.owner_name, filterOwner)) return false;
         if (filterType !== 'ALL' && t.type !== filterType) return false;
         if (viewStatus === 'PAID' && !t.is_paid) return false;
         if (viewStatus === 'PENDING' && t.is_paid) return false;
