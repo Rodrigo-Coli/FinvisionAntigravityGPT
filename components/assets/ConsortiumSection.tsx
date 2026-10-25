@@ -4,11 +4,12 @@ import {
   Plus, X, Loader2, Check, ChevronRight, ChevronLeft,
   Clock, AlertTriangle, TrendingUp, Landmark, Calendar,
   Megaphone, Gift, Building2, Car, DollarSign, Zap,
-  BarChart3, RefreshCw, Trash2, Edit2, FileSpreadsheet
+  BarChart3, RefreshCw, Trash2, Edit2, FileSpreadsheet, Gavel
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
 import { useToast } from '../../contexts/ToastContext';
 import { DateInput } from '../common/DateInput';
+import ConsortiumBidModal from './ConsortiumBidModal';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 type ConsortiumStatus = 'WAITING' | 'CONTEMPLATED' | 'CREDIT_USED' | 'SETTLED';
@@ -593,7 +594,8 @@ const ConsortiumCard: React.FC<{
   consortium: Consortium;
   onEdit: (c: Consortium) => void;
   onDelete: (c: Consortium) => void;
-}> = ({ consortium: c, onEdit, onDelete }) => {
+  onBid: (c: Consortium) => void;
+}> = ({ consortium: c, onEdit, onDelete, onBid }) => {
   const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const calc = calcConsortium(c);
   const isWaiting      = c.status === 'WAITING';
@@ -766,6 +768,11 @@ const ConsortiumCard: React.FC<{
         <button onClick={() => onEdit(c)} className="text-xs font-bold text-slate-400 hover:text-brand-600 uppercase tracking-widest transition-colors">
           <Edit2 size={12} className="inline mr-1" />Editar
         </button>
+        {!isSettled && c.liability_id && (
+          <button onClick={() => onBid(c)} className="text-xs font-bold text-amber-500 hover:text-amber-600 uppercase tracking-widest transition-colors">
+            <Gavel size={12} className="inline mr-1" />Lance
+          </button>
+        )}
         <button onClick={() => onDelete(c)} className="text-xs font-bold text-slate-300 hover:text-rose-500 uppercase tracking-widest transition-colors">
           <Trash2 size={12} className="inline mr-1" />Remover
         </button>
@@ -782,6 +789,7 @@ const ConsortiumSection: React.FC = () => {
   const [showWizard, setShowWizard] = useState(false);
   const [editing, setEditing] = useState<Consortium | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Consortium | null>(null);
+  const [bidFor, setBidFor] = useState<Consortium | null>(null);
 
   const fetchConsortiums = useCallback(async () => {
     if (!supabase) return;
@@ -860,6 +868,15 @@ const ConsortiumSection: React.FC = () => {
         </div>
       )}
 
+      {/* Lance: registra e recalcula as parcelas */}
+      {bidFor && (
+        <ConsortiumBidModal
+          consortium={bidFor}
+          onClose={() => setBidFor(null)}
+          onSaved={() => { setBidFor(null); fetchConsortiums(); }}
+        />
+      )}
+
       {/* Wizard de cadastro/edição */}
       {showWizard && (
         <ConsortiumWizard
@@ -908,7 +925,7 @@ const ConsortiumSection: React.FC = () => {
                 <span className="w-2 h-2 bg-blue-400 rounded-full" /> Aguardando Contemplação ({waiting.length})
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {waiting.map(c => <ConsortiumCard key={c.id} consortium={c} onEdit={e => { setEditing(e); setShowWizard(true); }} onDelete={setConfirmDelete} />)}
+                {waiting.map(c => <ConsortiumCard key={c.id} consortium={c} onEdit={e => { setEditing(e); setShowWizard(true); }} onDelete={setConfirmDelete} onBid={setBidFor} />)}
               </div>
             </div>
           )}
@@ -920,7 +937,7 @@ const ConsortiumSection: React.FC = () => {
                 <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" /> Contemplados — Use a carta! ({contemplated.length})
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {contemplated.map(c => <ConsortiumCard key={c.id} consortium={c} onEdit={e => { setEditing(e); setShowWizard(true); }} onDelete={setConfirmDelete} />)}
+                {contemplated.map(c => <ConsortiumCard key={c.id} consortium={c} onEdit={e => { setEditing(e); setShowWizard(true); }} onDelete={setConfirmDelete} onBid={setBidFor} />)}
               </div>
             </div>
           )}
@@ -932,7 +949,7 @@ const ConsortiumSection: React.FC = () => {
                 <span className="w-2 h-2 bg-emerald-500 rounded-full" /> Bem Adquirido — Quitando ({inProgress.length})
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {inProgress.map(c => <ConsortiumCard key={c.id} consortium={c} onEdit={e => { setEditing(e); setShowWizard(true); }} onDelete={setConfirmDelete} />)}
+                {inProgress.map(c => <ConsortiumCard key={c.id} consortium={c} onEdit={e => { setEditing(e); setShowWizard(true); }} onDelete={setConfirmDelete} onBid={setBidFor} />)}
               </div>
             </div>
           )}
@@ -944,7 +961,7 @@ const ConsortiumSection: React.FC = () => {
                 <span className="w-2 h-2 bg-slate-300 rounded-full" /> Quitados ({settled.length})
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {settled.map(c => <ConsortiumCard key={c.id} consortium={c} onEdit={e => { setEditing(e); setShowWizard(true); }} onDelete={setConfirmDelete} />)}
+                {settled.map(c => <ConsortiumCard key={c.id} consortium={c} onEdit={e => { setEditing(e); setShowWizard(true); }} onDelete={setConfirmDelete} onBid={setBidFor} />)}
               </div>
             </div>
           )}
