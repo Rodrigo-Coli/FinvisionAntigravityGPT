@@ -87,6 +87,22 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
 
+  // Toque numa notificação com o app já aberto: o service worker manda a tela
+  // de destino (ex.: Histórico só com os pendentes do aviso) e a troca é aqui.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type !== 'NAVIGATE' || !event.data.url) return;
+      try {
+        const target = new URL(event.data.url, window.location.origin);
+        if (target.origin !== window.location.origin) return;
+        if (target.hash && target.hash !== window.location.hash) window.location.hash = target.hash;
+      } catch { /* URL inválida: fica onde está */ }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, []);
+
   // Inicializa dark mode a partir do localStorage e escuta mudanças de preferência do sistema
   useEffect(() => {
     applyDarkMode(

@@ -1,27 +1,22 @@
 {
-  "version": "2026.10.25.0332",
-  "title": "Datas: digite os números ou abra o calendário",
+  "version": "2026.10.25.0956",
+  "title": "Notificação diária abre só os pendentes avisados",
   "date": "25/10/2026",
   "benefits": [
     {
-      "title": "Digitar a data",
-      "desc": "Em todos os campos de data do app, ao tocar abre o teclado numérico: digite só os números (25102026) e as barras entram sozinhas (25/10/2026).",
-      "type": "usabilidade"
+      "title": "Aviso diário abre filtrado",
+      "desc": "Ao tocar na notificação de contas e receitas pendentes, as Transações abrem só com os pendentes do aviso (vencidos nos últimos 7 dias, de hoje e de amanhã), mesmo com o app já aberto.",
+      "type": "correcao"
     },
     {
-      "title": "Calendário no ícone",
-      "desc": "O ícone de calendário ao lado do campo abre o calendário do celular, para quem prefere escolher.",
-      "type": "usabilidade"
-    },
-    {
-      "title": "\"Tudo\" sem datas estranhas",
-      "desc": "No Histórico, o período \"Tudo\" não mostra mais 01/01/0001 – 31/12/9999: os campos ficam vazios.",
+      "title": "\"Todo o Período\" na análise",
+      "desc": "Com o período \"Tudo\", a Análise do Período mostra \"Todo o Período\" em vez de \"janeiro de 1 → dezembro de 9999\".",
       "type": "correcao"
     }
   ],
   "changes": [
-    "`components/common/DateInput.tsx`: campo de texto com máscara DD/MM/AAAA (teclado numérico), emite AAAA-MM-DD só com data completa e válida (ou vazio), ícone abre o seletor nativo (`showPicker`); `onChange`/`onBlur` com a mesma forma do input antigo (`e.target.value`).",
-    "Os 71 `<input type=\"date\">` de 19 telas trocados por `DateInput`.",
-    "`tests/dateInput.test.ts`: máscara, validação (31/02, mês 13) e datas-sentinela."
+    "`notify-bills-due`: a URL do push leva `status=PENDING`, `startDate` (7 dias atrás) e `endDate` (amanhã).",
+    "`src/sw.js` (notificationclick): com o app aberto, manda `NAVIGATE` por `postMessage` (o `client.navigate()` falhava em silêncio em janela não controlada) e foca; `App.tsx` ouve e troca o hash.",
+    "`HistoryCharts`: datas-sentinela de \"Tudo\" viram \"Todo o Período\" / \"Até …\" / \"A partir de …\"."
   ]
 }

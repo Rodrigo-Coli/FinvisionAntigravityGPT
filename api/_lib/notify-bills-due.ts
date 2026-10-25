@@ -149,7 +149,8 @@ export async function handleNotifyBillsDue(req: any, res: any) {
           await webpush.sendNotification(u.push_subscription, JSON.stringify({
             title: 'Zyvion 🔔',
             body: `Você tem ${bodyParts.join(' e ')}.`,
-            url: '/#/history?status=PENDING'
+            // Abre só o que o aviso listou: pendentes de 7 dias atrás até amanhã.
+            url: `/#/history?status=PENDING&startDate=${sevenDaysAgoStr}&endDate=${tomorrowStr}`
           }));
         } catch (pushErr: any) {
           console.error(`[WebPush Error] Falha ao enviar para o usuário ${u.user_id}:`, pushErr.message || pushErr);

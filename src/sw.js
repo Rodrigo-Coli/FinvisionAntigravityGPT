@@ -146,7 +146,11 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
         if ('focus' in client) {
-          client.navigate(targetUrl);
+          // O app já aberto troca de tela pela mensagem (App.tsx ouve NAVIGATE).
+          // client.navigate() falhava em silêncio em janela não controlada por
+          // este service worker: o app vinha para frente na tela em que estava,
+          // sem o filtro do aviso.
+          try { client.postMessage({ type: 'NAVIGATE', url: targetUrl }); } catch (e) { /* segue */ }
           return client.focus();
         }
       }
