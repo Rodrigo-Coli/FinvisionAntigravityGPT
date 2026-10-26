@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, BookOpen, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown, ShieldCheck, Gift, LayoutGrid, Building2, Car, TrendingUp, HandCoins, Layers, Box, ChevronDown, Receipt, Store, ShoppingCart, BarChart3, Brain, Users, Megaphone, Tag, Tags, Navigation, Percent, Cloud } from 'lucide-react';
+import { Home, Landmark, CreditCard, History, Sparkles, Gem, Settings, LogOut, BookOpen, FileCheck, Menu, X, Bell, Target, PieChart, HelpCircle, FileDown, ShieldCheck, Gift, LayoutGrid, Building2, Car, TrendingUp, HandCoins, Layers, Box, ChevronDown, Receipt, Store, ShoppingCart, BarChart3, Brain, Users, Megaphone, Tag, Tags, Navigation, Percent, Cloud, Calculator } from 'lucide-react';
 import { Profile } from '../types';
 import { isAdmin } from '../lib/authUtils';
 import { supabase } from '../lib/supabase/client';
@@ -49,6 +49,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
   const planningSubItems: NavSubItem[] = [
     { id: 'budget', label: 'Orçamentos', icon: <PieChart size={16} /> },
     { id: 'goals', label: 'Metas', icon: <Target size={16} /> },
+    { id: 'consortium', label: 'Simulador de Consórcio', icon: <Calculator size={16} /> },
   ];
 
   const settingsSubItems: NavSubItem[] = [
