@@ -184,6 +184,24 @@ describe('capital livre e quitação com várias cotas', () => {
     expect(r.consortiumTotal).toBeCloseTo(1600 * 131, 4);
   });
 
+  it('cota que você já tem: a parcela dela já é paga hoje e entra nos dois caminhos', () => {
+    // 570-807 hoje: contemplada, crédito líquido 118.534,47, 132 × 667,23.
+    const mine = simulatePlan({ ...existingQuotaPlan({ credit: 118534.47, balance: 88073.80, remainingMonths: 132, currentInstallment: 667.23 }), contemplationMonth: 1 });
+    const fin = Array(161).fill(1268.62);
+    const asMine = evaluatePayoffPortfolio({ financingBalance: 149249.88, financingInstallments: fin, quotas: [mine], committed: [true], opportunityPctYear: 11.6 });
+    expect(asMine.alreadyPaying).toBeCloseTo(667.23, 2);
+    expect(asMine.todayMonthly).toBeCloseTo(1935.85, 2);
+    expect(asMine.consortiumAfter).toBeCloseTo(667.23, 2);
+    expect(asMine.monthlyDifference).toBeCloseTo(1268.62, 2);     // deixa de pagar o financiamento inteiro
+    expect(asMine.owedAtPayoff).toBeCloseTo(149862.44, 1);
+    expect(asMine.freeCapital).toBeCloseTo(118534.47 - 149862.44, 1);
+    // Com as parcelas da cota nos dois caminhos, a decisão é só "quitar um financiamento a ~0,41% a.m."
+    // contra deixar o dinheiro rendendo a 11,6% a.a. (~0,92% a.m.) — quitar perde.
+    const asNew = evaluatePayoffPortfolio({ financingBalance: 149249.88, financingInstallments: fin, quotas: [mine], opportunityPctYear: 11.6 });
+    expect(asMine.advantage).not.toBeCloseTo(asNew.advantage, 0);
+    expect(asMine.advantage).toBeLessThan(0);
+  });
+
   it('reforma tira do capital investido; o resto rende e cobre as parcelas', () => {
     const q = simulatePlan({ credit: 200000, termMonths: 100, adminFeePct: 0, contemplationMonth: 1 });
     const r = evaluatePayoffPortfolio({

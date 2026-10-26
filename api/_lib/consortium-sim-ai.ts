@@ -37,6 +37,7 @@ REGRAS:
 - Se o pedido muda a simulação, devolva em "quotas" a LISTA COMPLETA de cotas como deve ficar (inclua as que continuam, com os mesmos nomes/source, para não perder edições). Se for só uma pergunta, não mande "quotas".
 - Use os PADRÕES do usuário: se ele fala de uma administradora que ele já tem (ex.: Ademicon), copie taxa de adm, fundo de reserva e prazo-base das cotas dele dessa administradora, a menos que ele diga outros números.
 - "Lance de 60 embutidas e 72 pagas" na Ademicon = bidUnit "INST", baseTermMonths 240 (ou o prazo-base que ele informar), embeddedBid 60, freeBid 72.
+- Cota existente JÁ CONTEMPLADA (contemplated = true): o lance já foi dado e registrado — NÃO aplique lance de novo (freeBid 0, embeddedBid 0, contemplationInMonths 1); o crédito disponível é o líquido (netCredit).
 - Nunca invente saldo de cota existente. Se faltar um número essencial de cota nova (ex.: valor da carta), use um valor razoável e diga no reply que ele pode ajustar.
 - Valores em reais como número (171789.09), percentuais como número (24 = 24%).
 - Máximo de 12 cotas.`;

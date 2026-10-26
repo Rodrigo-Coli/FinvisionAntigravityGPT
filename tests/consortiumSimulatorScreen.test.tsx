@@ -263,4 +263,37 @@ describe('tela do simulador de consórcio', () => {
     expect(writes).toEqual([]);
     tables.transactions = [];
   });
+  it('cota já contemplada: usa o crédito líquido, sem lance de novo, e quita com os números reais', async () => {
+    const c0 = { ...tables.consortiums[0] }, l0 = { ...tables.liabilities[0] };
+    Object.assign(tables.consortiums[0], { status: 'CONTEMPLATED', metadata: { net_credit: 118534.47, embedded_bid_amount: 53254.62, bid_type: 'MIXED' } });
+    Object.assign(tables.liabilities[0], { remaining_balance: 88073.80, installments_remaining: 132, installment_amount: 667.23 });
+    tables.transactions = Array.from({ length: 161 }, (_, i) => ({
+      liability_id: 'L2', user_id: 'u1', date: '2026-11-29', amount: 1268.62, paid_amount: 0, is_paid: false, is_deleted: false, type: 'EXPENSE', description: `Parcela ${i + 1}`, metadata: {}
+    }));
+    await act(async () => { root.render(<ConsortiumSimulator />); });
+    await flush();
+    await act(async () => { button('Várias cotas').click(); });
+    const select = Array.from(container.querySelectorAll('select')).find(s => s.textContent?.includes('Cota nova'))!;
+    await act(async () => { setValue(select, 'C1'); });
+    await act(async () => { setValue(field('Reajuste anual'), '0'); });
+    await flush();
+    expect(text()).toContain('Já contemplada — crédito líquido R$ 118.534,47');
+    expect(text()).toContain('o saldo devedor (R$ 88.073,80) é o que você ainda deve, pago em 132 parcelas de R$ 667,23');
+    expect(field('Crédito disponível (líquido)').value).toBe('118534,47');
+    expect(field('Lance do bolso').value).toBe('0');
+    expect(text()).toContain('R$ 667,23 → R$ 667,23');   // parcela antes → depois: nada muda (sem lance novo)
+
+    await act(async () => { button('Quitar financiamento').click(); });
+    const fin = Array.from(container.querySelectorAll('select')).find(s => s.textContent?.includes('Piazza'))!;
+    await act(async () => { setValue(fin, 'L2'); });
+    await flush();
+    const t = text();
+    expect(t).toContain('R$ 1.935,85 → R$ 667,23');
+    expect(t).toContain('hoje: financiamento R$ 1.268,62 + cotas que já tem R$ 667,23 · sobra R$ 1.268,62/mês');
+    expect(t).toContain('juros implícitos 0,410% a.m.');
+    expect(t).toMatch(/O crédito não cobre a quitação: faltam R\$ 31\.[0-9]{3},[0-9]{2}/);
+    expect(writes).toEqual([]);
+    Object.assign(tables.consortiums[0], c0); Object.assign(tables.liabilities[0], l0);
+    tables.consortiums[0].metadata = {}; tables.transactions = [];
+  });
 });

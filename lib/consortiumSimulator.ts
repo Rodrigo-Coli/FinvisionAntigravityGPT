@@ -590,6 +590,12 @@ export interface PayoffPortfolioInput {
   financingMonths?: number;
   financingSystem?: AmortizationSystem;
   quotas: PlanResult[];               // cotas escolhidas (já simuladas)
+  /**
+   * Por cota: true = cota que você JÁ TEM. As parcelas (e o crédito) dela
+   * existem com ou sem a quitação, então entram nos dois caminhos — só a
+   * cota nova é custo a mais por trocar.
+   */
+  committed?: boolean[];
   opportunityPctYear: number;
   renovation?: number;                // parte do capital livre usada em reforma
   investRatePctYear?: number;         // rendimento do que for investido
@@ -626,8 +632,16 @@ export function evaluatePayoffPortfolio(p: PayoffPortfolioInput) {
   }, 0));
   const afterX = consMonthly.slice(X);
 
+  const committed = p.quotas.map((_, i) => !!p.committed?.[i]);
+  // O que você já paga hoje das cotas que já tem (1º mês).
+  const alreadyPaying = p.quotas.reduce((s, q, i) => s + (committed[i] && q.rows[0] ? q.rows[0].installment + q.rows[0].insurance : 0), 0);
+  const todayMonthly = (finPayments[0] || 0) + alreadyPaying;
+
   const o = annualToMonthly(p.opportunityPctYear);
-  const keepFlows: Flow[] = finPayments.map((v, i) => ({ t: i + 1, v: -v }));
+  const keepFlows: Flow[] = [
+    ...finPayments.map((v, i) => ({ t: i + 1, v: -v })),
+    ...p.quotas.flatMap((q, i) => (committed[i] ? q.flows : []))
+  ];
   const switchFlows: Flow[] = [
     ...paidBefore.map((v, i) => ({ t: i + 1, v: -v })),
     { t: X, v: -owedAtX },
@@ -643,11 +657,13 @@ export function evaluatePayoffPortfolio(p: PayoffPortfolioInput) {
     netCredit, ownBid, freeCapital, renovation, invested,
     newMoney: freeCapital - ownBid,                 // capital livre menos o lance do bolso
     financingInstallment: finPayments[0] || 0,
+    alreadyPaying,
+    todayMonthly,
     financingTotal: finPayments.reduce((s, v) => s + v, 0),
     bothBeforePayoff: X > 1 ? (finPayments[0] || 0) + (consMonthly[0] || 0) : 0,
     consortiumAfter: afterX[0] || 0,
     consortiumTotal: consMonthly.reduce((s, v) => s + v, 0),
-    monthlyDifference: (finPayments[X - 1] || finPayments[0] || 0) - (afterX[0] || 0),
+    monthlyDifference: todayMonthly - (afterX[0] || 0),
     pvCostKeepFinancing: pvKeep,
     pvCostSwitch: pvSwitch,
     advantage: pvKeep - pvSwitch,

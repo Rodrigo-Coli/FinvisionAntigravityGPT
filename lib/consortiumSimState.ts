@@ -36,6 +36,21 @@ export interface KnownConsortium {
   balance: number | null;
   remainingMonths: number | null;
   currentInstallment: number | null;
+  /** Já contemplada: o lance já foi registrado e o crédito disponível é o líquido. */
+  contemplated?: boolean;
+  netCredit?: number | null;
+}
+
+/**
+ * Crédito que a cota tem para usar. Contemplada com lance embutido: o
+ * crédito líquido (carta − embutido), que é o que a administradora libera.
+ */
+export function availableCredit(c: { credit_letter_value?: unknown; status?: string | null; metadata?: any }): { credit: number; contemplated: boolean; netCredit: number | null } {
+  const carta = Number(c.credit_letter_value) || 0;
+  const contemplated = !!c.status && c.status !== 'WAITING';
+  const net = Number(c.metadata?.net_credit);
+  const netCredit = contemplated && Number.isFinite(net) && net > 0 ? net : null;
+  return { credit: netCredit ?? carta, contemplated, netCredit };
 }
 
 export interface AiQuota {
@@ -76,7 +91,9 @@ export const quotaFromKnown = (c: KnownConsortium): QuotaDraft => ({
   ...blankQuota(1),
   name: c.name,
   source: c.id,
-  credit: numToField(c.credit),
+  // Contemplada: crédito líquido, sem lance (o lance já foi dado e registrado).
+  credit: numToField(c.contemplated && c.netCredit ? c.netCredit : c.credit),
+  free: '0', emb: '0', month: '1',
   term: String(c.totalMonths || ''),
   adm: numToField(c.adminFeePct),
   fr: numToField(c.reserveFundPct),
