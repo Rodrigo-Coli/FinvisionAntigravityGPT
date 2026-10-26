@@ -8,6 +8,7 @@ import { DateInput } from '../common/DateInput';
 import { sanitizeMoneyTyping, parseMoneyInput } from '../../lib/moneyInput';
 import { BidInstallment, BidMode, planConsortiumBid } from '../../lib/consortiumBid';
 import { useLedgerOptions, NO_ACCOUNT } from './useLedgerOptions';
+import { syncConsortiumBalance } from '../../services/consortiumBalance.service';
 
 /**
  * Registrar lance de consórcio.
@@ -45,27 +46,17 @@ const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', c
 const fmtDate = (iso: string) => iso ? iso.slice(0, 10).split('-').reverse().join('/') : '';
 const NOT_DELETED = 'is_deleted.is.null,is_deleted.eq.false';
 
-// Ajusta o passivo pelo lance: saldo devedor −valor do lance, parcelas
-// restantes −as retiradas. NÃO recalcula pela soma das parcelas: em vários
-// consórcios as parcelas cadastradas (ex.: meia parcela antes da contemplação)
-// somam bem menos que o saldo devedor real, e a dívida despencaria.
-async function adjustConsortiumLiability(liabilityId: string, balanceDelta: number, countDelta: number, installmentAmount?: number | null) {
-  const { data: liab, error } = await supabase!
-    .from('liabilities')
-    .select('remaining_balance, installments_remaining')
-    .eq('id', liabilityId)
-    .maybeSingle();
-  if (error) throw error;
-  if (!liab) return;
-  const balance = Math.max(0, Math.round((Number(liab.remaining_balance || 0) + balanceDelta) * 100) / 100);
-  const count = Math.max(0, (Number(liab.installments_remaining) || 0) + countDelta);
-  const { error: upErr } = await supabase!.from('liabilities').update({
-    remaining_balance: balance,
-    installments_remaining: count,
-    ...(installmentAmount !== undefined && installmentAmount !== null ? { installment_amount: installmentAmount } : {}),
-    updated_at: new Date().toISOString()
-  }).eq('id', liabilityId);
-  if (upErr) throw upErr;
+// Passivo pela regra de mercado (lib/consortiumBalance): o lance é uma saída
+// paga vinculada ao passivo, então a sincronização já o desconta do saldo
+// devedor — e desfazer devolve. Aqui só se grava o novo valor da parcela.
+async function refreshConsortiumLiability(liabilityId: string, installmentAmount?: number | null) {
+  await syncConsortiumBalance(liabilityId);
+  if (installmentAmount !== undefined && installmentAmount !== null) {
+    const { error } = await supabase!.from('liabilities')
+      .update({ installment_amount: installmentAmount, updated_at: new Date().toISOString() })
+      .eq('id', liabilityId);
+    if (error) throw error;
+  }
 }
 
 function clearFinanceCaches(userId: string) {
@@ -102,6 +93,7 @@ const ConsortiumBidModal: React.FC<{
     let alive = true;
     (async () => {
       if (!supabase || !consortium.liability_id) { setInstallments([]); return; }
+      await syncConsortiumBalance(consortium.liability_id);
       const [txRes, liabRes] = await Promise.all([
         supabase.from('transactions')
           .select('id, date, amount, is_paid, paid_amount, metadata')
@@ -167,6 +159,9 @@ const ConsortiumBidModal: React.FC<{
       const accId = accountId && accountId !== NO_ACCOUNT ? accountId : null;
       const nowIso = new Date().toISOString();
       const newAmount = plan.updates.length ? plan.newInstallmentAmount : undefined;
+      // Fixa o saldo atual como referência ANTES do lance existir — assim o
+      // lance entra como amortização (ver lib/consortiumBalance).
+      await syncConsortiumBalance(consortium.liability_id);
 
       // 1. O lance: despesa paga, vinculada ao passivo (entra no extrato do consórcio).
       const { data: bidTx, error: bidErr } = await supabase.from('transactions').insert({
@@ -235,7 +230,7 @@ const ConsortiumBidModal: React.FC<{
         .eq('id', consortium.id);
       if (metaErr) throw metaErr;
       metadataSaved = true;
-      await adjustConsortiumLiability(consortium.liability_id, -bidAmount, -removedIds.length, newAmount);
+      await refreshConsortiumLiability(consortium.liability_id, newAmount);
 
       if (accId) {
         try { await supabase.rpc('recalculate_account_balance', { p_account_id: accId }); } catch { /* o gatilho do banco também recalcula */ }
@@ -265,6 +260,7 @@ const ConsortiumBidModal: React.FC<{
         if (bidTxId) {
           await supabase.from('transactions').update({ is_deleted: true }).eq('id', bidTxId);
         }
+        if (consortium.liability_id) await syncConsortiumBalance(consortium.liability_id);
       } catch { /* segue o erro original */ }
       toast(`Erro ao registrar lance: ${err.message}`, 'error');
     } finally {
@@ -300,10 +296,8 @@ const ConsortiumBidModal: React.FC<{
         .eq('id', lastBid.transaction_id).eq('user_id', user.id);
       if (bidErr) throw bidErr;
 
-      await adjustConsortiumLiability(
+      await refreshConsortiumLiability(
         consortium.liability_id,
-        Number(lastBid.amount) || 0,
-        lastBid.removed_ids?.length || 0,
         lastBid.mode === 'REDUCE_INSTALLMENT' ? lastBid.previous_installment_amount : undefined
       );
       await supabase.from('consortiums')

@@ -10,6 +10,8 @@ import { supabase } from '../../lib/supabase/client';
 import { useToast } from '../../contexts/ToastContext';
 import { DateInput } from '../common/DateInput';
 import ConsortiumBidModal from './ConsortiumBidModal';
+import { syncAllConsortiumBalances } from '../../services/consortiumBalance.service';
+import { getSessionUser } from '../../lib/session';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 type ConsortiumStatus = 'WAITING' | 'CONTEMPLATED' | 'CREDIT_USED' | 'SETTLED';
@@ -795,6 +797,9 @@ const ConsortiumSection: React.FC = () => {
     if (!supabase) return;
     setLoading(true);
     try {
+      // Saldo devedor e "parcelas pagas" atualizados pelo que foi pago.
+      const user = await getSessionUser(supabase);
+      if (user) await syncAllConsortiumBalances(user.id);
       const { data, error } = await supabase
         .from('consortiums')
         .select('*')

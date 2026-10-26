@@ -7,6 +7,7 @@ import { isNetworkFailure, isProbablyOffline, markNetworkSuccess, withTimeout, N
 import { isOfflineId } from '../lib/offlineQueue.service';
 import { findCategoryByName } from '../lib/categoryResolver';
 import { uniqueOwners } from '../lib/ownerUtils';
+import { syncConsortiumBalance } from './consortiumBalance.service';
 
 // PROPAGAÇÃO REVERSA: quando uma parcela vinculada a um passivo é editada/paga/excluída em
 // Transações, recalcula o saldo devedor e o nº de parcelas restantes do passivo a partir das
@@ -15,6 +16,14 @@ import { uniqueOwners } from '../lib/ownerUtils';
 async function syncLiabilityFromTransactions(liabilityId: string): Promise<void> {
   try {
     if (!supabase || !liabilityId) return;
+    // Consórcio tem regra própria (saldo da administradora − o que foi pago):
+    // a soma das parcelas futuras não é o saldo devedor quando a parcela é
+    // reduzida até a contemplação. Ver lib/consortiumBalance.ts.
+    const { data: liab } = await supabase.from('liabilities').select('type').eq('id', liabilityId).maybeSingle();
+    if (liab?.type === 'CONSORTIUM') {
+      await syncConsortiumBalance(liabilityId);
+      return;
+    }
     const { data: txs } = await supabase
       .from('transactions')
       .select('amount, is_paid')

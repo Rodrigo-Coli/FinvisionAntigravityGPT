@@ -30,6 +30,7 @@ class Query {
   update(p: any) { this.op = 'update'; this.payload = p; return this; }
   eq(col: string, v: any) { this.filters.push(r => r[col] === v); return this; }
   in(col: string, vs: any[]) { this.filters.push(r => vs.includes(r[col])); return this; }
+  neq(col: string, v: any) { this.filters.push(r => r[col] !== v); return this; }
   or(_expr: string) { this.filters.push(r => r.is_deleted !== true); return this; }
   not() { return this; }
   lte() { return this; }
@@ -72,13 +73,13 @@ import ConsortiumBidModal from '../components/assets/ConsortiumBidModal';
 
 const seed = () => {
   db.transactions = [
-    { id: 'old', user_id: 'u1', date: '2020-01-10', amount: 500, is_paid: true, paid_amount: 500, is_deleted: false, liability_id: 'L1', metadata: {} },
+    { id: 'old', type: 'EXPENSE', user_id: 'u1', date: '2020-01-10', amount: 500, is_paid: true, paid_amount: 500, is_deleted: false, liability_id: 'L1', metadata: {} },
     ...Array.from({ length: 6 }, (_, i) => ({
-      id: `p${i + 1}`, user_id: 'u1', date: `${2090 + i}-01-10`, amount: 1000, is_paid: false, paid_amount: 0, is_deleted: false, liability_id: 'L1', metadata: {}
+      id: `p${i + 1}`, type: 'EXPENSE', user_id: 'u1', date: `${2090 + i}-01-10`, amount: 1000, is_paid: false, paid_amount: 0, is_deleted: false, liability_id: 'L1', metadata: {}
     }))
   ];
-  db.liabilities = [{ id: 'L1', remaining_balance: 50000, installments_remaining: 6, installment_amount: 1000 }];
-  db.consortiums = [{ id: 'C1', name: 'HS Teste', liability_id: 'L1', metadata: { bid_type: 'FREE' } }];
+  db.liabilities = [{ id: 'L1', type: 'CONSORTIUM', remaining_balance: 50000, installments_remaining: 6, installment_amount: 1000, metadata: {} }];
+  db.consortiums = [{ id: 'C1', name: 'HS Teste', liability_id: 'L1', months_paid: 0, metadata: { bid_type: 'FREE' } }];
   db.accounts = [{ id: 'A1', user_id: 'u1', institution: 'Banco X', is_archived: false }];
 };
 
@@ -166,12 +167,13 @@ describe('modal de lance de consórcio', () => {
     expect(tx('p1').amount).toBe(801.5);
     expect(['p2', 'p3', 'p4', 'p5', 'p6'].map(id => tx(id).amount)).toEqual(Array(5).fill(1000));
     expect(db.transactions.find(t => t.metadata?.type === 'consortium_bid')!.is_deleted).toBe(true);
-    expect(db.liabilities[0]).toMatchObject({ remaining_balance: 50000, installment_amount: 1000 });
+    // O lance saiu; a parcela paga depois dele continua abatendo o saldo devedor.
+    expect(db.liabilities[0]).toMatchObject({ remaining_balance: 49198.5, installments_remaining: 5, installment_amount: 1000 });
     expect(db.consortiums[0].metadata.bids).toEqual([]);
   });
 
-  it('falha ao atualizar o passivo desfaz o lance e as parcelas', async () => {
-    failOn.table = 'liabilities'; failOn.op = 'update';
+  it('falha no meio da gravação desfaz o lance e as parcelas', async () => {
+    failOn.table = 'consortiums'; failOn.op = 'update';
     const onSaved = await render();
     await fillBid('2500', 'Reduzir prazo');
     await act(async () => { button('Registrar e recalcular').click(); });
