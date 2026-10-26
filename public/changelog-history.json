@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.10.26.0023",
+    "title": "Quitar financiamento com várias cotas, reforma e rendimento",
+    "date": "26/10/2026",
+    "benefits": [
+      {
+        "title": "Quitar com uma ou mais cotas — suas ou novas",
+        "desc": "Em \"Quitar financiamento\", use as cotas de \"Várias cotas\" e marque quais entram. As suas puxam saldo, parcelas restantes e parcela do cadastro. A quitação é feita no mês em que a última carta sai — até lá o simulador mostra quanto você paga do financiamento e do consórcio juntos.",
+        "type": "novidade"
+      },
+      {
+        "title": "O que fazer com o capital que sobra",
+        "desc": "Diga quanto vai para reforma, quanto o restante rende e se a reforma traz renda a mais (aluguel). O simulador mostra o capital livre, o dinheiro novo (sem os lances do bolso), quanto rende por mês, quanto da parcela isso paga e por quantos meses o investido cobre as parcelas.",
+        "type": "novidade"
+      },
+      {
+        "title": "Saque líquido investido em \"Várias cotas\"",
+        "desc": "No total de \"Várias cotas\", veja quanto o saque líquido renderia por mês e por quanto tempo pagaria as parcelas.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "`lib/consortiumSimulator.ts`: `evaluatePayoffPortfolio` (quitação no mês da última contemplação; saldo devido pelo valor presente das parcelas reais à taxa implícita delas, ou pela taxa/sistema; VPL mantendo × trocando; capital livre, dinheiro novo), `capitalCoverage` (rendimento + renda extra pagando parcelas mês a mês) e `manualContemplatedPlan`.",
+      "`ConsortiumSimulator.tsx`: aba Quitar com origem das cotas (Várias cotas com seleção, ou digitar), destino do capital (reforma, rendimento, renda a mais) e resultados; cobertura do saque líquido no total de Várias cotas; ajuda e guia atualizados.",
+      "Testes: motor (cobertura, quitação com 2 cotas e juros implícitos, consórcio digitado, reforma) e tela (minha cota + nova quitando o financiamento com 161 parcelas reais, falta de crédito, reforma, sem gravação)."
+    ]
+  },
+  {
     "version": "2026.10.26.0008",
     "title": "Simulador autoexplicativo, responsivo e venda com pagamentos antigos",
     "date": "26/10/2026",

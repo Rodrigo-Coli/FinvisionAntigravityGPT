@@ -223,4 +223,44 @@ describe('tela do simulador de consórcio', () => {
     }
     expect(writes).toEqual([]);
   });
+  it('quitar financiamento com várias cotas (minha + nova), reforma e cobertura das parcelas, sem gravar nada', async () => {
+    tables.transactions = Array.from({ length: 161 }, (_, i) => ({
+      liability_id: 'L2', user_id: 'u1', date: `2026-${String((i % 12) + 1).padStart(2, '0')}-29`, amount: 1268.62, paid_amount: 0, is_paid: false, is_deleted: false, type: 'EXPENSE', description: `Parcela ${i + 1}`, metadata: {}
+    }));
+    await act(async () => { root.render(<ConsortiumSimulator />); });
+    await flush();
+    // Monta as cotas em "Várias cotas": a minha 570-807 com o lance.
+    await act(async () => { button('Várias cotas').click(); });
+    const select = Array.from(container.querySelectorAll('select')).find(s => s.textContent?.includes('Cota nova'))!;
+    await act(async () => { setValue(select, 'C1'); });
+    await act(async () => { setValue(field('Reajuste anual'), '0'); });
+    await act(async () => { button('R$').click(); });
+    await act(async () => { setValue(field('Lance do bolso'), '63913,10'); });
+    await act(async () => { setValue(field('Lance embutido'), '53254,62'); });
+    await act(async () => { setValue(field('Contempla daqui a'), '1'); });
+    await flush();
+
+    await act(async () => { button('Quitar financiamento').click(); });
+    const fin = Array.from(container.querySelectorAll('select')).find(s => s.textContent?.includes('Piazza'))!;
+    await act(async () => { setValue(fin, 'L2'); });
+    await flush();
+    expect(text()).toContain('Usando as 161 parcelas reais cadastradas');
+    expect(text()).toContain('Ademicon 570-807 · minha');
+    // Só a 570-807 não cobre o saldo do Piazza.
+    expect(text()).toMatch(/O crédito não cobre a quitação: faltam R\$ 3[0-9]\.[0-9]{3},[0-9]{2}/);
+
+    // Adiciona uma cota nova de 200 mil (padrão) em "Várias cotas" e volta.
+    await act(async () => { button('Várias cotas').click(); });
+    await act(async () => { button('Adicionar cota').click(); });
+    await act(async () => { button('Quitar financiamento').click(); });
+    await flush();
+    expect(text()).not.toContain('O crédito não cobre a quitação');
+    expect(text()).toContain('Capital livre');
+    await act(async () => { setValue(field('Usar em reforma'), '50000'); });
+    await flush();
+    expect(text()).toContain('reforma R$ 50.000,00');
+    expect(text()).toContain('Cobre as parcelas por');
+    expect(writes).toEqual([]);
+    tables.transactions = [];
+  });
 });
