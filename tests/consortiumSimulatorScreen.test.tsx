@@ -337,6 +337,8 @@ describe('tela do simulador de consórcio', () => {
     await flush();
     t = text();
     expect(t).toContain('1 cota(s)');
+    expect(t).toContain('as cotas que você já tem são iguais nos dois caminhos e ficam fora');
+    expect(t).not.toMatch(/Custo (mantendo|quitando) \(valor presente\)-R\$/);
     expect(t).toMatch(/O crédito não cobre a quitação: faltam R\$ 31\.[0-9]{3},[0-9]{2}/);
 
     // Duplicar a cota minha vira uma cota NOVA igual (carta cheia, sem saldo).

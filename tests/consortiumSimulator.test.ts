@@ -202,6 +202,20 @@ describe('capital livre e quitação com várias cotas', () => {
     expect(asMine.advantage).toBeLessThan(0);
   });
 
+  it('cota que já tem fica fora dos custos (iguais nos dois caminhos): custos positivos, mesma diferença', () => {
+    const mine = simulatePlan({ ...existingQuotaPlan({ credit: 118534.47, balance: 88073.80, remainingMonths: 132, currentInstallment: 667.23 }), contemplationMonth: 1 });
+    const fin = Array(161).fill(1268.62);
+    // Quitação à vista informada pelo banco: R$ 91.000 (juros implícitos ~1,185% a.m.).
+    const r = evaluatePayoffPortfolio({ financingBalance: 91000, financingInstallments: fin, quotas: [mine, mine], committed: [true, true], opportunityPctYear: 11.6 });
+    const o = Math.pow(1.116, 1 / 12) - 1;
+    const pvFin = fin.reduce((s, v, i) => s + v / Math.pow(1 + o, i + 1), 0);
+    expect(r.pvCostKeepFinancing).toBeCloseTo(pvFin, 2);                     // ≈ 106.407,57
+    expect(r.pvCostSwitch).toBeCloseTo(r.owedAtPayoff / (1 + o), 2);         // só a quitação no mês 1
+    expect(r.owedAtPayoff).toBeCloseTo(92078.18, 1);
+    expect(r.advantage).toBeCloseTo(15167.69, 0);
+    expect(r.newQuotaTotal).toBe(0);
+  });
+
   it('reforma tira do capital investido; o resto rende e cobre as parcelas', () => {
     const q = simulatePlan({ credit: 200000, termMonths: 100, adminFeePct: 0, contemplationMonth: 1 });
     const r = evaluatePayoffPortfolio({

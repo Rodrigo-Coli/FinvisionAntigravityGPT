@@ -1527,13 +1527,14 @@ const ConsortiumSimulator: React.FC = () => {
                 <Stat label="Você paga por mês: hoje → depois" value={`${fmt(payoff.todayMonthly)} → ${fmt(payoff.consortiumAfter)}`}
                   sub={`${payoff.alreadyPaying > 0 ? `hoje: financiamento ${fmt(payoff.financingInstallment)} + cotas que já tem ${fmt(payoff.alreadyPaying)} · ` : ''}${payoff.monthlyDifference >= 0 ? `sobra ${fmt(payoff.monthlyDifference)}/mês` : `${fmt(-payoff.monthlyDifference)}/mês a mais`}`} />
                 {payoff.payoffMonth > 1 && <Stat label={`Até o mês ${payoff.payoffMonth}`} value={`${fmt(payoff.bothBeforePayoff)}/mês`} sub="financiamento + consórcio juntos, até quitar" />}
-                <Stat label="Custo mantendo (valor presente)" value={fmt(payoff.pvCostKeepFinancing)} sub={`parcelas ${fmt(payoff.financingTotal)}${poRealInstallments ? ` · juros implícitos ${fmtPct(payoff.impliedRatePctMonth, 3)} a.m.` : ''}`} />
-                <Stat label="Custo trocando (valor presente)" value={fmt(payoff.pvCostSwitch)} sub={`parcelas do consórcio ${fmt(payoff.consortiumTotal)} (com reajuste)`} />
+                <Stat label="Custo mantendo (valor presente)" value={fmt(payoff.pvCostKeepFinancing)} sub={`parcelas do financiamento ${fmt(payoff.financingTotal)}${poRealInstallments ? ` · juros implícitos ${fmtPct(payoff.impliedRatePctMonth, 3)} a.m.` : ''}`} />
+                <Stat label="Custo quitando (valor presente)" value={fmt(payoff.pvCostSwitch)}
+                  sub={`quitação ${fmt(payoff.owedAtPayoff)}${payoff.newQuotaTotal > 0 ? ` + parcelas das cotas novas ${fmt(payoff.newQuotaTotal)} (com reajuste) − crédito delas` : ''}${payoff.committedCredit > 0 ? ' · as cotas que você já tem são iguais nos dois caminhos e ficam fora' : ''}`} />
               </div>
               {payoff.freeCapital < 0 && <Verdict tone="bad" title={`O crédito não cobre a quitação: faltam ${fmt(-payoff.freeCapital)}.`}>Adicione outra cota ou aumente a carta em "Várias cotas".</Verdict>}
               {payoff.advantage >= 0
-                ? <Verdict tone="good" title={`Trocar compensa: ${fmt(payoff.advantage)} a menos em valor presente.`}>Já contando o capital livre e o rendimento do dinheiro a {oppTxt}.</Verdict>
-                : <Verdict tone="warn" title={`Trocar custa ${fmt(-payoff.advantage)} a mais em valor presente.`}>
+                ? <Verdict tone="good" title={`Quitar compensa: ${fmt(payoff.advantage)} a menos em valor presente.`}>Já contando o capital livre e o rendimento do dinheiro a {oppTxt}.</Verdict>
+                : <Verdict tone="warn" title={`Quitar custa ${fmt(-payoff.advantage)} a mais em valor presente.`}>
                     {monthlyToAnnualPct(payoff.impliedRatePctMonth / 100) < num(opportunity)
                       ? <>O financiamento custa {fmtPct(payoff.impliedRatePctMonth, 2)} a.m. (≈ {fmtPct(monthlyToAnnualPct(payoff.impliedRatePctMonth / 100), 1)} a.a.), menos que o rendimento do dinheiro ({oppTxt}): pela conta, usar o crédito para quitá-lo vale menos que dar outro uso a ele. Mas o crédito do consórcio só pode ir para bem, reforma ou quitação — se não houver outro bem para comprar, quitar ainda alivia {fmt(Math.max(0, payoff.monthlyDifference))}/mês.</>
                       : <>Pode compensar se o capital livre render mais que {oppTxt} — por exemplo, numa reforma que aumenta o aluguel.</>}

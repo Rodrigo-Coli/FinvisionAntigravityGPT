@@ -1,6 +1,6 @@
 {
-  "version": "2026.10.26.0056",
-  "title": "Simulador: crédito líquido nas cotas salvas, sem cota repetida e sem imóvel devolvido",
+  "version": "2026.10.26.0100",
+  "title": "Simulador: crédito líquido nas cotas salvas, sem cota repetida, custos claros na quitação",
   "date": "26/10/2026",
   "benefits": [
     {
@@ -17,12 +17,18 @@
       "title": "Imóvel devolvido sai da lista de financiamentos",
       "desc": "O saldo a financiar de imóvel arquivado (ex.: Wave Beach Prime) não aparece mais no simulador nem nas dívidas do Início, mesmo antes de abrir Patrimônio.",
       "type": "correcao"
+    },
+    {
+      "title": "Quitação com custos fáceis de ler",
+      "desc": "\"Custo mantendo\" mostra só as parcelas do financiamento e \"Custo quitando\" só a quitação (mais as cotas novas, se houver). A cota que você já tem é igual nos dois caminhos e fica fora — antes ela entrava nos dois e os custos apareciam negativos. O resultado (quanto compensa) não muda.",
+      "type": "melhoria"
     }
   ],
   "changes": [
     "`lib/consortiumSimState.ts`: `refreshContemplatedQuotas` (carta cheia → crédito líquido, lance 0, mês 1 em cota contemplada) e `repeatedQuotaKeys`.",
     "`lib/pendingFinancing.ts`: `isOrphanPendingFinancing`, usado no simulador, no Início (`dashboard.service`) e na autocorreção de Patrimônio.",
     "`ConsortiumSimulator.tsx`: atualiza rascunhos ao carregar; aviso e exclusão de cota repetida na quitação; Duplicar de cota minha cria cota nova (carta cheia, sem saldo); lista de financiamentos ignora saldo a financiar de imóvel arquivado.",
+    "`lib/consortiumSimulator.ts`: `evaluatePayoffPortfolio` tira as cotas que já tem dos dois VPLs (mesma vantagem, custos positivos); expõe `newQuotaTotal` e `committedCredit`. Tela: \"Custo quitando\" e veredito \"Quitar compensa/custa\".",
     "Testes: rascunho antigo com cópia e imóvel devolvido; Início sem saldo a financiar órfão; funções puras."
   ]
 }

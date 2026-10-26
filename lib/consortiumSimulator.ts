@@ -638,15 +638,16 @@ export function evaluatePayoffPortfolio(p: PayoffPortfolioInput) {
   const todayMonthly = (finPayments[0] || 0) + alreadyPaying;
 
   const o = annualToMonthly(p.opportunityPctYear);
-  const keepFlows: Flow[] = [
-    ...finPayments.map((v, i) => ({ t: i + 1, v: -v })),
-    ...p.quotas.flatMap((q, i) => (committed[i] ? q.flows : []))
-  ];
+  // Cota que você já tem (crédito e parcelas) é igual nos dois caminhos: fica
+  // fora dos dois custos (a diferença não muda) e eles mostram só o que muda.
+  const keepFlows: Flow[] = finPayments.map((v, i) => ({ t: i + 1, v: -v }));
   const switchFlows: Flow[] = [
     ...paidBefore.map((v, i) => ({ t: i + 1, v: -v })),
     { t: X, v: -owedAtX },
-    ...p.quotas.flatMap(q => q.flows)
+    ...p.quotas.flatMap((q, i) => (committed[i] ? [] : q.flows))
   ];
+  // Parcelas só das cotas novas (custo a mais por trocar).
+  const newQuotaTotal = p.quotas.reduce((s, q, i) => s + (committed[i] ? 0 : q.rows.reduce((a, r) => a + r.installment + r.insurance, 0)), 0);
   const pvKeep = -npv(o, keepFlows);
   const pvSwitch = -npv(o, switchFlows);
 
@@ -663,6 +664,8 @@ export function evaluatePayoffPortfolio(p: PayoffPortfolioInput) {
     bothBeforePayoff: X > 1 ? (finPayments[0] || 0) + (consMonthly[0] || 0) : 0,
     consortiumAfter: afterX[0] || 0,
     consortiumTotal: consMonthly.reduce((s, v) => s + v, 0),
+    newQuotaTotal,
+    committedCredit: p.quotas.reduce((s, q, i) => s + (committed[i] ? q.netCredit : 0), 0),
     monthlyDifference: todayMonthly - (afterX[0] || 0),
     pvCostKeepFinancing: pvKeep,
     pvCostSwitch: pvSwitch,
