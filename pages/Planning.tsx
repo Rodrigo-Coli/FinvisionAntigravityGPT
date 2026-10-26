@@ -10,6 +10,7 @@ import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 import { isProbablyOffline } from '../lib/connectivity';
 import { getSessionUser } from '../lib/session';
 import { DateInput } from '../components/common/DateInput';
+import ConsortiumSimulator from '../components/planning/ConsortiumSimulator';
 
 const BUDGET_COLORS = [
   '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'
@@ -23,16 +24,19 @@ const GOAL_COLORS = [
   '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6'
 ];
 
+type PlanningTab = 'budget' | 'goals' | 'consortium';
+const toPlanningTab = (tab: string | null): PlanningTab =>
+  tab === 'goals' ? 'goals' : tab === 'consortium' ? 'consortium' : 'budget';
+
 const Planning: React.FC<{ user: any }> = ({ user }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'budget' | 'goals'>(() => {
+  const [activeTab, setActiveTab] = useState<PlanningTab>(() => {
     const params = new URLSearchParams(location.search);
-    const tab = params.get('tab');
-    return tab === 'goals' ? 'goals' : 'budget';
+    return toPlanningTab(params.get('tab'));
   });
 
   // Common State
@@ -77,19 +81,15 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
   });
 
   // Sync tab with URL
-  const handleTabChange = (tab: 'budget' | 'goals') => {
+  const handleTabChange = (tab: PlanningTab) => {
     setActiveTab(tab);
     navigate(`/planning?tab=${tab}`, { replace: true });
   };
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const tab = params.get('tab');
-    if (tab === 'goals' && activeTab !== 'goals') {
-      setActiveTab('goals');
-    } else if (tab !== 'goals' && activeTab !== 'budget') {
-      setActiveTab('budget');
-    }
+    const tab = toPlanningTab(params.get('tab'));
+    if (tab !== activeTab) setActiveTab(tab);
   }, [location.search]);
 
   useEffect(() => {
@@ -456,6 +456,9 @@ const Planning: React.FC<{ user: any }> = ({ user }) => {
           </button>
         </div>
       </div>
+
+      {/* SIMULADOR DE CONSÓRCIO */}
+      {activeTab === 'consortium' && <ConsortiumSimulator />}
 
       {/* RENDER ORÇAMENTOS */}
       {activeTab === 'budget' && (
