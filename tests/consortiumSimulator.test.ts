@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   simulatePlan, simulateFinancing, irr, npv, lotteryOdds, bidChance, evaluateBid,
   evaluateContemplatedQuota, evaluatePayoff, evaluateSale, targetSalePrice,
-  baseInstallmentValue, installmentsToPct, annualToMonthly
+  baseInstallmentValue, installmentsToPct, annualToMonthly, existingQuotaPlan
 } from '../lib/consortiumSimulator';
 
 /**
@@ -80,6 +80,30 @@ describe('Ademicon 570-807 — lance em parcelas, como a administradora oferta',
     expect(r.netCredit).toBeCloseTo(118534.4, 0);            // e-mail: 118.534,47
     // Descontando a 1ª parcela paga, sobram 131 meses: (213.018 − 1.613,78 − 117.160) ÷ 131.
     expect(r.postInstallment).toBeCloseTo(719.43, 1);
+  });
+});
+
+describe('cota existente: parte do saldo de hoje', () => {
+  it('Ademicon 570-807 hoje: mesma conta do modal de lance do app (667,23)', () => {
+    const base = existingQuotaPlan({ credit: 171789.09, balance: 206796.38, remainingMonths: 133, currentInstallment: 1554.86 });
+    const r = simulatePlan({
+      ...base, contemplationMonth: 1, freeBidPct: (63913.10 / 171789.09) * 100, embeddedBidPct: (53254.62 / 171789.09) * 100,
+      bidMode: 'REDUCE_INSTALLMENT'
+    });
+    expect(r.preInstallment).toBeCloseTo(1554.86, 2);
+    expect(r.balanceBeforeBid).toBeCloseTo(206796.38 - 1554.86, 2);
+    expect(r.balanceAfterBid).toBeCloseTo(88073.80, 2);
+    expect(r.postInstallment).toBeCloseTo(667.23, 2);
+    expect(r.monthsTotal).toBe(133);
+    expect(r.netCredit).toBeCloseTo(118534.47, 2);
+  });
+
+  it('parcela reduzida hoje: depois de contemplar o saldo é dividido nos meses que faltam', () => {
+    const base = existingQuotaPlan({ credit: 116649.17, balance: 126349.11, remainingMonths: 48, currentInstallment: 398.36 });
+    const r = simulatePlan({ ...base, contemplationMonth: 6 });
+    expect(r.preInstallment).toBeCloseTo(398.36, 2);
+    expect(r.postInstallment).toBeCloseTo((126349.11 - 6 * 398.36) / 42, 2);
+    expect(r.totalInstallments).toBeCloseTo(126349.11, 2);
   });
 });
 

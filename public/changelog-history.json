@@ -1,12 +1,12 @@
 [
   {
-    "version": "2026.10.25.2336",
+    "version": "2026.10.25.2339",
     "title": "Simulador de Consórcio no Planejamento",
     "date": "25/10/2026",
     "benefits": [
       {
         "title": "Simulador de Consórcio",
-        "desc": "Novo em Planejamento → Simulador de Consórcio. Faz a conta como as administradoras: carta + taxa de administração + fundo de reserva, reajuste anual, parcela reduzida até contemplar e seguro. Mostra parcela antes e depois, total pago, custo efetivo e compara com um financiamento do mesmo valor.",
+        "desc": "Novo em Planejamento → Simulador de Consórcio. Simule uma cota nova ou escolha uma cota sua — aí ele parte da situação de hoje (saldo devedor, parcelas restantes e parcela atual). Faz a conta como as administradoras: carta + taxa de administração + fundo de reserva, reajuste anual, parcela reduzida até contemplar e seguro; compara com um financiamento do mesmo valor. Só simula, não altera nada do app.",
         "type": "novidade"
       },
       {
@@ -21,10 +21,10 @@
       }
     ],
     "changes": [
-      "`lib/consortiumSimulator.ts`: plano em % da carta (adm, FR, índice anual, parcela reduzida, seguro sobre saldo), contemplação com lance livre/embutido (reduz prazo/parcela), TIR/VPL, financiamento PRICE/SAC, decisão do lance em valor presente (crédito não conta como caixa; embutido conta como custo) com lance máximo por busca binária, probabilidade de sorteio, cota contemplada, quitação (parcelas reais) e venda (TIR, preço-alvo).",
-      "`components/planning/ConsortiumSimulator.tsx`: 5 abas, pré-preenchimento com consórcios/financiamentos cadastrados, gráfico de parcelas com tooltip, referências de mercado com fontes. Só calcula, não grava.",
+      "`lib/consortiumSimulator.ts`: plano em % da carta (cota nova) ou a partir do saldo de hoje (`existingQuotaPlan`, cota existente) (adm, FR, índice anual, parcela reduzida, seguro sobre saldo), contemplação com lance livre/embutido (reduz prazo/parcela), TIR/VPL, financiamento PRICE/SAC, decisão do lance em valor presente (crédito não conta como caixa; embutido conta como custo) com lance máximo por busca binária, probabilidade de sorteio, cota contemplada, quitação (parcelas reais) e venda (TIR, preço-alvo).",
+      "`components/planning/ConsortiumSimulator.tsx`: 5 abas, escolha entre cota nova e cota minha (situação de hoje) e pré-preenchimento de financiamentos, gráfico de parcelas com tooltip, referências de mercado com fontes. Só calcula, não grava.",
       "`Planning.tsx` aba `consortium` (`?tab=consortium`) e submenu no `Nav`.",
-      "Testes: `tests/consortiumSimulator.test.ts` (reproduz a proposta da Ademicon: parcela-base 887,58, crédito líquido 118.534,47, saque líquido 54.628,93)."
+      "Testes: `tests/consortiumSimulator.test.ts` (reproduz a proposta da Ademicon: parcela-base 887,58, crédito líquido 118.534,47, saque líquido 54.628,93). `tests/consortiumSimulatorScreen.test.tsx`: tela abre em todas as abas sem gravar nada; cota minha dá a mesma parcela do modal de lance (667,23)."
     ]
   },
   {

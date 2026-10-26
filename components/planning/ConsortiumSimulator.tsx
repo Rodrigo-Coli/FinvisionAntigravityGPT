@@ -10,7 +10,7 @@ import { sanitizeMoneyTyping, parseMoneyInput } from '../../lib/moneyInput';
 import {
   simulatePlan, simulateFinancing, evaluateBid, evaluateContemplatedQuota, evaluatePayoff,
   evaluateSale, targetSalePrice, lotteryOdds, bidChance, baseInstallmentValue, installmentsToPct,
-  monthlyToAnnualPct, BidMode, AmortizationSystem, PlanResult, SaleFlow
+  monthlyToAnnualPct, existingQuotaPlan, BidMode, AmortizationSystem, PlanResult, SaleFlow
 } from '../../lib/consortiumSimulator';
 
 /**
@@ -185,6 +185,14 @@ const ConsortiumSimulator: React.FC = () => {
   const [tab, setTab] = useState<SimTab>('plan');
   const [consortiums, setConsortiums] = useState<ConsortiumRow[]>([]);
   const [financings, setFinancings] = useState<FinancingRow[]>([]);
+  const [consLiabs, setConsLiabs] = useState<Record<string, FinancingRow>>({});
+
+  // Cota: '' = nova (simular compra); id = uma cota minha, a partir de hoje.
+  const [quotaId, setQuotaId] = useState('');
+  const [exBalance, setExBalance] = useState('');
+  const [exRemaining, setExRemaining] = useState('');
+  const [exInstallment, setExInstallment] = useState('');
+  const existing = !!quotaId;
 
   // Plano (compartilhado com Lance e Quitar financiamento)
   const [credit, setCredit] = useState('200.000');
@@ -256,22 +264,30 @@ const ConsortiumSimulator: React.FC = () => {
         if (!user) return;
         const [cRes, lRes] = await Promise.all([
           supabase.from('consortiums').select('id, name, liability_id, credit_letter_value, total_months, admin_fee_pct, reserve_fund_pct, insurance_monthly_amount, status, metadata').eq('user_id', user.id).order('name'),
-          supabase.from('liabilities').select('id, name, type, remaining_balance, installment_amount, installments_remaining, interest_rate, metadata').eq('user_id', user.id).eq('is_archived', false).neq('type', 'CONSORTIUM')
+          supabase.from('liabilities').select('id, name, type, remaining_balance, installment_amount, installments_remaining, interest_rate, metadata').eq('user_id', user.id).eq('is_archived', false)
         ]);
         if (!alive) return;
+        const liabs = (lRes.data || []) as any[];
         setConsortiums((cRes.data || []) as any);
-        setFinancings(((lRes.data || []) as any[]).filter(l => Number(l.remaining_balance) > 0));
+        setFinancings(liabs.filter(l => l.type !== 'CONSORTIUM' && Number(l.remaining_balance) > 0));
+        setConsLiabs(Object.fromEntries(liabs.filter(l => l.type === 'CONSORTIUM').map(l => [l.id, l])));
       } catch { /* sem dados: o simulador funciona com campos manuais */ }
     })();
     return () => { alive = false; };
   }, []);
 
   // ── Plano ──
-  const planBase = {
-    credit: num(credit), termMonths: num(term), adminFeePct: num(adm), reserveFundPct: num(fr),
-    annualIndexPct: num(index), reducedPct: num(reduced) || 100, insuranceMonthlyPct: num(insurance)
-  };
-  const planPctValue = 100 + planBase.adminFeePct + planBase.reserveFundPct;
+  const planBase = existing
+    ? {
+      ...existingQuotaPlan({ credit: num(credit), balance: num(exBalance), remainingMonths: num(exRemaining), currentInstallment: num(exInstallment) }),
+      reserveFundPct: 0, reducedPct: 100, annualIndexPct: num(index), insuranceMonthlyPct: num(insurance)
+    }
+    : {
+      credit: num(credit), termMonths: num(term), adminFeePct: num(adm), reserveFundPct: num(fr),
+      annualIndexPct: num(index), reducedPct: num(reduced) || 100, insuranceMonthlyPct: num(insurance)
+    };
+  // Plano cheio do grupo (para o lance em nº de parcelas), mesmo numa cota existente.
+  const planPctValue = 100 + num(adm) + num(fr);
   const toPct = (txt: string) => {
     const v = num(txt);
     if (bidUnit === 'BRL') return planBase.credit > 0 ? (v / planBase.credit) * 100 : 0;
@@ -283,7 +299,7 @@ const ConsortiumSimulator: React.FC = () => {
 
   const plan = useMemo(() => simulatePlan({
     ...planBase, contemplationMonth: num(kMonth) || 1, freeBidPct: 0, embeddedBidPct: 0
-  }, num(opportunity)), [credit, term, adm, fr, index, reduced, insurance, kMonth, opportunity]);
+  }, num(opportunity)), [credit, term, adm, fr, index, reduced, insurance, kMonth, opportunity, quotaId, exBalance, exRemaining, exInstallment]);
 
   const financingAlt = useMemo(() => {
     const months = Math.max(1, plan.monthsAfterContemplation || num(term));
@@ -302,7 +318,7 @@ const ConsortiumSimulator: React.FC = () => {
     lotteryMonth,
     opportunityPctYear: num(opportunity),
     monthlyBenefit: num(benefit)
-  }), [credit, term, adm, fr, index, reduced, insurance, bidMode, bidMonth, freeBid, embBid, bidUnit, baseTerm, lotteryMonth, opportunity, benefit]);
+  }), [credit, term, adm, fr, index, reduced, insurance, bidMode, bidMonth, freeBid, embBid, bidUnit, baseTerm, lotteryMonth, opportunity, benefit, quotaId, exBalance, exRemaining, exInstallment]);
   // Abaixo de 0,01% da carta é "nenhum" (a vantagem com lance zero é só arredondamento).
   const maxWorthPct = decision.maxWorthwhileFreeBidPct !== null && decision.maxWorthwhileFreeBidPct > 0.01 ? decision.maxWorthwhileFreeBidPct : null;
   const chance = bidChance(freePct + embPct, num(minWin) || null, num(avgWin) || null);
@@ -396,14 +412,21 @@ const ConsortiumSimulator: React.FC = () => {
   const sale = useMemo(() => evaluateSale(payments, num(salePrice), saleDate, num(opportunity)), [payments, salePrice, saleDate, opportunity]);
   const target = useMemo(() => targetSalePrice(payments, saleDate, num(targetPct), targetBasis), [payments, saleDate, targetPct, targetBasis]);
 
-  const prefillFromConsortium = (id: string) => {
+  const selectQuota = (id: string) => {
+    setQuotaId(id);
     const c = consortiums.find(x => x.id === id);
     if (!c) return;
     setCredit(toText(Number(c.credit_letter_value)));
     setTerm(String(c.total_months || ''));
     setAdm(toText(Number(c.admin_fee_pct)));
     setFr(toText(Number(c.reserve_fund_pct)));
+    const l = c.liability_id ? consLiabs[c.liability_id] : undefined;
+    setExBalance(l ? toText(Number(l.remaining_balance)) : '');
+    setExRemaining(l ? String(l.installments_remaining || '') : '');
+    setExInstallment(l ? toText(Number(l.installment_amount)) : '');
   };
+  const selectedQuota = consortiums.find(x => x.id === quotaId);
+  const monthWord = existing ? 'daqui a' : 'no mês';
 
   const tabs: { id: SimTab; label: string; icon: React.ReactNode }[] = [
     { id: 'plan', label: 'Plano', icon: <Calculator size={14} /> },
@@ -438,22 +461,32 @@ const ConsortiumSimulator: React.FC = () => {
       {/* ═══ PLANO ═══ */}
       {(tab === 'plan' || tab === 'bid') && (
         <Card title="Plano da cota">
-          {consortiums.length > 0 && (
-            <div>
-              <label className={labelCls}>Preencher com um consórcio meu</label>
-              <select className={inputCls} defaultValue="" onChange={e => prefillFromConsortium(e.target.value)}>
-                <option value="">Digitar manualmente…</option>
-                {consortiums.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
+          <div>
+            <label className={labelCls}>Cota</label>
+            <select className={inputCls} value={quotaId} onChange={e => selectQuota(e.target.value)}>
+              <option value="">Cota nova (simular uma compra)</option>
+              {consortiums.map(c => <option key={c.id} value={c.id}>{c.name} — minha cota, situação de hoje</option>)}
+            </select>
+            {existing && <p className="text-[10px] text-slate-400 mt-1">Parte do saldo devedor, das parcelas restantes e da parcela de hoje (do seu cadastro). Os meses contam a partir de agora.</p>}
+          </div>
+          {existing && selectedQuota && selectedQuota.status !== 'WAITING' && (
+            <Verdict tone="info" title="Esta cota já está contemplada.">A simulação de lance fica só como referência; o plano mostra o que falta pagar.</Verdict>
           )}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Field label="Carta de crédito" value={credit} onChange={setCredit} suffix="R$" />
-            <Field label="Prazo" value={term} onChange={setTerm} suffix="meses" integer />
-            <Field label="Taxa de adm. (total)" value={adm} onChange={setAdm} suffix="%" hint="Mercado: 13% a 25% da carta" />
-            <Field label="Fundo de reserva" value={fr} onChange={setFr} suffix="%" hint="Comum: 0% a 3%" />
+            <Field label={existing ? 'Carta (crédito contratado)' : 'Carta de crédito'} value={credit} onChange={setCredit} suffix="R$" />
+            {existing ? (
+              <>
+                <Field label="Saldo devedor hoje" value={exBalance} onChange={setExBalance} suffix="R$" hint="Confira no extrato da administradora" />
+                <Field label="Parcelas restantes" value={exRemaining} onChange={setExRemaining} integer />
+                <Field label="Parcela atual" value={exInstallment} onChange={setExInstallment} suffix="R$" hint="Se reduzida, o resto é dividido depois de contemplar" />
+              </>
+            ) : (
+              <Field label="Prazo" value={term} onChange={setTerm} suffix="meses" integer />
+            )}
+            <Field label="Taxa de adm. (total)" value={adm} onChange={setAdm} suffix="%" hint={existing ? 'Do plano — usada no lance em nº de parcelas' : 'Mercado: 13% a 25% da carta'} />
+            <Field label="Fundo de reserva" value={fr} onChange={setFr} suffix="%" hint={existing ? 'Do plano' : 'Comum: 0% a 3%'} />
             <Field label="Reajuste anual" value={index} onChange={setIndex} suffix="% a.a." hint="INCC 12m: 6,66% (set/26)" />
-            <Field label="Parcela até contemplar" value={reduced} onChange={setReduced} suffix="%" hint="100 = cheia; 50/70 = reduzida" />
+            {!existing && <Field label="Parcela até contemplar" value={reduced} onChange={setReduced} suffix="%" hint="100 = cheia; 50/70 = reduzida" />}
             <Field label="Seguro prestamista" value={insurance} onChange={setInsurance} suffix="% a.m." hint="Sobre o saldo, após contemplar" />
             <Field label="Rendimento do seu dinheiro" value={opportunity} onChange={setOpportunity} suffix="% a.a." hint={`CDI ${fmtPct(DEFAULT_CDI)} − IR`} />
           </div>
@@ -464,7 +497,7 @@ const ConsortiumSimulator: React.FC = () => {
         <>
           <Card title="Contemplação e comparação">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Field label="Contemplação no mês" value={kMonth} onChange={setKMonth} integer hint="Sem lance (sorteio)" />
+              <Field label={`Contemplação ${monthWord}`} value={kMonth} onChange={setKMonth} suffix="meses" integer hint="Sem lance (sorteio)" />
               <Field label="Financiamento alternativo" value={finRate} onChange={setFinRate} suffix="% a.a." hint="CET da proposta do banco" />
               <div className="col-span-2">
                 <label className={labelCls}>Sistema do financiamento</label>
@@ -474,10 +507,14 @@ const ConsortiumSimulator: React.FC = () => {
           </Card>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Stat label="Parcela integral" value={fmt(plan.fullInstallment)} sub={`${fmtPct(plan.planPct, 1)} da carta em ${num(term)} meses`} strong />
+            {existing
+              ? <Stat label="Parcela atual" value={fmt(plan.preInstallment)} sub={`${num(exRemaining)} parcelas restantes`} strong />
+              : <Stat label="Parcela integral" value={fmt(plan.fullInstallment)} sub={`${fmtPct(plan.planPct, 1)} da carta em ${num(term)} meses`} strong />}
             <Stat label="Parcela até contemplar" value={fmt(plan.preInstallment)} />
             <Stat label="Parcela depois" value={fmt(plan.postInstallment)} sub={plan.postInstallment > plan.preInstallment + 0.01 ? 'O restante foi dividido nos meses que faltam' : undefined} />
-            <Stat label="Taxas do plano" value={fmt(planBase.credit * (planPctValue - 100) / 100)} sub={`${fmtPct(planPctValue - 100, 1)} da carta (sem reajuste)`} />
+            {existing
+              ? <Stat label="Saldo devedor hoje" value={fmt(num(exBalance))} sub={`${fmtPct(plan.planPct, 1)} da carta`} />
+              : <Stat label="Taxas do plano" value={fmt(planBase.credit * (planPctValue - 100) / 100)} sub={`${fmtPct(planPctValue - 100, 1)} da carta (sem reajuste)`} />}
             <Stat label="Total pago (com reajuste)" value={fmt(plan.totalCashOut)} sub={`em ${plan.monthsTotal} meses`} />
             <Stat label="Carta na contemplação" value={fmt(plan.netCredit)} sub={`mês ${plan.contemplationMonth}, corrigida pelo índice`} />
             <Stat label="Custo efetivo após contemplar" value={`${fmtPct(plan.cetAfterContemplationPct)} a.a.`} sub="Saldo financiado (já descontado o que pagou antes)" strong />
@@ -515,7 +552,7 @@ const ConsortiumSimulator: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Lance do bolso (livre)" value={freeBid} onChange={setFreeBid} suffix={bidUnit === 'PCT' ? '%' : bidUnit === 'BRL' ? 'R$' : 'parc.'} hint={fmt(planBase.credit * freePct / 100)} />
                 <Field label="Lance embutido" value={embBid} onChange={setEmbBid} suffix={bidUnit === 'PCT' ? '%' : bidUnit === 'BRL' ? 'R$' : 'parc.'} hint={`${fmt(planBase.credit * embPct / 100)} — sai da carta (até ~30%)`} />
-                <Field label="Dar o lance no mês" value={bidMonth} onChange={setBidMonth} integer />
+                <Field label={`Dar o lance ${monthWord}`} value={bidMonth} onChange={setBidMonth} suffix="meses" integer />
                 <div>
                   <label className={labelCls}>Lance abate</label>
                   <Seg value={bidMode} onChange={setBidMode} options={[{ value: 'REDUCE_INSTALLMENT', label: 'Parcela' }, { value: 'REDUCE_TERM', label: 'Prazo' }]} />
@@ -528,7 +565,7 @@ const ConsortiumSimulator: React.FC = () => {
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
               <Field label="Cotas ativas no grupo" value={activeQuotas} onChange={setActiveQuotas} integer hint="Na assembleia da administradora" />
               <Field label="Sorteios por assembleia" value={lotteryPer} onChange={setLotteryPer} integer />
-              <Field label="Sorteio esperado no mês" value={lotteryMonthTxt} onChange={setLotteryMonthTxt} integer
+              <Field label={`Sorteio esperado ${monthWord}`} value={lotteryMonthTxt} onChange={setLotteryMonthTxt} integer
                 hint={expectedLotteryMonth ? `Pelo grupo: ~mês ${expectedLotteryMonth}` : `Sem dados: usando mês ${lotteryMonth}`} placeholder={String(lotteryMonth)} />
               <Field label="Menor lance vencedor" value={minWin} onChange={setMinWin} suffix="%" hint="Últimas assembleias" />
               <Field label="Lance médio vencedor" value={avgWin} onChange={setAvgWin} suffix="%" hint="Últimas assembleias" />

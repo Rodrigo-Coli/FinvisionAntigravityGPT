@@ -88,6 +88,27 @@ export interface PlanInput {
   freeBidPct?: number;         // lance livre (% da carta)
   embeddedBidPct?: number;     // lance embutido (% da carta)
   bidMode?: BidMode;
+  /**
+   * Cota que já existe: parte do saldo devedor de hoje em vez do plano cheio.
+   * `startBalancePct` = saldo ÷ carta × 100; `preInstallmentPct` = parcela
+   * atual ÷ carta × 100 (paga até contemplar). `termMonths` = parcelas restantes.
+   */
+  startBalancePct?: number;
+  preInstallmentPct?: number;
+}
+
+/** Monta o plano de uma cota existente a partir dos números de hoje. */
+export function existingQuotaPlan(q: {
+  credit: number; balance: number; remainingMonths: number; currentInstallment: number;
+}): Pick<PlanInput, 'credit' | 'termMonths' | 'adminFeePct' | 'startBalancePct' | 'preInstallmentPct'> {
+  const C = pos(q.credit);
+  return {
+    credit: C,
+    termMonths: Math.max(1, Math.floor(pos(q.remainingMonths))),
+    adminFeePct: 0,
+    startBalancePct: C > 0 ? (pos(q.balance) / C) * 100 : 0,
+    preInstallmentPct: C > 0 ? (pos(q.currentInstallment) / C) * 100 : 0
+  };
 }
 
 export interface PlanRow {
@@ -132,9 +153,12 @@ export interface PlanResult {
 export function simulatePlan(input: PlanInput, opportunityPctYear = 0): PlanResult {
   const C = pos(input.credit);
   const N = Math.max(1, Math.floor(pos(input.termMonths)));
-  const planPct = 100 + pos(input.adminFeePct) + pos(input.reserveFundPct);
+  const existing = input.startBalancePct !== undefined && input.startBalancePct !== null;
+  const planPct = existing ? pos(input.startBalancePct) : 100 + pos(input.adminFeePct) + pos(input.reserveFundPct);
   const m = planPct / N;
   const reduced = Math.min(100, Math.max(1, Number(input.reducedPct) || 100)) / 100;
+  // Cota existente: até contemplar paga a parcela de hoje (pode ser reduzida).
+  const prePct = existing && pos(input.preInstallmentPct) > 0 ? pos(input.preInstallmentPct) : m * reduced;
   const k = Math.min(N, Math.max(1, Math.floor(Number(input.contemplationMonth) || 1)));
   const idx = pos(input.annualIndexPct) / 100;
   const ins = pos(input.insuranceMonthlyPct) / 100;
@@ -150,7 +174,7 @@ export function simulatePlan(input: PlanInput, opportunityPctYear = 0): PlanResu
   for (let t = 1; t <= N + 1200 && R > EPS; t++) {
     const credit = C * Math.pow(1 + idx, Math.floor((t - 1) / 12));
     const pre = t <= k;
-    let pct = pre ? Math.min(R, m * reduced) : Math.min(R, postPct);
+    let pct = pre ? Math.min(R, prePct) : Math.min(R, postPct);
     const insurance = (ins > 0 && (input.insuranceFromStart || !pre)) ? ins * (R / 100) * credit : 0;
     R -= pct;
     let rowBidCash = 0;
@@ -214,7 +238,7 @@ export function simulatePlan(input: PlanInput, opportunityPctYear = 0): PlanResu
     planPct,
     contemplationMonth: k,
     fullInstallment: (m / 100) * C,
-    preInstallment: (m * reduced / 100) * C,
+    preInstallment: (prePct / 100) * C,
     postInstallment: postRow ? postRow.installment : 0,
     creditAtContemplation: creditAtK,
     bidCash, bidEmbedded, netCredit, balanceBeforeBid, balanceAfterBid,
