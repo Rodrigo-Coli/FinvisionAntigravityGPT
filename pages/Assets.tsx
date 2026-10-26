@@ -71,6 +71,8 @@ import { ReconciliationService } from '../services/reconciliation.service';
 import { findCategoryByName } from '../lib/categoryResolver';
 import { DateInput } from '../components/common/DateInput';
 import { plantaRemainingDebt } from '../lib/plantaDebt';
+import { syncAllConsortiumBalances } from '../services/consortiumBalance.service';
+import { withTimeout } from '../lib/connectivity';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -714,6 +716,10 @@ const Assets: React.FC = () => {
       setIsLoading(false);
       return;
     }
+
+    // Consórcio: saldo devedor atualizado pelo que foi pago (lib/consortiumBalance)
+    // antes de ler os passivos. Nunca segura a tela: no máximo 4s.
+    try { await withTimeout(syncAllConsortiumBalances(userId), 4000, 'saldo dos consórcios', { silent: true }); } catch { /* segue com o saldo gravado */ }
 
     // --- 2. BUSCA ONLINE ATUALIZADA EM PARALELO (SILENT REFRESH) ---
     try {

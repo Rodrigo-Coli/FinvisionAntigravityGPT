@@ -6,6 +6,8 @@ import { getSessionUser } from '../lib/session';
 import { pickCurrentStatement as pickStatementFor, targetStatementPeriod } from '../lib/cardStatements';
 import { ownerKey } from '../lib/ownerUtils';
 import { plantaRemainingDebt } from '../lib/plantaDebt';
+import { syncAllConsortiumBalances } from './consortiumBalance.service';
+import { withTimeout } from '../lib/connectivity';
 
 export const DashboardService = {
   getSummary: async (): Promise<DashboardData> => {
@@ -14,6 +16,9 @@ export const DashboardService = {
 
     const user = await getSessionUser(sb);
     if (!user) return { consolidatedBalance: 0, netWorth: 0, creditCards: [], alerts: [], goals: [], cashFlow: [], assets: [] };
+
+    // Consórcio: saldo devedor atualizado pelo que foi pago antes de somar as dívidas.
+    try { await withTimeout(syncAllConsortiumBalances(user.id), 4000, 'saldo dos consórcios', { silent: true }); } catch { /* segue com o saldo gravado */ }
 
 
     // 1. Fetch all core data in parallel using Promise.all

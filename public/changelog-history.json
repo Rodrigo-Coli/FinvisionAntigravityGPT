@@ -1,5 +1,33 @@
 [
   {
+    "version": "2026.10.25.2245",
+    "title": "Saldo devedor do consórcio pela regra de mercado",
+    "date": "25/10/2026",
+    "benefits": [
+      {
+        "title": "Dívida do consórcio sempre certa",
+        "desc": "O saldo devedor do consórcio agora é o saldo da administradora menos o que você já pagou (parcelas e lances). Antes, ao pagar ou editar uma parcela, o app trocava o saldo pela soma das parcelas que faltam — nos planos com parcela reduzida até a contemplação isso fazia a dívida despencar (o HS 1119-440 aparecia com R$ 19 mil em vez de ~R$ 126 mil).",
+        "type": "correcao"
+      },
+      {
+        "title": "Pagou, o saldo cai; desfez, ele volta",
+        "desc": "Cada parcela paga (inteira ou parcial) e cada lance abatem o saldo devedor, inclusive o que foi pago em Transações. Desmarcar o pagamento devolve o valor. Se você digitar o saldo do extrato da administradora (correção pelo índice), ele passa a ser a nova referência.",
+        "type": "melhoria"
+      },
+      {
+        "title": "\"Parcelas pagas\" atualizado no cartão do consórcio",
+        "desc": "O \"X de N parcelas pagas\" do cartão agora acompanha os pagamentos — antes ficava parado no número do cadastro.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`lib/consortiumBalance.ts`: saldo = referência − amortizado desde a âncora (`liabilities.metadata.balance_anchor`); amortização = saídas pagas (parcial também), sem seguro; saldo editado à mão vira nova âncora; idempotente.",
+      "`services/consortiumBalance.service.ts`: sincroniza saldo, parcelas restantes e `consortiums.months_paid`, serializado por passivo, nunca lança. `finance.service` usa essa regra para passivo CONSORTIUM (financiamentos seguem como estavam).",
+      "Sincroniza ao abrir Patrimônio, Consórcios e Painel (limite de 4s) e no lance (que passa a usar a mesma regra).",
+      "Banco: saldo dos 7 consórcios recalculado pela regra (saldo do plano − parcelas pagas) com âncora gravada."
+    ]
+  },
+  {
     "version": "2026.10.25.1229",
     "title": "Lance de consórcio recalcula as parcelas",
     "date": "25/10/2026",
