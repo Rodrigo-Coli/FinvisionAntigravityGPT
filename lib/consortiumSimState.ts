@@ -124,6 +124,43 @@ export const quotaFromKnown = (c: KnownConsortium): QuotaDraft => ({
   installment: c.currentInstallment !== null ? numToField(c.currentInstallment) : ''
 });
 
+const fieldToNum = (s: string): number => {
+  const t = String(s ?? '').trim();
+  const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t);
+  return Number.isFinite(n) ? n : NaN;
+};
+
+/**
+ * Rascunhos salvos no aparelho antes de a cota ser contemplada (ou antes desta
+ * regra) guardam a carta cheia e às vezes um lance. Cota minha já contemplada
+ * usa sempre o crédito líquido, sem lance novo. Devolve a mesma lista quando
+ * nada muda (para não re-renderizar à toa).
+ */
+export function refreshContemplatedQuotas(quotas: QuotaDraft[], known: KnownConsortium[]): QuotaDraft[] {
+  let changed = false;
+  const next = quotas.map(q => {
+    const k = q.source ? known.find(x => x.id === q.source) : undefined;
+    if (!k?.contemplated || !k.netCredit) return q;
+    const staleCredit = Math.abs(fieldToNum(q.credit) - k.credit) < 0.01;
+    const hasBid = fieldToNum(q.free) > 0 || fieldToNum(q.emb) > 0;
+    if (!staleCredit && !hasBid) return q;
+    changed = true;
+    return { ...q, ...(staleCredit ? { credit: numToField(k.netCredit) } : {}), free: '0', emb: '0', month: '1' };
+  });
+  return changed ? next : quotas;
+}
+
+/** Chaves das cotas que repetem uma cota minha já listada antes (a mesma cota não conta duas vezes). */
+export function repeatedQuotaKeys(quotas: QuotaDraft[]): Set<string> {
+  const seen = new Set<string>();
+  const repeated = new Set<string>();
+  for (const q of quotas) {
+    if (!q.source) continue;
+    if (seen.has(q.source)) repeated.add(q.key); else seen.add(q.source);
+  }
+  return repeated;
+}
+
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 

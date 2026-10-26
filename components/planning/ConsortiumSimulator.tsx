@@ -10,9 +10,10 @@ import { DateInput } from '../common/DateInput';
 import { sanitizeMoneyTyping, parseMoneyInput } from '../../lib/moneyInput';
 import { authHeaders } from '../../lib/apiClient';
 import {
-  QuotaDraft, KnownConsortium, SimulationState, blankQuota, newQuotaKey, applyAiSimulation, matchesQuotaDescription, availableCredit, paidBids
+  QuotaDraft, KnownConsortium, SimulationState, blankQuota, newQuotaKey, applyAiSimulation, matchesQuotaDescription, availableCredit, paidBids, refreshContemplatedQuotas, repeatedQuotaKeys
 } from '../../lib/consortiumSimState';
 import { exportSimulationXlsx, exportSimulationPdf } from '../../lib/consortiumSimExport';
+import { isOrphanPendingFinancing } from '../../lib/pendingFinancing';
 import {
   simulatePlan, simulateFinancing, evaluateBid, evaluateContemplatedQuota, evaluatePayoff,
   evaluateSale, targetSalePrice, lotteryOdds, bidChance, baseInstallmentValue, installmentsToPct,
@@ -361,6 +362,7 @@ const PortfolioTab: React.FC<{
     const el = typeof document !== 'undefined' ? document.getElementById(`quota-${focusKey}`) : null;
     try { el?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* sem rolagem */ }
   }, [focusKey]);
+  const repeated = useMemo(() => repeatedQuotaKeys(quotas), [quotas]);
   const [saved, setSaved] = useState<SavedSimulation[]>(readSaved);
   const [saveName, setSaveName] = useState('');
   const [exporting, setExporting] = useState<'' | 'xlsx' | 'pdf'>('');
@@ -371,7 +373,13 @@ const PortfolioTab: React.FC<{
   const duplicate = (key: string) => setQuotas(list => {
     const i = list.findIndex(q => q.key === key);
     if (i < 0) return list;
-    const copy = { ...list[i], key: newKey(), name: `${list[i].name} (cópia)` };
+    const q = list[i];
+    const src = q.source ? consortiums.find(c => c.id === q.source) : undefined;
+    // Cota minha só existe uma vez: duplicar simula comprar OUTRA igual (cota nova, carta cheia, sem saldo).
+    const copy: QuotaDraft = src
+      ? { ...q, key: newKey(), name: `${q.name} (nova igual)`, source: '', credit: toText(Number(src.credit_letter_value) || num(q.credit)),
+          term: String(src.total_months || q.term), balance: '', remaining: '', installment: '', free: '0', emb: '0', month: '1' }
+      : { ...q, key: newKey(), name: `${q.name} (cópia)` };
     return [...list.slice(0, i + 1), copy, ...list.slice(i + 1)];
   });
   const add = () => setQuotas(list => [...list, blankQuota(list.length + 1)]);
@@ -472,6 +480,12 @@ const PortfolioTab: React.FC<{
               </div>
             </div>
 
+            {repeated.has(q.key) && (
+              <p className="text-[11px] leading-relaxed p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+                <strong>Cota repetida:</strong> esta cota sua já está numa linha acima — a mesma cota não pode ser usada duas vezes, e na quitação esta linha não entra.
+                {' '}Para simular comprar outra igual, troque "Cota" para <strong>Cota nova</strong> (ou remova esta linha).
+              </p>
+            )}
             {srcAv?.contemplated && (
               <p className="text-[11px] leading-relaxed p-2.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-900">
                 <strong>Já contemplada</strong>{srcAv.netCredit ? <> — crédito líquido {fmt(srcAv.netCredit)} (carta − embutido)</> : null}. O lance já foi registrado:
@@ -887,12 +901,15 @@ const ConsortiumSimulator: React.FC = () => {
         if (!supabase) return;
         const user = await getSessionUser(supabase);
         if (!user) return;
-        const [cRes, lRes] = await Promise.all([
+        const [cRes, lRes, aRes] = await Promise.all([
           supabase.from('consortiums').select('id, name, administrator_name, group_number, quota_number, liability_id, credit_letter_value, total_months, admin_fee_pct, reserve_fund_pct, insurance_monthly_amount, status, metadata').eq('user_id', user.id).order('name'),
-          supabase.from('liabilities').select('id, name, type, remaining_balance, installment_amount, installments_remaining, interest_rate, metadata').eq('user_id', user.id).eq('is_archived', false)
+          supabase.from('liabilities').select('id, name, type, remaining_balance, installment_amount, installments_remaining, interest_rate, linked_asset_id, metadata').eq('user_id', user.id).eq('is_archived', false),
+          supabase.from('physical_assets').select('id').eq('user_id', user.id).eq('is_archived', true)
         ]);
         if (!alive) return;
-        const liabs = (lRes.data || []) as any[];
+        // Saldo a financiar de imóvel arquivado (devolvido/vendido) não é mais dívida.
+        const archivedAssets = new Set<string>(((aRes?.data || []) as any[]).map(a => a.id));
+        const liabs = ((lRes.data || []) as any[]).filter(l => !isOrphanPendingFinancing(l, archivedAssets));
         setConsortiums((cRes.data || []) as any);
         setFinancings(liabs.filter(l => l.type !== 'CONSORTIUM' && Number(l.remaining_balance) > 0));
         setConsLiabs(Object.fromEntries(liabs.filter(l => l.type === 'CONSORTIUM').map(l => [l.id, l])));
@@ -1001,8 +1018,9 @@ const ConsortiumSimulator: React.FC = () => {
     () => quotas.map(q => simulatePlan(draftToPlan(q, { index: num(index), insurance: num(insurance) }), num(opportunity))),
     [quotas, index, insurance, opportunity]
   );
+  const poRepeated = useMemo(() => repeatedQuotaKeys(quotas), [quotas]);
   const poPicked = poSource === 'PORTFOLIO'
-    ? quotas.map((q, i) => ({ q, r: portfolioResults[i] })).filter(x => !poExcluded.includes(x.q.key))
+    ? quotas.map((q, i) => ({ q, r: portfolioResults[i] })).filter(x => !poExcluded.includes(x.q.key) && !poRepeated.has(x.q.key))
     : [];
   const poQuotas: PlanResult[] = poSource === 'PORTFOLIO'
     ? poPicked.map(x => x.r)
@@ -1108,6 +1126,11 @@ const ConsortiumSimulator: React.FC = () => {
       currentInstallment: l ? Number(l.installment_amount) : null
     };
   });
+  // Rascunho antigo de cota já contemplada: passa a usar o crédito líquido, sem lance novo.
+  useEffect(() => {
+    if (!consortiums.length) return;
+    setQuotas(list => refreshContemplatedQuotas(list, knownConsortiums));
+  }, [consortiums, consLiabs, quotas]);
   const buildAiContext = () => {
     const shared = { index: num(index), insurance: num(insurance) };
     const res = quotas.map(q => simulatePlan(draftToPlan(q, shared), num(opportunity)));
@@ -1435,7 +1458,8 @@ const ConsortiumSimulator: React.FC = () => {
               <div className="space-y-2">
                 {quotas.map((q, i) => {
                   const r = portfolioResults[i];
-                  const on = !poExcluded.includes(q.key);
+                  const dup = poRepeated.has(q.key);
+                  const on = !poExcluded.includes(q.key) && !dup;
                   const src = q.source ? consortiums.find(c => c.id === q.source) : undefined;
                   const contemplated = src ? availableCredit(src).contemplated : false;
                   const noBid = r.bidCash + r.bidEmbedded === 0;
@@ -1444,10 +1468,11 @@ const ConsortiumSimulator: React.FC = () => {
                   return (
                     <div key={q.key} className={`p-3 rounded-xl border ${on ? 'border-brand-200 bg-brand-50/40' : 'border-slate-100'}`}>
                       <label className="flex items-start gap-3 cursor-pointer">
-                        <input type="checkbox" className="mt-0.5" checked={on}
+                        <input type="checkbox" className="mt-0.5" checked={on} disabled={dup}
                           onChange={e => setPoExcluded(list => e.target.checked ? list.filter(k => k !== q.key) : [...list, q.key])} />
                         <span className="min-w-0 text-[11px] text-slate-600 leading-relaxed">
                           <span className="block text-xs font-black text-slate-900 break-words">{q.name} <span className="font-bold text-slate-400">· {status}</span></span>
+                          {dup && <span className="block font-bold text-amber-700">Repetida: é a mesma cota de uma linha acima — não entra na conta (a mesma cota não pode ser usada duas vezes).</span>}
                           {contemplated
                             ? <>Crédito disponível <strong>{fmt(r.netCredit)}</strong> · parcela {fmt(r.postInstallment)} × {r.monthsAfterContemplation}
                               {past && past.cash + past.embedded > 0 && (
@@ -1502,13 +1527,14 @@ const ConsortiumSimulator: React.FC = () => {
                 <Stat label="Você paga por mês: hoje → depois" value={`${fmt(payoff.todayMonthly)} → ${fmt(payoff.consortiumAfter)}`}
                   sub={`${payoff.alreadyPaying > 0 ? `hoje: financiamento ${fmt(payoff.financingInstallment)} + cotas que já tem ${fmt(payoff.alreadyPaying)} · ` : ''}${payoff.monthlyDifference >= 0 ? `sobra ${fmt(payoff.monthlyDifference)}/mês` : `${fmt(-payoff.monthlyDifference)}/mês a mais`}`} />
                 {payoff.payoffMonth > 1 && <Stat label={`Até o mês ${payoff.payoffMonth}`} value={`${fmt(payoff.bothBeforePayoff)}/mês`} sub="financiamento + consórcio juntos, até quitar" />}
-                <Stat label="Custo mantendo (valor presente)" value={fmt(payoff.pvCostKeepFinancing)} sub={`parcelas ${fmt(payoff.financingTotal)}${poRealInstallments ? ` · juros implícitos ${fmtPct(payoff.impliedRatePctMonth, 3)} a.m.` : ''}`} />
-                <Stat label="Custo trocando (valor presente)" value={fmt(payoff.pvCostSwitch)} sub={`parcelas do consórcio ${fmt(payoff.consortiumTotal)} (com reajuste)`} />
+                <Stat label="Custo mantendo (valor presente)" value={fmt(payoff.pvCostKeepFinancing)} sub={`parcelas do financiamento ${fmt(payoff.financingTotal)}${poRealInstallments ? ` · juros implícitos ${fmtPct(payoff.impliedRatePctMonth, 3)} a.m.` : ''}`} />
+                <Stat label="Custo quitando (valor presente)" value={fmt(payoff.pvCostSwitch)}
+                  sub={`quitação ${fmt(payoff.owedAtPayoff)}${payoff.newQuotaTotal > 0 ? ` + parcelas das cotas novas ${fmt(payoff.newQuotaTotal)} (com reajuste) − crédito delas` : ''}${payoff.committedCredit > 0 ? ' · as cotas que você já tem são iguais nos dois caminhos e ficam fora' : ''}`} />
               </div>
               {payoff.freeCapital < 0 && <Verdict tone="bad" title={`O crédito não cobre a quitação: faltam ${fmt(-payoff.freeCapital)}.`}>Adicione outra cota ou aumente a carta em "Várias cotas".</Verdict>}
               {payoff.advantage >= 0
-                ? <Verdict tone="good" title={`Trocar compensa: ${fmt(payoff.advantage)} a menos em valor presente.`}>Já contando o capital livre e o rendimento do dinheiro a {oppTxt}.</Verdict>
-                : <Verdict tone="warn" title={`Trocar custa ${fmt(-payoff.advantage)} a mais em valor presente.`}>
+                ? <Verdict tone="good" title={`Quitar compensa: ${fmt(payoff.advantage)} a menos em valor presente.`}>Já contando o capital livre e o rendimento do dinheiro a {oppTxt}.</Verdict>
+                : <Verdict tone="warn" title={`Quitar custa ${fmt(-payoff.advantage)} a mais em valor presente.`}>
                     {monthlyToAnnualPct(payoff.impliedRatePctMonth / 100) < num(opportunity)
                       ? <>O financiamento custa {fmtPct(payoff.impliedRatePctMonth, 2)} a.m. (≈ {fmtPct(monthlyToAnnualPct(payoff.impliedRatePctMonth / 100), 1)} a.a.), menos que o rendimento do dinheiro ({oppTxt}): pela conta, usar o crédito para quitá-lo vale menos que dar outro uso a ele. Mas o crédito do consórcio só pode ir para bem, reforma ou quitação — se não houver outro bem para comprar, quitar ainda alivia {fmt(Math.max(0, payoff.monthlyDifference))}/mês.</>
                       : <>Pode compensar se o capital livre render mais que {oppTxt} — por exemplo, numa reforma que aumenta o aluguel.</>}

@@ -15,7 +15,9 @@ const tables: Record<string, any[]> = {
   transactions: [],
   liabilities: [
     { id: 'L1', type: 'MORTGAGE', remaining_balance: 100000, linked_asset_id: 'A1', is_archived: false, metadata: {} },
-    { id: 'L2', type: 'MORTGAGE', remaining_balance: 191327.7, linked_asset_id: 'A2', is_archived: true, metadata: { isPendingFinancing: true } }
+    { id: 'L2', type: 'MORTGAGE', remaining_balance: 50000, linked_asset_id: 'A1', is_archived: true, metadata: {} },
+    // Saldo a financiar do imóvel devolvido, ainda não arquivado no banco: também fica fora.
+    { id: 'L3', type: 'MORTGAGE', remaining_balance: 191327.7, linked_asset_id: 'A2', is_archived: false, metadata: { isPendingFinancing: true } }
   ]
 };
 

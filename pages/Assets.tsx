@@ -73,6 +73,7 @@ import { DateInput } from '../components/common/DateInput';
 import { plantaRemainingDebt } from '../lib/plantaDebt';
 import { syncAllConsortiumBalances } from '../services/consortiumBalance.service';
 import { withTimeout } from '../lib/connectivity';
+import { isOrphanPendingFinancing } from '../lib/pendingFinancing';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -768,9 +769,9 @@ const Assets: React.FC = () => {
       const liabs = liabsRes.data || [];
 
       // "Saldo a financiar" de bem já arquivado (arquivado antes desta regra): sai das dívidas.
-      const archivedAssetIds = new Set(phys.filter((p: any) => p.is_archived).map((p: any) => p.id));
+      const archivedAssetIds = new Set<string>(phys.filter((p: any) => p.is_archived).map((p: any) => p.id));
       for (const l of liabs as any[]) {
-        if (l.is_archived || !l.metadata?.isPendingFinancing || !archivedAssetIds.has(l.linked_asset_id)) continue;
+        if (l.is_archived || !isOrphanPendingFinancing(l, archivedAssetIds)) continue;
         const metadata = { ...(l.metadata || {}), archivedWithAsset: true };
         const { error: orphanErr } = await supabase.from('liabilities').update({ is_archived: true, metadata }).eq('id', l.id);
         if (orphanErr) { console.warn('[Ativos] saldo a financiar do bem arquivado:', orphanErr.message); continue; }

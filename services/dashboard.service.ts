@@ -8,6 +8,7 @@ import { ownerKey } from '../lib/ownerUtils';
 import { plantaRemainingDebt } from '../lib/plantaDebt';
 import { syncAllConsortiumBalances } from './consortiumBalance.service';
 import { withTimeout } from '../lib/connectivity';
+import { isOrphanPendingFinancing } from '../lib/pendingFinancing';
 
 export const DashboardService = {
   getSummary: async (): Promise<DashboardData> => {
@@ -48,7 +49,8 @@ export const DashboardService = {
     const physicalAssets = (physRes.data || []).filter((a: any) => !a.is_archived);
     const excludedEntities = entitiesRes.data || [];
     const txs = txsRes.data || [];
-    const liabilitiesData = (liabsRes.data || []).filter((l: any) => !l.is_archived);
+    const archivedAssetIds = new Set<string>((physRes.data || []).filter((a: any) => a.is_archived).map((a: any) => a.id));
+    const liabilitiesData = (liabsRes.data || []).filter((l: any) => !l.is_archived && !isOrphanPendingFinancing(l, archivedAssetIds));
     const futureTxs = futureTxsRes.data || [];
 
     let consolidatedBalance = 0;

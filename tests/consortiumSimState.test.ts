@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyAiSimulation, blankQuota, quotaFromKnown, matchesQuotaDescription, paidBids, SimulationState, KnownConsortium } from '../lib/consortiumSimState';
+import { applyAiSimulation, blankQuota, quotaFromKnown, matchesQuotaDescription, paidBids, refreshContemplatedQuotas, repeatedQuotaKeys, SimulationState, KnownConsortium } from '../lib/consortiumSimState';
 
 /**
  * A IA só manda parâmetros; aqui eles são validados e aplicados. Cota minha
@@ -77,5 +77,25 @@ describe('lances já dados na cota', () => {
     ] })).toEqual({ cash: 64913.1, embedded: 53254.62, firstDate: '2025-03-01' });
     expect(paidBids({})).toEqual({ cash: 0, embedded: 0, firstDate: null });
     expect(paidBids(null)).toEqual({ cash: 0, embedded: 0, firstDate: null });
+  });
+});
+
+describe('rascunho salvo de cota já contemplada', () => {
+  const contemplated: KnownConsortium = { ...known[0], status: 'CONTEMPLATED', contemplated: true, netCredit: 118534.47 };
+  it('troca a carta cheia pelo crédito líquido e zera lance', () => {
+    const old = { ...quotaFromKnown(known[0]), credit: '171.789,09', free: '30', month: '4' };
+    const [q] = refreshContemplatedQuotas([old], [contemplated]);
+    expect(q).toMatchObject({ credit: '118534,47', free: '0', emb: '0', month: '1' });
+  });
+  it('não mexe no que já está certo, em cota nova ou em cota aguardando', () => {
+    const list = [quotaFromKnown(contemplated), blankQuota(2)];
+    expect(refreshContemplatedQuotas(list, [contemplated])).toBe(list);
+    const waiting = [{ ...quotaFromKnown(known[0]), free: '30' }];
+    expect(refreshContemplatedQuotas(waiting, known)).toBe(waiting);
+  });
+  it('acha a mesma cota minha repetida', () => {
+    const a = quotaFromKnown(known[0]), b = { ...quotaFromKnown(known[0]), key: 'b' }, n = blankQuota(3);
+    expect([...repeatedQuotaKeys([a, n, b])]).toEqual(['b']);
+    expect(repeatedQuotaKeys([a, n]).size).toBe(0);
   });
 });
