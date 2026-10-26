@@ -45,7 +45,10 @@ let container: HTMLDivElement;
 let root: Root;
 const flush = async () => { for (let i = 0; i < 10; i++) await act(async () => { await Promise.resolve(); }); };
 const text = () => container.textContent!.replace(/ /g, ' ');
-const button = (t: string) => Array.from(container.querySelectorAll('button')).find(b => b.textContent?.trim() === t || b.textContent?.includes(t)) as HTMLButtonElement;
+const button = (t: string) => {
+  const all = Array.from(container.querySelectorAll('button'));
+  return (all.find(b => b.textContent?.trim() === t) || all.find(b => b.textContent?.includes(t))) as HTMLButtonElement;
+};
 const field = (label: string) => {
   const l = Array.from(container.querySelectorAll('label')).find(x => x.textContent?.trim() === label)!;
   return l.parentElement!.querySelector('input') as HTMLInputElement;
@@ -117,6 +120,59 @@ describe('tela do simulador de consórcio', () => {
     expect(text()).toContain('Total das 2 cotas');
     expect(text()).toContain('R$ 371.789,09'); // 171.789,09 + 200.000
     expect(JSON.parse(localStorage.getItem('finvision_consortium_sim_portfolio')!)).toHaveLength(2);
+    expect(writes).toEqual([]);
+  });
+  it('IA: o pedido monta as cotas (nova + minha), o simulador calcula e nada é gravado', async () => {
+    const calls: any[] = [];
+    const fetchMock = vi.fn(async (url: string, init: any) => {
+      calls.push({ url, body: JSON.parse(init.body) });
+      return {
+        ok: true,
+        json: async () => ({
+          reply: 'Montei a 570-807 com seu lance e 1 cota nova da Ademicon de R$ 174.647,06.',
+          premises: { indexPct: 0 },
+          quotas: [
+            { source: 'C1', bidUnit: 'BRL', freeBid: 63913.10, embeddedBid: 53254.62, contemplationInMonths: 1, bidMode: 'REDUCE_INSTALLMENT' },
+            { name: 'Ademicon 560', credit: 174647.06, termMonths: 128, adminFeePct: 24, reserveFundPct: 0, bidUnit: 'INST', baseTermMonths: 240, embeddedBid: 60, freeBid: 65, contemplationInMonths: 1 }
+          ]
+        })
+      } as any;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await act(async () => { root.render(<ConsortiumSimulator />); });
+    await flush();
+    const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(ta, 'Quero simular a minha 570-807 com o lance e uma cota nova da 560');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => { (container.querySelector('button[aria-label="Simular"]') as HTMLButtonElement).click(); });
+    await flush();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('/api/consortium-sim-ai');
+    expect(calls[0].body.known[0]).toMatchObject({ id: 'C1', name: 'Ademicon 570-807', balance: 206796.38, remainingMonths: 133 });
+    expect(text()).toContain('Montei a 570-807');
+    expect(text()).toContain('Total das 2 cotas');
+    expect(text()).toContain('R$ 118.534,47');   // crédito líquido da 570-807
+    expect(text()).toContain('R$ 667,23');       // parcela depois do lance
+    expect(text()).toContain('R$ 120.506,4');    // crédito líquido da 560 (60 embutidas)
+    expect(writes).toEqual([]);
+    vi.unstubAllGlobals();
+  });
+
+  it('salvar e abrir uma simulação ficam no aparelho', async () => {
+    await act(async () => { root.render(<ConsortiumSimulator />); });
+    await flush();
+    await act(async () => { button('Várias cotas').click(); });
+    const nameInput = Array.from(container.querySelectorAll('input')).find(i => i.placeholder === 'Cota 1') as HTMLInputElement;
+    await act(async () => { setValue(nameInput, 'Plano Piazza'); });
+    await act(async () => { button('Salvar').click(); });
+    const saved = JSON.parse(localStorage.getItem('finvision_consortium_sim_saved')!);
+    expect(saved[0]).toMatchObject({ name: 'Plano Piazza' });
+    expect(text()).toContain('Simulação "Plano Piazza" salva neste aparelho.');
+    await act(async () => { button('Abrir').click(); });
+    expect(text()).toContain('Simulação "Plano Piazza" aberta.');
     expect(writes).toEqual([]);
   });
 });

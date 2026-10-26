@@ -28,6 +28,7 @@ import { handleAffiliateAcceptTerms } from './_lib/affiliate-accept-terms.js';
 import { handleAdminProcessPayout } from './_lib/admin-process-payout.js';
 import { handleNotifyReferralEngagement } from './_lib/notify-referral-engagement.js';
 import { handleDailyCron } from './_lib/daily-cron.js';
+import { handleConsortiumSimAi } from './_lib/consortium-sim-ai.js';
 
 function setCorsHeaders(res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -47,6 +48,7 @@ export default async function handler(req: any, res: any) {
     if (url.includes('/finvision-chat'))         return handleFinvisionChat(req, res);
     if (url.includes('/categorize-transactions')) return handleCategorizeTransactions(req, res);
     if (url.includes('/handle-wealth-analysis'))  return handleWealthAnalysis(req, res);
+    if (url.includes('/consortium-sim-ai'))       return handleConsortiumSimAi(req, res);
 
     // --- Reconciliação / Import ---
     if (url.includes('/handle-bank-reconcile'))   return handleBankReconcile(req, res);

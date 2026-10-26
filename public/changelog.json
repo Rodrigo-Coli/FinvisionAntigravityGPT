@@ -1,22 +1,24 @@
 {
-  "version": "2026.10.25.2347",
-  "title": "Simulador: várias cotas com total somado",
+  "version": "2026.10.25.2356",
+  "title": "IA no Simulador de Consórcio, salvar e exportar",
   "date": "25/10/2026",
   "benefits": [
     {
-      "title": "Várias cotas de uma vez",
-      "desc": "Nova aba \"Várias cotas\" no Simulador de Consórcio: junte cotas novas e cotas suas (a partir da situação de hoje), cada uma com o próprio lance (bolso e embutido, em %, R$ ou nº de parcelas) e mês de contemplação.",
+      "title": "Peça a simulação para a IA",
+      "desc": "No Simulador de Consórcio, escreva ou fale o que quer (ex.: \"2 cotas da Ademicon de 174 mil com 60 parcelas embutidas e 65 pagas, junto com a minha 570-807\"). A IA monta as cotas, os lances e as premissas usando os padrões das suas cotas (taxa, prazo-base); as contas continuam sendo do simulador. Depois é só ajustar à mão ou pedir outra mudança.",
       "type": "novidade"
     },
     {
-      "title": "Detalhe de cada cota e o total",
-      "desc": "Para cada cota: crédito líquido, lance do bolso, saque líquido, parcela antes e depois de contemplar e saldo depois do lance. No total: crédito contratado, lance, crédito liberado, saque líquido, soma das parcelas inicial e depois — como na proposta do corretor — e o gráfico da soma das parcelas mês a mês.",
+      "title": "Salvar simulações e exportar planilha ou PDF",
+      "desc": "Em \"Várias cotas\": salve a simulação com um nome (fica neste aparelho) e abra quando quiser; gere planilha (resumo, cotas e parcelas mês a mês) ou PDF para enviar. É só simulação: nada muda nos seus dados do app.",
       "type": "novidade"
     }
   ],
   "changes": [
-    "`lib/consortiumSimulator.ts`: `summarizePlan` e `aggregatePlans` (totais e saída mensal somada).",
-    "`ConsortiumSimulator.tsx`: aba `portfolio` (cotas novas/existentes, duplicar/remover, premissas comuns, tabela com total, gráfico somado; rascunho em localStorage). Gráfico generalizado (`StepChart`).",
-    "Testes: reproduz a proposta de 4 cotas (crédito 692.872,30, lance 244.228,11, crédito liberado 478.081,89, saque 233.853,77, parcela inicial 6.611,34); tela de várias cotas sem gravar nada no banco."
+    "`api/_lib/consortium-sim-ai.ts` + rota `/api/consortium-sim-ai`: Gemini com `responseSchema`, devolve só parâmetros (cotas, lances, premissas) e resposta curta; não lê nem grava dados do usuário (contexto vem da tela); conta no limite de Chat IA (`consortium_sim` → `ai_chat`).",
+    "`lib/consortiumSimState.ts`: `applyAiSimulation` valida e limita o que a IA manda, preserva cotas e edições (mesma chave), cota minha parte do cadastro (IA não inventa saldo), máx. 12 cotas.",
+    "`lib/consortiumSimExport.ts`: tabelas (cotas, total, mês a mês, por ano) e exportação xlsx/PDF com import sob demanda.",
+    "`ConsortiumSimulator.tsx`: painel da IA (texto + voz pt-BR quando o navegador oferece), conversa com contexto; estado das cotas no componente principal; salvar/abrir simulações (localStorage) e exportar.",
+    "Testes: estado da IA, rota (prompt, leitura defensiva, limite), exportação e tela (pedido à IA monta cotas com 118.534,47 / 667,23 / 120.506,4, salvar/abrir) — todos sem gravação no banco."
   ]
 }

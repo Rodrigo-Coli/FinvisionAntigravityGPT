@@ -36,6 +36,8 @@ export const AI_ACTION_CATEGORIES: Record<string, string> = {
   // uma categoria antes de ligar a chamada de novo.
   categorize: 'ai_categorize',
   wealth_analysis: 'ai_diagnosis',
+  // Simulador de Consórcio (Planejamento): cada pedido conta como mensagem de Chat IA.
+  consortium_sim: 'ai_chat',
 };
 
 // Rótulos amigáveis pra mensagem de bloqueio mostrada ao usuário.

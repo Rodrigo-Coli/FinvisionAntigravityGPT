@@ -1,5 +1,29 @@
 [
   {
+    "version": "2026.10.25.2356",
+    "title": "IA no Simulador de Consórcio, salvar e exportar",
+    "date": "25/10/2026",
+    "benefits": [
+      {
+        "title": "Peça a simulação para a IA",
+        "desc": "No Simulador de Consórcio, escreva ou fale o que quer (ex.: \"2 cotas da Ademicon de 174 mil com 60 parcelas embutidas e 65 pagas, junto com a minha 570-807\"). A IA monta as cotas, os lances e as premissas usando os padrões das suas cotas (taxa, prazo-base); as contas continuam sendo do simulador. Depois é só ajustar à mão ou pedir outra mudança.",
+        "type": "novidade"
+      },
+      {
+        "title": "Salvar simulações e exportar planilha ou PDF",
+        "desc": "Em \"Várias cotas\": salve a simulação com um nome (fica neste aparelho) e abra quando quiser; gere planilha (resumo, cotas e parcelas mês a mês) ou PDF para enviar. É só simulação: nada muda nos seus dados do app.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "`api/_lib/consortium-sim-ai.ts` + rota `/api/consortium-sim-ai`: Gemini com `responseSchema`, devolve só parâmetros (cotas, lances, premissas) e resposta curta; não lê nem grava dados do usuário (contexto vem da tela); conta no limite de Chat IA (`consortium_sim` → `ai_chat`).",
+      "`lib/consortiumSimState.ts`: `applyAiSimulation` valida e limita o que a IA manda, preserva cotas e edições (mesma chave), cota minha parte do cadastro (IA não inventa saldo), máx. 12 cotas.",
+      "`lib/consortiumSimExport.ts`: tabelas (cotas, total, mês a mês, por ano) e exportação xlsx/PDF com import sob demanda.",
+      "`ConsortiumSimulator.tsx`: painel da IA (texto + voz pt-BR quando o navegador oferece), conversa com contexto; estado das cotas no componente principal; salvar/abrir simulações (localStorage) e exportar.",
+      "Testes: estado da IA, rota (prompt, leitura defensiva, limite), exportação e tela (pedido à IA monta cotas com 118.534,47 / 667,23 / 120.506,4, salvar/abrir) — todos sem gravação no banco."
+    ]
+  },
+  {
     "version": "2026.10.25.2347",
     "title": "Simulador: várias cotas com total somado",
     "date": "25/10/2026",
