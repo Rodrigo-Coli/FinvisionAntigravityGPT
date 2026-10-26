@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyAiSimulation, blankQuota, quotaFromKnown, SimulationState, KnownConsortium } from '../lib/consortiumSimState';
+import { applyAiSimulation, blankQuota, quotaFromKnown, matchesQuotaDescription, SimulationState, KnownConsortium } from '../lib/consortiumSimState';
 
 /**
  * A IA só manda parâmetros; aqui eles são validados e aplicados. Cota minha
@@ -51,5 +51,19 @@ describe('aplicar a resposta da IA', () => {
   it('cota do cadastro sem passivo fica com campos vazios', () => {
     const q = quotaFromKnown({ ...known[0], balance: null, remainingMonths: null, currentInstallment: null });
     expect(q).toMatchObject({ balance: '', remaining: '', installment: '' });
+  });
+});
+
+describe('pagamentos antigos da cota pela descrição', () => {
+  it('reconhece os formatos usados e não confunde cotas', () => {
+    expect(matchesQuotaDescription('Grupo 1119 cota 403', '1119', '403')).toBe(true);
+    expect(matchesQuotaDescription('GRUPO: 1119 - COTA: 0403', 1119, 403)).toBe(true);
+    expect(matchesQuotaDescription('Consórcio HS 1119-403 parcela 7', '1119', '403')).toBe(true);
+    expect(matchesQuotaDescription('Boleto 1119/403', '1119', '403')).toBe(true);
+    expect(matchesQuotaDescription('Grupo 1119 cota 440', '1119', '403')).toBe(false);
+    expect(matchesQuotaDescription('Grupo 1119 cota 4030', '1119', '403')).toBe(false);
+    expect(matchesQuotaDescription('Grupo 11190 cota 403', '1119', '403')).toBe(false);
+    expect(matchesQuotaDescription('Pgto Boleto Hs Administradora de Consorcio', '1119', '403')).toBe(false);
+    expect(matchesQuotaDescription('Grupo 1119 cota 403', '', '403')).toBe(false);
   });
 });

@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.10.26.0008",
+    "title": "Simulador autoexplicativo, responsivo e venda com pagamentos antigos",
+    "date": "26/10/2026",
+    "benefits": [
+      {
+        "title": "Cada campo explica o que colocar",
+        "desc": "Toque no \"?\" ao lado de qualquer campo do Simulador de Consórcio: diz o que é, onde achar o número (proposta, boleto, extrato) e um exemplo. Cada aba (Plano, Lance, Várias cotas, Carta contemplada, Quitar financiamento, Vender cota) abre com \"Para que serve\" e o passo a passo, e valores fora do comum ganham aviso — ex.: taxa de administração digitada ao mês em vez do total.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Abas sem barra de rolagem, em qualquer tela",
+        "desc": "As abas do simulador agora se ajustam à largura da tela (2 colunas no celular, 3 no tablet, 6 no computador), sem rolagem lateral. Em celulares pequenos os campos ficam um por linha, e a tabela de totais vira cartões no celular.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Venda de cota com os pagamentos de antes do cadastro",
+        "desc": "Em \"Vender cota\", ao escolher uma cota sua, o simulador agora soma também os pagamentos antigos lançados sem vínculo com o consórcio (descrição \"Grupo 1119 cota 403\", \"1119-403\"…). Eles aparecem separados e dá para desmarcar. Nada é alterado nos lançamentos.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`ConsortiumSimulator.tsx`: `HelpLabel` (\"?\" com explicação) em 71 campos, `TabGuide` por aba (estado lembrado no aparelho), avisos `W.*` (taxa, prazo, FR, parcela reduzida, seguro, rendimento, reajuste, saldo, embutido); abas em grade sem rolagem; grades 1 coluna abaixo de 360px; totais em cartões no celular.",
+      "Venda: pagamentos vinculados + antigos sem vínculo via `matchesQuotaDescription` (só leitura, com opção de excluir).",
+      "Testes: casamento de descrição grupo/cota; tela (pagamentos antigos somados e desmarcáveis, \"?\" e avisos, guia em todas as abas, sem gravação). Medição no Chromium em 320/390/768/1024/1280px: nenhuma rolagem lateral."
+    ]
+  },
+  {
     "version": "2026.10.25.2356",
     "title": "IA no Simulador de Consórcio, salvar e exportar",
     "date": "25/10/2026",

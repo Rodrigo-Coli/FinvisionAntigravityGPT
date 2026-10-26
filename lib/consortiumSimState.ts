@@ -141,3 +141,21 @@ export function applyAiSimulation(ai: AiSimulation, current: SimulationState, kn
   });
   return { premises, quotas };
 }
+
+const normalize = (s: string) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+/**
+ * Lançamento antigo, sem vínculo com o consórcio, que é pagamento desta cota
+ * pela descrição: "Grupo 1119 cota 403", "grupo: 1119 - cota: 403", "1119-403",
+ * "1119/403". Número exato (403 não casa com 4030).
+ */
+export function matchesQuotaDescription(description: string, group: string | number, quota: string | number): boolean {
+  const g = String(group ?? '').replace(/^0+/, '').trim();
+  const q = String(quota ?? '').replace(/^0+/, '').trim();
+  if (!g || !q || !/^\d+$/.test(g) || !/^\d+$/.test(q)) return false;
+  const d = normalize(description);
+  const named = new RegExp(`grupo\\D{0,3}0*${g}(?!\\d)\\D{1,12}cota\\D{0,3}0*${q}(?!\\d)`);
+  // Sem lookbehind (iOS antigo não suporta): o número tem que vir no início ou depois de não-dígito.
+  const pair = new RegExp(`(?:^|\\D)0*${g}\\s*[-/]\\s*0*${q}(?!\\d)`);
+  return named.test(d) || pair.test(d);
+}

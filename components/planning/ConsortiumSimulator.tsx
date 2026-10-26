@@ -10,7 +10,7 @@ import { DateInput } from '../common/DateInput';
 import { sanitizeMoneyTyping, parseMoneyInput } from '../../lib/moneyInput';
 import { authHeaders } from '../../lib/apiClient';
 import {
-  QuotaDraft, KnownConsortium, SimulationState, blankQuota, newQuotaKey, applyAiSimulation
+  QuotaDraft, KnownConsortium, SimulationState, blankQuota, newQuotaKey, applyAiSimulation, matchesQuotaDescription
 } from '../../lib/consortiumSimState';
 import { exportSimulationXlsx, exportSimulationPdf } from '../../lib/consortiumSimExport';
 import {
@@ -57,7 +57,8 @@ const toText = (v: number | null | undefined, digits = 2) =>
   v === null || v === undefined || !Number.isFinite(Number(v)) ? '' : Number(v).toFixed(digits).replace('.', ',').replace(/,00$/, '');
 
 interface ConsortiumRow {
-  id: string; name: string; administrator_name?: string | null; liability_id: string | null; credit_letter_value: number; total_months: number;
+  id: string; name: string; administrator_name?: string | null; liability_id: string | null;
+  group_number?: string | null; quota_number?: string | null; credit_letter_value: number; total_months: number;
   admin_fee_pct: number; reserve_fund_pct: number; insurance_monthly_amount: number; status: string; metadata: any;
 }
 interface FinancingRow {
@@ -69,11 +70,29 @@ interface FinancingRow {
 const inputCls = 'w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:border-brand-500 transition-all';
 const labelCls = 'block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5';
 
+/** Rótulo com "?" que abre a explicação do campo (o que é, onde achar, exemplo). */
+const HelpLabel: React.FC<{ label: string; help?: React.ReactNode }> = ({ label, help }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <div className="flex items-start justify-between gap-1.5 mb-1.5">
+        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest leading-snug">{label}</label>
+        {help && (
+          <button type="button" onClick={() => setOpen(o => !o)} aria-label={`O que é: ${label}`} aria-expanded={open}
+            className={`shrink-0 w-5 h-5 -mt-0.5 rounded-full border text-[10px] font-black leading-none flex items-center justify-center transition-colors ${open ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-sky-600 border-sky-200 hover:bg-sky-50'}`}>?</button>
+        )}
+      </div>
+      {open && help && <div className="mb-2 p-2.5 rounded-xl bg-sky-50 border border-sky-100 text-[11px] text-sky-900 leading-snug space-y-1">{help}</div>}
+    </>
+  );
+};
+
 const Field: React.FC<{
   label: string; value: string; onChange: (v: string) => void; suffix?: string; hint?: string; integer?: boolean; placeholder?: string;
-}> = ({ label, value, onChange, suffix, hint, integer, placeholder }) => (
-  <div>
-    <label className={labelCls}>{label}</label>
+  help?: React.ReactNode; warn?: string | null;
+}> = ({ label, value, onChange, suffix, hint, integer, placeholder, help, warn }) => (
+  <div data-field>
+    <HelpLabel label={label} help={help} />
     <div className="relative">
       <input
         className={`${inputCls} ${suffix ? 'pr-14' : ''}`}
@@ -85,8 +104,99 @@ const Field: React.FC<{
       {suffix && <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">{suffix}</span>}
     </div>
     {hint && <p className="text-[10px] text-slate-400 mt-1 leading-snug">{hint}</p>}
+    {warn && <p className="text-[10px] font-bold text-amber-700 mt-1 leading-snug flex gap-1"><AlertTriangle size={11} className="shrink-0 mt-px" />{warn}</p>}
   </div>
 );
+
+/** "Como usar" de cada aba: para que serve sempre visível, passo a passo recolhível. */
+const TabGuide: React.FC<{ id: string; purpose: string; steps: React.ReactNode[] }> = ({ id, purpose, steps }) => {
+  const key = `finvision_consortium_sim_guide_${id}`;
+  const [open, setOpen] = useState<boolean>(() => { try { return localStorage.getItem(key) !== 'closed'; } catch { return true; } });
+  const toggle = () => setOpen(o => { try { localStorage.setItem(key, o ? 'closed' : 'open'); } catch { /* opcional */ } return !o; });
+  return (
+    <div className="bg-sky-50/60 border border-sky-100 rounded-[20px] p-4 space-y-2">
+      <div className="flex items-start gap-2.5">
+        <Info size={16} className="text-sky-600 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-sky-900 leading-relaxed"><strong>Para que serve:</strong> {purpose}</p>
+          <button type="button" onClick={toggle} className="mt-1 text-[11px] font-black text-sky-700 hover:text-sky-900">{open ? 'Esconder o passo a passo' : 'Ver o passo a passo'}</button>
+        </div>
+      </div>
+      {open && (
+        <ol className="list-decimal pl-9 space-y-1 text-[11px] text-sky-900 leading-relaxed">
+          {steps.map((st, i) => <li key={i}>{st}</li>)}
+        </ol>
+      )}
+    </div>
+  );
+};
+
+// ─── Explicação de cada campo ───────────────────────────────────────────────
+const H = {
+  quota: <><p><strong>Cota nova:</strong> simula uma compra — você digita os números da proposta.</p><p><strong>Minha cota:</strong> puxa do seu cadastro o saldo devedor, as parcelas que faltam e a parcela de hoje, e simula daqui para frente.</p></>,
+  credit: <><p>Valor do crédito da cota — o que ela libera para comprar o bem.</p><p><strong>Onde achar:</strong> proposta ou contrato ("crédito", "valor do bem", "carta").</p><p>Ex.: 200.000</p></>,
+  term: <><p>Quantas parcelas tem o plano, em meses.</p><p><strong>Onde achar:</strong> proposta ("prazo"). Se a cota entra num grupo já andando, use as parcelas que faltam.</p><p>Ex.: 200</p></>,
+  adm: <><p>Taxa de administração <strong>total</strong> do plano, em % da carta (não é ao mês).</p><p><strong>Onde achar:</strong> contrato ou proposta. Se vier "ao mês", multiplique pelo prazo.</p><p>Ex.: 18 (= 18% da carta). Mercado: 13% a 25%.</p></>,
+  fr: <><p>Fundo de reserva total, em % da carta. Cobre inadimplência do grupo; parte pode voltar no fim.</p><p><strong>Onde achar:</strong> contrato. Se não tiver, use 0.</p><p>Ex.: 2</p></>,
+  index: <><p>Quanto a carta e as parcelas sobem por ano (reajuste do contrato).</p><p><strong>Imóvel:</strong> INCC (6,66% nos últimos 12 meses). <strong>Veículo:</strong> IPCA ou tabela do fabricante.</p><p>Use o índice do seu contrato; 0 para simular sem reajuste.</p></>,
+  reduced: <><p>Alguns planos cobram parcela menor até contemplar (ex.: 50% ou 70% da cheia). Coloque esse %.</p><p>Depois de contemplar, o que ficou faltando é dividido nas parcelas restantes — a parcela sobe.</p><p>Plano normal: 100.</p></>,
+  insurance: <><p>Seguro prestamista, em % <strong>ao mês</strong> sobre o saldo devedor. Costuma entrar depois de contemplar.</p><p><strong>Onde achar:</strong> boleto ou contrato ("seguro").</p><p>Ex.: 0,03. Sem seguro: 0.</p></>,
+  opportunity: <><p>Quanto o seu dinheiro rende aplicado, já <strong>sem imposto</strong>.</p><p>É a régua para saber se vale antecipar pagamento (lance) ou deixar o dinheiro rendendo.</p><p>CDI de 13,65% − 15% de IR ≈ 11,6.</p></>,
+  balance: <><p>Quanto falta pagar hoje, em R$.</p><p><strong>Onde achar:</strong> extrato ou app da administradora ("saldo devedor").</p></>,
+  remaining: <><p>Quantas parcelas ainda faltam.</p><p><strong>Onde achar:</strong> extrato da administradora.</p></>,
+  installment: <><p>Valor da próxima parcela, de preferência sem o seguro.</p><p><strong>Onde achar:</strong> último boleto.</p><p>Se a parcela é reduzida, o simulador divide o restante depois de contemplar.</p></>,
+  kMonth: <><p>Em que mês você espera ser contemplado <strong>sem lance</strong> (sorteio).</p><p>Sem ideia? Na aba Lance, informe as cotas e sorteios do grupo e o simulador estima.</p></>,
+  finRate: <><p>Custo total ao ano (CET) de um financiamento do mesmo valor — está na simulação do banco.</p><p>Ex.: 12 (= 12% ao ano).</p></>,
+  finSystem: <><p><strong>SAC:</strong> parcela começa maior e vai caindo. <strong>PRICE:</strong> parcela igual do começo ao fim.</p></>,
+  bidUnit: <><p>Como a administradora pede o lance: em % da carta, em reais, ou em <strong>número de parcelas</strong> (Ademicon, por exemplo).</p><p>Em parcelas, informe o prazo-base do grupo.</p></>,
+  baseTerm: <><p>Prazo original do grupo, usado para transformar "nº de parcelas" em valor.</p><p><strong>Onde achar:</strong> proposta. Ademicon: 240.</p></>,
+  freeBid: <><p>Parte do lance paga com o <strong>seu dinheiro</strong> (boleto).</p><p>Sai do seu bolso e abate o saldo devedor.</p></>,
+  embBid: <><p>Parte do lance que sai da <strong>própria carta</strong> — você não paga, mas recebe menos crédito.</p><p>Limite comum: 25% a 30% da carta (veja no contrato).</p></>,
+  bidMonth: <><p>Daqui a quantos meses você daria o lance. 1 = próxima assembleia.</p></>,
+  bidMode: <><p>O que a administradora faz com o lance:</p><p><strong>Parcela:</strong> o prazo continua e as parcelas ficam menores.</p><p><strong>Prazo:</strong> a parcela volta a ser a cheia e o plano termina antes.</p><p>Pergunte qual vale no seu grupo.</p></>,
+  activeQuotas: <><p>Quantas cotas ativas o grupo tem.</p><p><strong>Onde achar:</strong> resultado da assembleia ou app da administradora.</p></>,
+  lotteryPer: <><p>Quantas cotas são sorteadas em cada assembleia (normalmente 1 ou 2).</p></>,
+  lotteryMonth: <><p>Quando você acha que seria sorteado sem lance. Com cotas e sorteios preenchidos, o simulador estima sozinho.</p></>,
+  minWin: <><p>O <strong>menor</strong> lance que ganhou nas últimas assembleias, em % da carta.</p><p><strong>Onde achar:</strong> resultado da assembleia.</p></>,
+  avgWin: <><p>O lance <strong>médio</strong> que ganhou nas últimas assembleias, em % da carta.</p></>,
+  benefit: <><p>Quanto você ganha por mês tendo o bem antes: aluguel que deixa de pagar, aluguel que passa a receber ou juros que deixa de pagar.</p><p>É isso que paga o lance. Sem esse ganho, antecipar costuma não compensar.</p></>,
+  qName: <><p>Um nome para reconhecer a cota (ex.: "Ademicon 560 A").</p></>,
+  cqCredit: <><p>Crédito que a cota contemplada libera para você usar agora.</p></>,
+  cqEntry: <><p>Quanto você paga ao vendedor pela cota (ágio ou entrada).</p></>,
+  cqFee: <><p>Taxa da administradora para transferir a cota para o seu nome. Veja no anúncio ou pergunte à administradora.</p></>,
+  cqInst: <><p>Valor da parcela atual da cota anunciada.</p></>,
+  cqMonths: <><p>Quantas parcelas faltam para quitar a cota anunciada.</p></>,
+  finPick: <><p>Escolha um financiamento seu: o simulador puxa o saldo e as <strong>parcelas reais</strong> cadastradas.</p></>,
+  poBalance: <><p>Quanto custa quitar hoje. Peça ao banco o <strong>saldo devedor para quitação</strong> — é menor que a soma das parcelas, porque tira os juros futuros.</p></>,
+  poRate: <><p>Juros do contrato, em % ao mês. Só é usado se não houver parcelas reais cadastradas.</p></>,
+  poMonths: <><p>Quantas parcelas do financiamento faltam.</p></>,
+  poNetCredit: <><p>Crédito do consórcio que vai para a quitação: carta menos o lance embutido.</p><p>Dica: use o botão "Usar o resultado da aba Lance".</p></>,
+  poOwnBid: <><p>Lance pago do seu bolso para contemplar a cota.</p></>,
+  poInst: <><p>Parcela do consórcio depois de contemplar.</p></>,
+  poConsMonths: <><p>Quantas parcelas do consórcio ficam depois de contemplar.</p></>,
+  salePick: <><p>Escolha sua cota para puxar os pagamentos reais — inclusive os antigos, lançados antes do cadastro com a descrição "Grupo X cota Y". Ou digite à mão.</p></>,
+  manualInst: <><p>Valor da parcela que você pagou (média, se mudou).</p></>,
+  manualMonths: <><p>Quantas parcelas você já pagou.</p></>,
+  manualStart: <><p>Data da primeira parcela paga — conta para a rentabilidade ao mês.</p></>,
+  manualBid: <><p>Lance que você pagou do bolso (o embutido não entra, saiu da carta).</p></>,
+  salePrice: <><p>Quanto o comprador vai pagar a você pela cota.</p></>,
+  saleDate: <><p>Quando você vai receber o valor da venda.</p></>,
+  targetPct: <><p>O lucro que você quer ter: em % ao mês ou % total.</p></>,
+  targetBasis: <><p><strong>% ao mês:</strong> como se cada pagamento estivesse aplicado desde a data em que foi pago.</p><p><strong>% total:</strong> sobre a soma do que você pagou, sem olhar o tempo.</p></>
+};
+
+// ─── Avisos de valores fora do comum ────────────────────────────────────────
+const W = {
+  adm: (v: number) => v > 30 ? 'Acima do comum (13% a 25%). Confira se não é taxa ao mês ou ao ano.' : v > 0 && v < 5 ? 'Muito baixa para o total do plano — confira no contrato.' : null,
+  term: (v: number) => v > 240 ? 'Prazo acima de 240 meses é raro — confira.' : null,
+  fr: (v: number) => v > 5 ? 'Acima do comum (0% a 3%) — confira.' : null,
+  reduced: (v: number) => v > 0 && v < 30 ? 'Parcela muito reduzida — confira na proposta.' : null,
+  insurance: (v: number) => v > 0.2 ? 'Seguro costuma ficar entre 0,02% e 0,08% ao mês — confira se não digitou em R$.' : null,
+  opportunity: (v: number) => v > 20 ? 'Acima de 20% ao ano é raro — use o rendimento líquido de IR.' : null,
+  index: (v: number) => v > 15 ? 'Reajuste muito alto — o INCC dos últimos 12 meses foi 6,66%.' : null,
+  balance: (balance: number, credit: number) => credit > 0 && balance > credit * 1.6 ? 'Saldo acima de 160% da carta — confira no extrato.' : null,
+  emb: (pct: number) => pct > 30 ? 'Embutido acima de 30% da carta — a maioria dos grupos não aceita.' : null
+};
 
 const Seg: React.FC<{ options: { value: string; label: string }[]; value: string; onChange: (v: any) => void }> = ({ options, value, onChange }) => (
   <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
@@ -302,15 +412,22 @@ const PortfolioTab: React.FC<{
 
   return (
     <div className="space-y-6">
-      <Verdict tone="info" title="Monte a operação com várias cotas — novas e suas.">
-        Cada cota tem o próprio lance e mês de contemplação; o total soma tudo. Os meses contam a partir de agora. O rascunho fica salvo neste aparelho.
-      </Verdict>
+      <TabGuide id="portfolio"
+        purpose="juntar várias cotas — novas e suas — cada uma com o próprio lance, e ver o detalhe de cada uma e o total (como a proposta do corretor)."
+        steps={[
+          'Ajuste as premissas (reajuste, seguro, rendimento) — valem para todas as cotas.',
+          'Em cada cota, escolha "Cota nova" (digite os números da proposta) ou uma cota sua (puxa o saldo de hoje).',
+          'Informe o lance: em % da carta, R$ ou nº de parcelas; quanto do bolso, quanto embutido, daqui a quantos meses contempla e se abate parcela ou prazo.',
+          'Use "Adicionar cota" ou "Duplicar" para montar a operação inteira.',
+          'Confira o total: crédito liberado, saque líquido e a soma das parcelas antes e depois.',
+          'Salve com um nome (fica neste aparelho) ou exporte planilha/PDF para enviar. Também dá para pedir tudo à IA, lá em cima.'
+        ]} />
 
       <Card title="Premissas para todas as cotas">
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-          <Field label="Reajuste anual" value={index} onChange={setIndex} suffix="% a.a." hint="INCC 12m: 6,66% (set/26)" />
-          <Field label="Seguro prestamista" value={insurance} onChange={setInsurance} suffix="% a.m." hint="Sobre o saldo, após contemplar" />
-          <Field label="Rendimento do seu dinheiro" value={opportunity} onChange={setOpportunity} suffix="% a.a." hint={`CDI ${fmtPct(DEFAULT_CDI)} − IR`} />
+        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-3 gap-3">
+          <Field help={H.index} warn={W.index(num(index))} label="Reajuste anual" value={index} onChange={setIndex} suffix="% a.a." hint="INCC 12m: 6,66% (set/26)" />
+          <Field help={H.insurance} warn={W.insurance(num(insurance))} label="Seguro prestamista" value={insurance} onChange={setInsurance} suffix="% a.m." hint="Sobre o saldo, após contemplar" />
+          <Field help={H.opportunity} warn={W.opportunity(num(opportunity))} label="Rendimento do seu dinheiro" value={opportunity} onChange={setOpportunity} suffix="% a.a." hint={`CDI ${fmtPct(DEFAULT_CDI)} − IR`} />
         </div>
       </Card>
 
@@ -322,11 +439,11 @@ const PortfolioTab: React.FC<{
           <Card key={q.key} title={`Cota ${i + 1}`}>
             <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
               <div className="flex-1">
-                <label className={labelCls}>Nome</label>
+                <HelpLabel label="Nome" help={H.qName} />
                 <input className={inputCls} value={q.name} onChange={e => update(q.key, { name: e.target.value })} />
               </div>
               <div className="flex-1">
-                <label className={labelCls}>Cota</label>
+                <HelpLabel label="Cota" help={H.quota} />
                 <select className={inputCls} value={q.source} onChange={e => chooseSource(q.key, e.target.value)}>
                   <option value="">Cota nova (simular compra)</option>
                   {consortiums.map(c => <option key={c.id} value={c.id}>{c.name} — minha, situação de hoje</option>)}
@@ -338,40 +455,40 @@ const PortfolioTab: React.FC<{
               </div>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Field label={existing ? 'Carta (contratada)' : 'Carta de crédito'} value={q.credit} onChange={v => update(q.key, { credit: v })} suffix="R$" />
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
+              <Field help={H.credit} label={existing ? 'Carta (contratada)' : 'Carta de crédito'} value={q.credit} onChange={v => update(q.key, { credit: v })} suffix="R$" />
               {existing ? (
                 <>
-                  <Field label="Saldo devedor hoje" value={q.balance} onChange={v => update(q.key, { balance: v })} suffix="R$" />
-                  <Field label="Parcelas restantes" value={q.remaining} onChange={v => update(q.key, { remaining: v })} integer />
-                  <Field label="Parcela atual" value={q.installment} onChange={v => update(q.key, { installment: v })} suffix="R$" />
+                  <Field help={H.balance} warn={W.balance(num(q.balance), num(q.credit))} label="Saldo devedor hoje" value={q.balance} onChange={v => update(q.key, { balance: v })} suffix="R$" />
+                  <Field help={H.remaining} label="Parcelas restantes" value={q.remaining} onChange={v => update(q.key, { remaining: v })} integer />
+                  <Field help={H.installment} label="Parcela atual" value={q.installment} onChange={v => update(q.key, { installment: v })} suffix="R$" />
                 </>
               ) : (
                 <>
-                  <Field label="Prazo" value={q.term} onChange={v => update(q.key, { term: v })} suffix="meses" integer />
-                  <Field label="Parcela até contemplar" value={q.reduced} onChange={v => update(q.key, { reduced: v })} suffix="%" />
+                  <Field help={H.term} warn={W.term(num(q.term))} label="Prazo" value={q.term} onChange={v => update(q.key, { term: v })} suffix="meses" integer />
+                  <Field help={H.reduced} warn={W.reduced(num(q.reduced))} label="Parcela até contemplar" value={q.reduced} onChange={v => update(q.key, { reduced: v })} suffix="%" />
                 </>
               )}
-              <Field label="Taxa de adm. (total)" value={q.adm} onChange={v => update(q.key, { adm: v })} suffix="%" />
-              <Field label="Fundo de reserva" value={q.fr} onChange={v => update(q.key, { fr: v })} suffix="%" />
+              <Field help={H.adm} warn={W.adm(num(q.adm))} label="Taxa de adm. (total)" value={q.adm} onChange={v => update(q.key, { adm: v })} suffix="%" />
+              <Field help={H.fr} warn={W.fr(num(q.fr))} label="Fundo de reserva" value={q.fr} onChange={v => update(q.key, { fr: v })} suffix="%" />
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="col-span-2">
-                <label className={labelCls}>Lance em</label>
+                <HelpLabel label="Lance em" help={H.bidUnit} />
                 <Seg value={q.unit} onChange={(v: BidUnit) => update(q.key, { unit: v })} options={[{ value: 'PCT', label: '% da carta' }, { value: 'BRL', label: 'R$' }, { value: 'INST', label: 'Nº de parcelas' }]} />
               </div>
-              {q.unit === 'INST' && <Field label="Prazo-base do grupo" value={q.baseTerm} onChange={v => update(q.key, { baseTerm: v })} suffix="meses" integer />}
-              <Field label="Lance do bolso" value={q.free} onChange={v => update(q.key, { free: v })} suffix={unitSuffix(q.unit)} />
-              <Field label="Lance embutido" value={q.emb} onChange={v => update(q.key, { emb: v })} suffix={unitSuffix(q.unit)} />
-              <Field label="Contempla daqui a" value={q.month} onChange={v => update(q.key, { month: v })} suffix="meses" integer />
+              {q.unit === 'INST' && <Field help={H.baseTerm} label="Prazo-base do grupo" value={q.baseTerm} onChange={v => update(q.key, { baseTerm: v })} suffix="meses" integer />}
+              <Field help={H.freeBid} label="Lance do bolso" value={q.free} onChange={v => update(q.key, { free: v })} suffix={unitSuffix(q.unit)} />
+              <Field help={H.embBid} label="Lance embutido" value={q.emb} onChange={v => update(q.key, { emb: v })} suffix={unitSuffix(q.unit)} />
+              <Field help={H.bidMonth} label="Contempla daqui a" value={q.month} onChange={v => update(q.key, { month: v })} suffix="meses" integer />
               <div>
-                <label className={labelCls}>Lance abate</label>
+                <HelpLabel label="Lance abate" help={H.bidMode} />
                 <Seg value={q.mode} onChange={(v: BidMode) => update(q.key, { mode: v })} options={[{ value: 'REDUCE_INSTALLMENT', label: 'Parcela' }, { value: 'REDUCE_TERM', label: 'Prazo' }]} />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-5 gap-3">
               <Stat label="Crédito líquido" value={fmt(sum.netCredit)} sub={sum.bidEmbedded > 0 ? `carta ${fmt(sum.credit)} − embutido ${fmt(sum.bidEmbedded)}` : `carta ${fmt(sum.credit)}`} strong />
               <Stat label="Lance do bolso" value={fmt(sum.bidCash)} />
               <Stat label="Saque líquido" value={fmt(sum.netCash)} sub="crédito líquido − lance do bolso" />
@@ -388,7 +505,7 @@ const PortfolioTab: React.FC<{
       </button>
 
       <Card title={`Total das ${quotas.length} cotas`}>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
           <Stat label="Crédito contratado" value={fmt(agg.total.credit)} />
           <Stat label="Lance total" value={fmt(agg.total.bidCash + agg.total.bidEmbedded)} sub={`do bolso ${fmt(agg.total.bidCash)} · embutido ${fmt(agg.total.bidEmbedded)}`} />
           <Stat label="Crédito liberado" value={fmt(agg.total.netCredit)} strong />
@@ -399,8 +516,25 @@ const PortfolioTab: React.FC<{
           <Stat label="Até quitar tudo" value={`${agg.monthly.length} meses`} />
         </div>
 
-        <div className="overflow-x-auto -mx-1">
-          <table className="w-full text-[11px] min-w-[640px]">
+        {/* Celular: um cartão por cota; tela maior: tabela. Sem rolagem lateral. */}
+        <div className="md:hidden space-y-2">
+          {agg.quotas.map((sq, i) => (
+            <div key={quotas[i].key} className="rounded-2xl border border-slate-100 p-3 text-[11px] text-slate-600">
+              <p className="font-black text-slate-900 text-xs mb-1.5 break-words">{quotas[i].name}</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                <span>Crédito</span><span className="text-right font-bold text-slate-800">{fmt(sq.credit)}</span>
+                <span>Lance bolso</span><span className="text-right font-bold text-slate-800">{fmt(sq.bidCash)}</span>
+                <span>Embutido</span><span className="text-right font-bold text-slate-800">{fmt(sq.bidEmbedded)}</span>
+                <span>Crédito líquido</span><span className="text-right font-bold text-slate-800">{fmt(sq.netCredit)}</span>
+                <span>Saque líquido</span><span className="text-right font-bold text-slate-800">{fmt(sq.netCash)}</span>
+                <span>Parcela inicial</span><span className="text-right font-bold text-slate-800">{fmt(sq.initialInstallment)}</span>
+                <span>Parcela depois</span><span className="text-right font-bold text-slate-800">{fmt(sq.postInstallment)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block">
+          <table className="w-full text-[11px]">
             <thead>
               <tr className="text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">
                 <th className="py-2 px-1">Cota</th><th className="px-1 text-right">Crédito</th><th className="px-1 text-right">Lance bolso</th>
@@ -666,6 +800,9 @@ const ConsortiumSimulator: React.FC = () => {
   // Vender cota
   const [saleSource, setSaleSource] = useState('');
   const [salePayments, setSalePayments] = useState<SaleFlow[] | null>(null);
+  // Pagamentos antigos sem vínculo com o consórcio (achados pela descrição "Grupo X cota Y").
+  const [saleHistory, setSaleHistory] = useState<SaleFlow[]>([]);
+  const [includeHistory, setIncludeHistory] = useState(true);
   const [manualInst, setManualInst] = useState('');
   const [manualMonths, setManualMonths] = useState('');
   const [manualStart, setManualStart] = useState(DateUtils.formatToISODate());
@@ -698,7 +835,7 @@ const ConsortiumSimulator: React.FC = () => {
         const user = await getSessionUser(supabase);
         if (!user) return;
         const [cRes, lRes] = await Promise.all([
-          supabase.from('consortiums').select('id, name, administrator_name, liability_id, credit_letter_value, total_months, admin_fee_pct, reserve_fund_pct, insurance_monthly_amount, status, metadata').eq('user_id', user.id).order('name'),
+          supabase.from('consortiums').select('id, name, administrator_name, group_number, quota_number, liability_id, credit_letter_value, total_months, admin_fee_pct, reserve_fund_pct, insurance_monthly_amount, status, metadata').eq('user_id', user.id).order('name'),
           supabase.from('liabilities').select('id, name, type, remaining_balance, installment_amount, installments_remaining, interest_rate, metadata').eq('user_id', user.id).eq('is_archived', false)
         ]);
         if (!alive) return;
@@ -820,19 +957,34 @@ const ConsortiumSimulator: React.FC = () => {
   const chooseSaleSource = async (id: string) => {
     setSaleSource(id);
     setSalePayments(null);
+    setSaleHistory([]);
     const c = consortiums.find(x => x.id === id);
-    if (!c?.liability_id || !supabase) return;
+    if (!c || !supabase) return;
+    const paidValue = (t: any) => t.is_paid ? (Number(t.paid_amount) > 0 ? Number(t.paid_amount) : Number(t.amount)) : Number(t.paid_amount || 0);
     try {
-      const { data } = await supabase.from('transactions').select('date, paid_at, amount, paid_amount, is_paid, is_deleted, type, metadata')
-        .eq('liability_id', c.liability_id).order('date', { ascending: true });
+      const user = await getSessionUser(supabase);
+      const [linkedRes, oldRes] = await Promise.all([
+        c.liability_id
+          ? supabase.from('transactions').select('date, paid_at, amount, paid_amount, is_paid, is_deleted, type, metadata')
+            .eq('liability_id', c.liability_id).order('date', { ascending: true })
+          : Promise.resolve({ data: [] as any[] }),
+        user && c.group_number && c.quota_number
+          ? supabase.from('transactions').select('date, paid_at, amount, paid_amount, is_paid, is_deleted, type, description, metadata')
+            .eq('user_id', user.id).is('liability_id', null).eq('type', 'EXPENSE').ilike('description', `%${c.quota_number}%`)
+            .order('date', { ascending: true })
+          : Promise.resolve({ data: [] as any[] })
+      ]);
       // Só o que saiu do bolso: parcelas e lance pago. Embutido saiu da carta.
-      const pays = (data || []).filter((t: any) => t.is_deleted !== true && t.type === 'EXPENSE'
+      const pays = ((linkedRes as any).data || []).filter((t: any) => t.is_deleted !== true && t.type === 'EXPENSE'
           && t.metadata?.bid_part !== 'EMBEDDED' && t.metadata?.isCapitalized !== true)
-        .map((t: any) => ({
-          date: String(t.paid_at || t.date).slice(0, 10),
-          amount: t.is_paid ? (Number(t.paid_amount) > 0 ? Number(t.paid_amount) : Number(t.amount)) : Number(t.paid_amount || 0)
-        }))
+        .map((t: any) => ({ date: String(t.paid_at || t.date).slice(0, 10), amount: paidValue(t) }))
         .filter((p: SaleFlow) => p.amount > 0);
+      // Pagamentos de antes do cadastro, lançados sem vínculo — só leitura, nada é alterado.
+      const old = ((oldRes as any).data || []).filter((t: any) => t.is_deleted !== true
+          && matchesQuotaDescription(t.description, c.group_number!, c.quota_number!))
+        .map((t: any) => ({ date: String(t.paid_at || t.date).slice(0, 10), amount: paidValue(t) }))
+        .filter((p: SaleFlow) => p.amount > 0);
+      setSaleHistory(old);
       setSalePayments(pays);
     } catch { setSalePayments([]); }
   };
@@ -843,7 +995,9 @@ const ConsortiumSimulator: React.FC = () => {
     if (num(manualBid) > 0) list.push({ date: list.length ? list[list.length - 1].date : manualStart, amount: num(manualBid) });
     return list;
   }, [manualInst, manualMonths, manualStart, manualBid]);
-  const payments = saleSource ? (salePayments || []) : manualPayments;
+  const payments = saleSource ? [...(salePayments || []), ...(includeHistory ? saleHistory : [])] : manualPayments;
+  const sumFlows = (list: SaleFlow[]) => list.reduce((s, p) => s + p.amount, 0);
+  const saleQuota = consortiums.find(x => x.id === saleSource);
   const sale = useMemo(() => evaluateSale(payments, num(salePrice), saleDate, num(opportunity)), [payments, salePrice, saleDate, opportunity]);
   const target = useMemo(() => targetSalePrice(payments, saleDate, num(targetPct), targetBasis), [payments, saleDate, targetPct, targetBasis]);
 
@@ -930,20 +1084,44 @@ const ConsortiumSimulator: React.FC = () => {
 
       <SimAssistant buildContext={buildAiContext} onApply={applyAi} />
 
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+      {/* Abas em grade: sem barra de rolagem, se ajustam à largura da tela. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap border transition-all ${tab === t.id ? 'bg-brand-600 text-white border-brand-600 shadow' : 'bg-white text-slate-500 border-slate-200 hover:text-slate-900'}`}>
-            {t.icon}{t.label}
+            className={`flex items-center justify-center gap-1.5 px-2 py-2.5 min-h-[44px] rounded-xl text-xs font-black text-center leading-tight border transition-all ${tab === t.id ? 'bg-brand-600 text-white border-brand-600 shadow' : 'bg-white text-slate-500 border-slate-200 hover:text-slate-900'}`}>
+            <span className="shrink-0">{t.icon}</span><span>{t.label}</span>
           </button>
         ))}
       </div>
+
+      {tab === 'plan' && (
+        <TabGuide id="plan"
+          purpose="ver quanto custa uma cota (nova ou sua): parcela antes e depois de contemplar, total pago e se sai mais barato que um financiamento."
+          steps={[
+            'Em "Cota", escolha "Cota nova" ou uma cota sua (puxa saldo, parcelas e parcela de hoje).',
+            'Cota nova: preencha carta, prazo, taxa de administração e fundo de reserva — estão na proposta. Toque no "?" de cada campo se tiver dúvida.',
+            'Reajuste, seguro e rendimento já vêm com valores de mercado; troque pelos do seu contrato se souber.',
+            'Diga em que mês espera ser contemplado e a taxa do financiamento que quer comparar.',
+            'Leia os resultados e o veredito; o gráfico mostra a parcela mês a mês (toque para ver o valor).'
+          ]} />
+      )}
+      {tab === 'bid' && (
+        <TabGuide id="bid"
+          purpose="decidir se vale dar lance, de quanto, e ver o crédito líquido, o saque líquido e a parcela depois."
+          steps={[
+            'Preencha o "Plano da cota" (ou escolha uma cota sua).',
+            'Em "O lance": como a administradora pede (% da carta, R$ ou nº de parcelas), quanto é do bolso, quanto é embutido, em quantos meses e se abate parcela ou prazo.',
+            'Em "O grupo": cotas ativas, sorteios por assembleia e os lances vencedores — estão no resultado da assembleia. Servem para estimar a chance.',
+            'Informe quanto você ganha por mês tendo o bem antes (aluguel, juros evitados) — é isso que paga o lance.',
+            'Leia o "lance livre máximo que compensa", a chance e o veredito.'
+          ]} />
+      )}
 
       {/* ═══ PLANO ═══ */}
       {(tab === 'plan' || tab === 'bid') && (
         <Card title="Plano da cota">
           <div>
-            <label className={labelCls}>Cota</label>
+            <HelpLabel label="Cota" help={H.quota} />
             <select className={inputCls} value={quotaId} onChange={e => selectQuota(e.target.value)}>
               <option value="">Cota nova (simular uma compra)</option>
               {consortiums.map(c => <option key={c.id} value={c.id}>{c.name} — minha cota, situação de hoje</option>)}
@@ -953,23 +1131,23 @@ const ConsortiumSimulator: React.FC = () => {
           {existing && selectedQuota && selectedQuota.status !== 'WAITING' && (
             <Verdict tone="info" title="Esta cota já está contemplada.">A simulação de lance fica só como referência; o plano mostra o que falta pagar.</Verdict>
           )}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Field label={existing ? 'Carta (crédito contratado)' : 'Carta de crédito'} value={credit} onChange={setCredit} suffix="R$" />
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
+            <Field help={H.credit} label={existing ? 'Carta (crédito contratado)' : 'Carta de crédito'} value={credit} onChange={setCredit} suffix="R$" />
             {existing ? (
               <>
-                <Field label="Saldo devedor hoje" value={exBalance} onChange={setExBalance} suffix="R$" hint="Confira no extrato da administradora" />
-                <Field label="Parcelas restantes" value={exRemaining} onChange={setExRemaining} integer />
-                <Field label="Parcela atual" value={exInstallment} onChange={setExInstallment} suffix="R$" hint="Se reduzida, o resto é dividido depois de contemplar" />
+                <Field help={H.balance} warn={W.balance(num(exBalance), num(credit))} label="Saldo devedor hoje" value={exBalance} onChange={setExBalance} suffix="R$" hint="Confira no extrato da administradora" />
+                <Field help={H.remaining} label="Parcelas restantes" value={exRemaining} onChange={setExRemaining} integer />
+                <Field help={H.installment} label="Parcela atual" value={exInstallment} onChange={setExInstallment} suffix="R$" hint="Se reduzida, o resto é dividido depois de contemplar" />
               </>
             ) : (
-              <Field label="Prazo" value={term} onChange={setTerm} suffix="meses" integer />
+              <Field help={H.term} warn={W.term(num(term))} label="Prazo" value={term} onChange={setTerm} suffix="meses" integer />
             )}
-            <Field label="Taxa de adm. (total)" value={adm} onChange={setAdm} suffix="%" hint={existing ? 'Do plano — usada no lance em nº de parcelas' : 'Mercado: 13% a 25% da carta'} />
-            <Field label="Fundo de reserva" value={fr} onChange={setFr} suffix="%" hint={existing ? 'Do plano' : 'Comum: 0% a 3%'} />
-            <Field label="Reajuste anual" value={index} onChange={setIndex} suffix="% a.a." hint="INCC 12m: 6,66% (set/26)" />
-            {!existing && <Field label="Parcela até contemplar" value={reduced} onChange={setReduced} suffix="%" hint="100 = cheia; 50/70 = reduzida" />}
-            <Field label="Seguro prestamista" value={insurance} onChange={setInsurance} suffix="% a.m." hint="Sobre o saldo, após contemplar" />
-            <Field label="Rendimento do seu dinheiro" value={opportunity} onChange={setOpportunity} suffix="% a.a." hint={`CDI ${fmtPct(DEFAULT_CDI)} − IR`} />
+            <Field help={H.adm} warn={W.adm(num(adm))} label="Taxa de adm. (total)" value={adm} onChange={setAdm} suffix="%" hint={existing ? 'Do plano — usada no lance em nº de parcelas' : 'Mercado: 13% a 25% da carta'} />
+            <Field help={H.fr} warn={W.fr(num(fr))} label="Fundo de reserva" value={fr} onChange={setFr} suffix="%" hint={existing ? 'Do plano' : 'Comum: 0% a 3%'} />
+            <Field help={H.index} warn={W.index(num(index))} label="Reajuste anual" value={index} onChange={setIndex} suffix="% a.a." hint="INCC 12m: 6,66% (set/26)" />
+            {!existing && <Field help={H.reduced} warn={W.reduced(num(reduced))} label="Parcela até contemplar" value={reduced} onChange={setReduced} suffix="%" hint="100 = cheia; 50/70 = reduzida" />}
+            <Field help={H.insurance} warn={W.insurance(num(insurance))} label="Seguro prestamista" value={insurance} onChange={setInsurance} suffix="% a.m." hint="Sobre o saldo, após contemplar" />
+            <Field help={H.opportunity} warn={W.opportunity(num(opportunity))} label="Rendimento do seu dinheiro" value={opportunity} onChange={setOpportunity} suffix="% a.a." hint={`CDI ${fmtPct(DEFAULT_CDI)} − IR`} />
           </div>
         </Card>
       )}
@@ -977,17 +1155,17 @@ const ConsortiumSimulator: React.FC = () => {
       {tab === 'plan' && (
         <>
           <Card title="Contemplação e comparação">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Field label={`Contemplação ${monthWord}`} value={kMonth} onChange={setKMonth} suffix="meses" integer hint="Sem lance (sorteio)" />
-              <Field label="Financiamento alternativo" value={finRate} onChange={setFinRate} suffix="% a.a." hint="CET da proposta do banco" />
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
+              <Field help={H.kMonth} label={`Contemplação ${monthWord}`} value={kMonth} onChange={setKMonth} suffix="meses" integer hint="Sem lance (sorteio)" />
+              <Field help={H.finRate} label="Financiamento alternativo" value={finRate} onChange={setFinRate} suffix="% a.a." hint="CET da proposta do banco" />
               <div className="col-span-2">
-                <label className={labelCls}>Sistema do financiamento</label>
+                <HelpLabel label="Sistema do financiamento" help={H.finSystem} />
                 <Seg value={finSystem} onChange={setFinSystem} options={[{ value: 'SAC', label: 'SAC' }, { value: 'PRICE', label: 'PRICE' }]} />
               </div>
             </div>
           </Card>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
             {existing
               ? <Stat label="Parcela atual" value={fmt(plan.preInstallment)} sub={`${num(exRemaining)} parcelas restantes`} strong />
               : <Stat label="Parcela integral" value={fmt(plan.fullInstallment)} sub={`${fmtPct(plan.planPct, 1)} da carta em ${num(term)} meses`} strong />}
@@ -1023,19 +1201,19 @@ const ConsortiumSimulator: React.FC = () => {
           <Card title="O lance">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className={labelCls}>Como a administradora oferta o lance</label>
+                <HelpLabel label="Como a administradora oferta o lance" help={H.bidUnit} />
                 <Seg value={bidUnit} onChange={setBidUnit} options={[{ value: 'PCT', label: '% da carta' }, { value: 'BRL', label: 'R$' }, { value: 'INST', label: 'Nº de parcelas' }]} />
                 {bidUnit === 'INST' && (
-                  <Field label="Prazo-base do grupo" value={baseTerm} onChange={setBaseTerm} suffix="meses" integer
+                  <Field help={H.baseTerm} label="Prazo-base do grupo" value={baseTerm} onChange={setBaseTerm} suffix="meses" integer
                     hint={`1 parcela de lance = ${fmt(unitValue)} (carta × ${fmtPct(planPctValue, 0)} ÷ ${num(baseTerm) || 0}). Ex.: Ademicon usa o prazo original do grupo.`} />
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Lance do bolso (livre)" value={freeBid} onChange={setFreeBid} suffix={bidUnit === 'PCT' ? '%' : bidUnit === 'BRL' ? 'R$' : 'parc.'} hint={fmt(planBase.credit * freePct / 100)} />
-                <Field label="Lance embutido" value={embBid} onChange={setEmbBid} suffix={bidUnit === 'PCT' ? '%' : bidUnit === 'BRL' ? 'R$' : 'parc.'} hint={`${fmt(planBase.credit * embPct / 100)} — sai da carta (até ~30%)`} />
-                <Field label={`Dar o lance ${monthWord}`} value={bidMonth} onChange={setBidMonth} suffix="meses" integer />
+              <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3">
+                <Field help={H.freeBid} label="Lance do bolso (livre)" value={freeBid} onChange={setFreeBid} suffix={bidUnit === 'PCT' ? '%' : bidUnit === 'BRL' ? 'R$' : 'parc.'} hint={fmt(planBase.credit * freePct / 100)} />
+                <Field help={H.embBid} warn={W.emb(embPct)} label="Lance embutido" value={embBid} onChange={setEmbBid} suffix={bidUnit === 'PCT' ? '%' : bidUnit === 'BRL' ? 'R$' : 'parc.'} hint={`${fmt(planBase.credit * embPct / 100)} — sai da carta (até ~30%)`} />
+                <Field help={H.bidMonth} label={`Dar o lance ${monthWord}`} value={bidMonth} onChange={setBidMonth} suffix="meses" integer />
                 <div>
-                  <label className={labelCls}>Lance abate</label>
+                  <HelpLabel label="Lance abate" help={H.bidMode} />
                   <Seg value={bidMode} onChange={setBidMode} options={[{ value: 'REDUCE_INSTALLMENT', label: 'Parcela' }, { value: 'REDUCE_TERM', label: 'Prazo' }]} />
                 </div>
               </div>
@@ -1043,18 +1221,18 @@ const ConsortiumSimulator: React.FC = () => {
           </Card>
 
           <Card title="O grupo e o seu ganho em antecipar">
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-              <Field label="Cotas ativas no grupo" value={activeQuotas} onChange={setActiveQuotas} integer hint="Na assembleia da administradora" />
-              <Field label="Sorteios por assembleia" value={lotteryPer} onChange={setLotteryPer} integer />
-              <Field label={`Sorteio esperado ${monthWord}`} value={lotteryMonthTxt} onChange={setLotteryMonthTxt} integer
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-3 gap-3">
+              <Field help={H.activeQuotas} label="Cotas ativas no grupo" value={activeQuotas} onChange={setActiveQuotas} integer hint="Na assembleia da administradora" />
+              <Field help={H.lotteryPer} label="Sorteios por assembleia" value={lotteryPer} onChange={setLotteryPer} integer />
+              <Field help={H.lotteryMonth} label={`Sorteio esperado ${monthWord}`} value={lotteryMonthTxt} onChange={setLotteryMonthTxt} integer
                 hint={expectedLotteryMonth ? `Pelo grupo: ~mês ${expectedLotteryMonth}` : `Sem dados: usando mês ${lotteryMonth}`} placeholder={String(lotteryMonth)} />
-              <Field label="Menor lance vencedor" value={minWin} onChange={setMinWin} suffix="%" hint="Últimas assembleias" />
-              <Field label="Lance médio vencedor" value={avgWin} onChange={setAvgWin} suffix="%" hint="Últimas assembleias" />
-              <Field label="Ganho por mês com o bem antes" value={benefit} onChange={setBenefit} suffix="R$" hint="Aluguel economizado, aluguel recebido ou juros que deixa de pagar" />
+              <Field help={H.minWin} label="Menor lance vencedor" value={minWin} onChange={setMinWin} suffix="%" hint="Últimas assembleias" />
+              <Field help={H.avgWin} label="Lance médio vencedor" value={avgWin} onChange={setAvgWin} suffix="%" hint="Últimas assembleias" />
+              <Field help={H.benefit} label="Ganho por mês com o bem antes" value={benefit} onChange={setBenefit} suffix="R$" hint="Aluguel economizado, aluguel recebido ou juros que deixa de pagar" />
             </div>
           </Card>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
             <Stat label="Lance total" value={fmt(decision.withBid.bidCash + decision.withBid.bidEmbedded)} sub={`${fmtPct(freePct + embPct, 1)} da carta · do bolso ${fmt(decision.withBid.bidCash)}`} strong />
             <Stat label="Crédito líquido" value={fmt(decision.withBid.netCredit)} sub={decision.withBid.bidEmbedded > 0 ? `carta − embutido ${fmt(decision.withBid.bidEmbedded)}` : 'carta inteira'} />
             <Stat label="Saldo devedor" value={`${fmt(decision.withBid.balanceBeforeBid)} → ${fmt(decision.withBid.balanceAfterBid)}`} />
@@ -1092,20 +1270,27 @@ const ConsortiumSimulator: React.FC = () => {
       {/* ═══ CARTA CONTEMPLADA ═══ */}
       {tab === 'contemplated' && (
         <>
+          <TabGuide id="contemplated"
+            purpose="avaliar uma cota já contemplada à venda — o crédito sai na hora, como num financiamento — e descobrir o ágio máximo que vale pagar."
+            steps={[
+              'Preencha os dados do anúncio: crédito disponível, ágio/entrada, taxa de transferência, parcela atual e parcelas restantes.',
+              'Informe a taxa do financiamento que você conseguiria, para comparar.',
+              'Leia o custo efetivo (CET) e o "ágio máximo que vale"; acima dele, o financiamento sai mais barato.'
+            ]} />
           <Card title="Cota já contemplada à venda">
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-              <Field label="Crédito disponível" value={cqCredit} onChange={setCqCredit} suffix="R$" />
-              <Field label="Entrada / ágio ao vendedor" value={cqEntry} onChange={setCqEntry} suffix="R$" />
-              <Field label="Taxa de transferência" value={cqFee} onChange={setCqFee} suffix="R$" />
-              <Field label="Parcela atual" value={cqInst} onChange={setCqInst} suffix="R$" />
-              <Field label="Parcelas restantes" value={cqMonths} onChange={setCqMonths} integer />
-              <Field label="Financiamento alternativo" value={finRate} onChange={setFinRate} suffix="% a.a." />
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-3 gap-3">
+              <Field help={H.cqCredit} label="Crédito disponível" value={cqCredit} onChange={setCqCredit} suffix="R$" />
+              <Field help={H.cqEntry} label="Entrada / ágio ao vendedor" value={cqEntry} onChange={setCqEntry} suffix="R$" />
+              <Field help={H.cqFee} label="Taxa de transferência" value={cqFee} onChange={setCqFee} suffix="R$" />
+              <Field help={H.cqInst} label="Parcela atual" value={cqInst} onChange={setCqInst} suffix="R$" />
+              <Field help={H.cqMonths} label="Parcelas restantes" value={cqMonths} onChange={setCqMonths} integer />
+              <Field help={H.finRate} label="Financiamento alternativo" value={finRate} onChange={setFinRate} suffix="% a.a." />
             </div>
             <p className="text-[10px] text-slate-400">As parcelas são reajustadas todo ano pelo índice do plano ({fmtPct(num(index))} a.a.).</p>
           </Card>
           {num(cqCredit) > 0 && num(cqInst) > 0 && num(cqMonths) > 0 ? (
             <>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
                 <Stat label="Custo efetivo (CET)" value={`${fmtPct(cq.cetAnnualPct)} a.a.`} sub={`${fmtPct(cq.cetMonthlyPct, 3)} a.m.`} strong />
                 <Stat label="Total que vai pagar" value={fmt(cq.totalPaid)} sub="entrada + taxa + parcelas" />
                 <Stat label="Custo acima do crédito" value={fmt(cq.nominalCost)} />
@@ -1124,22 +1309,30 @@ const ConsortiumSimulator: React.FC = () => {
       {/* ═══ QUITAR FINANCIAMENTO ═══ */}
       {tab === 'payoff' && (
         <>
+          <TabGuide id="payoff"
+            purpose="ver se vale quitar um financiamento com a carta do consórcio, quanto a parcela muda e quanto capital livre sobra."
+            steps={[
+              'Escolha um financiamento seu (puxa saldo e parcelas reais) ou digite.',
+              'Peça ao banco o saldo devedor para quitação e coloque em "Saldo para quitar".',
+              'Preencha o consórcio: crédito líquido, lance do bolso, parcela e parcelas depois de contemplar — ou toque em "Usar o resultado da aba Lance".',
+              'Leia o capital livre, a parcela de hoje × depois e o veredito em valor presente.'
+            ]} />
           <Card title="O financiamento de hoje">
             {financings.length > 0 && (
               <div>
-                <label className={labelCls}>Usar um financiamento meu</label>
+                <HelpLabel label="Usar um financiamento meu" help={H.finPick} />
                 <select className={inputCls} value={finId} onChange={e => chooseFinancing(e.target.value)}>
                   <option value="">Digitar manualmente…</option>
                   {financings.map(f => <option key={f.id} value={f.id}>{f.name.trim()} — saldo {fmt(Number(f.remaining_balance))}</option>)}
                 </select>
               </div>
             )}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Field label="Saldo para quitar" value={poBalance} onChange={setPoBalance} suffix="R$" hint="Peça o valor de quitação ao banco" />
-              <Field label="Juros" value={poRateMonth} onChange={v => { setPoRateMonth(v); setPoRealInstallments(null); }} suffix="% a.m." />
-              <Field label="Parcelas restantes" value={poMonths} onChange={v => { setPoMonths(v); setPoRealInstallments(null); }} integer />
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
+              <Field help={H.poBalance} label="Saldo para quitar" value={poBalance} onChange={setPoBalance} suffix="R$" hint="Peça o valor de quitação ao banco" />
+              <Field help={H.poRate} label="Juros" value={poRateMonth} onChange={v => { setPoRateMonth(v); setPoRealInstallments(null); }} suffix="% a.m." />
+              <Field help={H.poMonths} label="Parcelas restantes" value={poMonths} onChange={v => { setPoMonths(v); setPoRealInstallments(null); }} integer />
               <div>
-                <label className={labelCls}>Sistema</label>
+                <HelpLabel label="Sistema" help={H.finSystem} />
                 <Seg value={poSystem} onChange={v => { setPoSystem(v); setPoRealInstallments(null); }} options={[{ value: 'PRICE', label: 'PRICE' }, { value: 'SAC', label: 'SAC' }]} />
               </div>
             </div>
@@ -1151,16 +1344,16 @@ const ConsortiumSimulator: React.FC = () => {
           </Card>
           <Card title="O consórcio que quita">
             <button onClick={usePlanForPayoff} className="text-[11px] font-black text-brand-600 hover:text-brand-800">↳ Usar o resultado da aba Lance (crédito líquido, lance do bolso e parcela depois)</button>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Field label="Crédito líquido liberado" value={poNetCredit} onChange={setPoNetCredit} suffix="R$" />
-              <Field label="Lance pago do bolso" value={poOwnBid} onChange={setPoOwnBid} suffix="R$" />
-              <Field label="Parcela do consórcio" value={poInst} onChange={setPoInst} suffix="R$" />
-              <Field label="Parcelas do consórcio" value={poConsMonths} onChange={setPoConsMonths} integer />
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
+              <Field help={H.poNetCredit} label="Crédito líquido liberado" value={poNetCredit} onChange={setPoNetCredit} suffix="R$" />
+              <Field help={H.poOwnBid} label="Lance pago do bolso" value={poOwnBid} onChange={setPoOwnBid} suffix="R$" />
+              <Field help={H.poInst} label="Parcela do consórcio" value={poInst} onChange={setPoInst} suffix="R$" />
+              <Field help={H.poConsMonths} label="Parcelas do consórcio" value={poConsMonths} onChange={setPoConsMonths} integer />
             </div>
           </Card>
           {num(poBalance) > 0 && num(poNetCredit) > 0 ? (
             <>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
                 <Stat label="Capital livre gerado" value={fmt(payoff.freeCapital - num(poOwnBid))} sub={`crédito ${fmt(num(poNetCredit))} − quitação ${fmt(num(poBalance))} − lance ${fmt(num(poOwnBid))}`} strong />
                 <Stat label="Parcela: hoje → depois" value={`${fmt(payoff.financing.firstInstallment)} → ${fmt(num(poInst))}`} sub={payoff.monthlyDifference >= 0 ? `sobra ${fmt(payoff.monthlyDifference)}/mês` : `${fmt(-payoff.monthlyDifference)}/mês a mais`} />
                 <Stat label="Custo hoje (valor presente)" value={fmt(payoff.pvCostKeepFinancing)} sub={`total nominal ${fmt(payoff.financing.totalPaid)}`} />
@@ -1184,37 +1377,60 @@ const ConsortiumSimulator: React.FC = () => {
       {/* ═══ VENDER COTA ═══ */}
       {tab === 'sale' && (
         <>
+          <TabGuide id="sale"
+            purpose="ver o lucro de vender a sua cota — em reais, % total e % ao mês — e por quanto vender para ter a rentabilidade que você quer."
+            steps={[
+              'Escolha sua cota: o simulador soma os pagamentos reais, inclusive os antigos lançados antes do cadastro (você pode desmarcar). Ou digite parcela, meses e lance.',
+              'Informe o preço e a data da venda.',
+              'Leia o lucro, a rentabilidade ao mês e quanto o dinheiro teria rendido aplicado.',
+              'Em "Preço para a rentabilidade que você quer", defina a meta (% ao mês ou total) para ver o preço mínimo.'
+            ]} />
           <Card title="O que você já pagou">
             <div>
-              <label className={labelCls}>Pagamentos</label>
+              <HelpLabel label="Pagamentos" help={H.salePick} />
               <select className={inputCls} value={saleSource} onChange={e => chooseSaleSource(e.target.value)}>
                 <option value="">Digitar manualmente…</option>
                 {consortiums.map(c => <option key={c.id} value={c.id}>{c.name} (pagamentos reais)</option>)}
               </select>
             </div>
             {!saleSource ? (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <Field label="Parcela paga" value={manualInst} onChange={setManualInst} suffix="R$" />
-                <Field label="Meses pagos" value={manualMonths} onChange={setManualMonths} integer />
-                <div><label className={labelCls}>1ª parcela em</label><DateInput className={inputCls} value={manualStart} onChange={e => setManualStart(e.target.value)} /></div>
-                <Field label="Lance pago do bolso" value={manualBid} onChange={setManualBid} suffix="R$" />
+              <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
+                <Field help={H.manualInst} label="Parcela paga" value={manualInst} onChange={setManualInst} suffix="R$" />
+                <Field help={H.manualMonths} label="Meses pagos" value={manualMonths} onChange={setManualMonths} integer />
+                <div><HelpLabel label="1ª parcela em" help={H.manualStart} /><DateInput className={inputCls} value={manualStart} onChange={e => setManualStart(e.target.value)} /></div>
+                <Field help={H.manualBid} label="Lance pago do bolso" value={manualBid} onChange={setManualBid} suffix="R$" />
               </div>
             ) : (
-              <p className="text-[11px] text-slate-500">
-                {salePayments === null ? 'Carregando pagamentos…' : `${salePayments.length} pagamentos, total ${fmt(sale.invested)} — parcelas e lance do bolso (o embutido não conta, saiu da carta).`}
-              </p>
+              <div className="space-y-2 text-[11px] text-slate-600">
+                {salePayments === null ? <p>Carregando pagamentos…</p> : (
+                  <>
+                    <p><strong>{salePayments.length}</strong> pagamentos vinculados ao consórcio: <strong>{fmt(sumFlows(salePayments))}</strong> (parcelas e lance do bolso; o embutido não conta, saiu da carta).</p>
+                    {saleHistory.length > 0 && (
+                      <label className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-100 cursor-pointer">
+                        <input type="checkbox" className="mt-0.5" checked={includeHistory} onChange={e => setIncludeHistory(e.target.checked)} />
+                        <span>
+                          Incluir <strong>{saleHistory.length}</strong> pagamentos anteriores ao cadastro, achados pela descrição "Grupo {saleQuota?.group_number} cota {saleQuota?.quota_number}":
+                          {' '}<strong>{fmt(sumFlows(saleHistory))}</strong> ({saleHistory[0].date.split('-').reverse().join('/')} a {saleHistory[saleHistory.length - 1].date.split('-').reverse().join('/')}).
+                          {' '}<span className="text-slate-400">Só leitura — os lançamentos não são alterados.</span>
+                        </span>
+                      </label>
+                    )}
+                    <p>Total considerado: <strong>{fmt(sale.invested)}</strong>{sale.invested > 0 && <> · primeiro pagamento em {payments.map(p => p.date).sort()[0].split('-').reverse().join('/')}</>}</p>
+                  </>
+                )}
+              </div>
             )}
           </Card>
           <Card title="A venda">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Field label="Preço de venda" value={salePrice} onChange={setSalePrice} suffix="R$" />
-              <div><label className={labelCls}>Data da venda</label><DateInput className={inputCls} value={saleDate} onChange={e => setSaleDate(e.target.value)} /></div>
-              <Field label="Rendimento do seu dinheiro" value={opportunity} onChange={setOpportunity} suffix="% a.a." />
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
+              <Field help={H.salePrice} label="Preço de venda" value={salePrice} onChange={setSalePrice} suffix="R$" />
+              <div><HelpLabel label="Data da venda" help={H.saleDate} /><DateInput className={inputCls} value={saleDate} onChange={e => setSaleDate(e.target.value)} /></div>
+              <Field help={H.opportunity} warn={W.opportunity(num(opportunity))} label="Rendimento do seu dinheiro" value={opportunity} onChange={setOpportunity} suffix="% a.a." />
             </div>
           </Card>
           {sale.invested > 0 && num(salePrice) > 0 && (
             <>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
                 <Stat label="Lucro" value={fmt(sale.profit)} sub={`sobre ${fmt(sale.invested)} investidos`} strong />
                 <Stat label="Lucro total" value={fmtPct(sale.profitPct)} />
                 <Stat label="Rentabilidade mensal" value={`${fmtPct(sale.monthlyIrrPct, 3)} a.m.`} sub={sale.months < 6 ? 'Período curto: a taxa ao ano fica exagerada — olhe a ao mês e o lucro total' : `${fmtPct(sale.annualIrrPct)} a.a. · desde cada pagamento`} strong />
@@ -1227,9 +1443,9 @@ const ConsortiumSimulator: React.FC = () => {
           )}
           <Card title="Preço para a rentabilidade que você quer">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
-              <Field label="Meta de lucro" value={targetPct} onChange={setTargetPct} suffix="%" />
+              <Field help={H.targetPct} label="Meta de lucro" value={targetPct} onChange={setTargetPct} suffix="%" />
               <div className="lg:col-span-2">
-                <label className={labelCls}>A meta é</label>
+                <HelpLabel label="A meta é" help={H.targetBasis} />
                 <Seg value={targetBasis} onChange={setTargetBasis} options={[{ value: 'MONTHLY', label: '% ao mês' }, { value: 'TOTAL', label: '% total' }]} />
               </div>
               <Stat label="Preço mínimo de venda" value={fmt(target)} sub={targetBasis === 'MONTHLY' ? 'Cada pagamento rendendo a meta desde a data em que foi pago' : `Pago ${fmt(sale.invested)} + ${fmtPct(num(targetPct))}`} strong />
