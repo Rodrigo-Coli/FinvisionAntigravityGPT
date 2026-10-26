@@ -19,6 +19,13 @@ import { syncConsortiumBalance } from '../../services/consortiumBalance.service'
  * futura, não paga e sem pagamento parcial. Parcela retirada é só ocultada
  * (is_deleted), nunca apagada, e o lance guarda o que mudou em
  * `consortiums.metadata.bids` — dá para desfazer o último lance.
+ *
+ * Lance embutido: parte do lance sai da própria carta de crédito, sem dinheiro
+ * do bolso. Vira um lançamento SEM conta, marcado como capitalizado e
+ * amortização — não mexe no saldo do banco nem conta como gasto do mês, mas
+ * abate o saldo devedor junto com a parte paga por boleto. A carta liberada
+ * (crédito líquido) fica = carta − embutido. Embutido só é cobrado quando o
+ * lance contempla, por isso ele marca a cota como contemplada.
  */
 
 interface BidConsortium {
@@ -26,10 +33,30 @@ interface BidConsortium {
   name: string;
   liability_id: string | null;
   metadata: Record<string, any>;
+  status?: string;
+  credit_letter_value?: number | null;
+  contemplated_at?: string | null;
+  contemplation_method?: string | null;
+}
+
+// Campos que a contemplação por lance grava no consórcio (e o desfazer devolve).
+const CONTEMPLATION_META_KEYS = ['bid_amount', 'bid_type', 'embedded_bid_amount', 'net_credit'] as const;
+
+interface ContemplationSnapshot {
+  status: string | null;
+  contemplated_at: string | null;
+  contemplation_method: string | null;
+  meta: Record<string, any>;
 }
 
 interface BidRecord {
   transaction_id: string;
+  /** Lançamentos do lance (boleto e/ou embutido). Lances antigos só têm `transaction_id`. */
+  transaction_ids?: string[];
+  cash_amount?: number;
+  embedded_amount?: number;
+  /** Situação do consórcio antes de o lance contemplar (para desfazer). */
+  contemplation?: ContemplationSnapshot;
   date: string;
   amount: number;
   mode: BidMode;
@@ -79,6 +106,8 @@ const ConsortiumBidModal: React.FC<{
   const [liabilityAmount, setLiabilityAmount] = useState<number | null>(null);
   const [liabilityBalance, setLiabilityBalance] = useState<number | null>(null);
   const [amountText, setAmountText] = useState('');
+  const [embeddedText, setEmbeddedText] = useState('');
+  const [contemplatedChoice, setContemplatedChoice] = useState(false);
   const [date, setDate] = useState(DateUtils.formatToISODate());
   const [accountId, setAccountId] = useState('');
   const [mode, setMode] = useState<BidMode>('REDUCE_TERM');
@@ -118,7 +147,15 @@ const ConsortiumBidModal: React.FC<{
     return () => { alive = false; };
   }, [consortium.liability_id]);
 
-  const bidAmount = parseMoneyInput(amountText);
+  const cashAmount = parseMoneyInput(amountText);
+  const embeddedAmount = parseMoneyInput(embeddedText);
+  const bidAmount = Math.round((cashAmount + embeddedAmount) * 100) / 100;
+  const isWaiting = !consortium.status || consortium.status === 'WAITING';
+  // Embutido só é cobrado quando o lance contempla.
+  const contemplates = isWaiting && (contemplatedChoice || embeddedAmount > 0);
+  const carta = Number(consortium.credit_letter_value) || 0;
+  const netCredit = Math.max(0, Math.round((carta - embeddedAmount) * 100) / 100);
+  const embeddedPct = carta > 0 ? (embeddedAmount / carta) * 100 : 0;
   const override = overrideText.trim()
     ? (mode === 'REDUCE_TERM' ? parseInt(overrideText.replace(/\D/g, ''), 10) : parseMoneyInput(overrideText))
     : null;
@@ -144,12 +181,12 @@ const ConsortiumBidModal: React.FC<{
     if (!supabase || !plan || saving || !consortium.liability_id) return;
     if (bidAmount <= 0) { toast('Informe o valor do lance.', 'warning'); return; }
     if (!date) { toast('Informe a data do lance.', 'warning'); return; }
-    if (!accountId && ledger.accounts.length > 0) { toast('Escolha a conta de onde saiu o dinheiro (ou "Sem conta").', 'warning'); return; }
+    if (cashAmount > 0 && !accountId && ledger.accounts.length > 0) { toast('Escolha a conta de onde saiu o boleto (ou "Sem conta").', 'warning'); return; }
     if (mode === 'REDUCE_INSTALLMENT' && overrideText.trim() && !(override && override > 0)) {
       toast('Novo valor da parcela inválido.', 'warning'); return;
     }
     setSaving(true);
-    let bidTxId: string | null = null;
+    const bidTxIds: string[] = [];
     let removedIds: string[] = [];
     let previousAmounts: { id: string; amount: number }[] = [];
     let metadataSaved = false;
@@ -163,33 +200,63 @@ const ConsortiumBidModal: React.FC<{
       // lance entra como amortização (ver lib/consortiumBalance).
       await syncConsortiumBalance(consortium.liability_id);
 
-      // 1. O lance: despesa paga, vinculada ao passivo (entra no extrato do consórcio).
-      const { data: bidTx, error: bidErr } = await supabase.from('transactions').insert({
-        user_id: user.id,
-        account_id: accId,
-        account_name: accId ? ledger.accountName(accId) : null,
-        description: `Lance - ${consortium.name}`,
-        amount: bidAmount,
-        date,
-        type: 'EXPENSE',
-        category: 'Consórcio',
-        subcategory: 'Lance',
-        is_paid: true,
-        paid_amount: bidAmount,
-        paid_at: date,
-        is_deleted: false,
-        liability_id: consortium.liability_id,
+      // 1. O lance, vinculado ao passivo (entra no extrato do consórcio).
+      const bidMeta = {
+        type: 'consortium_bid',
         consortium_id: consortium.id,
-        metadata: {
-          type: 'consortium_bid',
+        bid_mode: mode,
+        removed_installments: plan.deleteIds.length,
+        new_installment_amount: newAmount ?? null
+      };
+      if (cashAmount > 0) {
+        // Parte do bolso (boleto): despesa paga, sai da conta escolhida.
+        const { data, error } = await supabase.from('transactions').insert({
+          user_id: user.id,
+          account_id: accId,
+          account_name: accId ? ledger.accountName(accId) : null,
+          description: `Lance - ${consortium.name}`,
+          amount: cashAmount,
+          date,
+          type: 'EXPENSE',
+          category: 'Consórcio',
+          subcategory: 'Lance',
+          is_paid: true,
+          paid_amount: cashAmount,
+          paid_at: date,
+          is_deleted: false,
+          liability_id: consortium.liability_id,
           consortium_id: consortium.id,
-          bid_mode: mode,
-          removed_installments: plan.deleteIds.length,
-          new_installment_amount: newAmount ?? null
-        }
-      }).select('id').single();
-      if (bidErr) throw bidErr;
-      bidTxId = bidTx.id;
+          metadata: { ...bidMeta, bid_part: 'CASH' }
+        }).select('id').single();
+        if (error) throw error;
+        bidTxIds.push(data.id);
+      }
+      if (embeddedAmount > 0) {
+        // Parte embutida (da própria carta): sem conta, capitalizada e
+        // amortização — fora dos gastos do mês e do saldo do banco, mas abate
+        // o saldo devedor.
+        const { data, error } = await supabase.from('transactions').insert({
+          user_id: user.id,
+          account_id: null,
+          account_name: null,
+          description: `Lance embutido - ${consortium.name}`,
+          amount: embeddedAmount,
+          date,
+          type: 'EXPENSE',
+          category: 'Consórcio',
+          subcategory: 'Lance embutido',
+          is_paid: true,
+          paid_amount: embeddedAmount,
+          paid_at: date,
+          is_deleted: false,
+          is_amortization: true,
+          liability_id: consortium.liability_id,
+          consortium_id: consortium.id,
+          metadata: { ...bidMeta, bid_part: 'EMBEDDED', isCapitalized: true }
+        }).select('id').single();
+        if (error) throw error;
+        bidTxIds.push(data.id);
+      }
 
       // 2. As parcelas. `is_paid = false` de novo aqui: se alguma foi paga
       // depois da prévia, ela não é tocada. Guarda só as que mudaram de fato.
@@ -212,8 +279,18 @@ const ConsortiumBidModal: React.FC<{
       }
 
       // 3. Histórico do lance (para desfazer) e, por último, o passivo.
+      const snapshot: ContemplationSnapshot | undefined = contemplates ? {
+        status: consortium.status ?? null,
+        contemplated_at: consortium.contemplated_at ?? null,
+        contemplation_method: consortium.contemplation_method ?? null,
+        meta: Object.fromEntries(CONTEMPLATION_META_KEYS.filter(k => k in (consortium.metadata || {})).map(k => [k, consortium.metadata[k]]))
+      } : undefined;
       const record: BidRecord = {
-        transaction_id: bidTx.id,
+        transaction_id: bidTxIds[0],
+        transaction_ids: bidTxIds,
+        cash_amount: cashAmount,
+        embedded_amount: embeddedAmount,
+        ...(snapshot ? { contemplation: snapshot } : {}),
         date,
         amount: bidAmount,
         mode,
@@ -226,7 +303,20 @@ const ConsortiumBidModal: React.FC<{
         created_at: nowIso
       };
       const { error: metaErr } = await supabase.from('consortiums')
-        .update({ metadata: { ...(consortium.metadata || {}), bids: [...bids, record] }, updated_at: nowIso })
+        .update({
+          metadata: {
+            ...(consortium.metadata || {}),
+            bids: [...bids, record],
+            ...(contemplates ? {
+              bid_amount: bidAmount,
+              bid_type: embeddedAmount > 0 ? (cashAmount > 0 ? 'MIXED' : 'EMBEDDED') : 'FREE',
+              embedded_bid_amount: embeddedAmount,
+              net_credit: netCredit
+            } : {})
+          },
+          ...(contemplates ? { status: 'CONTEMPLATED', contemplated_at: date, contemplation_method: 'BID' } : {}),
+          updated_at: nowIso
+        })
         .eq('id', consortium.id);
       if (metaErr) throw metaErr;
       metadataSaved = true;
@@ -236,18 +326,26 @@ const ConsortiumBidModal: React.FC<{
         try { await supabase.rpc('recalculate_account_balance', { p_account_id: accId }); } catch { /* o gatilho do banco também recalcula */ }
       }
       clearFinanceCaches(user.id);
-      toast(removedIds.length
+      toast((removedIds.length
         ? `Lance registrado: ${removedIds.length} parcela(s) retirada(s).`
         : previousAmounts.length
           ? `Lance registrado: parcelas passam a ${fmt(plan.newInstallmentAmount)}.`
-          : 'Lance registrado. Nenhuma parcela mudou.', 'success');
+          : 'Lance registrado. Nenhuma parcela mudou.')
+        + (contemplates ? ' Cota marcada como contemplada.' : ''), 'success');
       onSaved();
     } catch (err: any) {
       // Falhou no meio: desfaz o que já tinha sido gravado, na ordem inversa —
       // não fica lance pago sem abatimento nem parcela mexida sem lance.
       try {
         if (metadataSaved) {
-          await supabase.from('consortiums').update({ metadata: { ...(consortium.metadata || {}), bids } }).eq('id', consortium.id);
+          await supabase.from('consortiums').update({
+            metadata: consortium.metadata || {},
+            ...(contemplates ? {
+              status: consortium.status ?? 'WAITING',
+              contemplated_at: consortium.contemplated_at ?? null,
+              contemplation_method: consortium.contemplation_method ?? 'UNKNOWN'
+            } : {})
+          }).eq('id', consortium.id);
         }
         const byAmount = new Map<number, string[]>();
         previousAmounts.forEach(p => byAmount.set(p.amount, [...(byAmount.get(p.amount) || []), p.id]));
@@ -257,8 +355,8 @@ const ConsortiumBidModal: React.FC<{
         if (removedIds.length) {
           await supabase.from('transactions').update({ is_deleted: false }).in('id', removedIds).eq('is_paid', false);
         }
-        if (bidTxId) {
-          await supabase.from('transactions').update({ is_deleted: true }).eq('id', bidTxId);
+        if (bidTxIds.length) {
+          await supabase.from('transactions').update({ is_deleted: true }).in('id', bidTxIds);
         }
         if (consortium.liability_id) await syncConsortiumBalance(consortium.liability_id);
       } catch { /* segue o erro original */ }
@@ -291,18 +389,37 @@ const ConsortiumBidModal: React.FC<{
           .in('id', ids).eq('is_paid', false).eq('user_id', user.id);
         if (error) throw error;
       }
+      const lastIds = lastBid.transaction_ids?.length ? lastBid.transaction_ids : [lastBid.transaction_id];
       const { error: bidErr } = await supabase.from('transactions')
         .update({ is_deleted: true })
-        .eq('id', lastBid.transaction_id).eq('user_id', user.id);
+        .in('id', lastIds).eq('user_id', user.id);
       if (bidErr) throw bidErr;
 
       await refreshConsortiumLiability(
         consortium.liability_id,
         lastBid.mode === 'REDUCE_INSTALLMENT' ? lastBid.previous_installment_amount : undefined
       );
-      await supabase.from('consortiums')
-        .update({ metadata: { ...(consortium.metadata || {}), bids: bids.slice(0, -1) }, updated_at: nowIso })
+      const restoredMeta: Record<string, any> = { ...(consortium.metadata || {}), bids: bids.slice(0, -1) };
+      const snap = lastBid.contemplation;
+      if (snap) {
+        // A cota volta para a situação de antes do lance que a contemplou.
+        CONTEMPLATION_META_KEYS.forEach(k => {
+          if (snap.meta && k in snap.meta) restoredMeta[k] = snap.meta[k];
+          else delete restoredMeta[k];
+        });
+      }
+      const { error: consErr } = await supabase.from('consortiums')
+        .update({
+          metadata: restoredMeta,
+          ...(snap ? {
+            status: snap.status || 'WAITING',
+            contemplated_at: snap.contemplated_at,
+            contemplation_method: snap.contemplation_method || 'UNKNOWN'
+          } : {}),
+          updated_at: nowIso
+        })
         .eq('id', consortium.id);
+      if (consErr) throw consErr;
       if (lastBid.account_id) {
         try { await supabase.rpc('recalculate_account_balance', { p_account_id: lastBid.account_id }); } catch { /* o gatilho do banco também recalcula */ }
       }
@@ -344,7 +461,8 @@ const ConsortiumBidModal: React.FC<{
               {lastBid && (
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-[11px] text-slate-500 space-y-2">
                   <p>
-                    Último lance: <strong className="text-slate-700">{fmt(lastBid.amount)}</strong> em {fmtDate(lastBid.date)} —{' '}
+                    Último lance: <strong className="text-slate-700">{fmt(lastBid.amount)}</strong>
+                    {(lastBid.embedded_amount || 0) > 0 && <> ({fmt(lastBid.embedded_amount || 0)} embutido)</>} em {fmtDate(lastBid.date)} —{' '}
                     {lastBid.mode === 'REDUCE_TERM'
                       ? `${lastBid.removed_ids?.length || 0} parcela(s) retirada(s)`
                       : `parcelas para ${fmt(lastBid.new_installment_amount)}`}
@@ -365,23 +483,52 @@ const ConsortiumBidModal: React.FC<{
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={label}>Valor do lance (R$)</label>
+                  <label className={label}>Pago do bolso / boleto (R$)</label>
                   <input className={inp} inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(sanitizeMoneyTyping(e.target.value))} />
                 </div>
                 <div>
-                  <label className={label}>Data do pagamento</label>
-                  <DateInput className={inp} value={date} onChange={e => setDate(e.target.value)} />
+                  <label className={label}>Lance embutido (R$)</label>
+                  <input className={inp} inputMode="decimal" placeholder="0,00" value={embeddedText} onChange={e => setEmbeddedText(sanitizeMoneyTyping(e.target.value))} />
                 </div>
               </div>
+              <p className="text-[10px] text-slate-400 -mt-2">
+                Embutido = parte do lance que sai da própria carta de crédito (sem dinheiro do bolso). Deixe em branco se não usou.
+                {bidAmount > 0 && <> Lance total: <strong className="text-slate-600">{fmt(bidAmount)}</strong>.</>}
+              </p>
 
               <div>
-                <label className={label}>Conta que pagou</label>
+                <label className={label}>Data do lance</label>
+                <DateInput className={inp} value={date} onChange={e => setDate(e.target.value)} />
+              </div>
+
+              {cashAmount > 0 && <div>
+                <label className={label}>Conta que pagou o boleto</label>
                 <select className={inp} value={accountId} onChange={e => setAccountId(e.target.value)}>
                   <option value="">Selecione a conta…</option>
                   {ledger.accounts.map(a => <option key={a.id} value={a.id}>{a.institution}</option>)}
                   <option value={NO_ACCOUNT}>Sem conta (não mexe no saldo)</option>
                 </select>
-              </div>
+              </div>}
+
+              {isWaiting && (
+                <label className={`flex items-start gap-3 p-3 rounded-xl border-2 ${contemplates ? 'border-emerald-300 bg-emerald-50' : 'border-slate-100'} ${embeddedAmount > 0 ? '' : 'cursor-pointer'}`}>
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={contemplates}
+                    disabled={embeddedAmount > 0}
+                    onChange={e => setContemplatedChoice(e.target.checked)}
+                  />
+                  <span>
+                    <span className="block text-xs font-black text-slate-900">Este lance contemplou a cota</span>
+                    <span className="block text-[10px] text-slate-500 leading-snug">
+                      {embeddedAmount > 0
+                        ? 'Lance embutido só é cobrado quando contempla — a cota passa para Contemplado.'
+                        : 'Marque se o lance foi vencedor: a cota passa para Contemplado por lance, nesta data.'}
+                    </span>
+                  </span>
+                </label>
+              )}
 
               <div>
                 <label className={label}>O que a administradora fez com o lance?</label>
@@ -439,6 +586,15 @@ const ConsortiumBidModal: React.FC<{
                     <p>
                       Saldo devedor: <strong>{fmt(liabilityBalance)}</strong> → <strong>{fmt(Math.max(0, liabilityBalance - bidAmount))}</strong>
                     </p>
+                  )}
+                  {embeddedAmount > 0 && carta > 0 && (
+                    <p>
+                      Crédito líquido: <strong>{fmt(carta)}</strong> − <strong>{fmt(embeddedAmount)}</strong> embutido = <strong>{fmt(netCredit)}</strong>
+                      {' '}({embeddedPct.toFixed(1).replace('.', ',')}% da carta embutido)
+                    </p>
+                  )}
+                  {embeddedPct > 30 && (
+                    <p className="text-[10px] text-slate-500">Acima de 30% da carta — confira se é o limite do seu grupo.</p>
                   )}
                   {liabilityBalance !== null && futureTotal > 0 && liabilityBalance - futureTotal > 1 && (
                     <p className="text-[10px] text-slate-500">

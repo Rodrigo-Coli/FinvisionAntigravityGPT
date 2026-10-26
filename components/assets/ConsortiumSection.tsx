@@ -702,8 +702,17 @@ const ConsortiumCard: React.FC<{
           )}
 
           <div className="bg-white rounded-2xl border border-amber-100 p-4 space-y-2">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Carta de Crédito Disponível</p>
-            <p className="font-black text-slate-900 text-2xl">{fmt(c.credit_letter_value)}</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+              {Number(c.metadata?.embedded_bid_amount) > 0 ? 'Crédito Líquido Disponível' : 'Carta de Crédito Disponível'}
+            </p>
+            <p className="font-black text-slate-900 text-2xl">
+              {fmt(Number(c.metadata?.embedded_bid_amount) > 0 && c.metadata?.net_credit != null ? Number(c.metadata.net_credit) : c.credit_letter_value)}
+            </p>
+            {Number(c.metadata?.embedded_bid_amount) > 0 && (
+              <p className="text-[10px] text-slate-400">
+                Carta {fmt(c.credit_letter_value)} − lance embutido {fmt(Number(c.metadata.embedded_bid_amount))}
+              </p>
+            )}
             {c.contemplated_at && (
               <p className="text-[10px] text-slate-400">
                 Contemplado em {new Date(c.contemplated_at).toLocaleDateString('pt-BR')}
