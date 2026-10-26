@@ -1,13 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calculator, Gavel, BadgeCheck, Landmark, HandCoins, Info, CheckCircle2, AlertTriangle, XCircle, ChevronDown,
-  Layers, Plus, Copy, Trash2
+  Layers, Plus, Copy, Trash2, Sparkles, Mic, MicOff, Send, Loader2, Save, FileSpreadsheet, FileText, FolderOpen
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
 import { getSessionUser } from '../../lib/session';
 import { DateUtils } from '../../lib/dateUtils';
 import { DateInput } from '../common/DateInput';
 import { sanitizeMoneyTyping, parseMoneyInput } from '../../lib/moneyInput';
+import { authHeaders } from '../../lib/apiClient';
+import {
+  QuotaDraft, KnownConsortium, SimulationState, blankQuota, newQuotaKey, applyAiSimulation
+} from '../../lib/consortiumSimState';
+import { exportSimulationXlsx, exportSimulationPdf } from '../../lib/consortiumSimExport';
 import {
   simulatePlan, simulateFinancing, evaluateBid, evaluateContemplatedQuota, evaluatePayoff,
   evaluateSale, targetSalePrice, lotteryOdds, bidChance, baseInstallmentValue, installmentsToPct,
@@ -23,6 +28,12 @@ import {
 
 type SimTab = 'plan' | 'bid' | 'portfolio' | 'contemplated' | 'payoff' | 'sale';
 type BidUnit = 'PCT' | 'BRL' | 'INST';
+interface SavedSimulation { id: string; name: string; savedAt: string; state: SimulationState }
+
+const readSaved = (): SavedSimulation[] => {
+  try { const v = JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+};
+const writeSaved = (list: SavedSimulation[]) => { try { localStorage.setItem(SAVED_KEY, JSON.stringify(list)); } catch { /* opcional */ } };
 
 // Referências de out/2026 (ver "Referências de mercado" na tela).
 const DEFAULT_CDI = 13.65;
@@ -46,7 +57,7 @@ const toText = (v: number | null | undefined, digits = 2) =>
   v === null || v === undefined || !Number.isFinite(Number(v)) ? '' : Number(v).toFixed(digits).replace('.', ',').replace(/,00$/, '');
 
 interface ConsortiumRow {
-  id: string; name: string; liability_id: string | null; credit_letter_value: number; total_months: number;
+  id: string; name: string; administrator_name?: string | null; liability_id: string | null; credit_letter_value: number; total_months: number;
   admin_fee_pct: number; reserve_fund_pct: number; insurance_monthly_amount: number; status: string; metadata: any;
 }
 interface FinancingRow {
@@ -199,24 +210,9 @@ const InstallmentChart: React.FC<{ plan: PlanResult }> = ({ plan }) => (
 );
 
 // ─── Várias cotas ───────────────────────────────────────────────────────────
-interface QuotaDraft {
-  key: string;
-  name: string;
-  source: string;          // '' = cota nova; senão id do consórcio cadastrado
-  credit: string; term: string; adm: string; fr: string; reduced: string;
-  balance: string; remaining: string; installment: string;
-  unit: BidUnit; baseTerm: string; free: string; emb: string;
-  month: string; mode: BidMode;
-}
-
 const PORTFOLIO_KEY = 'finvision_consortium_sim_portfolio';
-const newKey = () => Math.random().toString(36).slice(2, 10);
-const blankQuota = (n: number): QuotaDraft => ({
-  key: newKey(), name: `Cota ${n}`, source: '',
-  credit: '200.000', term: '200', adm: '18', fr: '2', reduced: '100',
-  balance: '', remaining: '', installment: '',
-  unit: 'PCT', baseTerm: '240', free: '0', emb: '0', month: '1', mode: 'REDUCE_INSTALLMENT'
-});
+const SAVED_KEY = 'finvision_consortium_sim_saved';
+const newKey = newQuotaKey;
 
 function draftToPlan(q: QuotaDraft, shared: { index: number; insurance: number }): PlanInput {
   const credit = num(q.credit);
@@ -239,19 +235,15 @@ function draftToPlan(q: QuotaDraft, shared: { index: number; insurance: number }
 const PortfolioTab: React.FC<{
   consortiums: ConsortiumRow[];
   consLiabs: Record<string, FinancingRow>;
+  quotas: QuotaDraft[];
+  setQuotas: React.Dispatch<React.SetStateAction<QuotaDraft[]>>;
   index: string; insurance: string; opportunity: string;
   setIndex: (v: string) => void; setInsurance: (v: string) => void; setOpportunity: (v: string) => void;
-}> = ({ consortiums, consLiabs, index, insurance, opportunity, setIndex, setInsurance, setOpportunity }) => {
-  const [quotas, setQuotas] = useState<QuotaDraft[]>(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(PORTFOLIO_KEY) || 'null');
-      if (Array.isArray(saved) && saved.length) return saved;
-    } catch { /* rascunho é opcional */ }
-    return [blankQuota(1)];
-  });
-  useEffect(() => {
-    try { localStorage.setItem(PORTFOLIO_KEY, JSON.stringify(quotas)); } catch { /* rascunho é opcional */ }
-  }, [quotas]);
+}> = ({ consortiums, consLiabs, quotas, setQuotas, index, insurance, opportunity, setIndex, setInsurance, setOpportunity }) => {
+  const [saved, setSaved] = useState<SavedSimulation[]>(readSaved);
+  const [saveName, setSaveName] = useState('');
+  const [exporting, setExporting] = useState<'' | 'xlsx' | 'pdf'>('');
+  const [notice, setNotice] = useState('');
 
   const update = (key: string, patch: Partial<QuotaDraft>) => setQuotas(list => list.map(q => q.key === key ? { ...q, ...patch } : q));
   const remove = (key: string) => setQuotas(list => list.length > 1 ? list.filter(q => q.key !== key) : list);
@@ -279,6 +271,34 @@ const PortfolioTab: React.FC<{
   const results = useMemo(() => quotas.map(q => simulatePlan(draftToPlan(q, shared), num(opportunity))), [quotas, index, insurance, opportunity]);
   const agg = useMemo(() => aggregatePlans(results), [results]);
   const unitSuffix = (u: BidUnit) => u === 'PCT' ? '%' : u === 'BRL' ? 'R$' : 'parc.';
+
+  const title = saveName.trim() || quotas.map(q => q.name).join(' + ').slice(0, 60) || 'Simulação';
+  const saveCurrent = () => {
+    const entry: SavedSimulation = {
+      id: newKey(), name: title, savedAt: new Date().toISOString(),
+      state: { premises: { index, insurance, opportunity }, quotas }
+    };
+    const list = [entry, ...saved.filter(s => s.name !== entry.name)].slice(0, 30);
+    setSaved(list); writeSaved(list); setSaveName('');
+    setNotice(`Simulação "${entry.name}" salva neste aparelho.`);
+  };
+  const openSaved = (s: SavedSimulation) => {
+    setQuotas(s.state.quotas.length ? s.state.quotas : [blankQuota(1)]);
+    setIndex(s.state.premises.index); setInsurance(s.state.premises.insurance); setOpportunity(s.state.premises.opportunity);
+    setSaveName(s.name);
+    setNotice(`Simulação "${s.name}" aberta.`);
+  };
+  const deleteSaved = (id: string) => { const list = saved.filter(s => s.id !== id); setSaved(list); writeSaved(list); };
+  const doExport = async (kind: 'xlsx' | 'pdf') => {
+    setExporting(kind);
+    try {
+      const input = { title, premises: { index, insurance, opportunity }, quotas, results, summaries: agg.quotas, total: agg.total, monthly: agg.monthly };
+      if (kind === 'xlsx') await exportSimulationXlsx(input); else await exportSimulationPdf(input);
+      setNotice(kind === 'xlsx' ? 'Planilha gerada.' : 'PDF gerado.');
+    } catch {
+      setNotice('Não foi possível gerar o arquivo. Tente de novo.');
+    } finally { setExporting(''); }
+  };
 
   return (
     <div className="space-y-6">
@@ -410,6 +430,39 @@ const PortfolioTab: React.FC<{
         </div>
       </Card>
 
+      <Card title="Salvar e exportar">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input className={inputCls} placeholder={title} value={saveName} onChange={e => setSaveName(e.target.value)} />
+          <div className="flex gap-2 flex-wrap">
+            <button type="button" onClick={saveCurrent} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-brand-600 text-white text-xs font-black"><Save size={14} />Salvar</button>
+            <button type="button" onClick={() => doExport('xlsx')} disabled={!!exporting} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-600 disabled:opacity-50">
+              {exporting === 'xlsx' ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}Planilha
+            </button>
+            <button type="button" onClick={() => doExport('pdf')} disabled={!!exporting} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-600 disabled:opacity-50">
+              {exporting === 'pdf' ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}PDF
+            </button>
+          </div>
+        </div>
+        {notice && <p className="text-[11px] font-bold text-emerald-700">{notice}</p>}
+        <p className="text-[10px] text-slate-400">As simulações ficam salvas neste aparelho — nada vai para os seus dados do app. A planilha e o PDF podem ser enviados para quem você quiser.</p>
+        {saved.length > 0 && (
+          <div className="divide-y divide-slate-100 border border-slate-100 rounded-2xl">
+            {saved.map(sv => (
+              <div key={sv.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-800 truncate">{sv.name}</p>
+                  <p className="text-[10px] text-slate-400">{new Date(sv.savedAt).toLocaleString('pt-BR')} · {sv.state.quotas.length} cota(s)</p>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <button type="button" onClick={() => openSaved(sv)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-600"><FolderOpen size={12} />Abrir</button>
+                  <button type="button" onClick={() => deleteSaved(sv.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600" aria-label="Excluir"><Trash2 size={13} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
       <Card title="Soma das parcelas mês a mês">
         <StepChart
           title="Saída do bolso por mês com todas as cotas (sem os lances)"
@@ -426,6 +479,126 @@ const PortfolioTab: React.FC<{
           }))}
         />
       </Card>
+    </div>
+  );
+};
+
+// ─── Assistente (IA) ────────────────────────────────────────────────────────
+interface ChatTurn { role: 'user' | 'assistant'; text: string }
+
+const SimAssistant: React.FC<{
+  buildContext: () => { state: unknown; known: KnownConsortium[] };
+  onApply: (ai: any) => void;
+}> = ({ buildContext, onApply }) => {
+  const [text, setText] = useState('');
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [listening, setListening] = useState(false);
+  const recRef = useRef<any>(null);
+  const SR = typeof window !== 'undefined' ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) : null;
+
+  const toggleVoice = () => {
+    if (!SR) return;
+    if (listening) { try { recRef.current?.stop(); } catch { /* já parou */ } return; }
+    try {
+      const rec = new SR();
+      rec.lang = 'pt-BR';
+      rec.interimResults = true;
+      rec.continuous = false;
+      const base = text ? `${text.trim()} ` : '';
+      rec.onresult = (e: any) => {
+        const said = Array.from(e.results).map((r: any) => r[0]?.transcript || '').join('');
+        setText(base + said);
+      };
+      rec.onerror = () => setListening(false);
+      rec.onend = () => setListening(false);
+      recRef.current = rec;
+      rec.start();
+      setListening(true);
+    } catch { setListening(false); }
+  };
+
+  const send = async (msg?: string) => {
+    const message = (msg ?? text).trim();
+    if (!message || busy) return;
+    setBusy(true); setError('');
+    try { recRef.current?.stop(); } catch { /* sem voz */ }
+    const history = turns.slice(-6);
+    setTurns(t => [...t, { role: 'user', text: message }]);
+    setText('');
+    try {
+      const { state, known } = buildContext();
+      const res = await fetch('/api/consortium-sim-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ message, history, state, known, today: DateUtils.formatToISODate() })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Não consegui montar a simulação agora.');
+      onApply(data);
+      setTurns(t => [...t, { role: 'assistant', text: String(data.reply || 'Simulação atualizada.') }]);
+    } catch (err: any) {
+      setError(err?.message || 'Não consegui montar a simulação agora.');
+    } finally { setBusy(false); }
+  };
+
+  const examples = [
+    'Monte com as minhas cotas e um lance de 30% do bolso daqui a 3 meses',
+    'Quero 2 cotas da Ademicon de R$ 174.647,06, grupo 560, prazo 128 meses, lance de 60 parcelas embutidas e 65 pagas no 1º mês'
+  ];
+
+  return (
+    <div className="bg-white border-2 border-brand-100 rounded-[24px] p-5 space-y-3 shadow-sm">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center"><Sparkles size={16} /></div>
+        <div>
+          <p className="text-sm font-black text-slate-900">Peça a simulação para a IA</p>
+          <p className="text-[11px] text-slate-500">Escreva ou fale o que quer. A IA monta as cotas e os lances; as contas são do simulador. Depois é só ajustar à mão ou pedir outra mudança.</p>
+        </div>
+      </div>
+
+      {turns.length > 0 && (
+        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+          {turns.map((t, i) => (
+            <div key={i} className={`text-xs leading-relaxed rounded-2xl px-3 py-2 ${t.role === 'user' ? 'bg-slate-100 text-slate-700 ml-8' : 'bg-brand-50 text-brand-900 mr-8'}`}>
+              {t.text}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2 items-end">
+        <textarea
+          className={`${inputCls} min-h-[72px] resize-y font-medium`}
+          placeholder={'Ex.: "Simule 2 cotas novas da Ademicon de 174 mil com lance embutido de 60 parcelas e veja junto com a minha 570-807"'}
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(); }}
+        />
+        <div className="flex flex-col gap-2">
+          {SR && (
+            <button type="button" onClick={toggleVoice} aria-label={listening ? 'Parar de ouvir' : 'Falar'}
+              className={`w-11 h-11 rounded-xl flex items-center justify-center border ${listening ? 'bg-rose-600 text-white border-rose-600 animate-pulse' : 'bg-white text-slate-600 border-slate-200'}`}>
+              {listening ? <MicOff size={18} /> : <Mic size={18} />}
+            </button>
+          )}
+          <button type="button" onClick={() => send()} disabled={busy || !text.trim()} aria-label="Simular"
+            className="w-11 h-11 rounded-xl flex items-center justify-center bg-brand-600 text-white disabled:opacity-40">
+            {busy ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+          </button>
+        </div>
+      </div>
+      {listening && <p className="text-[11px] font-bold text-rose-600">Ouvindo… fale o que quer simular.</p>}
+      {!SR && <p className="text-[10px] text-slate-400">Para falar, use o microfone do teclado do celular.</p>}
+      {error && <p className="text-[11px] font-bold text-rose-600">{error}</p>}
+      {turns.length === 0 && (
+        <div className="flex flex-wrap gap-2">
+          {examples.map(ex => (
+            <button key={ex} type="button" onClick={() => setText(ex)} className="text-left text-[11px] px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-brand-700">{ex}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -504,6 +677,18 @@ const ConsortiumSimulator: React.FC = () => {
 
   const [showRefs, setShowRefs] = useState(false);
 
+  // Cotas da aba "Várias cotas" — aqui em cima para a IA também montar.
+  const [quotas, setQuotas] = useState<QuotaDraft[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PORTFOLIO_KEY) || 'null');
+      if (Array.isArray(saved) && saved.length) return saved;
+    } catch { /* rascunho é opcional */ }
+    return [blankQuota(1)];
+  });
+  useEffect(() => {
+    try { localStorage.setItem(PORTFOLIO_KEY, JSON.stringify(quotas)); } catch { /* rascunho é opcional */ }
+  }, [quotas]);
+
   // Consórcios e financiamentos cadastrados (para pré-preencher).
   useEffect(() => {
     let alive = true;
@@ -513,7 +698,7 @@ const ConsortiumSimulator: React.FC = () => {
         const user = await getSessionUser(supabase);
         if (!user) return;
         const [cRes, lRes] = await Promise.all([
-          supabase.from('consortiums').select('id, name, liability_id, credit_letter_value, total_months, admin_fee_pct, reserve_fund_pct, insurance_monthly_amount, status, metadata').eq('user_id', user.id).order('name'),
+          supabase.from('consortiums').select('id, name, administrator_name, liability_id, credit_letter_value, total_months, admin_fee_pct, reserve_fund_pct, insurance_monthly_amount, status, metadata').eq('user_id', user.id).order('name'),
           supabase.from('liabilities').select('id, name, type, remaining_balance, installment_amount, installments_remaining, interest_rate, metadata').eq('user_id', user.id).eq('is_archived', false)
         ]);
         if (!alive) return;
@@ -678,6 +863,49 @@ const ConsortiumSimulator: React.FC = () => {
   const selectedQuota = consortiums.find(x => x.id === quotaId);
   const monthWord = existing ? 'daqui a' : 'no mês';
 
+  const knownConsortiums: KnownConsortium[] = consortiums.map(c => {
+    const l = c.liability_id ? consLiabs[c.liability_id] : undefined;
+    return {
+      id: c.id, name: c.name, administrator: c.administrator_name || null, status: c.status,
+      credit: Number(c.credit_letter_value) || 0, totalMonths: Number(c.total_months) || 0,
+      adminFeePct: Number(c.admin_fee_pct) || 0, reserveFundPct: Number(c.reserve_fund_pct) || 0,
+      balance: l ? Number(l.remaining_balance) : null, remainingMonths: l ? Number(l.installments_remaining) : null,
+      currentInstallment: l ? Number(l.installment_amount) : null
+    };
+  });
+  const buildAiContext = () => {
+    const shared = { index: num(index), insurance: num(insurance) };
+    const res = quotas.map(q => simulatePlan(draftToPlan(q, shared), num(opportunity)));
+    const agg = aggregatePlans(res);
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    return {
+      known: knownConsortiums,
+      state: {
+        premises: { indexPct: num(index), insurancePct: num(insurance), opportunityPct: num(opportunity) },
+        quotas: quotas.map((q, i) => ({
+          name: q.name, source: q.source || undefined,
+          credit: num(q.credit), termMonths: q.source ? undefined : num(q.term), adminFeePct: num(q.adm), reserveFundPct: num(q.fr),
+          reducedPct: q.source ? undefined : num(q.reduced),
+          balance: q.source ? num(q.balance) : undefined, remainingMonths: q.source ? num(q.remaining) : undefined,
+          currentInstallment: q.source ? num(q.installment) : undefined,
+          bidUnit: q.unit, baseTermMonths: num(q.baseTerm), freeBid: num(q.free), embeddedBid: num(q.emb),
+          contemplationInMonths: num(q.month), bidMode: q.mode,
+          resultado: {
+            creditoLiquido: r2(agg.quotas[i].netCredit), saqueLiquido: r2(agg.quotas[i].netCash),
+            parcelaInicial: r2(agg.quotas[i].initialInstallment), parcelaDepois: r2(agg.quotas[i].postInstallment), mesesDepois: agg.quotas[i].monthsAfter
+          }
+        })),
+        total: { creditoLiberado: r2(agg.total.netCredit), saqueLiquido: r2(agg.total.netCash), parcelaInicial: r2(agg.total.initialInstallment), parcelaDepois: r2(agg.total.postInstallment) }
+      }
+    };
+  };
+  const applyAi = (ai: any) => {
+    const next = applyAiSimulation(ai, { premises: { index, insurance, opportunity }, quotas }, knownConsortiums);
+    setQuotas(next.quotas);
+    setIndex(next.premises.index); setInsurance(next.premises.insurance); setOpportunity(next.premises.opportunity);
+    if (Array.isArray(ai?.quotas) && ai.quotas.length) setTab('portfolio');
+  };
+
   const tabs: { id: SimTab; label: string; icon: React.ReactNode }[] = [
     { id: 'plan', label: 'Plano', icon: <Calculator size={14} /> },
     { id: 'bid', label: 'Lance', icon: <Gavel size={14} /> },
@@ -696,9 +924,11 @@ const ConsortiumSimulator: React.FC = () => {
         <div className="flex items-center gap-2"><Calculator size={18} /><h2 className="text-lg font-black">Simulador de Consórcio</h2></div>
         <p className="text-xs text-white/75 leading-relaxed max-w-3xl">
           Conta igual à das administradoras: o plano é um percentual da carta (fundo comum + taxa de administração + fundo de reserva), corrigido pelo índice todo ano.
-          As comparações usam valor presente pelo rendimento do seu dinheiro: o caminho que custa menos em dinheiro de hoje é o melhor. Nada aqui é gravado.
+          As comparações usam valor presente pelo rendimento do seu dinheiro: o caminho que custa menos em dinheiro de hoje é o melhor. É só simulação: nada muda nos seus dados do app (dá para salvar a simulação neste aparelho e exportar).
         </p>
       </div>
+
+      <SimAssistant buildContext={buildAiContext} onApply={applyAi} />
 
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
         {tabs.map(t => (
@@ -947,7 +1177,7 @@ const ConsortiumSimulator: React.FC = () => {
 
       {/* ═══ VÁRIAS COTAS ═══ */}
       {tab === 'portfolio' && (
-        <PortfolioTab consortiums={consortiums} consLiabs={consLiabs} index={index} insurance={insurance} opportunity={opportunity}
+        <PortfolioTab consortiums={consortiums} consLiabs={consLiabs} quotas={quotas} setQuotas={setQuotas} index={index} insurance={insurance} opportunity={opportunity}
           setIndex={setIndex} setInsurance={setInsurance} setOpportunity={setOpportunity} />
       )}
 
