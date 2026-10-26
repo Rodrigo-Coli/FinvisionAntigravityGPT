@@ -10,7 +10,7 @@ import { DateInput } from '../common/DateInput';
 import { sanitizeMoneyTyping, parseMoneyInput } from '../../lib/moneyInput';
 import { authHeaders } from '../../lib/apiClient';
 import {
-  QuotaDraft, KnownConsortium, SimulationState, blankQuota, newQuotaKey, applyAiSimulation, matchesQuotaDescription
+  QuotaDraft, KnownConsortium, SimulationState, blankQuota, newQuotaKey, applyAiSimulation, matchesQuotaDescription, availableCredit
 } from '../../lib/consortiumSimState';
 import { exportSimulationXlsx, exportSimulationPdf } from '../../lib/consortiumSimExport';
 import {
@@ -372,9 +372,12 @@ const PortfolioTab: React.FC<{
     const c = consortiums.find(x => x.id === id);
     if (!c) { update(key, { source: '' }); return; }
     const l = c.liability_id ? consLiabs[c.liability_id] : undefined;
+    const av = availableCredit(c);
     update(key, {
       source: id, name: c.name,
-      credit: toText(Number(c.credit_letter_value)), term: String(c.total_months || ''),
+      credit: toText(av.credit), term: String(c.total_months || ''),
+      // Já contemplada: o lance já foi registrado — não lança de novo; crédito disponível agora.
+      ...(av.contemplated ? { free: '0', emb: '0', month: '1' } : {}),
       adm: toText(Number(c.admin_fee_pct)), fr: toText(Number(c.reserve_fund_pct)),
       balance: l ? toText(Number(l.remaining_balance)) : '', remaining: l ? String(l.installments_remaining || '') : '',
       installment: l ? toText(Number(l.installment_amount)) : ''
@@ -439,6 +442,8 @@ const PortfolioTab: React.FC<{
         const r = results[i];
         const sum = agg.quotas[i];
         const existing = !!q.source;
+        const srcConsortium = existing ? consortiums.find(c => c.id === q.source) : undefined;
+        const srcAv = srcConsortium ? availableCredit(srcConsortium) : null;
         return (
           <Card key={q.key} title={`Cota ${i + 1}`}>
             <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
@@ -459,8 +464,18 @@ const PortfolioTab: React.FC<{
               </div>
             </div>
 
+            {srcAv?.contemplated && (
+              <p className="text-[11px] leading-relaxed p-2.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-900">
+                <strong>Já contemplada</strong>{srcAv.netCredit ? <> — crédito líquido {fmt(srcAv.netCredit)} (carta − embutido)</> : null}. O lance já foi registrado:
+                {' '}deixe o lance em 0 e "contempla daqui a" em 1 (crédito disponível agora). Saldo, parcelas e parcela vêm do cadastro.
+                <span className="block mt-1">
+                  <strong>Crédito ≠ saldo devedor:</strong> o crédito ({fmt(num(q.credit))}) é o dinheiro que a cota libera para você usar;
+                  {' '}o saldo devedor ({fmt(num(q.balance))}) é o que você ainda deve, pago em {num(q.remaining)} parcelas de {fmt(num(q.installment))}.
+                </span>
+              </p>
+            )}
             <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
-              <Field help={H.credit} label={existing ? 'Carta (contratada)' : 'Carta de crédito'} value={q.credit} onChange={v => update(q.key, { credit: v })} suffix="R$" />
+              <Field help={H.credit} label={existing ? (srcAv?.contemplated ? 'Crédito disponível (líquido)' : 'Carta (contratada)') : 'Carta de crédito'} value={q.credit} onChange={v => update(q.key, { credit: v })} suffix="R$" />
               {existing ? (
                 <>
                   <Field help={H.balance} warn={W.balance(num(q.balance), num(q.credit))} label="Saldo devedor hoje" value={q.balance} onChange={v => update(q.key, { balance: v })} suffix="R$" />
@@ -969,9 +984,14 @@ const ConsortiumSimulator: React.FC = () => {
     () => quotas.map(q => simulatePlan(draftToPlan(q, { index: num(index), insurance: num(insurance) }), num(opportunity))),
     [quotas, index, insurance, opportunity]
   );
+  const poPicked = poSource === 'PORTFOLIO'
+    ? quotas.map((q, i) => ({ q, r: portfolioResults[i] })).filter(x => !poExcluded.includes(x.q.key))
+    : [];
   const poQuotas: PlanResult[] = poSource === 'PORTFOLIO'
-    ? quotas.map((q, i) => ({ q, r: portfolioResults[i] })).filter(x => !poExcluded.includes(x.q.key)).map(x => x.r)
+    ? poPicked.map(x => x.r)
     : (num(poNetCredit) > 0 ? [manualContemplatedPlan({ netCredit: num(poNetCredit), ownBid: num(poOwnBid), installment: num(poInst), months: num(poConsMonths), annualIndexPct: num(index) })] : []);
+  // Cotas que você já tem: a parcela delas já é paga hoje (entra nos dois caminhos).
+  const poCommitted = poSource === 'PORTFOLIO' ? poPicked.map(x => !!x.q.source) : [false];
   const payoff = useMemo(() => poQuotas.length && num(poBalance) > 0 ? evaluatePayoffPortfolio({
     financingBalance: num(poBalance),
     financingInstallments: poRealInstallments || undefined,
@@ -979,6 +999,7 @@ const ConsortiumSimulator: React.FC = () => {
     financingMonths: num(poMonths),
     financingSystem: poSystem,
     quotas: poQuotas,
+    committed: poCommitted,
     opportunityPctYear: num(opportunity),
     renovation: num(poRenovation),
     investRatePctYear: poInvestRate.trim() ? num(poInvestRate) : num(opportunity),
@@ -1037,7 +1058,9 @@ const ConsortiumSimulator: React.FC = () => {
     setQuotaId(id);
     const c = consortiums.find(x => x.id === id);
     if (!c) return;
-    setCredit(toText(Number(c.credit_letter_value)));
+    const av = availableCredit(c);
+    setCredit(toText(av.credit));
+    if (av.contemplated) { setFreeBid('0'); setEmbBid('0'); setBidMonth('1'); setKMonth('1'); }
     setTerm(String(c.total_months || ''));
     setAdm(toText(Number(c.admin_fee_pct)));
     setFr(toText(Number(c.reserve_fund_pct)));
@@ -1051,8 +1074,10 @@ const ConsortiumSimulator: React.FC = () => {
 
   const knownConsortiums: KnownConsortium[] = consortiums.map(c => {
     const l = c.liability_id ? consLiabs[c.liability_id] : undefined;
+    const av = availableCredit(c);
     return {
       id: c.id, name: c.name, administrator: c.administrator_name || null, status: c.status,
+      contemplated: av.contemplated, netCredit: av.netCredit,
       credit: Number(c.credit_letter_value) || 0, totalMonths: Number(c.total_months) || 0,
       adminFeePct: Number(c.admin_fee_pct) || 0, reserveFundPct: Number(c.reserve_fund_pct) || 0,
       balance: l ? Number(l.remaining_balance) : null, remainingMonths: l ? Number(l.installments_remaining) : null,
@@ -1161,7 +1186,9 @@ const ConsortiumSimulator: React.FC = () => {
             {existing && <p className="text-[10px] text-slate-400 mt-1">Parte do saldo devedor, das parcelas restantes e da parcela de hoje (do seu cadastro). Os meses contam a partir de agora.</p>}
           </div>
           {existing && selectedQuota && selectedQuota.status !== 'WAITING' && (
-            <Verdict tone="info" title="Esta cota já está contemplada.">A simulação de lance fica só como referência; o plano mostra o que falta pagar.</Verdict>
+            <Verdict tone="info" title={`Esta cota já está contemplada${availableCredit(selectedQuota).netCredit ? `: crédito líquido ${fmt(availableCredit(selectedQuota).netCredit!)}` : ''}.`}>
+              O lance já foi registrado (não lance de novo). O simulador usa o crédito disponível, o saldo de hoje e as parcelas que faltam.
+            </Verdict>
           )}
           <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
             <Field help={H.credit} label={existing ? 'Carta (crédito contratado)' : 'Carta de crédito'} value={credit} onChange={setCredit} suffix="R$" />
@@ -1427,7 +1454,8 @@ const ConsortiumSimulator: React.FC = () => {
                 <Stat label="Crédito liberado" value={fmt(payoff.netCredit)} sub={`${poQuotas.length} cota(s) · lances do bolso ${fmt(payoff.ownBid)}`} />
                 <Stat label="Capital livre" value={fmt(payoff.freeCapital)} sub="crédito − quitação" strong />
                 <Stat label="Dinheiro novo" value={fmt(payoff.newMoney)} sub="capital livre − lances do bolso" strong />
-                <Stat label="Parcela: hoje → depois" value={`${fmt(payoff.financingInstallment)} → ${fmt(payoff.consortiumAfter)}`} sub={payoff.monthlyDifference >= 0 ? `sobra ${fmt(payoff.monthlyDifference)}/mês` : `${fmt(-payoff.monthlyDifference)}/mês a mais`} />
+                <Stat label="Você paga por mês: hoje → depois" value={`${fmt(payoff.todayMonthly)} → ${fmt(payoff.consortiumAfter)}`}
+                  sub={`${payoff.alreadyPaying > 0 ? `hoje: financiamento ${fmt(payoff.financingInstallment)} + cotas que já tem ${fmt(payoff.alreadyPaying)} · ` : ''}${payoff.monthlyDifference >= 0 ? `sobra ${fmt(payoff.monthlyDifference)}/mês` : `${fmt(-payoff.monthlyDifference)}/mês a mais`}`} />
                 {payoff.payoffMonth > 1 && <Stat label={`Até o mês ${payoff.payoffMonth}`} value={`${fmt(payoff.bothBeforePayoff)}/mês`} sub="financiamento + consórcio juntos, até quitar" />}
                 <Stat label="Custo mantendo (valor presente)" value={fmt(payoff.pvCostKeepFinancing)} sub={`parcelas ${fmt(payoff.financingTotal)}${poRealInstallments ? ` · juros implícitos ${fmtPct(payoff.impliedRatePctMonth, 3)} a.m.` : ''}`} />
                 <Stat label="Custo trocando (valor presente)" value={fmt(payoff.pvCostSwitch)} sub={`parcelas do consórcio ${fmt(payoff.consortiumTotal)} (com reajuste)`} />
@@ -1435,7 +1463,11 @@ const ConsortiumSimulator: React.FC = () => {
               {payoff.freeCapital < 0 && <Verdict tone="bad" title={`O crédito não cobre a quitação: faltam ${fmt(-payoff.freeCapital)}.`}>Adicione outra cota ou aumente a carta em "Várias cotas".</Verdict>}
               {payoff.advantage >= 0
                 ? <Verdict tone="good" title={`Trocar compensa: ${fmt(payoff.advantage)} a menos em valor presente.`}>Já contando o capital livre e o rendimento do dinheiro a {oppTxt}.</Verdict>
-                : <Verdict tone="warn" title={`Trocar custa ${fmt(-payoff.advantage)} a mais em valor presente.`}>Pode compensar se o capital livre render mais que {oppTxt} — por exemplo, numa reforma que aumenta o aluguel.</Verdict>}
+                : <Verdict tone="warn" title={`Trocar custa ${fmt(-payoff.advantage)} a mais em valor presente.`}>
+                    {monthlyToAnnualPct(payoff.impliedRatePctMonth / 100) < num(opportunity)
+                      ? <>O financiamento custa {fmtPct(payoff.impliedRatePctMonth, 2)} a.m. (≈ {fmtPct(monthlyToAnnualPct(payoff.impliedRatePctMonth / 100), 1)} a.a.), menos que o rendimento do dinheiro ({oppTxt}): pela conta, usar o crédito para quitá-lo vale menos que dar outro uso a ele. Mas o crédito do consórcio só pode ir para bem, reforma ou quitação — se não houver outro bem para comprar, quitar ainda alivia {fmt(Math.max(0, payoff.monthlyDifference))}/mês.</>
+                      : <>Pode compensar se o capital livre render mais que {oppTxt} — por exemplo, numa reforma que aumenta o aluguel.</>}
+                  </Verdict>}
 
               {payoff.freeCapital > 0 && (
                 <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
