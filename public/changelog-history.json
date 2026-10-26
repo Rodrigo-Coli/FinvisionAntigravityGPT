@@ -1,5 +1,39 @@
 [
   {
+    "version": "2026.10.26.0040",
+    "title": "Bem devolvido sai das dívidas; simular a contemplação na quitação",
+    "date": "26/10/2026",
+    "benefits": [
+      {
+        "title": "Imóvel devolvido não deixa saldo devedor",
+        "desc": "Ao arquivar um imóvel na planta (ex.: devolvido), o \"saldo a financiar\" dele também sai das dívidas, e volta se você desarquivar o imóvel. O que já tinha ficado para trás (Wave Beach Prime) é corrigido sozinho ao abrir Patrimônio.",
+        "type": "correcao"
+      },
+      {
+        "title": "Início sem bens e dívidas arquivados",
+        "desc": "O resumo do Início deixou de somar bens vendidos/arquivados e dívidas arquivadas no patrimônio e nas dívidas, igual à tela de Patrimônio.",
+        "type": "correcao"
+      },
+      {
+        "title": "Quitar: simule a contemplação das suas cotas",
+        "desc": "Em \"Quitar financiamento\", cada cota mostra se é nova, sua aguardando contemplação ou já contemplada, com o lance, o crédito líquido, o saldo e a parcela depois de contemplar. Um botão leva direto para ajustar o lance e o mês daquela cota, e lá aparece como a carta fica depois de contemplada (saldo e parcela antes → depois).",
+        "type": "melhoria"
+      },
+      {
+        "title": "Lance já pago aparece na quitação",
+        "desc": "Numa cota já contemplada, a quitação mostra o lance que você deu (do bolso e embutido) e quanto esse dinheiro deixou de render por mês, explicando por que ele não entra de novo na comparação de hoje.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "`pages/Assets.tsx`: arquivar/desarquivar bem arquiva/restaura o passivo `isPendingFinancing` vinculado (`metadata.archivedWithAsset`); ao carregar, passivo a definir de bem já arquivado é arquivado (autocorreção).",
+      "`services/dashboard.service.ts`: ignora `physical_assets` e `liabilities` com `is_archived`.",
+      "`lib/consortiumSimState.ts`: `paidBids(metadata)` soma lances registrados (bolso/embutido).",
+      "`ConsortiumSimulator.tsx`: lista da quitação com situação da cota, detalhes da contemplação e botão para a cota em \"Várias cotas\" (destaque e rolagem); bloco \"Como fica a carta depois de contemplar\"; aviso do lance já pago com rendimento perdido.",
+      "Testes: `dashboardArchived.test.ts`, `paidBids`, telas de quitação com cota aguardando e já contemplada."
+    ]
+  },
+  {
     "version": "2026.10.26.0030",
     "title": "Simulador: cota já contemplada e parcela de hoje na quitação",
     "date": "26/10/2026",

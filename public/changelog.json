@@ -1,23 +1,34 @@
 {
-  "version": "2026.10.26.0030",
-  "title": "Simulador: cota já contemplada e parcela de hoje na quitação",
+  "version": "2026.10.26.0040",
+  "title": "Bem devolvido sai das dívidas; simular a contemplação na quitação",
   "date": "26/10/2026",
   "benefits": [
     {
-      "title": "Cota já contemplada usa o crédito líquido",
-      "desc": "Ao escolher uma cota sua que já foi contemplada (ex.: Ademicon 570-807), o simulador usa o crédito líquido (carta − embutido) e não aplica o lance de novo. A tela explica a diferença: o crédito é o dinheiro que a cota libera; o saldo devedor é o que você ainda deve, nas parcelas que faltam.",
+      "title": "Imóvel devolvido não deixa saldo devedor",
+      "desc": "Ao arquivar um imóvel na planta (ex.: devolvido), o \"saldo a financiar\" dele também sai das dívidas, e volta se você desarquivar o imóvel. O que já tinha ficado para trás (Wave Beach Prime) é corrigido sozinho ao abrir Patrimônio.",
       "type": "correcao"
     },
     {
-      "title": "Quitação mostra o que você paga hoje de verdade",
-      "desc": "Em \"Quitar financiamento\", a parcela de hoje soma o financiamento e as cotas que você já paga (ex.: R$ 1.268,62 + R$ 667,23 = R$ 1.935,85); depois de quitar, fica só o consórcio. A comparação em valor presente também considera que a parcela da cota que você já tem existe nos dois caminhos.",
+      "title": "Início sem bens e dívidas arquivados",
+      "desc": "O resumo do Início deixou de somar bens vendidos/arquivados e dívidas arquivadas no patrimônio e nas dívidas, igual à tela de Patrimônio.",
       "type": "correcao"
+    },
+    {
+      "title": "Quitar: simule a contemplação das suas cotas",
+      "desc": "Em \"Quitar financiamento\", cada cota mostra se é nova, sua aguardando contemplação ou já contemplada, com o lance, o crédito líquido, o saldo e a parcela depois de contemplar. Um botão leva direto para ajustar o lance e o mês daquela cota, e lá aparece como a carta fica depois de contemplada (saldo e parcela antes → depois).",
+      "type": "melhoria"
+    },
+    {
+      "title": "Lance já pago aparece na quitação",
+      "desc": "Numa cota já contemplada, a quitação mostra o lance que você deu (do bolso e embutido) e quanto esse dinheiro deixou de render por mês, explicando por que ele não entra de novo na comparação de hoje.",
+      "type": "melhoria"
     }
   ],
   "changes": [
-    "`lib/consortiumSimState.ts`: `availableCredit` (contemplada → `metadata.net_credit`); `quotaFromKnown` usa o crédito líquido e zera lance/mês 1 em cota contemplada.",
-    "`lib/consortiumSimulator.ts`: `evaluatePayoffPortfolio` com `committed` (cotas que já tem entram nos dois caminhos do VPL), `alreadyPaying`, `todayMonthly`; diferença mensal = hoje (financiamento + cotas atuais) − depois.",
-    "`ConsortiumSimulator.tsx`: aviso de cota contemplada com crédito × saldo devedor; Plano/Lance/Várias cotas usam o crédito líquido; parcela hoje → depois detalhada; veredito explica financiamento barato (juros implícitos × rendimento). IA: regra para não repetir lance em cota contemplada.",
-    "Testes: 570-807 contemplada (crédito 118.534,47, saldo 88.073,80, 132 × 667,23) quitando o Piazza (161 × 1.268,62): quitação 149.862,44, faltam 31.327,97, hoje 1.935,85 → 667,23."
+    "`pages/Assets.tsx`: arquivar/desarquivar bem arquiva/restaura o passivo `isPendingFinancing` vinculado (`metadata.archivedWithAsset`); ao carregar, passivo a definir de bem já arquivado é arquivado (autocorreção).",
+    "`services/dashboard.service.ts`: ignora `physical_assets` e `liabilities` com `is_archived`.",
+    "`lib/consortiumSimState.ts`: `paidBids(metadata)` soma lances registrados (bolso/embutido).",
+    "`ConsortiumSimulator.tsx`: lista da quitação com situação da cota, detalhes da contemplação e botão para a cota em \"Várias cotas\" (destaque e rolagem); bloco \"Como fica a carta depois de contemplar\"; aviso do lance já pago com rendimento perdido.",
+    "Testes: `dashboardArchived.test.ts`, `paidBids`, telas de quitação com cota aguardando e já contemplada."
   ]
 }

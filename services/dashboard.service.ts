@@ -33,7 +33,7 @@ export const DashboardService = {
     ] = await Promise.all([
       sb.from('accounts').select('current_balance, type, include_in_dashboard').eq('user_id', user.id).eq('is_archived', false),
       sb.from('cards').select('id, brand, name, limit_total, last4, is_additional, parent_card_id, sums_into_invoice').eq('user_id', user.id).eq('is_archived', false),
-      sb.from('physical_assets').select('id, estimated_value, category, metadata').eq('user_id', user.id),
+      sb.from('physical_assets').select('id, estimated_value, category, metadata, is_archived').eq('user_id', user.id),
       sb.from('entities').select('name').eq('user_id', user.id).eq('include_in_totals', false),
       sb.from('transactions').select('date, amount, type, owner_name, metadata').eq('user_id', user.id).eq('is_deleted', false).gte('date', new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString()),
       sb.from('liabilities').select('*').eq('user_id', user.id),
@@ -44,10 +44,11 @@ export const DashboardService = {
 
     const accounts = accountsRes.data || [];
     const cards = cardsRes.data || [];
-    const physicalAssets = physRes.data || [];
+    // Arquivado (vendido, devolvido) não é mais seu: fica fora, como na tela de Patrimônio.
+    const physicalAssets = (physRes.data || []).filter((a: any) => !a.is_archived);
     const excludedEntities = entitiesRes.data || [];
     const txs = txsRes.data || [];
-    const liabilitiesData = liabsRes.data || [];
+    const liabilitiesData = (liabsRes.data || []).filter((l: any) => !l.is_archived);
     const futureTxs = futureTxsRes.data || [];
 
     let consolidatedBalance = 0;

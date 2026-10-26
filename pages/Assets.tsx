@@ -766,7 +766,18 @@ const Assets: React.FC = () => {
       const phys = physRes.data || [];
       const accs = accsRes.data || [];
       const liabs = liabsRes.data || [];
-      
+
+      // "Saldo a financiar" de bem já arquivado (arquivado antes desta regra): sai das dívidas.
+      const archivedAssetIds = new Set(phys.filter((p: any) => p.is_archived).map((p: any) => p.id));
+      for (const l of liabs as any[]) {
+        if (l.is_archived || !l.metadata?.isPendingFinancing || !archivedAssetIds.has(l.linked_asset_id)) continue;
+        const metadata = { ...(l.metadata || {}), archivedWithAsset: true };
+        const { error: orphanErr } = await supabase.from('liabilities').update({ is_archived: true, metadata }).eq('id', l.id);
+        if (orphanErr) { console.warn('[Ativos] saldo a financiar do bem arquivado:', orphanErr.message); continue; }
+        l.is_archived = true;
+        l.metadata = metadata;
+      }
+
       setAllAccounts(accs);
 
       // Mapeamento e atualização atômica de estados (Mapeamento Seguro)
@@ -4612,6 +4623,23 @@ const Assets: React.FC = () => {
     setShowModal(true);
   };
 
+  // "Saldo a financiar" (financiamento a definir) só existe por causa do bem: se o
+  // bem sai (arquivado/devolvido), ele sai junto das dívidas — e volta se o bem
+  // for desarquivado. Financiamento de verdade (com parcelas) nunca é mexido aqui.
+  const setPendingFinancingArchivedForAsset = async (assetId: string, archived: boolean) => {
+    if (!supabase) return;
+    const targets = liabilities.filter(l =>
+      l.linkedAssetId === assetId && l.metadata?.isPendingFinancing &&
+      (archived ? !l.is_archived : l.is_archived && l.metadata?.archivedWithAsset)
+    );
+    for (const l of targets) {
+      const metadata = { ...(l.metadata || {}) };
+      if (archived) metadata.archivedWithAsset = true; else delete metadata.archivedWithAsset;
+      const { error } = await supabase.from('liabilities').update({ is_archived: archived, metadata }).eq('id', l.id);
+      if (error) console.warn('[Ativos] saldo a financiar do bem:', error.message);
+    }
+  };
+
   const handleArchiveAsset = async (asset: PhysicalAsset) => {
     if (!supabase) return;
     try {
@@ -4621,6 +4649,7 @@ const Assets: React.FC = () => {
         .eq('id', asset.id);
 
       if (error) throw error;
+      await setPendingFinancingArchivedForAsset(asset.id, true);
       fetchData();
     } catch (err: any) {
       toast(`Erro ao arquivar: ${err.message}`, 'error');
@@ -4636,6 +4665,7 @@ const Assets: React.FC = () => {
         .eq('id', asset.id);
 
       if (error) throw error;
+      await setPendingFinancingArchivedForAsset(asset.id, false);
       fetchData();
     } catch (err: any) {
       toast(`Erro ao restaurar: ${err.message}`, 'error');

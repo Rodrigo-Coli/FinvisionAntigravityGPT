@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyAiSimulation, blankQuota, quotaFromKnown, matchesQuotaDescription, SimulationState, KnownConsortium } from '../lib/consortiumSimState';
+import { applyAiSimulation, blankQuota, quotaFromKnown, matchesQuotaDescription, paidBids, SimulationState, KnownConsortium } from '../lib/consortiumSimState';
 
 /**
  * A IA só manda parâmetros; aqui eles são validados e aplicados. Cota minha
@@ -65,5 +65,17 @@ describe('pagamentos antigos da cota pela descrição', () => {
     expect(matchesQuotaDescription('Grupo 11190 cota 403', '1119', '403')).toBe(false);
     expect(matchesQuotaDescription('Pgto Boleto Hs Administradora de Consorcio', '1119', '403')).toBe(false);
     expect(matchesQuotaDescription('Grupo 1119 cota 403', '', '403')).toBe(false);
+  });
+});
+
+describe('lances já dados na cota', () => {
+  it('soma bolso e embutido; lance antigo sem divisão conta como do bolso', () => {
+    expect(paidBids({ bids: [
+      { date: '2026-10-20', amount: 117167.72, cash_amount: 63913.10, embedded_amount: 53254.62 },
+      { date: '2025-03-01', amount: 1000 },
+      { date: '2026-11-01', amount: 0, cash_amount: 0, embedded_amount: 0 }
+    ] })).toEqual({ cash: 64913.1, embedded: 53254.62, firstDate: '2025-03-01' });
+    expect(paidBids({})).toEqual({ cash: 0, embedded: 0, firstDate: null });
+    expect(paidBids(null)).toEqual({ cash: 0, embedded: 0, firstDate: null });
   });
 });

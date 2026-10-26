@@ -10,13 +10,13 @@ import { DateInput } from '../common/DateInput';
 import { sanitizeMoneyTyping, parseMoneyInput } from '../../lib/moneyInput';
 import { authHeaders } from '../../lib/apiClient';
 import {
-  QuotaDraft, KnownConsortium, SimulationState, blankQuota, newQuotaKey, applyAiSimulation, matchesQuotaDescription, availableCredit
+  QuotaDraft, KnownConsortium, SimulationState, blankQuota, newQuotaKey, applyAiSimulation, matchesQuotaDescription, availableCredit, paidBids
 } from '../../lib/consortiumSimState';
 import { exportSimulationXlsx, exportSimulationPdf } from '../../lib/consortiumSimExport';
 import {
   simulatePlan, simulateFinancing, evaluateBid, evaluateContemplatedQuota, evaluatePayoff,
   evaluateSale, targetSalePrice, lotteryOdds, bidChance, baseInstallmentValue, installmentsToPct,
-  monthlyToAnnualPct, existingQuotaPlan, aggregatePlans, evaluatePayoffPortfolio, manualContemplatedPlan, capitalCoverage, BidMode, AmortizationSystem, PlanResult, SaleFlow, PlanInput
+  monthlyToAnnualPct, annualToMonthly, existingQuotaPlan, aggregatePlans, evaluatePayoffPortfolio, manualContemplatedPlan, capitalCoverage, BidMode, AmortizationSystem, PlanResult, SaleFlow, PlanInput
 } from '../../lib/consortiumSimulator';
 
 /**
@@ -353,7 +353,14 @@ const PortfolioTab: React.FC<{
   setQuotas: React.Dispatch<React.SetStateAction<QuotaDraft[]>>;
   index: string; insurance: string; opportunity: string;
   setIndex: (v: string) => void; setInsurance: (v: string) => void; setOpportunity: (v: string) => void;
-}> = ({ consortiums, consLiabs, quotas, setQuotas, index, insurance, opportunity, setIndex, setInsurance, setOpportunity }) => {
+  focusKey?: string | null;
+}> = ({ consortiums, consLiabs, quotas, setQuotas, index, insurance, opportunity, setIndex, setInsurance, setOpportunity, focusKey }) => {
+  // Veio da quitação ("Simular a contemplação"): rola até a cota e destaca.
+  useEffect(() => {
+    if (!focusKey) return;
+    const el = typeof document !== 'undefined' ? document.getElementById(`quota-${focusKey}`) : null;
+    try { el?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* sem rolagem */ }
+  }, [focusKey]);
   const [saved, setSaved] = useState<SavedSimulation[]>(readSaved);
   const [saveName, setSaveName] = useState('');
   const [exporting, setExporting] = useState<'' | 'xlsx' | 'pdf'>('');
@@ -445,7 +452,8 @@ const PortfolioTab: React.FC<{
         const srcConsortium = existing ? consortiums.find(c => c.id === q.source) : undefined;
         const srcAv = srcConsortium ? availableCredit(srcConsortium) : null;
         return (
-          <Card key={q.key} title={`Cota ${i + 1}`}>
+          <div key={q.key} id={`quota-${q.key}`} className={`scroll-mt-4 rounded-[24px] ${focusKey === q.key ? 'ring-2 ring-amber-400' : ''}`}>
+          <Card title={`Cota ${i + 1}`}>
             <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
               <div className="flex-1">
                 <HelpLabel label="Nome" help={H.qName} />
@@ -507,15 +515,22 @@ const PortfolioTab: React.FC<{
               </div>
             </div>
 
-            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-5 gap-3">
-              <Stat label="Crédito líquido" value={fmt(sum.netCredit)} sub={sum.bidEmbedded > 0 ? `carta ${fmt(sum.credit)} − embutido ${fmt(sum.bidEmbedded)}` : `carta ${fmt(sum.credit)}`} strong />
-              <Stat label="Lance do bolso" value={fmt(sum.bidCash)} />
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest pt-1">
+              {srcAv?.contemplated ? 'Situação de hoje (já contemplada)' : `Como fica a carta depois de contemplar (daqui a ${sum.contemplationMonth} ${sum.contemplationMonth === 1 ? 'mês' : 'meses'})`}
+            </p>
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
+              <Stat label="Crédito líquido" value={fmt(sum.netCredit)} sub={sum.bidEmbedded > 0 ? `carta ${fmt(sum.credit)} − embutido ${fmt(sum.bidEmbedded)}` : `carta na contemplação ${fmt(sum.credit)}`} strong />
+              <Stat label="Lance do bolso" value={fmt(sum.bidCash)} sub={sum.bidEmbedded > 0 ? `+ embutido ${fmt(sum.bidEmbedded)}` : undefined} />
               <Stat label="Saque líquido" value={fmt(sum.netCash)} sub="crédito líquido − lance do bolso" />
-              <Stat label="Parcela antes → depois" value={`${fmt(sum.initialInstallment)} → ${fmt(sum.postInstallment)}`} sub={`depois: ${sum.monthsAfter} meses`} />
-              <Stat label="Saldo depois do lance" value={fmt(r.balanceAfterBid)} />
+              <Stat label="Saldo devedor: antes → depois" value={`${fmt(r.balanceBeforeBid)} → ${fmt(r.balanceAfterBid)}`} sub="o que ainda deve, antes e depois do lance" />
+              <Stat label="Parcela: antes → depois" value={`${fmt(sum.initialInstallment)} → ${fmt(sum.postInstallment)}`} sub={`depois: ${sum.monthsAfter} meses`} />
             </div>
+            {existing && !srcAv?.contemplated && sum.bidCash + sum.bidEmbedded === 0 && (
+              <Verdict tone="info" title="Sem lance: o simulador considera contemplação por sorteio no mês informado.">Para usar esta cota antes, informe o lance (do bolso e/ou embutido) e daqui a quantos meses — a carta, o saldo e a parcela acima se ajustam.</Verdict>
+            )}
             {r.warnings.map((w, k) => <Verdict key={k} tone="warn" title={w} />)}
           </Card>
+          </div>
         );
       })}
 
@@ -829,6 +844,8 @@ const ConsortiumSimulator: React.FC = () => {
   const [poConsMonths, setPoConsMonths] = useState('');
   const [poSource, setPoSource] = useState<'PORTFOLIO' | 'MANUAL'>('PORTFOLIO');
   const [poExcluded, setPoExcluded] = useState<string[]>([]);
+  const [focusQuota, setFocusQuota] = useState<string | null>(null);
+  const goToQuota = (key: string) => { setFocusQuota(key); setTab('portfolio'); };
   const [poRenovation, setPoRenovation] = useState('0');
   const [poInvestRate, setPoInvestRate] = useState('');
   const [poExtraIncome, setPoExtraIncome] = useState('0');
@@ -992,6 +1009,13 @@ const ConsortiumSimulator: React.FC = () => {
     : (num(poNetCredit) > 0 ? [manualContemplatedPlan({ netCredit: num(poNetCredit), ownBid: num(poOwnBid), installment: num(poInst), months: num(poConsMonths), annualIndexPct: num(index) })] : []);
   // Cotas que você já tem: a parcela delas já é paga hoje (entra nos dois caminhos).
   const poCommitted = poSource === 'PORTFOLIO' ? poPicked.map(x => !!x.q.source) : [false];
+  // Lances que já foram pagos nas cotas contempladas usadas (custo passado: só informativo).
+  const poPastBids = poPicked.reduce((acc, x) => {
+    const src = x.q.source ? consortiums.find(c => c.id === x.q.source) : undefined;
+    if (!src || !availableCredit(src).contemplated) return acc;
+    const b = paidBids(src.metadata);
+    return { cash: acc.cash + b.cash, embedded: acc.embedded + b.embedded };
+  }, { cash: 0, embedded: 0 });
   const payoff = useMemo(() => poQuotas.length && num(poBalance) > 0 ? evaluatePayoffPortfolio({
     financingBalance: num(poBalance),
     financingInstallments: poRealInstallments || undefined,
@@ -1412,15 +1436,36 @@ const ConsortiumSimulator: React.FC = () => {
                 {quotas.map((q, i) => {
                   const r = portfolioResults[i];
                   const on = !poExcluded.includes(q.key);
+                  const src = q.source ? consortiums.find(c => c.id === q.source) : undefined;
+                  const contemplated = src ? availableCredit(src).contemplated : false;
+                  const noBid = r.bidCash + r.bidEmbedded === 0;
+                  const past = contemplated && src ? paidBids(src.metadata) : null;
+                  const status = !q.source ? 'nova' : contemplated ? 'minha · já contemplada' : 'minha · aguardando contemplação';
                   return (
-                    <label key={q.key} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer ${on ? 'border-brand-200 bg-brand-50/40' : 'border-slate-100'}`}>
-                      <input type="checkbox" className="mt-0.5" checked={on}
-                        onChange={e => setPoExcluded(list => e.target.checked ? list.filter(k => k !== q.key) : [...list, q.key])} />
-                      <span className="min-w-0 text-[11px] text-slate-600 leading-relaxed">
-                        <span className="block text-xs font-black text-slate-900 break-words">{q.name} <span className="font-bold text-slate-400">· {q.source ? 'minha' : 'nova'}</span></span>
-                        Crédito líquido <strong>{fmt(r.netCredit)}</strong> · lance do bolso {fmt(r.bidCash)} · contempla em {r.contemplationMonth} {r.contemplationMonth === 1 ? 'mês' : 'meses'} · depois {fmt(r.postInstallment)} × {r.monthsAfterContemplation}
-                      </span>
-                    </label>
+                    <div key={q.key} className={`p-3 rounded-xl border ${on ? 'border-brand-200 bg-brand-50/40' : 'border-slate-100'}`}>
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" className="mt-0.5" checked={on}
+                          onChange={e => setPoExcluded(list => e.target.checked ? list.filter(k => k !== q.key) : [...list, q.key])} />
+                        <span className="min-w-0 text-[11px] text-slate-600 leading-relaxed">
+                          <span className="block text-xs font-black text-slate-900 break-words">{q.name} <span className="font-bold text-slate-400">· {status}</span></span>
+                          {contemplated
+                            ? <>Crédito disponível <strong>{fmt(r.netCredit)}</strong> · parcela {fmt(r.postInstallment)} × {r.monthsAfterContemplation}
+                              {past && past.cash + past.embedded > 0 && (
+                                <span className="block mt-1 text-slate-500">
+                                  Lance já dado: {fmt(past.cash)} do bolso{past.embedded > 0 ? <> + {fmt(past.embedded)} embutido (já descontado do crédito)</> : null}.
+                                  {past.cash > 0 && <> Esse dinheiro deixou de render ≈ {fmt(past.cash * annualToMonthly(num(opportunity)))}/mês a {oppTxt} — mas já foi pago e não volta em nenhum dos dois caminhos, por isso não muda a comparação de hoje (está no resumo abaixo).</>}
+                                </span>
+                              )}</>
+                            : <>Contempla daqui a {r.contemplationMonth} {r.contemplationMonth === 1 ? 'mês' : 'meses'}{noBid ? ' (sorteio, sem lance)' : <> com lance de {fmt(r.bidCash)} do bolso{r.bidEmbedded > 0 ? <> + {fmt(r.bidEmbedded)} embutido</> : null}</>}
+                              {' '}→ crédito líquido <strong>{fmt(r.netCredit)}</strong> · saldo {fmt(r.balanceAfterBid)} · parcela {fmt(r.postInstallment)} × {r.monthsAfterContemplation}</>}
+                        </span>
+                      </label>
+                      {!contemplated && (
+                        <button type="button" onClick={() => goToQuota(q.key)} className="mt-2 ml-7 text-[11px] font-black text-brand-600 hover:text-brand-800">
+                          {noBid && q.source ? '⚠ Simular a contemplação (lance e mês) desta cota' : 'Ajustar a contemplação desta cota'}
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
                 <button type="button" onClick={() => setTab('portfolio')} className="text-[11px] font-black text-brand-600 hover:text-brand-800">↳ Montar ou editar as cotas em "Várias cotas" (novas ou suas, com o lance de cada uma)</button>
@@ -1469,6 +1514,14 @@ const ConsortiumSimulator: React.FC = () => {
                       : <>Pode compensar se o capital livre render mais que {oppTxt} — por exemplo, numa reforma que aumenta o aluguel.</>}
                   </Verdict>}
 
+              {poPastBids.cash + poPastBids.embedded > 0 && (
+                <Verdict tone="info" title={`Lance que você já deu nas cotas usadas: ${fmt(poPastBids.cash)} do bolso${poPastBids.embedded > 0 ? ` + ${fmt(poPastBids.embedded)} embutido` : ''}.`}>
+                  {poPastBids.embedded > 0 && <>O embutido já está descontado: o crédito acima é o líquido. </>}
+                  {poPastBids.cash > 0 && <>O dinheiro do bolso deixou de render ≈ {fmt(poPastBids.cash * annualToMonthly(num(opportunity)))}/mês a {oppTxt}. Ele entra no custo de ter a cota, mas já foi pago: quitando ou não o financiamento, ele não volta — por isso a comparação acima olha só daqui para frente. </>}
+                  Para ver se o lance valeu a pena, use a aba Lance (lá o dinheiro do bolso conta como custo, com o rendimento perdido).
+                </Verdict>
+              )}
+
               {payoff.freeCapital > 0 && (
                 <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
                   <Stat label="Fica investido" value={fmt(payoff.invested)} sub={payoff.renovation > 0 ? `reforma ${fmt(payoff.renovation)}` : 'sem reforma'} />
@@ -1486,7 +1539,7 @@ const ConsortiumSimulator: React.FC = () => {
       {/* ═══ VÁRIAS COTAS ═══ */}
       {tab === 'portfolio' && (
         <PortfolioTab consortiums={consortiums} consLiabs={consLiabs} quotas={quotas} setQuotas={setQuotas} index={index} insurance={insurance} opportunity={opportunity}
-          setIndex={setIndex} setInsurance={setInsurance} setOpportunity={setOpportunity} />
+          setIndex={setIndex} setInsurance={setInsurance} setOpportunity={setOpportunity} focusKey={focusQuota} />
       )}
 
       {/* ═══ VENDER COTA ═══ */}
