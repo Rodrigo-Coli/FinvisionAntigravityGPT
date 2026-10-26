@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Calculator, Gavel, BadgeCheck, Landmark, HandCoins, Info, CheckCircle2, AlertTriangle, XCircle, ChevronDown
+  Calculator, Gavel, BadgeCheck, Landmark, HandCoins, Info, CheckCircle2, AlertTriangle, XCircle, ChevronDown,
+  Layers, Plus, Copy, Trash2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
 import { getSessionUser } from '../../lib/session';
@@ -10,7 +11,7 @@ import { sanitizeMoneyTyping, parseMoneyInput } from '../../lib/moneyInput';
 import {
   simulatePlan, simulateFinancing, evaluateBid, evaluateContemplatedQuota, evaluatePayoff,
   evaluateSale, targetSalePrice, lotteryOdds, bidChance, baseInstallmentValue, installmentsToPct,
-  monthlyToAnnualPct, existingQuotaPlan, BidMode, AmortizationSystem, PlanResult, SaleFlow
+  monthlyToAnnualPct, existingQuotaPlan, aggregatePlans, BidMode, AmortizationSystem, PlanResult, SaleFlow, PlanInput
 } from '../../lib/consortiumSimulator';
 
 /**
@@ -20,7 +21,7 @@ import {
  * com os consórcios e financiamentos cadastrados e a leitura dos resultados.
  */
 
-type SimTab = 'plan' | 'bid' | 'contemplated' | 'payoff' | 'sale';
+type SimTab = 'plan' | 'bid' | 'portfolio' | 'contemplated' | 'payoff' | 'sale';
 type BidUnit = 'PCT' | 'BRL' | 'INST';
 
 // Referências de out/2026 (ver "Referências de mercado" na tela).
@@ -122,60 +123,309 @@ const Card: React.FC<{ title: string; children: React.ReactNode; className?: str
 );
 
 // ─── Gráfico: parcela mês a mês (uma série) ─────────────────────────────────
-const InstallmentChart: React.FC<{ plan: PlanResult }> = ({ plan }) => {
+interface StepPoint { value: number; lines: React.ReactNode }
+
+/** Degraus mês a mês (uma série), com marcas verticais e dica ao passar o dedo/mouse. */
+const StepChart: React.FC<{ title: string; points: StepPoint[]; markers: { month: number; label: string }[] }> = ({ title, points, markers }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
-  const rows = plan.rows;
-  if (!rows.length) return null;
-  const values = rows.map(r => r.installment + r.insurance);
+  if (!points.length) return null;
+  const values = points.map(p => p.value);
   const max = Math.max(...values) * 1.1 || 1;
   const W = 600, H = 160;
   const y = (v: number) => H - (v / max) * H;
-  // Degraus: a parcela vale o mês inteiro.
   let d = '';
   values.forEach((v, i) => {
-    const x0 = (i / rows.length) * W, x1 = ((i + 1) / rows.length) * W;
+    const x0 = (i / points.length) * W, x1 = ((i + 1) / points.length) * W;
     d += `${i === 0 ? 'M' : 'L'}${x0.toFixed(2)},${y(v).toFixed(2)} L${x1.toFixed(2)},${y(v).toFixed(2)} `;
   });
-  const kX = ((plan.contemplationMonth - 0.5) / rows.length) * W;
+  const xOf = (month: number) => ((month - 0.5) / points.length) * W;
   const onMove = (e: React.MouseEvent | React.TouchEvent) => {
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const clientX = 'touches' in e ? e.touches[0]?.clientX : (e as React.MouseEvent).clientX;
     if (clientX === undefined) return;
-    const i = Math.min(rows.length - 1, Math.max(0, Math.floor(((clientX - rect.left) / rect.width) * rows.length)));
-    setHover(i);
+    setHover(Math.min(points.length - 1, Math.max(0, Math.floor(((clientX - rect.left) / rect.width) * points.length))));
   };
-  const h = hover !== null ? rows[hover] : null;
+  const visibleMarkers = markers.filter(m => m.month >= 1 && m.month <= points.length);
   return (
     <div className="space-y-2">
-      <div className="flex justify-between text-[10px] text-slate-400 font-bold">
-        <span>Parcela por mês (com seguro e reajuste estimado)</span>
-        <span>máx. {fmt(max / 1.1)}</span>
+      <div className="flex justify-between text-[10px] text-slate-400 font-bold gap-3">
+        <span>{title}</span>
+        <span className="whitespace-nowrap">máx. {fmt(max / 1.1)}</span>
       </div>
       <div ref={ref} className="relative h-40 select-none touch-none" onMouseMove={onMove} onMouseLeave={() => setHover(null)} onTouchStart={onMove} onTouchMove={onMove} onTouchEnd={() => setHover(null)}>
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full overflow-visible">
           {[0.25, 0.5, 0.75].map(f => <line key={f} x1={0} x2={W} y1={H * f} y2={H * f} stroke="currentColor" className="text-slate-100" strokeWidth={1} vectorEffect="non-scaling-stroke" />)}
           <line x1={0} x2={W} y1={H} y2={H} stroke="currentColor" className="text-slate-200" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-          <line x1={kX} x2={kX} y1={0} y2={H} stroke="currentColor" className="text-amber-500" strokeWidth={1.5} strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+          {visibleMarkers.map((m, i) => <line key={i} x1={xOf(m.month)} x2={xOf(m.month)} y1={0} y2={H} stroke="currentColor" className="text-amber-500" strokeWidth={1.5} strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />)}
           <path d={d} fill="none" stroke="currentColor" className="text-brand-600" strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
-          {hover !== null && <line x1={((hover + 0.5) / rows.length) * W} x2={((hover + 0.5) / rows.length) * W} y1={0} y2={H} stroke="currentColor" className="text-slate-400" strokeWidth={1} vectorEffect="non-scaling-stroke" />}
+          {hover !== null && <line x1={((hover + 0.5) / points.length) * W} x2={((hover + 0.5) / points.length) * W} y1={0} y2={H} stroke="currentColor" className="text-slate-400" strokeWidth={1} vectorEffect="non-scaling-stroke" />}
         </svg>
-        <span className="absolute -top-1 text-[9px] font-black text-amber-600 bg-white/90 px-1 rounded" style={{ left: `calc(${(kX / W) * 100}% + 4px)` }}>contemplação</span>
-        {h && (
+        {visibleMarkers.slice(0, 1).map((m, i) => (
+          <span key={i} className="absolute -top-1 text-[9px] font-black text-amber-600 bg-white/90 px-1 rounded" style={{ left: `calc(${(xOf(m.month) / W) * 100}% + 4px)` }}>{m.label}</span>
+        ))}
+        {hover !== null && (
           <div className="absolute top-2 z-10 pointer-events-none bg-slate-900 text-white rounded-xl px-3 py-2 text-[11px] shadow-lg"
-            style={{ left: `${Math.min(70, Math.max(0, ((hover! + 0.5) / rows.length) * 100 - 10))}%` }}>
-            <p className="font-black">Mês {h.month}{h.phase === 'pre' ? ' · antes de contemplar' : ' · depois'}</p>
-            <p>Parcela: <strong>{fmt(h.installment + h.insurance)}</strong>{h.insurance > 0 && <> (seguro {fmt(h.insurance)})</>}</p>
-            {h.bidCash > 0 && <p>Lance do bolso: <strong>{fmt(h.bidCash)}</strong></p>}
-            <p>Saldo devedor: {fmt(h.balance)}</p>
+            style={{ left: `${Math.min(70, Math.max(0, ((hover + 0.5) / points.length) * 100 - 10))}%` }}>
+            {points[hover].lines}
           </div>
         )}
       </div>
       <div className="flex justify-between text-[10px] text-slate-400 font-bold">
-        <span>mês 1</span><span>mês {rows.length}</span>
+        <span>mês 1</span><span>mês {points.length}</span>
       </div>
+    </div>
+  );
+};
+
+const InstallmentChart: React.FC<{ plan: PlanResult }> = ({ plan }) => (
+  <StepChart
+    title="Parcela por mês (com seguro e reajuste estimado)"
+    markers={[{ month: plan.contemplationMonth, label: 'contemplação' }]}
+    points={plan.rows.map(h => ({
+      value: h.installment + h.insurance,
+      lines: (
+        <>
+          <p className="font-black">Mês {h.month}{h.phase === 'pre' ? ' · antes de contemplar' : ' · depois'}</p>
+          <p>Parcela: <strong>{fmt(h.installment + h.insurance)}</strong>{h.insurance > 0 && <> (seguro {fmt(h.insurance)})</>}</p>
+          {h.bidCash > 0 && <p>Lance do bolso: <strong>{fmt(h.bidCash)}</strong></p>}
+          <p>Saldo devedor: {fmt(h.balance)}</p>
+        </>
+      )
+    }))}
+  />
+);
+
+// ─── Várias cotas ───────────────────────────────────────────────────────────
+interface QuotaDraft {
+  key: string;
+  name: string;
+  source: string;          // '' = cota nova; senão id do consórcio cadastrado
+  credit: string; term: string; adm: string; fr: string; reduced: string;
+  balance: string; remaining: string; installment: string;
+  unit: BidUnit; baseTerm: string; free: string; emb: string;
+  month: string; mode: BidMode;
+}
+
+const PORTFOLIO_KEY = 'finvision_consortium_sim_portfolio';
+const newKey = () => Math.random().toString(36).slice(2, 10);
+const blankQuota = (n: number): QuotaDraft => ({
+  key: newKey(), name: `Cota ${n}`, source: '',
+  credit: '200.000', term: '200', adm: '18', fr: '2', reduced: '100',
+  balance: '', remaining: '', installment: '',
+  unit: 'PCT', baseTerm: '240', free: '0', emb: '0', month: '1', mode: 'REDUCE_INSTALLMENT'
+});
+
+function draftToPlan(q: QuotaDraft, shared: { index: number; insurance: number }): PlanInput {
+  const credit = num(q.credit);
+  const planPct = 100 + num(q.adm) + num(q.fr);
+  const toPct = (txt: string) => {
+    const v = num(txt);
+    if (q.unit === 'BRL') return credit > 0 ? (v / credit) * 100 : 0;
+    if (q.unit === 'INST') return installmentsToPct(v, planPct, num(q.baseTerm));
+    return v;
+  };
+  const base = q.source
+    ? { ...existingQuotaPlan({ credit, balance: num(q.balance), remainingMonths: num(q.remaining), currentInstallment: num(q.installment) }), reserveFundPct: 0, reducedPct: 100 }
+    : { credit, termMonths: num(q.term), adminFeePct: num(q.adm), reserveFundPct: num(q.fr), reducedPct: num(q.reduced) || 100 };
+  return {
+    ...base, annualIndexPct: shared.index, insuranceMonthlyPct: shared.insurance,
+    contemplationMonth: num(q.month) || 1, freeBidPct: toPct(q.free), embeddedBidPct: toPct(q.emb), bidMode: q.mode
+  };
+}
+
+const PortfolioTab: React.FC<{
+  consortiums: ConsortiumRow[];
+  consLiabs: Record<string, FinancingRow>;
+  index: string; insurance: string; opportunity: string;
+  setIndex: (v: string) => void; setInsurance: (v: string) => void; setOpportunity: (v: string) => void;
+}> = ({ consortiums, consLiabs, index, insurance, opportunity, setIndex, setInsurance, setOpportunity }) => {
+  const [quotas, setQuotas] = useState<QuotaDraft[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PORTFOLIO_KEY) || 'null');
+      if (Array.isArray(saved) && saved.length) return saved;
+    } catch { /* rascunho é opcional */ }
+    return [blankQuota(1)];
+  });
+  useEffect(() => {
+    try { localStorage.setItem(PORTFOLIO_KEY, JSON.stringify(quotas)); } catch { /* rascunho é opcional */ }
+  }, [quotas]);
+
+  const update = (key: string, patch: Partial<QuotaDraft>) => setQuotas(list => list.map(q => q.key === key ? { ...q, ...patch } : q));
+  const remove = (key: string) => setQuotas(list => list.length > 1 ? list.filter(q => q.key !== key) : list);
+  const duplicate = (key: string) => setQuotas(list => {
+    const i = list.findIndex(q => q.key === key);
+    if (i < 0) return list;
+    const copy = { ...list[i], key: newKey(), name: `${list[i].name} (cópia)` };
+    return [...list.slice(0, i + 1), copy, ...list.slice(i + 1)];
+  });
+  const add = () => setQuotas(list => [...list, blankQuota(list.length + 1)]);
+  const chooseSource = (key: string, id: string) => {
+    const c = consortiums.find(x => x.id === id);
+    if (!c) { update(key, { source: '' }); return; }
+    const l = c.liability_id ? consLiabs[c.liability_id] : undefined;
+    update(key, {
+      source: id, name: c.name,
+      credit: toText(Number(c.credit_letter_value)), term: String(c.total_months || ''),
+      adm: toText(Number(c.admin_fee_pct)), fr: toText(Number(c.reserve_fund_pct)),
+      balance: l ? toText(Number(l.remaining_balance)) : '', remaining: l ? String(l.installments_remaining || '') : '',
+      installment: l ? toText(Number(l.installment_amount)) : ''
+    });
+  };
+
+  const shared = { index: num(index), insurance: num(insurance) };
+  const results = useMemo(() => quotas.map(q => simulatePlan(draftToPlan(q, shared), num(opportunity))), [quotas, index, insurance, opportunity]);
+  const agg = useMemo(() => aggregatePlans(results), [results]);
+  const unitSuffix = (u: BidUnit) => u === 'PCT' ? '%' : u === 'BRL' ? 'R$' : 'parc.';
+
+  return (
+    <div className="space-y-6">
+      <Verdict tone="info" title="Monte a operação com várias cotas — novas e suas.">
+        Cada cota tem o próprio lance e mês de contemplação; o total soma tudo. Os meses contam a partir de agora. O rascunho fica salvo neste aparelho.
+      </Verdict>
+
+      <Card title="Premissas para todas as cotas">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          <Field label="Reajuste anual" value={index} onChange={setIndex} suffix="% a.a." hint="INCC 12m: 6,66% (set/26)" />
+          <Field label="Seguro prestamista" value={insurance} onChange={setInsurance} suffix="% a.m." hint="Sobre o saldo, após contemplar" />
+          <Field label="Rendimento do seu dinheiro" value={opportunity} onChange={setOpportunity} suffix="% a.a." hint={`CDI ${fmtPct(DEFAULT_CDI)} − IR`} />
+        </div>
+      </Card>
+
+      {quotas.map((q, i) => {
+        const r = results[i];
+        const sum = agg.quotas[i];
+        const existing = !!q.source;
+        return (
+          <Card key={q.key} title={`Cota ${i + 1}`}>
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+              <div className="flex-1">
+                <label className={labelCls}>Nome</label>
+                <input className={inputCls} value={q.name} onChange={e => update(q.key, { name: e.target.value })} />
+              </div>
+              <div className="flex-1">
+                <label className={labelCls}>Cota</label>
+                <select className={inputCls} value={q.source} onChange={e => chooseSource(q.key, e.target.value)}>
+                  <option value="">Cota nova (simular compra)</option>
+                  {consortiums.map(c => <option key={c.id} value={c.id}>{c.name} — minha, situação de hoje</option>)}
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => duplicate(q.key)} className="flex items-center gap-1 px-3 py-2.5 rounded-xl border border-slate-200 text-[11px] font-bold text-slate-500 hover:text-brand-700"><Copy size={13} />Duplicar</button>
+                <button type="button" onClick={() => remove(q.key)} disabled={quotas.length === 1} className="flex items-center gap-1 px-3 py-2.5 rounded-xl border border-slate-200 text-[11px] font-bold text-slate-500 hover:text-rose-600 disabled:opacity-40"><Trash2 size={13} />Remover</button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <Field label={existing ? 'Carta (contratada)' : 'Carta de crédito'} value={q.credit} onChange={v => update(q.key, { credit: v })} suffix="R$" />
+              {existing ? (
+                <>
+                  <Field label="Saldo devedor hoje" value={q.balance} onChange={v => update(q.key, { balance: v })} suffix="R$" />
+                  <Field label="Parcelas restantes" value={q.remaining} onChange={v => update(q.key, { remaining: v })} integer />
+                  <Field label="Parcela atual" value={q.installment} onChange={v => update(q.key, { installment: v })} suffix="R$" />
+                </>
+              ) : (
+                <>
+                  <Field label="Prazo" value={q.term} onChange={v => update(q.key, { term: v })} suffix="meses" integer />
+                  <Field label="Parcela até contemplar" value={q.reduced} onChange={v => update(q.key, { reduced: v })} suffix="%" />
+                </>
+              )}
+              <Field label="Taxa de adm. (total)" value={q.adm} onChange={v => update(q.key, { adm: v })} suffix="%" />
+              <Field label="Fundo de reserva" value={q.fr} onChange={v => update(q.key, { fr: v })} suffix="%" />
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="col-span-2">
+                <label className={labelCls}>Lance em</label>
+                <Seg value={q.unit} onChange={(v: BidUnit) => update(q.key, { unit: v })} options={[{ value: 'PCT', label: '% da carta' }, { value: 'BRL', label: 'R$' }, { value: 'INST', label: 'Nº de parcelas' }]} />
+              </div>
+              {q.unit === 'INST' && <Field label="Prazo-base do grupo" value={q.baseTerm} onChange={v => update(q.key, { baseTerm: v })} suffix="meses" integer />}
+              <Field label="Lance do bolso" value={q.free} onChange={v => update(q.key, { free: v })} suffix={unitSuffix(q.unit)} />
+              <Field label="Lance embutido" value={q.emb} onChange={v => update(q.key, { emb: v })} suffix={unitSuffix(q.unit)} />
+              <Field label="Contempla daqui a" value={q.month} onChange={v => update(q.key, { month: v })} suffix="meses" integer />
+              <div>
+                <label className={labelCls}>Lance abate</label>
+                <Seg value={q.mode} onChange={(v: BidMode) => update(q.key, { mode: v })} options={[{ value: 'REDUCE_INSTALLMENT', label: 'Parcela' }, { value: 'REDUCE_TERM', label: 'Prazo' }]} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <Stat label="Crédito líquido" value={fmt(sum.netCredit)} sub={sum.bidEmbedded > 0 ? `carta ${fmt(sum.credit)} − embutido ${fmt(sum.bidEmbedded)}` : `carta ${fmt(sum.credit)}`} strong />
+              <Stat label="Lance do bolso" value={fmt(sum.bidCash)} />
+              <Stat label="Saque líquido" value={fmt(sum.netCash)} sub="crédito líquido − lance do bolso" />
+              <Stat label="Parcela antes → depois" value={`${fmt(sum.initialInstallment)} → ${fmt(sum.postInstallment)}`} sub={`depois: ${sum.monthsAfter} meses`} />
+              <Stat label="Saldo depois do lance" value={fmt(r.balanceAfterBid)} />
+            </div>
+            {r.warnings.map((w, k) => <Verdict key={k} tone="warn" title={w} />)}
+          </Card>
+        );
+      })}
+
+      <button type="button" onClick={add} className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-slate-200 text-xs font-black text-slate-500 hover:border-brand-300 hover:text-brand-700">
+        <Plus size={14} /> Adicionar cota
+      </button>
+
+      <Card title={`Total das ${quotas.length} cotas`}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Stat label="Crédito contratado" value={fmt(agg.total.credit)} />
+          <Stat label="Lance total" value={fmt(agg.total.bidCash + agg.total.bidEmbedded)} sub={`do bolso ${fmt(agg.total.bidCash)} · embutido ${fmt(agg.total.bidEmbedded)}`} />
+          <Stat label="Crédito liberado" value={fmt(agg.total.netCredit)} strong />
+          <Stat label="Saque líquido" value={fmt(agg.total.netCash)} strong />
+          <Stat label="Parcela inicial (soma)" value={fmt(agg.total.initialInstallment)} />
+          <Stat label="Parcela depois (soma)" value={fmt(agg.total.postInstallment)} sub="cada cota depois da sua contemplação" />
+          <Stat label="Total que sai do bolso" value={fmt(agg.total.totalCashOut)} sub="parcelas + seguro + lances do bolso" />
+          <Stat label="Até quitar tudo" value={`${agg.monthly.length} meses`} />
+        </div>
+
+        <div className="overflow-x-auto -mx-1">
+          <table className="w-full text-[11px] min-w-[640px]">
+            <thead>
+              <tr className="text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                <th className="py-2 px-1">Cota</th><th className="px-1 text-right">Crédito</th><th className="px-1 text-right">Lance bolso</th>
+                <th className="px-1 text-right">Embutido</th><th className="px-1 text-right">Crédito líquido</th><th className="px-1 text-right">Saque líquido</th>
+                <th className="px-1 text-right">Parcela inicial</th><th className="px-1 text-right">Parcela pós</th>
+              </tr>
+            </thead>
+            <tbody className="font-bold text-slate-700">
+              {agg.quotas.map((sq, i) => (
+                <tr key={quotas[i].key} className="border-t border-slate-100">
+                  <td className="py-2 px-1 truncate max-w-[140px]">{quotas[i].name}</td>
+                  <td className="px-1 text-right">{fmt(sq.credit)}</td><td className="px-1 text-right">{fmt(sq.bidCash)}</td>
+                  <td className="px-1 text-right">{fmt(sq.bidEmbedded)}</td><td className="px-1 text-right">{fmt(sq.netCredit)}</td>
+                  <td className="px-1 text-right">{fmt(sq.netCash)}</td><td className="px-1 text-right">{fmt(sq.initialInstallment)}</td>
+                  <td className="px-1 text-right">{fmt(sq.postInstallment)}</td>
+                </tr>
+              ))}
+              <tr className="border-t-2 border-slate-200 text-slate-900 font-black">
+                <td className="py-2 px-1">Total</td>
+                <td className="px-1 text-right">{fmt(agg.total.credit)}</td><td className="px-1 text-right">{fmt(agg.total.bidCash)}</td>
+                <td className="px-1 text-right">{fmt(agg.total.bidEmbedded)}</td><td className="px-1 text-right">{fmt(agg.total.netCredit)}</td>
+                <td className="px-1 text-right">{fmt(agg.total.netCash)}</td><td className="px-1 text-right">{fmt(agg.total.initialInstallment)}</td>
+                <td className="px-1 text-right">{fmt(agg.total.postInstallment)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card title="Soma das parcelas mês a mês">
+        <StepChart
+          title="Saída do bolso por mês com todas as cotas (sem os lances)"
+          markers={agg.quotas.map(sq => ({ month: sq.contemplationMonth, label: 'contemplação' }))}
+          points={agg.monthly.map((v, i) => ({
+            value: v,
+            lines: (
+              <>
+                <p className="font-black">Mês {i + 1}</p>
+                <p>Total: <strong>{fmt(v)}</strong></p>
+                {results.map((r, k) => r.rows[i] ? <p key={k}>{quotas[k].name}: {fmt(r.rows[i].installment + r.rows[i].insurance)}</p> : null)}
+              </>
+            )
+          }))}
+        />
+      </Card>
     </div>
   );
 };
@@ -431,6 +681,7 @@ const ConsortiumSimulator: React.FC = () => {
   const tabs: { id: SimTab; label: string; icon: React.ReactNode }[] = [
     { id: 'plan', label: 'Plano', icon: <Calculator size={14} /> },
     { id: 'bid', label: 'Lance', icon: <Gavel size={14} /> },
+    { id: 'portfolio', label: 'Várias cotas', icon: <Layers size={14} /> },
     { id: 'contemplated', label: 'Carta contemplada', icon: <BadgeCheck size={14} /> },
     { id: 'payoff', label: 'Quitar financiamento', icon: <Landmark size={14} /> },
     { id: 'sale', label: 'Vender cota', icon: <HandCoins size={14} /> }
@@ -692,6 +943,12 @@ const ConsortiumSimulator: React.FC = () => {
             </>
           ) : <Verdict tone="info" title="Preencha o saldo do financiamento e o crédito líquido do consórcio." />}
         </>
+      )}
+
+      {/* ═══ VÁRIAS COTAS ═══ */}
+      {tab === 'portfolio' && (
+        <PortfolioTab consortiums={consortiums} consLiabs={consLiabs} index={index} insurance={insurance} opportunity={opportunity}
+          setIndex={setIndex} setInsurance={setInsurance} setOpportunity={setOpportunity} />
       )}
 
       {/* ═══ VENDER COTA ═══ */}

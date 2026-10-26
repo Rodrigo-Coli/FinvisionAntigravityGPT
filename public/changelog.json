@@ -1,28 +1,22 @@
 {
-  "version": "2026.10.25.2339",
-  "title": "Simulador de Consórcio no Planejamento",
+  "version": "2026.10.25.2347",
+  "title": "Simulador: várias cotas com total somado",
   "date": "25/10/2026",
   "benefits": [
     {
-      "title": "Simulador de Consórcio",
-      "desc": "Novo em Planejamento → Simulador de Consórcio. Simule uma cota nova ou escolha uma cota sua — aí ele parte da situação de hoje (saldo devedor, parcelas restantes e parcela atual). Faz a conta como as administradoras: carta + taxa de administração + fundo de reserva, reajuste anual, parcela reduzida até contemplar e seguro; compara com um financiamento do mesmo valor. Só simula, não altera nada do app.",
+      "title": "Várias cotas de uma vez",
+      "desc": "Nova aba \"Várias cotas\" no Simulador de Consórcio: junte cotas novas e cotas suas (a partir da situação de hoje), cada uma com o próprio lance (bolso e embutido, em %, R$ ou nº de parcelas) e mês de contemplação.",
       "type": "novidade"
     },
     {
-      "title": "Quando vale dar lance e até quanto",
-      "desc": "Na aba Lance: lance do bolso e embutido em %, R$ ou nº de parcelas (como a Ademicon oferta), crédito líquido, saque líquido, nova parcela ou prazo, chance pelo sorteio e contra o histórico do grupo — e o lance máximo que ainda compensa, pelo aluguel ou juros que você economiza tendo o bem antes.",
-      "type": "novidade"
-    },
-    {
-      "title": "Carta contemplada, quitar financiamento e vender cota",
-      "desc": "Avalie uma cota contemplada à venda (custo efetivo e ágio máximo que vale), quite um financiamento seu com a carta usando as parcelas reais cadastradas (capital livre e quanto economiza) e veja o lucro de vender uma cota sua, em % total e ao mês, com o preço mínimo para a meta que você quer.",
+      "title": "Detalhe de cada cota e o total",
+      "desc": "Para cada cota: crédito líquido, lance do bolso, saque líquido, parcela antes e depois de contemplar e saldo depois do lance. No total: crédito contratado, lance, crédito liberado, saque líquido, soma das parcelas inicial e depois — como na proposta do corretor — e o gráfico da soma das parcelas mês a mês.",
       "type": "novidade"
     }
   ],
   "changes": [
-    "`lib/consortiumSimulator.ts`: plano em % da carta (cota nova) ou a partir do saldo de hoje (`existingQuotaPlan`, cota existente) (adm, FR, índice anual, parcela reduzida, seguro sobre saldo), contemplação com lance livre/embutido (reduz prazo/parcela), TIR/VPL, financiamento PRICE/SAC, decisão do lance em valor presente (crédito não conta como caixa; embutido conta como custo) com lance máximo por busca binária, probabilidade de sorteio, cota contemplada, quitação (parcelas reais) e venda (TIR, preço-alvo).",
-    "`components/planning/ConsortiumSimulator.tsx`: 5 abas, escolha entre cota nova e cota minha (situação de hoje) e pré-preenchimento de financiamentos, gráfico de parcelas com tooltip, referências de mercado com fontes. Só calcula, não grava.",
-    "`Planning.tsx` aba `consortium` (`?tab=consortium`) e submenu no `Nav`.",
-    "Testes: `tests/consortiumSimulator.test.ts` (reproduz a proposta da Ademicon: parcela-base 887,58, crédito líquido 118.534,47, saque líquido 54.628,93). `tests/consortiumSimulatorScreen.test.tsx`: tela abre em todas as abas sem gravar nada; cota minha dá a mesma parcela do modal de lance (667,23)."
+    "`lib/consortiumSimulator.ts`: `summarizePlan` e `aggregatePlans` (totais e saída mensal somada).",
+    "`ConsortiumSimulator.tsx`: aba `portfolio` (cotas novas/existentes, duplicar/remover, premissas comuns, tabela com total, gráfico somado; rascunho em localStorage). Gráfico generalizado (`StepChart`).",
+    "Testes: reproduz a proposta de 4 cotas (crédito 692.872,30, lance 244.228,11, crédito liberado 478.081,89, saque 233.853,77, parcela inicial 6.611,34); tela de várias cotas sem gravar nada no banco."
   ]
 }

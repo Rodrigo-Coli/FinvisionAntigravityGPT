@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.10.25.2347",
+    "title": "Simulador: várias cotas com total somado",
+    "date": "25/10/2026",
+    "benefits": [
+      {
+        "title": "Várias cotas de uma vez",
+        "desc": "Nova aba \"Várias cotas\" no Simulador de Consórcio: junte cotas novas e cotas suas (a partir da situação de hoje), cada uma com o próprio lance (bolso e embutido, em %, R$ ou nº de parcelas) e mês de contemplação.",
+        "type": "novidade"
+      },
+      {
+        "title": "Detalhe de cada cota e o total",
+        "desc": "Para cada cota: crédito líquido, lance do bolso, saque líquido, parcela antes e depois de contemplar e saldo depois do lance. No total: crédito contratado, lance, crédito liberado, saque líquido, soma das parcelas inicial e depois — como na proposta do corretor — e o gráfico da soma das parcelas mês a mês.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "`lib/consortiumSimulator.ts`: `summarizePlan` e `aggregatePlans` (totais e saída mensal somada).",
+      "`ConsortiumSimulator.tsx`: aba `portfolio` (cotas novas/existentes, duplicar/remover, premissas comuns, tabela com total, gráfico somado; rascunho em localStorage). Gráfico generalizado (`StepChart`).",
+      "Testes: reproduz a proposta de 4 cotas (crédito 692.872,30, lance 244.228,11, crédito liberado 478.081,89, saque 233.853,77, parcela inicial 6.611,34); tela de várias cotas sem gravar nada no banco."
+    ]
+  },
+  {
     "version": "2026.10.25.2339",
     "title": "Simulador de Consórcio no Planejamento",
     "date": "25/10/2026",

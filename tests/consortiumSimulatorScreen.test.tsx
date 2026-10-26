@@ -58,6 +58,7 @@ const setValue = (el: HTMLInputElement | HTMLSelectElement, value: string) => {
 
 beforeEach(() => {
   writes.length = 0;
+  localStorage.clear();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -93,6 +94,29 @@ describe('tela do simulador de consórcio', () => {
     await flush();
     expect(text()).toContain('R$ 118.534,47');      // crédito líquido
     expect(text()).toContain('R$ 667,23');          // parcela depois do lance
+    expect(writes).toEqual([]);
+  });
+  it('várias cotas: uma minha + uma nova, com o total somado e sem gravar nada', async () => {
+    await act(async () => { root.render(<ConsortiumSimulator />); });
+    await flush();
+    await act(async () => { button('Várias cotas').click(); });
+    await flush();
+    const select = Array.from(container.querySelectorAll('select')).find(s => s.textContent?.includes('Cota nova'))!;
+    await act(async () => { setValue(select, 'C1'); });
+    await act(async () => { setValue(field('Reajuste anual'), '0'); });
+    await act(async () => { button('R$').click(); });
+    await act(async () => { setValue(field('Lance do bolso'), '63913,10'); });
+    await act(async () => { setValue(field('Lance embutido'), '53254,62'); });
+    await act(async () => { setValue(field('Contempla daqui a'), '1'); });
+    await flush();
+    expect(text()).toContain('R$ 118.534,47');
+    expect(text()).toContain('R$ 667,23');
+
+    await act(async () => { button('Adicionar cota').click(); });
+    await flush();
+    expect(text()).toContain('Total das 2 cotas');
+    expect(text()).toContain('R$ 371.789,09'); // 171.789,09 + 200.000
+    expect(JSON.parse(localStorage.getItem('finvision_consortium_sim_portfolio')!)).toHaveLength(2);
     expect(writes).toEqual([]);
   });
 });
