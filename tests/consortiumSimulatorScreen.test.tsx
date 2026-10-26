@@ -313,4 +313,47 @@ describe('tela do simulador de consórcio', () => {
     Object.assign(tables.consortiums[0], c0); Object.assign(tables.liabilities[0], l0);
     tables.consortiums[0].metadata = {}; tables.transactions = [];
   });
+  it('rascunho antigo (carta cheia, cota repetida) e imóvel devolvido: crédito líquido, repetida fora, Wave fora', async () => {
+    const c0 = { ...tables.consortiums[0] }, l0 = { ...tables.liabilities[0] };
+    Object.assign(tables.consortiums[0], { status: 'CONTEMPLATED', metadata: { net_credit: 118534.47, embedded_bid_amount: 53254.62 } });
+    Object.assign(tables.liabilities[0], { remaining_balance: 88073.80, installments_remaining: 131, installment_amount: 667.23 });
+    tables.liabilities.push({ id: 'L9', name: 'Financiamento: Wave Beach Prime - 106', type: 'MORTGAGE', remaining_balance: 191327.7, installment_amount: 191327.7, installments_remaining: 1, interest_rate: null, linked_asset_id: 'A9', metadata: { isPendingFinancing: true } });
+    tables.physical_assets = [{ id: 'A9', is_archived: true }];
+    const stale = { key: 'k1', name: 'Ademicon 570-807', source: 'C1', credit: '171789,09', term: '137', adm: '24', fr: '0', reduced: '100',
+      balance: '88073,8', remaining: '131', installment: '667,23', unit: 'PCT', baseTerm: '240', free: '0', emb: '0', month: '1', mode: 'REDUCE_INSTALLMENT' };
+    localStorage.setItem('finvision_consortium_sim_portfolio', JSON.stringify([stale, { ...stale, key: 'k2', name: 'Ademicon 570-807 (cópia)' }]));
+
+    await act(async () => { root.render(<ConsortiumSimulator />); });
+    await flush();
+    await act(async () => { button('Quitar financiamento').click(); });
+    await flush();
+    const fin = Array.from(container.querySelectorAll('select')).find(s => s.textContent?.includes('Piazza'))!;
+    expect(fin.textContent).not.toContain('Wave');
+    let t = text();
+    expect(t).toContain('Crédito disponível R$ 118.534,47');
+    expect(t).not.toContain('R$ 171.789,09');
+    expect(t).toContain('Repetida: é a mesma cota de uma linha acima');
+    await act(async () => { setValue(fin, 'L2'); });
+    await flush();
+    t = text();
+    expect(t).toContain('1 cota(s)');
+    expect(t).toMatch(/O crédito não cobre a quitação: faltam R\$ 31\.[0-9]{3},[0-9]{2}/);
+
+    // Duplicar a cota minha vira uma cota NOVA igual (carta cheia, sem saldo).
+    await act(async () => { button('Várias cotas').click(); });
+    expect(text()).toContain('Cota repetida:');
+    await act(async () => { button('Remover').click(); });
+    await act(async () => { button('Duplicar').click(); });
+    await flush();
+    const selects = Array.from(container.querySelectorAll('select')).filter(s => s.textContent?.includes('Cota nova')) as HTMLSelectElement[];
+    expect(selects.map(s => s.value)).toEqual(['C1', '']);
+    const values = Array.from(container.querySelectorAll('input')).map(i => i.value);
+    expect(values).toContain('Ademicon 570-807 (cópia) (nova igual)');
+    expect(values).toContain('171789,09'); // cota nova: carta cheia
+    expect(text()).not.toContain('Cota repetida:');
+    expect(writes).toEqual([]);
+
+    Object.assign(tables.consortiums[0], c0); Object.assign(tables.liabilities[0], l0);
+    tables.consortiums[0].metadata = {}; tables.liabilities.pop(); tables.physical_assets = [];
+  });
 });

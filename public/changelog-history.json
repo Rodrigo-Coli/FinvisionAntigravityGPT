@@ -1,5 +1,33 @@
 [
   {
+    "version": "2026.10.26.0056",
+    "title": "Simulador: crédito líquido nas cotas salvas, sem cota repetida e sem imóvel devolvido",
+    "date": "26/10/2026",
+    "benefits": [
+      {
+        "title": "Cotas salvas usam o crédito líquido",
+        "desc": "Simulações salvas no aparelho antes da contemplação ainda mostravam a carta cheia (ex.: R$ 171.789,09). Agora a cota já contemplada passa sozinha para o crédito líquido (ex.: R$ 118.534,47), sem lance repetido.",
+        "type": "correcao"
+      },
+      {
+        "title": "A mesma cota não conta duas vezes",
+        "desc": "Uma cota sua repetida (ex.: \"(cópia)\") fica marcada como repetida e não entra na quitação. \"Duplicar\" uma cota sua agora cria uma cota NOVA igual, para simular comprar outra.",
+        "type": "correcao"
+      },
+      {
+        "title": "Imóvel devolvido sai da lista de financiamentos",
+        "desc": "O saldo a financiar de imóvel arquivado (ex.: Wave Beach Prime) não aparece mais no simulador nem nas dívidas do Início, mesmo antes de abrir Patrimônio.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`lib/consortiumSimState.ts`: `refreshContemplatedQuotas` (carta cheia → crédito líquido, lance 0, mês 1 em cota contemplada) e `repeatedQuotaKeys`.",
+      "`lib/pendingFinancing.ts`: `isOrphanPendingFinancing`, usado no simulador, no Início (`dashboard.service`) e na autocorreção de Patrimônio.",
+      "`ConsortiumSimulator.tsx`: atualiza rascunhos ao carregar; aviso e exclusão de cota repetida na quitação; Duplicar de cota minha cria cota nova (carta cheia, sem saldo); lista de financiamentos ignora saldo a financiar de imóvel arquivado.",
+      "Testes: rascunho antigo com cópia e imóvel devolvido; Início sem saldo a financiar órfão; funções puras."
+    ]
+  },
+  {
     "version": "2026.10.26.0040",
     "title": "Bem devolvido sai das dívidas; simular a contemplação na quitação",
     "date": "26/10/2026",
