@@ -245,7 +245,16 @@ describe('tela do simulador de consórcio', () => {
     await act(async () => { setValue(fin, 'L2'); });
     await flush();
     expect(text()).toContain('Usando as 161 parcelas reais cadastradas');
-    expect(text()).toContain('Ademicon 570-807 · minha');
+    expect(text()).toContain('Ademicon 570-807 · minha · aguardando contemplação');
+    expect(text()).toContain('com lance de R$ 63.913,10 do bolso + R$ 53.254,62 embutido');
+    expect(text()).toMatch(/crédito líquido R\$ 118\.534,[0-9]{2}/);
+    // Dali leva para "Várias cotas" mostrando como a carta fica depois de contemplar.
+    await act(async () => { button('Ajustar a contemplação desta cota').click(); });
+    await flush();
+    expect(text()).toContain('Como fica a carta depois de contemplar (daqui a 1 mês)');
+    expect(text()).toContain('Saldo devedor: antes → depois');
+    await act(async () => { button('Quitar financiamento').click(); });
+    await flush();
     // Só a 570-807 não cobre o saldo do Piazza.
     expect(text()).toMatch(/O crédito não cobre a quitação: faltam R\$ 3[0-9]\.[0-9]{3},[0-9]{2}/);
 
@@ -265,7 +274,10 @@ describe('tela do simulador de consórcio', () => {
   });
   it('cota já contemplada: usa o crédito líquido, sem lance de novo, e quita com os números reais', async () => {
     const c0 = { ...tables.consortiums[0] }, l0 = { ...tables.liabilities[0] };
-    Object.assign(tables.consortiums[0], { status: 'CONTEMPLATED', metadata: { net_credit: 118534.47, embedded_bid_amount: 53254.62, bid_type: 'MIXED' } });
+    Object.assign(tables.consortiums[0], { status: 'CONTEMPLATED', metadata: {
+      net_credit: 118534.47, embedded_bid_amount: 53254.62, bid_type: 'MIXED',
+      bids: [{ date: '2026-10-20', amount: 117167.72, cash_amount: 63913.10, embedded_amount: 53254.62 }]
+    } });
     Object.assign(tables.liabilities[0], { remaining_balance: 88073.80, installments_remaining: 132, installment_amount: 667.23 });
     tables.transactions = Array.from({ length: 161 }, (_, i) => ({
       liability_id: 'L2', user_id: 'u1', date: '2026-11-29', amount: 1268.62, paid_amount: 0, is_paid: false, is_deleted: false, type: 'EXPENSE', description: `Parcela ${i + 1}`, metadata: {}
@@ -292,6 +304,11 @@ describe('tela do simulador de consórcio', () => {
     expect(t).toContain('hoje: financiamento R$ 1.268,62 + cotas que já tem R$ 667,23 · sobra R$ 1.268,62/mês');
     expect(t).toContain('juros implícitos 0,410% a.m.');
     expect(t).toMatch(/O crédito não cobre a quitação: faltam R\$ 31\.[0-9]{3},[0-9]{2}/);
+    // O lance já pago aparece (com o rendimento que deixou de ter), sem entrar de novo na conta.
+    expect(t).toContain('minha · já contemplada');
+    expect(t).toContain('Lance já dado: R$ 63.913,10 do bolso + R$ 53.254,62 embutido (já descontado do crédito)');
+    expect(t).toContain('Lance que você já deu nas cotas usadas: R$ 63.913,10 do bolso + R$ 53.254,62 embutido.');
+    expect(t).toMatch(/deixou de render ≈ R\$ 58[0-9],[0-9]{2}\/mês/);
     expect(writes).toEqual([]);
     Object.assign(tables.consortiums[0], c0); Object.assign(tables.liabilities[0], l0);
     tables.consortiums[0].metadata = {}; tables.transactions = [];

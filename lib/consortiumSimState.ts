@@ -53,6 +53,28 @@ export function availableCredit(c: { credit_letter_value?: unknown; status?: str
   return { credit: netCredit ?? carta, contemplated, netCredit };
 }
 
+/**
+ * Lances já dados na cota (registrados pelo botão "Lance"): quanto saiu do
+ * bolso e quanto foi embutido. Lance antigo sem a divisão conta como do bolso.
+ */
+export function paidBids(metadata: any): { cash: number; embedded: number; firstDate: string | null } {
+  const bids = Array.isArray(metadata?.bids) ? metadata.bids : [];
+  let cash = 0, embedded = 0;
+  let firstDate: string | null = null;
+  for (const b of bids) {
+    if (!b || typeof b !== 'object') continue;
+    const hasSplit = b.cash_amount !== undefined || b.embedded_amount !== undefined;
+    const c = hasSplit ? Number(b.cash_amount) || 0 : Number(b.amount) || 0;
+    const e = hasSplit ? Number(b.embedded_amount) || 0 : 0;
+    if (c <= 0 && e <= 0) continue;
+    cash += c;
+    embedded += e;
+    const d = typeof b.date === 'string' ? b.date.slice(0, 10) : '';
+    if (d && (!firstDate || d < firstDate)) firstDate = d;
+  }
+  return { cash: Math.round(cash * 100) / 100, embedded: Math.round(embedded * 100) / 100, firstDate };
+}
+
 export interface AiQuota {
   name?: string;
   source?: string;
