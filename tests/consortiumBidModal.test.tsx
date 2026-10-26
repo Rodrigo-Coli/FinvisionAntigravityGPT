@@ -79,7 +79,7 @@ const seed = () => {
     }))
   ];
   db.liabilities = [{ id: 'L1', type: 'CONSORTIUM', remaining_balance: 50000, installments_remaining: 6, installment_amount: 1000, metadata: {} }];
-  db.consortiums = [{ id: 'C1', name: 'HS Teste', liability_id: 'L1', months_paid: 0, metadata: { bid_type: 'FREE' } }];
+  db.consortiums = [{ id: 'C1', name: 'HS Teste', liability_id: 'L1', months_paid: 0, status: 'WAITING', credit_letter_value: 100000, contemplated_at: null, contemplation_method: 'UNKNOWN', metadata: { bid_type: 'FREE' } }];
   db.accounts = [{ id: 'A1', user_id: 'u1', institution: 'Banco X', is_archived: false }];
 };
 
@@ -97,7 +97,7 @@ const button = (text: string) => Array.from(container.querySelectorAll('button')
 const render = async (onSaved = vi.fn()) => {
   const c = db.consortiums[0];
   await act(async () => {
-    root.render(<ConsortiumBidModal consortium={{ id: c.id, name: c.name, liability_id: c.liability_id, metadata: { ...c.metadata } }} onClose={() => {}} onSaved={onSaved} />);
+    root.render(<ConsortiumBidModal consortium={{ id: c.id, name: c.name, liability_id: c.liability_id, status: c.status, credit_letter_value: c.credit_letter_value, contemplated_at: c.contemplated_at, contemplation_method: c.contemplation_method, metadata: { ...c.metadata } }} onClose={() => {}} onSaved={onSaved} />);
   });
   await flush();
   return onSaved;
@@ -185,5 +185,59 @@ describe('modal de lance de consórcio', () => {
     expect(db.transactions.find(t => t.metadata?.type === 'consortium_bid')!.is_deleted).toBe(true);
     expect(db.consortiums[0].metadata.bids || []).toEqual([]);
     expect(db.liabilities[0].remaining_balance).toBe(50000);
+  });
+  it('lance com embutido: boleto sai da conta, embutido não; abate o total, contempla e desfazer volta tudo', async () => {
+    await render();
+    const inputs = container.querySelectorAll('input');
+    await act(async () => { setValue(inputs[0] as HTMLInputElement, '2000'); });
+    await act(async () => { setValue(inputs[1] as HTMLInputElement, '1500'); });
+    await act(async () => { setValue(container.querySelector('select')!, 'A1'); });
+    await act(async () => { button('Reduzir prazo').click(); });
+    expect(container.textContent).toContain('Lance total: R$');
+    expect(container.textContent!.replace(/\u00a0/g, ' ')).toContain('= R$ 98.500,00');
+    const box = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    expect(box.disabled).toBe(true);
+    await act(async () => { button('Registrar e recalcular').click(); });
+    await flush();
+
+    const bidTxs = db.transactions.filter(t => t.metadata?.type === 'consortium_bid');
+    const cash = bidTxs.find(t => t.metadata.bid_part === 'CASH')!;
+    const emb = bidTxs.find(t => t.metadata.bid_part === 'EMBEDDED')!;
+    expect(cash).toMatchObject({ amount: 2000, account_id: 'A1', is_paid: true });
+    expect(cash.metadata.isCapitalized).toBeUndefined();
+    expect(emb).toMatchObject({ amount: 1500, account_id: null, is_paid: true, paid_amount: 1500, is_amortization: true, liability_id: 'L1' });
+    expect(emb.metadata.isCapitalized).toBe(true);
+    // Lance total 3.500: saem 3 parcelas e o saldo cai 3.500.
+    expect(['p4', 'p5', 'p6'].map(id => tx(id).is_deleted)).toEqual([true, true, true]);
+    expect(db.liabilities[0]).toMatchObject({ remaining_balance: 46500, installments_remaining: 3 });
+    expect(db.consortiums[0]).toMatchObject({ status: 'CONTEMPLATED', contemplation_method: 'BID' });
+    expect(db.consortiums[0].metadata).toMatchObject({ bid_amount: 3500, bid_type: 'MIXED', embedded_bid_amount: 1500, net_credit: 98500 });
+
+    act(() => root.unmount()); root = createRoot(container);
+    await render();
+    await act(async () => { button('Desfazer último lance').click(); });
+    await act(async () => { button('Sim, desfazer').click(); });
+    await flush();
+
+    expect([cash.is_deleted, emb.is_deleted]).toEqual([true, true]);
+    expect(['p4', 'p5', 'p6'].every(id => tx(id).is_deleted === false)).toBe(true);
+    expect(db.liabilities[0]).toMatchObject({ remaining_balance: 50000, installments_remaining: 6 });
+    expect(db.consortiums[0]).toMatchObject({ status: 'WAITING', contemplated_at: null, contemplation_method: 'UNKNOWN' });
+    expect(db.consortiums[0].metadata).toEqual({ bid_type: 'FREE', bids: [] });
+  });
+
+  it('só embutido: não pede conta e não mexe em conta nenhuma', async () => {
+    await render();
+    const inputs = container.querySelectorAll('input');
+    await act(async () => { setValue(inputs[1] as HTMLInputElement, '1000'); });
+    expect(container.querySelector('select')).toBeNull();
+    await act(async () => { button('Registrar e recalcular').click(); });
+    await flush();
+    const bidTxs = db.transactions.filter(t => t.metadata?.type === 'consortium_bid');
+    expect(bidTxs).toHaveLength(1);
+    expect(bidTxs[0]).toMatchObject({ amount: 1000, account_id: null, is_amortization: true });
+    expect(db.liabilities[0].remaining_balance).toBe(49000);
+    expect(db.consortiums[0].status).toBe('CONTEMPLATED');
   });
 });

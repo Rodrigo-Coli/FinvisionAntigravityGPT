@@ -1,28 +1,28 @@
 {
-  "version": "2026.10.25.2245",
-  "title": "Saldo devedor do consórcio pela regra de mercado",
+  "version": "2026.10.25.2257",
+  "title": "Lance embutido e contemplação por lance no consórcio",
   "date": "25/10/2026",
   "benefits": [
     {
-      "title": "Dívida do consórcio sempre certa",
-      "desc": "O saldo devedor do consórcio agora é o saldo da administradora menos o que você já pagou (parcelas e lances). Antes, ao pagar ou editar uma parcela, o app trocava o saldo pela soma das parcelas que faltam — nos planos com parcela reduzida até a contemplação isso fazia a dívida despencar (o HS 1119-440 aparecia com R$ 19 mil em vez de ~R$ 126 mil).",
-      "type": "correcao"
+      "title": "Lance embutido",
+      "desc": "No \"Lance\" do consórcio agora há dois campos: o que foi pago do bolso (boleto, sai da conta) e o lance embutido (sai da própria carta). O embutido não mexe no saldo do banco nem aparece como gasto do mês, mas abate o saldo devedor junto com o boleto.",
+      "type": "novidade"
     },
     {
-      "title": "Pagou, o saldo cai; desfez, ele volta",
-      "desc": "Cada parcela paga (inteira ou parcial) e cada lance abatem o saldo devedor, inclusive o que foi pago em Transações. Desmarcar o pagamento devolve o valor. Se você digitar o saldo do extrato da administradora (correção pelo índice), ele passa a ser a nova referência.",
+      "title": "Contemplação por lance",
+      "desc": "Marque \"Este lance contemplou a cota\" (com embutido é automático): o consórcio passa para Contemplado por lance e o cartão mostra o crédito líquido — carta menos o embutido — e quanto da carta foi embutido.",
+      "type": "novidade"
+    },
+    {
+      "title": "Desfazer volta a cota também",
+      "desc": "\"Desfazer último lance\" agora retira o boleto e o embutido, devolve as parcelas e o saldo devedor e volta a cota para a situação de antes.",
       "type": "melhoria"
-    },
-    {
-      "title": "\"Parcelas pagas\" atualizado no cartão do consórcio",
-      "desc": "O \"X de N parcelas pagas\" do cartão agora acompanha os pagamentos — antes ficava parado no número do cadastro.",
-      "type": "correcao"
     }
   ],
   "changes": [
-    "`lib/consortiumBalance.ts`: saldo = referência − amortizado desde a âncora (`liabilities.metadata.balance_anchor`); amortização = saídas pagas (parcial também), sem seguro; saldo editado à mão vira nova âncora; idempotente.",
-    "`services/consortiumBalance.service.ts`: sincroniza saldo, parcelas restantes e `consortiums.months_paid`, serializado por passivo, nunca lança. `finance.service` usa essa regra para passivo CONSORTIUM (financiamentos seguem como estavam).",
-    "Sincroniza ao abrir Patrimônio, Consórcios e Painel (limite de 4s) e no lance (que passa a usar a mesma regra).",
-    "Banco: saldo dos 7 consórcios recalculado pela regra (saldo do plano − parcelas pagas) com âncora gravada."
+    "`ConsortiumBidModal.tsx`: campos boleto + embutido (lance total = soma, usado em `planConsortiumBid`); embutido gravado sem conta, `is_amortization` e `metadata.isCapitalized` (fora de totais/DRE, abate o saldo pela regra de `lib/consortiumBalance`); conta só exigida com boleto.",
+    "Contemplação: status CONTEMPLATED, `contemplated_at`, método BID e `metadata.bid_amount/bid_type/embedded_bid_amount/net_credit`; situação anterior guardada no lance para desfazer.",
+    "`ConsortiumSection.tsx`: cartão contemplado mostra o crédito líquido.",
+    "Testes: boleto + embutido com contemplação e desfazer; só embutido sem conta."
   ]
 }
