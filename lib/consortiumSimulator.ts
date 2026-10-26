@@ -493,3 +493,55 @@ export function targetSalePrice(payments: SaleFlow[], saleDate: string, targetPc
   const r = (Number(targetPct) || 0) / 100;
   return paid.reduce((s, p) => s + pos(p.amount) * Math.pow(1 + r, Math.max(0, monthsBetween(p.date, saleDate))), 0);
 }
+
+// ─── Várias cotas (carteira) ────────────────────────────────────────────────
+export interface QuotaSummary {
+  credit: number;          // carta na contemplação
+  bidCash: number;         // lance do bolso
+  bidEmbedded: number;     // lance embutido
+  netCredit: number;       // crédito líquido (carta − embutido)
+  netCash: number;         // saque líquido (crédito líquido − lance do bolso)
+  initialInstallment: number;
+  postInstallment: number;
+  monthsAfter: number;
+  contemplationMonth: number;
+  totalCashOut: number;
+}
+
+export function summarizePlan(r: PlanResult): QuotaSummary {
+  return {
+    credit: r.creditAtContemplation,
+    bidCash: r.bidCash,
+    bidEmbedded: r.bidEmbedded,
+    netCredit: r.netCredit,
+    netCash: r.netCredit - r.bidCash,
+    initialInstallment: r.rows[0] ? r.rows[0].installment : 0,
+    postInstallment: r.postInstallment,
+    monthsAfter: r.monthsAfterContemplation,
+    contemplationMonth: r.contemplationMonth,
+    totalCashOut: r.totalCashOut
+  };
+}
+
+/** Soma das cotas e a saída do bolso mês a mês (todas começando no mês 1). */
+export function aggregatePlans(results: PlanResult[]) {
+  const sums = results.map(summarizePlan);
+  const total = sums.reduce((acc, s) => ({
+    credit: acc.credit + s.credit,
+    bidCash: acc.bidCash + s.bidCash,
+    bidEmbedded: acc.bidEmbedded + s.bidEmbedded,
+    netCredit: acc.netCredit + s.netCredit,
+    netCash: acc.netCash + s.netCash,
+    initialInstallment: acc.initialInstallment + s.initialInstallment,
+    postInstallment: acc.postInstallment + s.postInstallment,
+    monthsAfter: Math.max(acc.monthsAfter, s.monthsAfter),
+    contemplationMonth: Math.max(acc.contemplationMonth, s.contemplationMonth),
+    totalCashOut: acc.totalCashOut + s.totalCashOut
+  }), { credit: 0, bidCash: 0, bidEmbedded: 0, netCredit: 0, netCash: 0, initialInstallment: 0, postInstallment: 0, monthsAfter: 0, contemplationMonth: 0, totalCashOut: 0 } as QuotaSummary);
+  const months = Math.max(0, ...results.map(r => r.rows.length));
+  const monthly = Array.from({ length: months }, (_, i) => results.reduce((s, r) => {
+    const row = r.rows[i];
+    return s + (row ? row.installment + row.insurance : 0);
+  }, 0));
+  return { quotas: sums, total, monthly };
+}

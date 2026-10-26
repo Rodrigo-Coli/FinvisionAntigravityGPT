@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   simulatePlan, simulateFinancing, irr, npv, lotteryOdds, bidChance, evaluateBid,
   evaluateContemplatedQuota, evaluatePayoff, evaluateSale, targetSalePrice,
-  baseInstallmentValue, installmentsToPct, annualToMonthly, existingQuotaPlan
+  baseInstallmentValue, installmentsToPct, annualToMonthly, existingQuotaPlan, aggregatePlans
 } from '../lib/consortiumSimulator';
 
 /**
@@ -104,6 +104,37 @@ describe('cota existente: parte do saldo de hoje', () => {
     expect(r.preInstallment).toBeCloseTo(398.36, 2);
     expect(r.postInstallment).toBeCloseTo((126349.11 - 6 * 398.36) / 42, 2);
     expect(r.totalInstallments).toBeCloseTo(126349.11, 2);
+  });
+});
+
+describe('várias cotas — a proposta de 4 cotas do corretor', () => {
+  it('reproduz cada cota e os totais (crédito, lance, crédito liberado, saque, parcela inicial)', () => {
+    const quota = (credit: number, term: number, emb: number, paid: number) => simulatePlan({
+      credit, termMonths: term, adminFeePct: 24, contemplationMonth: 1,
+      embeddedBidPct: installmentsToPct(emb, 124, 240), freeBidPct: installmentsToPct(paid, 124, 240)
+    });
+    const results = [quota(171789.09, 132, 60, 72), quota(171789.09, 132, 60, 71), quota(174647.06, 128, 60, 65), quota(174647.06, 128, 60, 65)];
+    const agg = aggregatePlans(results);
+    // Linhas da proposta (Lance pago / Crédito / Saque líquido / Parcela inicial)
+    expect(agg.quotas[0].bidCash).toBeCloseTo(63905.54, 0);
+    expect(agg.quotas[1].bidCash).toBeCloseTo(63017.96, 0);
+    expect(agg.quotas[2].bidCash).toBeCloseTo(58652.30, 0);
+    expect(agg.quotas[0].netCredit).toBeCloseTo(118534.47, 0);
+    expect(agg.quotas[2].netCredit).toBeCloseTo(120506.47, 0);
+    expect(agg.quotas[0].netCash).toBeCloseTo(54628.93, 0);
+    expect(agg.quotas[1].netCash).toBeCloseTo(55516.51, 0);
+    expect(agg.quotas[2].netCash).toBeCloseTo(61854.17, 0);
+    expect(agg.quotas[2].initialInstallment).toBeCloseTo(1691.89, 1);
+    // Totais da proposta
+    expect(agg.total.credit).toBeCloseTo(692872.30, 1);
+    expect(agg.total.bidCash).toBeCloseTo(244228.11, 0);
+    expect(agg.total.netCredit).toBeCloseTo(478081.89, 0);
+    expect(agg.total.netCash).toBeCloseTo(233853.77, 0);
+    expect(agg.total.initialInstallment).toBeCloseTo(6611.34, 1);
+    // Saída mês a mês = soma das cotas
+    expect(agg.monthly[0]).toBeCloseTo(6611.34, 1);
+    expect(agg.monthly[5]).toBeCloseTo(results.reduce((s, r) => s + r.rows[5].installment, 0), 6);
+    expect(agg.monthly.length).toBe(132);
   });
 });
 
