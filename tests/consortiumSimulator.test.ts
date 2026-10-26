@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   simulatePlan, simulateFinancing, irr, npv, lotteryOdds, bidChance, evaluateBid,
   evaluateContemplatedQuota, evaluatePayoff, evaluateSale, targetSalePrice,
-  baseInstallmentValue, installmentsToPct, annualToMonthly, existingQuotaPlan, aggregatePlans
+  baseInstallmentValue, installmentsToPct, annualToMonthly, existingQuotaPlan, aggregatePlans,
+  capitalCoverage, evaluatePayoffPortfolio, manualContemplatedPlan
 } from '../lib/consortiumSimulator';
 
 /**
@@ -135,6 +136,63 @@ describe('várias cotas — a proposta de 4 cotas do corretor', () => {
     expect(agg.monthly[0]).toBeCloseTo(6611.34, 1);
     expect(agg.monthly[5]).toBeCloseTo(results.reduce((s, r) => s + r.rows[5].installment, 0), 6);
     expect(agg.monthly.length).toBe(132);
+  });
+});
+
+describe('capital livre e quitação com várias cotas', () => {
+  it('capital sem rendimento paga as parcelas pelo número exato de meses', () => {
+    const c = capitalCoverage(3000, 0, [1000, 1000, 1000, 1000]);
+    expect(c.monthsCovered).toBe(3);
+    expect(c.coversAll).toBe(false);
+    expect(c.monthlyIncome).toBe(0);
+  });
+
+  it('rendimento e aluguel extra aumentam a cobertura; se paga tudo, mostra a sobra', () => {
+    const c = capitalCoverage(100000, 12.682503013196976, [1000, 1000], 200);
+    expect(c.monthlyIncome).toBeCloseTo(1000 + 200, 6); // 1% de 100 mil + 200
+    expect(c.coveragePct).toBeCloseTo(120, 6);
+    expect(c.coversAll).toBe(true);
+    expect(c.leftover).toBeCloseTo(100402, 2);          // 100.000→100.200→(100.200×1,01+200−1.000)
+  });
+
+  it('quita no mês em que a última carta sai; usa os juros implícitos das parcelas reais', () => {
+    // Financiamento real: 120 parcelas de 1.434,71 para 100 mil = 1% a.m.
+    const fin = Array(120).fill(1434.709484);
+    const q1 = simulatePlan({ credit: 80000, termMonths: 100, adminFeePct: 0, contemplationMonth: 1 });
+    const q2 = simulatePlan({ credit: 80000, termMonths: 100, adminFeePct: 0, contemplationMonth: 3 });
+    const r = evaluatePayoffPortfolio({ financingBalance: 100000, financingInstallments: fin, quotas: [q1, q2], opportunityPctYear: 12.682503013196976 });
+    expect(r.impliedRatePctMonth).toBeCloseTo(1, 4);
+    expect(r.payoffMonth).toBe(3);
+    // Deve no mês 3 = saldo depois de 2 parcelas, mais 1 mês de juros (quita no lugar da 3ª).
+    const owed3 = 100000 * Math.pow(1.01, 3) - 1434.709484 * (Math.pow(1.01, 2) + 1.01);
+    expect(r.owedAtPayoff).toBeCloseTo(owed3, 0);
+    expect(r.netCredit).toBe(160000);
+    expect(r.freeCapital).toBeCloseTo(160000 - r.owedAtPayoff, 6);
+    expect(r.bothBeforePayoff).toBeCloseTo(1434.709484 + 1600, 4);
+    expect(r.consortiumAfter).toBeCloseTo(1600, 6);
+  });
+
+  it('consórcio digitado à mão: crédito e lance no mês 1, parcelas a partir do mês 2', () => {
+    const m = manualContemplatedPlan({ netCredit: 240000, ownBid: 120000, installment: 1600, months: 131 });
+    const r = evaluatePayoffPortfolio({
+      financingBalance: 149249.88, financingInstallments: Array(161).fill(1268.62), quotas: [m], opportunityPctYear: 11.6
+    });
+    expect(r.payoffMonth).toBe(1);
+    expect(r.owedAtPayoff).toBeCloseTo(149249.88 * (1 + r.impliedRatePctMonth / 100), 0);
+    expect(r.consortiumAfter).toBe(1600);
+    expect(r.newMoney).toBeCloseTo(240000 - r.owedAtPayoff - 120000, 6);
+    expect(r.consortiumTotal).toBeCloseTo(1600 * 131, 4);
+  });
+
+  it('reforma tira do capital investido; o resto rende e cobre as parcelas', () => {
+    const q = simulatePlan({ credit: 200000, termMonths: 100, adminFeePct: 0, contemplationMonth: 1 });
+    const r = evaluatePayoffPortfolio({
+      financingBalance: 100000, financingRatePctMonth: 1, financingMonths: 120, quotas: [q],
+      opportunityPctYear: 11.6, renovation: 30000, investRatePctYear: 12.682503013196976
+    });
+    expect(r.renovation).toBe(30000);
+    expect(r.invested).toBeCloseTo(r.freeCapital - 30000, 6);
+    expect(r.coverage.monthlyIncome).toBeCloseTo(r.invested * 0.01, 4);
   });
 });
 

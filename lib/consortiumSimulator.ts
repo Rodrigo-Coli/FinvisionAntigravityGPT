@@ -545,3 +545,137 @@ export function aggregatePlans(results: PlanResult[]) {
   }, 0));
   return { quotas: sums, total, monthly };
 }
+
+// ─── Capital livre: rendimento e cobertura das parcelas ─────────────────────
+export interface CapitalCoverage {
+  capital: number;
+  monthlyIncome: number;        // rendimento do 1º mês (+ renda extra)
+  coveragePct: number;          // quanto da 1ª parcela o rendimento paga
+  monthsCovered: number;        // meses em que o capital (rendendo) paga as parcelas
+  coversAll: boolean;
+  leftover: number;             // o que sobra se pagar tudo
+}
+
+/**
+ * Capital investido pagando parcelas: rende todo mês e, no mesmo mês, sai a
+ * parcela (menos uma renda extra, como aluguel). Conta quantos meses ele aguenta.
+ */
+export function capitalCoverage(capital: number, ratePctYear: number, outflows: number[], extraMonthlyIncome = 0): CapitalCoverage {
+  const c0 = pos(capital);
+  const r = annualToMonthly(ratePctYear);
+  const extra = pos(extraMonthlyIncome);
+  const first = outflows.find(v => v > 0) || 0;
+  const monthlyIncome = c0 * r + extra;
+  let bal = c0;
+  let months = 0;
+  for (const out of outflows) {
+    const next = bal * (1 + r) + extra - pos(out);
+    if (next < -0.005) break;
+    bal = next;
+    months++;
+  }
+  const coversAll = months === outflows.length;
+  return {
+    capital: c0, monthlyIncome,
+    coveragePct: first > 0 ? (monthlyIncome / first) * 100 : 0,
+    monthsCovered: months, coversAll, leftover: coversAll ? bal : 0
+  };
+}
+
+// ─── Quitar financiamento com várias cotas ──────────────────────────────────
+export interface PayoffPortfolioInput {
+  financingBalance: number;           // saldo para quitar HOJE
+  financingInstallments?: number[];   // parcelas reais que faltam (mês 1, 2…)
+  financingRatePctMonth?: number;     // sem parcelas reais: juros do contrato
+  financingMonths?: number;
+  financingSystem?: AmortizationSystem;
+  quotas: PlanResult[];               // cotas escolhidas (já simuladas)
+  opportunityPctYear: number;
+  renovation?: number;                // parte do capital livre usada em reforma
+  investRatePctYear?: number;         // rendimento do que for investido
+  extraMonthlyIncome?: number;        // ex.: aluguel a mais depois da reforma
+}
+
+export function evaluatePayoffPortfolio(p: PayoffPortfolioInput) {
+  const B0 = pos(p.financingBalance);
+  // Parcelas do financiamento: as reais, ou geradas pela taxa/sistema.
+  const real = (p.financingInstallments || []).filter(v => pos(v) > 0);
+  const finPayments = real.length
+    ? real
+    : simulateFinancing(B0, monthlyToAnnualPct(pos(p.financingRatePctMonth) / 100), p.financingMonths || 1, p.financingSystem || 'PRICE').flows.map(f => -f.v);
+  // Juros do financiamento: os do contrato, ou o implícito nas parcelas reais.
+  const implied = irr([{ t: 0, v: B0 }, ...finPayments.map((v, i) => ({ t: i + 1, v: -v }))]);
+  const r = real.length ? Math.max(0, implied ?? 0) : pos(p.financingRatePctMonth) / 100;
+
+  // Quita quando todo o crédito das cotas escolhidas estiver liberado.
+  const X = Math.max(1, ...p.quotas.map(q => q.contemplationMonth));
+  const paidBefore = finPayments.slice(0, X - 1);
+  const owedAtX = Math.max(0, finPayments.slice(X - 1).reduce((s, v, i) => s + v / Math.pow(1 + r, i), 0));
+
+  const netCredit = p.quotas.reduce((s, q) => s + q.netCredit, 0);
+  const ownBid = p.quotas.reduce((s, q) => s + q.bidCash, 0);
+  const freeCapital = netCredit - owedAtX;
+  const renovation = Math.min(Math.max(0, freeCapital), pos(p.renovation));
+  const invested = Math.max(0, freeCapital - renovation);
+
+  // Saída mensal das cotas (sem lances), mês a mês desde o mês 1.
+  const months = Math.max(0, ...p.quotas.map(q => q.rows.length));
+  const consMonthly = Array.from({ length: months }, (_, i) => p.quotas.reduce((s, q) => {
+    const row = q.rows[i];
+    return s + (row ? row.installment + row.insurance : 0);
+  }, 0));
+  const afterX = consMonthly.slice(X);
+
+  const o = annualToMonthly(p.opportunityPctYear);
+  const keepFlows: Flow[] = finPayments.map((v, i) => ({ t: i + 1, v: -v }));
+  const switchFlows: Flow[] = [
+    ...paidBefore.map((v, i) => ({ t: i + 1, v: -v })),
+    { t: X, v: -owedAtX },
+    ...p.quotas.flatMap(q => q.flows)
+  ];
+  const pvKeep = -npv(o, keepFlows);
+  const pvSwitch = -npv(o, switchFlows);
+
+  return {
+    payoffMonth: X,
+    owedAtPayoff: owedAtX,
+    impliedRatePctMonth: r * 100,
+    netCredit, ownBid, freeCapital, renovation, invested,
+    newMoney: freeCapital - ownBid,                 // capital livre menos o lance do bolso
+    financingInstallment: finPayments[0] || 0,
+    financingTotal: finPayments.reduce((s, v) => s + v, 0),
+    bothBeforePayoff: X > 1 ? (finPayments[0] || 0) + (consMonthly[0] || 0) : 0,
+    consortiumAfter: afterX[0] || 0,
+    consortiumTotal: consMonthly.reduce((s, v) => s + v, 0),
+    monthlyDifference: (finPayments[X - 1] || finPayments[0] || 0) - (afterX[0] || 0),
+    pvCostKeepFinancing: pvKeep,
+    pvCostSwitch: pvSwitch,
+    advantage: pvKeep - pvSwitch,
+    coverage: capitalCoverage(invested, p.investRatePctYear ?? p.opportunityPctYear, afterX, p.extraMonthlyIncome || 0)
+  };
+}
+
+/**
+ * Consórcio digitado à mão (já contemplado no mês 1): crédito líquido, lance
+ * do bolso e as parcelas que ficam — no formato do plano, para a quitação.
+ */
+export function manualContemplatedPlan(q: { netCredit: number; ownBid: number; installment: number; months: number; annualIndexPct?: number }): PlanResult {
+  const n = Math.max(0, Math.floor(pos(q.months)));
+  const idx = pos(q.annualIndexPct) / 100;
+  const rows: PlanRow[] = [{ month: 1, phase: 'pre', credit: pos(q.netCredit), pct: 0, installment: 0, insurance: 0, bidCash: pos(q.ownBid), total: pos(q.ownBid), balancePct: 0, balance: 0 }];
+  for (let i = 0; i < n; i++) {
+    const installment = pos(q.installment) * Math.pow(1 + idx, Math.floor(i / 12));
+    rows.push({ month: i + 2, phase: 'post', credit: pos(q.netCredit), pct: 0, installment, insurance: 0, bidCash: 0, total: installment, balancePct: 0, balance: 0 });
+  }
+  const totalInstallments = rows.reduce((s, r) => s + r.installment, 0);
+  return {
+    planPct: 0, contemplationMonth: 1, fullInstallment: pos(q.installment), preInstallment: 0, postInstallment: pos(q.installment),
+    creditAtContemplation: pos(q.netCredit), bidCash: pos(q.ownBid), bidEmbedded: 0, netCredit: pos(q.netCredit),
+    balanceBeforeBid: 0, balanceAfterBid: totalInstallments, monthsTotal: rows.length, monthsAfterContemplation: n,
+    totalInstallments, totalInsurance: 0, totalCashOut: totalInstallments + pos(q.ownBid),
+    nominalCost: totalInstallments + pos(q.ownBid) - pos(q.netCredit), costPctOfCredit: 0, cetAfterContemplationPct: null,
+    rows,
+    flows: [...rows.map(r => ({ t: r.month, v: -r.total })), { t: 1, v: pos(q.netCredit) }],
+    warnings: []
+  };
+}

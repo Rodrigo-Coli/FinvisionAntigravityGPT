@@ -16,7 +16,7 @@ import { exportSimulationXlsx, exportSimulationPdf } from '../../lib/consortiumS
 import {
   simulatePlan, simulateFinancing, evaluateBid, evaluateContemplatedQuota, evaluatePayoff,
   evaluateSale, targetSalePrice, lotteryOdds, bidChance, baseInstallmentValue, installmentsToPct,
-  monthlyToAnnualPct, existingQuotaPlan, aggregatePlans, BidMode, AmortizationSystem, PlanResult, SaleFlow, PlanInput
+  monthlyToAnnualPct, existingQuotaPlan, aggregatePlans, evaluatePayoffPortfolio, manualContemplatedPlan, capitalCoverage, BidMode, AmortizationSystem, PlanResult, SaleFlow, PlanInput
 } from '../../lib/consortiumSimulator';
 
 /**
@@ -174,6 +174,10 @@ const H = {
   poOwnBid: <><p>Lance pago do seu bolso para contemplar a cota.</p></>,
   poInst: <><p>Parcela do consórcio depois de contemplar.</p></>,
   poConsMonths: <><p>Quantas parcelas do consórcio ficam depois de contemplar.</p></>,
+  poSource: <><p><strong>Cotas de "Várias cotas":</strong> usa as cotas que você montou lá — novas ou suas (as suas puxam saldo, parcelas restantes e parcela do cadastro). Marque quais entram na quitação.</p><p><strong>Digitar:</strong> informe um consórcio só, à mão.</p></>,
+  renovation: <><p>Quanto do capital livre vai para reforma (ou outro uso). O resto fica investido.</p><p>No consórcio de imóvel, reforma costuma ser aceita com comprovação — confirme com a administradora.</p></>,
+  investRate: <><p>Quanto o dinheiro que sobra rende aplicado, já sem imposto. Ex.: CDI de 13,65% − 15% de IR ≈ 11,6.</p></>,
+  extraIncome: <><p>Se a reforma aumenta o aluguel (ou gera outra renda), quanto entra a mais por mês. Esse valor ajuda a pagar as parcelas.</p></>,
   salePick: <><p>Escolha sua cota para puxar os pagamentos reais — inclusive os antigos, lançados antes do cadastro com a descrição "Grupo X cota Y". Ou digite à mão.</p></>,
   manualInst: <><p>Valor da parcela que você pagou (média, se mudou).</p></>,
   manualMonths: <><p>Quantas parcelas você já pagou.</p></>,
@@ -515,6 +519,18 @@ const PortfolioTab: React.FC<{
           <Stat label="Total que sai do bolso" value={fmt(agg.total.totalCashOut)} sub="parcelas + seguro + lances do bolso" />
           <Stat label="Até quitar tudo" value={`${agg.monthly.length} meses`} />
         </div>
+        {agg.total.netCash > 0 && (() => {
+          const lastK = Math.max(1, ...agg.quotas.map(sq => sq.contemplationMonth));
+          const cov = capitalCoverage(agg.total.netCash, num(opportunity), agg.monthly.slice(lastK));
+          return (
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-3 text-[11px] text-emerald-900 leading-relaxed">
+              <strong>Se investir o saque líquido ({fmt(agg.total.netCash)}) a {fmtPct(num(opportunity))} a.a.:</strong> rende {fmt(cov.monthlyIncome)} por mês —
+              {' '}{fmtPct(cov.coveragePct, 0)} da soma das parcelas depois de contemplar ({fmt(agg.monthly[lastK] || 0)}) — e cobre as parcelas
+              {' '}{cov.coversAll ? <>todas, sobrando {fmt(cov.leftover)}</> : <>por {cov.monthsCovered} meses</>}.
+              {' '}Para quitar um financiamento ou reformar com essas cartas, use a aba "Quitar financiamento".
+            </div>
+          );
+        })()}
 
         {/* Celular: um cartão por cota; tela maior: tabela. Sem rolagem lateral. */}
         <div className="md:hidden space-y-2">
@@ -796,6 +812,11 @@ const ConsortiumSimulator: React.FC = () => {
   const [poOwnBid, setPoOwnBid] = useState('');
   const [poInst, setPoInst] = useState('');
   const [poConsMonths, setPoConsMonths] = useState('');
+  const [poSource, setPoSource] = useState<'PORTFOLIO' | 'MANUAL'>('PORTFOLIO');
+  const [poExcluded, setPoExcluded] = useState<string[]>([]);
+  const [poRenovation, setPoRenovation] = useState('0');
+  const [poInvestRate, setPoInvestRate] = useState('');
+  const [poExtraIncome, setPoExtraIncome] = useState('0');
 
   // Vender cota
   const [saleSource, setSaleSource] = useState('');
@@ -943,15 +964,26 @@ const ConsortiumSimulator: React.FC = () => {
     setPoInst(toText(p.postInstallment));
     setPoConsMonths(String(p.monthsAfterContemplation));
   };
-  const payoff = useMemo(() => evaluatePayoff({
+  // Cotas da aba "Várias cotas", simuladas com as premissas atuais.
+  const portfolioResults = useMemo(
+    () => quotas.map(q => simulatePlan(draftToPlan(q, { index: num(index), insurance: num(insurance) }), num(opportunity))),
+    [quotas, index, insurance, opportunity]
+  );
+  const poQuotas: PlanResult[] = poSource === 'PORTFOLIO'
+    ? quotas.map((q, i) => ({ q, r: portfolioResults[i] })).filter(x => !poExcluded.includes(x.q.key)).map(x => x.r)
+    : (num(poNetCredit) > 0 ? [manualContemplatedPlan({ netCredit: num(poNetCredit), ownBid: num(poOwnBid), installment: num(poInst), months: num(poConsMonths), annualIndexPct: num(index) })] : []);
+  const payoff = useMemo(() => poQuotas.length && num(poBalance) > 0 ? evaluatePayoffPortfolio({
     financingBalance: num(poBalance),
-    financingRatePctYear: monthlyToAnnualPct(num(poRateMonth) / 100),
+    financingInstallments: poRealInstallments || undefined,
+    financingRatePctMonth: num(poRateMonth),
     financingMonths: num(poMonths),
     financingSystem: poSystem,
-    financingInstallments: poRealInstallments || undefined,
-    netCredit: num(poNetCredit), ownBid: num(poOwnBid), consortiumInstallment: num(poInst), consortiumMonths: num(poConsMonths),
-    annualIndexPct: num(index), opportunityPctYear: num(opportunity)
-  }), [poBalance, poRateMonth, poMonths, poSystem, poRealInstallments, poNetCredit, poOwnBid, poInst, poConsMonths, index, opportunity]);
+    quotas: poQuotas,
+    opportunityPctYear: num(opportunity),
+    renovation: num(poRenovation),
+    investRatePctYear: poInvestRate.trim() ? num(poInvestRate) : num(opportunity),
+    extraMonthlyIncome: num(poExtraIncome)
+  }) : null, [poQuotas, poBalance, poRateMonth, poMonths, poSystem, poRealInstallments, opportunity, poRenovation, poInvestRate, poExtraIncome]);
 
   // ── Vender cota ──
   const chooseSaleSource = async (id: string) => {
@@ -1310,12 +1342,13 @@ const ConsortiumSimulator: React.FC = () => {
       {tab === 'payoff' && (
         <>
           <TabGuide id="payoff"
-            purpose="ver se vale quitar um financiamento com a carta do consórcio, quanto a parcela muda e quanto capital livre sobra."
+            purpose="ver se vale quitar um financiamento com uma ou mais cartas de consórcio (suas ou novas), quanto a parcela muda, quanto capital livre sobra e se ele, investido, paga as parcelas."
             steps={[
-              'Escolha um financiamento seu (puxa saldo e parcelas reais) ou digite.',
-              'Peça ao banco o saldo devedor para quitação e coloque em "Saldo para quitar".',
-              'Preencha o consórcio: crédito líquido, lance do bolso, parcela e parcelas depois de contemplar — ou toque em "Usar o resultado da aba Lance".',
-              'Leia o capital livre, a parcela de hoje × depois e o veredito em valor presente.'
+              'Escolha um financiamento seu (puxa saldo e parcelas reais) ou digite. Peça ao banco o saldo para quitação.',
+              'Em "As cotas que quitam", use as cotas de "Várias cotas" (marque quais entram) — as suas puxam saldo e parcelas do cadastro — ou digite um consórcio.',
+              'A quitação acontece no mês em que a última carta sai; até lá o financiamento continua e o simulador mostra quanto você paga dos dois.',
+              'Em "O que fazer com o capital que sobra": quanto vai para reforma, quanto o investido rende e se há renda a mais (aluguel).',
+              'Leia o capital livre, o dinheiro novo, a parcela de hoje × depois, se o rendimento paga as parcelas e o veredito em valor presente.'
             ]} />
           <Card title="O financiamento de hoje">
             {financings.length > 0 && (
@@ -1342,29 +1375,79 @@ const ConsortiumSimulator: React.FC = () => {
               </p>
             )}
           </Card>
-          <Card title="O consórcio que quita">
-            <button onClick={usePlanForPayoff} className="text-[11px] font-black text-brand-600 hover:text-brand-800">↳ Usar o resultado da aba Lance (crédito líquido, lance do bolso e parcela depois)</button>
-            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
-              <Field help={H.poNetCredit} label="Crédito líquido liberado" value={poNetCredit} onChange={setPoNetCredit} suffix="R$" />
-              <Field help={H.poOwnBid} label="Lance pago do bolso" value={poOwnBid} onChange={setPoOwnBid} suffix="R$" />
-              <Field help={H.poInst} label="Parcela do consórcio" value={poInst} onChange={setPoInst} suffix="R$" />
-              <Field help={H.poConsMonths} label="Parcelas do consórcio" value={poConsMonths} onChange={setPoConsMonths} integer />
+          <Card title="As cotas que quitam">
+            <div>
+              <HelpLabel label="De onde vêm as cotas" help={H.poSource} />
+              <Seg value={poSource} onChange={setPoSource} options={[{ value: 'PORTFOLIO', label: 'Cotas de "Várias cotas"' }, { value: 'MANUAL', label: 'Digitar' }]} />
             </div>
+            {poSource === 'PORTFOLIO' ? (
+              <div className="space-y-2">
+                {quotas.map((q, i) => {
+                  const r = portfolioResults[i];
+                  const on = !poExcluded.includes(q.key);
+                  return (
+                    <label key={q.key} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer ${on ? 'border-brand-200 bg-brand-50/40' : 'border-slate-100'}`}>
+                      <input type="checkbox" className="mt-0.5" checked={on}
+                        onChange={e => setPoExcluded(list => e.target.checked ? list.filter(k => k !== q.key) : [...list, q.key])} />
+                      <span className="min-w-0 text-[11px] text-slate-600 leading-relaxed">
+                        <span className="block text-xs font-black text-slate-900 break-words">{q.name} <span className="font-bold text-slate-400">· {q.source ? 'minha' : 'nova'}</span></span>
+                        Crédito líquido <strong>{fmt(r.netCredit)}</strong> · lance do bolso {fmt(r.bidCash)} · contempla em {r.contemplationMonth} {r.contemplationMonth === 1 ? 'mês' : 'meses'} · depois {fmt(r.postInstallment)} × {r.monthsAfterContemplation}
+                      </span>
+                    </label>
+                  );
+                })}
+                <button type="button" onClick={() => setTab('portfolio')} className="text-[11px] font-black text-brand-600 hover:text-brand-800">↳ Montar ou editar as cotas em "Várias cotas" (novas ou suas, com o lance de cada uma)</button>
+              </div>
+            ) : (
+              <>
+                <button onClick={usePlanForPayoff} className="text-[11px] font-black text-brand-600 hover:text-brand-800 text-left">↳ Usar o resultado da aba Lance (crédito líquido, lance do bolso e parcela depois)</button>
+                <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <Field help={H.poNetCredit} label="Crédito líquido liberado" value={poNetCredit} onChange={setPoNetCredit} suffix="R$" />
+                  <Field help={H.poOwnBid} label="Lance pago do bolso" value={poOwnBid} onChange={setPoOwnBid} suffix="R$" />
+                  <Field help={H.poInst} label="Parcela do consórcio" value={poInst} onChange={setPoInst} suffix="R$" />
+                  <Field help={H.poConsMonths} label="Parcelas do consórcio" value={poConsMonths} onChange={setPoConsMonths} integer />
+                </div>
+              </>
+            )}
           </Card>
-          {num(poBalance) > 0 && num(poNetCredit) > 0 ? (
+
+          <Card title="O que fazer com o capital que sobra">
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-3 gap-3">
+              <Field help={H.renovation} label="Usar em reforma" value={poRenovation} onChange={setPoRenovation} suffix="R$" hint="O resto fica investido" />
+              <Field help={H.investRate} label="O investido rende" value={poInvestRate} onChange={setPoInvestRate} suffix="% a.a." placeholder={opportunity} hint="Líquido de IR" />
+              <Field help={H.extraIncome} label="Renda a mais por mês" value={poExtraIncome} onChange={setPoExtraIncome} suffix="R$" hint="Ex.: aluguel maior depois da reforma" />
+            </div>
+            <p className="text-[10px] text-slate-400">O uso do crédito segue as regras da administradora: quitar financiamento e reforma (com comprovação) costumam ser aceitos; dinheiro livre na mão, não.</p>
+          </Card>
+
+          {payoff ? (
             <>
               <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
-                <Stat label="Capital livre gerado" value={fmt(payoff.freeCapital - num(poOwnBid))} sub={`crédito ${fmt(num(poNetCredit))} − quitação ${fmt(num(poBalance))} − lance ${fmt(num(poOwnBid))}`} strong />
-                <Stat label="Parcela: hoje → depois" value={`${fmt(payoff.financing.firstInstallment)} → ${fmt(num(poInst))}`} sub={payoff.monthlyDifference >= 0 ? `sobra ${fmt(payoff.monthlyDifference)}/mês` : `${fmt(-payoff.monthlyDifference)}/mês a mais`} />
-                <Stat label="Custo hoje (valor presente)" value={fmt(payoff.pvCostKeepFinancing)} sub={`total nominal ${fmt(payoff.financing.totalPaid)}`} />
-                <Stat label="Custo trocando (valor presente)" value={fmt(payoff.pvCostSwitch)} sub={`parcelas ${fmt(payoff.consortiumTotal)} (com reajuste)`} />
+                <Stat label={`Quitação no mês ${payoff.payoffMonth}`} value={fmt(payoff.owedAtPayoff)} sub={payoff.payoffMonth > 1 ? `quando a última carta sai; hoje ${fmt(num(poBalance))}` : `hoje ${fmt(num(poBalance))} + 1 mês de juros`} />
+                <Stat label="Crédito liberado" value={fmt(payoff.netCredit)} sub={`${poQuotas.length} cota(s) · lances do bolso ${fmt(payoff.ownBid)}`} />
+                <Stat label="Capital livre" value={fmt(payoff.freeCapital)} sub="crédito − quitação" strong />
+                <Stat label="Dinheiro novo" value={fmt(payoff.newMoney)} sub="capital livre − lances do bolso" strong />
+                <Stat label="Parcela: hoje → depois" value={`${fmt(payoff.financingInstallment)} → ${fmt(payoff.consortiumAfter)}`} sub={payoff.monthlyDifference >= 0 ? `sobra ${fmt(payoff.monthlyDifference)}/mês` : `${fmt(-payoff.monthlyDifference)}/mês a mais`} />
+                {payoff.payoffMonth > 1 && <Stat label={`Até o mês ${payoff.payoffMonth}`} value={`${fmt(payoff.bothBeforePayoff)}/mês`} sub="financiamento + consórcio juntos, até quitar" />}
+                <Stat label="Custo mantendo (valor presente)" value={fmt(payoff.pvCostKeepFinancing)} sub={`parcelas ${fmt(payoff.financingTotal)}${poRealInstallments ? ` · juros implícitos ${fmtPct(payoff.impliedRatePctMonth, 3)} a.m.` : ''}`} />
+                <Stat label="Custo trocando (valor presente)" value={fmt(payoff.pvCostSwitch)} sub={`parcelas do consórcio ${fmt(payoff.consortiumTotal)} (com reajuste)`} />
               </div>
-              {payoff.freeCapital < 0 && <Verdict tone="bad" title={`O crédito não cobre a quitação: faltam ${fmt(-payoff.freeCapital)}.`} />}
+              {payoff.freeCapital < 0 && <Verdict tone="bad" title={`O crédito não cobre a quitação: faltam ${fmt(-payoff.freeCapital)}.`}>Adicione outra cota ou aumente a carta em "Várias cotas".</Verdict>}
               {payoff.advantage >= 0
-                ? <Verdict tone="good" title={`Trocar compensa: ${fmt(payoff.advantage)} a menos em valor presente.`}>Já contando o capital livre que sobra e o rendimento do dinheiro a {oppTxt}.</Verdict>
-                : <Verdict tone="warn" title={`Trocar custa ${fmt(-payoff.advantage)} a mais em valor presente.`}>Considere se o capital livre ({fmt(payoff.freeCapital - num(poOwnBid))}) vai render mais que {oppTxt} — por exemplo, num imóvel que gera aluguel. Se render, a troca pode compensar mesmo assim.</Verdict>}
+                ? <Verdict tone="good" title={`Trocar compensa: ${fmt(payoff.advantage)} a menos em valor presente.`}>Já contando o capital livre e o rendimento do dinheiro a {oppTxt}.</Verdict>
+                : <Verdict tone="warn" title={`Trocar custa ${fmt(-payoff.advantage)} a mais em valor presente.`}>Pode compensar se o capital livre render mais que {oppTxt} — por exemplo, numa reforma que aumenta o aluguel.</Verdict>}
+
+              {payoff.freeCapital > 0 && (
+                <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <Stat label="Fica investido" value={fmt(payoff.invested)} sub={payoff.renovation > 0 ? `reforma ${fmt(payoff.renovation)}` : 'sem reforma'} />
+                  <Stat label="Rende por mês" value={fmt(payoff.coverage.monthlyIncome)} sub={num(poExtraIncome) > 0 ? `inclui ${fmt(num(poExtraIncome))} de renda a mais` : `a ${fmtPct(poInvestRate.trim() ? num(poInvestRate) : num(opportunity))} a.a.`} strong />
+                  <Stat label="Paga da parcela" value={fmtPct(payoff.coverage.coveragePct, 0)} sub={`da 1ª parcela do consórcio (${fmt(payoff.consortiumAfter)})`} />
+                  <Stat label="Cobre as parcelas por" value={payoff.coverage.coversAll ? 'todas' : `${payoff.coverage.monthsCovered} meses`}
+                    sub={payoff.coverage.coversAll ? `e ainda sobram ${fmt(payoff.coverage.leftover)}` : 'sacando todo mês do investido'} strong />
+                </div>
+              )}
             </>
-          ) : <Verdict tone="info" title="Preencha o saldo do financiamento e o crédito líquido do consórcio." />}
+          ) : <Verdict tone="info" title={poSource === 'PORTFOLIO' ? 'Preencha o saldo do financiamento e marque ao menos uma cota.' : 'Preencha o saldo do financiamento e o crédito líquido do consórcio.'} />}
         </>
       )}
 
