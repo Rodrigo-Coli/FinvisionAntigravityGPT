@@ -36,6 +36,7 @@ export const UpdateAlert: React.FC = () => {
   const [changelog, setChangelog] = useState<ChangelogData | null>(null);
   const [serverVersion, setServerVersion] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const [updateStep, setUpdateStep] = useState('');
   // Atualização detectada comparando versões, sem passar pelo service worker.
   const [versionMismatch, setVersionMismatch] = useState(false);
 
@@ -142,6 +143,23 @@ export const UpdateAlert: React.FC = () => {
       .then(reg => reg?.update())
       .catch((err: any) => console.warn('[SW] Falha ao baixar a atualização em segundo plano:', err));
   }, [versionMismatch, needRefresh]);
+
+  // Sem service worker ativo o app NÃO abre sem internet (ex.: logo depois de
+  // instalar ou de uma atualização que limpou o cache). Avisa enquanto ele se
+  // prepara, para ninguém fechar o app e entrar num avião achando que está pronto.
+  const [preparingOffline, setPreparingOffline] = useState(false);
+  useEffect(() => {
+    if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
+    let alive = true;
+    const t = setTimeout(async () => {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (alive && !reg?.active && navigator.onLine) setPreparingOffline(true);
+      } catch { /* sem SW: nada a mostrar */ }
+    }, 3000);
+    navigator.serviceWorker.ready.then(() => { if (alive) setPreparingOffline(false); }).catch(() => {});
+    return () => { alive = false; clearTimeout(t); };
+  }, []);
 
   /** Espera o SW novo terminar de baixar (até `ms`). */
   const waitForDownloadedUpdate = (ms: number) => new Promise<boolean>(resolve => {
@@ -323,11 +341,32 @@ export const UpdateAlert: React.FC = () => {
 
                 // A atualização ainda está baixando em segundo plano? Espera um
                 // pouco por ela — é bem mais rápido que apagar tudo e baixar de novo.
-                const ready = needRefresh || await waitForDownloadedUpdate(8000);
+                let ready = needRefresh || await waitForDownloadedUpdate(8000);
+
+                // Ainda baixando (4G lento)? Espera terminar em vez de apagar tudo:
+                // apagar o cache no meio deixava o app sem modo offline até
+                // baixar tudo de novo — e quem ficava sem internet nesse meio
+                // tempo (ex.: avião) não conseguia abrir o app.
+                if (!ready && 'serviceWorker' in navigator) {
+                  try {
+                    const reg = await navigator.serviceWorker.getRegistration();
+                    if (reg?.waiting) ready = true;
+                    else if (reg?.installing) {
+                      setUpdateStep('Baixando a atualização… mantenha o app aberto');
+                      ready = await waitForDownloadedUpdate(120000);
+                    }
+                  } catch { /* segue para o plano B */ }
+                }
 
                 if (ready) {
                   // Caminho normal: existe um SW novo, já baixado, esperando para assumir.
                   updateServiceWorker(true);
+                } else if (!navigator.onLine) {
+                  // Sem internet não dá para trocar de versão — e apagar o cache
+                  // agora deixaria o app sem funcionar. Fica para depois.
+                  setIsUpdating(false);
+                  setUpdateStep('Sem internet agora: a atualização fica para quando você estiver online.');
+                  return;
                 } else {
                   // iOS: o SW não sinalizou, então trocar de versão por ele não
                   // funciona. Descadastramos o SW e limpamos os caches para o
@@ -357,6 +396,9 @@ export const UpdateAlert: React.FC = () => {
               <RefreshCw size={14} className={isUpdating ? 'animate-spin' : ''} />
               {isUpdating ? 'Instalando Novidades...' : 'ATUALIZAR AGORA'}
             </button>
+            {updateStep && (
+              <p role="status" className="text-center text-[10px] font-bold text-slate-500 dark:text-slate-400 leading-normal">{updateStep}</p>
+            )}
             
             <button
               onClick={() => setDismissed(true)}
@@ -371,7 +413,20 @@ export const UpdateAlert: React.FC = () => {
     );
   }
 
-  // 2. Toast Inferior para Status "Pronto para Uso Offline"
+  // 2. Preparando o modo offline (ainda baixando o app para o aparelho)
+  if (preparingOffline) {
+    return (
+      <div role="status" className="fixed bottom-4 left-4 right-4 sm:left-auto z-[9999] p-3 sm:max-w-sm bg-slate-950 text-white rounded-2xl shadow-2xl border border-slate-800 flex items-center gap-3">
+        <RefreshCw size={16} className="animate-spin text-amber-400 shrink-0" />
+        <div className="min-w-0">
+          <p className="text-[11px] font-black tracking-wide">Preparando o modo sem internet…</p>
+          <p className="text-[10px] font-bold text-slate-400 leading-normal">Mantenha o app aberto alguns segundos. Até terminar, ele só abre com internet.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Toast Inferior para Status "Pronto para Uso Offline"
   if (offlineReady) {
     return (
       <div className="fixed bottom-4 right-4 z-[9999] p-3.5 max-w-sm bg-slate-950 text-white rounded-2xl shadow-2xl border border-slate-800 animate-in slide-in-from-bottom duration-300 flex items-center gap-3.5">

@@ -1,34 +1,27 @@
 {
-  "version": "2026.10.26.0100",
-  "title": "Simulador: crédito líquido nas cotas salvas, sem cota repetida, custos claros na quitação",
-  "date": "26/10/2026",
+  "version": "2026.10.27.1507",
+  "title": "Modo offline mais seguro: atualizar não apaga mais o app salvo",
+  "date": "27/10/2026",
   "benefits": [
     {
-      "title": "Cotas salvas usam o crédito líquido",
-      "desc": "Simulações salvas no aparelho antes da contemplação ainda mostravam a carta cheia (ex.: R$ 171.789,09). Agora a cota já contemplada passa sozinha para o crédito líquido (ex.: R$ 118.534,47), sem lance repetido.",
+      "title": "Atualizar não tira o modo offline",
+      "desc": "Antes, tocar em \"Atualizar agora\" enquanto a atualização ainda baixava apagava o app salvo no aparelho; quem ficava sem internet logo depois (ex.: avião) não conseguia abrir o app. Agora ele espera a atualização terminar de baixar e, sem internet, não apaga nada — atualiza depois.",
       "type": "correcao"
     },
     {
-      "title": "A mesma cota não conta duas vezes",
-      "desc": "Uma cota sua repetida (ex.: \"(cópia)\") fica marcada como repetida e não entra na quitação. \"Duplicar\" uma cota sua agora cria uma cota NOVA igual, para simular comprar outra.",
-      "type": "correcao"
-    },
-    {
-      "title": "Imóvel devolvido sai da lista de financiamentos",
-      "desc": "O saldo a financiar de imóvel arquivado (ex.: Wave Beach Prime) não aparece mais no simulador nem nas dívidas do Início, mesmo antes de abrir Patrimônio.",
-      "type": "correcao"
-    },
-    {
-      "title": "Quitação com custos fáceis de ler",
-      "desc": "\"Custo mantendo\" mostra só as parcelas do financiamento e \"Custo quitando\" só a quitação (mais as cotas novas, se houver). A cota que você já tem é igual nos dois caminhos e fica fora — antes ela entrava nos dois e os custos apareciam negativos. O resultado (quanto compensa) não muda.",
+      "title": "Aviso enquanto o app se prepara para o offline",
+      "desc": "Enquanto o app ainda está sendo salvo no aparelho, aparece \"Preparando o modo sem internet…\". Quando termina, aparece \"Zyvion Pronto Offline!\" — aí pode ficar sem internet.",
       "type": "melhoria"
+    },
+    {
+      "title": "Sem internet, mensagem clara em vez de erro",
+      "desc": "Se uma tela ainda não foi salva e você está sem internet, o app explica e oferece \"Voltar ao início\", em vez do erro técnico e de recarregar para \"Não é possível acessar esse site\". Com internet, uma tela de versão antiga se resolve sozinha recarregando.",
+      "type": "correcao"
     }
   ],
   "changes": [
-    "`lib/consortiumSimState.ts`: `refreshContemplatedQuotas` (carta cheia → crédito líquido, lance 0, mês 1 em cota contemplada) e `repeatedQuotaKeys`.",
-    "`lib/pendingFinancing.ts`: `isOrphanPendingFinancing`, usado no simulador, no Início (`dashboard.service`) e na autocorreção de Patrimônio.",
-    "`ConsortiumSimulator.tsx`: atualiza rascunhos ao carregar; aviso e exclusão de cota repetida na quitação; Duplicar de cota minha cria cota nova (carta cheia, sem saldo); lista de financiamentos ignora saldo a financiar de imóvel arquivado.",
-    "`lib/consortiumSimulator.ts`: `evaluatePayoffPortfolio` tira as cotas que já tem dos dois VPLs (mesma vantagem, custos positivos); expõe `newQuotaTotal` e `committedCredit`. Tela: \"Custo quitando\" e veredito \"Quitar compensa/custa\".",
-    "Testes: rascunho antigo com cópia e imóvel devolvido; Início sem saldo a financiar órfão; funções puras."
+    "`components/UpdateAlert.tsx`: \"Atualizar agora\" espera o SW em download (`reg.installing`, até 2 min) e usa o `reg.waiting`; sem internet não descadastra o SW nem apaga caches; só o plano B do iOS (online, sem SW novo) limpa. Aviso \"Preparando o modo sem internet…\" enquanto não há SW ativo.",
+    "`components/ErrorBoundary.tsx`: `isChunkLoadError`; offline → tela \"Sem internet\" com \"Voltar ao início\" (sem recarregar); online → recarrega uma vez (trava de 30 s); \"Recarregar\" sem internet e sem SW volta ao início.",
+    "Testes: `updateAlertOffline.test.tsx`, `errorBoundaryOffline.test.tsx`; `vitest.config.ts` com alias do módulo virtual do PWA."
   ]
 }
