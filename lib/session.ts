@@ -38,11 +38,30 @@ function readPersistedUser(): any | null {
 }
 
 /**
+ * O Supabase avisa "sem sessão" quando não consegue RENOVAR o login (token
+ * vencido, sem internet) — a sessão continua salva no aparelho e volta sozinha
+ * quando a rede volta. Tratar isso como "saiu da conta" deslogava o app ~50 s
+ * depois de abrir offline (ex.: no avião, app fechado há mais de 1 h) e apagava
+ * os dados guardados no aparelho. Só `SIGNED_OUT` (ou não haver sessão salva)
+ * é saída de verdade.
+ */
+export function isTransientMissingSession(event: string | null, session: any): boolean {
+  if (session) return false;
+  if (event === 'SIGNED_OUT') return false;
+  return !!readPersistedUser();
+}
+
+/**
  * Usuário da sessão atual. Nunca lança e nunca fica pendurado: em último caso
  * devolve o usuário persistido no aparelho, ou `null`.
  */
 export async function getSessionUser(client: any): Promise<any | null> {
   if (!client) return null;
+  // Sem internet: a sessão salva já responde (getSession tentaria renovar o login e esperaria o prazo).
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const saved = readPersistedUser();
+    if (saved) return saved;
+  }
   try {
     const res: any = await withTimeout(client.auth.getSession(), 5000, 'sessão');
     const user = res?.data?.session?.user;

@@ -7,6 +7,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
+import { redirectToOfficialIfNeeded } from './lib/domainMove';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -18,13 +19,14 @@ if (!rootElement) {
 // só protege a árvore que ele envolve. Sem isso, um erro não tratado nos
 // hooks do próprio App (ex.: localStorage bloqueado pelo navegador) derrubava
 // a tela inteira sem nenhuma tela de erro amigável.
-const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </React.StrictMode>
-);
-
-
+// Endereço antigo (finvision.…) no navegador: vai para o oficial (zyvion.…), na mesma tela.
+if (!redirectToOfficialIfNeeded()) {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </React.StrictMode>
+  );
+}
