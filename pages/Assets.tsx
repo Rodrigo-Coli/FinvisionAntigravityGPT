@@ -74,6 +74,7 @@ import { plantaRemainingDebt } from '../lib/plantaDebt';
 import { syncAllConsortiumBalances } from '../services/consortiumBalance.service';
 import { withTimeout } from '../lib/connectivity';
 import { isOrphanPendingFinancing } from '../lib/pendingFinancing';
+import { summarizeLoan } from '../lib/loanSummary';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -3958,21 +3959,25 @@ const Assets: React.FC = () => {
             if (c) catId = c.id;
           }
 
-          // Initial Cash Outflow transaction (Not historical)
-          const todayStr = DateUtils.formatToISODate();
+          // Saída do dinheiro emprestado: na DATA DO EMPRÉSTIMO (não hoje) e
+          // capitalizada (vira o crédito a receber, não é despesa do mês) — igual
+          // ao desembolso criado pela sincronização. Antes um empréstimo antigo
+          // cadastrado hoje lançava o valor inteiro como despesa de hoje.
+          const disbDate = acqDate || DateUtils.formatToISODate();
           await supabase.from('transactions').insert([{
             user_id: user.id,
             description: `Desembolso Empréstimo Concedido - ${formData.name}`,
             amount: loanPrincipalVal,
-            date: todayStr,
+            date: disbDate,
             type: 'EXPENSE',
             category_id: catId || null,
             is_paid: true,
             paid_amount: loanPrincipalVal,
-            paid_at: todayStr,
+            paid_at: disbDate,
             metadata: {
               linked_asset_id: newAsset.id,
-              type: 'loan_disbursement'
+              type: 'loan_disbursement',
+              isCapitalized: true
             }
           }]);
         }
@@ -4756,74 +4761,18 @@ const Assets: React.FC = () => {
   // fazia a sua própria conta e podiam divergir.
   const getLoanSummary = (asset: PhysicalAsset) => {
     const meta: any = asset.metadata || {};
-    const principal = Number(meta.loanPrincipal) || 0;
-    const monthlyRate = (Number(meta.loanInterestRate) || 0) / 100;
-    const isCompound = meta.loanInterestType === 'COMPOUND';
-
     const payments = getAssetLinkedTransactions(asset.id)
-      .filter((t: any) => t.type === 'INCOME' && t.isPaid)
-      .sort((a: any, b: any) => a.date.localeCompare(b.date));
-
-    const concessionDate = asset.acquisitionDate || DateUtils.formatToISODate();
-    const dailyRate = isCompound ? Math.pow(1 + monthlyRate, 1 / 30) - 1 : monthlyRate / 30;
-
-    let balance = principal;
-    let totalInterest = 0;
-    let lastDate = concessionDate;
-
-    const schedule = payments.map((tx: any) => {
-      const pmtDate = (tx.date || '').split('T')[0];
-      const days = Math.max(0, Math.round(
-        (new Date(pmtDate + 'T12:00:00').getTime() - new Date(lastDate + 'T12:00:00').getTime()) / 86400000
-      ));
-      const interest = isCompound
-        ? balance * (Math.pow(1 + dailyRate, days) - 1)
-        : balance * dailyRate * days;
-      totalInterest += interest;
-      const received = Number(tx.amount) || 0;
-      const interestPaid = Math.min(interest, received);
-      const principalPaid = Math.max(0, received - interestPaid);
-      balance = Math.max(0, balance + interest - received);
-      lastDate = pmtDate;
-      return {
-        id: tx.id,
-        date: pmtDate,
-        received,
-        days,
-        interest: Math.round(interestPaid * 100) / 100,
-        principalPaid: Math.round(principalPaid * 100) / 100,
-        balance: Math.round(balance * 100) / 100
-      };
-    });
-
-    // Juros corridos desde o último pagamento até hoje (parte "em aberto").
-    const today = DateUtils.formatToISODate();
-    const daysSinceLast = Math.max(0, Math.round(
-      (new Date(today + 'T12:00:00').getTime() - new Date(lastDate + 'T12:00:00').getTime()) / 86400000
-    ));
-    const accruedInterest = isCompound
-      ? balance * (Math.pow(1 + dailyRate, daysSinceLast) - 1)
-      : balance * dailyRate * daysSinceLast;
-
-    const totalReceived = payments.reduce((s: number, t: any) => s + Number(t.amount), 0);
-    const principalReturned = schedule.reduce((s, r) => s + r.principalPaid, 0);
-    const interestReceived = schedule.reduce((s, r) => s + r.interest, 0);
-    const openBalance = Math.round((balance + accruedInterest) * 100) / 100;
-
+      .filter((t: any) => t.type === 'INCOME' && t.isPaid);
     return {
       meta,
-      principal,
-      monthlyRate: Number(meta.loanInterestRate) || 0,
-      isCompound,
-      concessionDate,
-      schedule,
-      totalReceived: Math.round(totalReceived * 100) / 100,
-      principalReturned: Math.round(principalReturned * 100) / 100,
-      interestReceived: Math.round(interestReceived * 100) / 100,
-      accruedInterest: Math.round(accruedInterest * 100) / 100,
-      daysSinceLast,
-      openBalance,
-      progressPct: principal > 0 ? Math.min(100, Math.round((principalReturned / principal) * 100)) : 0
+      ...summarizeLoan({
+        principal: Number(meta.loanPrincipal) || 0,
+        monthlyRatePct: Number(meta.loanInterestRate) || 0,
+        isCompound: meta.loanInterestType === 'COMPOUND',
+        concessionDate: asset.acquisitionDate || DateUtils.formatToISODate(),
+        payments,
+        today: DateUtils.formatToISODate()
+      })
     };
   };
 
@@ -8987,52 +8936,19 @@ ${tabelaHtml}
                     .filter((t: any) => t.type === 'INCOME' && t.isPaid)
                     .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-                  // Cálculo de saldo para modelo Conta Corrente
-                  const calcOpenBalance = () => {
-                    if (!isOpenBalance || principal <= 0 || rate <= 0) return null;
-                    const monthlyRate = rate / 100;
-                    const dailyRate = meta.loanInterestType === 'COMPOUND'
-                      ? Math.pow(1 + monthlyRate, 1 / 30) - 1
-                      : monthlyRate / 30;
-
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-
-                    let balance = principal;
-                    let lastDate = new Date(meta.acquisitionDate || loan.acquisitionDate || DateUtils.formatToISODate());
-                    lastDate.setHours(0, 0, 0, 0);
-                    let totalInterest = 0;
-                    let totalPaid = 0;
-
-                    // Aplica juros + abate pagamentos cronologicamente
-                    for (const pmt of loanPayments) {
-                      const pmtDate = new Date(pmt.date);
-                      pmtDate.setHours(0, 0, 0, 0);
-                      if (pmtDate <= lastDate) continue;
-                      const days = Math.max(0, Math.round((pmtDate.getTime() - lastDate.getTime()) / 86400000));
-                      const interest = meta.loanInterestType === 'COMPOUND'
-                        ? balance * (Math.pow(1 + dailyRate, days) - 1)
-                        : balance * dailyRate * days;
-                      balance += interest;
-                      totalInterest += interest;
-                      const pmtAmt = Number(pmt.amount) || 0;
-                      balance = Math.max(0, balance - pmtAmt);
-                      totalPaid += pmtAmt;
-                      lastDate = pmtDate;
-                    }
-
-                    // Juros até hoje
-                    const daysToday = Math.max(0, Math.round((today.getTime() - lastDate.getTime()) / 86400000));
-                    const interestToday = meta.loanInterestType === 'COMPOUND'
-                      ? balance * (Math.pow(1 + dailyRate, daysToday) - 1)
-                      : balance * dailyRate * daysToday;
-                    balance += interestToday;
-                    totalInterest += interestToday;
-
-                    return { balance: Math.max(0, balance), totalInterest, totalPaid };
-                  };
-
-                  const openBalanceInfo = calcOpenBalance();
+                  // Modelo Conta Corrente: mesma conta do extrato, do Excel, do PDF e do
+                  // WhatsApp (getLoanSummary). O cartão tinha uma conta própria que
+                  // IGNORAVA pagamento feito no mesmo dia da concessão (ex.: entrada de
+                  // R$ 7.000 no dia do empréstimo): ele não entrava no "Total já recebido"
+                  // nem abatia o saldo.
+                  const loanSummary = isOpenBalance && principal > 0 && rate > 0 ? getLoanSummary(loan) : null;
+                  const openBalanceInfo = loanSummary ? {
+                    balance: loanSummary.openBalance,
+                    totalInterest: loanSummary.totalInterest,
+                    totalPaid: loanSummary.totalReceived,
+                    interestReceived: loanSummary.interestReceived,
+                    principalReturned: loanSummary.principalReturned
+                  } : null;
                   // "Devolvido" = soma dos pagamentos RECEBIDOS (loanPayments já filtra
                   // isPaid). Antes usava todas as receitas vinculadas — as parcelas
                   // provisionadas (não pagas) contavam como devolvidas e o empréstimo
@@ -9088,6 +9004,14 @@ ${tabelaHtml}
                                 <span>Total já recebido:</span>
                                 <span className="font-bold text-emerald-600">{formatCurrency(openBalanceInfo.totalPaid)}</span>
                               </div>
+                              <div className="flex justify-between pl-3 text-slate-400">
+                                <span>dos quais juros:</span>
+                                <span className="font-bold">{formatCurrency(openBalanceInfo.interestReceived)}</span>
+                              </div>
+                              <div className="flex justify-between pl-3 text-slate-400">
+                                <span>e principal devolvido:</span>
+                                <span className="font-bold">{formatCurrency(openBalanceInfo.principalReturned)}</span>
+                              </div>
                               <div className="flex justify-between">
                                 <span>Taxa:</span>
                                 <span className="font-bold text-slate-700">{rate}% a.m. ({meta.loanInterestType === 'COMPOUND' ? 'Compostos' : 'Simples'})</span>
@@ -9095,8 +9019,8 @@ ${tabelaHtml}
                             </div>
                             {loanPayments.length > 0 && (
                               <div className="border-t border-slate-50 pt-3">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Histórico de Pagamentos</p>
-                                <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Histórico de Pagamentos ({loanPayments.length})</p>
+                                <div className="space-y-1.5 max-h-48 overflow-y-auto">
                                   {loanPayments.map((p: any, i: number) => (
                                     <div key={i} className="flex justify-between text-[10px]">
                                       <span className="text-slate-400">{DateUtils.formatDisplayDate(p.date)}</span>
