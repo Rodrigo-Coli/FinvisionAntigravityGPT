@@ -1,5 +1,33 @@
 [
   {
+    "version": "2026.10.28.1928",
+    "title": "Empréstimo concedido: total recebido completo e saldo certo",
+    "date": "28/10/2026",
+    "benefits": [
+      {
+        "title": "Total já recebido mostra tudo o que foi pago",
+        "desc": "No cartão do empréstimo (modelo conta corrente), o pagamento feito no mesmo dia do empréstimo (ex.: entrada de R$ 7.000) era ignorado: não entrava no \"Total já recebido\" nem abatia o saldo. Agora o total soma todos os pagamentos e mostra quanto disso foi juros e quanto foi principal devolvido; o saldo em aberto é recalculado.",
+        "type": "correcao"
+      },
+      {
+        "title": "Histórico completo de pagamentos",
+        "desc": "O histórico mostra quantos pagamentos existem e uma lista maior, para não parecer que faltam pagamentos.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Empréstimo antigo não vira despesa de hoje",
+        "desc": "Cadastrar um empréstimo concedido com data antiga lançava o valor emprestado como despesa do dia do cadastro. Agora a saída fica na data do empréstimo e não conta como despesa do mês (vira o valor a receber).",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`lib/loanSummary.ts`: `summarizeLoan` (conta única de juros pro-rata, juros pagos × principal, saldo, juros em aberto); pagamento na data da concessão abate com 0 dia de juros.",
+      "`pages/Assets.tsx`: cartão Conta Corrente usa `getLoanSummary`/`summarizeLoan` (antes tinha conta própria com `if (pmtDate <= lastDate) continue`); linhas \"dos quais juros\" e \"principal devolvido\"; histórico com contagem e `max-h-48`.",
+      "`pages/Assets.tsx`: desembolso do empréstimo novo na data do empréstimo, com `isCapitalized` (igual à sincronização).",
+      "Testes: `loanSummary.test.ts` com o empréstimo real (36.000 a 1% a.m., 13 pagamentos = 37.500)."
+    ]
+  },
+  {
     "version": "2026.10.28.1830",
     "title": "Abrir sem internet sem sair da conta; novo endereço zyvion.automanow.com.br",
     "date": "28/10/2026",
