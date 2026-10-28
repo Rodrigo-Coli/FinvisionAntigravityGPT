@@ -1,5 +1,34 @@
 [
   {
+    "version": "2026.10.28.1830",
+    "title": "Abrir sem internet sem sair da conta; novo endereço zyvion.automanow.com.br",
+    "date": "28/10/2026",
+    "benefits": [
+      {
+        "title": "Abrir o app sem internet não desloga mais",
+        "desc": "Com o app fechado há mais de 1 hora e aberto sem internet (ex.: no avião), ele saía da conta uns 2 minutos depois e apagava os dados guardados no aparelho. Agora continua na sua conta, com os dados do aparelho, e os lançamentos feitos offline vão para o banco quando a internet voltar.",
+        "type": "correcao"
+      },
+      {
+        "title": "Abre mais rápido sem internet",
+        "desc": "Sem internet, o app abre direto (em ~2 s) com a sessão e o perfil salvos no aparelho, em vez de ficar ~15 s em \"Carregando\".",
+        "type": "melhoria"
+      },
+      {
+        "title": "Endereço oficial: zyvion.automanow.com.br",
+        "desc": "Quem abre o endereço antigo (finvision.automanow.com.br) no navegador vai direto para o novo, na mesma tela. No app instalado aparece um aviso para abrir o novo endereço e instalar por lá — sem tirar você do app, e esperando os lançamentos feitos offline serem enviados.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "`lib/session.ts`: `isTransientMissingSession` (sem sessão por falha de renovação, com sessão salva, não é logout) e `getSessionUser` offline usa a sessão salva direto.",
+      "`App.tsx`: `onAuthStateChange`/boot ignoram \"sem sessão\" passageiro (só `SIGNED_OUT` desloga); offline abre com a sessão e o perfil salvos sem esperar os prazos.",
+      "`lib/domainMove.ts` + `index.tsx`: endereço antigo no navegador (online, sem fila offline) → `location.replace` para zyvion.automanow.com.br com caminho, ?parâmetros e #rota; `/api`, `sw.js` e arquivos continuam respondendo no antigo.",
+      "`components/DomainMoveBanner.tsx`: aviso no app instalado do endereço antigo (ou com lançamentos offline pendentes).",
+      "Testes: `offlineSession.test.ts`, `domainMove.test.tsx`; verificado com Playwright: offline com login vencido abre em ~2 s e segue logado após 130 s (antes deslogava em ~120 s e apagava o cache)."
+    ]
+  },
+  {
     "version": "2026.10.27.1507",
     "title": "Modo offline mais seguro: atualizar não apaga mais o app salvo",
     "date": "27/10/2026",

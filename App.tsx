@@ -18,6 +18,7 @@ import { ToastProvider } from './contexts/ToastContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { SubscriptionProvider } from './contexts/SubscriptionContext';
 import OfflineBanner from './components/OfflineBanner';
+import DomainMoveBanner from './components/DomainMoveBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import TrialBanner from './components/TrialBanner';
 import GracefulDowngradeBanner from './components/subscription/GracefulDowngradeBanner';
@@ -28,7 +29,7 @@ import PlanUpsellNudge from './components/PlanUpsellNudge';
 import DemoBanner from './components/DemoBanner';
 import UpdateAlert from './components/UpdateAlert';
 import { withTimeout, BOOT_TIMEOUT_MS } from './lib/connectivity';
-import { getSessionUser } from './lib/session';
+import { getSessionUser, isTransientMissingSession } from './lib/session';
 
 // Lazy-loaded pages — carregadas só quando o usuário navega até elas
 const Home          = lazy(() => import('./pages/Home'));
@@ -185,6 +186,11 @@ const App: React.FC = () => {
           setProfile(null);
         }
         safeStorage.setItem('finvision_last_user_id', session.user.id);
+        // Sem internet e com o perfil desta conta salvo no aparelho: abre já,
+        // sem esperar o prazo da busca do perfil (que vai falhar).
+        if (navigator.onLine === false && safeStorage.getJSON<Profile>('finvision_cached_profile')?.id === session.user.id) {
+          setLoading(false);
+        }
         fetchProfile(session.user.id, session.user.email);
         if (session.access_token) attachPendingReferral(session.access_token);
       } else {
@@ -203,13 +209,27 @@ const App: React.FC = () => {
     // "não há internet" — e deixar isso pintar a tarja vermelha fazia o app
     // aparecer como offline em toda abertura mais demorada (4G fraco, projeto
     // frio). A conectividade de verdade é medida pelas chamadas normais do app.
-    withTimeout<any>(supabase.auth.getSession(), BOOT_TIMEOUT_MS, 'sessão inicial', { silent: true })
-      .then(({ data: { session } }: any) => handleSession(session))
-      .catch(async () => {
-        const cached = await getSessionUser(supabase);
-        handleSession(cached ? { user: cached } : null);
-      });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => handleSession(session));
+    const useSavedSession = async () => {
+      const cached = await getSessionUser(supabase);
+      handleSession(cached ? { user: cached } : null);
+    };
+    // Sem internet a renovação do login só falha (e o Supabase tenta por ~50 s):
+    // abre direto com a sessão salva no aparelho.
+    const sessionAtBoot = navigator.onLine === false
+      ? Promise.reject(new Error('offline'))
+      : withTimeout<any>(supabase.auth.getSession(), BOOT_TIMEOUT_MS, 'sessão inicial', { silent: true });
+    sessionAtBoot
+      .then(({ data: { session } }: any) => {
+        // Sem rede para renovar o login: segue com a sessão salva no aparelho.
+        if (isTransientMissingSession(null, session)) return useSavedSession();
+        handleSession(session);
+      })
+      .catch(useSavedSession);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, session: any) => {
+      // Falha ao renovar o login sem internet não é sair da conta (ver isTransientMissingSession).
+      if (isTransientMissingSession(event, session)) return;
+      handleSession(session);
+    });
 
     return () => subscription?.unsubscribe();
   }, []);
@@ -267,6 +287,7 @@ const App: React.FC = () => {
             <UpdateAlert />
             <ScrollToTop />
             <OfflineBanner />
+            <DomainMoveBanner />
             <TrialBanner />
             <GracefulDowngradeBanner />
             <CancelPendingBanner />
