@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.10.29.0046",
+    "title": "Empréstimo concedido: acréscimo à dívida com juros",
+    "date": "29/10/2026",
+    "benefits": [
+      {
+        "title": "Acrescentar à dívida",
+        "desc": "No empréstimo em conta corrente há o botão \"Acrescentar à dívida\": um valor a mais que o devedor passa a dever (ex.: acordo, despesas do carro), com data. Os juros correm sobre ele a partir dessa data, e os pagamentos abatem normalmente. Não mexe no saldo das suas contas.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Mesma conta em todo lugar",
+        "desc": "Cartão, \"Ver extrato\", PDF e WhatsApp do empréstimo agora usam a mesma conta. O \"Ver extrato\" contava parcelas ainda não pagas como recebidas e calculava os juros sempre sobre o valor original.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`lib/loanSummary.ts`: `additions` (acréscimos na linha do tempo; no mesmo dia, antes do pagamento), `additionsTotal`, `totalLent`, linhas `kind`/`added`/`interestAccrued`.",
+      "`pages/Assets.tsx`: botão e modal \"Acrescentar à dívida\" (lançamento sem conta, `metadata.type = loan_addition`, `isCapitalized`); `getLoanSummary` lê os acréscimos; PDF do cartão e \"Ver extrato\" usam `getLoanSummary`; extrato/WhatsApp mostram os acréscimos.",
+      "Testes: acréscimo em `loanSummary.test.ts`."
+    ]
+  },
+  {
     "version": "2026.10.29.0026",
     "title": "Consórcio: vencimento da 1ª parcela e edição em série",
     "date": "29/10/2026",
