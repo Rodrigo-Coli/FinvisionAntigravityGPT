@@ -96,7 +96,9 @@ type AddModalState =
     };
   };
 
-const detectLegacySeries = (t: any) => {
+const LIABILITY_SERIES_PREFIX = 'virtual-liab-';
+
+export const detectLegacySeries = (t: any) => {
   const baseMetadata = {
     ...(t.metadata || {}),
     installment_group_id: t.metadata?.installment_group_id || t.installment_group_id,
@@ -109,6 +111,18 @@ const detectLegacySeries = (t: any) => {
 
   if (baseMetadata.installment_group_id || baseMetadata.recurrence_group_id) {
     return baseMetadata;
+  }
+
+  // Parcelas de consórcio/dívida geradas em Patrimônio ("Parcela 2/128 (Consórcio) - …")
+  // não têm grupo próprio: a série é a dívida. Sem isso, editar a data de uma parcela
+  // não oferecia "só esta / esta e as próximas / todas" — cada uma ficava com a sua data.
+  const liabilityId = t.liability_id || baseMetadata.liability_id;
+  if (liabilityId && (baseMetadata.installment_number || baseMetadata.is_consortium_installment)) {
+    return {
+      ...baseMetadata,
+      is_installment: true,
+      installment_group_id: `${LIABILITY_SERIES_PREFIX}${liabilityId}`
+    };
   }
 
   // Treat asset-linked transactions (rental, condo, iptu) as virtual recurrence series
@@ -150,11 +164,16 @@ const detectLegacySeries = (t: any) => {
   return baseMetadata;
 };
 
-const buildSeriesFilter = (query: any, tx: any) => {
+export const buildSeriesFilter = (query: any, tx: any) => {
   const groupId = tx?.metadata?.installment_group_id || tx?.metadata?.recurrence_group_id;
   const colName = tx?.metadata?.installment_group_id ? 'installment_group_id' : 'recurrence_group_id';
 
-  if (groupId && String(groupId).startsWith('virtual-asset-')) {
+  if (groupId && String(groupId).startsWith(LIABILITY_SERIES_PREFIX)) {
+    // Série da dívida/consórcio: só as parcelas (não lances nem entradas).
+    query = query
+      .eq('liability_id', String(groupId).slice(LIABILITY_SERIES_PREFIX.length))
+      .not('metadata->>installment_number', 'is', null);
+  } else if (groupId && String(groupId).startsWith('virtual-asset-')) {
     const parts = String(groupId).split('-');
     const typeSuffix = parts[parts.length - 1];
     const linkedAssetId = parts.slice(2, parts.length - 1).join('-');
