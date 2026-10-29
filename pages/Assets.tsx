@@ -388,6 +388,9 @@ const Assets: React.FC = () => {
     date: string;
     accountId: string;
     isSubmitting: boolean;
+    /** ADDITION = acréscimo à dívida (o devedor passa a dever mais; corre juros). */
+    mode?: 'PAYMENT' | 'ADDITION';
+    description?: string;
   } | null>(null);
 
   // Form States
@@ -4761,8 +4764,11 @@ const Assets: React.FC = () => {
   // fazia a sua própria conta e podiam divergir.
   const getLoanSummary = (asset: PhysicalAsset) => {
     const meta: any = asset.metadata || {};
-    const payments = getAssetLinkedTransactions(asset.id)
-      .filter((t: any) => t.type === 'INCOME' && t.isPaid);
+    const linked = getAssetLinkedTransactions(asset.id);
+    const payments = linked.filter((t: any) => t.type === 'INCOME' && t.isPaid);
+    const additions = linked
+      .filter((t: any) => t.metadata?.type === 'loan_addition')
+      .map((t: any) => ({ id: t.id, date: t.date, amount: t.amount, description: t.metadata?.addition_reason || t.description }));
     return {
       meta,
       ...summarizeLoan({
@@ -4771,6 +4777,7 @@ const Assets: React.FC = () => {
         isCompound: meta.loanInterestType === 'COMPOUND',
         concessionDate: asset.acquisitionDate || DateUtils.formatToISODate(),
         payments,
+        additions,
         today: DateUtils.formatToISODate()
       })
     };
@@ -4791,7 +4798,7 @@ const Assets: React.FC = () => {
       const s = getLoanSummary(asset);
       resumoHtml = `
         <div class="cards">
-          <div class="card"><div class="lbl">Principal</div><div class="val">${fmt(s.principal)}</div></div>
+          <div class="card"><div class="lbl">Principal${s.additionsTotal > 0 ? ' + acréscimos' : ''}</div><div class="val">${fmt(s.totalLent)}</div></div>
           <div class="card"><div class="lbl">Total recebido</div><div class="val">${fmt(s.totalReceived)}</div></div>
           <div class="card"><div class="lbl">Juros recebidos</div><div class="val">${fmt(s.interestReceived)}</div></div>
           <div class="card"><div class="lbl">Saldo em aberto</div><div class="val warn">${fmt(s.openBalance)}</div></div>
@@ -4810,7 +4817,7 @@ const Assets: React.FC = () => {
               <tr>
                 <td>${DateUtils.formatDisplayDate(r.date)}</td>
                 <td class="r">${r.days}</td>
-                <td class="r ok">${fmt(r.received)}</td>
+                <td class="r ${r.kind === 'ADDITION' ? 'warn' : 'ok'}">${r.kind === 'ADDITION' ? '+' + fmt(r.added) + ' (acréscimo)' : fmt(r.received)}</td>
                 <td class="r warn">${fmt(r.interest)}</td>
                 <td class="r">${fmt(r.principalPaid)}</td>
                 <td class="r b">${fmt(r.balance)}</td>
@@ -4922,6 +4929,7 @@ ${tabelaHtml}
       ``,
       `📋 *${loan.name}*`,
       `💰 Principal emprestado: ${fmtW(s.principal)}`,
+      ...s.schedule.filter(r => r.kind === 'ADDITION').map(r => `➕ Acréscimo em ${DateUtils.formatDisplayDate(r.date)}: ${fmtW(r.added)}${r.description ? ` (${r.description})` : ''}`),
       `📈 Taxa: ${s.monthlyRate}% a.m. (${s.isCompound ? 'compostos' : 'simples'})`,
       `📅 Concessão: ${DateUtils.formatDisplayDate(s.concessionDate)}`,
       ``,
@@ -8673,58 +8681,30 @@ ${tabelaHtml}
 
                   // ── Gera extrato completo em HTML e abre para impressão / PDF ──
                   const handleGeneratePDF = () => {
-                    // Só pagamentos efetivamente recebidos (isPaid) entram no extrato —
-                    // parcelas provisionadas ainda não pagas não abatem o saldo.
-                    const payments = getAssetLinkedTransactions(loan.id)
-                      .filter((t: any) => t.type === 'INCOME' && t.isPaid)
-                      .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-                    const monthlyRate = rate / 100;
-                    const dailyRate = meta.loanInterestType === 'COMPOUND'
-                      ? Math.pow(1 + monthlyRate, 1 / 30) - 1
-                      : monthlyRate / 30;
-
+                    // Mesma conta do cartão, do extrato e do WhatsApp (getLoanSummary):
+                    // pagamentos recebidos e acréscimos à dívida, juros pro-rata.
                     const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
                     const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
 
-                    // Constrói as linhas da tabela de evolução
-                    type Row = { date: string; days: number; interest: number; payment: number; balance: number; label: string };
-                    const rows: Row[] = [];
-                    const startDate = meta.acquisitionDate || loan.acquisitionDate || DateUtils.formatToISODate();
-                    let balance = principal;
-                    let lastDate = startDate;
-                    rows.push({ date: startDate, days: 0, interest: 0, payment: 0, balance: principal, label: 'Concessão do empréstimo' });
-
-                    for (const pmt of payments) {
-                      const pmtDate = pmt.date?.split('T')[0] || pmt.date;
-                      const msA = new Date(lastDate + 'T12:00:00').getTime();
-                      const msB = new Date(pmtDate + 'T12:00:00').getTime();
-                      const days = Math.max(0, Math.round((msB - msA) / 86400000));
-                      const interest = meta.loanInterestType === 'COMPOUND'
-                        ? balance * (Math.pow(1 + dailyRate, days) - 1)
-                        : balance * dailyRate * days;
-                      balance = Math.max(0, balance + interest - Number(pmt.amount));
-                      rows.push({ date: pmtDate, days, interest, payment: Number(pmt.amount), balance, label: 'Pagamento recebido' });
-                      lastDate = pmtDate;
-                    }
-
-                    // Linha de hoje
+                    type Row = { date: string; days: number; interest: number; payment: number; added: number; balance: number; label: string };
+                    const sum = getLoanSummary(loan);
+                    const rows: Row[] = [
+                      { date: sum.concessionDate, days: 0, interest: 0, payment: 0, added: 0, balance: sum.principal, label: 'Concessão do empréstimo' },
+                      ...sum.schedule.map(r => ({
+                        date: r.date, days: r.days, interest: r.interestAccrued, payment: r.received, added: r.added, balance: r.balance,
+                        label: r.kind === 'ADDITION' ? `Acréscimo à dívida${r.description ? ` — ${r.description}` : ''}` : 'Pagamento recebido'
+                      }))
+                    ];
                     const today = DateUtils.formatToISODate();
-                    if (today !== lastDate) {
-                      const msA = new Date(lastDate + 'T12:00:00').getTime();
-                      const msB = new Date(today + 'T12:00:00').getTime();
-                      const days = Math.max(0, Math.round((msB - msA) / 86400000));
-                      const interest = meta.loanInterestType === 'COMPOUND'
-                        ? balance * (Math.pow(1 + dailyRate, days) - 1)
-                        : balance * dailyRate * days;
-                      balance += interest;
-                      rows.push({ date: today, days, interest, payment: 0, balance: Math.max(0, balance), label: 'Saldo em aberto hoje' });
+                    const lastRowDate = rows[rows.length - 1].date;
+                    if (today !== lastRowDate) {
+                      rows.push({ date: today, days: sum.daysSinceLast, interest: sum.accruedInterest, payment: 0, added: 0, balance: sum.openBalance, label: 'Saldo em aberto hoje' });
                     }
 
-                    const totalPaid = payments.reduce((s: number, p: any) => s + Number(p.amount), 0);
-                    const totalInterest = rows.slice(1).reduce((s, r) => s + r.interest, 0);
-                    const currentBalance = rows[rows.length - 1]?.balance ?? 0;
-                    const pctPaid = principal > 0 ? Math.min(100, (totalPaid / (principal + totalInterest)) * 100) : 0;
+                    const totalPaid = sum.totalReceived;
+                    const totalInterest = sum.totalInterest;
+                    const currentBalance = sum.openBalance;
+                    const pctPaid = sum.totalLent > 0 ? Math.min(100, (totalPaid / (sum.totalLent + totalInterest)) * 100) : 0;
                     const refNum = `ZY-${loan.id.slice(0, 8).toUpperCase()}`;
 
                     const rowsHTML = rows.map((r, i) => {
@@ -8737,7 +8717,7 @@ ${tabelaHtml}
                           <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:${isLast?700:400};color:${isLast?'#92400e':'#334155'}">${fmtDate(r.date)}</td>
                           <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b">${r.days > 0 ? r.days + 'd' : '—'}</td>
                           <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;color:${r.interest > 0 ? '#b45309' : '#94a3b8'}">${r.interest > 0 ? fmt(r.interest) : '—'}</td>
-                          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;color:${r.payment > 0 ? '#16a34a' : '#94a3b8'};font-weight:${r.payment > 0 ? 700 : 400}">${r.payment > 0 ? fmt(r.payment) : '—'}</td>
+                          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;color:${r.payment > 0 ? '#16a34a' : r.added > 0 ? '#b45309' : '#94a3b8'};font-weight:${r.payment > 0 || r.added > 0 ? 700 : 400}">${r.payment > 0 ? fmt(r.payment) : r.added > 0 ? '+' + fmt(r.added) + ' (acréscimo)' : '—'}</td>
                           <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700;color:${balanceColor}">${fmt(r.balance)}</td>
                           <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#94a3b8;font-size:10px">${r.label}</td>
                         </tr>
@@ -8832,7 +8812,7 @@ ${tabelaHtml}
       </div>
       <div class="info-item">
         <div class="info-label">Data de Concessão</div>
-        <div class="info-value">${fmtDate(startDate)}</div>
+        <div class="info-value">${fmtDate(sum.concessionDate)}</div>
       </div>
       <div class="info-item">
         <div class="info-label">Taxa de Juros</div>
@@ -8859,6 +8839,7 @@ ${tabelaHtml}
       <div class="summary-item">
         <div class="summary-label">Principal</div>
         <div class="summary-value" style="color:#1e293b">${fmt(principal)}</div>
+        ${sum.additionsTotal > 0 ? `<div style="font-size:9px;color:#94a3b8;margin-top:4px">+ ${fmt(sum.additionsTotal)} de acréscimos</div>` : ''}
       </div>
       <div class="summary-item">
         <div class="summary-label">Juros Acumulados</div>
@@ -8947,7 +8928,8 @@ ${tabelaHtml}
                     totalInterest: loanSummary.totalInterest,
                     totalPaid: loanSummary.totalReceived,
                     interestReceived: loanSummary.interestReceived,
-                    principalReturned: loanSummary.principalReturned
+                    principalReturned: loanSummary.principalReturned,
+                    additions: loanSummary.schedule.filter(r => r.kind === 'ADDITION')
                   } : null;
                   // "Devolvido" = soma dos pagamentos RECEBIDOS (loanPayments já filtra
                   // isPaid). Antes usava todas as receitas vinculadas — as parcelas
@@ -8996,6 +8978,12 @@ ${tabelaHtml}
                                 <span>Principal original:</span>
                                 <span className="font-bold text-slate-700">{formatCurrency(principal)}</span>
                               </div>
+                              {openBalanceInfo.additions.map(a => (
+                                <div key={a.id || a.date} className="flex justify-between">
+                                  <span>Acréscimo em {DateUtils.formatDisplayDate(a.date)}:</span>
+                                  <span className="font-bold text-slate-700">+{formatCurrency(a.added)}</span>
+                                </div>
+                              ))}
                               <div className="flex justify-between">
                                 <span>Total de juros acumulados:</span>
                                 <span className="font-bold text-amber-600">{formatCurrency(openBalanceInfo.totalInterest)}</span>
@@ -9083,6 +9071,23 @@ ${tabelaHtml}
                             className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
                           >
                             <Plus size={12} /> Registrar Pagamento
+                          </button>
+                        )}
+                        {isOpenBalance && (
+                          <button
+                            onClick={() => setLoanPaymentModal({
+                              loan,
+                              amount: '',
+                              date: DateUtils.formatToISODate(),
+                              accountId: '',
+                              isSubmitting: false,
+                              mode: 'ADDITION',
+                              description: ''
+                            })}
+                            className="w-full py-2 bg-white border border-amber-200 text-amber-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-50 transition-colors flex items-center justify-center gap-2"
+                            title="O devedor passa a dever um valor a mais; os juros correm sobre ele a partir da data"
+                          >
+                            <Plus size={12} /> Acrescentar à dívida
                           </button>
                         )}
 
@@ -11830,7 +11835,7 @@ ${tabelaHtml}
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-black text-slate-900 uppercase tracking-tight text-sm">Registrar Pagamento</h3>
+              <h3 className="font-black text-slate-900 uppercase tracking-tight text-sm">{loanPaymentModal.mode === 'ADDITION' ? 'Acrescentar à dívida' : 'Registrar Pagamento'}</h3>
               <button onClick={() => setLoanPaymentModal(null)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-50"><X size={18} /></button>
             </div>
             <div className="p-6 space-y-4">
@@ -11840,14 +11845,14 @@ ${tabelaHtml}
                 <p className="text-xs text-slate-500">Devedor: {loanPaymentModal.loan.metadata?.loanDebtor}</p>
               </div>
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Data do Pagamento</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">{loanPaymentModal.mode === 'ADDITION' ? 'Data do acréscimo (os juros correm a partir dela)' : 'Data do Pagamento'}</label>
                 <DateInput value={loanPaymentModal.date}
                   onChange={e => setLoanPaymentModal(p => p ? { ...p, date: e.target.value } : null)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Valor Recebido (R$)</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">{loanPaymentModal.mode === 'ADDITION' ? 'Valor a mais na dívida (R$)' : 'Valor Recebido (R$)'}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -11858,6 +11863,19 @@ ${tabelaHtml}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all"
                 />
               </div>
+              {loanPaymentModal.mode === 'ADDITION' ? (
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Motivo</label>
+                <input
+                  type="text"
+                  placeholder="Ex.: acordo, despesas do carro"
+                  value={loanPaymentModal.description || ''}
+                  onChange={e => setLoanPaymentModal(p => p ? { ...p, description: e.target.value } : null)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 outline-none focus:border-amber-500 transition-all"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Não mexe no saldo das suas contas: só aumenta o que o devedor deve.</p>
+              </div>
+              ) : (
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Conta que Recebe</label>
                 <select
@@ -11870,14 +11888,38 @@ ${tabelaHtml}
                   ))}
                 </select>
               </div>
+              )}
               <button
-                disabled={!loanPaymentModal.amount || !loanPaymentModal.accountId || loanPaymentModal.isSubmitting}
+                disabled={!loanPaymentModal.amount || (loanPaymentModal.mode !== 'ADDITION' && !loanPaymentModal.accountId) || loanPaymentModal.isSubmitting}
                 onClick={async () => {
                   if (!supabase || !loanPaymentModal.amount) return;
                   setLoanPaymentModal(p => p ? { ...p, isSubmitting: true } : null);
                   try {
                     const { data: { session } } = await supabase.auth.getSession();
                     const userId = session?.user?.id;
+                    if (loanPaymentModal.mode === 'ADDITION') {
+                      // Acréscimo à dívida: sem conta (não é dinheiro saindo/entrando) e
+                      // capitalizado (não é despesa do mês). A conta do empréstimo
+                      // (summarizeLoan) soma ao saldo na data e corre juros dali em diante.
+                      const value = parseFloat(loanPaymentModal.amount);
+                      const reason = (loanPaymentModal.description || '').trim();
+                      const { error: addErr } = await supabase.from('transactions').insert({
+                        user_id: userId,
+                        date: loanPaymentModal.date,
+                        description: `Acréscimo à dívida - ${loanPaymentModal.loan.name}${reason ? ` (${reason})` : ''}`,
+                        amount: value,
+                        type: 'EXPENSE',
+                        category: 'Empréstimos/Investimentos',
+                        is_paid: true,
+                        paid_amount: value,
+                        paid_at: loanPaymentModal.date,
+                        metadata: { linked_asset_id: loanPaymentModal.loan.id, type: 'loan_addition', isCapitalized: true, addition_reason: reason || null }
+                      });
+                      if (addErr) throw addErr;
+                      setLoanPaymentModal(null);
+                      window.dispatchEvent(new Event('offline-sync-completed'));
+                      return;
+                    }
                     const acc = allAccounts.find((a: any) => a.id === loanPaymentModal.accountId);
                     const { error } = await supabase.from('transactions').insert({
                       user_id: userId,
@@ -11909,7 +11951,7 @@ ${tabelaHtml}
                 {loanPaymentModal.isSubmitting ? (
                   <><Loader2 size={14} className="animate-spin" /> Registrando...</>
                 ) : (
-                  <><Check size={14} /> Confirmar Pagamento</>
+                  <><Check size={14} /> {loanPaymentModal.mode === 'ADDITION' ? 'Confirmar acréscimo' : 'Confirmar Pagamento'}</>
                 )}
               </button>
             </div>
@@ -12668,46 +12710,22 @@ ${tabelaHtml}
 
               {/* LOAN-specific amortization summary panel */}
               {selectedAssetForExtrato.metadata?.isLoan && (() => {
-                const meta = selectedAssetForExtrato.metadata || {};
-                const principal = Number(meta.loanPrincipal) || 0;
-                const loanLinkedTxs = getAssetLinkedTransactions(selectedAssetForExtrato.id)
-                  .filter(t => t.type === 'INCOME')
-                  .sort((a, b) => a.date.localeCompare(b.date));
-
-                let runningBalance = principal;
-                const interestType = meta.loanInterestType || 'SIMPLE';
-                const monthlyRate = (Number(meta.loanInterestRate) || 0) / 100;
-
-                // Build amortization schedule from paid receipts based on elapsed time
-                const concessionDate = selectedAssetForExtrato.acquisitionDate || DateUtils.formatToISODate();
-                const schedule = loanLinkedTxs.map((tx, idx) => {
-                  const prevDate = idx === 0 ? concessionDate : loanLinkedTxs[idx - 1].date;
-                  const d1 = new Date(prevDate);
-                  const d2 = new Date(tx.date);
-                  const diffTime = Math.max(0, d2.getTime() - d1.getTime());
-                  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                  const elapsedMonths = diffDays / 30.4375;
-
-                  const interest = interestType === 'COMPOUND'
-                    ? runningBalance * (Math.pow(1 + monthlyRate, elapsedMonths) - 1)
-                    : principal * monthlyRate * elapsedMonths;
-
-                  const totalReceived = Number(tx.amount) || 0;
-                  const interestPaid = Math.min(interest, totalReceived);
-                  const principalPaid = Math.max(0, totalReceived - interestPaid);
-                  runningBalance = Math.max(0, runningBalance - principalPaid);
-                  return {
-                    tx,
-                    interest: Math.round(interestPaid * 100) / 100,
-                    principalPaid: Math.round(principalPaid * 100) / 100,
-                    balance: Math.round(runningBalance * 100) / 100,
-                    idx
-                  };
-                });
-
-                const totalReceived = loanLinkedTxs.reduce((s, t) => s + Number(t.amount), 0);
-                const currentBalance = Math.max(0, runningBalance);
-                const progressPct = principal > 0 ? Math.min(100, Math.round((totalReceived / principal) * 100)) : 0;
+                // Mesma conta do cartão, do PDF e do WhatsApp (getLoanSummary). Antes
+                // esta tela tinha uma terceira conta: contava parcelas ainda não pagas
+                // como recebidas e calculava os juros sempre sobre o principal original.
+                const loanSum = getLoanSummary(selectedAssetForExtrato);
+                const principal = loanSum.totalLent;
+                const totalReceived = loanSum.totalReceived;
+                const currentBalance = loanSum.openBalance;
+                const progressPct = loanSum.progressPct;
+                const schedule = loanSum.schedule.map((r, idx) => ({
+                  tx: { id: r.id || `${r.kind}-${idx}`, date: r.date, amount: r.kind === 'ADDITION' ? r.added : r.received },
+                  isAddition: r.kind === 'ADDITION',
+                  interest: r.interest,
+                  principalPaid: r.principalPaid,
+                  balance: r.balance,
+                  idx
+                }));
 
                 return (
                   <div className="space-y-4">
@@ -12716,7 +12734,7 @@ ${tabelaHtml}
                         estourava a largura do card (era o que aparecia na imagem 1). */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 min-w-0">
-                        <p className="text-[10px] font-black uppercase text-emerald-500 tracking-widest leading-tight">Principal</p>
+                        <p className="text-[10px] font-black uppercase text-emerald-500 tracking-widest leading-tight">{loanSum.additionsTotal > 0 ? 'Principal + acréscimos' : 'Principal'}</p>
                         <p className="text-sm font-black text-emerald-700 mt-1 break-words">{formatCurrency(principal)}</p>
                       </div>
                       <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 min-w-0">
@@ -12765,10 +12783,10 @@ ${tabelaHtml}
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                              {schedule.map(({ tx, interest, principalPaid, balance }) => (
+                              {schedule.map(({ tx, isAddition, interest, principalPaid, balance }) => (
                                 <tr key={tx.id} className="hover:bg-slate-50/50">
                                   <td className="px-3 py-2 text-slate-600">{DateUtils.formatDisplayDate(tx.date)}</td>
-                                  <td className="px-3 py-2 text-right font-bold text-emerald-600">{formatCurrency(Number(tx.amount))}</td>
+                                  <td className={`px-3 py-2 text-right font-bold ${isAddition ? 'text-amber-600' : 'text-emerald-600'}`}>{isAddition ? `+${formatCurrency(Number(tx.amount))} (acréscimo)` : formatCurrency(Number(tx.amount))}</td>
                                   <td className="px-3 py-2 text-right text-amber-600">{formatCurrency(interest)}</td>
                                   <td className="px-3 py-2 text-right text-indigo-600">{formatCurrency(principalPaid)}</td>
                                   <td className="px-3 py-2 text-right font-bold text-slate-800">{formatCurrency(balance)}</td>

@@ -34,3 +34,28 @@ describe('resumo do empréstimo concedido (conta corrente)', () => {
     expect(z.totalReceived).toBe(0);
   });
 });
+
+describe('acréscimo à dívida', () => {
+  it('soma ao saldo na data e corre juros dali em diante; pagamentos abatem', () => {
+    const s = summarizeLoan({
+      principal: 1000, monthlyRatePct: 1, isCompound: false, concessionDate: '2026-01-01',
+      payments: [{ date: '2026-03-02', amount: 500 }],
+      additions: [{ date: '2026-01-31', amount: 600, description: 'acordo' }],
+      today: '2026-03-02'
+    });
+    // 30 dias de juros sobre 1000 = 10 → saldo 1610 em 31/01; 30 dias sobre 1610 = 16,10 → 1626,10 − 500
+    expect(s.schedule[0]).toMatchObject({ kind: 'ADDITION', added: 600, interestAccrued: 10, balance: 1610 });
+    expect(s.schedule[1]).toMatchObject({ kind: 'PAYMENT', received: 500, interestAccrued: 16.1, balance: 1126.1 });
+    expect(s.additionsTotal).toBe(600);
+    expect(s.totalLent).toBe(1600);
+    expect(s.totalReceived).toBe(500);
+    expect(s.openBalance).toBeCloseTo(1126.1, 2);
+  });
+
+  it('no mesmo dia, o acréscimo entra antes do pagamento', () => {
+    const s = summarizeLoan({ principal: 0, monthlyRatePct: 1, isCompound: false, concessionDate: '2026-01-01',
+      payments: [{ date: '2026-02-01', amount: 100 }], additions: [{ date: '2026-02-01', amount: 100 }], today: '2026-02-01' });
+    expect(s.schedule.map(r => r.kind)).toEqual(['ADDITION', 'PAYMENT']);
+    expect(s.openBalance).toBe(0);
+  });
+});
