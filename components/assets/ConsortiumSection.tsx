@@ -12,6 +12,7 @@ import { DateInput } from '../common/DateInput';
 import ConsortiumBidModal from './ConsortiumBidModal';
 import { syncAllConsortiumBalances } from '../../services/consortiumBalance.service';
 import { getSessionUser } from '../../lib/session';
+import { monthlyDueDate } from '../../lib/installmentDates';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 type ConsortiumStatus = 'WAITING' | 'CONTEMPLATED' | 'CREDIT_USED' | 'SETTLED';
@@ -243,6 +244,26 @@ const ConsortiumWizard: React.FC<{
           }).eq('id', editing.metadata.liability_id).eq('user_id', uid);
         }
 
+        // Vencimento da 1ª parcela mudou: as parcelas AINDA NÃO PAGAS acompanham
+        // (mesmo dia nos meses seguintes). Parcela paga fica como está.
+        const liabId = (editing as any).liability_id || editing.metadata?.liability_id;
+        if (liabId && form.start_date && form.start_date !== editing.start_date) {
+          const { data: pending } = await supabase.from('transactions')
+            .select('id, metadata')
+            .eq('user_id', uid).eq('liability_id', liabId)
+            .eq('is_deleted', false).eq('is_paid', false)
+            .not('metadata->>installment_number', 'is', null);
+          for (const row of pending || []) {
+            const num = Number(row.metadata?.installment_number);
+            if (!num) continue;
+            await supabase.from('transactions')
+              .update({ date: `${monthlyDueDate(form.start_date, num)} 00:00:00+00` })
+              .eq('id', row.id).eq('user_id', uid);
+          }
+          await supabase.from('liabilities').update({ due_day: Number(form.start_date.split('-')[2]) || null })
+            .eq('id', liabId).eq('user_id', uid);
+        }
+
         toast('Consórcio atualizado!', 'success');
       } else {
         // ── CRIAÇÃO ─────────────────────────────────────────────────────────
@@ -256,7 +277,7 @@ const ConsortiumWizard: React.FC<{
           installment_amount: totalM,
           installments_remaining: Math.max(0, n - paidN),
           interest_rate: 0,
-          due_day: form.assembly_day || null,
+          due_day: Number(String(form.start_date).split('-')[2]) || form.assembly_day || null,
           metadata: {
             consortium_type: form.asset_category,
             admin_fee_pct: adminPct,
@@ -280,14 +301,12 @@ const ConsortiumWizard: React.FC<{
         if (consErr) throw consErr;
         consortiumId = consData.id;
 
-        // 3. Gera todas as transações mensais (aparece no Histórico/Transações)
-        const startDate = new Date(form.start_date + 'T12:00:00');
+        // 3. Gera todas as transações mensais (aparece no Histórico/Transações),
+        //    a partir do vencimento da 1ª parcela, no mesmo dia dos meses seguintes.
         const installments: any[] = [];
 
         for (let i = 0; i < n; i++) {
-          const d = new Date(startDate);
-          d.setMonth(d.getMonth() + i);
-          const dateStr = d.toISOString().split('T')[0];
+          const dateStr = monthlyDueDate(form.start_date, i + 1);
           const isPaid  = i < paidN;
 
           installments.push({
@@ -446,8 +465,9 @@ const ConsortiumWizard: React.FC<{
                   <input type="number" min="0" value={form.months_paid} onChange={e => set('months_paid', e.target.value)} className={inp} />
                 </div>
                 <div>
-                  <label className={label}>Data de início</label>
+                  <label className={label}>Vencimento da 1ª parcela</label>
                   <DateInput value={form.start_date} onChange={e => set('start_date', e.target.value)} className={inp} />
+                  <p className="text-[9px] text-slate-400 mt-1">As próximas vencem no mesmo dia dos meses seguintes{editing ? '. Mudar aqui move as parcelas ainda não pagas.' : '.'}</p>
                 </div>
               </div>
               <div>

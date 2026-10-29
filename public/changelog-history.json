@@ -1,5 +1,33 @@
 [
   {
+    "version": "2026.10.29.0026",
+    "title": "Consórcio: vencimento da 1ª parcela e edição em série",
+    "date": "29/10/2026",
+    "benefits": [
+      {
+        "title": "Editar parcela de consórcio pergunta \"só esta ou as próximas\"",
+        "desc": "Em Transações, mudar a data (ou outro campo) de uma parcela de consórcio agora oferece as mesmas opções das outras parcelas: só esta, esta e as próximas, ou todas. Parcelas já pagas não são alteradas.",
+        "type": "correcao"
+      },
+      {
+        "title": "Vencimento da 1ª parcela no cadastro do consórcio",
+        "desc": "O campo \"Data de início\" virou \"Vencimento da 1ª parcela\": as parcelas são geradas a partir dele, no mesmo dia dos meses seguintes. Ao editar o consórcio e mudar essa data, as parcelas ainda não pagas acompanham.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Datas de fim de mês corretas",
+        "desc": "Parcela com vencimento no dia 31 (ou 29/30) cai no último dia dos meses mais curtos, em vez de pular para o mês seguinte.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`pages/History.tsx`: `detectLegacySeries` trata parcelas com `liability_id` + `installment_number` como série (`virtual-liab-<id>`); `buildSeriesFilter` filtra por `liability_id` e só parcelas.",
+      "`components/assets/ConsortiumSection.tsx`: rótulo \"Vencimento da 1ª parcela\"; parcelas por `monthlyDueDate`; `due_day` da dívida = dia do vencimento; edição com nova data move as parcelas não pagas.",
+      "`lib/installmentDates.ts`: `monthlyDueDate` (mesmo dia, último dia em mês curto).",
+      "Testes: `consortiumSeries.test.ts`."
+    ]
+  },
+  {
     "version": "2026.10.28.1928",
     "title": "Empréstimo concedido: total recebido completo e saldo certo",
     "date": "28/10/2026",

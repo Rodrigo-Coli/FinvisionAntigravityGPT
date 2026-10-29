@@ -1,28 +1,28 @@
 {
-  "version": "2026.10.28.1928",
-  "title": "Empréstimo concedido: total recebido completo e saldo certo",
-  "date": "28/10/2026",
+  "version": "2026.10.29.0026",
+  "title": "Consórcio: vencimento da 1ª parcela e edição em série",
+  "date": "29/10/2026",
   "benefits": [
     {
-      "title": "Total já recebido mostra tudo o que foi pago",
-      "desc": "No cartão do empréstimo (modelo conta corrente), o pagamento feito no mesmo dia do empréstimo (ex.: entrada de R$ 7.000) era ignorado: não entrava no \"Total já recebido\" nem abatia o saldo. Agora o total soma todos os pagamentos e mostra quanto disso foi juros e quanto foi principal devolvido; o saldo em aberto é recalculado.",
+      "title": "Editar parcela de consórcio pergunta \"só esta ou as próximas\"",
+      "desc": "Em Transações, mudar a data (ou outro campo) de uma parcela de consórcio agora oferece as mesmas opções das outras parcelas: só esta, esta e as próximas, ou todas. Parcelas já pagas não são alteradas.",
       "type": "correcao"
     },
     {
-      "title": "Histórico completo de pagamentos",
-      "desc": "O histórico mostra quantos pagamentos existem e uma lista maior, para não parecer que faltam pagamentos.",
+      "title": "Vencimento da 1ª parcela no cadastro do consórcio",
+      "desc": "O campo \"Data de início\" virou \"Vencimento da 1ª parcela\": as parcelas são geradas a partir dele, no mesmo dia dos meses seguintes. Ao editar o consórcio e mudar essa data, as parcelas ainda não pagas acompanham.",
       "type": "melhoria"
     },
     {
-      "title": "Empréstimo antigo não vira despesa de hoje",
-      "desc": "Cadastrar um empréstimo concedido com data antiga lançava o valor emprestado como despesa do dia do cadastro. Agora a saída fica na data do empréstimo e não conta como despesa do mês (vira o valor a receber).",
+      "title": "Datas de fim de mês corretas",
+      "desc": "Parcela com vencimento no dia 31 (ou 29/30) cai no último dia dos meses mais curtos, em vez de pular para o mês seguinte.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "`lib/loanSummary.ts`: `summarizeLoan` (conta única de juros pro-rata, juros pagos × principal, saldo, juros em aberto); pagamento na data da concessão abate com 0 dia de juros.",
-    "`pages/Assets.tsx`: cartão Conta Corrente usa `getLoanSummary`/`summarizeLoan` (antes tinha conta própria com `if (pmtDate <= lastDate) continue`); linhas \"dos quais juros\" e \"principal devolvido\"; histórico com contagem e `max-h-48`.",
-    "`pages/Assets.tsx`: desembolso do empréstimo novo na data do empréstimo, com `isCapitalized` (igual à sincronização).",
-    "Testes: `loanSummary.test.ts` com o empréstimo real (36.000 a 1% a.m., 13 pagamentos = 37.500)."
+    "`pages/History.tsx`: `detectLegacySeries` trata parcelas com `liability_id` + `installment_number` como série (`virtual-liab-<id>`); `buildSeriesFilter` filtra por `liability_id` e só parcelas.",
+    "`components/assets/ConsortiumSection.tsx`: rótulo \"Vencimento da 1ª parcela\"; parcelas por `monthlyDueDate`; `due_day` da dívida = dia do vencimento; edição com nova data move as parcelas não pagas.",
+    "`lib/installmentDates.ts`: `monthlyDueDate` (mesmo dia, último dia em mês curto).",
+    "Testes: `consortiumSeries.test.ts`."
   ]
 }
