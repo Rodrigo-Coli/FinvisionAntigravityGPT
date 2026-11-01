@@ -37,6 +37,23 @@ export const getStatus = (t: Transaction): 'PENDING' | 'PARTIAL' | 'PAID' => {
     return 'PENDING';
 };
 
+/**
+ * Filtro "Pagos & Recebidos" / "Abertos" sobre as linhas cruas do banco (is_paid,
+ * paid_amount), com a mesma regra de status da lista. Usado ANTES de paginar.
+ */
+export const filterRowsByViewMode = <T extends Record<string, any>>(rows: T[], viewMode: 'ALL' | 'SETTLED' | 'PENDING'): T[] => {
+    if (viewMode === 'ALL') return rows;
+    return rows.filter(t => {
+        const status = getStatus({
+            ...t,
+            amount: Number(t.amount || 0),
+            isPaid: t.isPaid ?? !!t.is_paid,
+            paidAmount: Number(t.paidAmount ?? t.paid_amount ?? 0)
+        } as any);
+        return viewMode === 'SETTLED' ? status === 'PAID' : status !== 'PAID';
+    });
+};
+
 export const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 

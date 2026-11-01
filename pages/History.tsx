@@ -11,7 +11,7 @@ import { parseTags, suggestTags, matchesAnyTag, rememberTags, collectTags } from
 import { getSessionUser } from '../lib/session';
 import { authHeaders } from '../lib/apiClient';
 import { SearchableInput } from '../components/common/SearchableInput';
-import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata } from '../lib/historyUtils';
+import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata, filterRowsByViewMode } from '../lib/historyUtils';
 import {
   buildRemainderRow,
   buildSettledUpdate,
@@ -1096,11 +1096,17 @@ const HistoryPage: React.FC = () => {
           metadata: detectLegacySeries(t)
         })));
 
+        // Filtro "Pagos & Recebidos" / "Abertos" ANTES de paginar. Antes ele era
+        // aplicado só na página já cortada: com o histórico inteiro (ex.: abertos até
+        // hoje, sem data inicial) as páginas 3 a 6 vinham só com lançamentos antigos,
+        // todos pagos, e apareciam vazias — mas continuavam contando nas páginas.
+        const listRows = filterRowsByViewMode(combined, viewMode);
+
         // Paginate table transactions
-        const paginated = combined.slice(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
+        const paginated = listRows.slice(page * PAGE_SIZE, (page * PAGE_SIZE) + PAGE_SIZE);
         
-        setTotalCount(combined.length);
-        setHasMore(combined.length > (page + 1) * PAGE_SIZE);
+        setTotalCount(listRows.length);
+        setHasMore(listRows.length > (page + 1) * PAGE_SIZE);
 
         setTransactions(paginated.map((t: any) => {
           const isIncomplete = !t.description || !t.account_name || !t.category || !t.owner_name;
@@ -1419,7 +1425,7 @@ const HistoryPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [filterType, filterKind, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, JSON.stringify(filterTag), filterOrigin, page, sortField, sortDirection, debouncedSearch]);
+  }, [filterType, filterKind, filterAccount, filterCategory, filterSubcategory, startDate, endDate, minPrice, maxPrice, filterOwner, JSON.stringify(filterTag), filterOrigin, page, sortField, sortDirection, debouncedSearch, viewMode]);
 
   const refreshCharts = useCallback(async () => {
     await fetchData(true);
@@ -1429,7 +1435,7 @@ const HistoryPage: React.FC = () => {
   useEffect(() => {
     setPage(0);
     setSelectedIds(new Set());
-  }, [filterType, filterKind, JSON.stringify(filterAccount), JSON.stringify(filterCategory), JSON.stringify(filterSubcategory), startDate, endDate, minPrice, maxPrice, JSON.stringify(filterOwner), JSON.stringify(filterTag), sortField, sortDirection, debouncedSearch]);
+  }, [filterType, filterKind, JSON.stringify(filterAccount), JSON.stringify(filterCategory), JSON.stringify(filterSubcategory), startDate, endDate, minPrice, maxPrice, JSON.stringify(filterOwner), JSON.stringify(filterTag), sortField, sortDirection, debouncedSearch, viewMode]);
 
   // Sem categoria escolhida, o tipo do clique na Análise não faz mais sentido.
   useEffect(() => {
