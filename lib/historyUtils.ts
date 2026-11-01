@@ -133,6 +133,11 @@ export const HistoryUtils = {
 export const isEmbeddedBidEntry = (t: any): boolean =>
     t?.metadata?.bid_part === 'EMBEDDED' && !t?.account_id;
 
+/** Categoria de transferência ("Transferência", "Transferências"...). Só a categoria decide —
+ * a descrição "transferência" num pagamento comum não vira transferência entre contas. */
+export const isTransferCategory = (category?: string | null): boolean =>
+    String(category || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes('transfer');
+
 export const isCapitalizedMovement = (t: any): boolean =>
     t?.metadata?.isCapitalized === true || t?.metadata?.type === 'asset_purchase';
 

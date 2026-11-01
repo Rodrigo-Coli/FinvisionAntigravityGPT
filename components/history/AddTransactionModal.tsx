@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { isTransferCategory } from '../../lib/historyUtils';
 import { X, Loader2, CheckCircle2, AlertCircle, Plus, Camera, Check, SplitSquareHorizontal } from 'lucide-react';
 import { BankAccount } from '../../types';
 import { supabase } from '../../lib/supabase/client';
@@ -448,7 +449,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 </select>
                             </div>
 
-                            {((form.category?.toLowerCase() || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || (form.description?.toLowerCase() || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer')) && (
+                            {isTransferCategory(form.category) && (
                                 <div className="space-y-2 col-span-2 animate-in slide-in-from-top-2 duration-300">
                                     <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest ml-1">Conta de Destino (Para onde foi o dinheiro?)</label>
                                     <select
