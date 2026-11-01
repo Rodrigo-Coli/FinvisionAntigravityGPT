@@ -65,4 +65,26 @@ describe('duplicados do extrato bancário', () => {
     ], false);
     expect(out.filter((t: any) => t.potential_duplicate)).toHaveLength(1);
   });
+  it('transferência e fatura de cartão já lançadas também contam como duplicidade', async () => {
+    const out = await H.checkDuplicates(fakeDb([
+      { date: '2026-10-03 00:00:00+00', amount: 500, description: 'Transf p/ Nubank', type: 'TRANSFER', metadata: { transfer_side: 'SOURCE' } },
+      { date: '2026-10-10 00:00:00+00', amount: 436.9, description: 'Fatura Cartão', type: 'BILL_PAYMENT' }
+    ]), 'u1', [
+      { date: '2026-10-03', description: 'TED ENVIADA', amount: -500 },
+      { date: '2026-10-10', description: 'PAGTO CARTAO', amount: -436.9 }
+    ], false);
+    expect(out[0].potential_duplicate).toBe(true);
+    expect(out[1].potential_duplicate).toBe(true);
+  });
+  it('lançamento em aberto até 7 dias do vencimento aparece como possível pagamento', async () => {
+    const out = await H.checkDuplicates(fakeDb([
+      { id: 'p1', date: '2026-04-10 00:00:00+00', amount: 398.36, description: 'Parcela 1/54', type: 'EXPENSE', is_paid: false, account_name: 'Botmasters' }
+    ]), 'u1', [
+      { date: '2026-04-05', description: 'DEBITO CONSORCIO', amount: -398.36 }
+    ], false);
+    expect(out[0].potential_duplicate).toBe(true);
+    expect(out[0].duplicate_tx.is_paid).toBe(false);
+    expect(out[0].duplicate_tx.id).toBe('p1');
+    expect(out[0].duplicate_reason).toMatch(/EM ABERTO/);
+  });
 });
