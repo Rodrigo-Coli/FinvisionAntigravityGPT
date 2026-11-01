@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.11.01.1607",
+    "title": "Saldo que você digita fica exato e lembrete do saldo de entrega",
+    "date": "01/11/2026",
+    "benefits": [
+      {
+        "title": "Ajustar saldo deixa a conta com o valor exato",
+        "desc": "Em Ajustar saldo → Saldo Inicial (ou Caixa Livre, na corretora), a conta fica exatamente com o valor digitado, sem lançar transação, mesmo quando a conta tem lançamentos ou o saldo na tela estava desatualizado. Na corretora, o saldo continua sendo caixa livre + investimentos.",
+        "type": "correcao"
+      },
+      {
+        "title": "Lembrete do saldo de entrega do imóvel na planta",
+        "desc": "No Início aparece um lembrete para cada imóvel na planta com o saldo de entrega ainda sem forma de pagamento definida, com o valor e a data de entrega (fica em destaque a partir de 120 dias antes). Toque para ir ao Patrimônio.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "AccountsSection.tsx: setExactBalance (recalcula e desloca initial_balance pela diferença) nos modos Saldo Inicial/Caixa Livre/Ajuste Pontual da corretora; investimentos somados com a mesma regra do recalculate_account_balance",
+      "dashboard.service.ts/types.ts: pendingDecisions (passivos isPendingFinancing com data de entrega)",
+      "Home.tsx: card de lembrete do saldo de entrega"
+    ]
+  },
+  {
     "version": "2026.11.01.1428",
     "title": "Início com ativos separados, busca em todos os meses e saldo zero",
     "date": "01/11/2026",

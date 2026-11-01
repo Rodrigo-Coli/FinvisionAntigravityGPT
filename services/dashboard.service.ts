@@ -36,7 +36,7 @@ export const DashboardService = {
     ] = await Promise.all([
       sb.from('accounts').select('id, current_balance, type, include_in_dashboard').eq('user_id', user.id).eq('is_archived', false),
       sb.from('cards').select('id, brand, name, limit_total, last4, is_additional, parent_card_id, sums_into_invoice').eq('user_id', user.id).eq('is_archived', false),
-      sb.from('physical_assets').select('id, estimated_value, category, metadata, is_archived').eq('user_id', user.id),
+      sb.from('physical_assets').select('id, name, estimated_value, category, metadata, is_archived').eq('user_id', user.id),
       sb.from('entities').select('name').eq('user_id', user.id).eq('include_in_totals', false),
       sb.from('transactions').select('date, amount, type, owner_name, metadata').eq('user_id', user.id).eq('is_deleted', false).gte('date', new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString()),
       sb.from('liabilities').select('*').eq('user_id', user.id),
@@ -263,6 +263,21 @@ export const DashboardService = {
 
     // 8. Smart Alerts Generation
     const smartAlerts: any[] = [];
+
+    // Saldo de entrega de imóvel na planta com a forma de pagamento ainda a definir
+    // (financiamento pendente): vira lembrete no Início, com a data de entrega quando houver.
+    const pendingDecisions = liabilitiesData
+      .filter((l: any) => l.metadata?.isPendingFinancing)
+      .map((l: any) => {
+        const asset = (physRes.data || []).find((a: any) => a.id === l.linked_asset_id);
+        const deliveryDate = l.metadata?.deliveryDate || asset?.metadata?.deliveryDate || null;
+        return {
+          id: l.id,
+          name: asset?.name || String(l.name || '').replace(/^Financiamento:\s*/i, ''),
+          amount: Number(l.remaining_balance || 0),
+          deliveryDate: deliveryDate ? String(deliveryDate).split('T')[0] : null
+        };
+      });
     if (consolidatedBalance < 1000) {
       smartAlerts.push({ id: 'low-bal', type: 'warning', message: 'Atenção: Saldo consolidado abaixo de R$ 1.000', createdAt: new Date().toISOString() });
     }
@@ -277,6 +292,7 @@ export const DashboardService = {
       netWorth: Number(netWorth || 0),
       totalAssets: Number(totalAssets || 0),
       assetsBreakdown,
+      pendingDecisions,
       totalLiabilities: Number(totalLiabilities || 0),
       creditCards: creditCardsSummary,
       alerts: smartAlerts,

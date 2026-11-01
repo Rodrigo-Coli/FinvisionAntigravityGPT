@@ -281,6 +281,31 @@ const AccountsSection: React.FC = () => {
       const user = session?.user;
       if (!user) throw new Error("Usuário não autenticado");
 
+      // Deixa a conta EXATAMENTE com o saldo informado, sem lançar transação: recalcula
+      // (saldo = saldo inicial + lançamentos [+ investimentos, na corretora]) e desloca
+      // o saldo inicial pela diferença. Antes o saldo inicial era calculado com o saldo
+      // guardado na tela — se ele estivesse desatualizado, ou a corretora tivesse
+      // lançamentos, o saldo digitado mudava no próximo recálculo.
+      const setExactBalance = async (target: number) => {
+        await supabase.rpc('recalculate_account_balance', { p_account_id: adjustAccount.id });
+        const { data: fresh, error: freshErr } = await supabase
+          .from('accounts')
+          .select('initial_balance, current_balance')
+          .eq('id', adjustAccount.id)
+          .eq('user_id', user.id)
+          .single();
+        if (freshErr) throw freshErr;
+        const diff = Math.round((target - Number(fresh?.current_balance || 0)) * 100) / 100;
+        if (Math.abs(diff) < 0.005) return;
+        const { error } = await supabase
+          .from('accounts')
+          .update({ initial_balance: Number(fresh?.initial_balance || 0) + diff, current_balance: target })
+          .eq('id', adjustAccount.id)
+          .eq('user_id', user.id);
+        if (error) throw error;
+        await supabase.rpc('recalculate_account_balance', { p_account_id: adjustAccount.id });
+      };
+
       // ── INVESTMENT accounts: saldo = caixa livre (initial_balance) + investimentos (auto-sync)
       // O ajuste aqui afeta SOMENTE o caixa livre para não sobrescrever o sync automático.
       if (adjustAccount.type === 'INVESTMENT') {
@@ -293,31 +318,20 @@ const AccountsSection: React.FC = () => {
           .eq('is_archived', false);
 
         const investedTotal = (linkedInvests || [])
-          .filter((inv: any) =>
-            inv.metadata?.brokerAccountId === adjustAccount.id &&
-            inv.metadata?.status !== 'RESGATADO'
-          )
+          // Mesma regra do recálculo do saldo no banco: todo investimento ativo vinculado.
+          .filter((inv: any) => inv.metadata?.brokerAccountId === adjustAccount.id)
           .reduce((sum: number, inv: any) => sum + Number(inv.estimated_value || 0), 0);
 
         if (adjustMode === 'initial') {
           // Modo Caixa Livre: o usuário define o novo valor de caixa não investido
           const newCash = Number(adjustValue);
-          const newTotal = newCash + investedTotal;
-
-          const { error } = await supabase
-            .from('accounts')
-            .update({ initial_balance: newCash, current_balance: newTotal })
-            .eq('id', adjustAccount.id)
-            .eq('user_id', user.id);
-
-          if (error) throw error;
+          await setExactBalance(newCash + investedTotal);
         } else {
           // Modo Ajuste Pontual: interpreta adjustValue como novo saldo TOTAL
-          // O caixa livre = novo total - investimentos (protege o sync)
+          // O caixa livre vira novo total - investimentos (protege o sync)
           const newTotal = Number(adjustValue);
-          const newCash = newTotal - investedTotal;
-          const currentCash = adjustAccount.initialBalance;
-          const cashDelta = newCash - currentCash;
+          // Diferença para o saldo total atual (é o valor do registro do ajuste).
+          const cashDelta = Math.round((newTotal - adjustAccount.currentBalance) * 100) / 100;
 
           if (Math.abs(cashDelta) < 0.01) {
             toast("O novo saldo é igual ao saldo atual. Informe um valor diferente.", 'warning');
@@ -347,27 +361,13 @@ const AccountsSection: React.FC = () => {
 
           if (txError) throw txError;
 
-          const { error: accError } = await supabase
-            .from('accounts')
-            .update({ initial_balance: newCash, current_balance: newTotal })
-            .eq('id', adjustAccount.id)
-            .eq('user_id', user.id);
-
-          if (accError) throw accError;
+          await setExactBalance(newTotal);
         }
       } else {
         // ── Contas NÃO-INVESTMENT: lógica original preservada
         if (adjustMode === 'initial') {
-          const transactionsSum = adjustAccount.currentBalance - adjustAccount.initialBalance;
-          const newInitialBalance = Number(adjustValue) - transactionsSum;
-
-          const { error } = await supabase
-            .from('accounts')
-            .update({ initial_balance: newInitialBalance, current_balance: adjustValue })
-            .eq('id', adjustAccount.id)
-            .eq('user_id', user.id);
-
-          if (error) throw error;
+          // Saldo informado = saldo da conta hoje, sem lançar transação.
+          await setExactBalance(Number(adjustValue));
         } else {
           const delta = Math.round((Number(adjustValue) - adjustAccount.currentBalance) * 100) / 100;
 
