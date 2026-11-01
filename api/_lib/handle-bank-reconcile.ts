@@ -88,7 +88,10 @@ RETORNE APENAS JSON NO FORMATO:
       const todayISO = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
       const promptWithDate = `${prompt}\n\nCONTEXTO DE DATA: hoje é ${todayISO} (AAAA-MM-DD). Datas no documento estão no padrão brasileiro DIA/MÊS/ANO. Se o ano não aparecer numa linha, use o ano do período do documento (vencimento/período do extrato); se nem isso houver, o ano mais recente que não seja depois de hoje.`;
       let contents = [{ parts: [{ text: promptWithDate }, { inlineData: { data: buffer.toString('base64'), mimeType: doc.mime_type || 'application/pdf' } }] }];
-      if (['csv', 'ofx', 'xlsx'].includes(imp.type)) {
+      if (imp.type === 'xlsx') {
+        // Planilha é binária (zip): vai como texto já convertido (ver spreadsheetToText).
+        contents = [{ parts: [{ text: promptWithDate }, { text: `CONTEÚDO DA PLANILHA (colunas separadas por " ; "; datas já em AAAA-MM-DD e valores com ponto decimal; colunas de Crédito e Débito separadas: crédito positivo, débito negativo):\n${StatementTemplateHelper.spreadsheetToText(buffer)}` }] }];
+      } else if (['csv', 'ofx'].includes(imp.type)) {
         contents = [{ parts: [{ text: promptWithDate }, { text: `CONTEÚDO:\n${buffer.toString('utf-8').substring(0, 30000)}` }] }];
       }
 
