@@ -902,7 +902,9 @@ const Reconcile: React.FC = () => {
             category_id: finalCategoryId,
             is_transfer: isTransfer,
             transfer_side: isTransfer ? (thisSideIsSource ? 'SOURCE' : 'DESTINATION') : null,
-            counter_account_id: isTransfer ? counterId : null
+            counter_account_id: isTransfer ? counterId : null,
+            // Transferência conciliada mexe no saldo (o dinheiro saiu/entrou nesta conta).
+            ...(isTransfer ? { affects_balance: true } : {})
           }
         });
         if (insertErr1) throw insertErr1;
@@ -926,7 +928,8 @@ const Reconcile: React.FC = () => {
               is_transfer: true,
               transfer_side: thisSideIsSource ? 'DESTINATION' : 'SOURCE', // The opposite of the main leg
               counter_account_id: targetId, // The other side is the main account
-              source_transaction_id: item.id
+              source_transaction_id: item.id,
+              affects_balance: true
             }
           });
           if (insertErr2) throw insertErr2;

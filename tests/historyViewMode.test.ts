@@ -24,3 +24,13 @@ describe('lance embutido fora da lista de Transações', () => {
     expect(isEmbeddedBidEntry({ account_id: null, metadata: { type: 'loan_addition' } })).toBe(false);
   });
 });
+
+import { isTransferCategory } from '../lib/historyUtils';
+describe('transferência só pela categoria', () => {
+  it('categoria Transferência abre a conta destino; descrição não', () => {
+    expect(isTransferCategory('Transferência')).toBe(true);
+    expect(isTransferCategory('Transferências')).toBe(true);
+    expect(isTransferCategory('Alimentação')).toBe(false);
+    expect(isTransferCategory(undefined)).toBe(false);
+  });
+});

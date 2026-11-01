@@ -1,5 +1,28 @@
 [
   {
+    "version": "2026.11.01.1308",
+    "title": "Transferências entre contas mexem no saldo",
+    "date": "01/11/2026",
+    "benefits": [
+      {
+        "title": "Transferência tira de uma conta e põe na outra",
+        "desc": "Transferências criadas em Transações ou em Conciliar não mexiam no saldo de nenhuma conta (ex.: R$ 24 mil que entraram no Bradesco vindos da Botmasters não apareciam no saldo). Agora saem da conta de origem e entram na de destino. Transformar uma despesa/receita em transferência também mantém o valor no saldo.",
+        "type": "correcao"
+      },
+      {
+        "title": "Conta de destino só para categoria Transferência",
+        "desc": "No novo lançamento, a caixa \"Conta de destino\" abria só por escrever \"transferência\" na descrição. Agora aparece apenas quando a categoria é Transferência.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`pages/History.tsx`: transferência nova (os dois lados) e conversão em transferência (`counter_account_id`) gravam `affects_balance` e o lado (`transfer_side`); recalcula o saldo ao trocar a contrapartida; `isTransfer` só pela categoria.",
+      "`pages/Reconcile.tsx`: transferência conciliada (perna principal e espelhada) com `affects_balance`.",
+      "`components/history/AddTransactionModal.tsx` e `lib/historyUtils.ts`: `isTransferCategory` decide quando mostrar a conta de destino.",
+      "Testes: `historyViewMode.test.ts`."
+    ]
+  },
+  {
     "version": "2026.11.01.1103",
     "title": "Transações sem o lance embutido do consórcio",
     "date": "01/11/2026",

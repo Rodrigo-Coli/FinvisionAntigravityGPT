@@ -11,7 +11,7 @@ import { parseTags, suggestTags, matchesAnyTag, rememberTags, collectTags } from
 import { getSessionUser } from '../lib/session';
 import { authHeaders } from '../lib/apiClient';
 import { SearchableInput } from '../components/common/SearchableInput';
-import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata, filterRowsByViewMode, isEmbeddedBidEntry } from '../lib/historyUtils';
+import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata, filterRowsByViewMode, isEmbeddedBidEntry, isTransferCategory } from '../lib/historyUtils';
 import {
   buildRemainderRow,
   buildSettledUpdate,
@@ -1590,7 +1590,16 @@ const HistoryPage: React.FC = () => {
       if (field === 'counter_account_id') {
         patch = {
           type: 'TRANSFER',
-          metadata: { ...(tx?.metadata || {}), is_transfer: true, counter_account_id: cleanValue }
+          // Despesa vira saída e receita vira entrada: sem o lado e o "afeta o
+          // saldo", o lançamento deixava de contar no saldo da conta ao virar
+          // transferência (o saldo só soma transferência com affects_balance).
+          metadata: {
+            ...(tx?.metadata || {}),
+            is_transfer: true,
+            counter_account_id: cleanValue,
+            transfer_side: tx?.metadata?.transfer_side || (tx?.type === 'INCOME' ? 'DESTINATION' : 'SOURCE'),
+            affects_balance: true
+          }
         };
       }
 
@@ -1937,7 +1946,7 @@ const HistoryPage: React.FC = () => {
         await fetchData(true);
       }
 
-      if (tx && (HistoryUtils.getStatus(tx) !== 'PENDING') && (field === 'amount' || field === 'type' || field === 'account_id')) {
+      if (tx && (HistoryUtils.getStatus(tx) !== 'PENDING') && (field === 'amount' || field === 'type' || field === 'account_id' || field === 'counter_account_id')) {
         await supabase.rpc('recalculate_account_balance', { p_account_id: field === 'account_id' ? value : tx.accountId });
         if (field === 'account_id' && tx.accountId !== value) await supabase.rpc('recalculate_account_balance', { p_account_id: tx.accountId });
       }
@@ -2797,7 +2806,8 @@ const HistoryPage: React.FC = () => {
         }
       }
 
-      const isTransfer = (f.category?.toLowerCase() || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer') || (f.description?.toLowerCase() || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes('transfer');
+      // Só a categoria decide (ver isTransferCategory).
+      const isTransfer = isTransferCategory(f.category);
       let createdTxId: string | null = null;
       const targetAcc = accounts.find(a => a.id === f.accountId);
       const accountName = targetAcc?.institution || 'Conta';
@@ -2817,7 +2827,7 @@ const HistoryPage: React.FC = () => {
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
               notes: f.notes || '',
               tags: cleanTags,
-              metadata: { is_transfer: true, transfer_side: 'SOURCE', counter_account_id: f.destinationAccountId }
+              metadata: { is_transfer: true, transfer_side: 'SOURCE', counter_account_id: f.destinationAccountId, affects_balance: true }
             },
             {
               user_id: user?.id, date: f.date, description: `[TRANSF] ${f.description}`, amount, type: 'TRANSFER',
@@ -2825,7 +2835,7 @@ const HistoryPage: React.FC = () => {
               owner_name: f.ownerName === 'Pessoal' ? null : f.ownerName,
               notes: f.notes || '',
               tags: cleanTags,
-              metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: f.accountId }
+              metadata: { is_transfer: true, transfer_side: 'DESTINATION', counter_account_id: f.accountId, affects_balance: true }
             }
           ];
 
