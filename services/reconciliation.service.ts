@@ -98,33 +98,39 @@ export const ReconciliationService = {
     onProgress?.("Verificando integridade...");
     const fileHash = await this.computeFileHash(file);
 
-    // 1. Verificar deduplicação por hash na tabela direta, considerando a fonte
-    const { data: existing } = await supabase
+    // 1. Verificar deduplicação por hash na tabela direta, considerando a fonte.
+    //    Pode haver mais de uma importação do mesmo arquivo (ex.: forçada): antes
+    //    era `maybeSingle()`, que com 2+ linhas devolve erro e a checagem sumia.
+    const { data: sameFile } = await supabase
       .from('imports')
       .select('id, status, notes')
       .eq('user_id', user.id)
       .eq('file_sha256', fileHash)
       .eq('source_type', importSource) // Evita deduplicar se mudou de 'bank' para 'smart'
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(10);
+    const previous = sameFile || [];
 
-    if (existing && !force) {
-      if (existing.status === 'error') {
-        onProgress?.("Reiniciando processamento...");
-        await supabase.from('imports').update({
-          status: 'processing',
-          notes: `${existing.notes || ''} [REPROCESS]`
-        }).eq('id', existing.id);
-
-        this.triggerBackend(existing.id, accountId, accountName, importSource);
-        return existing.id;
-      }
-
-      if (existing.status === 'ready') {
-        throw new Error("ALREADY_PROCESSED");
-      }
-      if (existing.status === 'processing') {
+    if (previous.length && !force) {
+      if (previous.some((i: any) => i.status === 'processing')) {
         throw new Error("Este arquivo já está sendo processado no momento. Aguarde a conclusão.");
       }
+      // Só é "já importado" se alguma importação dele trouxe lançamentos. Uma que
+      // terminou com 0 (ex.: planilha que não foi lida) não deveria barrar de novo.
+      const extractedNothing = (i: any) => /Extraídas 0 transações/.test(String(i.notes || ''));
+      if (previous.some((i: any) => i.status === 'ready' && !extractedNothing(i))) {
+        throw new Error("ALREADY_PROCESSED");
+      }
+      const retry = previous[0];
+      onProgress?.("Reiniciando processamento...");
+      await supabase.from('imports').update({
+        status: 'processing',
+        account_id: accountId === '' ? null : accountId,
+        notes: `Source: ${importSource} | Account: ${accountName} [REPROCESS]`
+      }).eq('id', retry.id);
+
+      this.triggerBackend(retry.id, accountId, accountName, importSource);
+      return retry.id;
     }
 
     // 2. Upload para Storage

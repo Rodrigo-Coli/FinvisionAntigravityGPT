@@ -1,17 +1,28 @@
 {
-  "version": "2026.10.31.2358",
-  "title": "Transações: filtro Abertos/Pagos com páginas certas",
-  "date": "31/10/2026",
+  "version": "2026.11.01.0100",
+  "title": "Conciliar: extrato em Excel e duplicados de banco",
+  "date": "01/11/2026",
   "benefits": [
     {
-      "title": "Páginas sem lançamentos vazios no filtro Abertos",
-      "desc": "Com \"Abertos\" (ou \"Pagos & Recebidos\") e um período longo, a lista mostrava várias páginas, mas a partir da 3ª elas vinham vazias: o filtro era aplicado depois de dividir em páginas. Agora ele é aplicado antes, e as páginas contam só o que aparece.",
+      "title": "Extrato em Excel (.xlsx) agora é lido",
+      "desc": "Importar o extrato em planilha (ex.: Bradesco) terminava como \"importado\" mas sem nenhum lançamento em Conciliar: a planilha chegava ilegível para a IA. Agora ela é convertida antes, com datas e valores corretos (crédito entra positivo, débito negativo). Vale também para fatura de cartão em planilha.",
       "type": "correcao"
+    },
+    {
+      "title": "Duplicados de banco voltaram a ser marcados",
+      "desc": "No extrato de banco, nenhum lançamento era marcado como duplicado, mesmo já existindo (a data do banco tem hora e a do extrato não). Agora compara o dia, e também avisa quando o mesmo valor já foi lançado com até 3 dias de diferença.",
+      "type": "correcao"
+    },
+    {
+      "title": "Reimportar arquivo que não trouxe nada",
+      "desc": "Se a importação anterior de um arquivo terminou sem lançamentos, importar de novo não pede mais para \"forçar\": o app processa outra vez.",
+      "type": "melhoria"
     }
   ],
   "changes": [
-    "`pages/History.tsx`: `filterRowsByViewMode` antes de paginar (`totalCount` e `hasMore` a partir das linhas filtradas); `viewMode` nas dependências da busca e do reset de página.",
-    "`lib/historyUtils.ts`: `filterRowsByViewMode` (mesma regra de status da lista sobre `is_paid`/`paid_amount`).",
-    "Testes: `historyViewMode.test.ts`."
+    "`api/_lib/statement-template-helper.ts`: `spreadsheetToText` (xlsx → texto com datas AAAA-MM-DD); `tryLocalParse` xlsx com `cellDates`, número de série do Excel e colunas Crédito/Débito; `checkDuplicates` (banco) compara o dia, 2ª passada com data próxima (±3 dias); cartão compara o dia.",
+    "`api/_lib/handle-bank-reconcile.ts` e `handle-card-reconcile.ts`: xlsx vai para a IA como texto convertido (antes `buffer.toString('utf-8')` do zip).",
+    "`services/reconciliation.service.ts`: checagem de arquivo repetido aceita várias importações do mesmo arquivo (antes `maybeSingle` falhava e a trava sumia) e reprocessa a que terminou com 0 lançamentos.",
+    "Testes: `statementImport.test.ts`."
   ]
 }
