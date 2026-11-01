@@ -726,7 +726,7 @@ export const FinanceService = {
       // consolidamos numa única linha canônica apagando as demais.
       const { data: mirrorRows, error: mirrorErr } = await supabase
         .from('transactions')
-        .select('id, is_paid, date, created_at')
+        .select('id, is_paid, date, created_at, account_id')
         .eq('user_id', user.id)
         .filter('metadata->>card_statement_id', 'eq', statementId)
         .order('created_at', { ascending: true });
@@ -760,6 +760,12 @@ export const FinanceService = {
       }
 
       const isPaidFinal = overridePaid !== undefined ? overridePaid : stmt.status === 'PAID';
+
+      // Fatura que já estava paga (re-sync sem novo pagamento): continua na conta
+      // em que foi paga — trocar a conta do cartão vale só para as próximas.
+      if (!overrideAccountId && isPaidFinal && queryTx && (queryTx as any).is_paid && (queryTx as any).account_id) {
+        targetAccountId = (queryTx as any).account_id;
+      }
 
       // Data do lançamento espelho:
       //  - fatura em aberto (provisão): data de vencimento, como sempre foi;

@@ -43,6 +43,10 @@ interface AddCardModalProps {
     subcategories: { id: string; name: string; category_name?: string }[];
     title?: string;
     buttonLabel?: string;
+    /** Conta que paga a fatura (obrigatória). */
+    accounts?: { id: string; institution?: string | null; name?: string | null }[];
+    paymentAccountId?: string;
+    setPaymentAccountId?: (v: string) => void;
 }
 
 export const AddCardModal: React.FC<AddCardModalProps> = ({
@@ -84,7 +88,10 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
     categories,
     subcategories,
     title = "Novo Cartão",
-    buttonLabel = "Salvar Cartão"
+    buttonLabel = "Salvar Cartão",
+    accounts = [],
+    paymentAccountId = '',
+    setPaymentAccountId
 }) => {
     if (!show) return null;
 
@@ -189,6 +196,24 @@ export const AddCardModal: React.FC<AddCardModalProps> = ({
                                 </div>
                             </div>
                         </div>
+
+                        {setPaymentAccountId && (
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Conta que paga a fatura</label>
+                                <select
+                                    required
+                                    value={paymentAccountId}
+                                    onChange={(e) => setPaymentAccountId(e.target.value)}
+                                    className="w-full h-14 px-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all appearance-none cursor-pointer"
+                                >
+                                    <option value="">Selecione a conta...</option>
+                                    {accounts.map(a => (
+                                        <option key={a.id} value={a.id}>{a.institution || a.name}</option>
+                                    ))}
+                                </select>
+                                <p className="mt-1.5 text-[10px] text-slate-400 font-bold ml-1">As faturas a pagar saem desta conta. Trocar aqui muda só as faturas ainda não pagas.</p>
+                            </div>
+                        )}
 
                         <button
                             type="button"

@@ -1,5 +1,28 @@
 [
   {
+    "version": "2026.11.01.1338",
+    "title": "Cartões: toda fatura sai de uma conta",
+    "date": "01/11/2026",
+    "benefits": [
+      {
+        "title": "Conta que paga a fatura no cadastro do cartão",
+        "desc": "No cadastro e na edição do cartão há o campo \"Conta que paga a fatura\" (obrigatório). As faturas a pagar saem dessa conta. Trocar a conta muda só as faturas ainda não pagas — as já pagas continuam na conta em que foram pagas.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Pagar fatura já abre na conta do cartão",
+        "desc": "Ao pagar uma fatura, a conta do cartão já vem escolhida (dá para trocar). Antes vinha sempre a primeira conta da lista, e cartão sem conta caía na primeira conta com \"Bradesco\" no nome.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`components/cards/AddCardModal.tsx`: select \"Conta que paga a fatura\" (obrigatório).",
+      "`components/banking/CreditCardsSection.tsx`: grava `cards.account_id` (sugestão por nome via `lib/cardAccount.ts`); ao trocar, move só os espelhos de fatura não pagos; pagamento abre com a conta do cartão.",
+      "`services/finance.service.ts`: re-sync de fatura já paga mantém a conta em que foi paga.",
+      "Testes: `cardAccount.test.ts`."
+    ]
+  },
+  {
     "version": "2026.11.01.1308",
     "title": "Transferências entre contas mexem no saldo",
     "date": "01/11/2026",
