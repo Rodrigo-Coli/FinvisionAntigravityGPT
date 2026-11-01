@@ -493,7 +493,7 @@ const HistoryPage: React.FC = () => {
 
   // Build ilike pattern from search text for Supabase queries
   // Generates accent variants so 'mae' matches 'mãe'
-  const buildSearchFilter = (s: string): string => {
+  const buildSearchFilter = (s: string, fields: string[] = ['description', 'account_name', 'category', 'owner_name']): string => {
     if (!s) return '';
     const term = s.trim();
     if (!term) return '';
@@ -538,8 +538,8 @@ const HistoryPage: React.FC = () => {
       return Array.from(variants);
     };
 
-    const patterns = generateVariants(term);
-    const fields = ['description', 'account_name', 'category', 'owner_name'];
+    // Vírgula e parênteses quebram a sintaxe do filtro .or() do PostgREST.
+    const patterns = generateVariants(term.replace(/[(),]/g, ' '));
     const clauses: string[] = [];
 
     for (const pattern of patterns) {
@@ -864,7 +864,8 @@ const HistoryPage: React.FC = () => {
         // usado tanto no dataset combinado banco+cartão quanto no "Tudo"/"Cartão".
         // As transações de banco continuam recortadas pela própria data (já vem
         // filtrado do banco de dados).
-        const normalizedCardTxsInRange = (startDate && endDate)
+        // Com busca por texto, vale qualquer período (a busca no banco já veio sem datas).
+        const normalizedCardTxsInRange = (startDate && endDate && debouncedSearch.trim().length < 2)
           ? normalizedCardTxs.filter((ct: any) => ct.competenceDate >= startDate && ct.competenceDate <= endDate)
           : normalizedCardTxs;
 
@@ -1150,7 +1151,10 @@ const HistoryPage: React.FC = () => {
       // Assinatura do período atual: o cache só é válido se foi gerado para o MESMO intervalo de datas,
       // pois a busca no banco é filtrada por data. Sem isso, ao trocar de período/voltar à página
       // os totais de receita/despesa "piscam" com valores antigos (dados fantasma) antes de corrigir.
-      const currentCacheSig = JSON.stringify({ startDate: startDate || '', endDate: endDate || '' });
+      // Com texto na busca, procura em TODOS os períodos (não só no mês aberto): antes
+      // um lançamento de outro mês nunca aparecia na busca.
+      const searchAllPeriods = debouncedSearch.trim().length >= 2;
+      const currentCacheSig = JSON.stringify({ startDate: startDate || '', endDate: endDate || '', q: searchAllPeriods ? debouncedSearch.trim() : '' });
 
       // 1. Tentar ler do cache local primeiro para carregar instantaneamente
       let hasCache = false;
@@ -1351,7 +1355,9 @@ const HistoryPage: React.FC = () => {
             .eq('user_id', user.id)
             .eq('is_deleted', false);
 
-          if (startDate && endDate) {
+          if (searchAllPeriods) {
+            q = q.or(buildSearchFilter(debouncedSearch));
+          } else if (startDate && endDate) {
             // Fatura em aberto (is_provision) só entra no mês exato do seu vencimento —
             // antes havia uma folga de 60 dias que deixava faturas de outros meses
             // (ex. agosto) aparecerem misturadas na lista/total de julho.
@@ -1382,8 +1388,12 @@ const HistoryPage: React.FC = () => {
             )
             .eq('user_id', user.id);
 
-          if (startDate) q = q.gte('date', DateUtils.addDaysISO(startDate, -92));
-          if (endDate) q = q.lte('date', endDate);
+          if (searchAllPeriods) {
+            q = q.or(buildSearchFilter(debouncedSearch, ['description', 'category', 'owner_name']));
+          } else {
+            if (startDate) q = q.gte('date', DateUtils.addDaysISO(startDate, -92));
+            if (endDate) q = q.lte('date', endDate);
+          }
 
           return q.order('date', { ascending: false }).order('id', { ascending: true })
                   .range(from, to);

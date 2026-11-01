@@ -63,7 +63,7 @@ import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
 import { computeInstallmentAmount, buildInstallmentDate } from '../lib/amortization';
 import { SALE_FREQUENCY_OPTIONS, previewSaleInstallment, syncSaleInstallmentPlan, addSalePeriod, isSaleFrequency, readSalePlanSettings } from '../lib/saleInstallments';
-import { commissionModeOf, netOfCommission, shouldRecordCommissionExpense, saleAccountFields, saleReceivablesTotal } from '../lib/saleAccounting';
+import { commissionModeOf, netOfCommission, shouldRecordCommissionExpense, saleAccountFields, saleReceivablesTotal, saleCategoryDefaults } from '../lib/saleAccounting';
 import { useToast } from '../contexts/ToastContext';
 import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 import { SearchableInput } from '../components/common/SearchableInput';
@@ -485,6 +485,9 @@ const Assets: React.FC = () => {
     saleCommissionMode: 'SEPARATE' as string,
     // Conta onde entra o dinheiro da venda (e de onde sai a comissão paga à parte)
     saleAccountId: '' as string,
+    // Categoria da receita da venda (vazio = sugestão pelo tipo do bem; pode trocar)
+    saleCategory: '' as string,
+    saleSubcategory: '' as string,
     salePaymentMethod: 'A_VISTA' as 'A_VISTA' | 'PARCELADO' | 'PERMUTA' | 'HIBRIDO',
     permutaVeiculoValor: '',
     permutaVeiculoNome: '',
@@ -532,6 +535,8 @@ const Assets: React.FC = () => {
     depreciationRate: '',
     isDepreciable: false,
   });
+  // Categorias/subcategorias existentes para a categoria da receita da venda.
+  const saleLedgerOptions = useLedgerOptions(!!formData.isSold);
 
   const [selectedLiabilityForManage, setSelectedLiabilityForManage] = useState<any | null>(null);
   const [realEstateManageForm, setRealEstateManageForm] = useState({
@@ -2180,13 +2185,16 @@ const Assets: React.FC = () => {
 
         // Registrar recebimento da venda
         let revenueCatId = '';
-        const { data: revCat } = await findCategoryByName(supabase, userId, 'Venda de Ativos');
+        // Categoria sugerida pelo tipo do bem; o usuário pode ter escolhido outra no formulário.
+        const revenueCatName = (formValues.saleCategory || '').trim() || saleCategoryDefaults(formValues.category).category;
+        const revenueSubName = (formValues.saleSubcategory || '').trim() || ((formValues.saleCategory || '').trim() ? '' : saleCategoryDefaults(formValues.category).subcategory);
+        const { data: revCat } = await findCategoryByName(supabase, userId, revenueCatName);
         if (revCat) {
           revenueCatId = revCat.id;
         } else {
           const { data: newCat } = await supabase
             .from('categories')
-            .insert({ user_id: userId, name: 'Venda de Ativos', type: 'INCOME', color: 'bg-emerald-50 text-emerald-600' })
+            .insert({ user_id: userId, name: revenueCatName, type: 'INCOME', color: 'bg-emerald-50 text-emerald-600' })
             .select('id')
             .maybeSingle();
           if (newCat) revenueCatId = newCat.id;
@@ -2211,8 +2219,8 @@ const Assets: React.FC = () => {
               amount: cashVal,
               date: saleDateStr,
               type: 'INCOME',
-              category: 'Venda de Ativos',
-              subcategory: 'Venda de Veículo',
+              category: revenueCatName,
+              subcategory: revenueSubName,
               category_id: revenueCatId || null,
               is_paid: true,
               paid_amount: cashVal,
@@ -2235,7 +2243,7 @@ const Assets: React.FC = () => {
             todayISO: todayStr,
             describeInstallment: (n, total) => `${formValues.name} - Receita Parcelada Venda (${n}/${total})`,
             describeDownPayment: () => `${formValues.name} - Entrada Venda de Veículo`,
-            baseRow: { category: 'Venda de Ativos', subcategory: 'Venda de Veículo', category_id: revenueCatId || null, ...saleAcc }
+            baseRow: { category: revenueCatName, subcategory: revenueSubName, category_id: revenueCatId || null, ...saleAcc }
           });
         }
 
@@ -2553,13 +2561,16 @@ const Assets: React.FC = () => {
 
         // Registrar recebimento da venda
         let revenueCatId = '';
-        const { data: revCat } = await findCategoryByName(supabase, userId, 'Venda de Ativos');
+        // Categoria sugerida pelo tipo do bem; o usuário pode ter escolhido outra no formulário.
+        const revenueCatName = (formValues.saleCategory || '').trim() || saleCategoryDefaults(formValues.category).category;
+        const revenueSubName = (formValues.saleSubcategory || '').trim() || ((formValues.saleCategory || '').trim() ? '' : saleCategoryDefaults(formValues.category).subcategory);
+        const { data: revCat } = await findCategoryByName(supabase, userId, revenueCatName);
         if (revCat) {
           revenueCatId = revCat.id;
         } else {
           const { data: newCat } = await supabase
             .from('categories')
-            .insert({ user_id: userId, name: 'Venda de Ativos', type: 'INCOME', color: 'bg-emerald-50 text-emerald-600' })
+            .insert({ user_id: userId, name: revenueCatName, type: 'INCOME', color: 'bg-emerald-50 text-emerald-600' })
             .select('id')
             .maybeSingle();
           if (newCat) revenueCatId = newCat.id;
@@ -2584,8 +2595,8 @@ const Assets: React.FC = () => {
               amount: cashVal,
               date: saleDateStr,
               type: 'INCOME',
-              category: 'Venda de Ativos',
-              subcategory: 'Venda de Outros Bens',
+              category: revenueCatName,
+              subcategory: revenueSubName,
               category_id: revenueCatId || null,
               is_paid: true,
               paid_amount: cashVal,
@@ -2607,7 +2618,7 @@ const Assets: React.FC = () => {
             todayISO: todayStr,
             describeInstallment: (n, total) => `${formValues.name} - Receita Parcelada Venda (${n}/${total})`,
             describeDownPayment: () => `${formValues.name} - Entrada Venda de Ativo`,
-            baseRow: { category: 'Venda de Ativos', subcategory: 'Venda de Outros Bens', category_id: revenueCatId || null, ...saleAcc }
+            baseRow: { category: revenueCatName, subcategory: revenueSubName, category_id: revenueCatId || null, ...saleAcc }
           });
         }
 
@@ -3478,6 +3489,8 @@ const Assets: React.FC = () => {
         salePaymentMethod: formData.isSold ? formData.salePaymentMethod : undefined,
         saleCommissionMode: formData.isSold ? commissionModeOf(formData.saleCommissionMode) : undefined,
         saleAccountId: formData.isSold ? (formData.saleAccountId || undefined) : undefined,
+        saleCategory: formData.isSold ? (formData.saleCategory.trim() || undefined) : undefined,
+        saleSubcategory: formData.isSold ? (formData.saleSubcategory.trim() || undefined) : undefined,
         permutaVeiculoValor: formData.isSold ? (parseFloat(formData.permutaVeiculoValor) || 0) : undefined,
         permutaVeiculoNome: formData.isSold ? formData.permutaVeiculoNome : undefined,
         permutaImovelValor: formData.isSold ? (parseFloat(formData.permutaImovelValor) || 0) : undefined,
@@ -4202,7 +4215,9 @@ const Assets: React.FC = () => {
 
         // 3. Receita da venda
         let revenueCatId = null;
-        const { data: revCat } = await findCategoryByName(supabase, user.id, 'Outras Receitas');
+        const revenueCatName = formData.saleCategory.trim() || saleCategoryDefaults('REAL_ESTATE').category;
+        const revenueSubName = formData.saleSubcategory.trim() || (formData.saleCategory.trim() ? '' : saleCategoryDefaults('REAL_ESTATE').subcategory);
+        const { data: revCat } = await findCategoryByName(supabase, user.id, revenueCatName);
         if (revCat) {
           revenueCatId = revCat.id;
         } else {
@@ -4210,7 +4225,7 @@ const Assets: React.FC = () => {
             .from('categories')
             .insert({
               user_id: user.id,
-              name: 'Outras Receitas',
+              name: revenueCatName,
               type: 'INCOME',
               color: 'bg-emerald-50 text-emerald-600'
             })
@@ -4235,8 +4250,8 @@ const Assets: React.FC = () => {
               amount: cashVal,
               date: saleDateStr,
               type: 'INCOME',
-              category: 'Outras Receitas',
-              subcategory: 'Venda de Ativo',
+              category: revenueCatName,
+              subcategory: revenueSubName,
               category_id: revenueCatId,
               is_paid: true,
               paid_amount: cashVal,
@@ -4258,7 +4273,7 @@ const Assets: React.FC = () => {
             todayISO: DateUtils.formatToISODate(),
             describeInstallment: (n, total) => `Receita Parcelada Venda (${n}/${total}) - ${formData.name}`,
             describeDownPayment: () => `Entrada Venda de Imóvel - ${formData.name}`,
-            baseRow: { category: 'Outras Receitas', subcategory: 'Venda de Ativo', category_id: revenueCatId, ...saleAcc }
+            baseRow: { category: revenueCatName, subcategory: revenueSubName, category_id: revenueCatId, ...saleAcc }
           });
         }
 
@@ -4441,6 +4456,8 @@ const Assets: React.FC = () => {
       saleCommission: '',
       saleCommissionMode: 'SEPARATE',
       saleAccountId: '',
+      saleCategory: '',
+      saleSubcategory: '',
       salePaymentMethod: 'A_VISTA',
       permutaVeiculoValor: '',
       permutaVeiculoNome: '',
@@ -4651,6 +4668,8 @@ const Assets: React.FC = () => {
       saleCommission: meta.saleCommission ? String(meta.saleCommission) : (meta.saleComission ? String(meta.saleComission) : ''),
       saleCommissionMode: commissionModeOf(meta.saleCommissionMode),
       saleAccountId: meta.saleAccountId || '',
+      saleCategory: meta.saleCategory || '',
+      saleSubcategory: meta.saleSubcategory || '',
       salePaymentMethod: meta.salePaymentMethod || 'A_VISTA',
       permutaVeiculoValor: meta.permutaVeiculoValor ? String(meta.permutaVeiculoValor) : '',
       permutaVeiculoNome: meta.permutaVeiculoNome || '',
@@ -10964,6 +10983,34 @@ ${tabelaHtml}
                                 <p className="text-[11px] text-slate-500 mt-1">Recebimento à vista, entrada e parcelas entram nesta conta{shouldRecordCommissionExpense(parseFloat(formData.saleCommission) || 0, commissionModeOf(formData.saleCommissionMode)) ? '; a comissão paga à parte sai dela' : ''}.</p>
                               </div>
                             )}
+
+                            {formData.salePaymentMethod !== 'PERMUTA' && (() => {
+                              // Vem a sugestão pelo tipo do bem; dá para trocar por qualquer categoria.
+                              const def = saleCategoryDefaults(formData.category);
+                              const cat = formData.saleCategory || def.category;
+                              return (
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Categoria da receita</label>
+                                    <SearchableInput
+                                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                                      value={cat}
+                                      options={saleLedgerOptions.categories}
+                                      onChange={v => setFormData({ ...formData, saleCategory: v })}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Subcategoria</label>
+                                    <SearchableInput
+                                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                                      value={formData.saleSubcategory || (formData.saleCategory ? '' : def.subcategory)}
+                                      options={saleLedgerOptions.subcategoriesFor(cat)}
+                                      onChange={v => setFormData({ ...formData, saleSubcategory: v })}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()}
 
                             {formData.salePaymentMethod === 'A_VISTA' && (
                               <div className="animate-in slide-in-from-top-2">

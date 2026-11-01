@@ -34,7 +34,7 @@ export const DashboardService = {
       futureTxsRes,
       saleRecvRes
     ] = await Promise.all([
-      sb.from('accounts').select('current_balance, type, include_in_dashboard').eq('user_id', user.id).eq('is_archived', false),
+      sb.from('accounts').select('id, current_balance, type, include_in_dashboard').eq('user_id', user.id).eq('is_archived', false),
       sb.from('cards').select('id, brand, name, limit_total, last4, is_additional, parent_card_id, sums_into_invoice').eq('user_id', user.id).eq('is_archived', false),
       sb.from('physical_assets').select('id, estimated_value, category, metadata, is_archived').eq('user_id', user.id),
       sb.from('entities').select('name').eq('user_id', user.id).eq('include_in_totals', false),
@@ -61,6 +61,8 @@ export const DashboardService = {
     let consolidatedBalance = 0;
     let netWorth = 0;
     let totalAssets = 0;
+    // Ativos separados para o card do Início (contas x bens x a receber).
+    const assetsBreakdown = { accounts: 0, investments: 0, physical: 0, receivables: 0 };
 
     accounts.forEach((acc: any) => {
       if (acc.include_in_dashboard === false) return; // Ignores private/registration accounts
@@ -68,6 +70,8 @@ export const DashboardService = {
       const balance = Number(acc.current_balance || 0);
       netWorth += balance;
       totalAssets += balance;
+      if ((acc.type || '').toUpperCase() === 'INVESTMENT') assetsBreakdown.investments += balance;
+      else assetsBreakdown.accounts += balance;
       if (['CHECKING', 'SAVINGS', 'CASH'].includes((acc.type || '').toUpperCase())) {
         consolidatedBalance += balance;
       }
@@ -118,10 +122,18 @@ export const DashboardService = {
     });
 
     // 3. Physical Assets mapping
+    // Investimento vinculado a uma corretora já está no saldo dela (o saldo da conta
+    // de investimento soma os investimentos): contar de novo dobrava o valor.
+    const accountIds = new Set<string>(accounts.map((a: any) => a.id));
     physicalAssets.forEach((asset: any) => {
+      const isBrokerInvestment = asset.category === 'INVESTMENT' && accountIds.has(asset.metadata?.brokerAccountId);
+      if (isBrokerInvestment) return;
       const val = Number(asset.estimated_value || 0);
       netWorth += val;
       totalAssets += val;
+      if (asset.category === 'INVESTMENT') assetsBreakdown.investments += val;
+      else if (asset.metadata?.isLoan) assetsBreakdown.receivables += val;
+      else assetsBreakdown.physical += val;
     });
 
     // Vendas a receber: o bem vendido saiu do patrimônio, o dinheiro a receber entra
@@ -132,6 +144,7 @@ export const DashboardService = {
     );
     netWorth += saleReceivables;
     totalAssets += saleReceivables;
+    assetsBreakdown.receivables += saleReceivables;
 
     const excludedSet = new Set((excludedEntities || []).map((e: any) => ownerKey(e.name)));
 
@@ -180,7 +193,7 @@ export const DashboardService = {
     const assetsSummary = [
       { name: 'Conta Corrente', value: Number(consolidatedBalance || 0), color: '#3b82f6' },
       { name: 'Investimentos', value: (accounts || []).filter((a: any) => a.type === 'INVESTMENT').reduce((s: any, a: any) => s + Number(a.current_balance || 0), 0), color: '#8b5cf6' },
-      { name: 'Bens Físicos', value: (physicalAssets || []).reduce((s: any, a: any) => s + Number(a.estimated_value || 0), 0), color: '#10b981' },
+      { name: 'Bens Físicos', value: (physicalAssets || []).filter((a: any) => a.category !== 'INVESTMENT').reduce((s: any, a: any) => s + Number(a.estimated_value || 0), 0), color: '#10b981' },
     ];
 
     // 6. Net Worth Growth (comparing to previous month)
@@ -263,6 +276,7 @@ export const DashboardService = {
       consolidatedBalance: Number(consolidatedBalance || 0),
       netWorth: Number(netWorth || 0),
       totalAssets: Number(totalAssets || 0),
+      assetsBreakdown,
       totalLiabilities: Number(totalLiabilities || 0),
       creditCards: creditCardsSummary,
       alerts: smartAlerts,

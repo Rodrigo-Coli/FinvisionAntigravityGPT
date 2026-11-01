@@ -90,3 +90,38 @@ DROP TRIGGER IF EXISTS trg_fill_open_transaction_account ON public.transactions;
 CREATE TRIGGER trg_fill_open_transaction_account
   BEFORE INSERT ON public.transactions
   FOR EACH ROW EXECUTE FUNCTION public.fill_open_transaction_account();
+
+-- ---------------------------------------------------------------------------
+-- Pago = valor pago preenchido.
+--
+-- O saldo da conta soma paid_amount (não amount). Lançamento marcado como pago
+-- sem paid_amount (importação, pagamento pelo WhatsApp, "marcar como pago")
+-- ficava fora do saldo. Ao inserir pago, ou ao passar de em aberto para pago,
+-- sem valor pago, o valor pago passa a ser o valor cheio.
+-- Exceção: registros neutros de propósito (metadata.balance_neutral = true,
+-- ex.: ajuste de caixa livre da corretora, que já vai no saldo inicial).
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.fill_paid_amount_on_paid()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF COALESCE(NEW.is_paid, false)
+     AND COALESCE(NEW.paid_amount, 0) = 0
+     AND COALESCE(NEW.amount, 0) > 0
+     AND COALESCE(NEW.metadata->>'balance_neutral', '') <> 'true'
+     AND (TG_OP = 'INSERT' OR COALESCE(OLD.is_paid, false) = false) THEN
+    NEW.paid_amount := NEW.amount;
+    IF NEW.paid_at IS NULL THEN
+      NEW.paid_at := COALESCE(NEW.date, now());
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_fill_paid_amount_on_paid ON public.transactions;
+CREATE TRIGGER trg_fill_paid_amount_on_paid
+  BEFORE INSERT OR UPDATE OF is_paid ON public.transactions
+  FOR EACH ROW EXECUTE FUNCTION public.fill_paid_amount_on_paid();

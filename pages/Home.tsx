@@ -438,7 +438,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
                 <div>
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="font-medium text-white/70">Ativos (Bens e Contas)</span>
+                    <span className="font-medium text-white/70">Ativos (total)</span>
                   </div>
                   <span className={`font-bold text-sm ${!showBalance && 'blur-sm'}`}>{showBalance ? format(data.totalAssets || 0) : '---'}</span>
                 </div>
@@ -450,6 +450,22 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
                   <span className={`font-bold text-sm ${!showBalance && 'blur-sm'}`}>{showBalance ? format(data.totalLiabilities || 0) : '---'}</span>
                 </div>
               </div>
+              {/* Ativos separados: contas x investimentos x bens x a receber (o total fica acima) */}
+              {data.assetsBreakdown && (
+                <div className="grid grid-cols-2 gap-2 text-white">
+                  {[
+                    { label: 'Contas', value: data.assetsBreakdown.accounts, show: true },
+                    { label: 'Investimentos', value: data.assetsBreakdown.investments, show: true },
+                    { label: 'Bens', value: data.assetsBreakdown.physical, show: true },
+                    { label: 'A receber', value: data.assetsBreakdown.receivables, show: data.assetsBreakdown.receivables > 0 }
+                  ].filter(i => i.show).map(item => (
+                    <div key={item.label} className="bg-white/10 rounded-xl px-3 py-2 min-w-0">
+                      <p className="text-[10px] font-medium text-white/70 uppercase tracking-widest truncate">{item.label}</p>
+                      <p className={`text-sm font-bold whitespace-nowrap ${!showBalance && 'blur-sm'}`}>{showBalance ? format(item.value) : '---'}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 pt-4 border-t border-white/10 text-white font-medium text-[10px] sm:text-xs flex-wrap">

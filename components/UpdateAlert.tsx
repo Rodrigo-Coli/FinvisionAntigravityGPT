@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw, X, Sparkles, Shield, Zap, TrendingUp, Cpu, Check } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { missedReleases, ReleaseNote } from '../lib/missedReleases';
 
 interface ChangelogBenefit {
   title: string;
@@ -34,6 +35,8 @@ export const UpdateAlert: React.FC = () => {
     setDismissedState(value);
   };
   const [changelog, setChangelog] = useState<ChangelogData | null>(null);
+  // Histórico de notas: para mostrar também as versões que o usuário pulou.
+  const [history, setHistory] = useState<ReleaseNote[]>([]);
   const [serverVersion, setServerVersion] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateStep, setUpdateStep] = useState('');
@@ -193,6 +196,17 @@ export const UpdateAlert: React.FC = () => {
     }
   }, [needRefresh]);
 
+  // Notas das versões puladas: busca o histórico quando há atualização.
+  useEffect(() => {
+    if (!(needRefresh || versionMismatch) || history.length > 0) return;
+    let alive = true;
+    fetch(`/changelog-history.json?cb=${Date.now()}`, { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : []))
+      .then(h => { if (alive && Array.isArray(h)) setHistory(h); })
+      .catch(() => { /* sem histórico: mostra só a última versão */ });
+    return () => { alive = false; };
+  }, [needRefresh, versionMismatch, history.length]);
+
   // Se o usuário dispensou o modal ou não há nada a mostrar, retorna nulo
   if (dismissed) return null;
 
@@ -237,10 +251,16 @@ export const UpdateAlert: React.FC = () => {
       && serverVersion !== running;
     const notes = notesAreFresh ? changelog : null;
 
-    const benefits = notes?.benefits && notes.benefits.length > 0
-      ? notes.benefits.map(b => ({
+    // Pulou versões? Mostra as novidades de todas elas (a atualização já traz tudo).
+    const missed = notes ? missedReleases(history, running, serverVersion) : [];
+    const skippedCount = missed.length > 1 && missed[0].version === serverVersion ? missed.length - 1 : 0;
+    const releasesToShow: ReleaseNote[] = skippedCount > 0 ? missed : (notes ? [notes] : []);
+    const allBenefits = releasesToShow.flatMap(r => (r.benefits || []).map(b => ({ ...b, from: r })));
+
+    const benefits = allBenefits.length > 0
+      ? allBenefits.map(b => ({
           icon: getBenefitIcon(b.type),
-          title: b.title,
+          title: skippedCount > 0 && b.from.date ? `${b.title} (${b.from.date})` : b.title,
           desc: b.desc
         }))
       : [
@@ -292,6 +312,11 @@ export const UpdateAlert: React.FC = () => {
               <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
                 Por que você deve atualizar agora:
               </h4>
+              {skippedCount > 0 && (
+                <p className="text-[10px] font-bold text-brand-600 dark:text-brand-400">
+                  Você pulou {skippedCount} {skippedCount === 1 ? 'atualização' : 'atualizações'}. Esta atualização já inclui tudo — as novidades delas estão abaixo também.
+                </p>
+              )}
               
               <div className="space-y-3">
                 {benefits.map((b, idx) => (

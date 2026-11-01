@@ -21,6 +21,8 @@ export interface DashboardData {
   netWorth: number;
   totalLiabilities?: number;
   totalAssets?: number;
+  /** Ativos separados: contas (corrente/poupança/dinheiro), investimentos, bens e a receber. */
+  assetsBreakdown?: { accounts: number; investments: number; physical: number; receivables: number };
   totalExpenses?: number;
   lastMonthExpenses?: number;
   netWorthGrowth?: number;

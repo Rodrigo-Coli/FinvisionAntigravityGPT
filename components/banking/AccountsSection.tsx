@@ -335,7 +335,11 @@ const AccountsSection: React.FC = () => {
               description: adjustDesc,
               category: adjustCat,
               type: txType,
-              amount: txAmount
+              amount: txAmount,
+              // Só registro: o caixa livre já vai para o saldo inicial logo abaixo.
+              is_paid: true,
+              paid_amount: 0,
+              metadata: { balance_neutral: true }
             });
 
           if (txError) throw txError;
@@ -362,7 +366,7 @@ const AccountsSection: React.FC = () => {
 
           if (error) throw error;
         } else {
-          const delta = Number(adjustValue) - adjustAccount.currentBalance;
+          const delta = Math.round((Number(adjustValue) - adjustAccount.currentBalance) * 100) / 100;
 
           if (delta === 0) {
             toast("O novo saldo é igual ao saldo atual. Informe um valor diferente.", 'warning');
@@ -383,7 +387,12 @@ const AccountsSection: React.FC = () => {
               description: adjustDesc,
               category: adjustCat,
               type: txType,
-              amount: txAmount
+              amount: txAmount,
+              // Pago e com valor pago: é ele que leva o saldo ao valor informado. Sem
+              // paid_amount o ajuste sumia no próximo recálculo do saldo.
+              is_paid: true,
+              paid_amount: txAmount,
+              paid_at: adjustDate
             });
 
           if (txError) throw txError;
@@ -614,10 +623,13 @@ const AccountsSection: React.FC = () => {
 
   // Para contas INVESTMENT: delta sempre vs saldo total atual (investido + caixa).
   // Para outras contas: delta vs saldo atual (modo transaction) ou saldo inicial (modo initial).
-  const currentDelta = adjustAccount
+  // O campo é sempre o NOVO SALDO TOTAL (ou o caixa livre, na corretora). Antes o modo
+  // "Saldo Inicial" comparava com o saldo inicial: com saldo inicial 0, digitar 0 travava o
+  // botão mesmo com a conta mostrando outro saldo — não dava para zerar a conta.
+  const currentDelta = adjustAccount && adjustValue !== ''
     ? adjustAccount.type === 'INVESTMENT'
-      ? Number(adjustValue) - adjustAccount.currentBalance
-      : Number(adjustValue) - (adjustMode === 'initial' ? adjustAccount.initialBalance : adjustAccount.currentBalance)
+      ? Number(adjustValue) - (adjustMode === 'initial' ? adjustAccount.initialBalance : adjustAccount.currentBalance)
+      : Number(adjustValue) - adjustAccount.currentBalance
     : 0;
 
   return (
