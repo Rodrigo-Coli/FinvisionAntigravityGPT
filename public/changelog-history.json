@@ -1,6 +1,6 @@
 [
   {
-    "version": "2026.11.01.1421",
+    "version": "2026.11.01.1428",
     "title": "Início com ativos separados, busca em todos os meses e saldo zero",
     "date": "01/11/2026",
     "benefits": [
@@ -33,6 +33,11 @@
         "title": "Aviso de atualização mostra o que você pulou",
         "desc": "Se você pular atualizações, a próxima já traz tudo, e o aviso agora lista também as novidades das versões puladas.",
         "type": "melhoria"
+      },
+      {
+        "title": "Editar o saldo inicial atualiza o saldo na hora",
+        "desc": "Ao mudar o saldo inicial em Editar conta, o saldo da conta é recalculado na hora (antes ficava desatualizado até o próximo lançamento). Para deixar a conta com um saldo exato hoje, use Ajustar saldo.",
+        "type": "correcao"
       }
     ],
     "changes": [
@@ -43,7 +48,8 @@
       "Assets.tsx/lib/saleAccounting.ts: saleCategory/saleSubcategory com sugestão (saleCategoryDefaults) e SearchableInput",
       "UpdateAlert.tsx + lib/missedReleases.ts: notas das versões puladas a partir do changelog-history.json",
       "supabase/2026-11-01_transactions_account_and_paid_amount.sql: conta automática para em aberto sem conta; paid_amount ao marcar como pago",
-      "Testes: dashboardBreakdown, missedReleases"
+      "Testes: dashboardBreakdown, missedReleases",
+      "AccountsSection.tsx: recalculate_account_balance após editar a conta; dica no campo Saldo Inicial"
     ]
   },
   {

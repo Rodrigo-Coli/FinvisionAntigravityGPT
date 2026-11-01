@@ -239,6 +239,9 @@ const AccountsSection: React.FC = () => {
           .eq('id', isEditing)
           .eq('user_id', user.id);
         if (error) throw error;
+        // Saldo atual = saldo inicial + lançamentos. Trocar o saldo inicial sem
+        // recalcular deixava o saldo da conta desatualizado até o próximo lançamento.
+        await supabase.rpc('recalculate_account_balance', { p_account_id: isEditing });
       } else {
         const { error } = await supabase
           .from('accounts')
@@ -1158,6 +1161,9 @@ const AccountsSection: React.FC = () => {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Saldo Inicial</label>
+                  {isEditing && (
+                    <p className="text-[10px] text-slate-400 ml-1">Saldo antes de todos os lançamentos. Para a conta ficar com um saldo exato hoje, use "Ajustar saldo".</p>
+                  )}
                   <input
                     type="number"
                     value={initialBalance}
