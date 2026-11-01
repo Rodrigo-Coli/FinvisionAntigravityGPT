@@ -1,5 +1,22 @@
 [
   {
+    "version": "2026.10.31.2358",
+    "title": "Transações: filtro Abertos/Pagos com páginas certas",
+    "date": "31/10/2026",
+    "benefits": [
+      {
+        "title": "Páginas sem lançamentos vazios no filtro Abertos",
+        "desc": "Com \"Abertos\" (ou \"Pagos & Recebidos\") e um período longo, a lista mostrava várias páginas, mas a partir da 3ª elas vinham vazias: o filtro era aplicado depois de dividir em páginas. Agora ele é aplicado antes, e as páginas contam só o que aparece.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "`pages/History.tsx`: `filterRowsByViewMode` antes de paginar (`totalCount` e `hasMore` a partir das linhas filtradas); `viewMode` nas dependências da busca e do reset de página.",
+      "`lib/historyUtils.ts`: `filterRowsByViewMode` (mesma regra de status da lista sobre `is_paid`/`paid_amount`).",
+      "Testes: `historyViewMode.test.ts`."
+    ]
+  },
+  {
     "version": "2026.10.29.0046",
     "title": "Empréstimo concedido: acréscimo à dívida com juros",
     "date": "29/10/2026",
