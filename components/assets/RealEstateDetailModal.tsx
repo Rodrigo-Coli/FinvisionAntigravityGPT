@@ -8,6 +8,7 @@ import { syncRentalTransactions as sharedSyncRentalTransactions, syncCondoIptuTr
 import { getSessionUser } from '../../lib/session';
 import { SearchableInput } from '../common/SearchableInput';
 import { useLedgerOptions, NO_ACCOUNT } from './useLedgerOptions';
+import { commissionModeOf, netOfCommission, shouldRecordCommissionExpense, saleAccountFields } from '../../lib/saleAccounting';
 import { ReconciliationService } from '../../services/reconciliation.service';
 import { findCategoryByName } from '../../lib/categoryResolver';
 import { parseMoneyInput, sanitizeMoneyTyping } from '../../lib/moneyInput';
@@ -70,6 +71,10 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [brokerFee, setBrokerFee] = useState(String(asset.metadata?.brokerFee || ''));
   const [isSold, setIsSold] = useState(!!asset.metadata?.isSold);
   const [saleCommission, setSaleCommission] = useState(String(asset.metadata?.saleCommission || asset.metadata?.saleComission || ''));
+  // Comissão paga à parte (SEPARATE) ou descontada no repasse (DEDUCTED)
+  const [saleCommissionMode, setSaleCommissionMode] = useState<string>(commissionModeOf(asset.metadata?.saleCommissionMode));
+  // Conta onde entra o dinheiro da venda
+  const [saleAccountId, setSaleAccountId] = useState<string>(asset.metadata?.saleAccountId || '');
   const [salePaymentMethod, setSalePaymentMethod] = useState<'A_VISTA' | 'PARCELADO' | 'PERMUTA' | 'HIBRIDO'>(
     asset.metadata?.salePaymentMethod || 'A_VISTA'
   );
@@ -152,7 +157,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
   const [quickTxCategory, setQuickTxCategory] = useState('Ativos Imobiliários');
   const [quickTxSubcategory, setQuickTxSubcategory] = useState(QUICK_TX_SUBCATEGORY.MAINTENANCE);
   const [quickTxAccountId, setQuickTxAccountId] = useState('');
-  const ledgerOptions = useLedgerOptions(showQuickTxForm);
+  // Contas também para a venda: todo dinheiro da venda entra numa conta.
+  const ledgerOptions = useLedgerOptions(showQuickTxForm || isSold);
 
   // Period filtering state for yield
   const [filterPeriod, setFilterPeriod] = useState<'ALL' | 'MONTH' | 'YEAR' | 'CUSTOM'>('ALL');
@@ -459,6 +465,23 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
 
   const handleSaveChangesInner = async () => {
     if (!supabase) return;
+    // Venda nova: valida comissão descontada e a conta que recebe antes de gravar.
+    if (isSold && !asset.metadata?.isSold) {
+      const commVal = parseFloat(saleCommission) || 0;
+      const mode = commissionModeOf(saleCommissionMode);
+      const grossCash = salePaymentMethod === 'HIBRIDO' ? (parseFloat(saleCashAmount) || 0) : (parseFloat(saleValue) || 0);
+      if (mode === 'DEDUCTED' && commVal > 0 && (salePaymentMethod === 'PERMUTA' || commVal >= grossCash)) {
+        alert(salePaymentMethod === 'PERMUTA'
+          ? 'Na permuta integral não entra dinheiro para descontar a comissão. Escolha "Paga à parte".'
+          : 'A comissão descontada precisa ser menor que o valor em dinheiro da venda.');
+        return;
+      }
+      const movesMoney = salePaymentMethod !== 'PERMUTA' || shouldRecordCommissionExpense(commVal, mode);
+      if (movesMoney && !saleAccountId) {
+        alert('Escolha a conta que recebe o dinheiro da venda.');
+        return;
+      }
+    }
     setIsSubmitting(true);
     try {
       const user = await getSessionUser(supabase);
@@ -530,6 +553,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
         saleCommission: parseFloat(saleCommission) || 0,
         saleComission: parseFloat(saleCommission) || 0, // deprecated legacy fallback
         salePaymentMethod,
+        saleCommissionMode: commissionModeOf(saleCommissionMode),
+        saleAccountId: saleAccountId || undefined,
         saleDate,
         saleCashAmount: parseFloat(saleCashAmount) || 0,
         permutaItems
@@ -539,6 +564,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
       if (isSold && !wasSoldBefore) {
         const soldAmount = saleVal;
         const comission = parseFloat(saleCommission) || 0;
+        const commissionMode = commissionModeOf(saleCommissionMode);
+        const saleAcc = saleAccountFields(saleAccountId, ledgerOptions.accounts);
         const saleDateStr = saleDate || DateUtils.formatToISODate();
 
         // 1. Excluir provisões futuras não pagas vinculadas ao imóvel
@@ -568,8 +595,8 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
           }
         }
 
-        // 2. Comissão de venda (se houver)
-        if (comission > 0) {
+        // 2. Comissão de venda paga à parte (descontada no repasse não vira despesa)
+        if (shouldRecordCommissionExpense(comission, commissionMode)) {
           let catId = null;
           const { data: catRes } = await findCategoryByName(supabase, user.id, 'Ativos Imobiliários');
           if (catRes) catId = catRes.id;
@@ -586,6 +613,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
             is_paid: true,
             paid_amount: comission,
             paid_at: saleDateStr,
+            ...saleAcc,
             metadata: { linked_asset_id: asset.id, type: 'real_estate_sale_comission' }
           }]);
         }
@@ -614,6 +642,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
           if (salePaymentMethod === 'HIBRIDO') {
             cashVal = parseFloat(saleCashAmount) || 0;
           }
+          cashVal = netOfCommission(cashVal, comission, commissionMode);
 
           if (cashVal > 0) {
             await supabase.from('transactions').insert([{
@@ -630,13 +659,14 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
               is_paid: true,
               paid_amount: cashVal,
               paid_at: saleDateStr,
+              ...saleAcc,
               metadata: { linked_asset_id: asset.id, type: 'real_estate_sale_revenue' }
             }]);
           }
         } 
         else if (salePaymentMethod === 'PARCELADO') {
           const parcelas = 10;
-          const valorParcela = soldAmount / parcelas;
+          const valorParcela = netOfCommission(soldAmount, comission, commissionMode) / parcelas;
           const newSaleInstallments = [];
           
           for (let i = 0; i < parcelas; i++) {
@@ -654,6 +684,7 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
               subcategory: 'Venda de Imóvel',
               category_id: revenueCatId,
               is_paid: false,
+              ...saleAcc,
               metadata: { linked_asset_id: asset.id, type: 'real_estate_sale_installment', installment: i+1 }
             });
           }
@@ -1260,6 +1291,34 @@ export const RealEstateDetailModal: React.FC<RealEstateDetailModalProps> = ({
                         <option value="HIBRIDO">Híbrido (Parte Dinheiro, Parte Permuta)</option>
                       </select>
                     </div>
+
+                    {(parseFloat(saleCommission) || 0) > 0 && (
+                      <div className="space-y-1">
+                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Como a comissão foi paga</label>
+                        <select
+                          className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-xs outline-none"
+                          value={commissionModeOf(saleCommissionMode)}
+                          onChange={(e) => setSaleCommissionMode(e.target.value)}
+                        >
+                          <option value="SEPARATE">Paga à parte (recebo o valor cheio e pago a comissão)</option>
+                          <option value="DEDUCTED">Descontada no repasse (recebo o valor já sem a comissão)</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {(salePaymentMethod !== 'PERMUTA' || shouldRecordCommissionExpense(parseFloat(saleCommission) || 0, commissionModeOf(saleCommissionMode))) && (
+                      <div className="space-y-1">
+                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Conta que recebe a venda *</label>
+                        <select
+                          className={`w-full h-10 px-3 bg-white border rounded-xl font-bold text-xs outline-none ${saleAccountId ? '' : 'border-amber-300'}`}
+                          value={saleAccountId}
+                          onChange={(e) => setSaleAccountId(e.target.value)}
+                        >
+                          <option value="">Escolha a conta…</option>
+                          {ledgerOptions.accounts.map(a => <option key={a.id} value={a.id}>{a.institution}</option>)}
+                        </select>
+                      </div>
+                    )}
 
                     {salePaymentMethod === 'A_VISTA' && (
                       <div className="space-y-1 animate-in slide-in-from-top-2">

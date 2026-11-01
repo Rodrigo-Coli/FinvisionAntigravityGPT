@@ -9,6 +9,7 @@ import { plantaRemainingDebt } from '../lib/plantaDebt';
 import { syncAllConsortiumBalances } from './consortiumBalance.service';
 import { withTimeout } from '../lib/connectivity';
 import { isOrphanPendingFinancing } from '../lib/pendingFinancing';
+import { SALE_RECEIVABLE_TYPES, saleReceivablesTotal } from '../lib/saleAccounting';
 
 export const DashboardService = {
   getSummary: async (): Promise<DashboardData> => {
@@ -30,7 +31,8 @@ export const DashboardService = {
       entitiesRes,
       txsRes,
       liabsRes,
-      futureTxsRes
+      futureTxsRes,
+      saleRecvRes
     ] = await Promise.all([
       sb.from('accounts').select('current_balance, type, include_in_dashboard').eq('user_id', user.id).eq('is_archived', false),
       sb.from('cards').select('id, brand, name, limit_total, last4, is_additional, parent_card_id, sums_into_invoice').eq('user_id', user.id).eq('is_archived', false),
@@ -38,7 +40,9 @@ export const DashboardService = {
       sb.from('entities').select('name').eq('user_id', user.id).eq('include_in_totals', false),
       sb.from('transactions').select('date, amount, type, owner_name, metadata').eq('user_id', user.id).eq('is_deleted', false).gte('date', new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString()),
       sb.from('liabilities').select('*').eq('user_id', user.id),
-      sb.from('transactions').select('*').eq('user_id', user.id).eq('is_deleted', false).or(`date.gte.${new Date().toISOString()},is_recurring.eq.true`)
+      sb.from('transactions').select('*').eq('user_id', user.id).eq('is_deleted', false).or(`date.gte.${new Date().toISOString()},is_recurring.eq.true`),
+      // Vendas a receber (entrada/parcelas de bens vendidos ainda não recebidas)
+      sb.from('transactions').select('amount, is_paid, paid_amount, metadata').eq('user_id', user.id).eq('is_deleted', false).eq('is_paid', false).in('metadata->>type', SALE_RECEIVABLE_TYPES)
     ]);
 
     if (accountsRes.error) throw accountsRes.error;
@@ -46,7 +50,8 @@ export const DashboardService = {
     const accounts = accountsRes.data || [];
     const cards = cardsRes.data || [];
     // Arquivado (vendido, devolvido) não é mais seu: fica fora, como na tela de Patrimônio.
-    const physicalAssets = (physRes.data || []).filter((a: any) => !a.is_archived);
+    // Vendido (mesmo desarquivado para editar) também fica fora: entra o que falta receber.
+    const physicalAssets = (physRes.data || []).filter((a: any) => !a.is_archived && !a.metadata?.isSold);
     const excludedEntities = entitiesRes.data || [];
     const txs = txsRes.data || [];
     const archivedAssetIds = new Set<string>((physRes.data || []).filter((a: any) => a.is_archived).map((a: any) => a.id));
@@ -118,6 +123,15 @@ export const DashboardService = {
       netWorth += val;
       totalAssets += val;
     });
+
+    // Vendas a receber: o bem vendido saiu do patrimônio, o dinheiro a receber entra
+    // (mesma regra do card "Vendas a Receber" em Patrimônio).
+    const activeAssetIds = new Set<string>(physicalAssets.map((a: any) => a.id));
+    const saleReceivables = saleReceivablesTotal(
+      (saleRecvRes?.data || []).filter((t: any) => !activeAssetIds.has(t.metadata?.linked_asset_id))
+    );
+    netWorth += saleReceivables;
+    totalAssets += saleReceivables;
 
     const excludedSet = new Set((excludedEntities || []).map((e: any) => ownerKey(e.name)));
 
