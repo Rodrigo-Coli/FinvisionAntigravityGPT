@@ -23,6 +23,8 @@ export interface DashboardData {
   totalAssets?: number;
   /** Ativos separados: contas (corrente/poupança/dinheiro), investimentos, bens e a receber. */
   assetsBreakdown?: { accounts: number; investments: number; physical: number; receivables: number };
+  /** Saldos de entrega (imóvel na planta) com a forma de pagamento ainda a definir. */
+  pendingDecisions?: { id: string; name: string; amount: number; deliveryDate: string | null }[];
   totalExpenses?: number;
   lastMonthExpenses?: number;
   netWorthGrowth?: number;

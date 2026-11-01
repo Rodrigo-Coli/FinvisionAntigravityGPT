@@ -1,53 +1,22 @@
 {
-  "version": "2026.11.01.1428",
-  "title": "Início com ativos separados, busca em todos os meses e saldo zero",
+  "version": "2026.11.01.1607",
+  "title": "Saldo que você digita fica exato e lembrete do saldo de entrega",
   "date": "01/11/2026",
   "benefits": [
     {
-      "title": "Ativos separados no Início",
-      "desc": "O card de Patrimônio Líquido agora mostra, além do total, quanto está em Contas, Investimentos, Bens e A receber. Os investimentos das corretoras não são mais somados duas vezes (já estavam no saldo da corretora).",
+      "title": "Ajustar saldo deixa a conta com o valor exato",
+      "desc": "Em Ajustar saldo → Saldo Inicial (ou Caixa Livre, na corretora), a conta fica exatamente com o valor digitado, sem lançar transação, mesmo quando a conta tem lançamentos ou o saldo na tela estava desatualizado. Na corretora, o saldo continua sendo caixa livre + investimentos.",
       "type": "correcao"
     },
     {
-      "title": "Busca em Transações procura em todos os meses",
-      "desc": "Ao digitar na busca (2 letras ou mais), aparecem os lançamentos de qualquer período, não só do mês aberto.",
-      "type": "melhoria"
-    },
-    {
-      "title": "Dá para zerar o saldo de uma conta",
-      "desc": "Em Ajustar saldo → Saldo Inicial, informar 0 agora funciona. O botão ficava travado quando o saldo inicial já era zero.",
-      "type": "correcao"
-    },
-    {
-      "title": "Ajuste pontual de saldo não some mais",
-      "desc": "O lançamento de ajuste agora entra pago e com valor, então o saldo ajustado se mantém nos próximos recálculos.",
-      "type": "correcao"
-    },
-    {
-      "title": "Categoria da venda sugerida e editável",
-      "desc": "Na venda de um bem, a categoria e a subcategoria da receita vêm sugeridas pelo tipo do bem, e você pode trocar.",
-      "type": "melhoria"
-    },
-    {
-      "title": "Aviso de atualização mostra o que você pulou",
-      "desc": "Se você pular atualizações, a próxima já traz tudo, e o aviso agora lista também as novidades das versões puladas.",
-      "type": "melhoria"
-    },
-    {
-      "title": "Editar o saldo inicial atualiza o saldo na hora",
-      "desc": "Ao mudar o saldo inicial em Editar conta, o saldo da conta é recalculado na hora (antes ficava desatualizado até o próximo lançamento). Para deixar a conta com um saldo exato hoje, use Ajustar saldo.",
-      "type": "correcao"
+      "title": "Lembrete do saldo de entrega do imóvel na planta",
+      "desc": "No Início aparece um lembrete para cada imóvel na planta com o saldo de entrega ainda sem forma de pagamento definida, com o valor e a data de entrega (fica em destaque a partir de 120 dias antes). Toque para ir ao Patrimônio.",
+      "type": "novidade"
     }
   ],
   "changes": [
-    "dashboard.service.ts: investimento com brokerAccountId de conta ativa não soma de novo; assetsBreakdown (contas, investimentos, bens, a receber)",
-    "Home.tsx: card de patrimônio com os grupos de ativos",
-    "History.tsx: busca com 2+ letras consulta o banco sem recorte de datas (transações e cartão), cache por termo",
-    "AccountsSection.tsx: delta do ajuste comparado ao saldo atual (zerar conta); ajuste pontual com is_paid/paid_amount; ajuste de corretora marcado balance_neutral",
-    "Assets.tsx/lib/saleAccounting.ts: saleCategory/saleSubcategory com sugestão (saleCategoryDefaults) e SearchableInput",
-    "UpdateAlert.tsx + lib/missedReleases.ts: notas das versões puladas a partir do changelog-history.json",
-    "supabase/2026-11-01_transactions_account_and_paid_amount.sql: conta automática para em aberto sem conta; paid_amount ao marcar como pago",
-    "Testes: dashboardBreakdown, missedReleases",
-    "AccountsSection.tsx: recalculate_account_balance após editar a conta; dica no campo Saldo Inicial"
+    "AccountsSection.tsx: setExactBalance (recalcula e desloca initial_balance pela diferença) nos modos Saldo Inicial/Caixa Livre/Ajuste Pontual da corretora; investimentos somados com a mesma regra do recalculate_account_balance",
+    "dashboard.service.ts/types.ts: pendingDecisions (passivos isPendingFinancing com data de entrega)",
+    "Home.tsx: card de lembrete do saldo de entrega"
   ]
 }

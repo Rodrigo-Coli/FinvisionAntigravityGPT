@@ -482,6 +482,36 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
         </div>
       </div>
 
+      {/* Lembrete: saldo de entrega de imóvel na planta com forma de pagamento a definir */}
+      {(data.pendingDecisions || []).length > 0 && (
+        <div className="w-full space-y-2">
+          {(data.pendingDecisions || []).map(pd => {
+            const days = pd.deliveryDate
+              ? Math.round((new Date(pd.deliveryDate + 'T12:00:00').getTime() - Date.now()) / 86400000)
+              : null;
+            const urgent = days !== null && days <= 120;
+            return (
+              <button
+                key={pd.id}
+                onClick={() => navigate('/assets')}
+                className={`w-full text-left rounded-2xl border p-4 flex items-start gap-3 ${urgent ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-100'}`}
+              >
+                <Bell size={18} className={urgent ? 'text-amber-600 shrink-0 mt-0.5' : 'text-brand-600 shrink-0 mt-0.5'} />
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-900">Saldo de entrega a definir: {pd.name}</p>
+                  <p className="text-[11px] text-slate-600">
+                    {showBalance ? format(pd.amount) : '---'} — escolha a forma de pagamento (financiamento, à vista, etc.).{' '}
+                    {pd.deliveryDate
+                      ? (days !== null && days >= 0 ? `Entrega em ${pd.deliveryDate.split('-').reverse().join('/')} (${days} dias).` : `Entrega prevista em ${pd.deliveryDate.split('-').reverse().join('/')}.`)
+                      : 'Informe a data de entrega no imóvel para o aviso ficar mais preciso.'}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* PENDING ITEMS CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
         <button 
