@@ -1,5 +1,22 @@
 [
   {
+    "version": "2026.11.01.1103",
+    "title": "Transações sem o lance embutido do consórcio",
+    "date": "01/11/2026",
+    "benefits": [
+      {
+        "title": "Lance embutido sai da lista de Transações",
+        "desc": "O lance embutido sai da própria carta de crédito, não de uma conta sua — não é dinheiro gasto. Ele continua registrado (abate o saldo devedor da cota e aparece no consórcio), mas não aparece mais em Transações. O lance pago do bolso continua lá, na conta de onde saiu.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "`lib/historyUtils.ts`: `isEmbeddedBidEntry` (`metadata.bid_part = EMBEDDED` sem conta).",
+      "`pages/History.tsx`: remove esses lançamentos da lista e dos gráficos de Transações (continuam no banco para o saldo do consórcio e para desfazer o lance).",
+      "Testes: `historyViewMode.test.ts`."
+    ]
+  },
+  {
     "version": "2026.11.01.0100",
     "title": "Conciliar: extrato em Excel e duplicados de banco",
     "date": "01/11/2026",

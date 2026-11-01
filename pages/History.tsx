@@ -11,7 +11,7 @@ import { parseTags, suggestTags, matchesAnyTag, rememberTags, collectTags } from
 import { getSessionUser } from '../lib/session';
 import { authHeaders } from '../lib/apiClient';
 import { SearchableInput } from '../components/common/SearchableInput';
-import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata, filterRowsByViewMode } from '../lib/historyUtils';
+import { HistoryUtils, EPS, isCapitalizedMovement, projectChartMetadata, filterRowsByViewMode, isEmbeddedBidEntry } from '../lib/historyUtils';
 import {
   buildRemainderRow,
   buildSettledUpdate,
@@ -617,6 +617,9 @@ const HistoryPage: React.FC = () => {
         cardStatements: any[]
       ) => {
         if (requestId !== lastRequestId.current) return;
+
+        // Lance embutido do consórcio não é dinheiro de conta (ver isEmbeddedBidEntry).
+        txs = (txs || []).filter((t: any) => !isEmbeddedBidEntry(t));
 
         // Deduplica por ID (não por nome do banco): duas contas na mesma instituição
         // (ex: conta corrente + caixinha no Nubank) são contas diferentes. A dedup

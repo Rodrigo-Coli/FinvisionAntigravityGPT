@@ -125,6 +125,14 @@ export const HistoryUtils = {
  * dos totais de receita/despesa. Mesma regra do Painel (services/dashboard.service.ts) e
  * dos Relatórios (pages/Reports.tsx).
  */
+/**
+ * Lance embutido do consórcio: sai da própria carta de crédito, não de uma conta.
+ * O lançamento existe só para abater o saldo devedor da cota (e desfazer o lance);
+ * não é movimentação de dinheiro, então não aparece na lista de Transações.
+ */
+export const isEmbeddedBidEntry = (t: any): boolean =>
+    t?.metadata?.bid_part === 'EMBEDDED' && !t?.account_id;
+
 export const isCapitalizedMovement = (t: any): boolean =>
     t?.metadata?.isCapitalized === true || t?.metadata?.type === 'asset_purchase';
 
