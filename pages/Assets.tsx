@@ -63,6 +63,7 @@ import { DateUtils } from '../lib/dateUtils';
 import { FinancialEngine } from '../lib/financialEngine';
 import { computeInstallmentAmount, buildInstallmentDate } from '../lib/amortization';
 import { SALE_FREQUENCY_OPTIONS, previewSaleInstallment, syncSaleInstallmentPlan, addSalePeriod, isSaleFrequency, readSalePlanSettings } from '../lib/saleInstallments';
+import { commissionModeOf, netOfCommission, shouldRecordCommissionExpense, saleAccountFields, saleReceivablesTotal } from '../lib/saleAccounting';
 import { useToast } from '../contexts/ToastContext';
 import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 import { SearchableInput } from '../components/common/SearchableInput';
@@ -480,6 +481,10 @@ const Assets: React.FC = () => {
     targetSaleValue: '',
     preparationBudget: '',
     saleCommission: '',
+    // Comissão paga à parte (SEPARATE) ou descontada no repasse (DEDUCTED)
+    saleCommissionMode: 'SEPARATE' as string,
+    // Conta onde entra o dinheiro da venda (e de onde sai a comissão paga à parte)
+    saleAccountId: '' as string,
     salePaymentMethod: 'A_VISTA' as 'A_VISTA' | 'PARCELADO' | 'PERMUTA' | 'HIBRIDO',
     permutaVeiculoValor: '',
     permutaVeiculoNome: '',
@@ -2123,13 +2128,15 @@ const Assets: React.FC = () => {
       if (formValues.isSold) {
         const soldAmount = parseFloat(formValues.soldValue) || 0;
         const comission = parseFloat(formValues.saleCommission || (formValues as any).saleComission) || 0;
+        const commissionMode = commissionModeOf(formValues.saleCommissionMode);
+        const saleAcc = saleAccountFields(formValues.saleAccountId, allAccounts);
         const saleDateStr = formValues.saleDate || todayStr;
 
         // Esta sincronização roda a CADA edição do bem vendido. Comissão, recebimento
         // à vista e bens de permuta já lançados não podem ser inseridos de novo.
         const { data: priorSaleRows } = await supabase
           .from('transactions')
-          .select('metadata')
+          .select('id, metadata')
           .eq('user_id', userId)
           .eq('is_deleted', false)
           .eq('metadata->>linked_asset_id', vehicleId)
@@ -2143,8 +2150,17 @@ const Assets: React.FC = () => {
           .limit(1);
         const permutaAlreadyCreated = (priorPermuta || []).length > 0;
 
-        // Registrar comissão de venda (se houver)
-        if (comission > 0 && !priorSaleTypes.has('vehicle_sale_comission')) {
+        // Comissão descontada no repasse: não é despesa à parte. Se uma edição anterior
+        // lançou a comissão como paga à parte, ela sai (exclusão lógica).
+        if (commissionMode === 'DEDUCTED') {
+          const commIds = (priorSaleRows || []).filter((r: any) => r.metadata?.type === 'vehicle_sale_comission').map((r: any) => r.id);
+          if (commIds.length > 0) {
+            await supabase.from('transactions').update({ is_deleted: true }).in('id', commIds);
+          }
+        }
+
+        // Registrar comissão de venda paga à parte (se houver)
+        if (shouldRecordCommissionExpense(comission, commissionMode) && !priorSaleTypes.has('vehicle_sale_comission')) {
           await supabase.from('transactions').insert([{
             user_id: userId,
             description: `${formValues.name} - Comissão de Venda`,
@@ -2157,6 +2173,7 @@ const Assets: React.FC = () => {
             is_paid: true,
             paid_amount: comission,
             paid_at: saleDateStr,
+            ...saleAcc,
             metadata: { linked_asset_id: vehicleId, type: 'vehicle_sale_comission' }
           }]);
         }
@@ -2182,6 +2199,9 @@ const Assets: React.FC = () => {
             cashVal = parseFloat(formValues.saleCashAmount) || 0;
           }
 
+          // Comissão descontada no repasse: entra só o líquido.
+          cashVal = netOfCommission(cashVal, comission, commissionMode);
+
           if (cashVal > 0 && !priorSaleTypes.has('vehicle_sale_revenue')) {
             await supabase.from('transactions').insert([{
               user_id: userId,
@@ -2197,6 +2217,7 @@ const Assets: React.FC = () => {
               is_paid: true,
               paid_amount: cashVal,
               paid_at: saleDateStr,
+              ...saleAcc,
               metadata: { linked_asset_id: vehicleId, type: 'vehicle_sale_revenue' }
             }]);
           }
@@ -2210,11 +2231,11 @@ const Assets: React.FC = () => {
             installmentType: 'vehicle_sale_installment',
             downPaymentType: 'vehicle_sale_down_payment',
             values: formValues,
-            total: soldAmount,
+            total: netOfCommission(soldAmount, comission, commissionMode),
             todayISO: todayStr,
             describeInstallment: (n, total) => `${formValues.name} - Receita Parcelada Venda (${n}/${total})`,
             describeDownPayment: () => `${formValues.name} - Entrada Venda de Veículo`,
-            baseRow: { category: 'Venda de Ativos', subcategory: 'Venda de Veículo', category_id: revenueCatId || null }
+            baseRow: { category: 'Venda de Ativos', subcategory: 'Venda de Veículo', category_id: revenueCatId || null, ...saleAcc }
           });
         }
 
@@ -2480,13 +2501,15 @@ const Assets: React.FC = () => {
       if (formValues.isSold) {
         const soldAmount = parseFloat(formValues.soldValue) || 0;
         const comission = parseFloat(formValues.saleCommission || (formValues as any).saleComission) || 0;
+        const commissionMode = commissionModeOf(formValues.saleCommissionMode);
+        const saleAcc = saleAccountFields(formValues.saleAccountId, allAccounts);
         const saleDateStr = formValues.saleDate || todayStr;
 
         // Esta sincronização roda a CADA edição do bem vendido. Comissão, recebimento
         // à vista e bens de permuta já lançados não podem ser inseridos de novo.
         const { data: priorSaleRows } = await supabase
           .from('transactions')
-          .select('metadata')
+          .select('id, metadata')
           .eq('user_id', userId)
           .eq('is_deleted', false)
           .eq('metadata->>linked_asset_id', otherId)
@@ -2500,8 +2523,17 @@ const Assets: React.FC = () => {
           .limit(1);
         const permutaAlreadyCreated = (priorPermuta || []).length > 0;
 
-        // Registrar comissão de venda (se houver)
-        if (comission > 0 && !priorSaleTypes.has('other_sale_comission')) {
+        // Comissão descontada no repasse: não é despesa à parte. Se uma edição anterior
+        // lançou a comissão como paga à parte, ela sai (exclusão lógica).
+        if (commissionMode === 'DEDUCTED') {
+          const commIds = (priorSaleRows || []).filter((r: any) => r.metadata?.type === 'other_sale_comission').map((r: any) => r.id);
+          if (commIds.length > 0) {
+            await supabase.from('transactions').update({ is_deleted: true }).in('id', commIds);
+          }
+        }
+
+        // Registrar comissão de venda paga à parte (se houver)
+        if (shouldRecordCommissionExpense(comission, commissionMode) && !priorSaleTypes.has('other_sale_comission')) {
           await supabase.from('transactions').insert([{
             user_id: userId,
             description: `${formValues.name} - Comissão de Venda`,
@@ -2514,6 +2546,7 @@ const Assets: React.FC = () => {
             is_paid: true,
             paid_amount: comission,
             paid_at: saleDateStr,
+            ...saleAcc,
             metadata: { linked_asset_id: otherId, type: 'other_sale_comission' }
           }]);
         }
@@ -2539,6 +2572,9 @@ const Assets: React.FC = () => {
             cashVal = parseFloat(formValues.saleCashAmount) || 0;
           }
 
+          // Comissão descontada no repasse: entra só o líquido.
+          cashVal = netOfCommission(cashVal, comission, commissionMode);
+
           if (cashVal > 0 && !priorSaleTypes.has('other_sale_revenue')) {
             await supabase.from('transactions').insert([{
               user_id: userId,
@@ -2554,6 +2590,7 @@ const Assets: React.FC = () => {
               is_paid: true,
               paid_amount: cashVal,
               paid_at: saleDateStr,
+              ...saleAcc,
               metadata: { linked_asset_id: otherId, type: 'other_sale_revenue' }
             }]);
           }
@@ -2566,11 +2603,11 @@ const Assets: React.FC = () => {
             installmentType: 'other_sale_installment',
             downPaymentType: 'other_sale_down_payment',
             values: formValues,
-            total: soldAmount,
+            total: netOfCommission(soldAmount, comission, commissionMode),
             todayISO: todayStr,
             describeInstallment: (n, total) => `${formValues.name} - Receita Parcelada Venda (${n}/${total})`,
             describeDownPayment: () => `${formValues.name} - Entrada Venda de Ativo`,
-            baseRow: { category: 'Venda de Ativos', subcategory: 'Venda de Outros Bens', category_id: revenueCatId || null }
+            baseRow: { category: 'Venda de Ativos', subcategory: 'Venda de Outros Bens', category_id: revenueCatId || null, ...saleAcc }
           });
         }
 
@@ -3278,6 +3315,26 @@ const Assets: React.FC = () => {
           return;
         }
 
+        const commVal = parseFloat(formData.saleCommission) || 0;
+        const commMode = commissionModeOf(formData.saleCommissionMode);
+        if (commMode === 'DEDUCTED' && commVal > 0) {
+          if (formData.salePaymentMethod === 'PERMUTA') {
+            toast('Na permuta integral não entra dinheiro para descontar a comissão. Escolha "Paga à parte".', 'warning');
+            return;
+          }
+          const grossCash = formData.salePaymentMethod === 'HIBRIDO' ? (parseFloat(formData.saleCashAmount) || 0) : soldVal;
+          if (commVal >= grossCash) {
+            toast(`A comissão descontada (R$ ${commVal.toLocaleString('pt-BR')}) precisa ser menor que o valor em dinheiro da venda (R$ ${grossCash.toLocaleString('pt-BR')}).`, 'warning');
+            return;
+          }
+        }
+        // Todo lançamento da venda precisa de conta: o dinheiro que entra e a comissão paga à parte.
+        const saleMovesMoney = formData.salePaymentMethod !== 'PERMUTA' || shouldRecordCommissionExpense(commVal, commMode);
+        if (saleMovesMoney && !formData.saleAccountId) {
+          toast('Escolha a conta que recebe o dinheiro da venda.', 'warning');
+          return;
+        }
+
         if (formData.salePaymentMethod === 'HIBRIDO') {
           const cashVal = parseFloat(formData.saleCashAmount) || 0;
           const permutaTotal = (formData.permutaItems || []).reduce((sum, item) => sum + (parseFloat(item.value) || 0), 0);
@@ -3292,8 +3349,9 @@ const Assets: React.FC = () => {
             toast('Informe a quantidade de parcelas da venda (mínimo 1).', 'warning');
             return;
           }
-          if (downVal < 0 || downVal >= soldVal) {
-            toast(`A entrada (R$ ${downVal.toLocaleString('pt-BR')}) deve ser menor que o valor da venda (R$ ${soldVal.toLocaleString('pt-BR')}).`, 'warning');
+          const netSold = netOfCommission(soldVal, commVal, commMode);
+          if (downVal < 0 || downVal >= netSold) {
+            toast(`A entrada (R$ ${downVal.toLocaleString('pt-BR')}) deve ser menor que o valor a receber da venda (R$ ${netSold.toLocaleString('pt-BR')}).`, 'warning');
             return;
           }
           if (!formData.saleFirstInstallmentDate) {
@@ -3418,6 +3476,8 @@ const Assets: React.FC = () => {
         saleCommission: formData.isSold ? (parseFloat(formData.saleCommission) || 0) : undefined,
         saleComission: formData.isSold ? (parseFloat(formData.saleCommission) || 0) : undefined, // legacy compatibility
         salePaymentMethod: formData.isSold ? formData.salePaymentMethod : undefined,
+        saleCommissionMode: formData.isSold ? commissionModeOf(formData.saleCommissionMode) : undefined,
+        saleAccountId: formData.isSold ? (formData.saleAccountId || undefined) : undefined,
         permutaVeiculoValor: formData.isSold ? (parseFloat(formData.permutaVeiculoValor) || 0) : undefined,
         permutaVeiculoNome: formData.isSold ? formData.permutaVeiculoNome : undefined,
         permutaImovelValor: formData.isSold ? (parseFloat(formData.permutaImovelValor) || 0) : undefined,
@@ -4086,6 +4146,8 @@ const Assets: React.FC = () => {
       if (isRealEstate && formData.isSold && (!editingAsset || !editingAsset.metadata?.isSold)) {
         const soldAmount = parseFloat(formData.soldValue) || 0;
         const comission = parseFloat(formData.saleCommission || (formData as any).saleComission) || 0;
+        const commissionMode = commissionModeOf(formData.saleCommissionMode);
+        const saleAcc = saleAccountFields(formData.saleAccountId, allAccounts);
         const saleDateStr = formData.saleDate || DateUtils.formatToISODate();
 
         // 1. Excluir provisões futuras não pagas vinculadas ao imóvel
@@ -4115,8 +4177,8 @@ const Assets: React.FC = () => {
           }
         }
 
-        // 2. Comissão de venda (se houver)
-        if (comission > 0) {
+        // 2. Comissão de venda paga à parte (descontada no repasse não vira despesa)
+        if (shouldRecordCommissionExpense(comission, commissionMode)) {
           let catId = null;
           const { data: catRes } = await findCategoryByName(supabase, user.id, 'Ativos Imobiliários');
           if (catRes) catId = catRes.id;
@@ -4133,6 +4195,7 @@ const Assets: React.FC = () => {
             is_paid: true,
             paid_amount: comission,
             paid_at: saleDateStr,
+            ...saleAcc,
             metadata: { linked_asset_id: assetId, type: 'real_estate_sale_comission' }
           }]);
         }
@@ -4161,6 +4224,7 @@ const Assets: React.FC = () => {
           if (formData.salePaymentMethod === 'HIBRIDO') {
             cashVal = parseFloat(formData.saleCashAmount) || 0;
           }
+          cashVal = netOfCommission(cashVal, comission, commissionMode);
 
           if (cashVal > 0) {
             await supabase.from('transactions').insert([{
@@ -4177,6 +4241,7 @@ const Assets: React.FC = () => {
               is_paid: true,
               paid_amount: cashVal,
               paid_at: saleDateStr,
+              ...saleAcc,
               metadata: { linked_asset_id: assetId, type: 'real_estate_sale_revenue' }
             }]);
           }
@@ -4189,11 +4254,11 @@ const Assets: React.FC = () => {
             installmentType: 'real_estate_sale_installment',
             downPaymentType: 'real_estate_sale_down_payment',
             values: formData,
-            total: soldAmount,
+            total: netOfCommission(soldAmount, comission, commissionMode),
             todayISO: DateUtils.formatToISODate(),
             describeInstallment: (n, total) => `Receita Parcelada Venda (${n}/${total}) - ${formData.name}`,
             describeDownPayment: () => `Entrada Venda de Imóvel - ${formData.name}`,
-            baseRow: { category: 'Outras Receitas', subcategory: 'Venda de Ativo', category_id: revenueCatId }
+            baseRow: { category: 'Outras Receitas', subcategory: 'Venda de Ativo', category_id: revenueCatId, ...saleAcc }
           });
         }
 
@@ -4374,6 +4439,8 @@ const Assets: React.FC = () => {
       targetSaleValue: '',
       preparationBudget: '',
       saleCommission: '',
+      saleCommissionMode: 'SEPARATE',
+      saleAccountId: '',
       salePaymentMethod: 'A_VISTA',
       permutaVeiculoValor: '',
       permutaVeiculoNome: '',
@@ -4582,6 +4649,8 @@ const Assets: React.FC = () => {
       targetSaleValue: meta.targetSaleValue ? String(meta.targetSaleValue) : '',
       preparationBudget: meta.preparationBudget ? String(meta.preparationBudget) : '',
       saleCommission: meta.saleCommission ? String(meta.saleCommission) : (meta.saleComission ? String(meta.saleComission) : ''),
+      saleCommissionMode: commissionModeOf(meta.saleCommissionMode),
+      saleAccountId: meta.saleAccountId || '',
       salePaymentMethod: meta.salePaymentMethod || 'A_VISTA',
       permutaVeiculoValor: meta.permutaVeiculoValor ? String(meta.permutaVeiculoValor) : '',
       permutaVeiculoNome: meta.permutaVeiculoNome || '',
@@ -6251,8 +6320,10 @@ ${tabelaHtml}
       return acc + plantaRemainingDebt(p, linkedTransactionsMap.get(p.id) || [], hasLinkedLiability).total;
     }, 0);
 
+  // Bem vendido não é mais seu, mesmo se foi desarquivado para editar: no lugar dele
+  // entra o que falta receber da venda (card Vendas a Receber).
   const totalPhysical = enrichedPhysicalAssets
-    .filter(p => p.category !== 'INVESTMENT' && !p.metadata?.isLoan)
+    .filter(p => p.category !== 'INVESTMENT' && !p.metadata?.isLoan && !p.metadata?.isSold)
     .reduce((acc, curr) => acc + curr.estimatedValue, 0);
   
   const totalFinancial = dynamicBrokers.reduce((acc, curr) => acc + curr.balance, 0);
@@ -6269,7 +6340,20 @@ ${tabelaHtml}
       return sum + outstanding;
     }, 0);
 
-  const totalAssets = totalPhysical + totalFinancial + totalLoans;
+  // Vendas a receber: entrada/parcelas ainda não recebidas de bens já vendidos (arquivados).
+  // O bem saiu do patrimônio, mas o dinheiro ainda não entrou — continua sendo seu.
+  const saleReceivableSummary = useMemo(() => {
+    // Conta para bens fora do patrimônio: arquivados ou marcados como vendidos.
+    const activeIds = new Set(enrichedPhysicalAssets.filter(p => !p.metadata?.isSold).map(p => p.id));
+    const rows = transactions
+      .filter(t => t.metadata?.linked_asset_id && !activeIds.has(t.metadata.linked_asset_id))
+      .map(t => ({ amount: t.amount, is_paid: t.isPaid, paid_amount: t.paidAmount, metadata: t.metadata }));
+    const open = rows.filter(r => saleReceivablesTotal([r]) > 0);
+    return { total: saleReceivablesTotal(rows), count: open.length };
+  }, [transactions, enrichedPhysicalAssets]);
+  const totalSaleReceivables = saleReceivableSummary.total;
+
+  const totalAssets = totalPhysical + totalFinancial + totalLoans + totalSaleReceivables;
   const totalNetWorth = totalAssets - totalLiabilities;
 
   // Helper to dynamically match a single transaction to a physical asset
@@ -6285,7 +6369,8 @@ ${tabelaHtml}
 
   // Complete, deep executive financial KPIs unifications (excluding archived items)
   const overviewData = useMemo(() => {
-    const activePhys = enrichedPhysicalAssets;
+    // Bem vendido fica fora dos totais por tipo (mesma regra do Patrimônio Real).
+    const activePhys = enrichedPhysicalAssets.filter(p => !p.metadata?.isSold);
     const activeLiab = activeLiabilities;
 
     // Helper to dynamically link a liability to an asset with name substring fallback
@@ -6644,7 +6729,8 @@ ${tabelaHtml}
     visibleCards.outros,
     visibleCards.financeiro,
     visibleCards.emprestimos,
-    visibleCards.dividas
+    visibleCards.dividas,
+    totalSaleReceivables > 0
   ].filter(Boolean).length;
 
   const visibleDetailedCount = [
@@ -6923,6 +7009,27 @@ ${tabelaHtml}
                   </button>
                 )}
                 
+                {/* Vendas a Receber — só aparece enquanto houver algo a receber */}
+                {totalSaleReceivables > 0 && (
+                  <div
+                    className="bg-white border border-emerald-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between min-h-[110px] text-left w-full"
+                    title="Entrada e parcelas de bens vendidos que ainda não entraram na conta"
+                  >
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs sm:text-[11px] font-black uppercase tracking-wider text-slate-500">Vendas a Receber</span>
+                      <HandCoins size={14} className="text-emerald-500" />
+                    </div>
+                    <div className="mt-2">
+                      <h4 className="text-base font-black text-emerald-700 tracking-tight italic whitespace-nowrap">
+                        {formatCurrency(totalSaleReceivables)}
+                      </h4>
+                      <span className="text-xs sm:text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                        {saleReceivableSummary.count} {saleReceivableSummary.count === 1 ? 'parcela' : 'parcelas'} em aberto
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Passivos e Dívidas */}
                 {visibleCards.dividas && (
                   <button
@@ -10816,6 +10923,48 @@ ${tabelaHtml}
                               </select>
                             </div>
 
+                            {(parseFloat(formData.saleCommission) || 0) > 0 && (() => {
+                              const commVal = parseFloat(formData.saleCommission) || 0;
+                              const mode = commissionModeOf(formData.saleCommissionMode);
+                              const grossCash = formData.salePaymentMethod === 'HIBRIDO' ? (parseFloat(formData.saleCashAmount) || 0) : (parseFloat(formData.soldValue) || 0);
+                              const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                              return (
+                                <div>
+                                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Como a comissão foi paga</label>
+                                  <select
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                                    value={mode}
+                                    onChange={(e) => setFormData({ ...formData, saleCommissionMode: e.target.value })}
+                                  >
+                                    <option value="SEPARATE">Paga à parte (recebo o valor cheio e pago a comissão)</option>
+                                    <option value="DEDUCTED">Descontada no repasse (recebo o valor já sem a comissão)</option>
+                                  </select>
+                                  <p className="text-[11px] text-slate-500 mt-1">
+                                    {mode === 'DEDUCTED'
+                                      ? `Entra na conta ${brl(netOfCommission(grossCash, commVal, mode))} (${brl(grossCash)} − comissão ${brl(commVal)}). Não é lançada despesa de comissão.`
+                                      : `Entra na conta ${brl(grossCash)} e a comissão de ${brl(commVal)} sai como despesa.`}
+                                  </p>
+                                </div>
+                              );
+                            })()}
+
+                            {(formData.salePaymentMethod !== 'PERMUTA' || shouldRecordCommissionExpense(parseFloat(formData.saleCommission) || 0, commissionModeOf(formData.saleCommissionMode))) && (
+                              <div>
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Conta que recebe a venda *</label>
+                                <select
+                                  className={`w-full bg-white border rounded-xl px-3 py-2 text-xs font-bold ${formData.saleAccountId ? 'border-slate-200' : 'border-amber-300'}`}
+                                  value={formData.saleAccountId}
+                                  onChange={(e) => setFormData({ ...formData, saleAccountId: e.target.value })}
+                                >
+                                  <option value="">Escolha a conta…</option>
+                                  {allAccounts.filter((a: any) => !a.is_archived).map((a: any) => (
+                                    <option key={a.id} value={a.id}>{a.institution || a.name}</option>
+                                  ))}
+                                </select>
+                                <p className="text-[11px] text-slate-500 mt-1">Recebimento à vista, entrada e parcelas entram nesta conta{shouldRecordCommissionExpense(parseFloat(formData.saleCommission) || 0, commissionModeOf(formData.saleCommissionMode)) ? '; a comissão paga à parte sai dela' : ''}.</p>
+                              </div>
+                            )}
+
                             {formData.salePaymentMethod === 'A_VISTA' && (
                               <div className="animate-in slide-in-from-top-2">
                                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">Data de Recebimento</label>
@@ -10827,7 +10976,8 @@ ${tabelaHtml}
                             )}
 
                             {formData.salePaymentMethod === 'PARCELADO' && (() => {
-                              const soldVal = parseFloat(formData.soldValue) || 0;
+                              // Com comissão descontada no repasse, as parcelas somam o valor líquido.
+                              const soldVal = netOfCommission(parseFloat(formData.soldValue) || 0, parseFloat(formData.saleCommission) || 0, commissionModeOf(formData.saleCommissionMode));
                               const downVal = parseFloat(formData.saleDownPayment) || 0;
                               const nInst = parseInt(formData.saleInstallmentsCount, 10) || 0;
                               const fixedInst = parseFloat(formData.saleInstallmentAmount) || 0;

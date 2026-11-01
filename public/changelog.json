@@ -1,23 +1,35 @@
 {
-  "version": "2026.11.01.1338",
-  "title": "Cartões: toda fatura sai de uma conta",
+  "version": "2026.11.01.1351",
+  "title": "Vendas: conta que recebe, comissão descontada e vendas a receber",
   "date": "01/11/2026",
   "benefits": [
     {
-      "title": "Conta que paga a fatura no cadastro do cartão",
-      "desc": "No cadastro e na edição do cartão há o campo \"Conta que paga a fatura\" (obrigatório). As faturas a pagar saem dessa conta. Trocar a conta muda só as faturas ainda não pagas — as já pagas continuam na conta em que foram pagas.",
+      "title": "Comissão descontada no repasse ou paga à parte",
+      "desc": "Ao vender um veículo, imóvel ou outro bem com comissão, escolha como ela foi paga. \"Descontada no repasse\": entra na conta só o valor líquido (venda − comissão) e não é lançada despesa de comissão. \"Paga à parte\": entra o valor cheio e a comissão sai como despesa. Vendas antigas continuam como \"paga à parte\".",
       "type": "melhoria"
     },
     {
-      "title": "Pagar fatura já abre na conta do cartão",
-      "desc": "Ao pagar uma fatura, a conta do cartão já vem escolhida (dá para trocar). Antes vinha sempre a primeira conta da lista, e cartão sem conta caía na primeira conta com \"Bradesco\" no nome.",
+      "title": "Toda venda pergunta a conta que recebe",
+      "desc": "O formulário de venda agora pede a conta onde entra o dinheiro. O recebimento à vista, a entrada e as parcelas entram nessa conta (e a comissão paga à parte sai dela).",
+      "type": "melhoria"
+    },
+    {
+      "title": "Card \"Vendas a Receber\" no Patrimônio",
+      "desc": "Mostra quanto ainda falta receber de bens vendidos (entrada e parcelas em aberto) e soma no Patrimônio Real e no patrimônio da tela Início. Quando não há nada a receber, o card some.",
+      "type": "novidade"
+    },
+    {
+      "title": "Bem vendido sai do patrimônio mesmo se desarquivado",
+      "desc": "Um bem marcado como vendido não soma mais o valor dele no patrimônio, mesmo que tenha sido desarquivado para editar. No lugar dele entra o que ainda falta receber da venda.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "`components/cards/AddCardModal.tsx`: select \"Conta que paga a fatura\" (obrigatório).",
-    "`components/banking/CreditCardsSection.tsx`: grava `cards.account_id` (sugestão por nome via `lib/cardAccount.ts`); ao trocar, move só os espelhos de fatura não pagos; pagamento abre com a conta do cartão.",
-    "`services/finance.service.ts`: re-sync de fatura já paga mantém a conta em que foi paga.",
-    "Testes: `cardAccount.test.ts`."
+    "lib/saleAccounting.ts: modo da comissão (SEPARATE/DEDUCTED), valor líquido, total de vendas a receber, campos de conta",
+    "Assets.tsx e RealEstateDetailModal.tsx: campos saleCommissionMode e saleAccountId no formulário de venda, salvos no metadata; account_id/account_name nas linhas de comissão, receita, entrada e parcelas; sem despesa de comissão quando descontada (e exclusão lógica da que já existia ao trocar o modo)",
+    "Assets.tsx: card Vendas a Receber (some quando zero) e soma em totalAssets/Patrimônio Real",
+    "dashboard.service.ts: vendas a receber de bens arquivados somam no patrimônio do Início",
+    "Testes: saleAccounting.test.ts e dashboardSaleReceivables.test.ts",
+    "Assets.tsx/dashboard.service.ts: bem com metadata.isSold fica fora de totalPhysical, dos totais por tipo e do patrimônio do Início; suas parcelas pendentes contam em Vendas a Receber"
   ]
 }
