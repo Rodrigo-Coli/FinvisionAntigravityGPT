@@ -83,6 +83,9 @@ function spreadsheetToText(buffer: Buffer, maxChars = 30000): string {
 }
 
 const NEAR_DAYS = 3;
+// Lançamento EM ABERTO (parcela, conta a pagar) costuma ser pago alguns dias antes ou
+// depois do vencimento: janela maior para ele.
+const OPEN_NEAR_DAYS = 7;
 const dayOf = (d: any): string => String(d ?? '').trim().slice(0, 10);
 const daysBetween = (a: string, b: string): number =>
   Math.round((new Date(`${b}T12:00:00Z`).getTime() - new Date(`${a}T12:00:00Z`).getTime()) / 86400000);
@@ -296,11 +299,11 @@ export const StatementTemplateHelper = {
     } else {
       const { data: existingTxs } = await supabase
         .from('transactions')
-        .select('date, amount, description, type')
+        .select('id, date, amount, description, type, is_paid, account_name, metadata')
         .eq('user_id', userId)
         .is('is_deleted', false)
-        .gte('date', shiftDays(minDate, -NEAR_DAYS))
-        .lte('date', `${shiftDays(maxDate, NEAR_DAYS)} 23:59:59`);
+        .gte('date', shiftDays(minDate, -OPEN_NEAR_DAYS))
+        .lte('date', `${shiftDays(maxDate, OPEN_NEAR_DAYS)} 23:59:59`);
 
       // A data em `transactions` vem com hora ("2026-10-02 00:00:00+00") e a do
       // extrato não ("2026-10-02"): comparando o texto inteiro, nenhum lançamento
@@ -317,18 +320,46 @@ export const StatementTemplateHelper = {
 
       const mark = (c: any, chosen: any, reason: string) => {
         consumeMatch(availableExisting, chosen);
+        const isOpen = chosen.is_paid === false;
         result[c.i] = {
           ...result[c.i],
           potential_duplicate: true,
-          duplicate_reason: reason,
-          duplicate_tx: { description: chosen.description, date: chosen.day, amount: chosen.amount }
+          // Em aberto: provavelmente é o PAGAMENTO desse lançamento (a Conciliação pergunta).
+          duplicate_reason: isOpen
+            ? `Lançamento EM ABERTO com o mesmo valor${chosen.account_name ? ` (${chosen.account_name})` : ''}: pode ser o pagamento dele`
+            : `${reason}${chosen.account_name ? ` (${chosen.account_name})` : ''}`,
+          duplicate_tx: {
+            id: chosen.id,
+            description: chosen.description,
+            date: chosen.day,
+            amount: chosen.amount,
+            is_paid: chosen.is_paid !== false,
+            account_name: chosen.account_name || null
+          }
         };
       };
       const similar = (c: any, e: any) => {
         const normE = normalizeDesc(e.description);
         return !!normE && !!c.norm && (normE === c.norm || normE.includes(c.norm) || c.norm.includes(normE));
       };
-      const sameValue = (c: any, e: any) => Math.abs(Number(e.amount)).toFixed(2) === c.amount && e.type === c.type;
+      // Sentido do lançamento existente: fatura de cartão é saída; transferência pelo lado
+      // (origem = saída, destino = entrada). Antes só INCOME/EXPENSE casavam — transferência
+      // e pagamento de fatura nunca eram reconhecidos como já lançados.
+      const kindOf = (e: any): 'INCOME' | 'EXPENSE' | 'ANY' => {
+        if (e.type === 'INCOME') return 'INCOME';
+        if (e.type === 'EXPENSE' || e.type === 'BILL_PAYMENT') return 'EXPENSE';
+        if (e.type === 'TRANSFER') {
+          const side = e.metadata?.transfer_side;
+          return side === 'DESTINATION' ? 'INCOME' : side === 'SOURCE' ? 'EXPENSE' : 'ANY';
+        }
+        return 'ANY';
+      };
+      const sameValue = (c: any, e: any) => {
+        if (Math.abs(Number(e.amount)).toFixed(2) !== c.amount) return false;
+        const k = kindOf(e);
+        return k === 'ANY' || k === c.type;
+      };
+      const windowFor = (e: any) => (e.is_paid === false ? OPEN_NEAR_DAYS : NEAR_DAYS);
 
       // 1ª passada: mesmo dia, mesmo valor e tipo.
       const pending: any[] = [];
@@ -340,11 +371,11 @@ export const StatementTemplateHelper = {
           ? 'Transação com mesma data, valor e local similar já lançada'
           : 'Atenção: Transação com mesmo valor e data em local diferente');
       }
-      // 2ª passada: data próxima (até NEAR_DAYS dias), mesmo valor e tipo — lançamento
+      // 2ª passada: data próxima (até NEAR_DAYS dias, ou OPEN_NEAR_DAYS se em aberto), mesmo valor e tipo — lançamento
       // manual costuma ficar com a data do pagamento, e o banco compensa depois.
       for (const c of pending) {
         const near = availableExisting
-          .filter((e: any) => sameValue(c, e) && Math.abs(daysBetween(e.day, c.day)) <= NEAR_DAYS)
+          .filter((e: any) => sameValue(c, e) && Math.abs(daysBetween(e.day, c.day)) <= windowFor(e))
           .sort((a: any, b: any) => Math.abs(daysBetween(a.day, c.day)) - Math.abs(daysBetween(b.day, c.day)));
         if (!near.length) continue;
         const chosen = near.find((e: any) => similar(c, e)) || near[0];

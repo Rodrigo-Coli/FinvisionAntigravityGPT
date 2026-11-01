@@ -36,6 +36,7 @@ import { SearchableInput } from '../components/common/SearchableInput';
 import { normalizeStr } from '../lib/stringUtils';
 import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 import { DateInput } from '../components/common/DateInput';
+import { pickOpenMatch, OPEN_MATCH_DAYS, OpenCandidate } from '../lib/openMatch';
 
 const Reconcile: React.FC = () => {
   const navigate = useNavigate();
@@ -471,7 +472,7 @@ const Reconcile: React.FC = () => {
       const skipped = bulkSkippedRef.current;
       if (skipped.length > 0) {
         toast(
-          `Sincronização concluída. ${skipped.length} lançamento(s) ficaram na fila por já existirem no destino.`,
+          `Sincronização concluída. ${skipped.length} lançamento(s) ficaram na fila por já existirem no destino ou por haver um lançamento em aberto que pode ser o pagamento deles — confirme um a um.`,
           'warning'
         );
       } else {
@@ -753,7 +754,7 @@ const Reconcile: React.FC = () => {
       const skipped = bulkSkippedRef.current;
       if (skipped.length > 0) {
         toast(
-          `${skipped.length} lançamento(s) não foram gravados por já existirem no destino. ` +
+          `${skipped.length} lançamento(s) não foram gravados por já existirem no destino ou por haver um lançamento em aberto que pode ser o pagamento deles. ` +
           `Eles continuam na fila para você conferir.`,
           'warning'
         );
@@ -807,6 +808,28 @@ const Reconcile: React.FC = () => {
     }
   };
 
+  // Lançamento EM ABERTO (em qualquer conta) que este item do extrato pode estar pagando:
+  // mesmo valor e sentido, até OPEN_MATCH_DAYS dias do vencimento.
+  const findOpenMatch = async (date: string, amount: number): Promise<OpenCandidate | null> => {
+    if (!supabase || !date) return null;
+    try {
+      const d = new Date(String(date).split('T')[0] + 'T12:00:00');
+      const from = new Date(d); from.setDate(from.getDate() - OPEN_MATCH_DAYS);
+      const to = new Date(d); to.setDate(to.getDate() + OPEN_MATCH_DAYS);
+      const { data } = await supabase
+        .from('transactions')
+        .select('id, date, amount, type, is_paid, is_deleted, description, account_id, account_name, liability_id, metadata')
+        .eq('is_paid', false)
+        .eq('is_deleted', false)
+        .gte('date', DateUtils.formatToISODate(from))
+        .lte('date', `${DateUtils.formatToISODate(to)} 23:59:59`);
+      return pickOpenMatch((data || []) as OpenCandidate[], { date, amount: Number(amount) });
+    } catch (e) {
+      console.error('Erro ao procurar lançamento em aberto:', e);
+      return null;
+    }
+  };
+
   // Itens que a conferência de duplicidade barrou durante uma confirmação em lote.
   const bulkSkippedRef = useRef<{ description: string; date: string }[]>([]);
 
@@ -832,6 +855,60 @@ const Reconcile: React.FC = () => {
 
     if (!targetId && !isBulk) return toast("Selecione um destino (Banco/Cartão)", 'warning');
     if (!targetId) return; // Pula em bulk se não tiver destino
+
+    // O extrato pode ser o pagamento de um lançamento que já está EM ABERTO (em qualquer
+    // conta): em vez de criar outro, pergunta se é para pagar aquele. Em lote não decide
+    // sozinho — o item fica na fila para conferir um a um.
+    const isTransferCat = normalizeStr(categoryName || '').includes('transfer');
+    if (!effectiveIsCard && !isTransferCat) {
+      const open = await findOpenMatch(finalDate, Number(item.amount));
+      if (open) {
+        if (isBulk) {
+          bulkSkippedRef.current.push({ description: finalDescription, date: finalDate });
+          return;
+        }
+        const targetLabel = getTargetName(targetId, 'bank') || 'a conta escolhida';
+        const pay = window.confirm(
+          `Este lançamento do extrato pode ser o pagamento de algo que já está lançado EM ABERTO:\n\n` +
+          `${String(open.date).split('T')[0].split('-').reverse().join('/')} — ${open.description || ''}` +
+          `${open.account_name ? ` (${open.account_name})` : ''} — R$ ${Math.abs(Number(open.amount)).toFixed(2)}\n\n` +
+          `OK = marcar esse lançamento como PAGO em ${targetLabel}, na data ${finalDate.split('-').reverse().join('/')} (não cria outro).\n` +
+          `Cancelar = seguir e criar um lançamento novo.`
+        );
+        if (pay) {
+          setProcessingItemId(item.id);
+          try {
+            const acc = realAccounts.find(a => a.id === targetId);
+            const previousAccount = open.account_id || null;
+            await FinanceService.updateTransaction(open.id, {
+              is_paid: true,
+              paid_amount: Math.abs(Number(open.amount)),
+              paid_at: finalDate,
+              account_id: targetId,
+              account_name: acc?.institution || open.account_name || 'Conta',
+              metadata: { ...(open.metadata || {}), paid_via_reconcile: item.id }
+            });
+            await supabase.rpc('recalculate_account_balance', { p_account_id: targetId });
+            if (previousAccount && previousAccount !== targetId) {
+              await supabase.rpc('recalculate_account_balance', { p_account_id: previousAccount });
+            }
+            await ReconciliationService.updateTransactionStatus(item.id, 'OK');
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.user) localStorage.removeItem(`finvision_cached_raw_txs_${session.user.id}`);
+            } catch { /* cache é só atalho */ }
+            setImported(prev => prev.filter(x => x.id !== item.id));
+            if (editingId === item.id) setEditingId(null);
+            toast('Lançamento em aberto marcado como pago.', 'success');
+          } catch (e: any) {
+            toast(`Erro ao pagar o lançamento: ${e?.message || e}`, 'error');
+          } finally {
+            setProcessingItemId(null);
+          }
+          return;
+        }
+      }
+    }
 
     // Conferência de duplicidade no destino, antes de gravar qualquer coisa.
     const existing = await findDuplicateAtTarget(targetId, effectiveIsCard, finalDate, item.amount);
