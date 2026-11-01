@@ -1,28 +1,17 @@
 {
-  "version": "2026.11.01.0100",
-  "title": "Conciliar: extrato em Excel e duplicados de banco",
+  "version": "2026.11.01.1103",
+  "title": "Transações sem o lance embutido do consórcio",
   "date": "01/11/2026",
   "benefits": [
     {
-      "title": "Extrato em Excel (.xlsx) agora é lido",
-      "desc": "Importar o extrato em planilha (ex.: Bradesco) terminava como \"importado\" mas sem nenhum lançamento em Conciliar: a planilha chegava ilegível para a IA. Agora ela é convertida antes, com datas e valores corretos (crédito entra positivo, débito negativo). Vale também para fatura de cartão em planilha.",
-      "type": "correcao"
-    },
-    {
-      "title": "Duplicados de banco voltaram a ser marcados",
-      "desc": "No extrato de banco, nenhum lançamento era marcado como duplicado, mesmo já existindo (a data do banco tem hora e a do extrato não). Agora compara o dia, e também avisa quando o mesmo valor já foi lançado com até 3 dias de diferença.",
-      "type": "correcao"
-    },
-    {
-      "title": "Reimportar arquivo que não trouxe nada",
-      "desc": "Se a importação anterior de um arquivo terminou sem lançamentos, importar de novo não pede mais para \"forçar\": o app processa outra vez.",
+      "title": "Lance embutido sai da lista de Transações",
+      "desc": "O lance embutido sai da própria carta de crédito, não de uma conta sua — não é dinheiro gasto. Ele continua registrado (abate o saldo devedor da cota e aparece no consórcio), mas não aparece mais em Transações. O lance pago do bolso continua lá, na conta de onde saiu.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "`api/_lib/statement-template-helper.ts`: `spreadsheetToText` (xlsx → texto com datas AAAA-MM-DD); `tryLocalParse` xlsx com `cellDates`, número de série do Excel e colunas Crédito/Débito; `checkDuplicates` (banco) compara o dia, 2ª passada com data próxima (±3 dias); cartão compara o dia.",
-    "`api/_lib/handle-bank-reconcile.ts` e `handle-card-reconcile.ts`: xlsx vai para a IA como texto convertido (antes `buffer.toString('utf-8')` do zip).",
-    "`services/reconciliation.service.ts`: checagem de arquivo repetido aceita várias importações do mesmo arquivo (antes `maybeSingle` falhava e a trava sumia) e reprocessa a que terminou com 0 lançamentos.",
-    "Testes: `statementImport.test.ts`."
+    "`lib/historyUtils.ts`: `isEmbeddedBidEntry` (`metadata.bid_part = EMBEDDED` sem conta).",
+    "`pages/History.tsx`: remove esses lançamentos da lista e dos gráficos de Transações (continuam no banco para o saldo do consórcio e para desfazer o lance).",
+    "Testes: `historyViewMode.test.ts`."
   ]
 }

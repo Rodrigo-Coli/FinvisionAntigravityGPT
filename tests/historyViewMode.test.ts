@@ -15,3 +15,12 @@ describe('filtro Pagos/Abertos nas linhas do banco', () => {
     expect(filterRowsByViewMode(rows, 'ALL')).toBe(rows);
   });
 });
+
+import { isEmbeddedBidEntry } from '../lib/historyUtils';
+describe('lance embutido fora da lista de Transações', () => {
+  it('só o embutido (sem conta) sai; o lance pago do bolso fica', () => {
+    expect(isEmbeddedBidEntry({ account_id: null, metadata: { bid_part: 'EMBEDDED', isCapitalized: true } })).toBe(true);
+    expect(isEmbeddedBidEntry({ account_id: 'BRADESCO', metadata: { bid_part: 'CASH' } })).toBe(false);
+    expect(isEmbeddedBidEntry({ account_id: null, metadata: { type: 'loan_addition' } })).toBe(false);
+  });
+});
