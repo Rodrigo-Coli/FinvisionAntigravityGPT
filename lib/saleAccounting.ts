@@ -70,3 +70,10 @@ export function saleAccountFields(
   const acc = (accounts || []).find(a => a.id === accountId);
   return { account_id: accountId, account_name: acc?.institution || acc?.name || null };
 }
+
+/** Categoria sugerida para a receita da venda, pelo tipo do bem (o usuário pode trocar). */
+export function saleCategoryDefaults(assetCategory: string | null | undefined): { category: string; subcategory: string } {
+  if (assetCategory === 'VEHICLE') return { category: 'Venda de Ativos', subcategory: 'Venda de Veículo' };
+  if (assetCategory === 'REAL_ESTATE') return { category: 'Outras Receitas', subcategory: 'Venda de Ativo' };
+  return { category: 'Venda de Ativos', subcategory: 'Venda de Outros Bens' };
+}

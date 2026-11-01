@@ -1,35 +1,53 @@
 {
-  "version": "2026.11.01.1351",
-  "title": "Vendas: conta que recebe, comissão descontada e vendas a receber",
+  "version": "2026.11.01.1428",
+  "title": "Início com ativos separados, busca em todos os meses e saldo zero",
   "date": "01/11/2026",
   "benefits": [
     {
-      "title": "Comissão descontada no repasse ou paga à parte",
-      "desc": "Ao vender um veículo, imóvel ou outro bem com comissão, escolha como ela foi paga. \"Descontada no repasse\": entra na conta só o valor líquido (venda − comissão) e não é lançada despesa de comissão. \"Paga à parte\": entra o valor cheio e a comissão sai como despesa. Vendas antigas continuam como \"paga à parte\".",
+      "title": "Ativos separados no Início",
+      "desc": "O card de Patrimônio Líquido agora mostra, além do total, quanto está em Contas, Investimentos, Bens e A receber. Os investimentos das corretoras não são mais somados duas vezes (já estavam no saldo da corretora).",
+      "type": "correcao"
+    },
+    {
+      "title": "Busca em Transações procura em todos os meses",
+      "desc": "Ao digitar na busca (2 letras ou mais), aparecem os lançamentos de qualquer período, não só do mês aberto.",
       "type": "melhoria"
     },
     {
-      "title": "Toda venda pergunta a conta que recebe",
-      "desc": "O formulário de venda agora pede a conta onde entra o dinheiro. O recebimento à vista, a entrada e as parcelas entram nessa conta (e a comissão paga à parte sai dela).",
+      "title": "Dá para zerar o saldo de uma conta",
+      "desc": "Em Ajustar saldo → Saldo Inicial, informar 0 agora funciona. O botão ficava travado quando o saldo inicial já era zero.",
+      "type": "correcao"
+    },
+    {
+      "title": "Ajuste pontual de saldo não some mais",
+      "desc": "O lançamento de ajuste agora entra pago e com valor, então o saldo ajustado se mantém nos próximos recálculos.",
+      "type": "correcao"
+    },
+    {
+      "title": "Categoria da venda sugerida e editável",
+      "desc": "Na venda de um bem, a categoria e a subcategoria da receita vêm sugeridas pelo tipo do bem, e você pode trocar.",
       "type": "melhoria"
     },
     {
-      "title": "Card \"Vendas a Receber\" no Patrimônio",
-      "desc": "Mostra quanto ainda falta receber de bens vendidos (entrada e parcelas em aberto) e soma no Patrimônio Real e no patrimônio da tela Início. Quando não há nada a receber, o card some.",
-      "type": "novidade"
+      "title": "Aviso de atualização mostra o que você pulou",
+      "desc": "Se você pular atualizações, a próxima já traz tudo, e o aviso agora lista também as novidades das versões puladas.",
+      "type": "melhoria"
     },
     {
-      "title": "Bem vendido sai do patrimônio mesmo se desarquivado",
-      "desc": "Um bem marcado como vendido não soma mais o valor dele no patrimônio, mesmo que tenha sido desarquivado para editar. No lugar dele entra o que ainda falta receber da venda.",
+      "title": "Editar o saldo inicial atualiza o saldo na hora",
+      "desc": "Ao mudar o saldo inicial em Editar conta, o saldo da conta é recalculado na hora (antes ficava desatualizado até o próximo lançamento). Para deixar a conta com um saldo exato hoje, use Ajustar saldo.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "lib/saleAccounting.ts: modo da comissão (SEPARATE/DEDUCTED), valor líquido, total de vendas a receber, campos de conta",
-    "Assets.tsx e RealEstateDetailModal.tsx: campos saleCommissionMode e saleAccountId no formulário de venda, salvos no metadata; account_id/account_name nas linhas de comissão, receita, entrada e parcelas; sem despesa de comissão quando descontada (e exclusão lógica da que já existia ao trocar o modo)",
-    "Assets.tsx: card Vendas a Receber (some quando zero) e soma em totalAssets/Patrimônio Real",
-    "dashboard.service.ts: vendas a receber de bens arquivados somam no patrimônio do Início",
-    "Testes: saleAccounting.test.ts e dashboardSaleReceivables.test.ts",
-    "Assets.tsx/dashboard.service.ts: bem com metadata.isSold fica fora de totalPhysical, dos totais por tipo e do patrimônio do Início; suas parcelas pendentes contam em Vendas a Receber"
+    "dashboard.service.ts: investimento com brokerAccountId de conta ativa não soma de novo; assetsBreakdown (contas, investimentos, bens, a receber)",
+    "Home.tsx: card de patrimônio com os grupos de ativos",
+    "History.tsx: busca com 2+ letras consulta o banco sem recorte de datas (transações e cartão), cache por termo",
+    "AccountsSection.tsx: delta do ajuste comparado ao saldo atual (zerar conta); ajuste pontual com is_paid/paid_amount; ajuste de corretora marcado balance_neutral",
+    "Assets.tsx/lib/saleAccounting.ts: saleCategory/saleSubcategory com sugestão (saleCategoryDefaults) e SearchableInput",
+    "UpdateAlert.tsx + lib/missedReleases.ts: notas das versões puladas a partir do changelog-history.json",
+    "supabase/2026-11-01_transactions_account_and_paid_amount.sql: conta automática para em aberto sem conta; paid_amount ao marcar como pago",
+    "Testes: dashboardBreakdown, missedReleases",
+    "AccountsSection.tsx: recalculate_account_balance após editar a conta; dica no campo Saldo Inicial"
   ]
 }
