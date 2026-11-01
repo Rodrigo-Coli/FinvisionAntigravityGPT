@@ -1,23 +1,23 @@
 {
-  "version": "2026.11.01.1308",
-  "title": "Transferências entre contas mexem no saldo",
+  "version": "2026.11.01.1338",
+  "title": "Cartões: toda fatura sai de uma conta",
   "date": "01/11/2026",
   "benefits": [
     {
-      "title": "Transferência tira de uma conta e põe na outra",
-      "desc": "Transferências criadas em Transações ou em Conciliar não mexiam no saldo de nenhuma conta (ex.: R$ 24 mil que entraram no Bradesco vindos da Botmasters não apareciam no saldo). Agora saem da conta de origem e entram na de destino. Transformar uma despesa/receita em transferência também mantém o valor no saldo.",
-      "type": "correcao"
+      "title": "Conta que paga a fatura no cadastro do cartão",
+      "desc": "No cadastro e na edição do cartão há o campo \"Conta que paga a fatura\" (obrigatório). As faturas a pagar saem dessa conta. Trocar a conta muda só as faturas ainda não pagas — as já pagas continuam na conta em que foram pagas.",
+      "type": "melhoria"
     },
     {
-      "title": "Conta de destino só para categoria Transferência",
-      "desc": "No novo lançamento, a caixa \"Conta de destino\" abria só por escrever \"transferência\" na descrição. Agora aparece apenas quando a categoria é Transferência.",
+      "title": "Pagar fatura já abre na conta do cartão",
+      "desc": "Ao pagar uma fatura, a conta do cartão já vem escolhida (dá para trocar). Antes vinha sempre a primeira conta da lista, e cartão sem conta caía na primeira conta com \"Bradesco\" no nome.",
       "type": "correcao"
     }
   ],
   "changes": [
-    "`pages/History.tsx`: transferência nova (os dois lados) e conversão em transferência (`counter_account_id`) gravam `affects_balance` e o lado (`transfer_side`); recalcula o saldo ao trocar a contrapartida; `isTransfer` só pela categoria.",
-    "`pages/Reconcile.tsx`: transferência conciliada (perna principal e espelhada) com `affects_balance`.",
-    "`components/history/AddTransactionModal.tsx` e `lib/historyUtils.ts`: `isTransferCategory` decide quando mostrar a conta de destino.",
-    "Testes: `historyViewMode.test.ts`."
+    "`components/cards/AddCardModal.tsx`: select \"Conta que paga a fatura\" (obrigatório).",
+    "`components/banking/CreditCardsSection.tsx`: grava `cards.account_id` (sugestão por nome via `lib/cardAccount.ts`); ao trocar, move só os espelhos de fatura não pagos; pagamento abre com a conta do cartão.",
+    "`services/finance.service.ts`: re-sync de fatura já paga mantém a conta em que foi paga.",
+    "Testes: `cardAccount.test.ts`."
   ]
 }

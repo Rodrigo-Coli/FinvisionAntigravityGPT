@@ -27,6 +27,7 @@ import { PayStatementModal } from '../cards/PayStatementModal';
 import { SeriesScopeModal, SeriesScope } from '../SeriesScopeModal';
 import { useToast } from '../../contexts/ToastContext';
 import { SplitTransactionService, SplitDraft } from '../../services/splitTransaction.service';
+import { suggestCardAccountId } from '../../lib/cardAccount';
 
 type Account = {
   id: string;
@@ -198,6 +199,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
   const [additionalLabel, setAdditionalLabel] = useState('');
   const [sumsIntoInvoice, setSumsIntoInvoice] = useState(true);
   const [isDefaultCard, setIsDefaultCard] = useState(false);
+  // Conta que paga a fatura (obrigatória no cadastro/edição do cartão).
+  const [newAccountId, setNewAccountId] = useState('');
   const [defaultCategory, setDefaultCategory] = useState('Pessoal');
   const [defaultSubcategory, setDefaultSubcategory] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -1544,6 +1547,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     setDefaultSubcategory(selectedCard.default_subcategory || '');
     setDefaultOwner(selectedCard.default_owner || 'Pessoal');
     setIsDefaultCard(!!selectedCard.is_default);
+    setNewAccountId((selectedCard as any).account_id || suggestCardAccountId(selectedCard.name, accounts));
     setIsEditing(true);
     setShowAddModal(true);
   };
@@ -1646,8 +1650,11 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         default_category: correctedCategory,
         default_subcategory: correctedSubcategory,
         default_owner: correctedOwner,
-        is_default: isDefaultCard
+        is_default: isDefaultCard,
+        // Toda fatura sai de uma conta: a escolhida, ou a sugerida pelo nome.
+        account_id: newAccountId || suggestCardAccountId(newName, accounts) || null
       };
+      const previousAccountId = isEditing && selectedCard ? ((selectedCard as any).account_id || null) : null;
 
       // Só pode haver 1 cartão padrão por usuário (índice único no banco garante
       // isso) - limpa o antigo ANTES de marcar o novo, senão os dois batem juntos
@@ -1668,6 +1675,20 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
           .select()
           .single();
         if (error) throw error;
+        // Conta do cartão trocou: só as faturas AINDA NÃO PAGAS passam a sair da
+        // conta nova (as pagas ficam onde foram pagas). Não mexe em saldo.
+        if (payload.account_id && payload.account_id !== previousAccountId) {
+          const { data: stmts } = await supabase.from('card_statements').select('id').eq('card_id', data.id);
+          const stmtIds = (stmts || []).map((st: any) => st.id);
+          if (stmtIds.length) {
+            await supabase.from('transactions')
+              .update({ account_id: payload.account_id })
+              .eq('user_id', user.id)
+              .eq('is_paid', false)
+              .eq('is_deleted', false)
+              .in('metadata->>card_statement_id', stmtIds);
+          }
+        }
         setCards((prev) => prev.map(c => c.id === data.id ? data : { ...c, is_default: isDefaultCard ? false : c.is_default }));
         setSelectedCard(data);
       } else {
@@ -1703,6 +1724,7 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
     setDefaultSubcategory('');
     setDefaultOwner('Pessoal');
     setIsDefaultCard(false);
+    setNewAccountId('');
   };
 
   const handleRedirectToAccounts = () => {
@@ -2072,6 +2094,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
               if (isCardsLocked) {
                 setShowUpgradeModal(true);
               } else {
+                // Cartão novo já vem com uma conta de pagamento (pode trocar).
+                if (!newAccountId && accounts.length) setNewAccountId(accounts[0].id);
                 setShowAddModal(true);
               }
             }}
@@ -2109,6 +2133,8 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
               if (isCardsLocked) {
                 setShowUpgradeModal(true);
               } else {
+                // Cartão novo já vem com uma conta de pagamento (pode trocar).
+                if (!newAccountId && accounts.length) setNewAccountId(accounts[0].id);
                 setShowAddModal(true);
               }
             }}
@@ -2191,7 +2217,13 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
                   formatCurrency={formatCurrency}
                   formatDateBR={formatDateBR}
                   onRefresh={() => loadCardContext(selectedCard.id)}
-                  onPay={() => { setPayAmount(statementOpen); setShowPayModal(true); }}
+                  onPay={() => {
+                    setPayAmount(statementOpen);
+                    // Paga, por padrão, pela conta do cartão (pode trocar no modal).
+                    const cardAcc = (selectedCard as any)?.account_id;
+                    if (cardAcc && accounts.some((a: any) => a.id === cardAcc)) setPayAccountId(cardAcc);
+                    setShowPayModal(true);
+                  }}
                   onReopen={() => {
                     if (currentStatement?.is_combined) handleReopenCombinedStatement();
                     else if (currentStatement?.id) handleReopenStatement(currentStatement.id);
@@ -2434,6 +2466,9 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
         entities={owners}
         categories={categories}
         subcategories={subcategories}
+        accounts={accounts}
+        paymentAccountId={newAccountId}
+        setPaymentAccountId={setNewAccountId}
       />
 
       <ManualTransactionModal
