@@ -1,23 +1,22 @@
 {
-  "version": "2026.11.01.1626",
-  "title": "Conciliar: pagar o que já está em aberto e duplicidade mais esperta",
+  "version": "2026.11.01.2235",
+  "title": "Lista de categorias completa",
   "date": "01/11/2026",
   "benefits": [
     {
-      "title": "Conciliar pergunta se é para pagar um lançamento em aberto",
-      "desc": "Ao confirmar um item do extrato, se já existir um lançamento EM ABERTO com o mesmo valor (até 7 dias do vencimento, em qualquer conta), o app mostra os dados dele e pergunta se é para marcá-lo como pago, em vez de criar outro. Na confirmação em lote, esses itens ficam na fila para você conferir um a um.",
-      "type": "novidade"
+      "title": "Veja todas as categorias sem digitar",
+      "desc": "Ao tocar no campo de Categoria, Subcategoria ou Pessoa, a lista mostra todas as opções em ordem alfabética, e é só rolar. Antes apareciam só algumas e o resto ficava escondido atrás de \"continue digitando\".",
+      "type": "melhoria"
     },
     {
-      "title": "Importação reconhece mais duplicidades",
-      "desc": "A importação de extrato compara com os lançamentos de todas as contas e agora também reconhece transferências e pagamentos de fatura já lançados, mostra em qual conta está o lançamento parecido e avisa quando ele está em aberto (provável pagamento).",
+      "title": "Funciona mesmo com o campo já preenchido",
+      "desc": "Se a categoria já veio sugerida, tocar no campo abre a lista inteira para você trocar. Digitar continua filtrando sem ligar para acento ou maiúscula.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "lib/openMatch.ts: pickOpenMatch (mesmo valor e sentido, não pago, até 7 dias, sem fatura de cartão)",
-    "Reconcile.tsx: findOpenMatch antes da checagem de duplicidade; pagar o existente via FinanceService.updateTransaction + recálculo das contas; lote deixa na fila",
-    "statement-template-helper.ts: duplicidade considera TRANSFER (pelo lado) e BILL_PAYMENT; janela de 7 dias para em aberto; duplicate_tx com id, is_paid e conta",
-    "Testes: openMatch e statementImport"
+    "components/common/SearchableInput.tsx: sem limite de 8 sugestões (lista rolável, max-h-72); ao focar mostra todas as opções e só filtra depois de digitar; Enter não troca o valor sem o usuário navegar na lista",
+    "lib/searchOptions.ts: filterOptions extraído (sem acento/maiúscula, começa-com primeiro, sem repetidas)",
+    "tests/searchOptions.test.ts"
   ]
 }

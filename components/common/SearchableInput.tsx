@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeStr } from '../../lib/stringUtils';
+import { filterOptions } from '../../lib/searchOptions';
 
 interface SearchableInputProps {
     value: string;
@@ -8,7 +9,7 @@ interface SearchableInputProps {
     placeholder?: string;
     className?: string;
     disabled?: boolean;
-    /** Quantas sugestões mostrar de uma vez. */
+    /** Limite opcional de sugestões. Sem limite, a lista mostra todas e rola. */
     maxVisible?: number;
     onBlur?: () => void;
     autoFocus?: boolean;
@@ -38,12 +39,16 @@ export const SearchableInput: React.FC<SearchableInputProps> = ({
     placeholder,
     className,
     disabled,
-    maxVisible = 8,
+    maxVisible,
     onBlur,
     autoFocus
 }) => {
     const [open, setOpen] = useState(false);
     const [highlight, setHighlight] = useState(0);
+    // Só filtra depois que o usuário digita. Ao tocar num campo já preenchido
+    // (ex.: categoria sugerida), a lista abre com TODAS as opções — antes ela
+    // filtrava pelo valor atual e não mostrava nada além dele.
+    const [typed, setTyped] = useState(false);
     const wrapRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -54,36 +59,16 @@ export const SearchableInput: React.FC<SearchableInputProps> = ({
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    const matches = useMemo(() => {
-        const term = normalizeStr(value || '');
-        // "Moradia" e "moradia " são a mesma opção: aparece uma vez só.
-        const seen = new Set<string>();
-        const unique = options.filter(opt => {
-            const key = opt ? normalizeStr(opt) : '';
-            if (!key || seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        });
+    const matches = useMemo(
+        () => filterOptions(options, typed ? (value || '') : ''),
+        [options, value, typed]
+    );
 
-        // Sem nada digitado, mostra tudo (o campo funciona como uma lista).
-        if (!term) return unique.sort((a, b) => a.localeCompare(b, 'pt-BR'));
-
-        // Quem começa com o termo vem primeiro: digitando "ali", "Alimentação"
-        // deve aparecer antes de "Saúde Alimentar".
-        const starts: string[] = [];
-        const contains: string[] = [];
-        for (const opt of unique) {
-            const norm = normalizeStr(opt);
-            if (norm.startsWith(term)) starts.push(opt);
-            else if (norm.includes(term)) contains.push(opt);
-        }
-        const cmp = (a: string, b: string) => a.localeCompare(b, 'pt-BR');
-        return [...starts.sort(cmp), ...contains.sort(cmp)];
-    }, [options, value]);
-
-    const visible = matches.slice(0, maxVisible);
+    // Sem limite: todas as opções ficam na lista, que rola. Antes eram 8 e o
+    // resto ficava escondido atrás de "continue digitando".
+    const visible = maxVisible ? matches.slice(0, maxVisible) : matches;
     // Digitou exatamente uma opção que já existe: não há o que sugerir.
-    const exact = matches.length === 1 && normalizeStr(matches[0]) === normalizeStr(value || '');
+    const exact = typed && matches.length === 1 && normalizeStr(matches[0]) === normalizeStr(value || '');
 
     const pick = (option: string) => {
         onChange(option);
@@ -101,7 +86,7 @@ export const SearchableInput: React.FC<SearchableInputProps> = ({
             setHighlight(h => (h + 1) % visible.length);
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
-            setHighlight(h => (h - 1 + visible.length) % visible.length);
+            setHighlight(h => (h <= 0 ? visible.length - 1 : h - 1));
         } else if (e.key === 'Enter') {
             // Enter só escolhe da lista se houver uma opção em destaque; caso
             // contrário deixa o texto livre passar (é assim que se cria nova).
@@ -118,8 +103,8 @@ export const SearchableInput: React.FC<SearchableInputProps> = ({
                 value={value}
                 disabled={disabled}
                 autoFocus={autoFocus}
-                onFocus={(e) => { e.target.select(); setOpen(true); setHighlight(0); }}
-                onChange={(e) => { onChange(e.target.value); setOpen(true); setHighlight(0); }}
+                onFocus={(e) => { e.target.select(); setTyped(false); setOpen(true); setHighlight(-1); }}
+                onChange={(e) => { onChange(e.target.value); setTyped(true); setOpen(true); setHighlight(0); }}
                 onKeyDown={handleKeyDown}
                 onBlur={onBlur}
                 placeholder={placeholder}
@@ -128,7 +113,7 @@ export const SearchableInput: React.FC<SearchableInputProps> = ({
             />
 
             {open && !disabled && visible.length > 0 && !exact && (
-                <div className="absolute z-50 top-full mt-1 left-0 right-0 max-h-56 overflow-y-auto bg-white border border-slate-100 rounded-xl shadow-2xl animate-in fade-in duration-100">
+                <div className="absolute z-50 top-full mt-1 left-0 right-0 max-h-72 overflow-y-auto overscroll-contain bg-white border border-slate-100 rounded-xl shadow-2xl animate-in fade-in duration-100">
                     {visible.map((option, idx) => (
                         <button
                             key={option}

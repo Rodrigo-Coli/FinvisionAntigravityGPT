@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.11.01.2235",
+    "title": "Lista de categorias completa",
+    "date": "01/11/2026",
+    "benefits": [
+      {
+        "title": "Veja todas as categorias sem digitar",
+        "desc": "Ao tocar no campo de Categoria, Subcategoria ou Pessoa, a lista mostra todas as opções em ordem alfabética, e é só rolar. Antes apareciam só algumas e o resto ficava escondido atrás de \"continue digitando\".",
+        "type": "melhoria"
+      },
+      {
+        "title": "Funciona mesmo com o campo já preenchido",
+        "desc": "Se a categoria já veio sugerida, tocar no campo abre a lista inteira para você trocar. Digitar continua filtrando sem ligar para acento ou maiúscula.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "components/common/SearchableInput.tsx: sem limite de 8 sugestões (lista rolável, max-h-72); ao focar mostra todas as opções e só filtra depois de digitar; Enter não troca o valor sem o usuário navegar na lista",
+      "lib/searchOptions.ts: filterOptions extraído (sem acento/maiúscula, começa-com primeiro, sem repetidas)",
+      "tests/searchOptions.test.ts"
+    ]
+  },
+  {
     "version": "2026.11.01.1626",
     "title": "Conciliar: pagar o que já está em aberto e duplicidade mais esperta",
     "date": "01/11/2026",
