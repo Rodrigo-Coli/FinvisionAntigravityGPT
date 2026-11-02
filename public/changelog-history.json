@@ -1,17 +1,12 @@
 [
   {
-    "version": "2026.11.02.0124",
-    "title": "Contas separadas por tipo e A receber explicado",
+    "version": "2026.11.02.0126",
+    "title": "Resumo das contas e A receber explicado",
     "date": "02/11/2026",
     "benefits": [
       {
-        "title": "Contas e investimentos separados",
-        "desc": "Em Contas e Carteiras, o total que soma no patrimônio aparece em cima, com uma barra e três blocos: Contas (corrente, poupança, dinheiro), Investimentos e Contas que não somam. Toque num bloco para ir direto à lista dele.",
-        "type": "melhoria"
-      },
-      {
-        "title": "Um card por conta, com a fatia de cada uma",
-        "desc": "Cada conta tem seu card compacto, com saldo, quanto ela representa do grupo e os botões de extrato, transferir, ajustar, editar e arquivar sempre à mão. Contas zeradas ficam no fim. A visão antiga, agrupada por instituição, continua no botão \"Por instituição\".",
+        "title": "Resumo das contas numa lista só",
+        "desc": "Em Contas e Carteiras há um card novo, Resumo das contas: uma linha por conta com o nome e o saldo, separadas em Contas, Investimentos e Não somam no total, cada grupo com a sua soma e o total no fim. Toque no card para abrir ou fechar. O resto da tela continua igual.",
         "type": "melhoria"
       },
       {
@@ -21,8 +16,8 @@
       }
     ],
     "changes": [
-      "lib/accountSummary.ts: summarizeAccounts separa contas (cash), investimentos e não somam (include_in_dashboard = false); total = contas + investimentos, como no Início; sharePct para as barras",
-      "components/banking/AccountsSection.tsx: resumo com total, barra e blocos por tipo; visão \"Por tipo\" (padrão, card compacto por conta, maior saldo primeiro) e \"Por instituição\" (grupos, como antes), preferência guardada no aparelho",
+      "components/banking/AccountsSection.tsx: card \"Resumo das contas\" (recolhível, estado lembrado no aparelho) acima da busca; resto da tela inalterado",
+      "lib/accountSummary.ts: summarizeAccounts separa contas, investimentos e não somam (include_in_dashboard = false); total = contas + investimentos (igual ao Saldo Consolidado)",
       "services/dashboard.service.ts + types.ts: receivablesDetail { sales, loans } com a composição do a receber",
       "pages/Home.tsx: composição do A receber e linha com o patrimônio sem o a receber",
       "tests/accountSummary.test.ts; tests/dashboardBreakdown.test.ts e tests/dashboardSaleReceivables.test.ts cobrem a composição e a não duplicação do bem vendido"

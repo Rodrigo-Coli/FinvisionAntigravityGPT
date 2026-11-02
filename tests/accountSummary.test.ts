@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { accountBucket, summarizeAccounts, sharePct } from '../lib/accountSummary';
+import { accountBucket, summarizeAccounts } from '../lib/accountSummary';
 
 /**
- * Contas e Carteiras: o total de cima soma contas + investimentos (como o
+ * Contas e Carteiras (card Resumo): o total soma contas + investimentos (como o
  * Início); contas fora do painel aparecem num grupo próprio e não somam.
  */
 const acc = (type: string, currentBalance: number, includeInDashboard = true) => ({ type, currentBalance, includeInDashboard });
@@ -40,12 +40,5 @@ describe('separação das contas', () => {
   it('saldo negativo (cheque especial) desconta do total', () => {
     const s = summarizeAccounts([acc('CHECKING', -200), acc('CHECKING', 1000)]);
     expect(s.cash.total).toBe(800);
-  });
-
-  it('participação para as barras nunca passa de 0–100', () => {
-    expect(sharePct(25, 100)).toBe(25);
-    expect(sharePct(-10, 100)).toBe(0);
-    expect(sharePct(10, 0)).toBe(0);
-    expect(sharePct(150, 100)).toBe(100);
   });
 });

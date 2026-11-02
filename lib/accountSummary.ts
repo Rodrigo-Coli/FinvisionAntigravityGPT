@@ -1,5 +1,5 @@
 /**
- * Resumo da tela "Contas e Carteiras": separa as contas em três grupos.
+ * Card "Resumo das contas" (Contas e Carteiras): separa as contas em três grupos.
  *
  *  - cash:       corrente, poupança e dinheiro que SOMAM no patrimônio;
  *  - investment: contas de investimento (corretoras, caixinhas) que SOMAM;
@@ -53,10 +53,4 @@ export function summarizeAccounts<T extends SummaryAccount>(accounts: T[]): Acco
     b.accounts.sort((a, z) => (Number(z.currentBalance) || 0) - (Number(a.currentBalance) || 0));
   }
   return { total: r2(out.cash.total + out.investment.total), ...out };
-}
-
-/** Participação (0–100) de um valor no total, para as barras. Negativo/zero → 0. */
-export function sharePct(value: number, total: number): number {
-  if (!(total > 0) || !(value > 0)) return 0;
-  return Math.min(100, (value / total) * 100);
 }

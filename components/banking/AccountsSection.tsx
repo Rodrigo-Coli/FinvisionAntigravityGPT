@@ -22,7 +22,9 @@ import {
   Building2,
   RefreshCw,
   Zap,
-  Link as LinkIcon
+  Link as LinkIcon,
+  ChevronDown,
+  ListOrdered
 } from 'lucide-react';
 import { BankAccount, AccountType } from '../../types';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
@@ -32,9 +34,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { isProbablyOffline } from '../../lib/connectivity';
 import { getSessionUser } from '../../lib/session';
 import { DateInput } from '../common/DateInput';
-import { summarizeAccounts, sharePct, AccountBucket, BucketSummary } from '../../lib/accountSummary';
-
-type AccountGroup = { key: string; label: string; accounts: BankAccount[] };
+import { summarizeAccounts } from '../../lib/accountSummary';
 
 const COLORS = [
   { name: 'Blue', hex: '#3b82f6' },
@@ -59,9 +59,9 @@ const AccountsSection: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  // Visão da lista: por tipo (contas / investimentos / não somam) ou por instituição (grupos).
-  const [viewMode, setViewMode] = useState<'type' | 'group'>(() => {
-    try { return localStorage.getItem('finvision_accounts_view') === 'group' ? 'group' : 'type'; } catch { return 'type'; }
+  // Card "Resumo das contas": aberto ou fechado (lembrado no aparelho).
+  const [summaryOpen, setSummaryOpen] = useState(() => {
+    try { return localStorage.getItem('finvision_accounts_summary_open') !== 'false'; } catch { return true; }
   });
   const navigate = useNavigate();
 
@@ -603,7 +603,7 @@ const AccountsSection: React.FC = () => {
   // adivinhado pelo nome: "Safra Rodrigo" e "Safra Fátima" começam igual e são de
   // titulares diferentes.
   const accountGroups = (() => {
-    const groups = new Map<string, AccountGroup>();
+    const groups = new Map<string, { key: string; label: string; accounts: BankAccount[] }>();
     for (const acc of filteredAccounts) {
       const key = acc.groupKey ? `g:${acc.groupKey}` : `solo:${acc.id}`;
       const label = acc.groupKey || acc.institution;
@@ -619,28 +619,20 @@ const AccountsSection: React.FC = () => {
     return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label));
   })();
 
-  // Separação para o resumo e para a visão "por tipo". O resumo considera só
-  // as contas ativas (como o Início); as seções mostram o que o filtro trouxe.
-  const summary = summarizeAccounts(filteredAccounts.filter(acc => !acc.isArchived));
-  const sectionsSummary = summarizeAccounts(filteredAccounts);
-  const barBase = Math.max(0, summary.cash.total) + Math.max(0, summary.investment.total);
-  const typeSections: { key: AccountBucket; title: string; short: string; hint: string; dot: string; bar: string; data: BucketSummary<BankAccount> }[] = [
-    { key: 'cash', title: 'Contas', short: 'Contas', hint: 'Corrente, poupança e dinheiro — somam no patrimônio.', dot: 'bg-brand-500', bar: 'bg-brand-500', data: sectionsSummary.cash },
-    { key: 'investment', title: 'Investimentos', short: 'Investimentos', hint: 'Corretoras e caixinhas — somam no patrimônio.', dot: 'bg-indigo-400', bar: 'bg-indigo-400', data: sectionsSummary.investment },
-    { key: 'excluded', title: 'Não somam no patrimônio', short: 'Não somam', hint: 'Contas marcadas para não entrar no painel. Aparecem aqui, mas ficam fora de todos os totais.', dot: 'bg-slate-300', bar: 'bg-slate-300', data: sectionsSummary.excluded }
-  ];
-
-  const changeViewMode = (mode: 'type' | 'group') => {
-    setViewMode(mode);
-    try { localStorage.setItem('finvision_accounts_view', mode); } catch { /* só preferência */ }
-  };
-
-  const goToSection = (key: AccountBucket) => {
-    if (viewMode !== 'type') changeViewMode('type');
-    setTimeout(() => document.getElementById(`acc-sec-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-  };
+  const totalBalance = filteredAccounts
+    .filter(acc => acc.includeInDashboard && !acc.isArchived)
+    .reduce((sum, acc) => sum + acc.currentBalance, 0);
 
   const activeAccountsCount = accounts.filter(acc => !acc.isArchived).length;
+
+  // Resumo: uma linha por conta ativa (nome e saldo), separadas em contas,
+  // investimentos e contas que não somam. Só os dados desta tela.
+  const accountsSummary = summarizeAccounts(accounts.filter(acc => !acc.isArchived));
+  const toggleSummary = () => {
+    const next = !summaryOpen;
+    setSummaryOpen(next);
+    try { localStorage.setItem('finvision_accounts_summary_open', String(next)); } catch { /* só preferência */ }
+  };
   const investmentAccountsCount = accounts.filter(acc => acc.type === 'INVESTMENT' && !acc.isArchived).length;
 
   const activeFilterCount = (filterType !== 'ALL' ? 1 : 0) +
@@ -658,261 +650,6 @@ const AccountsSection: React.FC = () => {
       ? Number(adjustValue) - (adjustMode === 'initial' ? adjustAccount.initialBalance : adjustAccount.currentBalance)
       : Number(adjustValue) - adjustAccount.currentBalance
     : 0;
-
-  // Card da visão "por instituição": uma conta ou um grupo de bolsos da mesma instituição.
-  const renderAccountCard = (grupo: AccountGroup) => {
-    const isGrouped = grupo.accounts.length > 1;
-    const groupTotal = grupo.accounts.reduce((s, a) => s + a.currentBalance, 0);
-    const principal = grupo.accounts[0];
-    const allArchived = grupo.accounts.every(a => a.isArchived);
-
-    return (
-    <div
-      key={grupo.key}
-      className={`bg-white rounded-[24px] border border-slate-100 p-5 shadow-sm group hover:border-brand-200 transition-all duration-300 relative overflow-hidden ${allArchived ? 'opacity-70 grayscale' : ''}`}
-    >
-      <div className="absolute top-0 right-0 w-20 h-20 bg-slate-50 rounded-bl-[80px] -translate-y-5 translate-x-5 opacity-0 group-hover:opacity-100 transition-all" />
-
-      <div className="relative z-10 space-y-4">
-        <div className="flex justify-between items-start">
-          <div className="flex items-center gap-3 min-w-0">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg shadow-current/20 shrink-0"
-              style={{ backgroundColor: principal.color }}
-            >
-              {principal.type === 'CHECKING' ? <Building2 size={20} /> : principal.type === 'INVESTMENT' && !isGrouped ? <TrendingUp size={20} /> : <Wallet size={20} />}
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-bold text-sm text-slate-900 group-hover:text-brand-600 transition-colors uppercase tracking-tight break-words">{grupo.label}</h3>
-              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
-                {isGrouped
-                  ? `${grupo.accounts.length} contas vinculadas`
-                  : getTypeLabel(principal.type)}
-              </p>
-            </div>
-          </div>
-          {!isGrouped && (
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-              <button
-                onClick={() => promptLinkAccount(principal)}
-                className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
-                title="Vincular a outra conta da mesma instituição"
-                aria-label={`Vincular a conta do ${principal.institution} a um grupo`}
-              >
-                <LinkIcon size={14} />
-              </button>
-              <button
-                onClick={() => handleEditAccount(principal)}
-                className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
-                aria-label={`Editar conta do ${principal.institution}`}
-              >
-                <Edit2 size={14} />
-              </button>
-              <button
-                onClick={() => handleArchiveAccount(principal.id, principal.isArchived)}
-                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
-                aria-label={`${principal.isArchived ? 'Desarquivar' : 'Arquivar'} conta do ${principal.institution}`}
-              >
-                <Archive size={14} />
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-0.5">
-          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
-            {isGrouped ? 'Saldo Total do Grupo' : 'Saldo Atual'}
-          </p>
-          <p className={`text-xl font-black tracking-tight ${groupTotal < 0 ? 'text-rose-500' : 'text-slate-900'}`}>
-            {formatCurrency(groupTotal)}
-          </p>
-        </div>
-
-        {/* Bolsos do grupo: cada conta continua separada, com saldo e ações
-            próprias. É o que evita perder de vista quanto está em conta
-            corrente e quanto está investido. */}
-        {isGrouped && (
-          <div className="space-y-2 pt-1">
-            {grupo.accounts.map(acc => (
-              <div key={acc.id} className="flex items-center justify-between gap-2 p-2.5 bg-slate-50 rounded-xl">
-                <div className="min-w-0">
-                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{getTypeLabel(acc.type)}</p>
-                  <p className="text-[10px] font-medium text-slate-400 break-words leading-tight">{acc.institution}</p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className={`text-xs font-black tabular-nums ${acc.currentBalance < 0 ? 'text-rose-500' : 'text-slate-800'}`}>
-                    {formatCurrency(acc.currentBalance)}
-                  </span>
-                  <button
-                    onClick={() => navigate(`/history?account=${acc.id}`)}
-                    className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-white rounded-lg transition-all"
-                    title={`Extrato de ${acc.institution}`}
-                    aria-label={`Ver extrato da conta do ${acc.institution}`}
-                  >
-                    <HistoryIcon size={11} />
-                  </button>
-                  <button
-                    onClick={() => { setAdjustAccount(acc); setAdjustValue(acc.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
-                    className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-white rounded-lg transition-all"
-                    title={`Ajustar saldo de ${acc.institution}`}
-                    aria-label={`Ajustar saldo da conta do ${acc.institution}`}
-                  >
-                    <RefreshCw size={11} />
-                  </button>
-                  <button
-                    onClick={() => handleEditAccount(acc)}
-                    className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-white rounded-lg transition-all"
-                    title={`Editar ${acc.institution}`}
-                    aria-label={`Editar conta do ${acc.institution}`}
-                  >
-                    <Edit2 size={11} />
-                  </button>
-                  <button
-                    onClick={() => setAccountGroup(acc.id, null)}
-                    className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-white rounded-lg transition-all"
-                    title={`Desvincular ${acc.institution} do grupo`}
-                    aria-label={`Desvincular a conta do ${acc.institution} do grupo`}
-                  >
-                    <X size={11} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${principal.includeInDashboard ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
-              {principal.includeInDashboard ? 'No Dashboard' : 'Privada'}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            {!isGrouped && (
-              <button
-                onClick={() => navigate(`/history?account=${principal.id}`)}
-                className="flex items-center justify-center p-2 bg-brand-50 hover:bg-brand-600 text-brand-600 hover:text-white rounded-lg transition-all shadow-sm"
-                title="Ver Extrato"
-                aria-label={`Ver extrato da conta do ${principal.institution}`}
-              >
-                <HistoryIcon size={12} />
-              </button>
-            )}
-            <button
-              onClick={() => openTransferModal(principal.id)}
-              className="flex items-center justify-center p-2 bg-slate-50 hover:bg-brand-900 hover:text-white text-slate-500 rounded-lg transition-all"
-              title="Transferir para outra conta"
-              aria-label={`Transferir da conta do ${principal.institution} para outra conta`}
-            >
-              <ArrowRight size={12} />
-            </button>
-            {isGrouped ? (
-              <button
-                onClick={() => promptLinkAccount(principal)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-brand-900 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
-                aria-label={`Renomear o grupo ${grupo.label}`}
-              >
-                <LinkIcon size={10} /> Grupo
-              </button>
-            ) : (
-              <button
-                onClick={() => { setAdjustAccount(principal); setAdjustValue(principal.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-brand-900 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
-                aria-label={`Ajustar saldo da conta do ${principal.institution}`}
-              >
-                <RefreshCw size={10} /> Ajustar Saldo
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-    );
-  };
-
-  // Card compacto da visão "por tipo": uma conta por card, com o saldo, a
-  // participação dela no grupo (barra) e as ações sempre à mão.
-  const renderCompactAccount = (acc: BankAccount, share: number, barClass: string) => {
-    const iconBtn = 'p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all';
-    return (
-      <div
-        key={acc.id}
-        className={`bg-white rounded-2xl border border-slate-100 p-4 shadow-sm hover:border-brand-200 transition-all ${acc.isArchived ? 'opacity-70 grayscale' : ''}`}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0"
-            style={{ backgroundColor: acc.color }}
-          >
-            {acc.type === 'INVESTMENT' ? <TrendingUp size={18} /> : acc.type === 'CHECKING' ? <Building2 size={18} /> : <Wallet size={18} />}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="font-bold text-sm text-slate-900 uppercase tracking-tight truncate">{acc.institution}</h3>
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate">
-              {getTypeLabel(acc.type)}{acc.groupKey ? ` · ${acc.groupKey}` : ''}
-            </p>
-          </div>
-          <p className={`text-base font-black tracking-tight tabular-nums whitespace-nowrap ${acc.currentBalance < 0 ? 'text-rose-500' : acc.currentBalance === 0 ? 'text-slate-300' : 'text-slate-900'}`}>
-            {formatCurrency(acc.currentBalance, acc.currency || 'BRL')}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 mt-3">
-          <div className="flex-1 min-w-0 flex items-center gap-2" title="Participação desta conta no grupo">
-            <div className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full ${barClass}`} style={{ width: `${share}%` }} />
-            </div>
-            <span className="text-[9px] font-bold text-slate-400 tabular-nums w-8 text-right">
-              {share > 0 && share < 1 ? '<1' : Math.round(share)}%
-            </span>
-          </div>
-          <div className="flex items-center shrink-0">
-            <button onClick={() => navigate(`/history?account=${acc.id}`)} className={iconBtn} title="Ver extrato" aria-label={`Ver extrato da conta do ${acc.institution}`}>
-              <HistoryIcon size={14} />
-            </button>
-            <button onClick={() => openTransferModal(acc.id)} className={iconBtn} title="Transferir" aria-label={`Transferir da conta do ${acc.institution} para outra conta`}>
-              <ArrowRight size={14} />
-            </button>
-            <button
-              onClick={() => { setAdjustAccount(acc); setAdjustValue(acc.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
-              className={iconBtn}
-              title="Ajustar saldo"
-              aria-label={`Ajustar saldo da conta do ${acc.institution}`}
-            >
-              <RefreshCw size={14} />
-            </button>
-            <button onClick={() => handleEditAccount(acc)} className={iconBtn} title="Editar" aria-label={`Editar conta do ${acc.institution}`}>
-              <Edit2 size={14} />
-            </button>
-            <button
-              onClick={() => handleArchiveAccount(acc.id, acc.isArchived)}
-              className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
-              title={acc.isArchived ? 'Desarquivar' : 'Arquivar'}
-              aria-label={`${acc.isArchived ? 'Desarquivar' : 'Arquivar'} conta do ${acc.institution}`}
-            >
-              <Archive size={14} />
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Atalho para cadastrar conta, no fim da lista.
-  const addAccountCard = (
-      <button
-        onClick={() => { resetForm(); setShowModal(true); }}
-        className="rounded-[24px] border-2 border-dashed border-slate-100 p-5 flex flex-col items-center justify-center gap-3 text-slate-300 hover:border-brand-200 hover:text-brand-600 hover:bg-brand-50/30 transition-all min-h-[150px] group"
-      >
-        <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center transition-colors group-hover:bg-brand-100">
-          <Plus size={24} />
-        </div>
-        <div className="text-center">
-          <p className="font-bold text-xs text-slate-500">Nova Instituição</p>
-          <p className="text-[8px] font-medium uppercase tracking-widest">Conectar Banco ou Carteira</p>
-        </div>
-      </button>
-  );
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -938,17 +675,13 @@ const AccountsSection: React.FC = () => {
         </div>
       </div>
 
-      {/* RESUMO: o total que soma no patrimônio em cima, e a separação
-          contas x investimentos x contas que não somam logo abaixo. */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] p-5 sm:p-6 shadow-sm space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1 min-w-0">
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Total que soma no patrimônio</span>
-            <p className={`text-2xl sm:text-3xl font-black tracking-tight tabular-nums ${summary.total < 0 ? 'text-rose-500' : 'text-slate-900 dark:text-white'}`}>
-              {formatCurrency(summary.total)}
-            </p>
-            <p className="text-[11px] text-slate-400 font-medium">
-              {activeAccountsCount} {activeAccountsCount === 1 ? 'conta ativa' : 'contas ativas'} · {investmentAccountsCount} de investimento
+      {/* SUMMARY METRICS */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+          <div className="space-y-1">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Saldo Consolidado</span>
+            <p className={`text-lg font-black tracking-tight ${totalBalance < 0 ? 'text-rose-500' : 'text-slate-900 dark:text-white'}`}>
+              {formatCurrency(totalBalance)}
             </p>
           </div>
           <div className="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-950/30 flex items-center justify-center text-brand-600 shrink-0">
@@ -956,41 +689,87 @@ const AccountsSection: React.FC = () => {
           </div>
         </div>
 
-        <div
-          className="h-2.5 w-full rounded-full overflow-hidden flex bg-slate-100 dark:bg-slate-800"
-          role="img"
-          aria-label={`Contas ${Math.round(sharePct(summary.cash.total, barBase))}%, investimentos ${Math.round(sharePct(summary.investment.total, barBase))}%`}
-        >
-          <div className="h-full bg-brand-500 transition-all duration-700" style={{ width: `${sharePct(summary.cash.total, barBase)}%` }} />
-          <div className="h-full bg-indigo-400 transition-all duration-700" style={{ width: `${sharePct(summary.investment.total, barBase)}%` }} />
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+          <div className="space-y-1">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Contas Ativas</span>
+            <p className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+              {activeAccountsCount}
+            </p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center text-blue-600 shrink-0">
+            <Landmark size={20} />
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {typeSections.map(s => {
-            const data = summary[s.key];
-            return (
-              <button
-                key={s.key}
-                type="button"
-                onClick={() => goToSection(s.key)}
-                className={`text-left rounded-xl px-3 py-2.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors min-w-0 ${s.key === 'excluded' ? 'col-span-2 sm:col-span-1' : ''}`}
-                aria-label={`Ver ${s.title}`}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${s.dot}`} />
-                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest truncate">{s.short}</span>
-                </div>
-                <p className={`text-sm font-black tabular-nums whitespace-nowrap mt-0.5 ${data.total < 0 ? 'text-rose-500' : s.key === 'excluded' ? 'text-slate-400' : 'text-slate-900 dark:text-white'}`}>
-                  {formatCurrency(data.total)}
-                </p>
-                <p className="text-[10px] font-medium text-slate-400 truncate">
-                  {data.count} {data.count === 1 ? 'conta' : 'contas'}
-                  {s.key === 'excluded' ? ' · não soma' : ` · ${Math.round(sharePct(data.total, summary.total))}%`}
-                </p>
-              </button>
-            );
-          })}
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+          <div className="space-y-1">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Investimentos</span>
+            <p className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+              {investmentAccountsCount} {investmentAccountsCount === 1 ? 'instituição' : 'instituições'}
+            </p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 flex items-center justify-center text-indigo-600 shrink-0">
+            <Zap size={20} />
+          </div>
         </div>
+      </div>
+
+      {/* RESUMO DAS CONTAS: uma linha por conta, com o total em cima */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+        <button
+          type="button"
+          onClick={toggleSummary}
+          className="w-full flex items-center justify-between gap-3 p-4 text-left"
+          aria-expanded={summaryOpen}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+              <ListOrdered size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Resumo das contas</span>
+              <p className={`text-lg font-black tracking-tight tabular-nums ${accountsSummary.total < 0 ? 'text-rose-500' : 'text-slate-900 dark:text-white'}`}>
+                {formatCurrency(accountsSummary.total)}
+              </p>
+            </div>
+          </div>
+          <ChevronDown size={20} className={`text-slate-400 shrink-0 transition-transform ${summaryOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {summaryOpen && (
+          <div className="px-4 pb-4 space-y-4">
+            {([
+              ['Contas', accountsSummary.cash],
+              ['Investimentos', accountsSummary.investment],
+              ['Não somam no total', accountsSummary.excluded]
+            ] as const).filter(([, grupo]) => grupo.count > 0).map(([titulo, grupo]) => (
+              <div key={titulo}>
+                <div className="flex items-center justify-between gap-3 py-2 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{titulo}</span>
+                  <span className={`text-sm font-black tabular-nums ${grupo.total < 0 ? 'text-rose-500' : 'text-slate-900 dark:text-white'}`}>
+                    {formatCurrency(grupo.total)}
+                  </span>
+                </div>
+                <ul>
+                  {grupo.accounts.map(acc => (
+                    <li key={acc.id} className="flex items-center justify-between gap-3 py-1.5 border-b border-slate-50 dark:border-slate-800/60 last:border-b-0">
+                      <span className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate">{acc.institution}</span>
+                      <span className={`text-xs font-bold tabular-nums whitespace-nowrap ${acc.currentBalance < 0 ? 'text-rose-500' : 'text-slate-700 dark:text-slate-200'}`}>
+                        {formatCurrency(acc.currentBalance, acc.currency || 'BRL')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <div className="flex items-center justify-between gap-3 pt-2 border-t-2 border-slate-200 dark:border-slate-700">
+              <span className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest">Total (contas + investimentos)</span>
+              <span className={`text-sm font-black tabular-nums ${accountsSummary.total < 0 ? 'text-rose-500' : 'text-slate-900 dark:text-white'}`}>
+                {formatCurrency(accountsSummary.total)}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* TOOLBAR */}
@@ -1021,22 +800,6 @@ const AccountsSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Como ver: por tipo (contas / investimentos / não somam) ou por instituição */}
-      <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-full sm:w-auto sm:inline-flex" role="tablist" aria-label="Como ver as contas">
-        {([['type', 'Por tipo'], ['group', 'Por instituição']] as const).map(([mode, label]) => (
-          <button
-            key={mode}
-            type="button"
-            role="tab"
-            aria-selected={viewMode === mode}
-            onClick={() => changeViewMode(mode)}
-            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${viewMode === mode ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
       {/* CONTENT GRID */}
       {loading ? (
         <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
@@ -1054,43 +817,192 @@ const AccountsSection: React.FC = () => {
           </div>
         </div>
       ) : (
-        viewMode === 'type' ? (
-          <div className="space-y-8">
-            {typeSections.filter(s => s.data.count > 0).map(s => (
-              <section key={s.key} id={`acc-sec-${s.key}`} className="space-y-3 scroll-mt-24">
-                <div className="flex items-end justify-between gap-3 px-1">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${s.dot}`} />
-                      <h2 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest">{s.title}</h2>
-                      <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-full px-2 py-0.5">{s.data.count}</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+          {accountGroups.map((grupo) => {
+            const isGrouped = grupo.accounts.length > 1;
+            const groupTotal = grupo.accounts.reduce((s, a) => s + a.currentBalance, 0);
+            const principal = grupo.accounts[0];
+            const allArchived = grupo.accounts.every(a => a.isArchived);
+
+            return (
+            <div
+              key={grupo.key}
+              className={`bg-white rounded-[24px] border border-slate-100 p-5 shadow-sm group hover:border-brand-200 transition-all duration-300 relative overflow-hidden ${allArchived ? 'opacity-70 grayscale' : ''}`}
+            >
+              <div className="absolute top-0 right-0 w-20 h-20 bg-slate-50 rounded-bl-[80px] -translate-y-5 translate-x-5 opacity-0 group-hover:opacity-100 transition-all" />
+
+              <div className="relative z-10 space-y-4">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg shadow-current/20 shrink-0"
+                      style={{ backgroundColor: principal.color }}
+                    >
+                      {principal.type === 'CHECKING' ? <Building2 size={20} /> : <Wallet size={20} />}
                     </div>
-                    <p className="text-[11px] text-slate-400 font-medium mt-1">{s.hint}</p>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-sm text-slate-900 group-hover:text-brand-600 transition-colors uppercase tracking-tight break-words">{grupo.label}</h3>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                        {isGrouped
+                          ? `${grupo.accounts.length} contas vinculadas`
+                          : getTypeLabel(principal.type)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className={`text-base font-black tabular-nums tracking-tight ${s.data.total < 0 ? 'text-rose-500' : s.key === 'excluded' ? 'text-slate-400' : 'text-slate-900 dark:text-white'}`}>
-                      {formatCurrency(s.data.total)}
-                    </p>
-                    <p className="text-[10px] font-bold text-slate-400">
-                      {s.key === 'excluded' ? 'fora do total' : `${Math.round(sharePct(s.data.total, sectionsSummary.total))}% do total`}
-                    </p>
+                  {!isGrouped && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                      <button
+                        onClick={() => promptLinkAccount(principal)}
+                        className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
+                        title="Vincular a outra conta da mesma instituição"
+                        aria-label={`Vincular a conta do ${principal.institution} a um grupo`}
+                      >
+                        <LinkIcon size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleEditAccount(principal)}
+                        className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-all"
+                        aria-label={`Editar conta do ${principal.institution}`}
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleArchiveAccount(principal.id, principal.isArchived)}
+                        className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                        aria-label={`${principal.isArchived ? 'Desarquivar' : 'Arquivar'} conta do ${principal.institution}`}
+                      >
+                        <Archive size={14} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-0.5">
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                    {isGrouped ? 'Saldo Total do Grupo' : 'Saldo Atual'}
+                  </p>
+                  <p className={`text-xl font-black tracking-tight ${groupTotal < 0 ? 'text-rose-500' : 'text-slate-900'}`}>
+                    {formatCurrency(groupTotal)}
+                  </p>
+                </div>
+
+                {/* Bolsos do grupo: cada conta continua separada, com saldo e ações
+                    próprias. É o que evita perder de vista quanto está em conta
+                    corrente e quanto está investido. */}
+                {isGrouped && (
+                  <div className="space-y-2 pt-1">
+                    {grupo.accounts.map(acc => (
+                      <div key={acc.id} className="flex items-center justify-between gap-2 p-2.5 bg-slate-50 rounded-xl">
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{getTypeLabel(acc.type)}</p>
+                          <p className="text-[10px] font-medium text-slate-400 break-words leading-tight">{acc.institution}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`text-xs font-black tabular-nums ${acc.currentBalance < 0 ? 'text-rose-500' : 'text-slate-800'}`}>
+                            {formatCurrency(acc.currentBalance)}
+                          </span>
+                          <button
+                            onClick={() => navigate(`/history?account=${acc.id}`)}
+                            className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-white rounded-lg transition-all"
+                            title={`Extrato de ${acc.institution}`}
+                            aria-label={`Ver extrato da conta do ${acc.institution}`}
+                          >
+                            <HistoryIcon size={11} />
+                          </button>
+                          <button
+                            onClick={() => { setAdjustAccount(acc); setAdjustValue(acc.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
+                            className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-white rounded-lg transition-all"
+                            title={`Ajustar saldo de ${acc.institution}`}
+                            aria-label={`Ajustar saldo da conta do ${acc.institution}`}
+                          >
+                            <RefreshCw size={11} />
+                          </button>
+                          <button
+                            onClick={() => handleEditAccount(acc)}
+                            className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-white rounded-lg transition-all"
+                            title={`Editar ${acc.institution}`}
+                            aria-label={`Editar conta do ${acc.institution}`}
+                          >
+                            <Edit2 size={11} />
+                          </button>
+                          <button
+                            onClick={() => setAccountGroup(acc.id, null)}
+                            className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-white rounded-lg transition-all"
+                            title={`Desvincular ${acc.institution} do grupo`}
+                            aria-label={`Desvincular a conta do ${acc.institution} do grupo`}
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-1.5 h-1.5 rounded-full ${principal.includeInDashboard ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                      {principal.includeInDashboard ? 'No Dashboard' : 'Privada'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!isGrouped && (
+                      <button
+                        onClick={() => navigate(`/history?account=${principal.id}`)}
+                        className="flex items-center justify-center p-2 bg-brand-50 hover:bg-brand-600 text-brand-600 hover:text-white rounded-lg transition-all shadow-sm"
+                        title="Ver Extrato"
+                        aria-label={`Ver extrato da conta do ${principal.institution}`}
+                      >
+                        <HistoryIcon size={12} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => openTransferModal(principal.id)}
+                      className="flex items-center justify-center p-2 bg-slate-50 hover:bg-brand-900 hover:text-white text-slate-500 rounded-lg transition-all"
+                      title="Transferir para outra conta"
+                      aria-label={`Transferir da conta do ${principal.institution} para outra conta`}
+                    >
+                      <ArrowRight size={12} />
+                    </button>
+                    {isGrouped ? (
+                      <button
+                        onClick={() => promptLinkAccount(principal)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-brand-900 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
+                        aria-label={`Renomear o grupo ${grupo.label}`}
+                      >
+                        <LinkIcon size={10} /> Grupo
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => { setAdjustAccount(principal); setAdjustValue(principal.currentBalance); setAdjustMode('transaction'); setShowAdjustModal(true); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-brand-900 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
+                        aria-label={`Ajustar saldo da conta do ${principal.institution}`}
+                      >
+                        <RefreshCw size={10} /> Ajustar Saldo
+                      </button>
+                    )}
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
-                  {s.data.accounts.map(acc => renderCompactAccount(acc, sharePct(acc.currentBalance, s.data.total), s.bar))}
-                </div>
-              </section>
-            ))}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
-              {addAccountCard}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-            {accountGroups.map(grupo => renderAccountCard(grupo))}
-            {addAccountCard}
-          </div>
-        )
+            );
+          })}
+
+          {/* ADD CARD BUTTON (MOCK) */}
+          <button
+            onClick={() => { resetForm(); setShowModal(true); }}
+            className="rounded-[24px] border-2 border-dashed border-slate-100 p-5 flex flex-col items-center justify-center gap-3 text-slate-300 hover:border-brand-200 hover:text-brand-600 hover:bg-brand-50/30 transition-all min-h-[150px] group"
+          >
+            <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center transition-colors group-hover:bg-brand-100">
+              <Plus size={24} />
+            </div>
+            <div className="text-center">
+              <p className="font-bold text-xs text-slate-500">Nova Instituição</p>
+              <p className="text-[8px] font-medium uppercase tracking-widest">Conectar Banco ou Carteira</p>
+            </div>
+          </button>
+        </div>
       )}
 
       {/* TRANSFER MODAL */}
