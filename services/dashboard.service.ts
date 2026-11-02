@@ -63,6 +63,8 @@ export const DashboardService = {
     let totalAssets = 0;
     // Ativos separados para o card do Início (contas x bens x a receber).
     const assetsBreakdown = { accounts: 0, investments: 0, physical: 0, receivables: 0 };
+    // De onde vem o "a receber": parcelas de bens vendidos x empréstimos que você fez.
+    const receivablesDetail = { sales: 0, loans: 0 };
 
     accounts.forEach((acc: any) => {
       if (acc.include_in_dashboard === false) return; // Ignores private/registration accounts
@@ -132,7 +134,7 @@ export const DashboardService = {
       netWorth += val;
       totalAssets += val;
       if (asset.category === 'INVESTMENT') assetsBreakdown.investments += val;
-      else if (asset.metadata?.isLoan) assetsBreakdown.receivables += val;
+      else if (asset.metadata?.isLoan) { assetsBreakdown.receivables += val; receivablesDetail.loans += val; }
       else assetsBreakdown.physical += val;
     });
 
@@ -145,6 +147,7 @@ export const DashboardService = {
     netWorth += saleReceivables;
     totalAssets += saleReceivables;
     assetsBreakdown.receivables += saleReceivables;
+    receivablesDetail.sales += saleReceivables;
 
     const excludedSet = new Set((excludedEntities || []).map((e: any) => ownerKey(e.name)));
 
@@ -292,6 +295,7 @@ export const DashboardService = {
       netWorth: Number(netWorth || 0),
       totalAssets: Number(totalAssets || 0),
       assetsBreakdown,
+      receivablesDetail: { sales: Math.round(receivablesDetail.sales * 100) / 100, loans: Math.round(receivablesDetail.loans * 100) / 100 },
       pendingDecisions,
       totalLiabilities: Number(totalLiabilities || 0),
       creditCards: creditCardsSummary,

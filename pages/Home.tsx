@@ -462,9 +462,27 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
                     <div key={item.label} className="bg-white/10 rounded-xl px-3 py-2 min-w-0">
                       <p className="text-[10px] font-medium text-white/70 uppercase tracking-widest truncate">{item.label}</p>
                       <p className={`text-sm font-bold whitespace-nowrap ${!showBalance && 'blur-sm'}`}>{showBalance ? format(item.value) : '---'}</p>
+                      {item.label === 'A receber' && showBalance && data.receivablesDetail && (
+                        <p className="text-[10px] text-white/70 leading-tight mt-0.5">
+                          {[
+                            data.receivablesDetail.sales > 0 ? `Vendas ${format(data.receivablesDetail.sales)}` : null,
+                            data.receivablesDetail.loans > 0 ? `Empréstimos ${format(data.receivablesDetail.loans)}` : null
+                          ].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
+              )}
+              {/* A receber é direito seu (parcela de bem já vendido, empréstimo feito):
+                  entra no patrimônio no lugar do bem que saiu. Mostra também o número
+                  sem ele, para quem quer ver só o que já está na mão. */}
+              {showBalance && (data.assetsBreakdown?.receivables || 0) > 0 && (
+                <p className="text-[11px] text-white/70 leading-snug">
+                  Sem o a receber, o patrimônio fica em{' '}
+                  <span className="font-bold text-white">{format(data.netWorth - (data.assetsBreakdown?.receivables || 0))}</span>.
+                  O bem vendido já saiu de Bens; entra só o que falta receber.
+                </p>
               )}
             </div>
 
