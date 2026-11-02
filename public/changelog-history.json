@@ -1,5 +1,28 @@
 [
   {
+    "version": "2026.11.02.2053",
+    "title": "Resumo das faturas dos cartões",
+    "date": "02/11/2026",
+    "benefits": [
+      {
+        "title": "Todas as faturas do mês numa lista só",
+        "desc": "Em Cartões há um card novo, Resumo das faturas: uma linha por cartão com o valor da fatura, se está paga ou em aberto e quando vence, com o total do mês, quanto já foi pago e quanto falta pagar. Adicionais aparecem logo abaixo do titular. Toque no card para abrir ou fechar. O resto da tela continua igual.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Escolha outros meses",
+        "desc": "Use as setas ou a lista de meses para ver as faturas de meses anteriores ou das próximas (parcelas já lançadas). O mês é o do vencimento, o mesmo nome do seletor de Período da fatura.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "components/cards/CardsMonthSummary.tsx: card \"Resumo das faturas\" (recolhível, filtro de mês por setas e lista); valor = soma das compras da fatura (card_transactions), como a tela do cartão; cache para uso offline",
+      "lib/cardsMonthSummary.ts: mês pelo vencimento (UTC, igual a DateUtils.formatStatementLabel), titular antes dos adicionais, total / já pago / falta pagar",
+      "components/banking/CreditCardsSection.tsx: só inclui o card acima da lista de cartões",
+      "tests/cardsMonthSummary.test.ts"
+    ]
+  },
+  {
     "version": "2026.11.02.0133",
     "title": "Resumo das contas e empréstimos pelo valor em aberto",
     "date": "02/11/2026",

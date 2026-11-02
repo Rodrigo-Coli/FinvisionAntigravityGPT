@@ -20,6 +20,7 @@ import { TransactionList } from '../cards/TransactionList';
 import { AddCardModal } from '../cards/AddCardModal';
 import { ManualTransactionModal } from '../cards/ManualTransactionModal';
 import { StatementPicker } from '../cards/StatementPicker';
+import { CardsMonthSummary } from '../cards/CardsMonthSummary';
 import { pickCurrentStatement, targetStatementPeriod } from '../../lib/cardStatements';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import PlanUpgradeModal from '../subscription/PlanUpgradeModal';
@@ -2113,6 +2114,15 @@ function normalizeSubcategories(raw: any[], cachedCategories?: any[]): { id: str
           </button>
         </div>
       </div>
+
+      {/* RESUMO DAS FATURAS: uma linha por cartão, total do mês e filtro de mês */}
+      {!loading && cards.length > 0 && (
+        <CardsMonthSummary
+          cards={cards}
+          formatCurrency={formatCurrency}
+          refreshKey={`${selectedCard?.id || ''}|${currentStatement?.id || ''}|${statementTotal}|${statementPaid}`}
+        />
+      )}
 
       {loading ? (
         <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
