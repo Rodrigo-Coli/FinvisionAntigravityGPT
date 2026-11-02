@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { summarizeLoan } from '../lib/loanSummary';
+import { summarizeLoan, loanOpenBalance } from '../lib/loanSummary';
 
 /**
  * Empréstimo "Devolução Sonata Ricardo": R$ 36.000 em 15/08/2023, 1% a.m.
@@ -57,5 +57,42 @@ describe('acréscimo à dívida', () => {
       payments: [{ date: '2026-02-01', amount: 100 }], additions: [{ date: '2026-02-01', amount: 100 }], today: '2026-02-01' });
     expect(s.schedule.map(r => r.kind)).toEqual(['ADDITION', 'PAYMENT']);
     expect(s.openBalance).toBe(0);
+  });
+});
+
+describe('loanOpenBalance: valor em aberto hoje (Início, resumo e cartão iguais)', () => {
+  const pay = (date: string, amount: number, is_paid = true) => ({ type: 'INCOME', date, amount, is_paid });
+
+  it('conta corrente com juros: desconta o que já foi devolvido e soma acréscimos', () => {
+    const meta = { isLoan: true, loanType: 'OPEN_BALANCE', loanPrincipal: 36000, loanInterestRate: 1, loanInterestType: 'SIMPLE' };
+    const linked = [
+      pay('2023-08-15', 7000), pay('2023-09-11', 3000), pay('2023-10-11', 2500), pay('2023-11-09', 3000),
+      pay('2023-12-11', 3000), pay('2024-01-11', 3000), pay('2024-02-23', 3000), pay('2024-03-12', 3000),
+      pay('2024-04-26', 3000), pay('2024-06-12', 3000), pay('2024-09-10', 3000), pay('2026-06-26', 500),
+      pay('2026-08-27', 500), pay('2026-10-27', 700),
+      { type: 'EXPENSE', date: '2026-09-17', amount: 6000, is_paid: true, metadata: { type: 'loan_addition' } },
+      // A receber ainda não pago: não abate.
+      pay('2026-11-25', 5300, false)
+    ];
+    const open = loanOpenBalance({ metadata: meta, concessionDate: '2023-08-15', linked, today: '2026-11-02', fallbackPrincipal: 36000 });
+    expect(open).toBe(6091.47);
+    // Igual ao cartão do empréstimo (summarizeLoan).
+    expect(open).toBeLessThan(36000);
+  });
+
+  it('juros altos: o saldo em aberto pode ficar acima do valor emprestado', () => {
+    const meta = { loanType: 'OPEN_BALANCE', loanPrincipal: 5000, loanInterestRate: 11, loanInterestType: 'SIMPLE' };
+    const open = loanOpenBalance({ metadata: meta, concessionDate: '2024-05-28', linked: [pay('2024-06-07', 183), pay('2024-07-07', 550)], today: '2024-07-07' });
+    expect(open).toBeGreaterThan(5000);
+  });
+
+  it('parcelado/sem juros: principal menos o que foi recebido (pendente não conta)', () => {
+    const meta = { loanType: 'INSTALLMENTS', loanPrincipal: 10000 };
+    const open = loanOpenBalance({ metadata: meta, linked: [pay('2025-01-10', 2000), pay('2025-02-10', 2000, false)], today: '2025-03-01' });
+    expect(open).toBe(8000);
+  });
+
+  it('cadastro antigo sem principal usa o valor do bem', () => {
+    expect(loanOpenBalance({ metadata: { isLoan: true }, linked: [], today: '2025-01-01', fallbackPrincipal: 10000 })).toBe(10000);
   });
 });

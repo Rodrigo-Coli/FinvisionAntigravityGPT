@@ -1,6 +1,6 @@
 {
-  "version": "2026.11.02.0126",
-  "title": "Resumo das contas e A receber explicado",
+  "version": "2026.11.02.0133",
+  "title": "Resumo das contas e empréstimos pelo valor em aberto",
   "date": "02/11/2026",
   "benefits": [
     {
@@ -9,16 +9,21 @@
       "type": "melhoria"
     },
     {
+      "title": "Empréstimos contam o que falta receber",
+      "desc": "Empréstimos que você concedeu agora entram no patrimônio pelo valor em aberto hoje, o mesmo do cartão do empréstimo (com juros, acréscimos e descontando o que já foi devolvido). Antes o Início somava o valor original emprestado e o resumo de Patrimônio podia mostrar zero com o devedor ainda devendo.",
+      "type": "correcao"
+    },
+    {
       "title": "De onde vem o A receber",
-      "desc": "No Início, o bloco A receber mostra quanto é de parcelas de bens vendidos e quanto é de empréstimos que você fez, e abaixo aparece o patrimônio sem o a receber. O bem vendido não é contado de novo: ele sai de Bens e só entra o que falta receber.",
+      "desc": "No Início, o bloco A receber mostra quanto é de parcelas de bens vendidos e quanto é de empréstimos, e abaixo aparece o patrimônio sem o a receber. O bem vendido não é contado de novo: ele sai de Bens e só entra o que falta receber.",
       "type": "melhoria"
     }
   ],
   "changes": [
     "components/banking/AccountsSection.tsx: card \"Resumo das contas\" (recolhível, estado lembrado no aparelho) acima da busca; resto da tela inalterado",
     "lib/accountSummary.ts: summarizeAccounts separa contas, investimentos e não somam (include_in_dashboard = false); total = contas + investimentos (igual ao Saldo Consolidado)",
-    "services/dashboard.service.ts + types.ts: receivablesDetail { sales, loans } com a composição do a receber",
-    "pages/Home.tsx: composição do A receber e linha com o patrimônio sem o a receber",
-    "tests/accountSummary.test.ts; tests/dashboardBreakdown.test.ts e tests/dashboardSaleReceivables.test.ts cobrem a composição e a não duplicação do bem vendido"
+    "lib/loanSummary.ts: loanOpenBalance (valor em aberto hoje, mesma regra do cartão do empréstimo); usado em services/dashboard.service.ts (Início) e em pages/Assets.tsx (total Empréstimos a receber e lista resumida)",
+    "services/dashboard.service.ts + types.ts: receivablesDetail { sales, loans }; pages/Home.tsx mostra a composição e o patrimônio sem o a receber",
+    "tests: accountSummary, loanSummary (loanOpenBalance), dashboardLoans, dashboardBreakdown e dashboardSaleReceivables"
   ]
 }

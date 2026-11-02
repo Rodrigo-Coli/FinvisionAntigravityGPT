@@ -120,3 +120,61 @@ export function summarizeLoan(input: {
     progressPct: totalLent > 0 ? Math.min(100, Math.round((principalReturned / totalLent) * 100)) : 0
   };
 }
+
+export interface LoanLinkedTx {
+  id?: string;
+  type?: string | null;
+  amount: number | string;
+  date: string;
+  is_paid?: boolean | null;
+  isPaid?: boolean | null;
+  description?: string | null;
+  metadata?: { type?: string; addition_reason?: string } | null;
+}
+
+/**
+ * Valor em aberto HOJE de um empréstimo concedido — a mesma conta do cartão do
+ * empréstimo em Patrimônio ("Valor em Aberto Hoje"). Usada também no Início e no
+ * resumo de Patrimônio, que antes faziam contas próprias e divergiam: o Início
+ * somava o valor original emprestado (ignorando o que já foi devolvido) e o
+ * resumo descontava até parcela ainda não recebida, sem juros nem acréscimos.
+ *
+ *  - Conta Corrente (OPEN_BALANCE) com juros: saldo com juros pro-rata, menos o
+ *    que foi recebido, mais os acréscimos à dívida (summarizeLoan).
+ *  - Demais: principal menos o que foi efetivamente recebido.
+ *
+ * `fallbackPrincipal` (valor do bem) só vale para cadastro antigo sem principal.
+ */
+export function loanOpenBalance(input: {
+  metadata: any;
+  concessionDate?: string | null;
+  linked: LoanLinkedTx[];
+  today: string;
+  fallbackPrincipal?: number | string | null;
+}): number {
+  const meta = input.metadata || {};
+  const principal = Number(meta.loanPrincipal) || Number(input.fallbackPrincipal) || 0;
+  const rate = Number(meta.loanInterestRate) || 0;
+  const linked = input.linked || [];
+  const received = (t: LoanLinkedTx) => (t.isPaid ?? t.is_paid) === true;
+  const payments = linked
+    .filter(t => t.type === 'INCOME' && received(t))
+    .map(t => ({ id: t.id, date: t.date, amount: t.amount }));
+
+  if (meta.loanType === 'OPEN_BALANCE' && principal > 0 && rate > 0) {
+    const additions = linked
+      .filter(t => t.metadata?.type === 'loan_addition')
+      .map(t => ({ id: t.id, date: t.date, amount: t.amount, description: t.metadata?.addition_reason || t.description || undefined }));
+    return summarizeLoan({
+      principal,
+      monthlyRatePct: rate,
+      isCompound: meta.loanInterestType === 'COMPOUND',
+      concessionDate: String(input.concessionDate || input.today).split('T')[0],
+      payments,
+      additions,
+      today: input.today
+    }).openBalance;
+  }
+  const returned = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  return r2(Math.max(0, principal - returned));
+}

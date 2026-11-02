@@ -75,7 +75,7 @@ import { plantaRemainingDebt } from '../lib/plantaDebt';
 import { syncAllConsortiumBalances } from '../services/consortiumBalance.service';
 import { withTimeout } from '../lib/connectivity';
 import { isOrphanPendingFinancing } from '../lib/pendingFinancing';
-import { summarizeLoan } from '../lib/loanSummary';
+import { summarizeLoan, loanOpenBalance } from '../lib/loanSummary';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -6348,16 +6348,19 @@ ${tabelaHtml}
   const totalFinancial = dynamicBrokers.reduce((acc, curr) => acc + curr.balance, 0);
   const totalLiabilities = activeLiabilities.reduce((acc, curr) => acc + curr.remainingBalance, 0) + plantaDebtTotal;
 
+  // Empréstimos a receber: valor em aberto HOJE de cada empréstimo, a mesma conta
+  // do cartão do empréstimo (juros, acréscimos, só pagamento já recebido). Antes
+  // descontava até parcela ainda não recebida e ignorava juros e acréscimos, e o
+  // total chegava a zerar com o devedor ainda devendo.
+  const loanOutstanding = (loan: PhysicalAsset) => loanOpenBalance({
+    metadata: loan.metadata,
+    concessionDate: loan.acquisitionDate,
+    linked: (linkedTransactionsMap.get(loan.id) || []) as any[],
+    today: DateUtils.formatToISODate()
+  });
   const totalLoans = enrichedPhysicalAssets
     .filter(p => p.metadata?.isLoan)
-    .reduce((sum, loan) => {
-      const meta = loan.metadata || {};
-      const principal = Number(meta.loanPrincipal) || 0;
-      const txs = linkedTransactionsMap.get(loan.id) || [];
-      const returned = txs.filter(t => t.type === 'INCOME').reduce((s, t) => s + Number(t.amount || 0), 0);
-      const outstanding = Math.max(0, principal - returned);
-      return sum + outstanding;
-    }, 0);
+    .reduce((sum, loan) => sum + loanOutstanding(loan), 0);
 
   // Vendas a receber: entrada/parcelas ainda não recebidas de bens já vendidos (arquivados).
   // O bem saiu do patrimônio, mas o dinheiro ainda não entrou — continua sendo seu.
@@ -7465,8 +7468,8 @@ ${tabelaHtml}
                               const meta = loan.metadata || {};
                               const principal = Number(meta.loanPrincipal) || 0;
                               const txs = getAssetTransactions(loan);
-                              const returned = txs.filter(t => t.type === 'INCOME').reduce((s, t) => s + Number(t.amount || 0), 0);
-                              const outstanding = Math.max(0, principal - returned);
+                              const returned = txs.filter(t => t.type === 'INCOME' && t.isPaid).reduce((s, t) => s + Number(t.amount || 0), 0);
+                              const outstanding = loanOutstanding(loan);
                               const progressPercent = principal > 0 ? Math.round((returned / principal) * 100) : 0;
                               return (
                                 <div key={loan.id} className="space-y-1">
