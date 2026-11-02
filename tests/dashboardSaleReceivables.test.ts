@@ -45,5 +45,8 @@ describe('Painel soma vendas a receber', () => {
     // 1000 conta + 50000 bem ativo + 4000 (A2) + 8000 (A3) a receber dos vendidos
     expect(d.totalAssets).toBe(63000);
     expect(d.netWorth).toBe(63000);
+    // Sem duplicar: o bem vendido (A2, A3) não está em Bens; só as parcelas em A receber.
+    expect(d.assetsBreakdown?.physical).toBe(50000);
+    expect(d.receivablesDetail).toEqual({ sales: 12000, loans: 0 });
   });
 });

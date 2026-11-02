@@ -44,5 +44,7 @@ describe('Início: ativos separados e sem contar investimento duas vezes', () =>
     // 1000 + 50000 (corretora, já com os 45000) + 3000 (sem corretora) + 80000 + 10000
     expect(d.totalAssets).toBe(144000);
     expect(d.assetsBreakdown).toEqual({ accounts: 1000, investments: 53000, physical: 80000, receivables: 10000 });
+    // O "a receber" daqui é só empréstimo feito (nenhuma venda a receber).
+    expect(d.receivablesDetail).toEqual({ sales: 0, loans: 10000 });
   });
 });

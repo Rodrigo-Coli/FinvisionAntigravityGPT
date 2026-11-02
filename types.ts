@@ -23,6 +23,8 @@ export interface DashboardData {
   totalAssets?: number;
   /** Ativos separados: contas (corrente/poupança/dinheiro), investimentos, bens e a receber. */
   assetsBreakdown?: { accounts: number; investments: number; physical: number; receivables: number };
+  /** Composição do "a receber": parcelas de bens vendidos ainda não recebidas x empréstimos que você fez. */
+  receivablesDetail?: { sales: number; loans: number };
   /** Saldos de entrega (imóvel na planta) com a forma de pagamento ainda a definir. */
   pendingDecisions?: { id: string; name: string; amount: number; deliveryDate: string | null }[];
   totalExpenses?: number;

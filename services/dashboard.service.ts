@@ -10,6 +10,8 @@ import { syncAllConsortiumBalances } from './consortiumBalance.service';
 import { withTimeout } from '../lib/connectivity';
 import { isOrphanPendingFinancing } from '../lib/pendingFinancing';
 import { SALE_RECEIVABLE_TYPES, saleReceivablesTotal } from '../lib/saleAccounting';
+import { loanOpenBalance } from '../lib/loanSummary';
+import { DateUtils } from '../lib/dateUtils';
 
 export const DashboardService = {
   getSummary: async (): Promise<DashboardData> => {
@@ -36,7 +38,7 @@ export const DashboardService = {
     ] = await Promise.all([
       sb.from('accounts').select('id, current_balance, type, include_in_dashboard').eq('user_id', user.id).eq('is_archived', false),
       sb.from('cards').select('id, brand, name, limit_total, last4, is_additional, parent_card_id, sums_into_invoice').eq('user_id', user.id).eq('is_archived', false),
-      sb.from('physical_assets').select('id, name, estimated_value, category, metadata, is_archived').eq('user_id', user.id),
+      sb.from('physical_assets').select('id, name, estimated_value, category, metadata, is_archived, acquisition_date').eq('user_id', user.id),
       sb.from('entities').select('name').eq('user_id', user.id).eq('include_in_totals', false),
       sb.from('transactions').select('date, amount, type, owner_name, metadata').eq('user_id', user.id).eq('is_deleted', false).gte('date', new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString()),
       sb.from('liabilities').select('*').eq('user_id', user.id),
@@ -63,6 +65,8 @@ export const DashboardService = {
     let totalAssets = 0;
     // Ativos separados para o card do Início (contas x bens x a receber).
     const assetsBreakdown = { accounts: 0, investments: 0, physical: 0, receivables: 0 };
+    // De onde vem o "a receber": parcelas de bens vendidos x empréstimos que você fez.
+    const receivablesDetail = { sales: 0, loans: 0 };
 
     accounts.forEach((acc: any) => {
       if (acc.include_in_dashboard === false) return; // Ignores private/registration accounts
@@ -121,6 +125,27 @@ export const DashboardService = {
       };
     });
 
+    // Empréstimos concedidos: valor em aberto HOJE (o que falta receber, com juros
+    // e acréscimos), a mesma conta do cartão do empréstimo em Patrimônio. Antes
+    // somava o valor original emprestado, ignorando o que já foi devolvido.
+    const loanIds = physicalAssets.filter((a: any) => a.metadata?.isLoan).map((a: any) => a.id);
+    const loanTxsByAsset = new Map<string, any[]>();
+    if (loanIds.length > 0) {
+      const loanTxsRes = await sb
+        .from('transactions')
+        .select('id, type, amount, date, is_paid, description, metadata')
+        .eq('user_id', user.id)
+        .eq('is_deleted', false)
+        .in('metadata->>linked_asset_id', loanIds);
+      for (const t of loanTxsRes?.data || []) {
+        const key = t.metadata?.linked_asset_id;
+        if (!key) continue;
+        if (!loanTxsByAsset.has(key)) loanTxsByAsset.set(key, []);
+        loanTxsByAsset.get(key)!.push(t);
+      }
+    }
+    const today = DateUtils.formatToISODate();
+
     // 3. Physical Assets mapping
     // Investimento vinculado a uma corretora já está no saldo dela (o saldo da conta
     // de investimento soma os investimentos): contar de novo dobrava o valor.
@@ -128,11 +153,19 @@ export const DashboardService = {
     physicalAssets.forEach((asset: any) => {
       const isBrokerInvestment = asset.category === 'INVESTMENT' && accountIds.has(asset.metadata?.brokerAccountId);
       if (isBrokerInvestment) return;
-      const val = Number(asset.estimated_value || 0);
+      const val = asset.metadata?.isLoan
+        ? loanOpenBalance({
+          metadata: asset.metadata,
+          concessionDate: asset.acquisition_date,
+          linked: loanTxsByAsset.get(asset.id) || [],
+          today,
+          fallbackPrincipal: asset.estimated_value
+        })
+        : Number(asset.estimated_value || 0);
       netWorth += val;
       totalAssets += val;
       if (asset.category === 'INVESTMENT') assetsBreakdown.investments += val;
-      else if (asset.metadata?.isLoan) assetsBreakdown.receivables += val;
+      else if (asset.metadata?.isLoan) { assetsBreakdown.receivables += val; receivablesDetail.loans += val; }
       else assetsBreakdown.physical += val;
     });
 
@@ -145,6 +178,7 @@ export const DashboardService = {
     netWorth += saleReceivables;
     totalAssets += saleReceivables;
     assetsBreakdown.receivables += saleReceivables;
+    receivablesDetail.sales += saleReceivables;
 
     const excludedSet = new Set((excludedEntities || []).map((e: any) => ownerKey(e.name)));
 
@@ -292,6 +326,7 @@ export const DashboardService = {
       netWorth: Number(netWorth || 0),
       totalAssets: Number(totalAssets || 0),
       assetsBreakdown,
+      receivablesDetail: { sales: Math.round(receivablesDetail.sales * 100) / 100, loans: Math.round(receivablesDetail.loans * 100) / 100 },
       pendingDecisions,
       totalLiabilities: Number(totalLiabilities || 0),
       creditCards: creditCardsSummary,

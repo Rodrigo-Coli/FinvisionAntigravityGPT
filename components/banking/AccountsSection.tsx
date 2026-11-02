@@ -22,7 +22,9 @@ import {
   Building2,
   RefreshCw,
   Zap,
-  Link as LinkIcon
+  Link as LinkIcon,
+  ChevronDown,
+  ListOrdered
 } from 'lucide-react';
 import { BankAccount, AccountType } from '../../types';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
@@ -32,6 +34,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { isProbablyOffline } from '../../lib/connectivity';
 import { getSessionUser } from '../../lib/session';
 import { DateInput } from '../common/DateInput';
+import { summarizeAccounts } from '../../lib/accountSummary';
 
 const COLORS = [
   { name: 'Blue', hex: '#3b82f6' },
@@ -56,6 +59,10 @@ const AccountsSection: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // Card "Resumo das contas": aberto ou fechado (lembrado no aparelho).
+  const [summaryOpen, setSummaryOpen] = useState(() => {
+    try { return localStorage.getItem('finvision_accounts_summary_open') !== 'false'; } catch { return true; }
+  });
   const navigate = useNavigate();
 
   // States for Balance Adjustment Modal
@@ -617,6 +624,15 @@ const AccountsSection: React.FC = () => {
     .reduce((sum, acc) => sum + acc.currentBalance, 0);
 
   const activeAccountsCount = accounts.filter(acc => !acc.isArchived).length;
+
+  // Resumo: uma linha por conta ativa (nome e saldo), separadas em contas,
+  // investimentos e contas que não somam. Só os dados desta tela.
+  const accountsSummary = summarizeAccounts(accounts.filter(acc => !acc.isArchived));
+  const toggleSummary = () => {
+    const next = !summaryOpen;
+    setSummaryOpen(next);
+    try { localStorage.setItem('finvision_accounts_summary_open', String(next)); } catch { /* só preferência */ }
+  };
   const investmentAccountsCount = accounts.filter(acc => acc.type === 'INVESTMENT' && !acc.isArchived).length;
 
   const activeFilterCount = (filterType !== 'ALL' ? 1 : 0) +
@@ -696,6 +712,64 @@ const AccountsSection: React.FC = () => {
             <Zap size={20} />
           </div>
         </div>
+      </div>
+
+      {/* RESUMO DAS CONTAS: uma linha por conta, com o total em cima */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+        <button
+          type="button"
+          onClick={toggleSummary}
+          className="w-full flex items-center justify-between gap-3 p-4 text-left"
+          aria-expanded={summaryOpen}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+              <ListOrdered size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Resumo das contas</span>
+              <p className={`text-lg font-black tracking-tight tabular-nums ${accountsSummary.total < 0 ? 'text-rose-500' : 'text-slate-900 dark:text-white'}`}>
+                {formatCurrency(accountsSummary.total)}
+              </p>
+            </div>
+          </div>
+          <ChevronDown size={20} className={`text-slate-400 shrink-0 transition-transform ${summaryOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {summaryOpen && (
+          <div className="px-4 pb-4 space-y-4">
+            {([
+              ['Contas', accountsSummary.cash],
+              ['Investimentos', accountsSummary.investment],
+              ['Não somam no total', accountsSummary.excluded]
+            ] as const).filter(([, grupo]) => grupo.count > 0).map(([titulo, grupo]) => (
+              <div key={titulo}>
+                <div className="flex items-center justify-between gap-3 py-2 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{titulo}</span>
+                  <span className={`text-sm font-black tabular-nums ${grupo.total < 0 ? 'text-rose-500' : 'text-slate-900 dark:text-white'}`}>
+                    {formatCurrency(grupo.total)}
+                  </span>
+                </div>
+                <ul>
+                  {grupo.accounts.map(acc => (
+                    <li key={acc.id} className="flex items-center justify-between gap-3 py-1.5 border-b border-slate-50 dark:border-slate-800/60 last:border-b-0">
+                      <span className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate">{acc.institution}</span>
+                      <span className={`text-xs font-bold tabular-nums whitespace-nowrap ${acc.currentBalance < 0 ? 'text-rose-500' : 'text-slate-700 dark:text-slate-200'}`}>
+                        {formatCurrency(acc.currentBalance, acc.currency || 'BRL')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <div className="flex items-center justify-between gap-3 pt-2 border-t-2 border-slate-200 dark:border-slate-700">
+              <span className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest">Total (contas + investimentos)</span>
+              <span className={`text-sm font-black tabular-nums ${accountsSummary.total < 0 ? 'text-rose-500' : 'text-slate-900 dark:text-white'}`}>
+                {formatCurrency(accountsSummary.total)}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* TOOLBAR */}

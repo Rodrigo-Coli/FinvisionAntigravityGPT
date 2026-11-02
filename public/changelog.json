@@ -1,22 +1,29 @@
 {
-  "version": "2026.11.01.2235",
-  "title": "Lista de categorias completa",
-  "date": "01/11/2026",
+  "version": "2026.11.02.0133",
+  "title": "Resumo das contas e empréstimos pelo valor em aberto",
+  "date": "02/11/2026",
   "benefits": [
     {
-      "title": "Veja todas as categorias sem digitar",
-      "desc": "Ao tocar no campo de Categoria, Subcategoria ou Pessoa, a lista mostra todas as opções em ordem alfabética, e é só rolar. Antes apareciam só algumas e o resto ficava escondido atrás de \"continue digitando\".",
+      "title": "Resumo das contas numa lista só",
+      "desc": "Em Contas e Carteiras há um card novo, Resumo das contas: uma linha por conta com o nome e o saldo, separadas em Contas, Investimentos e Não somam no total, cada grupo com a sua soma e o total no fim. Toque no card para abrir ou fechar. O resto da tela continua igual.",
       "type": "melhoria"
     },
     {
-      "title": "Funciona mesmo com o campo já preenchido",
-      "desc": "Se a categoria já veio sugerida, tocar no campo abre a lista inteira para você trocar. Digitar continua filtrando sem ligar para acento ou maiúscula.",
+      "title": "Empréstimos contam o que falta receber",
+      "desc": "Empréstimos que você concedeu agora entram no patrimônio pelo valor em aberto hoje, o mesmo do cartão do empréstimo (com juros, acréscimos e descontando o que já foi devolvido). Antes o Início somava o valor original emprestado e o resumo de Patrimônio podia mostrar zero com o devedor ainda devendo.",
+      "type": "correcao"
+    },
+    {
+      "title": "De onde vem o A receber",
+      "desc": "No Início, o bloco A receber mostra quanto é de parcelas de bens vendidos e quanto é de empréstimos, e abaixo aparece o patrimônio sem o a receber. O bem vendido não é contado de novo: ele sai de Bens e só entra o que falta receber.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "components/common/SearchableInput.tsx: sem limite de 8 sugestões (lista rolável, max-h-72); ao focar mostra todas as opções e só filtra depois de digitar; Enter não troca o valor sem o usuário navegar na lista",
-    "lib/searchOptions.ts: filterOptions extraído (sem acento/maiúscula, começa-com primeiro, sem repetidas)",
-    "tests/searchOptions.test.ts"
+    "components/banking/AccountsSection.tsx: card \"Resumo das contas\" (recolhível, estado lembrado no aparelho) acima da busca; resto da tela inalterado",
+    "lib/accountSummary.ts: summarizeAccounts separa contas, investimentos e não somam (include_in_dashboard = false); total = contas + investimentos (igual ao Saldo Consolidado)",
+    "lib/loanSummary.ts: loanOpenBalance (valor em aberto hoje, mesma regra do cartão do empréstimo); usado em services/dashboard.service.ts (Início) e em pages/Assets.tsx (total Empréstimos a receber e lista resumida)",
+    "services/dashboard.service.ts + types.ts: receivablesDetail { sales, loans }; pages/Home.tsx mostra a composição e o patrimônio sem o a receber",
+    "tests: accountSummary, loanSummary (loanOpenBalance), dashboardLoans, dashboardBreakdown e dashboardSaleReceivables"
   ]
 }
