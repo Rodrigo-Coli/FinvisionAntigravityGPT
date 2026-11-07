@@ -12,6 +12,8 @@ export interface Profile {
   preferences?: {
     bottom_nav_items?: string[];
     show_bottom_nav?: boolean;
+    /** Nome do estabelecimento exibido: nome fantasia (padrão) ou razão social. */
+    merchant_name_display?: 'trade' | 'legal';
   };
   created_at: string;
 }
@@ -311,6 +313,11 @@ export interface ReceiptItem {
 
 export interface ExtractedReceipt {
   merchant: string;
+  /** Nome fantasia lido do cupom. */
+  merchant_trade_name?: string;
+  /** Razão social lida do cupom. */
+  merchant_legal_name?: string;
+  merchant_cnpj?: string;
   merchant_category?: string;
   date: string;
   total: number;

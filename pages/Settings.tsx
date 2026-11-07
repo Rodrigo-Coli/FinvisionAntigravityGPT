@@ -55,6 +55,7 @@ import { useToast } from '../contexts/ToastContext';
 import { normalizeStr } from '../lib/stringUtils';
 import { pickCategoryMatch, categoryFitsType } from '../lib/categoryResolver';
 import { TagsSettings } from '../components/settings/TagsSettings';
+import { EstablishmentsSettings } from '../components/settings/EstablishmentsSettings';
 
 /**
  * Garante a categoria "Investimento" (usada nas análises) e suas subcategorias.
@@ -206,7 +207,6 @@ const SettingsPage: React.FC = () => {
   };
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
-  const [establishments, setEstablishments] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [entities, setEntities] = useState<any[]>([]);
   const [newCatName, setNewCatName] = useState('');
@@ -328,16 +328,7 @@ const SettingsPage: React.FC = () => {
         }
       }
 
-      if (activeSection === 'establishments') {
-        const { data: docs } = await supabase.from('ai_documents').select('merchant_raw, date, ocr_structured').eq('user_id', user.id).order('date', { ascending: false });
-        const grouped = (docs || []).reduce((acc: any, d: any) => {
-          if (!acc[d.merchant_raw]) { acc[d.merchant_raw] = { name: d.merchant_raw, lastActive: d.date, count: 0, category: d.ocr_structured?.merchant_category || 'Mercado' }; }
-          acc[d.merchant_raw].count++;
-          if (d.date > acc[d.merchant_raw].lastActive) acc[d.merchant_raw].lastActive = d.date;
-          return acc;
-        }, {});
-        setEstablishments(Object.values(grouped));
-      }
+      // Estabelecimentos: carregados pelo próprio EstablishmentsSettings.
 
       if (activeSection === 'products') {
         const { data } = await supabase.from('products').select('*').eq('user_id', user.id).eq('active', true).order('name');
@@ -1511,48 +1502,7 @@ const SettingsPage: React.FC = () => {
             </div>
           )}
 
-          {activeSection === 'establishments' && (
-            <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden border-b-4 border-b-slate-100">
-              <div className="p-10 border-b border-slate-50 space-y-1 bg-slate-50/20">
-                <h2 className="text-xl font-bold text-slate-900 italic">Estabelecimentos</h2>
-                <p className="text-sm text-slate-500 font-medium">Mapeamento automático de lojas extraídas via IA.</p>
-              </div>
-              <div className="w-full overflow-x-auto">
-                <table className="w-full min-w-[700px]">
-                  <thead className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] border-b border-slate-50">
-                    <tr>
-                      <th className="px-10 py-6 text-left">Marca / Loja</th>
-                      <th className="px-10 py-6 text-left">Segmento</th>
-                      <th className="px-10 py-6 text-left">Atividade</th>
-                      <th className="px-10 py-6 text-right">Volume</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {establishments.map((est, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-10 py-8">
-                          <span className="text-sm font-bold text-slate-900 uppercase tracking-tight italic">{est.name}</span>
-                        </td>
-                        <td className="px-10 py-8">
-                          <select className="bg-slate-100 border-none rounded-lg px-3 py-1.5 text-[9px] font-bold uppercase text-slate-500 cursor-pointer">
-                            <option>{est.category}</option>
-                            <option>Mercado</option>
-                            <option>Restaurante</option>
-                          </select>
-                        </td>
-                        <td className="px-10 py-8">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{DateUtils.formatDisplayDate(est.lastActive)}</span>
-                        </td>
-                        <td className="px-10 py-8 text-right">
-                          <span className="text-xs font-bold text-slate-500">{est.count} TX</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          {activeSection === 'establishments' && <EstablishmentsSettings />}
 
           {activeSection === 'rates' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
