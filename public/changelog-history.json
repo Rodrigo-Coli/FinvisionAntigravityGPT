@@ -1,5 +1,32 @@
 [
   {
+    "version": "2026.11.07.1716",
+    "title": "Caixa livre da corretora mostra o dinheiro que está de verdade nela",
+    "date": "07/11/2026",
+    "benefits": [
+      {
+        "title": "Caixa livre real em cada corretora",
+        "desc": "No Patrimônio, o caixa livre de cada corretora agora é o saldo da conta menos os investimentos ligados a ela. Antes era só o saldo inicial, então juros, resgates e transferências lançados na corretora não apareciam no caixa e o card não batia com a conta.",
+        "type": "correcao"
+      },
+      {
+        "title": "Salvar um investimento não estraga mais o saldo da corretora",
+        "desc": "Ao salvar, mudar de corretora ou excluir um investimento, o saldo da corretora era regravado como saldo inicial + investimentos, deixando de fora os lançamentos da conta. Agora o saldo é recalculado com tudo: saldo inicial, lançamentos e investimentos.",
+        "type": "correcao"
+      },
+      {
+        "title": "Ajustar caixa livre já abre com o valor certo",
+        "desc": "Em Contas › Ajustar saldo de uma corretora, o modo Caixa Livre abre com o dinheiro que está de fato parado nela (e não com o saldo inicial).",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "Assets.tsx: brokerCashById = current_balance − soma do valor bruto dos ativos não arquivados da corretora (mesma regra do recalculate_account_balance); dynamicBrokers, card da corretora e alocação usam esse caixa",
+      "Assets.tsx: sync de saldo da corretora ao salvar/trocar de corretora/excluir passa a chamar recalculate_account_balance em vez de gravar initial_balance + investimentos",
+      "AccountsSection.tsx: modo Caixa Livre pré-preenche saldo − investimentos e compara a diferença com esse valor"
+    ]
+  },
+  {
     "version": "2026.11.07.1314",
     "title": "Cupom de farmácia e de qualquer loja no Comparador e em Estabelecimentos",
     "date": "07/11/2026",

@@ -1173,19 +1173,35 @@ const Assets: React.FC = () => {
     });
   }, [activePhysicalAssets, investmentLotsByAsset]);
 
+  // Caixa livre da corretora = dinheiro de verdade parado nela: saldo da conta menos o
+  // valor bruto dos investimentos ligados a ela (a mesma conta do recálculo do saldo no
+  // banco). Antes era só o saldo inicial, então juros, resgates e transferências lançados
+  // na corretora não apareciam no caixa e o card não batia com a conta.
+  const brokerCashById = useMemo(() => {
+    const map = new Map<string, number>();
+    brokers.forEach(b => {
+      const grossInvested = activePhysicalAssets
+        .filter(p => p.category === 'INVESTMENT' && p.metadata?.brokerAccountId === b.id)
+        .reduce((sum, p) => sum + Number(p.estimatedValue || 0), 0);
+      map.set(b.id, Math.round((Number(b.balance || 0) - grossInvested) * 100) / 100);
+    });
+    return map;
+  }, [brokers, activePhysicalAssets]);
+
   const dynamicBrokers = useMemo(() => {
     return brokers.map(b => {
       const brokerInvestments = enrichedPhysicalAssets.filter(
         p => p.category === 'INVESTMENT' && p.metadata?.brokerAccountId === b.id && p.metadata?.status !== 'RESGATADO'
       );
       const totalInvested = brokerInvestments.reduce((sum, inv) => sum + (inv.netValue || 0), 0);
-      const cash = Number(b.initial_balance || 0);
+      const cash = brokerCashById.get(b.id) ?? 0;
       return {
         ...b,
+        cash,
         balance: cash + totalInvested
       };
     });
-  }, [brokers, enrichedPhysicalAssets]);
+  }, [brokers, enrichedPhysicalAssets, brokerCashById]);
 
   // Pre-computes and maps all transactions to their respective physical assets in O(N) linear time.
   const linkedTransactionsMap = useMemo(() => {
@@ -4297,38 +4313,13 @@ const Assets: React.FC = () => {
       }
 
       // --- BROKER BALANCE SYNC ---
-      // current_balance = initial_balance (caixa livre) + soma de investimentos ativos
-      // Assim o caixa ajustado manualmente em Contas é preservado.
+      // Saldo da corretora = saldo inicial + lançamentos da conta + investimentos ligados.
+      // Quem calcula é o banco (recalculate_account_balance), a mesma conta usada em todo
+      // o app. Antes este trecho gravava "saldo inicial + investimentos" e apagava do saldo
+      // os juros, resgates e transferências lançados na corretora.
       if (formData.category === 'INVESTMENT' && formData.brokerAccountId) {
         try {
-          const [allInvestsRes, brokerAccRes] = await Promise.all([
-            supabase
-              .from('physical_assets')
-              .select('estimated_value, metadata')
-              .eq('user_id', user.id)
-              .eq('category', 'INVESTMENT')
-              .eq('is_archived', false),
-            supabase
-              .from('accounts')
-              .select('initial_balance')
-              .eq('id', formData.brokerAccountId)
-              .eq('user_id', user.id)
-              .maybeSingle()
-          ]);
-
-          const brokerCash = Number(brokerAccRes.data?.initial_balance || 0);
-          const investedTotal = (allInvestsRes.data || [])
-            .filter((inv: any) =>
-              inv.metadata?.brokerAccountId === formData.brokerAccountId &&
-              inv.metadata?.status !== 'RESGATADO'
-            )
-            .reduce((sum: number, inv: any) => sum + Number(inv.estimated_value || 0), 0);
-
-          await supabase
-            .from('accounts')
-            .update({ current_balance: brokerCash + investedTotal })
-            .eq('id', formData.brokerAccountId)
-            .eq('user_id', user.id);
+          await supabase.rpc('recalculate_account_balance', { p_account_id: formData.brokerAccountId });
         } catch (syncErr) {
           console.warn('[Assets] Broker balance sync failed (non-critical):', syncErr);
         }
@@ -4339,34 +4330,7 @@ const Assets: React.FC = () => {
         const oldBrokerId = editingAsset.metadata?.brokerAccountId;
         if (oldBrokerId && oldBrokerId !== formData.brokerAccountId) {
           try {
-            const [oldInvestsRes, oldAccRes] = await Promise.all([
-              supabase
-                .from('physical_assets')
-                .select('estimated_value, metadata')
-                .eq('user_id', user.id)
-                .eq('category', 'INVESTMENT')
-                .eq('is_archived', false),
-              supabase
-                .from('accounts')
-                .select('initial_balance')
-                .eq('id', oldBrokerId)
-                .eq('user_id', user.id)
-                .maybeSingle()
-            ]);
-
-            const oldCash = Number(oldAccRes.data?.initial_balance || 0);
-            const oldInvestedTotal = (oldInvestsRes.data || [])
-              .filter((inv: any) =>
-                inv.metadata?.brokerAccountId === oldBrokerId &&
-                inv.metadata?.status !== 'RESGATADO'
-              )
-              .reduce((sum: number, inv: any) => sum + Number(inv.estimated_value || 0), 0);
-
-            await supabase
-              .from('accounts')
-              .update({ current_balance: oldCash + oldInvestedTotal })
-              .eq('id', oldBrokerId)
-              .eq('user_id', user.id);
+            await supabase.rpc('recalculate_account_balance', { p_account_id: oldBrokerId });
           } catch (syncErr) {
             console.warn('[Assets] Old broker balance sync failed (non-critical):', syncErr);
           }
@@ -4803,39 +4767,10 @@ const Assets: React.FC = () => {
         localStorage.removeItem('finvision_cached_summary');
       } catch (e) {}
 
-      // Sync broker balance if this was an investment linked to a broker
-      // current_balance = initial_balance (caixa livre) + soma restante de investimentos
+      // Recalcula a corretora pelo banco (saldo inicial + lançamentos + investimentos que sobraram).
       if (asset.category === 'INVESTMENT' && asset.metadata?.brokerAccountId && userId) {
         try {
-          const [remainingRes, brokerAccRes] = await Promise.all([
-            supabase
-              .from('physical_assets')
-              .select('estimated_value, metadata')
-              .eq('user_id', userId)
-              .eq('category', 'INVESTMENT')
-              .eq('is_archived', false)
-              .neq('id', asset.id),
-            supabase
-              .from('accounts')
-              .select('initial_balance')
-              .eq('id', asset.metadata.brokerAccountId)
-              .eq('user_id', userId)
-              .maybeSingle()
-          ]);
-
-          const brokerCash = Number(brokerAccRes.data?.initial_balance || 0);
-          const remainingInvested = (remainingRes.data || [])
-            .filter((inv: any) =>
-              inv.metadata?.brokerAccountId === asset.metadata.brokerAccountId &&
-              inv.metadata?.status !== 'RESGATADO'
-            )
-            .reduce((sum: number, inv: any) => sum + Number(inv.estimated_value || 0), 0);
-
-          await supabase
-            .from('accounts')
-            .update({ current_balance: brokerCash + remainingInvested })
-            .eq('id', asset.metadata.brokerAccountId)
-            .eq('user_id', userId);
+          await supabase.rpc('recalculate_account_balance', { p_account_id: asset.metadata.brokerAccountId });
         } catch (syncErr) {
           console.warn('[Assets] Broker balance sync on delete failed (non-critical):', syncErr);
         }
@@ -6585,7 +6520,7 @@ ${tabelaHtml}
     
     // 2. Add broker cash balances
     dynamicBrokers.forEach(b => {
-      const cash = Number(b.initial_balance) || 0;
+      const cash = Number(b.cash) || 0;
       if (cash > 0) {
         financialAllocation.push({ type: 'Saldo em Caixa', balance: cash });
       }
@@ -9413,7 +9348,7 @@ ${tabelaHtml}
                   const totalInvested = brokerInvestments.reduce((sum, inv) => sum + Number(inv.netValue || 0), 0);
                   const totalGross = brokerInvestments.reduce((sum, inv) => sum + Number(inv.estimatedValue || 0), 0);
                   const totalTax = brokerInvestments.reduce((sum, inv) => sum + Number(inv.taxAmount || 0), 0);
-                  const brokerCash = Number(broker.initial_balance || 0);
+                  const brokerCash = Number((broker as any).cash ?? 0);
                   const displayedTotal = brokerCash + totalInvested;
                   const isCollapsed = !!collapsedBrokers[broker.id];
 
