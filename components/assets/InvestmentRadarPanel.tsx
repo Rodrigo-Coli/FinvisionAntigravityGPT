@@ -39,12 +39,23 @@ interface AssetLite {
   metadata: Record<string, any> | null;
 }
 
+interface FollowUp {
+  at: string;
+  channel?: string | null;
+  answer?: string | null;
+  file_name?: string | null;
+  verdict?: string | null;
+  analysis?: string | null;
+}
+
 interface Proposal {
   id: string;
   created_at: string;
   source_name: string | null;
   verdict: string | null;
   analysis: string | null;
+  follow_ups?: FollowUp[] | null;
+  channel?: string | null;
 }
 
 const brl = (n: number) => Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -104,6 +115,9 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
   const [compareNote, setCompareNote] = useState('');
   const [comparing, setComparing] = useState(false);
   const [openProposal, setOpenProposal] = useState<string | null>(null);
+  const [answerText, setAnswerText] = useState('');
+  const [answerFile, setAnswerFile] = useState<File | null>(null);
+  const [answering, setAnswering] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -114,7 +128,7 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
     const [assetsRes, radarRes, propRes] = await Promise.all([
       supabase.from('physical_assets').select('id, name, estimated_value, metadata').eq('user_id', user.id).eq('category', 'INVESTMENT').eq('is_archived', false),
       supabase.from('investment_radar').select('*').eq('user_id', user.id),
-      supabase.from('investment_proposals').select('id, created_at, source_name, verdict, analysis').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5)
+      supabase.from('investment_proposals').select('id, created_at, source_name, verdict, analysis, follow_ups, channel').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5)
     ]);
     setAssets(((assetsRes.data || []) as AssetLite[]).filter(a => a.metadata?.status !== 'RESGATADO' && Number(a.estimated_value) > 0));
     if (radarRes.error) {
@@ -123,7 +137,7 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
       setTableMissing(false);
       setRows(Object.fromEntries((radarRes.data || []).map((r: any) => [r.asset_id, r as RadarRow])));
     }
-    setProposals((propRes.data || []) as Proposal[]);
+    setProposals(propRes.error ? [] : ((propRes.data || []) as Proposal[]));
     setLoading(false);
   }, []);
 
@@ -234,6 +248,36 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
       toast(err.message || 'Falha ao analisar a sugestão.', 'error');
     } finally {
       setComparing(false);
+    }
+  };
+
+  const sendAnswer = async (p: Proposal) => {
+    if (!answerText.trim() && !answerFile) {
+      toast('Escreva ou anexe a resposta do gerente.', 'warning');
+      return;
+    }
+    if (answerFile && answerFile.size > 8 * 1024 * 1024) {
+      toast('Arquivo grande demais (máx. 8 MB).', 'warning');
+      return;
+    }
+    setAnswering(true);
+    try {
+      const file = answerFile ? { data: await fileToBase64(answerFile), mimeType: answerFile.type || 'application/pdf', name: answerFile.name } : undefined;
+      const resp = await fetch('/api/investment-radar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ action: 'answer', proposalId: p.id, text: answerText, file })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || 'Falha ao reavaliar.');
+      setAnswerText('');
+      setAnswerFile(null);
+      await load();
+      toast(`Reavaliado: ${VERDICT_LABEL[data.verdict] || 'Depende'}.`, 'success');
+    } catch (err: any) {
+      toast(err.message || 'Falha ao reavaliar.', 'error');
+    } finally {
+      setAnswering(false);
     }
   };
 
@@ -453,6 +497,9 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
           <p className="text-xs text-slate-500 mt-1 leading-relaxed">
             Mande o print, a lâmina ou o PDF do produto que te ofereceram. A IA lê o produto, compara com a sua carteira (rendimento líquido de IR, risco, liquidez, FGC, concentração) e diz se vale, não vale ou depende — e o que perguntar ao gerente.
           </p>
+          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+            <strong className="text-slate-700">Pelo WhatsApp também:</strong> mande o print/PDF com a legenda <strong>"sugestão"</strong>. Quando o gerente responder, mande <strong>"gerente: …"</strong> (texto, áudio ou print) — a resposta entra na mesma análise e fica guardada aqui.
+          </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -479,13 +526,53 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Últimas análises</p>
             {proposals.map(p => (
               <div key={p.id} className="bg-white rounded-2xl border border-slate-100">
-                <button className="w-full flex items-center gap-3 p-3 text-left" onClick={() => setOpenProposal(o => (o === p.id ? null : p.id))}>
+                <button className="w-full flex items-center gap-3 p-3 text-left" onClick={() => { setOpenProposal(o => (o === p.id ? null : p.id)); setAnswerText(''); setAnswerFile(null); }}>
                   <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black uppercase ${VERDICT_STYLE[p.verdict || 'DEPENDE'] || VERDICT_STYLE.DEPENDE}`}>{VERDICT_LABEL[p.verdict || 'DEPENDE'] || 'Depende'}</span>
                   <span className="flex-1 min-w-0 text-xs font-bold text-slate-700 truncate">{p.source_name || 'Sugestão'}</span>
                   <span className="text-[11px] text-slate-400 shrink-0">{dateBr(p.created_at)}</span>
                 </button>
-                {openProposal === p.id && p.analysis && (
-                  <div className="px-4 pb-4"><SimpleMarkdown text={p.analysis} /></div>
+                {openProposal === p.id && (
+                  <div className="px-4 pb-4 space-y-4">
+                    {p.analysis && <SimpleMarkdown text={p.analysis} />}
+
+                    {(p.follow_ups || []).map((f, i) => (
+                      <div key={i} className="space-y-2 border-t border-slate-100 pt-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          Resposta do gerente · {dateBr(f.at)}{f.channel === 'whatsapp' ? ' · pelo WhatsApp' : ''}
+                        </p>
+                        {f.answer && <p className="text-sm text-slate-700 bg-slate-50 rounded-xl px-3 py-2 whitespace-pre-wrap">{f.answer}</p>}
+                        {f.file_name && <p className="text-[11px] text-slate-500">Arquivo: {f.file_name}</p>}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Reavaliação</span>
+                          <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black uppercase ${VERDICT_STYLE[f.verdict || 'DEPENDE'] || VERDICT_STYLE.DEPENDE}`}>{VERDICT_LABEL[f.verdict || 'DEPENDE'] || 'Depende'}</span>
+                        </div>
+                        {f.analysis && <SimpleMarkdown text={f.analysis} />}
+                      </div>
+                    ))}
+
+                    <div className="border-t border-slate-100 pt-3 space-y-2">
+                      <FieldLabel label="Resposta do gerente" help="Cole ou escreva o que o gerente respondeu às perguntas acima (pode anexar o print da conversa ou o documento que ele mandou). A IA junta com a análise anterior, diz o que foi esclarecido e se o veredito muda. Tudo fica guardado aqui, na ordem. Pelo WhatsApp: mande começando com 'gerente:' (texto, áudio ou print)." />
+                      <textarea
+                        value={answerText}
+                        onChange={e => setAnswerText(e.target.value)}
+                        rows={3}
+                        placeholder="ex.: a taxa é 102% do CDI, carência de 2 anos, tem FGC"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"
+                      />
+                      <input id={`answer-file-${p.id}`} type="file" accept="image/*,application/pdf" className="sr-only" onChange={e => setAnswerFile(e.target.files?.[0] || null)} />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label htmlFor={`answer-file-${p.id}`} className="px-3 py-2 rounded-xl border border-dashed border-indigo-200 bg-white text-xs cursor-pointer hover:bg-indigo-50 flex items-center gap-1.5 max-w-full">
+                          <FileUp size={13} className="text-indigo-600 shrink-0" />
+                          <span className="font-bold text-indigo-700 shrink-0">Anexar print (opcional)</span>
+                          {answerFile && <span className="text-slate-500 truncate">{answerFile.name}</span>}
+                        </label>
+                        <button onClick={() => sendAnswer(p)} disabled={answering} className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
+                          {answering ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                          {answering ? 'Reavaliando…' : 'Reavaliar com a resposta'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             ))}

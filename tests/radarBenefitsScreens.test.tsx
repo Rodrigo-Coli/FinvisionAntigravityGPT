@@ -173,3 +173,32 @@ describe('Benefícios e Milhas (tela)', () => {
     expect(text()).toContain('Vale fazer este cartão?');
   });
 });
+
+describe('Sugestão do banco: conversa com o gerente fica guardada', () => {
+  it('mostra a análise, as respostas do gerente e o campo para nova resposta', async () => {
+    state.tables.investment_proposals = [{
+      id: 'p1', user_id: 'u1', created_at: today.toISOString(), source_name: 'lamina_cdb.pdf', verdict: 'VALE', channel: 'whatsapp',
+      analysis: '## Perguntas\n- Qual a taxa?',
+      follow_ups: [{ at: today.toISOString(), channel: 'whatsapp', answer: 'é 102% do CDI', verdict: 'VALE', analysis: 'Melhorou.' }]
+    }];
+    await mount(<InvestmentRadarPanel />);
+    const btn = Array.from(container.querySelectorAll('button')).find(b => b.textContent?.includes('lamina_cdb.pdf'))!;
+    await act(async () => { btn.click(); });
+    await flush();
+    expect(text()).toContain('Qual a taxa?');
+    expect(text()).toContain('pelo WhatsApp');
+    expect(text()).toContain('é 102% do CDI');
+    expect(text()).toContain('Reavaliar com a resposta');
+    expect(state.writes).toEqual([]);
+  });
+});
+
+describe('Benefícios: guia de onde ver os pontos', () => {
+  it('abre o guia', async () => {
+    await mount(<CardBenefitsSection />);
+    const btn = Array.from(container.querySelectorAll('button')).find(b => b.textContent?.includes('Onde ver seus pontos'))!;
+    await act(async () => { btn.click(); });
+    expect(text()).toContain('Livelo');
+    expect(text()).toContain('Investback');
+  });
+});

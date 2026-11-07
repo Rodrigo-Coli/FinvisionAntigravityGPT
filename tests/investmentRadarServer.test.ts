@@ -27,6 +27,8 @@ class Q {
   select() { if (db.throwOn === this.t) throw new Error('banco fora do ar'); return this; }
   eq(c: string, v: any) { this.filters.push(r => !(c in r) || r[c] === v); return this; }
   in(c: string, vs: any[]) { this.filters.push(r => vs.includes(r[c])); return this; }
+  order() { return this; }
+  limit() { return this; }
   upsert(row: any) { db.upserts.push(row); return Promise.resolve({ error: null }); }
   insert() { return this; }
   maybeSingle() { return Promise.resolve({ data: this.rows()[0] || null, error: null }); }
@@ -130,5 +132,82 @@ describe('varredura do radar', () => {
     const { res, out } = captureRes();
     await handleInvestmentRadar({ method: 'POST', headers: {}, body: { action: 'scan' } }, res);
     expect(out.status).toBe(401);
+  });
+});
+
+vi.mock('../api/_lib/ai-usage-limits.js', () => ({ checkAiActionAllowed: async () => ({ allowed: true }) }));
+vi.mock('../api/_lib/ai-models.js', () => ({
+  generateWithFallback: async () => ({
+    response: { text: '## O que a resposta esclareceu\n- **Taxa**: 102% do CDI\nVEREDITO: VALE' },
+    model: 'test'
+  })
+}));
+
+describe('WhatsApp: só entra no radar o que é claramente sobre investimento', () => {
+  it('mensagens comuns seguem o fluxo de sempre', async () => {
+    const { isInvestmentWhatsAppMessage } = await import('../api/_lib/investment-radar');
+    for (const caption of ['comprovante de aplicação', 'investimento', 'aplicação no CDB', 'fundo de reserva', 'mercado', 'gasolina posto', '']) {
+      expect(isInvestmentWhatsAppMessage(caption, true)).toBeNull();
+    }
+    for (const t of ['Gastei 50 no mercado', 'almoço com o gerente 80 reais', 'quanto rendeu meu investimento?', 'sugestão de jantar']) {
+      expect(isInvestmentWhatsAppMessage(t, false)).toBeNull();
+    }
+  });
+  it('print/PDF com "sugestão", "proposta", "radar" ou "vale a pena" vira análise', async () => {
+    const { isInvestmentWhatsAppMessage } = await import('../api/_lib/investment-radar');
+    expect(isInvestmentWhatsAppMessage('sugestão do gerente', true)).toBe('proposal');
+    expect(isInvestmentWhatsAppMessage('Proposta Safra', true)).toBe('proposal');
+    expect(isInvestmentWhatsAppMessage('vale a pena?', true)).toBe('proposal');
+  });
+  it('"gerente:" é resposta do gerente (texto, áudio transcrito ou print)', async () => {
+    const { isInvestmentWhatsAppMessage } = await import('../api/_lib/investment-radar');
+    expect(isInvestmentWhatsAppMessage('gerente: a taxa é 102% do CDI', false)).toBe('answer');
+    expect(isInvestmentWhatsAppMessage('Resposta do gerente - tem FGC', false)).toBe('answer');
+    expect(isInvestmentWhatsAppMessage('gerente: segue o print', true)).toBe('answer');
+  });
+  it('formata para o WhatsApp', async () => {
+    const { toWhatsAppText } = await import('../api/_lib/investment-radar');
+    expect(toWhatsAppText('## Título\n- **Taxa**: 1%')).toBe('*Título*\n- *Taxa*: 1%');
+  });
+});
+
+describe('resposta do gerente (memória da conversa)', () => {
+  const updates: any[] = [];
+  beforeEach(() => {
+    updates.length = 0;
+    process.env.GEMINI_API_KEY = 'k';
+    db.tables.investment_proposals = [{ id: 'p1', user_id: 'u1', source_name: 'CDB Safra', analysis: 'Perguntas: qual a taxa?', follow_ups: [{ at: '2026-11-01', answer: 'é 2 anos', verdict: 'DEPENDE', analysis: 'ok' }], created_at: '2026-11-01' }];
+    (Q.prototype as any).update = function (row: any) { updates.push(row); return { eq: () => Promise.resolve({ error: null }) }; };
+  });
+
+  it('junta a resposta às anteriores e atualiza o veredito', async () => {
+    const { addManagerAnswer } = await import('../api/_lib/investment-radar');
+    const r: any = await addManagerAnswer('u1', null, 'a taxa é 102% do CDI', null, 'whatsapp');
+    expect(r.ok).toBe(true);
+    expect(r.verdict).toBe('VALE');
+    expect(updates[0].follow_ups).toHaveLength(2);
+    expect(updates[0].follow_ups[1]).toMatchObject({ answer: 'a taxa é 102% do CDI', channel: 'whatsapp', verdict: 'VALE' });
+    expect(updates[0].verdict).toBe('VALE');
+  });
+
+  it('sem sugestão anterior, pede o print primeiro', async () => {
+    db.tables.investment_proposals = [];
+    const { addManagerAnswer } = await import('../api/_lib/investment-radar');
+    const r: any = await addManagerAnswer('u1', null, 'a taxa é 102%', null, 'app');
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('Mande primeiro');
+  });
+
+  it('pelo WhatsApp responde com o veredito e o lembrete de como continuar', async () => {
+    const { handleInvestmentWhatsApp } = await import('../api/_lib/investment-radar');
+    const reply = await handleInvestmentWhatsApp({ userId: 'u1', text: 'gerente: 102% do CDI', hasFile: false, fetchMedia: async () => null });
+    expect(reply).toContain('Veredito agora');
+    expect(reply).toContain('*Taxa*');
+  });
+
+  it('mensagem comum não é tratada pelo radar', async () => {
+    const { handleInvestmentWhatsApp } = await import('../api/_lib/investment-radar');
+    const reply = await handleInvestmentWhatsApp({ userId: 'u1', text: 'Gastei 50 no mercado', hasFile: false, fetchMedia: async () => null });
+    expect(reply).toBeNull();
   });
 });

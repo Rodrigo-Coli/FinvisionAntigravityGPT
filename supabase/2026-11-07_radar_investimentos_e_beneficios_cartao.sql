@@ -5,7 +5,8 @@
 --   novo. Uma linha por ativo; a varredura diária e o botão "Analisar agora"
 --   fazem upsert por asset_id.
 -- investment_proposals: análises de sugestões do banco/gerente (print ou PDF)
---   comparadas com a carteira.
+--   comparadas com a carteira, com as respostas do gerente e as reavaliações
+--   (follow_ups) — pelo app ou pelo WhatsApp.
 -- cards.benefits: cadastro do benefício do cartão (lib/cardBenefits.ts).
 
 create table if not exists public.investment_radar (
@@ -44,7 +45,11 @@ create table if not exists public.investment_proposals (
   user_note text,
   extracted jsonb,
   verdict text,
-  analysis text
+  analysis text,
+  -- Respostas do gerente e cada reavaliação (memória da conversa sobre a sugestão).
+  follow_ups jsonb not null default '[]'::jsonb,
+  -- Por onde chegou: 'app' ou 'whatsapp'.
+  channel text
 );
 
 create index if not exists investment_proposals_user_idx on public.investment_proposals (user_id, created_at desc);

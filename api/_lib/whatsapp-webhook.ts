@@ -5,6 +5,7 @@ import { generateWithFallback } from './ai-models.js';
 import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { findCategoryByName } from './category-resolver.js';
+import { handleInvestmentWhatsApp, isInvestmentWhatsAppMessage } from './investment-radar.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -110,6 +111,10 @@ const HELP_MESSAGE = `🤖 *Zyvion AI — O que posso fazer por você:*
 • "Quanto gastei este mês?"
 • "Mostra meus gastos de alimentação"
 • "Qual meu patrimônio líquido?"
+
+📊 *Sugestão de Investimento do Banco*
+• Envie o *print ou PDF* com a legenda *"sugestão"* — eu comparo com a sua carteira e digo se vale
+• Depois mande *"gerente: ..."* (texto, áudio ou print) com a resposta dele e eu reavalio
 
 💡 *Dica:* Responda *citando* qualquer mensagem minha para operar sobre aquele lançamento específico!`;
 
@@ -1556,6 +1561,29 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
         .eq('data->>messageId', message.key.id);
 
       return res.status(200).json({ status: 'canceled_by_user' });
+    }
+
+    // Radar de Investimentos: sugestão do banco (print/PDF com legenda sobre
+    // investimento) ou resposta do gerente ("gerente: ..."). Qualquer outra
+    // mensagem não entra aqui e segue o fluxo de sempre.
+    if (isInvestmentWhatsAppMessage(text, isImage || isPDF)) {
+      await sendWhatsApp(phone, '📊 *Analisando com o Radar de Investimentos...* (pode levar até 1 minuto)');
+      const fileName = (extracted.media as any)?.fileName || undefined;
+      let reply: string | null = null;
+      try {
+        reply = await handleInvestmentWhatsApp({ userId, text, hasFile: isImage || isPDF, fileName, fetchMedia: () => downloadEvolutionMedia(message) });
+      } catch (err: any) {
+        console.error('[WhatsApp] radar de investimentos falhou:', err?.message);
+        reply = '⚠️ Não consegui analisar agora. Tente de novo em instantes.';
+      }
+      if (reply) {
+        await sendWhatsApp(phone, reply);
+        history.push({ role: 'user', content: text || '[arquivo de investimento]' });
+        history.push({ role: 'model', content: reply.slice(0, 1500) });
+        await supabase.from('whatsapp_chat_sessions').upsert({ phone, messages: history.slice(-30), updated_at: new Date().toISOString() }, { onConflict: 'phone' });
+        await supabase.from('whatsapp_drafts').delete().eq('user_id', userId).eq('data->>messageId', message.key.id);
+        return res.status(200).json({ status: 'investment_radar' });
+      }
     }
 
     // Number Selection / Disambiguation logic

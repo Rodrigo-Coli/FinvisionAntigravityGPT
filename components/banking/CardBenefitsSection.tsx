@@ -53,7 +53,7 @@ export const HELP = {
   pointsPerUnit: 'Quantos pontos/milhas você ganha a cada dólar (ou real) gasto. Ex.: "2,2 pontos por US$" → 2,2. Está no site do cartão ("pontuação").',
   pointsUnit: 'A maioria dos cartões pontua por dólar gasto (o banco converte sua compra em reais para dólar). Alguns pontuam por real.',
   usdRate: 'Cotação do dólar que o banco usa para converter o gasto em pontos. Se não souber, use a cotação do dia (o padrão é R$ 5,30).',
-  program: 'Nome do programa de pontos ou milhas (ex.: Livelo, Esfera, Smiles, LATAM Pass). Só para você identificar.',
+  program: 'Nome do programa de pontos ou milhas (ex.: Livelo, Esfera, Smiles, LATAM Pass, Azul Fidelidade). Para conferir quantos pontos você ganhou, veja o guia "Onde ver seus pontos e cashback" nesta tela.',
   milheiroValue: 'Quanto valem 1.000 pontos/milhas PARA VOCÊ, em reais, no jeito que você costuma usar. Referência: vender milhas paga ~R$ 15–25 o milheiro; trocar por produtos costuma valer menos (~R$ 5–10); passagens bem compradas podem passar de R$ 30. Na dúvida, use R$ 15.',
   transferBonus: 'Bônus quando você transfere os pontos do banco para a companhia aérea em promoção (ex.: +80% → 80). Se você não costuma esperar promoções, deixe 0.',
   usageRate: 'Quanto dos pontos você realmente usa antes de vencer. Se metade expira, use 50. Pontos que vencem valem zero — isso pesa muito na conta.',
@@ -85,6 +85,18 @@ const NumInput: React.FC<{ value: number | undefined; onChange: (v: number | und
     />
   );
 };
+
+// Onde a pessoa confere o que ganhou. Os nomes dos menus mudam de app para app
+// e com o tempo, então o texto descreve onde procurar, sem prometer o caminho exato.
+const WHERE_TO_LOOK: { title: string; text: string }[] = [
+  { title: 'Na própria fatura', text: 'A fatura (PDF ou no app do banco) costuma trazer um quadro "pontos do mês" ou "cashback": pontos ganhos, saldo e pontos a vencer. É o jeito mais fácil de conferir mês a mês e bater com o que o app calcula aqui.' },
+  { title: 'No app do banco', text: 'Em geral fica na área do cartão, num item como "Pontos", "Programa de pontos", "Benefícios" ou "Cashback". Lá aparecem o saldo, o extrato (quanto entrou em cada fatura) e quando os pontos vencem.' },
+  { title: 'Livelo (Bradesco, Banco do Brasil e outros)', text: 'No app ou site da Livelo, na área "Extrato": mostra cada crédito de pontos com a origem (o cartão) e a data de vencimento. Também aparece no app do banco, na parte do cartão.' },
+  { title: 'Esfera (Santander)', text: 'No app/site da Esfera ou no app do Santander, na parte do cartão: saldo, extrato e pontos a vencer.' },
+  { title: 'Milhas direto na companhia (Smiles, LATAM Pass, Azul Fidelidade)', text: 'No app da companhia aérea, na área do programa de fidelidade, item "Extrato": milhas que entraram (inclusive as transferidas do banco, com o bônus), as usadas e as que vão vencer.' },
+  { title: 'Cashback que vira investimento (ex.: Investback da XP)', text: 'No app da corretora: na área do cartão aparece o cashback de cada mês; o valor aplicado fica no fundo (no caso da XP, o Trend Investback), em Investimentos. Aqui no app ele entra como receita "Cashback" e aplicação no fundo.' },
+  { title: 'Quantos pontos o cartão dá por real/dólar', text: 'Está no site do cartão (página de benefícios ou "regulamento do programa de pontos") e no contrato. Procure "pontos por dólar gasto" ou "% de cashback". Se a regra mudou, atualize aqui em "Editar".' }
+];
 
 const emptyBenefits = (): CardBenefits => ({ type: 'NONE', pointsUnit: 'USD', usdRate: DEFAULT_USD_RATE, usageRatePct: 100 });
 
@@ -210,6 +222,7 @@ const CardBenefitsSection: React.FC = () => {
   const [draft, setDraft] = useState<CardBenefits>(emptyBenefits());
   const [saving, setSaving] = useState(false);
   const [showHow, setShowHow] = useState(false);
+  const [showWhere, setShowWhere] = useState(false);
 
   // Simulador 1: pontos ou cashback
   const [simSpend, setSimSpend] = useState('5000');
@@ -339,9 +352,24 @@ const CardBenefitsSection: React.FC = () => {
 
       {/* Seus cartões */}
       <section className="space-y-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-bold text-slate-900">Seus cartões</h2>
+          <button onClick={() => setShowWhere(v => !v)} className="px-3 py-1.5 rounded-xl text-xs font-bold bg-brand-50 text-brand-700 border border-brand-100 flex items-center gap-1.5">
+            <Info size={13} /> Onde ver seus pontos e cashback
+          </button>
         </div>
+        {showWhere && (
+          <div className="p-4 sm:p-5 rounded-3xl bg-brand-50/50 border border-brand-100 space-y-3">
+            <p className="text-sm text-slate-700">Para conferir o que cada cartão realmente rendeu (e preencher os campos certos), olhe nestes lugares:</p>
+            {WHERE_TO_LOOK.map(w => (
+              <div key={w.title}>
+                <p className="text-xs font-black text-slate-800">{w.title}</p>
+                <p className="text-xs text-slate-600 leading-relaxed">{w.text}</p>
+              </div>
+            ))}
+            <p className="text-[11px] text-slate-500">Os nomes dos menus mudam de um app para outro; se não achar, procure por "pontos", "extrato" ou "cashback" dentro do app.</p>
+          </div>
+        )}
         {best && (
           <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-800 flex items-start gap-3">
             <Trophy size={18} className="shrink-0 mt-0.5" />

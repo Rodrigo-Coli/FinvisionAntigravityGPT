@@ -1,5 +1,5 @@
 {
-  "version": "2026.11.07.1826",
+  "version": "2026.11.07.1835",
   "title": "Radar de Investimentos e Benefícios e Milhas dos cartões",
   "date": "07/11/2026",
   "benefits": [
@@ -15,7 +15,12 @@
     },
     {
       "title": "Comparar a sugestão do banco com a sua carteira",
-      "desc": "No Radar, mande o print ou o PDF do produto que o gerente ofereceu: a IA lê o produto, compara com o que você já tem (rendimento líquido de IR, risco, liquidez, FGC, concentração), diz se vale, não vale ou depende e sugere perguntas para fazer ao gerente.",
+      "desc": "No Radar, mande o print ou o PDF do produto que o gerente ofereceu: a IA lê o produto, compara com o que você já tem (rendimento líquido de IR, risco, liquidez, FGC, concentração), diz se vale, não vale ou depende e sugere perguntas para o gerente. Quando ele responder, registre a resposta (texto ou print) na mesma sugestão: a IA reavalia com tudo o que já foi conversado e a conversa fica guardada.",
+      "type": "novidade"
+    },
+    {
+      "title": "Sugestão do banco também pelo WhatsApp",
+      "desc": "Mande o print ou PDF com a legenda \"sugestão\" e receba a análise ali mesmo. A resposta do gerente vai começando com \"gerente:\" (texto, áudio ou print) e entra na mesma análise, que também aparece no app. Comprovantes e lançamentos continuam funcionando como sempre.",
       "type": "novidade"
     },
     {
@@ -27,6 +32,11 @@
       "title": "Simuladores: pontos ou cashback? e vale fazer este cartão?",
       "desc": "Compare duas opções no mesmo gasto (inclusive quanto o milheiro precisa valer para os pontos empatarem com o cashback) e teste uma oferta de cartão novo contra o seu melhor cartão atual, já descontando a anuidade.",
       "type": "novidade"
+    },
+    {
+      "title": "Onde ver seus pontos e cashback",
+      "desc": "Na aba Benefícios e Milhas, um guia mostra onde conferir pontos, milhas e cashback (fatura, app do banco, Livelo, Esfera, Smiles, LATAM Pass, Azul Fidelidade e o Investback da XP) para você preencher certo e acompanhar o que cada cartão rendeu.",
+      "type": "melhoria"
     }
   ],
   "changes": [
@@ -36,6 +46,7 @@
     "lib/cardBenefits.ts + testes; components/banking/CardBenefitsSection.tsx; aba benefits em Banking e no menu",
     "Migração supabase/2026-11-07_radar_investimentos_e_beneficios_cartao.sql: investment_radar, investment_proposals (RLS) e cards.benefits",
     "ai-usage-limits: investment_radar e investment_compare contam como diagnóstico; varredura automática fora do limite",
-    "Testes de regressão: telas novas e as que já existiam (Contas & Cartões nas 3 abas, Patrimônio › Investimentos e Visão Geral, tela inicial) abrem com o banco antes e depois da migração; rotina diária continua rodando contas/vencimentos/indicações/manutenção mesmo se o radar falhar; radar com limite de 40 s na rotina diária"
+    "Testes de regressão: telas novas e as que já existiam (Contas & Cartões nas 3 abas, Patrimônio › Investimentos e Visão Geral, tela inicial) abrem com o banco antes e depois da migração; rotina diária continua rodando contas/vencimentos/indicações/manutenção mesmo se o radar falhar; radar com limite de 40 s na rotina diária",
+    "Resposta do gerente: investment_proposals.follow_ups (memória) + action 'answer' na rota e no WhatsApp ('gerente:'); WhatsApp só intercepta print/PDF com legenda 'sugestão/proposta/radar/vale a pena' ou texto iniciando com 'gerente:' (testes garantem que comprovantes e lançamentos seguem o fluxo normal)"
   ]
 }
