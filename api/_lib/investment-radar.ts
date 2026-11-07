@@ -42,6 +42,12 @@ const MAX_NEWS_ISSUERS_MANUAL = 12;
 const MAX_NEWS_ISSUERS_CRON = 4;
 /** Quantos investimentos a varredura diária checa no máximo por rodada. */
 const MAX_CRON_ASSETS = 60;
+/**
+ * Tempo máximo da varredura diária. O radar roda por último no daily-cron;
+ * passado esse tempo ele para e o resto fica para o dia seguinte (o que não
+ * foi checado continua "vencido" e entra primeiro na próxima rodada).
+ */
+const CRON_TIME_BUDGET_MS = 40_000;
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const brl = (n: number) => Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -337,8 +343,9 @@ export async function runInvestmentRadarCron(req: any, res: any) {
       .eq('is_archived', false);
     const userIds = Array.from(new Set((owners || []).map((o: any) => o.user_id)));
     let checked = 0;
+    const started = Date.now();
     for (const userId of userIds) {
-      if (checked >= MAX_CRON_ASSETS) break;
+      if (checked >= MAX_CRON_ASSETS || Date.now() - started > CRON_TIME_BUDGET_MS) break;
       const r = await scanUser(userId, { onlyDue: true, maxNewsIssuers: MAX_NEWS_ISSUERS_CRON, aiFn: 'investment_radar_auto', notify: true });
       checked += r.checked;
     }
