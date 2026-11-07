@@ -68,6 +68,9 @@ const AccountsSection: React.FC = () => {
   // States for Balance Adjustment Modal
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [adjustAccount, setAdjustAccount] = useState<BankAccount | null>(null);
+  // Caixa livre real da corretora (saldo da conta − investimentos ligados). Fica null
+  // enquanto carrega; aí o campo cai no saldo inicial como antes.
+  const [adjustBrokerCash, setAdjustBrokerCash] = useState<number | null>(null);
   const [hasTransactions, setHasTransactions] = useState(false);
   const [adjustMode, setAdjustMode] = useState<'initial' | 'transaction'>('transaction');
   const [adjustValue, setAdjustValue] = useState<number | string>('');
@@ -104,6 +107,34 @@ const AccountsSection: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<'ACTIVE' | 'ARCHIVED' | 'ALL'>('ACTIVE');
   const [filterCurrency, setFilterCurrency] = useState<string>('ALL');
   const [filterDashboard, setFilterDashboard] = useState<string>('ALL');
+
+  useEffect(() => {
+    setAdjustBrokerCash(null);
+    if (!adjustAccount || adjustAccount.type !== 'INVESTMENT' || !supabase) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const user = await getSessionUser(supabase);
+        if (!user || cancelled) return;
+        const { data } = await supabase
+          .from('physical_assets')
+          .select('estimated_value, metadata')
+          .eq('user_id', user.id)
+          .eq('category', 'INVESTMENT')
+          .eq('is_archived', false);
+        if (cancelled) return;
+        const invested = (data || [])
+          .filter((inv: any) => inv.metadata?.brokerAccountId === adjustAccount.id)
+          .reduce((sum: number, inv: any) => sum + Number(inv.estimated_value || 0), 0);
+        const cash = Math.round((Number(adjustAccount.currentBalance || 0) - invested) * 100) / 100;
+        setAdjustBrokerCash(cash);
+        // Se o modo Caixa Livre já está aberto com o saldo inicial, troca pelo caixa real.
+        setAdjustValue(prev => (adjustMode === 'initial' && prev === adjustAccount.initialBalance ? cash : prev));
+      } catch { /* sem rede: fica o saldo inicial */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adjustAccount]);
 
   useEffect(() => {
     const cached = localStorage.getItem('finvision_cached_accounts_full');
@@ -647,7 +678,7 @@ const AccountsSection: React.FC = () => {
   // botão mesmo com a conta mostrando outro saldo — não dava para zerar a conta.
   const currentDelta = adjustAccount && adjustValue !== ''
     ? adjustAccount.type === 'INVESTMENT'
-      ? Number(adjustValue) - (adjustMode === 'initial' ? adjustAccount.initialBalance : adjustAccount.currentBalance)
+      ? Number(adjustValue) - (adjustMode === 'initial' ? (adjustBrokerCash ?? adjustAccount.initialBalance) : adjustAccount.currentBalance)
       : Number(adjustValue) - adjustAccount.currentBalance
     : 0;
 
@@ -1141,7 +1172,7 @@ const AccountsSection: React.FC = () => {
 
               <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-100">
                 <button
-                  onClick={() => { setAdjustMode('initial'); setAdjustValue(adjustAccount.type === 'INVESTMENT' ? adjustAccount.initialBalance : adjustAccount.currentBalance); }}
+                  onClick={() => { setAdjustMode('initial'); setAdjustValue(adjustAccount.type === 'INVESTMENT' ? (adjustBrokerCash ?? adjustAccount.initialBalance) : adjustAccount.currentBalance); }}
                   className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase transition-all ${adjustMode === 'initial' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400'}`}
                 >
                   {adjustAccount.type === 'INVESTMENT' ? 'Caixa Livre' : 'Saldo Inicial'}

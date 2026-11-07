@@ -1,36 +1,27 @@
 {
-  "version": "2026.11.07.1314",
-  "title": "Cupom de farmácia e de qualquer loja no Comparador e em Estabelecimentos",
+  "version": "2026.11.07.1716",
+  "title": "Caixa livre da corretora mostra o dinheiro que está de verdade nela",
   "date": "07/11/2026",
   "benefits": [
     {
-      "title": "Comparador com todos os tipos de loja",
-      "desc": "O Comparador do AI & Insights tinha só Mercado, Restaurante e Loja, e um cupom de farmácia não aparecia em filtro nenhum. Agora os filtros são os tipos que a IA leu nos seus cupons (Mercado, Farmácia, Padaria, Posto, Pet Shop, Vestuário e outros), com Todos no começo.",
-      "type": "melhoria"
-    },
-    {
-      "title": "Nome fantasia e razão social do estabelecimento",
-      "desc": "A leitura do cupom passa a trazer o nome fantasia, a razão social e o CNPJ da loja. Na tela do cupom você vê o tipo de estabelecimento e o nome que vai no lançamento (nome fantasia por padrão); dá para tocar em Razão social, editar o nome ou trocar o tipo antes de finalizar.",
-      "type": "melhoria"
-    },
-    {
-      "title": "Estabelecimentos voltou a listar suas lojas",
-      "desc": "Em Configurações › Estabelecimentos a lista ficava sempre vazia. Agora aparecem as lojas dos seus cupons com nome fantasia, razão social, CNPJ, tipo, última compra e quantidade de cupons. Você pode corrigir os nomes e o tipo, e escolher se o app mostra as lojas pelo nome fantasia (padrão) ou pela razão social.",
+      "title": "Caixa livre real em cada corretora",
+      "desc": "No Patrimônio, o caixa livre de cada corretora agora é o saldo da conta menos os investimentos ligados a ela. Antes era só o saldo inicial, então juros, resgates e transferências lançados na corretora não apareciam no caixa e o card não batia com a conta.",
       "type": "correcao"
     },
     {
-      "title": "Sugestão de categoria para farmácia",
-      "desc": "Sem histórico da loja, um cupom de farmácia sugere a sua subcategoria Farmácia (ou Medicamentos/Drogaria) ou a categoria Saúde, se existirem. Padaria, restaurante, pet shop e outros tipos também ganharam sugestão.",
+      "title": "Salvar um investimento não estraga mais o saldo da corretora",
+      "desc": "Ao salvar, mudar de corretora ou excluir um investimento, o saldo da corretora era regravado como saldo inicial + investimentos, deixando de fora os lançamentos da conta. Agora o saldo é recalculado com tudo: saldo inicial, lançamentos e investimentos.",
+      "type": "correcao"
+    },
+    {
+      "title": "Ajustar caixa livre já abre com o valor certo",
+      "desc": "Em Contas › Ajustar saldo de uma corretora, o modo Caixa Livre abre com o dinheiro que está de fato parado nela (e não com o saldo inicial).",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "lib/merchantInfo.ts (novo): lista de segmentos, normalizeMerchantSegment (sinônimos: Drogaria → Farmácia, Supermercado → Mercado...), pickMerchantName (nome fantasia x razão social), formatCnpj e groupEstablishments (agrupa por CNPJ ou nome)",
-    "api/_lib/handle-receipt-items.ts: prompt e responseSchema pedem merchant_trade_name, merchant_legal_name, merchant_cnpj e um segmento da lista; resposta devolve os três e o segmento normalizado",
-    "pages/AIModule.tsx: bloco Estabelecimento na revisão do cupom (nome no lançamento editável, atalhos nome fantasia/razão social, CNPJ, tipo); nome inicial segue profiles.preferences.merchant_name_display; sugestão de categoria tenta os dois nomes; Comparador com filtros dinâmicos (Todos + segmentos dos cupons) e produto em todos os segmentos onde foi comprado",
-    "components/settings/EstablishmentsSettings.tsx (novo) e pages/Settings.tsx: consulta corrigida (document_date em vez da coluna inexistente date), lista responsiva com nomes, CNPJ e tipo editáveis (grava em ai_documents.ocr_structured) e preferência Nome fantasia/Razão social",
-    "lib/categorySuggestion.ts: mais sinônimos de tipo de estabelecimento (farmácia/drogaria → Farmácia, Medicamentos, Saúde; padaria, restaurante, pet shop, beleza, vestuário...)",
-    "types.ts: ExtractedReceipt com nome fantasia, razão social e CNPJ; preferences.merchant_name_display",
-    "tests/merchantInfo.test.ts: segmentos, nomes, CNPJ, agrupamento e sugestão para farmácia"
+    "Assets.tsx: brokerCashById = current_balance − soma do valor bruto dos ativos não arquivados da corretora (mesma regra do recalculate_account_balance); dynamicBrokers, card da corretora e alocação usam esse caixa",
+    "Assets.tsx: sync de saldo da corretora ao salvar/trocar de corretora/excluir passa a chamar recalculate_account_balance em vez de gravar initial_balance + investimentos",
+    "AccountsSection.tsx: modo Caixa Livre pré-preenche saldo − investimentos e compara a diferença com esse valor"
   ]
 }
