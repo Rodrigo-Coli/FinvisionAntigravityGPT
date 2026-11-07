@@ -38,6 +38,13 @@ export const AI_ACTION_CATEGORIES: Record<string, string> = {
   wealth_analysis: 'ai_diagnosis',
   // Simulador de Consórcio (Planejamento): cada pedido conta como mensagem de Chat IA.
   consortium_sim: 'ai_chat',
+  // Radar de Investimentos: "Analisar agora" e "Comparar sugestão do banco" contam
+  // como diagnóstico. A varredura automática do cron grava 'investment_radar_auto'
+  // e fica FORA dos limites de propósito: é rotina do sistema (como
+  // search_market_data), não ação do usuário — senão o radar diário gastaria a
+  // cota de diagnósticos dele.
+  investment_radar: 'ai_diagnosis',
+  investment_compare: 'ai_diagnosis',
 };
 
 // Rótulos amigáveis pra mensagem de bloqueio mostrada ao usuário.

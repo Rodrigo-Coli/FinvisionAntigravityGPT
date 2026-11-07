@@ -3,6 +3,7 @@ import { handleNotifyInvestmentsDue } from './notify-investments-due.js';
 import { handleNotifyReferralEngagement } from './notify-referral-engagement.js';
 import { handleMaintenance } from './maintenance.js';
 import { isCronAuthorized } from './cron-auth.js';
+import { runInvestmentRadarCron } from './investment-radar.js';
 
 // Um "res" descartável só pra capturar o resultado de cada handler sem
 // escrever de verdade na resposta HTTP (cada handler já termina com
@@ -39,10 +40,17 @@ export async function handleDailyCron(req: any, res: any) {
   const maintenance = captureRes();
   await handleMaintenance(req, maintenance.res as any);
 
+  // Radar de Investimentos por último (é o que mais demora, por causa da busca
+  // de notícias): checa o que venceu a data (OK a cada 7 dias, Atenção/Urgente
+  // todo dia) e avisa quando algo vira URGENTE.
+  const radar = captureRes();
+  try { await runInvestmentRadarCron(req, radar.res as any); } catch (err: any) { console.error('[daily-cron] radar falhou:', err?.message); }
+
   return res.status(200).json({
     success: true,
     billsDue: bills.get(),
     investmentsDue: investments.get(),
+    investmentRadar: radar.get(),
     referralEngagement: referral.get(),
     maintenance: maintenance.get(),
   });

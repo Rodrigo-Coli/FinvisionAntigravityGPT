@@ -76,6 +76,7 @@ import { syncAllConsortiumBalances } from '../services/consortiumBalance.service
 import { withTimeout } from '../lib/connectivity';
 import { isOrphanPendingFinancing } from '../lib/pendingFinancing';
 import { summarizeLoan, loanOpenBalance } from '../lib/loanSummary';
+import InvestmentRadarPanel from '../components/assets/InvestmentRadarPanel';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -9238,6 +9239,8 @@ ${tabelaHtml}
         {/* INVESTMENTS VIEW */}
         {activeView === 'investments' && (
           <div className="space-y-8 animate-in fade-in duration-500">
+            {/* Radar de Investimentos: avisa quando vale pensar em sair (lib/investmentRadar.ts) */}
+            <InvestmentRadarPanel onAssetsChanged={() => fetchData()} />
             {/* BANK INVESTMENTS (BROKERS) SECTION */}
             <div className="space-y-6 pt-6">
               <div className="flex justify-between items-center">

@@ -29,6 +29,7 @@ import { handleAdminProcessPayout } from './_lib/admin-process-payout.js';
 import { handleNotifyReferralEngagement } from './_lib/notify-referral-engagement.js';
 import { handleDailyCron } from './_lib/daily-cron.js';
 import { handleConsortiumSimAi } from './_lib/consortium-sim-ai.js';
+import { handleInvestmentRadar } from './_lib/investment-radar.js';
 
 function setCorsHeaders(res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -49,6 +50,7 @@ export default async function handler(req: any, res: any) {
     if (url.includes('/categorize-transactions')) return handleCategorizeTransactions(req, res);
     if (url.includes('/handle-wealth-analysis'))  return handleWealthAnalysis(req, res);
     if (url.includes('/consortium-sim-ai'))       return handleConsortiumSimAi(req, res);
+    if (url.includes('/investment-radar'))        return handleInvestmentRadar(req, res);
 
     // --- Reconciliação / Import ---
     if (url.includes('/handle-bank-reconcile'))   return handleBankReconcile(req, res);

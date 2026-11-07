@@ -3,30 +3,25 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Landmark, CreditCard } from 'lucide-react';
 import AccountsSection from '../components/banking/AccountsSection';
 import CreditCardsSection from '../components/banking/CreditCardsSection';
+import CardBenefitsSection from '../components/banking/CardBenefitsSection';
 
 const Banking: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState<'accounts' | 'cards'>(() => {
-    const params = new URLSearchParams(location.search);
-    const tab = params.get('tab');
-    return tab === 'cards' ? 'cards' : 'accounts';
-  });
+  type BankingTab = 'accounts' | 'cards' | 'benefits';
+  const parseTab = (tab: string | null): BankingTab => (tab === 'cards' || tab === 'benefits' ? tab : 'accounts');
 
-  const handleTabChange = (tab: 'accounts' | 'cards') => {
+  const [activeTab, setActiveTab] = useState<BankingTab>(() => parseTab(new URLSearchParams(location.search).get('tab')));
+
+  const handleTabChange = (tab: BankingTab) => {
     setActiveTab(tab);
     navigate(`/banking?tab=${tab}`, { replace: true });
   };
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const tab = params.get('tab');
-    if (tab === 'cards' && activeTab !== 'cards') {
-      setActiveTab('cards');
-    } else if (tab === 'accounts' && activeTab !== 'accounts') {
-      setActiveTab('accounts');
-    }
+    const tab = new URLSearchParams(location.search).get('tab');
+    if (tab && parseTab(tab) !== activeTab) setActiveTab(parseTab(tab));
   }, [location.search]);
 
   return (
@@ -60,6 +55,8 @@ const Banking: React.FC = () => {
       <div className="animate-in fade-in duration-500">
         {activeTab === 'accounts' ? (
           <AccountsSection />
+        ) : activeTab === 'benefits' ? (
+          <CardBenefitsSection />
         ) : (
           <CreditCardsSection />
         )}
