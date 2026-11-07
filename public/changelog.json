@@ -1,29 +1,36 @@
 {
-  "version": "2026.11.02.0133",
-  "title": "Resumo das contas e empréstimos pelo valor em aberto",
-  "date": "02/11/2026",
+  "version": "2026.11.07.1314",
+  "title": "Cupom de farmácia e de qualquer loja no Comparador e em Estabelecimentos",
+  "date": "07/11/2026",
   "benefits": [
     {
-      "title": "Resumo das contas numa lista só",
-      "desc": "Em Contas e Carteiras há um card novo, Resumo das contas: uma linha por conta com o nome e o saldo, separadas em Contas, Investimentos e Não somam no total, cada grupo com a sua soma e o total no fim. Toque no card para abrir ou fechar. O resto da tela continua igual.",
+      "title": "Comparador com todos os tipos de loja",
+      "desc": "O Comparador do AI & Insights tinha só Mercado, Restaurante e Loja, e um cupom de farmácia não aparecia em filtro nenhum. Agora os filtros são os tipos que a IA leu nos seus cupons (Mercado, Farmácia, Padaria, Posto, Pet Shop, Vestuário e outros), com Todos no começo.",
       "type": "melhoria"
     },
     {
-      "title": "Empréstimos contam o que falta receber",
-      "desc": "Empréstimos que você concedeu agora entram no patrimônio pelo valor em aberto hoje, o mesmo do cartão do empréstimo (com juros, acréscimos e descontando o que já foi devolvido). Antes o Início somava o valor original emprestado e o resumo de Patrimônio podia mostrar zero com o devedor ainda devendo.",
+      "title": "Nome fantasia e razão social do estabelecimento",
+      "desc": "A leitura do cupom passa a trazer o nome fantasia, a razão social e o CNPJ da loja. Na tela do cupom você vê o tipo de estabelecimento e o nome que vai no lançamento (nome fantasia por padrão); dá para tocar em Razão social, editar o nome ou trocar o tipo antes de finalizar.",
+      "type": "melhoria"
+    },
+    {
+      "title": "Estabelecimentos voltou a listar suas lojas",
+      "desc": "Em Configurações › Estabelecimentos a lista ficava sempre vazia. Agora aparecem as lojas dos seus cupons com nome fantasia, razão social, CNPJ, tipo, última compra e quantidade de cupons. Você pode corrigir os nomes e o tipo, e escolher se o app mostra as lojas pelo nome fantasia (padrão) ou pela razão social.",
       "type": "correcao"
     },
     {
-      "title": "De onde vem o A receber",
-      "desc": "No Início, o bloco A receber mostra quanto é de parcelas de bens vendidos e quanto é de empréstimos, e abaixo aparece o patrimônio sem o a receber. O bem vendido não é contado de novo: ele sai de Bens e só entra o que falta receber.",
+      "title": "Sugestão de categoria para farmácia",
+      "desc": "Sem histórico da loja, um cupom de farmácia sugere a sua subcategoria Farmácia (ou Medicamentos/Drogaria) ou a categoria Saúde, se existirem. Padaria, restaurante, pet shop e outros tipos também ganharam sugestão.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "components/banking/AccountsSection.tsx: card \"Resumo das contas\" (recolhível, estado lembrado no aparelho) acima da busca; resto da tela inalterado",
-    "lib/accountSummary.ts: summarizeAccounts separa contas, investimentos e não somam (include_in_dashboard = false); total = contas + investimentos (igual ao Saldo Consolidado)",
-    "lib/loanSummary.ts: loanOpenBalance (valor em aberto hoje, mesma regra do cartão do empréstimo); usado em services/dashboard.service.ts (Início) e em pages/Assets.tsx (total Empréstimos a receber e lista resumida)",
-    "services/dashboard.service.ts + types.ts: receivablesDetail { sales, loans }; pages/Home.tsx mostra a composição e o patrimônio sem o a receber",
-    "tests: accountSummary, loanSummary (loanOpenBalance), dashboardLoans, dashboardBreakdown e dashboardSaleReceivables"
+    "lib/merchantInfo.ts (novo): lista de segmentos, normalizeMerchantSegment (sinônimos: Drogaria → Farmácia, Supermercado → Mercado...), pickMerchantName (nome fantasia x razão social), formatCnpj e groupEstablishments (agrupa por CNPJ ou nome)",
+    "api/_lib/handle-receipt-items.ts: prompt e responseSchema pedem merchant_trade_name, merchant_legal_name, merchant_cnpj e um segmento da lista; resposta devolve os três e o segmento normalizado",
+    "pages/AIModule.tsx: bloco Estabelecimento na revisão do cupom (nome no lançamento editável, atalhos nome fantasia/razão social, CNPJ, tipo); nome inicial segue profiles.preferences.merchant_name_display; sugestão de categoria tenta os dois nomes; Comparador com filtros dinâmicos (Todos + segmentos dos cupons) e produto em todos os segmentos onde foi comprado",
+    "components/settings/EstablishmentsSettings.tsx (novo) e pages/Settings.tsx: consulta corrigida (document_date em vez da coluna inexistente date), lista responsiva com nomes, CNPJ e tipo editáveis (grava em ai_documents.ocr_structured) e preferência Nome fantasia/Razão social",
+    "lib/categorySuggestion.ts: mais sinônimos de tipo de estabelecimento (farmácia/drogaria → Farmácia, Medicamentos, Saúde; padaria, restaurante, pet shop, beleza, vestuário...)",
+    "types.ts: ExtractedReceipt com nome fantasia, razão social e CNPJ; preferences.merchant_name_display",
+    "tests/merchantInfo.test.ts: segmentos, nomes, CNPJ, agrupamento e sugestão para farmácia"
   ]
 }

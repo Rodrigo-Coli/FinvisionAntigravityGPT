@@ -7,6 +7,7 @@ import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { Buffer } from 'node:buffer';
 import { requireUser } from './require-user.js';
 import { sanitizeReceiptDate } from '../../lib/receiptDate.js';
+import { normalizeMerchantSegment, formatCnpj, SEGMENT_PROMPT_LIST } from '../../lib/merchantInfo.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -76,7 +77,10 @@ export async function handleReceiptItems(req: any, res: any) {
       RETORNE APENAS UM OBJETO JSON NO FORMATO:
       {
         "merchant": "Nome Fantasia",
-        "merchant_category": "Mercado | Restaurante | Farmácia | Loja | Posto | Outros",
+        "merchant_trade_name": "Nome Fantasia",
+        "merchant_legal_name": "Razão Social",
+        "merchant_cnpj": "00.000.000/0000-00",
+        "merchant_category": "${SEGMENT_PROMPT_LIST}",
         "date": "YYYY-MM-DD",
         "currency": "BRL",
         "total": 0.00,
@@ -103,7 +107,11 @@ export async function handleReceiptItems(req: any, res: any) {
             // O prompt salvo no banco (ai_prompts.receipt_scanner) é uma frase
             // genérica; sem esta regra, print de notificação/comprovante (sem lista
             // de itens) às vezes voltava com "items" vazio e o usuário via erro.
-            + `\n\nCOMPROVANTE SEM ITENS: se a imagem for um print de notificação do banco, comprovante de cartão/Pix ou recibo sem lista de produtos, retorne "items" com UM único item: description "Compra em <estabelecimento>", quantity 1, unit_price e total_price iguais ao valor total, category_hint com o tipo do estabelecimento. Nunca retorne "items" vazio quando houver um valor total.`;
+            + `\n\nCOMPROVANTE SEM ITENS: se a imagem for um print de notificação do banco, comprovante de cartão/Pix ou recibo sem lista de produtos, retorne "items" com UM único item: description "Compra em <estabelecimento>", quantity 1, unit_price e total_price iguais ao valor total, category_hint com o tipo do estabelecimento. Nunca retorne "items" vazio quando houver um valor total.`
+            // O prompt do banco não pede razão social/CNPJ nem a lista de
+            // segmentos; sem isso farmácia, padaria, pet shop... caíam em
+            // "Mercado"/"Outros" e não apareciam em filtro nenhum do Comparador.
+            + `\n\nESTABELECIMENTO: preencha "merchant_trade_name" com o NOME FANTASIA (o nome da loja como o cliente conhece, sem número de filial; ex.: "Panvel - Filial 891" → "Panvel"), "merchant_legal_name" com a RAZÃO SOCIAL se estiver impressa (geralmente a linha com LTDA, S/A, EIRELI, ME ou o nome junto do CNPJ; ex.: "PANVEL FARMACIAS"), e "merchant_cnpj" com o CNPJ do estabelecimento (não o CPF do consumidor). Deixe vazio o que não estiver no documento. "merchant" = nome fantasia (ou a razão social, se não houver nome fantasia). "merchant_category" deve ser exatamente UM destes segmentos: ${SEGMENT_PROMPT_LIST}.`;
 
         const contents = [{
             parts: [
@@ -126,6 +134,9 @@ export async function handleReceiptItems(req: any, res: any) {
                     type: Type.OBJECT,
                     properties: {
                         merchant: { type: Type.STRING },
+                        merchant_trade_name: { type: Type.STRING },
+                        merchant_legal_name: { type: Type.STRING },
+                        merchant_cnpj: { type: Type.STRING },
                         merchant_category: { type: Type.STRING },
                         date: { type: Type.STRING },
                         currency: { type: Type.STRING },
@@ -217,9 +228,21 @@ export async function handleReceiptItems(req: any, res: any) {
 
         const total = Number(parsedData.total) || normalizedItems.reduce((sum: number, it: any) => sum + it.total_price, 0);
 
+        const tradeName = String(parsedData.merchant_trade_name || '').trim();
+        const legalName = String(parsedData.merchant_legal_name || '').trim();
+        // Segmento canônico (Drogaria → Farmácia, Supermercado → Mercado...).
+        // Sem segmento, tenta o tipo do primeiro item antes de "Outros".
+        const segment = normalizeMerchantSegment(
+            parsedData.merchant_category,
+            normalizeMerchantSegment(normalizedItems[0]?.category_hint, 'Outros')
+        );
+
         return res.status(200).json({
-            merchant: parsedData.merchant || 'Estabelecimento não identificado',
-            merchant_category: parsedData.merchant_category || 'Mercado',
+            merchant: tradeName || parsedData.merchant || legalName || 'Estabelecimento não identificado',
+            merchant_trade_name: tradeName || parsedData.merchant || '',
+            merchant_legal_name: legalName,
+            merchant_cnpj: formatCnpj(parsedData.merchant_cnpj),
+            merchant_category: segment,
             date: sanitizeReceiptDate(parsedData.date, todayISO).date,
             currency: parsedData.currency || 'BRL',
             total,

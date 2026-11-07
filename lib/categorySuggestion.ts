@@ -123,8 +123,18 @@ export function suggestCategory(
     posto: ['Combustível'],
     mercado: ['Mercado', 'Supermercado'],
     supermercado: ['Mercado', 'Supermercado'],
-    farmacia: ['Farmácia'],
-    restaurante: ['Restaurante'],
+    farmacia: ['Farmácia', 'Drogaria', 'Medicamentos', 'Remédios', 'Saúde'],
+    drogaria: ['Farmácia', 'Drogaria', 'Medicamentos', 'Remédios', 'Saúde'],
+    restaurante: ['Restaurante', 'Restaurantes', 'Alimentação'],
+    padaria: ['Padaria', 'Alimentação'],
+    'pet shop': ['Pet Shop', 'Pet', 'Pets'],
+    saude: ['Saúde'],
+    beleza: ['Beleza', 'Cuidados Pessoais'],
+    vestuario: ['Vestuário', 'Roupas'],
+    educacao: ['Educação'],
+    lazer: ['Lazer'],
+    transporte: ['Transporte'],
+    'casa e construcao': ['Casa', 'Moradia'],
   };
   // Tipo genérico não diz nada: "Outros" casava com a subcategoria "Outros"
   // de Saúde e a Netflix saía como Saúde / Outros.

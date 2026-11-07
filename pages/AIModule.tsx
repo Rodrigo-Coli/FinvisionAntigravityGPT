@@ -18,6 +18,7 @@ import { TagsInput } from '../components/common/TagsInput';
 import { parseTags, rememberTags, suggestTags } from '../lib/tagUtils';
 import { sanitizeMoneyTyping, parseMoneyInput, formatMoneyInput } from '../lib/moneyInput';
 import { DateInput } from '../components/common/DateInput';
+import { MERCHANT_SEGMENTS, MerchantNameDisplay, normalizeMerchantSegment, parseNameDisplay, pickMerchantName, sortSegments } from '../lib/merchantInfo';
 
 // Helper to parse markdown into semantically correct HTML (protects lists and bolds)
 const parseMarkdownToReact = (text: string) => {
@@ -136,7 +137,27 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const [comparisonData, setComparisonData] = useState<any[]>([]);
   const [isLoadingIntelligence, setIsLoadingIntelligence] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [targetSegment, setTargetSegment] = useState<string>('Mercado');
+  // '' = Todos. Antes começava em "Mercado" e só havia Mercado/Restaurante/Loja:
+  // cupom de farmácia, padaria, pet shop... não aparecia em filtro nenhum.
+  const [targetSegment, setTargetSegment] = useState<string>('');
+  // Nome do estabelecimento exibido: nome fantasia (padrão) ou razão social,
+  // escolhido em Configurações › Estabelecimentos (profiles.preferences).
+  const nameDisplayRef = useRef<Promise<MerchantNameDisplay> | null>(null);
+  const loadNameDisplay = (): Promise<MerchantNameDisplay> => {
+    if (!nameDisplayRef.current) {
+      nameDisplayRef.current = (async () => {
+        const fallback = parseNameDisplay(user?.preferences?.merchant_name_display);
+        if (!supabase || !user?.id) return fallback;
+        try {
+          const { data } = await supabase.from('profiles').select('preferences').eq('id', user.id).maybeSingle();
+          return data?.preferences ? parseNameDisplay(data.preferences.merchant_name_display) : fallback;
+        } catch {
+          return fallback;
+        }
+      })();
+    }
+    return nameDisplayRef.current;
+  };
   const [shoppingList, setShoppingList] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('finvision_shopping_list');
@@ -336,6 +357,14 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
 
     try {
       const data = await AIReconcileService.getPriceComparison();
+      const nameDisplay = await loadNameDisplay();
+      const merchantName = (doc: any) => pickMerchantName(
+        { trade: doc?.ocr_structured?.merchant_trade_name, legal: doc?.ocr_structured?.merchant_legal_name },
+        nameDisplay,
+        doc?.merchant_raw || 'N/A'
+      );
+      // Cupom antigo sem segmento continua em "Mercado", como era mostrado.
+      const segmentOf = (doc: any) => normalizeMerchantSegment(doc?.ocr_structured?.merchant_category, 'Mercado');
       const processed = data.map((prod: any) => {
         const prices = prod.product_prices || [];
         if (prices.length === 0) return null;
@@ -349,8 +378,11 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
         const minPriceObj = sortedPrices.reduce((min: any, p: any) => p.unit_price < min.unit_price ? p : min, sortedPrices[0]);
         const lastPrice = sortedPrices[sortedPrices.length - 1];
         return {
-          id: prod.id, name: prod.name, category: prod.category || 'Geral', merchantCategory: minPriceObj.ai_documents?.ocr_structured?.merchant_category || 'Mercado',
-          avgPrice, minPrice: minPriceObj.unit_price, bestMerchant: minPriceObj.ai_documents?.merchant_raw || 'N/A', lastPrice: lastPrice.unit_price, trend: lastPrice.unit_price > avgPrice ? 'up' : 'down'
+          id: prod.id, name: prod.name, category: prod.category || 'Geral', merchantCategory: segmentOf(minPriceObj.ai_documents),
+          // Todos os segmentos onde o produto foi comprado (o mesmo item pode
+          // vir do mercado e da farmácia) — o filtro acha o produto em qualquer um.
+          segments: sortSegments(sortedPrices.map((p: any) => segmentOf(p.ai_documents))),
+          avgPrice, minPrice: minPriceObj.unit_price, bestMerchant: merchantName(minPriceObj.ai_documents), lastPrice: lastPrice.unit_price, trend: lastPrice.unit_price > avgPrice ? 'up' : 'down'
         };
       }).filter(Boolean);
       setComparisonData(processed);
@@ -417,18 +449,37 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       setPurchaseDate(fixedDate);
       setPurchaseDateAdjusted(adjusted);
 
+      // Nome fantasia x razão social: o lançamento usa o nome preferido do
+      // usuário (padrão: nome fantasia); na tela dá para trocar ou editar.
+      data.merchant_trade_name = String(data.merchant_trade_name || data.merchant || '').trim();
+      data.merchant_legal_name = String(data.merchant_legal_name || '').trim();
+      data.merchant_category = normalizeMerchantSegment(data.merchant_category, normalizeMerchantSegment(data.items?.[0]?.category_hint, 'Outros'));
+      const nameDisplay = await loadNameDisplay();
+      data.merchant = pickMerchantName({ trade: data.merchant_trade_name, legal: data.merchant_legal_name }, nameDisplay, data.merchant || 'Compra');
+
       // Cupom novo = compra nova: não herda a categoria do cupom anterior.
       // Preenche com a sugestão do histórico (ou do tipo de estabelecimento),
       // que o usuário vê e pode trocar.
       if (!classifiedHistoryRef.current) classifiedHistoryRef.current = loadClassifiedHistory();
       const history = await classifiedHistoryRef.current;
-      const suggestion = suggestCategory(
-        data.merchant || '',
-        history,
-        categories.map(c => c.name),
-        subcategories,
-        [data.merchant_category, data.items?.[0]?.category_hint].filter(Boolean)
-      );
+      const catNames = categories.map(c => c.name);
+      // O histórico pode ter a loja pelo nome fantasia ou pela razão social:
+      // tenta os dois antes de cair no tipo de estabelecimento.
+      const namesToTry = Array.from(new Set([data.merchant, data.merchant_trade_name, data.merchant_legal_name].filter(Boolean)));
+      let suggestion: CategorySuggestion | null = null;
+      for (const name of namesToTry) {
+        suggestion = suggestCategory(name, history, catNames, subcategories);
+        if (suggestion) break;
+      }
+      if (!suggestion) {
+        suggestion = suggestCategory(
+          data.merchant || '',
+          history,
+          catNames,
+          subcategories,
+          [data.merchant_category, data.items?.[0]?.category_hint].filter(Boolean)
+        );
+      }
       setCategorySuggestion(suggestion);
       setConfirmCategoryName(suggestion?.category || '');
       setConfirmSubcategoryName(suggestion?.subcategory || '');
@@ -489,7 +540,9 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseDate)) { toast("Informe a data da compra.", 'warning'); return; }
     setSaveStatus('saving');
     try {
-      const dated = { ...receipt, date: purchaseDate };
+      // Nome apagado no campo "Nome no lançamento": volta ao lido do cupom.
+      const merchantName = String(receipt.merchant || '').trim() || receipt.merchant_trade_name || receipt.merchant_legal_name || 'Compra';
+      const dated = { ...receipt, merchant: merchantName, date: purchaseDate };
       await AIReconcileService.saveReceiptToLabs(dated);
       const finalAmount = getReconcileAmount();
       const target = currentOptions.find((o: any) => o.id === targetId);
@@ -506,7 +559,7 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
       const cleanNotes = purchaseNotes.trim();
       const cleanTags = parseTags(purchaseTags);
       rememberTags(cleanTags);
-      const description = buildReceiptDescription(receipt.merchant, receipt.currency);
+      const description = buildReceiptDescription(merchantName, receipt.currency);
 
       if (targetType === 'card') {
         // Fluxo direto: salva no cartão sem passar pelo Reconcile
@@ -559,8 +612,14 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
+  // Filtros = segmentos que existem nos cupons do usuário (dado em cache de
+  // versão anterior não tem `segments`: usa o merchantCategory).
+  const productSegments = (p: any): string[] =>
+    Array.isArray(p.segments) && p.segments.length ? p.segments : [normalizeMerchantSegment(p.merchantCategory, 'Mercado')];
+  const availableSegments = sortSegments(comparisonData.flatMap(productSegments));
+  const activeSegment = availableSegments.includes(targetSegment) ? targetSegment : '';
   const filteredComparisonProducts = comparisonData
-    .filter((p: any) => !targetSegment || p.merchantCategory === targetSegment)
+    .filter((p: any) => !activeSegment || productSegments(p).includes(activeSegment))
     .filter((p: any) => !searchTerm || normalizeStr(p.name || '').includes(normalizeStr(searchTerm)));
 
   return (
@@ -640,6 +699,58 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                         {receipt.currency === 'BRL' || !receipt.currency ? formatCurrency(receipt.total) : `${receipt.currency} ${receipt.total.toFixed(2)}`}
                       </p>
                     </div>
+                  </div>
+
+                  {/* Estabelecimento: nome usado no lançamento (nome fantasia por
+                      padrão; dá para trocar pela razão social ou editar) e o tipo,
+                      que vira o filtro do Comparador. */}
+                  <div className="px-8 py-6 border-b border-slate-50 space-y-4">
+                    <div className="flex items-center gap-2 text-slate-400">
+                      <Store size={14} />
+                      <span className="text-[10px] font-bold uppercase tracking-widest">Estabelecimento</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nome no lançamento</label>
+                        <input
+                          type="text"
+                          value={receipt.merchant || ''}
+                          onChange={(e) => setReceipt({ ...receipt, merchant: e.target.value })}
+                          className="w-full h-12 bg-slate-50 border border-slate-100 rounded-2xl px-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-brand-500/10"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Tipo de estabelecimento</label>
+                        <select
+                          value={receipt.merchant_category || 'Outros'}
+                          onChange={(e) => setReceipt({ ...receipt, merchant_category: e.target.value })}
+                          className="w-full h-12 bg-slate-50 border border-slate-100 rounded-2xl px-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-brand-500/10"
+                        >
+                          {MERCHANT_SEGMENTS.map(seg => <option key={seg} value={seg}>{seg}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    {(receipt.merchant_trade_name || receipt.merchant_legal_name) && (
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { label: 'Nome fantasia', value: receipt.merchant_trade_name },
+                          { label: 'Razão social', value: receipt.merchant_legal_name },
+                        ].filter(o => o.value).map(o => (
+                          <button
+                            key={o.label}
+                            type="button"
+                            onClick={() => setReceipt({ ...receipt, merchant: o.value || '' })}
+                            className={`px-3 py-2 rounded-xl border text-left transition-all max-w-full ${String(receipt.merchant || '').trim() === o.value ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-white border-slate-100 text-slate-500 hover:border-brand-200'}`}
+                          >
+                            <span className="block text-[9px] font-bold uppercase tracking-widest opacity-70">{o.label}</span>
+                            <span className="block text-xs font-bold truncate">{o.value}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {receipt.merchant_cnpj && (
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">CNPJ {receipt.merchant_cnpj}</p>
+                    )}
                   </div>
 
                   <div className="max-h-[600px] overflow-y-auto divide-y divide-slate-50">
@@ -943,19 +1054,19 @@ const AIModule: React.FC<{ user: Profile }> = ({ user }) => {
                   className="w-full h-16 bg-white border border-slate-100 rounded-[28px] pl-16 pr-6 font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-brand-500/10 shadow-sm"
                 />
               </div>
-              <div className="flex gap-2 p-1.5 bg-slate-50 rounded-[28px]">
-                {['Mercado', 'Restaurante', 'Loja'].map(seg => (
+              <div className="flex gap-2 p-1.5 bg-slate-50 rounded-[28px] overflow-x-auto max-w-full md:max-w-[60%] no-scrollbar">
+                {['', ...availableSegments].map(seg => (
                   <button
-                    key={seg}
+                    key={seg || 'todos'}
                     onClick={() => setTargetSegment(seg)}
-                    className={`px-8 py-3 rounded-[22px] text-[10px] font-bold uppercase tracking-widest transition-all ${targetSegment === seg ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                    className={`px-6 py-3 rounded-[22px] text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap shrink-0 ${activeSegment === seg ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                   >
-                    {seg}
+                    {seg || 'Todos'}
                   </button>
                 ))}
               </div>
             </div>
-            <p className="text-[10px] font-bold text-slate-400 -mt-4 ml-1">Mercado / Restaurante / Loja filtram pelo tipo de estabelecimento que a IA identificou em cada cupom escaneado.</p>
+            <p className="text-[10px] font-bold text-slate-400 -mt-4 ml-1">Os filtros são os tipos de estabelecimento (Mercado, Farmácia, Padaria, Posto...) que a IA identificou nos seus cupons. Para corrigir o tipo de uma loja, use Configurações › Estabelecimentos.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {isLoadingIntelligence ? (
