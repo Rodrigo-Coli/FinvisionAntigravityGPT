@@ -55,6 +55,7 @@ import * as XLSX from 'xlsx';
 import { PhysicalAsset, InvestmentBroker, Liability, Transaction } from '../types';
 import { supabase } from '../lib/supabase/client';
 import { authHeaders } from '../lib/apiClient';
+import { syncTransactionFromMovement, deleteTransactionOfMovement } from '../lib/linkedInvestmentSync';
 import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModal';
 import { RealEstateDetailModal } from '../components/assets/RealEstateDetailModal';
 import { syncRentalTransactions as sharedSyncRentalTransactions, syncCondoIptuTransactions, PayerOption } from '../components/assets/realEstatePropertySync';
@@ -3285,6 +3286,7 @@ const Assets: React.FC = () => {
       toast('Informe um valor válido.', 'warning');
       return;
     }
+    const before = investmentMovements.find((m: any) => m.id === id) || null;
     const { error } = await supabase
       .from('investment_movements')
       .update({ amount: amt, movement_date: editingMovementDraft.movement_date, updated_at: new Date().toISOString() })
@@ -3294,18 +3296,46 @@ const Assets: React.FC = () => {
       toast(`Erro ao atualizar movimentação: ${error.message}`, 'error');
       return;
     }
+    // Sempre ligados (lib/linkedInvestmentSync.ts): o lançamento da conta, o ajuste da
+    // curva automática e o valor do título acompanham a alteração.
+    let linked = false;
+    if (before) {
+      try {
+        linked = await syncTransactionFromMovement(supabase, before as any, { amount: amt, movement_date: editingMovementDraft.movement_date });
+      } catch (syncErr: any) {
+        toast(`Movimentação salva, mas o lançamento da conta não foi atualizado: ${syncErr?.message || syncErr}`, 'warning');
+      }
+    }
     setEditingMovementId(null);
     setEditingMovementDraft(null);
     if (selectedInvestmentForLedger) loadInvestmentMovements(selectedInvestmentForLedger.id);
     await reloadAllInvestmentMovements();
+    fetchData();
+    if (linked) toast('Movimentação e lançamento da conta atualizados juntos.', 'success');
   };
 
   const handleDeleteMovement = async (id: string) => {
     if (!supabase) return;
+    const mv: any = investmentMovements.find((m: any) => m.id === id) || null;
+    // Ligado a um lançamento da conta: pergunta se exclui os dois (o padrão é excluir junto).
+    const alsoTx = !!mv?.linked_transaction_id && window.confirm(
+      'Esta movimentação está ligada a um lançamento da conta (em Transações).\n\n' +
+      'OK = excluir dos dois lugares (o saldo da conta acompanha).\n' +
+      'Cancelar = excluir só do extrato do investimento.'
+    );
     const { error } = await supabase.from('investment_movements').delete().eq('id', id);
     if (error) {
       toast(`Erro ao excluir movimentação: ${error.message}`, 'error');
       return;
+    }
+    if (alsoTx && mv) {
+      try {
+        await deleteTransactionOfMovement(supabase, mv);
+        toast('Excluído do extrato do investimento e de Transações.', 'success');
+      } catch (delErr: any) {
+        toast(`Excluído do extrato, mas não de Transações: ${delErr?.message || delErr}`, 'warning');
+      }
+      fetchData();
     }
     if (selectedInvestmentForLedger) loadInvestmentMovements(selectedInvestmentForLedger.id);
     await reloadAllInvestmentMovements();

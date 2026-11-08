@@ -36,6 +36,7 @@ import PlanUpgradeModal from '../components/subscription/PlanUpgradeModal';
 // Modular Components
 import { HistoryFilters } from '../components/history/HistoryFilters';
 import { TransactionTable } from '../components/history/TransactionTable';
+import { linkedMovementIdOf, syncMovementFromTransaction, deleteMovementOfTransaction } from '../lib/linkedInvestmentSync';
 import { PaymentModal } from '../components/history/PaymentModal';
 import { AddTransactionModal } from '../components/history/AddTransactionModal';
 import { SeriesScopeModal, SeriesScope } from '../components/SeriesScopeModal';
@@ -1717,6 +1718,16 @@ const HistoryPage: React.FC = () => {
         } else {
           await FinanceService.updateTransaction(id, patch);
 
+          // Ligado a uma movimentação de investimento (juros, aporte, resgate…): o
+          // extrato do investimento e o valor do título acompanham (lib/linkedInvestmentSync.ts).
+          if ((field === 'amount' || field === 'date') && linkedMovementIdOf(tx)) {
+            try {
+              await syncMovementFromTransaction(supabase, tx, field === 'amount' ? { amount: Number(patch.amount) } : { date: String(cleanValue) });
+            } catch (linkErr) {
+              console.warn('[Transações] extrato do investimento não acompanhou:', linkErr);
+            }
+          }
+
           // Pagamento parcial dividido: as outras linhas do grupo mostram o mesmo
           // histórico, então recebem a correção de conta também.
           const groupId = tx.metadata?.partial_payment_group_id;
@@ -2032,6 +2043,15 @@ const HistoryPage: React.FC = () => {
           }
 
           await FinanceService.deleteTransaction(id);
+
+          // Ligado a uma movimentação de investimento: pergunta se exclui também do extrato.
+          if (linkedMovementIdOf(tx) && window.confirm(
+            'Este lançamento está ligado ao extrato de um investimento (juros, aporte ou resgate).\n\n' +
+            'OK = excluir também do investimento (o valor do título acompanha).\n' +
+            'Cancelar = excluir só daqui.'
+          )) {
+            try { await deleteMovementOfTransaction(supabase, tx!); } catch (linkErr) { console.warn('[Transações] extrato do investimento não acompanhou:', linkErr); }
+          }
 
           // Deletar também a contraparte se for transferência
           if (tx?.metadata?.is_transfer && tx.metadata?.counter_account_id) {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { addMonthsIso, nextCycle, estimateCoupon, isLikelyCouponCredit, nameTokens, wantsForecast } from '../lib/couponForecast';
+import { addMonthsIso, nextCycle, estimateCoupon, isLikelyCouponCredit, nameTokens, wantsForecast, missedCoupons } from '../lib/couponForecast';
+import { missedCouponSignal, classify, marketGapSignal } from '../lib/investmentRadar';
 
 const idx = { cdiAnnual: 14, ipcaAnnual: 4.5 };
 
@@ -85,3 +86,24 @@ describe('reconhecer o crédito do extrato do banco', () => {
     expect(isLikelyCouponCredit({ date: '2027-01-15', amount: 507.28, description: 'Juros Eucatex', type: 'INCOME', metadata: { linked_asset_id: 'outro' } }, ctx)).toBe(false);
   });
 });
+
+describe('juros não recebidos (alerta)', () => {
+  const open = (date: string, extra: any = {}) => ({ id: date, date, amount: 3307.97, metadata: { expected_coupon_state: 'open', expected_coupon_cycle: date, ...extra } });
+  it('só aparece depois de 5 dias sem cair', () => {
+    expect(missedCoupons([open('2026-11-05')], '2026-11-08')).toHaveLength(0);
+    expect(missedCoupons([open('2026-10-15')], '2026-11-08')).toHaveLength(1);
+    expect(missedCoupons([open('2026-10-15', { expected_coupon_state: 'received' })], '2026-11-08')).toHaveLength(0);
+  });
+  it('no Radar: 1 atrasado = atenção; 2 = grave; com o mercado despencando vira urgente', () => {
+    const one = missedCouponSignal([{ cycle: '2026-10-15', amount: 3307.97 }], '2026-11-08')!;
+    expect(one.severity).toBe('moderate');
+    expect(classify([one])).toBe('ATENCAO');
+    const two = missedCouponSignal([{ cycle: '2026-04-15', amount: 3307.97 }, { cycle: '2026-10-15', amount: 3307.97 }], '2026-11-08')!;
+    expect(two.severity).toBe('severe');
+    expect(two.label).toBe('2 juros não recebidos');
+    const gap = marketGapSignal({ id: 'r', name: 'Raízen', estimated_value: 61418.18, metadata: { marketValue: 26341.55 } })!;
+    expect(classify([two, gap])).toBe('URGENTE');
+    expect(missedCouponSignal([], '2026-11-08')).toBeNull();
+  });
+});
+
