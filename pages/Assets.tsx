@@ -3090,9 +3090,26 @@ const Assets: React.FC = () => {
     if (!supabase) return;
     const { movementId, userId, asset, type, amount, dateStr, accountId } = params;
 
+    // Título com curva automática (lib/curveProjection.ts): o juro acumula dentro do
+    // valor do título todo dia; quando é pago na conta, sai do título. Registra o
+    // Ajuste Manual negativo no extrato para a curva seguir certa a partir daqui.
+    const couponLeavesAsset = type === 'RENDIMENTO_MENSAL' && !!asset.metadata?.autoCurve;
+    if (couponLeavesAsset) {
+      await supabase.from('investment_movements').insert([{
+        user_id: userId,
+        asset_id: asset.id,
+        movement_type: 'AJUSTE_MANUAL',
+        amount: -Math.abs(amount),
+        movement_date: dateStr,
+        is_projected: false,
+        notes: 'Juros pagos na conta (saem do valor do título)'
+      }]);
+    }
+
     const assetDelta =
       type === 'APORTE' || type === 'RENDIMENTO_ACUMULADO' || type === 'AJUSTE_MANUAL' ? amount
       : type === 'AMORTIZACAO' || type === 'RESGATE_PARCIAL' || type === 'RESGATE_TOTAL' ? -amount
+      : couponLeavesAsset ? -Math.abs(amount)
       : 0; // RENDIMENTO_MENSAL sai do ativo para a conta, então não muda o valor bruto
 
     if (assetDelta !== 0) {
@@ -9520,7 +9537,7 @@ ${tabelaHtml}
                                 {isExpanded && (
                                   <div className="mt-3 px-6 py-4 bg-slate-50 rounded-2xl space-y-1.5 text-xs text-slate-500 font-semibold border border-slate-100/50 text-left animate-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
                                     <div className="flex justify-between">
-                                      <span>{Number(invMeta.marketValue) > 0 ? 'Valor Bruto pela Curva (Atual):' : 'Valor Bruto (Atual):'}</span>
+                                      <span>{invMeta.autoCurve ? `Valor pela Curva (automática${invMeta.curveUpdatedAt ? `, ${String(invMeta.curveUpdatedAt).split('-').reverse().join('/')}` : ''}):` : Number(invMeta.marketValue) > 0 ? 'Valor Bruto pela Curva (Atual):' : 'Valor Bruto (Atual):'}</span>
                                       <span className="font-bold text-slate-700">{formatCurrency(Number(inv.estimatedValue || 0))}</span>
                                     </div>
                                     {/* Títulos com marcação a mercado (CRA, CRI, debêntures…): o relatório do banco
@@ -9787,7 +9804,7 @@ ${tabelaHtml}
                                 {isExpanded && (
                                   <div className="mt-3 px-6 py-4 bg-slate-50 rounded-2xl space-y-1.5 text-xs text-slate-500 font-semibold border border-slate-100/50 text-left animate-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
                                     <div className="flex justify-between">
-                                      <span>{Number(invMeta.marketValue) > 0 ? 'Valor Bruto pela Curva (Atual):' : 'Valor Bruto (Atual):'}</span>
+                                      <span>{invMeta.autoCurve ? `Valor pela Curva (automática${invMeta.curveUpdatedAt ? `, ${String(invMeta.curveUpdatedAt).split('-').reverse().join('/')}` : ''}):` : Number(invMeta.marketValue) > 0 ? 'Valor Bruto pela Curva (Atual):' : 'Valor Bruto (Atual):'}</span>
                                       <span className="font-bold text-slate-700">{formatCurrency(Number(inv.estimatedValue || 0))}</span>
                                     </div>
                                     {/* Títulos com marcação a mercado (CRA, CRI, debêntures…): o relatório do banco

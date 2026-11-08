@@ -213,3 +213,29 @@ describe('Radar: guia para atualizar todo mês', () => {
     expect(state.writes).toEqual([]);
   });
 });
+
+describe('Radar: atualizar pelo banco', () => {
+  const openForm = async () => {
+    const row = Array.from(container.querySelectorAll('button')).find(b => b.textContent?.includes('CRA Raízen'))!;
+    await act(async () => { row.click(); });
+    const btn = Array.from(container.querySelectorAll('button')).find(b => b.textContent?.includes('Atualizar pelo banco'))!;
+    await act(async () => { btn.click(); });
+  };
+  it('CRA com taxa mostra a curva automática e o campo do relatório', async () => {
+    state.tables.physical_assets[0].metadata = { investmentType: 'CRI_CRA', interestType: 'PRE', yieldRate: '12.29' };
+    await mount(<InvestmentRadarPanel />);
+    await openForm();
+    expect(text()).toContain('Curva automática pela taxa contratada (12,29% a.a. prefixado)');
+    expect(text()).toContain('Saldo na tela do app do banco');
+    expect(text()).toContain('Valor pela curva no relatório');
+    expect(state.writes).toEqual([]); // abrir o formulário não grava nada
+  });
+  it('fundo não mostra curva nem relatório (só o saldo da tela)', async () => {
+    state.tables.physical_assets[0].metadata = { investmentType: 'FUNDOS' };
+    await mount(<InvestmentRadarPanel />);
+    await openForm();
+    expect(text()).toContain('Saldo na tela do app do banco');
+    expect(text()).not.toContain('Curva automática');
+    expect(text()).not.toContain('Valor pela curva no relatório');
+  });
+});

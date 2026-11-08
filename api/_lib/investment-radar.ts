@@ -6,6 +6,7 @@ import { generateWithFallback } from './ai-models.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { requireUser } from './require-user.js';
 import { isCronAuthorized } from './cron-auth.js';
+import { handleCurveAction } from './curve-projection.js';
 import {
   evaluateAsset, issuerOf, monthlyFromAnnual, nextCheckAt, shouldNotify, LEVEL_LABEL,
   type LedgerMovement, type NewsAssessment, type RadarAsset, type RadarEvaluation, type RadarLevel
@@ -516,6 +517,16 @@ export async function handleInvestmentRadar(req: any, res: any) {
   const user = await requireUser(req, res);
   if (!user) return;
   const body = req.body || {};
+
+  if (body.action === 'curve_refresh' || body.action === 'bank_value' || body.action === 'report_curve') {
+    try {
+      const r = await handleCurveAction(user.id, body);
+      return res.status(r.status).json(r.json);
+    } catch (err: any) {
+      console.error('[Curve] ação falhou:', err?.message);
+      return res.status(500).json({ error: 'Não foi possível atualizar agora. Tente de novo em instantes.' });
+    }
+  }
 
   if (body.action === 'compare' || body.action === 'answer') {
     const outcome = body.action === 'compare'

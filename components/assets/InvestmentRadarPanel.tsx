@@ -9,6 +9,7 @@ import { getSessionUser } from '../../lib/session';
 import { useToast } from '../../contexts/ToastContext';
 import { FieldLabel } from '../common/HelpTip';
 import { LEVEL_LABEL, RECHECK_DAYS, type RadarLevel, type RadarSignal } from '../../lib/investmentRadar';
+import { curveSpecOf, CURVE_TYPES } from '../../lib/curveProjection';
 
 // Radar de Investimentos (Patrimônio › Investimentos).
 // Mostra o último resultado de cada investimento (gravado pela varredura
@@ -111,7 +112,9 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
   const [showHow, setShowHow] = useState(false);
   const [showMonthly, setShowMonthly] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState({ issuer: '', marketValue: '', marketValueDate: '' });
+  const todayIso = () => new Date().toISOString().slice(0, 10);
+  const [draft, setDraft] = useState({ issuer: '', bankValue: '', bankDate: '', reportValue: '', reportDate: '', autoCurve: false });
+  const [savingEdit, setSavingEdit] = useState(false);
   const [compareFile, setCompareFile] = useState<File | null>(null);
   const [compareNote, setCompareNote] = useState('');
   const [comparing, setComparing] = useState(false);
@@ -189,31 +192,60 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
   const startEdit = (a: AssetLite) => {
     const m = a.metadata || {};
     setEditing(a.id);
-    setDraft({ issuer: m.issuer || '', marketValue: m.marketValue ? String(m.marketValue) : '', marketValueDate: m.marketValueDate || '' });
+    setDraft({ issuer: m.issuer || '', bankValue: '', bankDate: todayIso(), reportValue: '', reportDate: '', autoCurve: !!m.autoCurve });
   };
 
+  const parseMoney = (v: string) => {
+    const t = v.trim();
+    if (!t) return null;
+    const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t);
+    return Number.isFinite(n) && n > 0 ? n : NaN;
+  };
+
+  const callCurveApi = async (body: Record<string, any>) => {
+    const resp = await fetch('/api/investment-radar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify(body)
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || 'Falha ao atualizar.');
+    return data;
+  };
+
+  // Atualizar pelo banco: emissor, curva automática, saldo da tela do app do banco
+  // (vira valor de mercado nos títulos com curva; valor atual nos demais) e,
+  // quando tiver, o valor pela curva do relatório (acerto).
   const saveEdit = async (a: AssetLite) => {
     if (!supabase) return;
-    const market = draft.marketValue.trim() ? Number(draft.marketValue.replace(/\./g, '').replace(',', '.')) : null;
-    if (draft.marketValue.trim() && !Number.isFinite(market)) {
-      toast('Valor de mercado inválido.', 'warning');
+    const bank = parseMoney(draft.bankValue);
+    const report = parseMoney(draft.reportValue);
+    if (Number.isNaN(bank) || Number.isNaN(report)) {
+      toast('Valor inválido. Use o formato 26341,55.', 'warning');
       return;
     }
-    const metadata = {
-      ...(a.metadata || {}),
-      issuer: draft.issuer.trim() || null,
-      marketValue: market,
-      marketValueDate: market ? (draft.marketValueDate || new Date().toISOString().slice(0, 10)) : null
-    };
-    const { error } = await supabase.from('physical_assets').update({ metadata }).eq('id', a.id);
-    if (error) {
-      toast(`Não foi possível salvar: ${error.message}`, 'error');
+    if (report && !draft.reportDate) {
+      toast('Informe a data do relatório (a data da posição).', 'warning');
       return;
     }
-    setEditing(null);
-    toast('Dados do radar salvos. Toque em "Analisar" para reavaliar.', 'success');
-    onAssetsChanged?.();
-    load();
+    setSavingEdit(true);
+    const messages: string[] = [];
+    try {
+      const metadata = { ...(a.metadata || {}), issuer: draft.issuer.trim() || null, autoCurve: draft.autoCurve };
+      const { error } = await supabase.from('physical_assets').update({ metadata }).eq('id', a.id);
+      if (error) throw new Error(error.message);
+      if (report) messages.push((await callCurveApi({ action: 'report_curve', assetId: a.id, value: report, date: draft.reportDate })).message);
+      if (bank) messages.push((await callCurveApi({ action: 'bank_value', assetId: a.id, value: bank, date: draft.bankDate || todayIso() })).message);
+      if (draft.autoCurve) await callCurveApi({ action: 'curve_refresh', assetId: a.id });
+      setEditing(null);
+      toast(messages.filter(Boolean).join(' ') || 'Dados salvos.', 'success');
+      onAssetsChanged?.();
+      load();
+    } catch (err: any) {
+      toast(`Não foi possível salvar: ${err.message}`, 'error');
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const compare = async () => {
@@ -372,7 +404,7 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
             <p className="pl-3">• <strong>Juros / Cupom recebido (cai na conta)</strong>: quando os juros caíram na conta corrente; escolha a conta. Se o crédito já foi lançado pelo extrato da conta, o app avisa para não contar duas vezes.</p>
             <p className="pl-3">• <strong>Aporte</strong> (dinheiro novo aplicado), <strong>Resgate</strong> ou <strong>Amortização</strong> (dinheiro que voltou): escolha a conta de onde saiu ou para onde foi.</p>
             <p className="pl-3">• <strong>Ajuste Manual</strong> com valor negativo para IR/come-cotas descontado do investimento.</p>
-            <p><strong className="text-slate-800">3. Valor de mercado</strong> (CRA, CRI, debêntures): aqui no Radar, no investimento › "Emissor e valor de mercado", com o saldo da parte <em>Marcação Mercado</em> do relatório.</p>
+            <p><strong className="text-slate-800">3. Jeito rápido — pela tela do app do banco:</strong> aqui no Radar, no investimento › <strong>"Atualizar pelo banco"</strong>, digite o saldo que aparece no app. Em fundos e CDB vira o valor atual (a diferença entra como rendimento). Em CRA/CRI/debêntures a tela mostra o valor de <em>mercado</em>: ligue a <strong>curva automática</strong> (o app calcula a curva todo dia pela taxa) e o saldo da tela fica como valor de mercado. Quando sair o relatório, informe o valor pela curva para o app acertar a diferença.</p>
             <p><strong className="text-slate-800">4. Confira:</strong> o valor do investimento no app tem que ficar igual ao "Saldo Bruto" pela curva no fim do mês. Se não bater, falta alguma movimentação.</p>
           </div>
         )}
@@ -467,34 +499,69 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
                   ) : null}
 
                   {/* Dados que melhoram a análise */}
-                  {editing === asset.id ? (
-                    <div className="p-3 sm:p-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 space-y-3">
+                  {editing === asset.id ? (() => {
+                    const meta = asset.metadata || {};
+                    const spec = curveSpecOf(meta);
+                    const isCurveType = CURVE_TYPES.includes(String(meta.investmentType)) && !!spec;
+                    const marketStyle = draft.autoCurve || (isCurveType && ['CRI_CRA', 'DEBENTURES'].includes(String(meta.investmentType)));
+                    const specText = spec ? (spec.index === 'CDI' ? `${String(spec.rate).replace('.', ',')}% do CDI` : spec.index === 'IPCA' ? `IPCA + ${String(spec.rate).replace('.', ',')}% a.a.` : `${String(spec.rate).replace('.', ',')}% a.a. prefixado`) : '';
+                    return (
+                    <div className="p-3 sm:p-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 space-y-4">
+                      <p className="text-xs font-bold text-slate-800">Atualizar pelo banco</p>
                       <div>
                         <FieldLabel label="Emissor / gestor" help="Quem deve o dinheiro ou administra o fundo (ex.: Raízen, Eucatex, SulAmérica). O radar pesquisa notícias por esse nome e soma tudo o que você tem com ele para medir a concentração. Vazio = usa o nome do investimento." />
                         <input value={draft.issuer} onChange={e => setDraft(d => ({ ...d, issuer: e.target.value }))} placeholder={asset.name} className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
                       </div>
+
+                      {isCurveType && (
+                        <label className="flex items-start gap-2 text-xs text-slate-600 cursor-pointer">
+                          <input type="checkbox" checked={draft.autoCurve} onChange={e => setDraft(d => ({ ...d, autoCurve: e.target.checked }))} className="mt-0.5" />
+                          <span><strong className="text-slate-800">Curva automática pela taxa contratada ({specText})</strong> — o app atualiza sozinho, todo dia, o valor pela curva (o que o título vale se você segurar até o vencimento). Você não precisa lançar o rendimento do mês.</span>
+                        </label>
+                      )}
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <FieldLabel label="Valor de mercado (R$)" help="Quanto o banco pagaria se você vendesse hoje. Vem no relatório mensal 'Marcação a Mercado' (o valor do app segue a curva). Se ficar bem abaixo da curva, é sinal de que o mercado vê risco no emissor." />
-                          <input inputMode="decimal" value={draft.marketValue} onChange={e => setDraft(d => ({ ...d, marketValue: e.target.value }))} placeholder="ex.: 26133,78" className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+                          <FieldLabel
+                            label="Saldo na tela do app do banco (R$)"
+                            help={marketStyle
+                              ? 'O "Saldo total" que aparece no app do banco hoje. Neste tipo de título (CRA, CRI, debênture) esse saldo é o valor de MERCADO: o app guarda como valor de mercado (o Radar usa para medir o risco) e o patrimônio continua pela curva.'
+                              : 'O saldo que aparece no app do banco hoje. O app troca o valor atual por este e lança a diferença desde a última atualização como rendimento do período (ou queda, se diminuiu).'}
+                          />
+                          <input inputMode="decimal" value={draft.bankValue} onChange={e => setDraft(d => ({ ...d, bankValue: e.target.value }))} placeholder="ex.: 26341,55" className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
                         </div>
                         <div>
-                          <FieldLabel label="Data do valor de mercado" help="A data da posição do relatório de onde você tirou o valor de mercado." />
-                          <input type="date" value={draft.marketValueDate} onChange={e => setDraft(d => ({ ...d, marketValueDate: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+                          <FieldLabel label="Data do saldo" help="O dia em que você viu esse saldo no app do banco (normalmente hoje)." />
+                          <input type="date" value={draft.bankDate} onChange={e => setDraft(d => ({ ...d, bankDate: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
                         </div>
                       </div>
+
+                      {isCurveType && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <FieldLabel label="Valor pela curva no relatório (opcional)" help={'Quando sair o relatório mensal do banco, use o "Saldo Bruto" da parte "Marcação Curva" deste título. O app compara com o que ele calculou e lança um acerto com a diferença; a curva automática segue a partir daí. Sem relatório, deixe vazio.'} />
+                            <input inputMode="decimal" value={draft.reportValue} onChange={e => setDraft(d => ({ ...d, reportValue: e.target.value }))} placeholder="ex.: 61418,18" className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+                          </div>
+                          <div>
+                            <FieldLabel label="Data da posição do relatório" help={'A "Data da posição" que aparece no topo do relatório (normalmente o último dia do mês).'} />
+                            <input type="date" value={draft.reportDate} onChange={e => setDraft(d => ({ ...d, reportDate: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex gap-2">
-                        <button onClick={() => saveEdit(asset)} className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold flex items-center gap-1"><Check size={14} /> Salvar</button>
+                        <button disabled={savingEdit} onClick={() => saveEdit(asset)} className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold flex items-center gap-1 disabled:opacity-50">{savingEdit ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Salvar</button>
                         <button onClick={() => setEditing(null)} className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 font-bold flex items-center gap-1"><X size={14} /> Cancelar</button>
                       </div>
                     </div>
-                  ) : (
+                    );
+                  })() : (
                     <div className="flex flex-wrap gap-2">
                       <button onClick={() => scan(asset.id)} disabled={!!scanning || tableMissing} className="px-3 py-2 rounded-xl bg-indigo-50 text-indigo-700 font-bold flex items-center gap-1.5 disabled:opacity-50">
                         {scanning === asset.id ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Analisar este
                       </button>
                       <button onClick={() => startEdit(asset)} className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 font-bold flex items-center gap-1.5">
-                        <Pencil size={13} /> Emissor e valor de mercado
+                        <Pencil size={13} /> Atualizar pelo banco
                       </button>
                       {row?.level === 'URGENTE' && (
                         <button onClick={() => dismiss(asset.id)} className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 font-bold flex items-center gap-1.5">
