@@ -1,5 +1,37 @@
 [
   {
+    "version": "2026.11.07.2227",
+    "title": "Curva automática dos títulos e atualização pela tela do banco",
+    "date": "07/11/2026",
+    "benefits": [
+      {
+        "title": "Curva automática pela taxa contratada",
+        "desc": "Em CRA, CRI, debêntures e CDB, ligue a curva automática e o app atualiza sozinho, todo dia, o valor pela curva (prefixado, % do CDI ou IPCA+), usando o CDI e o IPCA oficiais do Banco Central. Não precisa mais lançar o rendimento do mês. Conferido com os relatórios reais do Safra: diferença de centavos.",
+        "type": "novidade"
+      },
+      {
+        "title": "Atualizar pelo banco: digite o saldo da tela",
+        "desc": "No Radar, em cada investimento, \"Atualizar pelo banco\": digite o saldo que aparece no app do banco. Em fundos e CDB vira o valor atual e a diferença entra como rendimento do período. Em CRA/CRI/debêntures (onde a tela mostra o valor de mercado) fica guardado como valor de mercado e o patrimônio segue pela curva.",
+        "type": "novidade"
+      },
+      {
+        "title": "Acerto pelo relatório mensal",
+        "desc": "Quando sair o relatório do banco, informe o valor pela curva e a data da posição: o app lança só o acerto da diferença e a curva automática segue a partir dali.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Juros que caem na conta saem do título",
+        "desc": "Em título com curva automática, registrar \"Juros / Cupom recebido (cai na conta)\" também tira o valor do título, para a curva continuar certa.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "lib/curveProjection.ts + testes: dias úteis com feriados nacionais (Páscoa/Carnaval/Corpus Christi), fator PRE/CDI(série 12)/IPCA+(série 433), plano mensal (fecha meses + linha '[curva automática]' do mês, sem duplicar), acerto pelo relatório",
+      "api/_lib/curve-projection.ts: rotina diária (antes do Radar, limite 20 s), ações bank_value/report_curve/curve_refresh na rota /api/investment-radar, validação de dono",
+      "InvestmentRadarPanel: formulário 'Atualizar pelo banco' (emissor, curva automática, saldo da tela, valor do relatório) com ajuda em cada campo; Assets: rótulo da curva automática e cupom em ativo com curva gera Ajuste Manual negativo"
+    ]
+  },
+  {
     "version": "2026.11.07.2150",
     "title": "Radar de Investimentos e Benefícios e Milhas dos cartões",
     "date": "07/11/2026",

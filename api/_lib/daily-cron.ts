@@ -4,6 +4,7 @@ import { handleNotifyReferralEngagement } from './notify-referral-engagement.js'
 import { handleMaintenance } from './maintenance.js';
 import { isCronAuthorized } from './cron-auth.js';
 import { runInvestmentRadarCron } from './investment-radar.js';
+import { runCurveProjectionCron } from './curve-projection.js';
 
 // Um "res" descartável só pra capturar o resultado de cada handler sem
 // escrever de verdade na resposta HTTP (cada handler já termina com
@@ -40,6 +41,10 @@ export async function handleDailyCron(req: any, res: any) {
   const maintenance = captureRes();
   await handleMaintenance(req, maintenance.res as any);
 
+  // Curva automática dos títulos de renda fixa (antes do Radar, que usa o valor atualizado).
+  const curve = captureRes();
+  try { await runCurveProjectionCron(req, curve.res as any); } catch (err: any) { console.error('[daily-cron] curva falhou:', err?.message); }
+
   // Radar de Investimentos por último (é o que mais demora, por causa da busca
   // de notícias): checa o que venceu a data (OK a cada 7 dias, Atenção/Urgente
   // todo dia) e avisa quando algo vira URGENTE.
@@ -50,6 +55,7 @@ export async function handleDailyCron(req: any, res: any) {
     success: true,
     billsDue: bills.get(),
     investmentsDue: investments.get(),
+    curveProjection: curve.get(),
     investmentRadar: radar.get(),
     referralEngagement: referral.get(),
     maintenance: maintenance.get(),
