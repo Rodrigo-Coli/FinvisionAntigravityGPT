@@ -109,6 +109,7 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
   const [scanning, setScanning] = useState<string | null>(null); // 'ALL' ou id do ativo
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [showHow, setShowHow] = useState(false);
+  const [showMonthly, setShowMonthly] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState({ issuer: '', marketValue: '', marketValueDate: '' });
   const [compareFile, setCompareFile] = useState<File | null>(null);
@@ -327,6 +328,12 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
               <Info size={14} /> Como funciona
             </button>
             <button
+              onClick={() => setShowMonthly(v => !v)}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-100 flex items-center gap-1.5"
+            >
+              <Pencil size={14} /> Como atualizar todo mês
+            </button>
+            <button
               onClick={() => scan()}
               disabled={!!scanning || tableMissing}
               className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1.5"
@@ -353,6 +360,20 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
             <p><strong className="text-slate-800">Níveis:</strong> <strong>Urgente</strong> só quando há <em>dois ou mais sinais diferentes</em> e pelo menos um é grave — um sinal sozinho nunca vira urgente, para não dar alarme falso. <strong>Atenção</strong> com qualquer sinal relevante. <strong>Tranquilo</strong> sem sinais.</p>
             <p><strong className="text-slate-800">Quando checa:</strong> sozinho, todo dia de manhã, o que estiver vencido — Tranquilo a cada {RECHECK_DAYS.OK} dias; Atenção e Urgente todo dia. O botão "Analisar agora" checa tudo na hora.</p>
             <p><strong className="text-slate-800">Avisos:</strong> só o Urgente aparece na tela inicial e vai para o WhatsApp/notificação (e repete no máximo uma vez por semana). Toda sugestão de saída mostra a conta de <em>vender hoje × segurar até o vencimento</em>. Nada é vendido ou mudado sem você.</p>
+          </div>
+        )}
+
+        {showMonthly && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-indigo-50/50 border border-indigo-100 text-xs text-slate-600 leading-relaxed space-y-2">
+            <p className="text-slate-800 font-bold">Atualizar os investimentos pelo relatório do banco (uma vez por mês)</p>
+            <p><strong className="text-slate-800">1. Pegue o relatório do mês.</strong> Ex.: Safra "Relatório Mensal" (use a parte <em>Marcação Curva</em>, quadro "Investimentos Resumo Composição"); XP: tela do fundo › Variação patrimonial › escolha o mês. Para cada investimento o relatório mostra o saldo do começo, aplicações, resgates, impostos, o rendimento do mês e o saldo do fim.</p>
+            <p><strong className="text-slate-800">2. No app, abra o investimento › Extrato › Adicionar Movimentação</strong> e lance o que aconteceu no mês:</p>
+            <p className="pl-3">• <strong>Rendimento acumulado (fica no ativo)</strong>: o "rendimento do mês" do relatório. Não mexe em conta nenhuma.</p>
+            <p className="pl-3">• <strong>Juros / Cupom recebido (cai na conta)</strong>: quando os juros caíram na conta corrente; escolha a conta. Se o crédito já foi lançado pelo extrato da conta, o app avisa para não contar duas vezes.</p>
+            <p className="pl-3">• <strong>Aporte</strong> (dinheiro novo aplicado), <strong>Resgate</strong> ou <strong>Amortização</strong> (dinheiro que voltou): escolha a conta de onde saiu ou para onde foi.</p>
+            <p className="pl-3">• <strong>Ajuste Manual</strong> com valor negativo para IR/come-cotas descontado do investimento.</p>
+            <p><strong className="text-slate-800">3. Valor de mercado</strong> (CRA, CRI, debêntures): aqui no Radar, no investimento › "Emissor e valor de mercado", com o saldo da parte <em>Marcação Mercado</em> do relatório.</p>
+            <p><strong className="text-slate-800">4. Confira:</strong> o valor do investimento no app tem que ficar igual ao "Saldo Bruto" pela curva no fim do mês. Se não bater, falta alguma movimentação.</p>
           </div>
         )}
 

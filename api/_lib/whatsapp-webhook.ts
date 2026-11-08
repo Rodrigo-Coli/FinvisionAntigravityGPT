@@ -5,7 +5,7 @@ import { generateWithFallback } from './ai-models.js';
 import { FINANCIAL_TOOL_DECLARATIONS, executeFinancialTool } from './ai-financial-tools.js';
 import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { findCategoryByName } from './category-resolver.js';
-import { handleInvestmentWhatsApp, isInvestmentWhatsAppMessage } from './investment-radar.js';
+import { handleInvestmentWhatsApp, classifyInvestmentMessage } from './investment-radar.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
@@ -113,8 +113,9 @@ const HELP_MESSAGE = `🤖 *Zyvion AI — O que posso fazer por você:*
 • "Qual meu patrimônio líquido?"
 
 📊 *Sugestão de Investimento do Banco*
-• Envie o *print ou PDF* com a legenda *"sugestão"* — eu comparo com a sua carteira e digo se vale
-• Depois mande *"gerente: ..."* (texto, áudio ou print) com a resposta dele e eu reavalio
+• "O gerente me ofereceu um CDB de 102% do CDI por 2 anos, vale a pena?"
+• Ou envie o *print/PDF* da oferta — eu comparo com a sua carteira e digo se vale
+• Depois me conte o que o gerente respondeu ("o gerente disse que…") e eu reavalio
 
 💡 *Dica:* Responda *citando* qualquer mensagem minha para operar sobre aquele lançamento específico!`;
 
@@ -1566,12 +1567,14 @@ export async function handleWhatsAppWebhook(req: any, res: any) {
     // Radar de Investimentos: sugestão do banco (print/PDF com legenda sobre
     // investimento) ou resposta do gerente ("gerente: ..."). Qualquer outra
     // mensagem não entra aqui e segue o fluxo de sempre.
-    if (isInvestmentWhatsAppMessage(text, isImage || isPDF)) {
+    let investmentKind: 'proposal' | 'answer' | null = null;
+    try { investmentKind = await classifyInvestmentMessage(userId, text, isImage || isPDF); } catch { investmentKind = null; }
+    if (investmentKind) {
       await sendWhatsApp(phone, '📊 *Analisando com o Radar de Investimentos...* (pode levar até 1 minuto)');
       const fileName = (extracted.media as any)?.fileName || undefined;
       let reply: string | null = null;
       try {
-        reply = await handleInvestmentWhatsApp({ userId, text, hasFile: isImage || isPDF, fileName, fetchMedia: () => downloadEvolutionMedia(message) });
+        reply = await handleInvestmentWhatsApp({ userId, text, hasFile: isImage || isPDF, fileName, kind: investmentKind, fetchMedia: () => downloadEvolutionMedia(message) });
       } catch (err: any) {
         console.error('[WhatsApp] radar de investimentos falhou:', err?.message);
         reply = '⚠️ Não consegui analisar agora. Tente de novo em instantes.';

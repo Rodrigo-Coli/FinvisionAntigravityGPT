@@ -202,3 +202,14 @@ describe('Benefícios: guia de onde ver os pontos', () => {
     expect(text()).toContain('Investback');
   });
 });
+
+describe('Radar: guia para atualizar todo mês', () => {
+  it('abre o passo a passo', async () => {
+    await mount(<InvestmentRadarPanel />);
+    const btn = Array.from(container.querySelectorAll('button')).find(b => b.textContent?.includes('Como atualizar todo mês'))!;
+    await act(async () => { btn.click(); });
+    expect(text()).toContain('Rendimento acumulado (fica no ativo)');
+    expect(text()).toContain('Marcação Curva');
+    expect(state.writes).toEqual([]);
+  });
+});

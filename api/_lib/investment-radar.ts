@@ -407,9 +407,11 @@ export type ProposalOutcome =
   | { ok: false; status: number; error: string; limitReached?: boolean };
 
 /** Lê a sugestão (print/PDF), compara com a carteira e guarda em investment_proposals. */
-export async function analyzeProposal(userId: string, file: ProposalFile, note: string, channel: 'app' | 'whatsapp'): Promise<ProposalOutcome> {
-  if (!file?.data || !file?.mimeType) return { ok: false, status: 400, error: 'Envie o print ou o PDF da sugestão.' };
-  if (String(file.data).length > 12_000_000) return { ok: false, status: 413, error: 'Arquivo grande demais (máx. ~8 MB).' };
+export async function analyzeProposal(userId: string, file: ProposalFile | null, note: string, channel: 'app' | 'whatsapp'): Promise<ProposalOutcome> {
+  const hasFile = !!(file?.data && file?.mimeType);
+  // Sem arquivo, vale a descrição em texto (ex.: "o gerente me ofereceu um CDB de 102% do CDI por 2 anos").
+  if (!hasFile && String(note || '').trim().length < 15) return { ok: false, status: 400, error: 'Envie o print ou o PDF da sugestão (ou descreva o produto: tipo, taxa, prazo e emissor).' };
+  if (hasFile && String(file!.data).length > 12_000_000) return { ok: false, status: 413, error: 'Arquivo grande demais (máx. ~8 MB).' };
   const limit = await checkAiActionAllowed(supabase, userId, 'investment_compare');
   if (!limit.allowed) return { ok: false, status: 429, error: limit.message || 'Limite atingido.', limitReached: true };
   const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
@@ -419,10 +421,14 @@ export async function analyzeProposal(userId: string, file: ProposalFile, note: 
     const { response, model } = await generateWithFallback(ai, {
       contents: [{
         role: 'user',
-        parts: [
-          { inlineData: { mimeType: file.mimeType, data: file.data } },
-          { text: COMPARE_PROMPT(await portfolioSummary(userId), String(note || '').slice(0, 500)) }
-        ]
+        parts: hasFile
+          ? [
+              { inlineData: { mimeType: file!.mimeType, data: file!.data } },
+              { text: COMPARE_PROMPT(await portfolioSummary(userId), String(note || '').slice(0, 500)) }
+            ]
+          : [
+              { text: COMPARE_PROMPT(await portfolioSummary(userId), '').replace('a sugestão do arquivo anexo.', `esta sugestão, descrita por ele em mensagem: "${String(note).slice(0, 1500)}"`) }
+            ]
       }],
       config: { temperature: 0.2 }
     });
@@ -432,7 +438,7 @@ export async function analyzeProposal(userId: string, file: ProposalFile, note: 
     const { verdict, analysis } = splitVerdict(text);
     const { data: saved } = await supabase
       .from('investment_proposals')
-      .insert({ user_id: userId, source_name: String(file.name || 'sugestão').slice(0, 200), user_note: note || null, verdict, analysis, channel })
+      .insert({ user_id: userId, source_name: String(file?.name || (hasFile ? 'sugestão' : `descrição: ${String(note).slice(0, 80)}`)).slice(0, 200), user_note: note || null, verdict, analysis, channel })
       .select('id, created_at')
       .maybeSingle();
     return { ok: true, id: saved?.id || null, verdict, analysis };
@@ -570,14 +576,43 @@ export function isInvestmentWhatsAppMessage(text: string, hasFile: boolean): 'pr
   return null;
 }
 
+// Conversa natural: a pessoa não precisa saber nenhum "comando".
+// Só entra aqui quando a frase junta quem ofereceu (gerente/banco/assessor) +
+// a oferta + um assunto de INVESTIMENTO — "o banco sugeriu parcelar a fatura"
+// não é investimento e segue o fluxo normal.
+const INVEST_WORD = /\b(investimentos?|investir|aplica[cç][aã]o|aplicar|cdb|lci|lca|lc|cri|cra|deb[eê]ntures?|fundos?|coe|tesouro|previd[eê]ncia|renda fixa|t[ií]tulos?|carteira|rentabilidade|% ?do cdi|ipca ?\+)/i;
+const OFFER = /\b(gerente|assessora?|banco|corretora|safra|bradesco|btg|xp|itau|itaú|santander|nubank)\b[^.?!\n]{0,60}\b(ofereceu|ofereceram|oferecendo|sugeriu|sugeriram|sugerindo|indicou|indicaram|prop[oô]s|propuseram|recomendou|recomendaram|quer que eu)\b/i;
+const DECISION = /\b(vale a pena|compensa|devo (aceitar|aplicar|investir|trocar|resgatar)|é bom|e bom|recomenda|faço|fa[cç]o o que|aceito)\b/i;
+const NATURAL_ANSWER = /\b(gerente|assessora?)\b[^.?!\n]{0,30}\b(respondeu|disse|falou|mandou|informou|confirmou|explicou|retornou|passou)\b/i;
+const ANSWER_DETAIL = /(\d|taxa|prazo|car[eê]ncia|liquidez|fgc|cdi|ipca|rende|rendimento|vencimento|isento|ir\b|imposto|garantia|emissor)/i;
+
+/** Classifica a mensagem (comando explícito ou conversa natural). null = segue o fluxo de sempre. */
+export async function classifyInvestmentMessage(userId: string, text: string, hasFile: boolean): Promise<'proposal' | 'answer' | null> {
+  const explicit = isInvestmentWhatsAppMessage(text, hasFile);
+  if (explicit) return explicit;
+  const t = String(text || '');
+  if (!t.trim()) return null;
+  // "o gerente disse que é 102% do CDI…" só vira resposta se houver sugestão recente (30 dias).
+  if (NATURAL_ANSWER.test(t) && (ANSWER_DETAIL.test(t) || hasFile)) {
+    const since = new Date(Date.now() - 30 * 86400000).toISOString();
+    const { data } = await supabase.from('investment_proposals').select('id').eq('user_id', userId).gte('created_at', since).limit(1);
+    if (data && data.length) return 'answer';
+  }
+  const aboutInvestment = INVEST_WORD.test(t);
+  if (aboutInvestment && (OFFER.test(t) || DECISION.test(t))) return 'proposal';
+  return null;
+}
+
 export async function handleInvestmentWhatsApp(params: {
   userId: string;
   text: string;
   hasFile: boolean;
   fileName?: string;
   fetchMedia: () => Promise<{ base64: string; mimeType: string } | null>;
+  /** Já classificada pelo webhook (classifyInvestmentMessage); sem isso, só os comandos explícitos. */
+  kind?: 'proposal' | 'answer' | null;
 }): Promise<string | null> {
-  const kind = isInvestmentWhatsAppMessage(params.text, params.hasFile);
+  const kind = params.kind !== undefined ? params.kind : isInvestmentWhatsAppMessage(params.text, params.hasFile);
   if (!kind) return null;
 
   let file: ProposalFile | null = null;
@@ -591,12 +626,14 @@ export async function handleInvestmentWhatsApp(params: {
     const answerText = params.text.replace(MANAGER_ANSWER, '').trim();
     const r = await addManagerAnswer(params.userId, null, answerText, file, 'whatsapp');
     if (!r.ok) return `⚠️ ${r.error}`;
-    return `*Zyvion* 📊 *Resposta do gerente analisada*${r.sourceName ? ` (${r.sourceName})` : ''}\n*Veredito agora:* ${VERDICT_EMOJI[r.verdict] || r.verdict}\n\n${toWhatsAppText(r.analysis)}\n\n_Tem mais resposta do gerente? Mande começando com *gerente:* (texto, áudio ou print)._`;
+    return `*Zyvion* 📊 *Resposta do gerente analisada*${r.sourceName ? ` (${r.sourceName})` : ''}\n*Veredito agora:* ${VERDICT_EMOJI[r.verdict] || r.verdict}\n\n${toWhatsAppText(r.analysis)}\n\n_Se o gerente responder mais alguma coisa, é só me contar aqui do seu jeito (ex.: "o gerente disse que…"), em texto, áudio ou print. Tudo fica guardado no app em Patrimônio › Investimentos › Radar._`;
   }
 
-  if (!file) return null;
   const note = params.text.trim();
   const r = await analyzeProposal(params.userId, file, note, 'whatsapp');
   if (!r.ok) return `⚠️ ${r.error}`;
-  return `*Zyvion* 📊 *Sugestão analisada*\n*Veredito:* ${VERDICT_EMOJI[r.verdict] || r.verdict}\n\n${toWhatsAppText(r.analysis)}\n\n_Quando o gerente responder, mande aqui começando com *gerente:* — pode ser texto, áudio ou print. Eu junto com esta análise e reavalio. Fica tudo guardado no app em Patrimônio › Investimentos › Radar._`;
+  const howToContinue = file
+    ? '_Quando o gerente responder, é só me contar aqui do seu jeito (ex.: "o gerente disse que a taxa é 102% do CDI"), em texto, áudio ou print. Eu junto com esta análise e reavalio. Tudo fica guardado no app em Patrimônio › Investimentos › Radar._'
+    : '_Analisei pelo que você descreveu. Se tiver o print ou a lâmina do produto, mande aqui que eu refaço com todos os detalhes. Quando o gerente responder às perguntas, é só me contar do seu jeito (texto, áudio ou print). Tudo fica guardado no app em Patrimônio › Investimentos › Radar._';
+  return `*Zyvion* 📊 *Sugestão analisada*\n*Veredito:* ${VERDICT_EMOJI[r.verdict] || r.verdict}\n\n${toWhatsAppText(r.analysis)}\n\n${howToContinue}`;
 }

@@ -1,6 +1,6 @@
 [
   {
-    "version": "2026.11.07.1835",
+    "version": "2026.11.07.2150",
     "title": "Radar de Investimentos e Benefícios e Milhas dos cartões",
     "date": "07/11/2026",
     "benefits": [
@@ -21,7 +21,7 @@
       },
       {
         "title": "Sugestão do banco também pelo WhatsApp",
-        "desc": "Mande o print ou PDF com a legenda \"sugestão\" e receba a análise ali mesmo. A resposta do gerente vai começando com \"gerente:\" (texto, áudio ou print) e entra na mesma análise, que também aparece no app. Comprovantes e lançamentos continuam funcionando como sempre.",
+        "desc": "Pode falar do seu jeito: \"o gerente me ofereceu um CDB de 102% do CDI, vale a pena?\" ou mandar o print/PDF da oferta, e a análise chega ali mesmo. Depois é só contar o que ele respondeu (\"o gerente disse que…\", em texto, áudio ou print) que eu reavalio na mesma conversa, que também aparece no app. Comprovantes, gastos e consultas continuam funcionando como sempre.",
         "type": "novidade"
       },
       {
@@ -38,6 +38,16 @@
         "title": "Onde ver seus pontos e cashback",
         "desc": "Na aba Benefícios e Milhas, um guia mostra onde conferir pontos, milhas e cashback (fatura, app do banco, Livelo, Esfera, Smiles, LATAM Pass, Azul Fidelidade e o Investback da XP) para você preencher certo e acompanhar o que cada cartão rendeu.",
         "type": "melhoria"
+      },
+      {
+        "title": "Curva e mercado lado a lado",
+        "desc": "Em CRA, CRI e debêntures, o detalhe do investimento mostra o valor pela curva (o que entra no patrimônio, se você segurar até o vencimento) e o valor de mercado (quanto receberia vendendo hoje), com a diferença em %.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Passo a passo para atualizar todo mês",
+        "desc": "No Radar de Investimentos, \"Como atualizar todo mês\" ensina a lançar o relatório do banco no app: rendimento do mês, juros que caíram na conta, aplicações, resgates, impostos e o valor de mercado — e como conferir se bateu.",
+        "type": "melhoria"
       }
     ],
     "changes": [
@@ -48,7 +58,9 @@
       "Migração supabase/2026-11-07_radar_investimentos_e_beneficios_cartao.sql: investment_radar, investment_proposals (RLS) e cards.benefits",
       "ai-usage-limits: investment_radar e investment_compare contam como diagnóstico; varredura automática fora do limite",
       "Testes de regressão: telas novas e as que já existiam (Contas & Cartões nas 3 abas, Patrimônio › Investimentos e Visão Geral, tela inicial) abrem com o banco antes e depois da migração; rotina diária continua rodando contas/vencimentos/indicações/manutenção mesmo se o radar falhar; radar com limite de 40 s na rotina diária",
-      "Resposta do gerente: investment_proposals.follow_ups (memória) + action 'answer' na rota e no WhatsApp ('gerente:'); WhatsApp só intercepta print/PDF com legenda 'sugestão/proposta/radar/vale a pena' ou texto iniciando com 'gerente:' (testes garantem que comprovantes e lançamentos seguem o fluxo normal)"
+      "Resposta do gerente: investment_proposals.follow_ups (memória) + action 'answer' na rota e no WhatsApp ('gerente:'); WhatsApp só intercepta print/PDF com legenda 'sugestão/proposta/radar/vale a pena' ou texto iniciando com 'gerente:' (testes garantem que comprovantes e lançamentos seguem o fluxo normal)",
+      "WhatsApp em linguagem natural: classifyInvestmentMessage (oferta + assunto de investimento; 'o gerente disse…' só com sugestão recente e detalhe de investimento); analyzeProposal aceita descrição em texto; testes cobrindo mensagens comuns que NÃO podem ser capturadas",
+      "Assets: valor pela curva × valor de mercado (metadata.marketValue) no detalhe do investimento; Radar: guia 'Como atualizar todo mês'"
     ]
   },
   {

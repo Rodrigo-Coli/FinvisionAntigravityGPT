@@ -29,6 +29,7 @@ class Q {
   in(c: string, vs: any[]) { this.filters.push(r => vs.includes(r[c])); return this; }
   order() { return this; }
   limit() { return this; }
+  gte() { return this; }
   upsert(row: any) { db.upserts.push(row); return Promise.resolve({ error: null }); }
   insert() { return this; }
   maybeSingle() { return Promise.resolve({ data: this.rows()[0] || null, error: null }); }
@@ -209,5 +210,40 @@ describe('resposta do gerente (memória da conversa)', () => {
     const { handleInvestmentWhatsApp } = await import('../api/_lib/investment-radar');
     const reply = await handleInvestmentWhatsApp({ userId: 'u1', text: 'Gastei 50 no mercado', hasFile: false, fetchMedia: async () => null });
     expect(reply).toBeNull();
+  });
+});
+
+describe('WhatsApp em conversa natural (sem comando)', () => {
+  beforeEach(() => {
+    db.tables.investment_proposals = [];
+  });
+  it('entende uma oferta contada do jeito da pessoa', async () => {
+    const { classifyInvestmentMessage } = await import('../api/_lib/investment-radar');
+    expect(await classifyInvestmentMessage('u1', 'O gerente me ofereceu um CDB de 102% do CDI por 2 anos, vale a pena?', false)).toBe('proposal');
+    expect(await classifyInvestmentMessage('u1', 'o Safra sugeriu trocar meu CRA por uma LCA', false)).toBe('proposal');
+    expect(await classifyInvestmentMessage('u1', 'vale a pena investir nesse fundo que a assessora mandou?', false)).toBe('proposal');
+    expect(await classifyInvestmentMessage('u1', 'olha essa aplicação que o banco ofereceu', true)).toBe('proposal');
+  });
+  it('não pega o que não é sugestão de investimento', async () => {
+    const { classifyInvestmentMessage } = await import('../api/_lib/investment-radar');
+    for (const t of [
+      'o banco sugeriu parcelar a fatura',
+      'Gastei 50 no mercado',
+      'quanto rendeu meu investimento?',
+      'almoço com o gerente 80 reais',
+      'Recebi 2000 de salário',
+      'transferi 500 para a XP',
+      'paguei a fatura do Bradesco'
+    ]) expect(await classifyInvestmentMessage('u1', t, false)).toBeNull();
+    expect(await classifyInvestmentMessage('u1', 'comprovante de aplicação', true)).toBeNull();
+    expect(await classifyInvestmentMessage('u1', 'o Bradesco mandou o comprovante da aplicação', true)).toBeNull();
+    expect(await classifyInvestmentMessage('u1', 'Apliquei 1000 no CDB do Bradesco', false)).toBeNull();
+  });
+  it('"o gerente disse…" vira resposta só se houver sugestão recente e falar de investimento', async () => {
+    const { classifyInvestmentMessage } = await import('../api/_lib/investment-radar');
+    expect(await classifyInvestmentMessage('u1', 'o gerente disse que a taxa é 102% do CDI', false)).toBeNull();
+    db.tables.investment_proposals = [{ id: 'p1', user_id: 'u1', created_at: new Date().toISOString() }];
+    expect(await classifyInvestmentMessage('u1', 'o gerente disse que a taxa é 102% do CDI', false)).toBe('answer');
+    expect(await classifyInvestmentMessage('u1', 'o gerente disse que meu limite aumentou', false)).toBeNull();
   });
 });
