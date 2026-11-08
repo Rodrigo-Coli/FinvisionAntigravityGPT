@@ -7,6 +7,7 @@ import { checkAiActionAllowed } from './ai-usage-limits.js';
 import { requireUser } from './require-user.js';
 import { isCronAuthorized } from './cron-auth.js';
 import { handleCurveAction } from './curve-projection.js';
+import { handleCouponAction } from './coupon-forecast.js';
 import {
   evaluateAsset, issuerOf, monthlyFromAnnual, nextCheckAt, shouldNotify, LEVEL_LABEL,
   type LedgerMovement, type NewsAssessment, type RadarAsset, type RadarEvaluation, type RadarLevel
@@ -525,6 +526,16 @@ export async function handleInvestmentRadar(req: any, res: any) {
     } catch (err: any) {
       console.error('[Curve] ação falhou:', err?.message);
       return res.status(500).json({ error: 'Não foi possível atualizar agora. Tente de novo em instantes.' });
+    }
+  }
+
+  if (body.action === 'coupon_sync' || body.action === 'coupon_receive') {
+    try {
+      const r = await handleCouponAction(user.id, body);
+      return res.status(r.status).json(r.json);
+    } catch (err: any) {
+      console.error('[Juros previstos] ação falhou:', err?.message);
+      return res.status(500).json({ error: 'Não foi possível atualizar os juros previstos agora. Tente de novo em instantes.' });
     }
   }
 

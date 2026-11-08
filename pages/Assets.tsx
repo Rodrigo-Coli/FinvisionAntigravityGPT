@@ -54,6 +54,7 @@ import {
 import * as XLSX from 'xlsx';
 import { PhysicalAsset, InvestmentBroker, Liability, Transaction } from '../types';
 import { supabase } from '../lib/supabase/client';
+import { authHeaders } from '../lib/apiClient';
 import { RealEstateWizardModal } from '../components/assets/RealEstateWizardModal';
 import { RealEstateDetailModal } from '../components/assets/RealEstateDetailModal';
 import { syncRentalTransactions as sharedSyncRentalTransactions, syncCondoIptuTransactions, PayerOption } from '../components/assets/realEstatePropertySync';
@@ -77,6 +78,7 @@ import { withTimeout } from '../lib/connectivity';
 import { isOrphanPendingFinancing } from '../lib/pendingFinancing';
 import { summarizeLoan, loanOpenBalance } from '../lib/loanSummary';
 import InvestmentRadarPanel from '../components/assets/InvestmentRadarPanel';
+import CouponForecastPanel from '../components/assets/CouponForecastPanel';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -524,6 +526,8 @@ const Assets: React.FC = () => {
     // datas fixas). Serve para o card avisar quando o próximo pagamento cai.
     couponFrequency: 'NONE' as 'NONE' | 'MENSAL' | 'TRIMESTRAL' | 'SEMESTRAL' | 'ANUAL',
     couponNextDate: '',
+    // Cria a receita prevista de juros nas Transações (api/_lib/coupon-forecast.ts).
+    couponForecast: true,
     status: 'ATIVO' as 'ATIVO' | 'RESGATADO',
     isTaxExempt: false,
     coeCapitalProtected: false,
@@ -3202,11 +3206,15 @@ const Assets: React.FC = () => {
     if (accountId) {
       const { data: sameDay } = await supabase
         .from('transactions')
-        .select('description, amount')
+        .select('description, amount, is_paid, metadata')
         .eq('account_id', accountId)
         .eq('is_deleted', false)
         .eq('date', dateStr);
-      const clash = (sameDay || []).find((t: any) => Math.abs(Number(t.amount)).toFixed(2) === Math.abs(amt).toFixed(2));
+      // Juro previsto em aberto não é dinheiro que já entrou: ele sai sozinho quando
+      // este lançamento for registrado (api/_lib/coupon-forecast.ts).
+      const clash = (sameDay || []).find((t: any) =>
+        !(t.metadata?.expected_coupon_state === 'open' && !t.is_paid) &&
+        Math.abs(Number(t.amount)).toFixed(2) === Math.abs(amt).toFixed(2));
       if (clash) {
         const ok = window.confirm(
           `Essa conta já tem um lançamento de ${dateStr.split('-').reverse().join('/')} ` +
@@ -3243,6 +3251,19 @@ const Assets: React.FC = () => {
       });
     } catch (sideErr: any) {
       toast(`Movimentação registrada, mas houve erro ao refletir no saldo: ${sideErr.message}`, 'warning');
+    }
+
+    // Juro lançado à mão: tira o previsto daquela data e cria o próximo (sem esperar).
+    if (type === 'RENDIMENTO_MENSAL' && asset?.metadata?.couponNextDate) {
+      (async () => {
+        try {
+          await fetch('/api/investment-radar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+            body: JSON.stringify({ action: 'coupon_sync' })
+          });
+        } catch { /* a rotina diária acerta */ }
+      })();
     }
 
     setNewMovementForm({ movement_type: 'RENDIMENTO_MENSAL', amount: '', movement_date: DateUtils.formatToISODate(), notes: '', accountId: '' });
@@ -3563,6 +3584,7 @@ const Assets: React.FC = () => {
           : undefined,
         couponFrequency: formData.category === 'INVESTMENT' ? (formData.couponFrequency || 'NONE') : undefined,
         couponNextDate: formData.category === 'INVESTMENT' ? (formData.couponNextDate || '') : undefined,
+        couponForecast: formData.category === 'INVESTMENT' ? (formData as any).couponForecast !== false : undefined,
         status: formData.category === 'INVESTMENT' ? (formData.status || 'ATIVO') : undefined,
         isTaxExempt: formData.category === 'INVESTMENT' ? !!formData.isTaxExempt : undefined,
         coeCapitalProtected: formData.category === 'INVESTMENT' && formData.investmentType === 'COE' ? !!formData.coeCapitalProtected : undefined,
@@ -3571,6 +3593,15 @@ const Assets: React.FC = () => {
       // Preserve existing real estate evolution details if editing — condo/IPTU/
       // discount NÃO entram mais aqui: agora são editados em "Editar" (acima) e
       // não devem ser sobrescritos pelo valor antigo.
+      // Investimento: o formulário não mostra tudo o que o título guarda (curva automática,
+      // valor de mercado, emissor do Radar, dados do fundo…). Antes, salvar o formulário
+      // apagava esses campos. Agora o que o formulário não preenche continua como estava.
+      if (formData.category === 'INVESTMENT' && editingAsset?.metadata) {
+        for (const [k, v] of Object.entries(editingAsset.metadata as Record<string, any>)) {
+          if (!(k in metadata)) metadata[k] = v;
+        }
+      }
+
       if (isRealEstate && editingAsset) {
         const oldMeta = editingAsset.metadata || {};
         metadata.historicalPaidAmount = oldMeta.historicalPaidAmount;
@@ -4468,6 +4499,7 @@ const Assets: React.FC = () => {
       liquidityDays: '',
       couponFrequency: 'NONE',
       couponNextDate: '',
+      couponForecast: true,
       status: 'ATIVO',
       isTaxExempt: false,
       coeCapitalProtected: false,
@@ -4687,6 +4719,7 @@ const Assets: React.FC = () => {
       liquidityDays: getLiquidityInfo(meta).days !== null ? String(getLiquidityInfo(meta).days) : '',
       couponFrequency: meta.couponFrequency || 'NONE',
       couponNextDate: meta.couponNextDate || '',
+      couponForecast: meta.couponForecast !== false,
       status: meta.status || 'ATIVO',
       isTaxExempt: !!meta.isTaxExempt,
       coeCapitalProtected: !!meta.coeCapitalProtected,
@@ -6558,6 +6591,7 @@ ${tabelaHtml}
     // Yield transactions (categories Rendimentos/Investimentos or metadata type), excluding Resgates
     const yieldTxs = transactions.filter(t => 
       t.type === 'INCOME' && 
+      t.metadata?.expected_coupon_state !== 'open' &&
       t.subcategory !== 'Resgate' &&
       t.metadata?.type !== 'investment_redemption_total' &&
       t.metadata?.type !== 'investment_redemption_partial' &&
@@ -9258,6 +9292,8 @@ ${tabelaHtml}
           <div className="space-y-8 animate-in fade-in duration-500">
             {/* Radar de Investimentos: avisa quando vale pensar em sair (lib/investmentRadar.ts) */}
             <InvestmentRadarPanel onAssetsChanged={() => fetchData()} />
+            {/* Juros previstos (cupons a receber): some quando não há nenhum */}
+            <CouponForecastPanel onAssetsChanged={() => { fetchData(); reloadAllInvestmentMovements(); }} />
             {/* BANK INVESTMENTS (BROKERS) SECTION */}
             <div className="space-y-6 pt-6">
               <div className="flex justify-between items-center">
@@ -11948,8 +11984,17 @@ ${tabelaHtml}
                             onChange={(e) => setFormData({ ...formData, couponNextDate: e.target.value })}
                           />
                         </div>
+                        <label className="sm:col-span-2 flex items-start gap-2 cursor-pointer text-[11px] font-bold text-slate-600">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 shrink-0"
+                            checked={(formData as any).couponForecast !== false}
+                            onChange={(e) => setFormData({ ...formData, couponForecast: e.target.checked } as any)}
+                          />
+                          <span>Deixar os juros previstos em Transações (receita em aberto para só dar como recebido)</span>
+                        </label>
                         <p className="sm:col-span-2 text-[10px] text-slate-400 font-medium">
-                          O card mostra essa data. Quando o dinheiro cair, registre em "Extrato" como Juros / Cupom recebido: o valor entra como receita na conta e o app avisa se aquele mesmo valor já tiver vindo pelo extrato do banco.
+                          O card mostra essa data. Com a opção acima, o app já deixa o juro previsto em Transações, na conta onde ele cai, com o valor estimado. Quando cair, dê como recebido com o valor exato (em Transações ou em Patrimônio › Juros previstos). Você também pode continuar registrando em "Extrato" como Juros / Cupom recebido, ou pelo extrato do banco: o app reconhece e tira o previsto, sem contar duas vezes.
                         </p>
                       </div>
                     )}
