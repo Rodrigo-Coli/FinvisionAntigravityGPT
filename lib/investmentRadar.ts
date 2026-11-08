@@ -22,7 +22,7 @@ export type SignalSeverity = 'info' | 'moderate' | 'severe';
 
 export interface RadarSignal {
   /** Chave do tipo de sinal: dois sinais da mesma chave não contam como "independentes". */
-  key: 'performance' | 'negative_months' | 'market_gap' | 'news' | 'concentration' | 'maturity';
+  key: 'performance' | 'negative_months' | 'market_gap' | 'news' | 'concentration' | 'maturity' | 'missed_coupon';
   severity: SignalSeverity;
   label: string;
   detail: string;
@@ -230,6 +230,25 @@ export function newsSignal(news: NewsAssessment | null | undefined): RadarSignal
   };
 }
 
+/**
+ * Juros que deviam ter caído e não caíram (juros previstos em aberto, vencidos há
+ * mais de 5 dias). 1 atrasado até 30 dias → moderado; 2 ou mais, ou atraso de mais
+ * de 30 dias → grave (o emissor pode estar sem pagar).
+ */
+export function missedCouponSignal(missed: { cycle: string; amount: number }[] | null | undefined, today: string): RadarSignal | null {
+  if (!missed || missed.length === 0) return null;
+  const late = (c: string) => Math.round((Date.parse(today) - Date.parse(c)) / 86400000);
+  const oldest = missed.reduce((a, b) => (a.cycle < b.cycle ? a : b));
+  const severe = missed.length >= 2 || late(oldest.cycle) > 30;
+  const list = missed.map(m => `${m.cycle.split('-').reverse().join('/')} (${brl(m.amount)})`).join(', ');
+  return {
+    key: 'missed_coupon',
+    severity: severe ? 'severe' : 'moderate',
+    label: missed.length >= 2 ? `${missed.length} juros não recebidos` : 'Juros não recebidos',
+    detail: `Previsto e não caiu na conta: ${list}. Confirme com o banco se foi adiado, suspenso ou pago em outra conta.`
+  };
+}
+
 /** Nível final: URGENTE exige 2+ sinais independentes com pelo menos 1 grave. */
 export function classify(signals: RadarSignal[]): RadarLevel {
   const relevant = signals.filter(s => s.severity !== 'info');
@@ -318,11 +337,14 @@ export function evaluateAsset(params: {
   cdiMonthly: (month: string) => number;
   issuerShare: number;
   news?: NewsAssessment | null;
+  /** Juros previstos que não caíram (ver lib/couponForecast.ts › missedCoupons). */
+  missedCoupons?: { cycle: string; amount: number }[];
 }): RadarEvaluation {
-  const { asset, movements, today, cdiMonthly, issuerShare, news } = params;
+  const { asset, movements, today, cdiMonthly, issuerShare, news, missedCoupons } = params;
   const signals: RadarSignal[] = [
     ...performanceSignals(asset, movements, today, cdiMonthly),
     marketGapSignal(asset),
+    missedCouponSignal(missedCoupons, today),
     newsSignal(news),
     concentrationSignal(asset, issuerShare, issuerOf(asset)),
     maturitySignal(asset, today)

@@ -80,4 +80,31 @@ describe('Juros previstos (tela)', () => {
     await flush();
     expect(text()).toBe('');
   });
+
+  it('juro que não caiu aparece em "Juros não recebidos", com Dispensar', async () => {
+    forecasts = [
+      { id: 'late', date: '2026-04-15', amount: 3307.97, account_id: 'acc-matteo', account_name: 'Safra Matteo', description: 'Juros previstos - CRA Raízen (estimado)', metadata: { expected_coupon_state: 'open', expected_coupon_cycle: '2026-04-15' } },
+      { id: 'next', date: '2099-01-15', amount: 507.28, account_id: 'acc-matteo', account_name: 'Safra Matteo', description: 'Juros previstos - CRA Eucatex (estimado)', metadata: { expected_coupon_state: 'open', expected_coupon_cycle: '2099-01-15' } }
+    ];
+    await act(async () => { root.render(<CouponForecastPanel />); });
+    await flush();
+    const box = container.querySelector('[data-testid="missed-coupons"]')!;
+    expect(box).toBeTruthy();
+    expect(box.textContent).toContain('Juros não recebidos');
+    expect(box.textContent).toContain('CRA Raízen');
+    expect(box.textContent).not.toContain('CRA Eucatex');
+    expect(text()).toContain('1 não recebido');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const dispensar = [...box.querySelectorAll('button')].find(b => b.textContent?.includes('Dispensar'))!;
+    await act(async () => { dispensar.click(); });
+    await flush();
+    expect(calls.find(c => c.action === 'coupon_dismiss')).toMatchObject({ transactionId: 'late' });
+  });
+
+  it('sem atraso, o quadro de não recebidos não aparece', async () => {
+    await act(async () => { root.render(<CouponForecastPanel />); });
+    await flush();
+    expect(container.querySelector('[data-testid="missed-coupons"]')).toBeNull();
+  });
 });
+

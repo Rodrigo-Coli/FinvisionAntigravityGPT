@@ -12,6 +12,7 @@ import {
   evaluateAsset, issuerOf, monthlyFromAnnual, nextCheckAt, shouldNotify, LEVEL_LABEL,
   type LedgerMovement, type NewsAssessment, type RadarAsset, type RadarEvaluation, type RadarLevel
 } from '../../lib/investmentRadar.js';
+import { missedCoupons, cycleOf } from '../../lib/couponForecast.js';
 
 // Radar de Investimentos (servidor).
 //
@@ -265,6 +266,19 @@ export async function scanUser(userId: string, opts: ScanOptions) {
 
   const cdi = await cdiResolver(userId);
 
+  // Juros previstos que não caíram (api/_lib/coupon-forecast.ts): viram sinal no Radar.
+  const missedByAsset = new Map<string, { cycle: string; amount: number }[]>();
+  try {
+    const { data: openF } = await supabase.from('transactions')
+      .select('date, amount, metadata')
+      .eq('user_id', userId).eq('is_deleted', false).eq('is_paid', false)
+      .eq('metadata->>expected_coupon_state', 'open');
+    for (const f of missedCoupons((openF || []) as any[], today)) {
+      const id = String(f.metadata?.expected_coupon_asset_id || '');
+      if (id) missedByAsset.set(id, [...(missedByAsset.get(id) || []), { cycle: cycleOf(f), amount: Math.abs(Number(f.amount) || 0) }]);
+    }
+  } catch { /* sem juros previstos: segue sem esse sinal */ }
+
   // Notícias: um pedido por emissor, priorizando os de maior valor.
   const newsByIssuer = new Map<string, NewsResult | null>();
   const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
@@ -302,7 +316,8 @@ export async function scanUser(userId: string, opts: ScanOptions) {
       today,
       cdiMonthly: cdi,
       issuerShare: totalInvested > 0 ? issuerTotal / totalInvested : 0,
-      news
+      news,
+      missedCoupons: missedByAsset.get(asset.id) || []
     });
 
     const notify = opts.notify && shouldNotify(prev, evaluation.level, now);
@@ -529,7 +544,7 @@ export async function handleInvestmentRadar(req: any, res: any) {
     }
   }
 
-  if (body.action === 'coupon_sync' || body.action === 'coupon_receive') {
+  if (body.action === 'coupon_sync' || body.action === 'coupon_receive' || body.action === 'coupon_dismiss') {
     try {
       const r = await handleCouponAction(user.id, body);
       return res.status(r.status).json(r.json);

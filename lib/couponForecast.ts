@@ -139,3 +139,26 @@ export function isLikelyCouponCredit(
 }
 
 export const FORECAST_PREFIX = 'Juros previstos';
+
+/** Dias de tolerância depois da data prevista antes de avisar que o juro não caiu. */
+export const MISSED_GRACE_DAYS = 5;
+
+export interface ForecastLite {
+  id?: string;
+  date: string;
+  amount: number;
+  metadata?: Record<string, any> | null;
+}
+
+export const cycleOf = (f: ForecastLite) => String(f.metadata?.expected_coupon_cycle || f.date || '').slice(0, 10);
+
+/**
+ * Juros não recebidos: previsto em aberto cuja data passou há mais de
+ * MISSED_GRACE_DAYS dias. É só isso que dispara o alerta — enquanto o juro está
+ * dentro do prazo, ou depois que é recebido/dispensado, nada aparece.
+ */
+export function missedCoupons<T extends ForecastLite>(forecasts: T[], today: string, grace = MISSED_GRACE_DAYS): T[] {
+  return (forecasts || [])
+    .filter(f => f.metadata?.expected_coupon_state === 'open' && cycleOf(f) && daysBetween(cycleOf(f), today) > grace)
+    .sort((a, b) => cycleOf(a).localeCompare(cycleOf(b)));
+}

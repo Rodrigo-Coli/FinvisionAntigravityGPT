@@ -34,6 +34,7 @@ import { useReconnectRefresh } from '../lib/useReconnectRefresh';
 import { isProbablyOffline } from '../lib/connectivity';
 import { ownerKey } from '../lib/ownerUtils';
 import RadarUrgentBanner from '../components/home/RadarUrgentBanner';
+import MissedCouponBanner from '../components/home/MissedCouponBanner';
 
 const Home: React.FC<{ user: any }> = ({ user }) => {
   const [data, setData] = useState<DashboardData | null>(() => DashboardService.getCachedSummary());
@@ -403,6 +404,7 @@ const Home: React.FC<{ user: any }> = ({ user }) => {
 
       {/* Radar de Investimentos: só aparece quando há algo URGENTE */}
       <RadarUrgentBanner />
+      <MissedCouponBanner />
 
       {/* BALANCE CARDS GRID */}
       <div className="w-full max-w-full overflow-hidden">

@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import {
   wantsForecast, nextCycle, estimateCoupon, isLikelyCouponCredit, nameTokens, inWindow, addMonthsIso,
-  FORECAST_PREFIX
+  FORECAST_PREFIX, missedCoupons, cycleOf
 } from '../../lib/couponForecast.js';
 import type { Indexes, Movement } from '../../lib/curveProjection.js';
 import { refreshAssetCurve } from './curve-projection.js';
@@ -167,31 +167,35 @@ export async function syncAssetCoupons(asset: any, idx: Indexes, today = todaySt
     }
   }
 
-  // Juros já resolvidos contam como pagos para o cronograma andar.
+  // Juros já resolvidos contam como pagos para o cronograma andar; os em aberto
+  // (inclusive os atrasados, que continuam aparecendo como "não recebidos") também
+  // contam como já previstos, para o próximo pagamento ser previsto sem esperar.
+  const cycleOfF = (f: any) => day(f.metadata?.expected_coupon_cycle || f.date);
   const doneCycles = forecasts
-    .filter(f => ['received', 'superseded'].includes(f.metadata?.expected_coupon_state))
-    .map(f => day(f.metadata?.expected_coupon_cycle || f.date));
-  const received = [...coupons.map(m => m.movement_date), ...doneCycles];
+    .filter(f => ['received', 'superseded', 'dismissed'].includes(f.metadata?.expected_coupon_state))
+    .map(cycleOfF);
   const stillOpen = open.filter(f => f.metadata?.expected_coupon_state === 'open');
+  const covered = [...coupons.map(m => m.movement_date), ...doneCycles, ...stillOpen.map(cycleOfF)];
+  const futureOpen = stillOpen.filter(f => cycleOfF(f) >= today).sort((x, y) => cycleOfF(x).localeCompare(cycleOfF(y)));
 
-  if (stillOpen.length) {
-    // Já há um previsto em aberto: só acompanha se a pessoa mudou a data no cadastro.
-    // (Um previsto atrasado continua em aberto até alguém resolver — nunca some sozinho.)
-    const f = stillOpen[0];
+  if (futureOpen.length) {
+    // Já há o próximo previsto: só acompanha se a pessoa mudou a data no cadastro.
+    const f = futureOpen[futureOpen.length - 1];
     const userDate = day(meta.couponNextDate);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(userDate) && day(f.metadata?.expected_coupon_cycle || f.date) !== userDate && !f.is_paid) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(userDate) && userDate >= today && cycleOfF(f) !== userDate && !f.is_paid
+        && !forecasts.some(o => o.id !== f.id && cycleOfF(o) === userDate)) {
       await supabase.from('transactions').update({ date: userDate, metadata: { ...(f.metadata || {}), expected_coupon_cycle: userDate } }).eq('id', f.id);
     }
   } else {
-    const cycle = nextCycle(meta, received, today);
+    const cycle = nextCycle(meta, covered, today);
     if (cycle && cycle !== day(meta.couponNextDate)) {
       // O card de "Próximo juros em" acompanha o cronograma (a data cadastrada nunca é apagada).
       await supabase.from('physical_assets').update({ metadata: { ...meta, couponNextDate: cycle } }).eq('id', asset.id);
       asset.metadata = { ...meta, couponNextDate: cycle };
     }
     if (cycle && payout) {
-      // Previsto desta data apagado pela pessoa = dispensado; não recria.
-      const dismissed = forecasts.some(f => day(f.metadata?.expected_coupon_cycle || f.date) === cycle);
+      // Previsto desta data apagado/dispensado pela pessoa: não recria.
+      const dismissed = forecasts.some(f => cycleOfF(f) === cycle);
       const estimate = dismissed ? null : estimateCoupon(movements, meta, cycle, idx);
       if (estimate) {
         const { data: accRow } = await supabase.from('accounts').select('institution, name').eq('id', payout).maybeSingle();
@@ -245,6 +249,64 @@ export async function syncCouponForecasts(userId?: string, today = todayStr()): 
   return total;
 }
 
+async function sendWhatsApp(number: string, text: string) {
+  const base = process.env.EVOLUTION_API_URL;
+  if (!base || !process.env.EVOLUTION_API_KEY || !process.env.EVOLUTION_INSTANCE) return;
+  try {
+    await fetch(`${base.replace(/\/$/, '')}/message/sendText/${process.env.EVOLUTION_INSTANCE}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: process.env.EVOLUTION_API_KEY as string },
+      body: JSON.stringify({ number, text, options: { delay: 1200, presence: 'composing' }, textMessage: { text } })
+    });
+  } catch (err) {
+    console.error('[Juros previstos] WhatsApp falhou:', err);
+  }
+}
+
+/**
+ * Alerta de juros não recebidos: avisa UMA vez por juro (WhatsApp), só quando o
+ * previsto passou da data e não caiu. Fica marcado em metadata.missed_notified_at.
+ */
+export async function notifyMissedCoupons(today = todayStr()): Promise<number> {
+  const { data } = await supabase.from('transactions')
+    .select('id, user_id, date, amount, account_name, description, metadata')
+    .eq('is_deleted', false).eq('is_paid', false)
+    .eq('metadata->>expected_coupon_state', 'open');
+  const pending = missedCoupons((data || []) as any[], today).filter((f: any) => !f.metadata?.missed_notified_at);
+  const byUser = new Map<string, any[]>();
+  for (const f of pending) byUser.set(f.user_id, [...(byUser.get(f.user_id) || []), f]);
+  let sent = 0;
+  for (const [userId, items] of byUser) {
+    const { data: st } = await supabase.from('user_settings').select('whatsapp_enabled, whatsapp_number').eq('user_id', userId).maybeSingle();
+    if ((st as any)?.whatsapp_enabled && (st as any)?.whatsapp_number) {
+      let msg = `*Zyvion* ⚠️ *Juros não recebidos*\n`;
+      for (const f of items) {
+        const name = String(f.description || '').replace(`${FORECAST_PREFIX} - `, '').replace(' (estimado)', '');
+        msg += `• *${name}*: previsto para ${br(cycleOf(f))} (cerca de R$ ${Number(f.amount).toFixed(2).replace('.', ',')})${f.account_name ? ` em ${f.account_name}` : ''}, e não caiu.\n`;
+      }
+      msg += `\nConfirme com o banco se foi adiado, suspenso ou pago em outra conta. Se já caiu, dê como recebido em Patrimônio › Juros previstos.`;
+      await sendWhatsApp((st as any).whatsapp_number, msg);
+      sent += 1;
+    }
+    for (const f of items) {
+      await supabase.from('transactions').update({ metadata: { ...(f.metadata || {}), missed_notified_at: new Date().toISOString() } }).eq('id', f.id);
+    }
+  }
+  return sent;
+}
+
+/** "Não vai ser pago" / "já resolvi": tira o previsto sem lançar nada. */
+export async function dismissForecast(userId: string, body: any): Promise<{ status: number; json: any }> {
+  const { data: f } = await supabase.from('transactions').select('id, user_id, is_deleted, is_paid, metadata')
+    .eq('id', String(body.transactionId || '')).eq('user_id', userId).maybeSingle();
+  const row: any = f;
+  if (!row || row.is_deleted || row.is_paid || row.metadata?.expected_coupon_state !== 'open') {
+    return { status: 404, json: { error: 'Juro previsto não encontrado.' } };
+  }
+  await supabase.from('transactions').update({ is_deleted: true, metadata: { ...(row.metadata || {}), expected_coupon_state: 'dismissed', dismissed_at: new Date().toISOString() } }).eq('id', row.id);
+  return { status: 200, json: { message: 'Juro previsto dispensado. Ele não volta a aparecer.' } };
+}
+
 /** Previstos em aberto de uma pessoa (para a tela). */
 export async function listOpenForecasts(userId: string) {
   const { data } = await supabase.from('transactions')
@@ -292,6 +354,7 @@ export async function handleCouponAction(userId: string, body: any): Promise<{ s
     return { status: 200, json: { ...r, forecasts: await listOpenForecasts(userId) } };
   }
   if (body.action === 'coupon_receive') return receiveForecast(userId, body);
+  if (body.action === 'coupon_dismiss') return dismissForecast(userId, body);
   return { status: 400, json: { error: 'Ação desconhecida.' } };
 }
 
@@ -299,7 +362,9 @@ export async function handleCouponAction(userId: string, body: any): Promise<{ s
 export async function runCouponForecastCron(_req: any, res: any) {
   try {
     const r = await syncCouponForecasts();
-    return res.status(200).json({ success: true, ...r });
+    let missedAlerts = 0;
+    try { missedAlerts = await notifyMissedCoupons(); } catch (err: any) { console.warn('[Juros previstos] alerta falhou:', err?.message); }
+    return res.status(200).json({ success: true, ...r, missedAlerts });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }

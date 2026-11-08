@@ -189,7 +189,8 @@ describe('resolver o previsto', () => {
     db.tables.transactions.push({ id: 't-pix', user_id: 'u1', account_id: MATTEO, type: 'INCOME', amount: 500, paid_amount: 500, date: '2027-01-15', is_paid: true, is_deleted: false, description: 'PIX RECEBIDO JOAO', metadata: {} });
     const r = await syncCouponForecasts('u1', '2027-01-16');
     expect(r.linked).toBe(0);
-    expect(openForecasts()).toHaveLength(1);
+    // o de janeiro continua em aberto (não foi confundido); o de julho já fica previsto
+    expect(openForecasts().map(f => f.date).sort()).toEqual(['2027-01-15', '2027-07-15']);
     expect(db.tables.transactions.find(t => t.id === 't-pix').metadata.linked_asset_id).toBeUndefined();
   });
 
@@ -203,3 +204,45 @@ describe('resolver o previsto', () => {
     expect(adj?.amount).toBe(-507.28);
   });
 });
+
+describe('juros não recebidos', () => {
+  it('juro atrasado continua em aberto, o próximo é previsto, e o alerta vai uma vez só', async () => {
+    db.tables.user_settings[0] = { ...db.tables.user_settings[0], whatsapp_enabled: true, whatsapp_number: '5511999999999' };
+    process.env.EVOLUTION_API_URL = 'https://evo.test'; process.env.EVOLUTION_API_KEY = 'k'; process.env.EVOLUTION_INSTANCE = 'i';
+    const sent: any[] = [];
+    (globalThis as any).fetch = vi.fn(async (url: string, init: any) => { if (String(url).includes('evo.test')) sent.push(JSON.parse(init.body)); return { ok: false, json: async () => [] }; });
+    const { syncCouponForecasts, notifyMissedCoupons } = await import('../api/_lib/coupon-forecast');
+    await syncCouponForecasts('u1', '2026-11-08');
+    // passou 15/01/2027 e o juro não caiu
+    await syncCouponForecasts('u1', '2027-01-25');
+    expect(openForecasts().map(f => f.date).sort()).toEqual(['2027-01-15', '2027-07-15']);
+    expect(await notifyMissedCoupons('2027-01-25')).toBe(1);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].text).toContain('Juros não recebidos');
+    expect(sent[0].text).toContain('15/01/2027');
+    // no dia seguinte não repete
+    expect(await notifyMissedCoupons('2027-01-26')).toBe(0);
+    expect(sent).toHaveLength(1);
+    delete process.env.EVOLUTION_API_URL;
+  });
+
+  it('dentro do prazo (até 5 dias) não alerta', async () => {
+    const { syncCouponForecasts, notifyMissedCoupons } = await import('../api/_lib/coupon-forecast');
+    await syncCouponForecasts('u1', '2026-11-08');
+    expect(await notifyMissedCoupons('2027-01-19')).toBe(0);
+    expect(openForecasts()[0].metadata.missed_notified_at).toBeUndefined();
+  });
+
+  it('dispensar: aquele juro some e não volta; o próximo continua previsto', async () => {
+    const { syncCouponForecasts, dismissForecast } = await import('../api/_lib/coupon-forecast');
+    await syncCouponForecasts('u1', '2026-11-08');
+    const f = openForecasts()[0];
+    expect((await dismissForecast('outra', { transactionId: f.id })).status).toBe(404);
+    expect((await dismissForecast('u1', { transactionId: f.id })).status).toBe(200);
+    expect(f.is_deleted).toBe(true);
+    expect(f.metadata.expected_coupon_state).toBe('dismissed');
+    await syncCouponForecasts('u1', '2026-11-10');
+    expect(forecasts().filter(x => !x.is_deleted).map(x => x.date)).toEqual(['2027-07-15']);
+  });
+});
+
