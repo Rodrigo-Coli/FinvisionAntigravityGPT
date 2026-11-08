@@ -5,6 +5,7 @@ import { handleMaintenance } from './maintenance.js';
 import { isCronAuthorized } from './cron-auth.js';
 import { runInvestmentRadarCron } from './investment-radar.js';
 import { runCurveProjectionCron } from './curve-projection.js';
+import { runCouponForecastCron } from './coupon-forecast.js';
 
 // Um "res" descartável só pra capturar o resultado de cada handler sem
 // escrever de verdade na resposta HTTP (cada handler já termina com
@@ -41,6 +42,11 @@ export async function handleDailyCron(req: any, res: any) {
   const maintenance = captureRes();
   await handleMaintenance(req, maintenance.res as any);
 
+  // Juros previstos (cupons): dá baixa no que foi recebido e cria o próximo previsto.
+  // Antes da curva, para o juro pago já sair do valor do título.
+  const coupons = captureRes();
+  try { await runCouponForecastCron(req, coupons.res as any); } catch (err: any) { console.error('[daily-cron] juros previstos falhou:', err?.message); }
+
   // Curva automática dos títulos de renda fixa (antes do Radar, que usa o valor atualizado).
   const curve = captureRes();
   try { await runCurveProjectionCron(req, curve.res as any); } catch (err: any) { console.error('[daily-cron] curva falhou:', err?.message); }
@@ -55,6 +61,7 @@ export async function handleDailyCron(req: any, res: any) {
     success: true,
     billsDue: bills.get(),
     investmentsDue: investments.get(),
+    couponForecast: coupons.get(),
     curveProjection: curve.get(),
     investmentRadar: radar.get(),
     referralEngagement: referral.get(),

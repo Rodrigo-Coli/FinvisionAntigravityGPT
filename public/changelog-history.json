@@ -1,5 +1,40 @@
 [
   {
+    "version": "2026.11.07.2251",
+    "title": "Juros previstos: os cupons já aparecem para só dar como recebido",
+    "date": "07/11/2026",
+    "benefits": [
+      {
+        "title": "Juros previstos em Transações",
+        "desc": "Em CRA, CRI, debêntures e outros títulos que pagam juros na conta, com \"Frequência dos Juros\" e \"Próximo Pagamento\" cadastrados, o app deixa o próximo juro como receita em aberto em Transações, na conta onde ele cai e com o valor estimado pelo último juro. Não mexe no saldo até você receber, e o lembrete de receitas a receber no WhatsApp também avisa.",
+        "type": "novidade"
+      },
+      {
+        "title": "Recebi: só confirmar o valor exato",
+        "desc": "Em Patrimônio › Investimentos, o quadro \"Juros previstos\" tem o botão \"Recebi\": digite o valor que caiu, e o juro entra no extrato do investimento já ligado. Se o título tem curva automática, o valor também sai do título. O próximo previsto é criado sozinho. Dar baixa pela tela de Transações também funciona.",
+        "type": "novidade"
+      },
+      {
+        "title": "Os outros jeitos continuam valendo, sem duplicar",
+        "desc": "Se você lançar o juro no Extrato do investimento, ou se ele vier pelo extrato do banco (Conciliar), o app reconhece e tira o previsto: o dinheiro não conta duas vezes. Para não usar, desmarque \"Deixar os juros previstos em Transações\" no cadastro do título.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Editar um investimento não apaga mais dados escondidos",
+        "desc": "Salvar o formulário de um investimento apagava o que ele não mostra, como a curva automática, o valor de mercado, o emissor do Radar e os dados do fundo. Agora esses dados continuam como estavam.",
+        "type": "correcao"
+      }
+    ],
+    "changes": [
+      "lib/couponForecast.ts: cronograma (addMonthsIso, nextCycle), valor estimado (último juro ou taxa) e reconhecimento do crédito do extrato (isLikelyCouponCredit).",
+      "api/_lib/coupon-forecast.ts: syncAssetCoupons/syncCouponForecasts mantêm UMA receita INCOME em aberto por título (metadata.expected_coupon_*), consomem quando paga, saem quando o juro chega por outro caminho, ligam o crédito do banco e criam o próximo. receiveForecast para o botão Recebi.",
+      "Rota /api/investment-radar: ações coupon_sync e coupon_receive. Rotina diária: juros previstos antes da curva automática.",
+      "components/assets/CouponForecastPanel.tsx: quadro Juros previstos com Recebi (some quando não há nenhum).",
+      "pages/Assets.tsx: opção couponForecast no cadastro; edição de investimento preserva metadata que o formulário não controla; conferência de duplicidade ignora previsto em aberto; rendimento do mês não conta previsto em aberto; lançar juro no Extrato tira o previsto.",
+      "Testes: couponForecast (13), couponForecastServer (11), couponForecastPanel (2)."
+    ]
+  },
+  {
     "version": "2026.11.07.2227",
     "title": "Curva automática dos títulos e atualização pela tela do banco",
     "date": "07/11/2026",

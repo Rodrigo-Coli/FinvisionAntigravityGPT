@@ -1,32 +1,35 @@
 {
-  "version": "2026.11.07.2227",
-  "title": "Curva automática dos títulos e atualização pela tela do banco",
+  "version": "2026.11.07.2251",
+  "title": "Juros previstos: os cupons já aparecem para só dar como recebido",
   "date": "07/11/2026",
   "benefits": [
     {
-      "title": "Curva automática pela taxa contratada",
-      "desc": "Em CRA, CRI, debêntures e CDB, ligue a curva automática e o app atualiza sozinho, todo dia, o valor pela curva (prefixado, % do CDI ou IPCA+), usando o CDI e o IPCA oficiais do Banco Central. Não precisa mais lançar o rendimento do mês. Conferido com os relatórios reais do Safra: diferença de centavos.",
+      "title": "Juros previstos em Transações",
+      "desc": "Em CRA, CRI, debêntures e outros títulos que pagam juros na conta, com \"Frequência dos Juros\" e \"Próximo Pagamento\" cadastrados, o app deixa o próximo juro como receita em aberto em Transações, na conta onde ele cai e com o valor estimado pelo último juro. Não mexe no saldo até você receber, e o lembrete de receitas a receber no WhatsApp também avisa.",
       "type": "novidade"
     },
     {
-      "title": "Atualizar pelo banco: digite o saldo da tela",
-      "desc": "No Radar, em cada investimento, \"Atualizar pelo banco\": digite o saldo que aparece no app do banco. Em fundos e CDB vira o valor atual e a diferença entra como rendimento do período. Em CRA/CRI/debêntures (onde a tela mostra o valor de mercado) fica guardado como valor de mercado e o patrimônio segue pela curva.",
+      "title": "Recebi: só confirmar o valor exato",
+      "desc": "Em Patrimônio › Investimentos, o quadro \"Juros previstos\" tem o botão \"Recebi\": digite o valor que caiu, e o juro entra no extrato do investimento já ligado. Se o título tem curva automática, o valor também sai do título. O próximo previsto é criado sozinho. Dar baixa pela tela de Transações também funciona.",
       "type": "novidade"
     },
     {
-      "title": "Acerto pelo relatório mensal",
-      "desc": "Quando sair o relatório do banco, informe o valor pela curva e a data da posição: o app lança só o acerto da diferença e a curva automática segue a partir dali.",
+      "title": "Os outros jeitos continuam valendo, sem duplicar",
+      "desc": "Se você lançar o juro no Extrato do investimento, ou se ele vier pelo extrato do banco (Conciliar), o app reconhece e tira o previsto: o dinheiro não conta duas vezes. Para não usar, desmarque \"Deixar os juros previstos em Transações\" no cadastro do título.",
       "type": "melhoria"
     },
     {
-      "title": "Juros que caem na conta saem do título",
-      "desc": "Em título com curva automática, registrar \"Juros / Cupom recebido (cai na conta)\" também tira o valor do título, para a curva continuar certa.",
-      "type": "melhoria"
+      "title": "Editar um investimento não apaga mais dados escondidos",
+      "desc": "Salvar o formulário de um investimento apagava o que ele não mostra, como a curva automática, o valor de mercado, o emissor do Radar e os dados do fundo. Agora esses dados continuam como estavam.",
+      "type": "correcao"
     }
   ],
   "changes": [
-    "lib/curveProjection.ts + testes: dias úteis com feriados nacionais (Páscoa/Carnaval/Corpus Christi), fator PRE/CDI(série 12)/IPCA+(série 433), plano mensal (fecha meses + linha '[curva automática]' do mês, sem duplicar), acerto pelo relatório",
-    "api/_lib/curve-projection.ts: rotina diária (antes do Radar, limite 20 s), ações bank_value/report_curve/curve_refresh na rota /api/investment-radar, validação de dono",
-    "InvestmentRadarPanel: formulário 'Atualizar pelo banco' (emissor, curva automática, saldo da tela, valor do relatório) com ajuda em cada campo; Assets: rótulo da curva automática e cupom em ativo com curva gera Ajuste Manual negativo"
+    "lib/couponForecast.ts: cronograma (addMonthsIso, nextCycle), valor estimado (último juro ou taxa) e reconhecimento do crédito do extrato (isLikelyCouponCredit).",
+    "api/_lib/coupon-forecast.ts: syncAssetCoupons/syncCouponForecasts mantêm UMA receita INCOME em aberto por título (metadata.expected_coupon_*), consomem quando paga, saem quando o juro chega por outro caminho, ligam o crédito do banco e criam o próximo. receiveForecast para o botão Recebi.",
+    "Rota /api/investment-radar: ações coupon_sync e coupon_receive. Rotina diária: juros previstos antes da curva automática.",
+    "components/assets/CouponForecastPanel.tsx: quadro Juros previstos com Recebi (some quando não há nenhum).",
+    "pages/Assets.tsx: opção couponForecast no cadastro; edição de investimento preserva metadata que o formulário não controla; conferência de duplicidade ignora previsto em aberto; rendimento do mês não conta previsto em aberto; lançar juro no Extrato tira o previsto.",
+    "Testes: couponForecast (13), couponForecastServer (11), couponForecastPanel (2)."
   ]
 }
