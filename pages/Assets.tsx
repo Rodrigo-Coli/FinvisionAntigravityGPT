@@ -76,6 +76,7 @@ import { syncAllConsortiumBalances } from '../services/consortiumBalance.service
 import { withTimeout } from '../lib/connectivity';
 import { isOrphanPendingFinancing } from '../lib/pendingFinancing';
 import { summarizeLoan, loanOpenBalance } from '../lib/loanSummary';
+import InvestmentRadarPanel from '../components/assets/InvestmentRadarPanel';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -9238,6 +9239,8 @@ ${tabelaHtml}
         {/* INVESTMENTS VIEW */}
         {activeView === 'investments' && (
           <div className="space-y-8 animate-in fade-in duration-500">
+            {/* Radar de Investimentos: avisa quando vale pensar em sair (lib/investmentRadar.ts) */}
+            <InvestmentRadarPanel onAssetsChanged={() => fetchData()} />
             {/* BANK INVESTMENTS (BROKERS) SECTION */}
             <div className="space-y-6 pt-6">
               <div className="flex justify-between items-center">
@@ -9517,9 +9520,29 @@ ${tabelaHtml}
                                 {isExpanded && (
                                   <div className="mt-3 px-6 py-4 bg-slate-50 rounded-2xl space-y-1.5 text-xs text-slate-500 font-semibold border border-slate-100/50 text-left animate-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
                                     <div className="flex justify-between">
-                                      <span>Valor Bruto (Atual):</span>
+                                      <span>{Number(invMeta.marketValue) > 0 ? 'Valor Bruto pela Curva (Atual):' : 'Valor Bruto (Atual):'}</span>
                                       <span className="font-bold text-slate-700">{formatCurrency(Number(inv.estimatedValue || 0))}</span>
                                     </div>
+                                    {/* Títulos com marcação a mercado (CRA, CRI, debêntures…): o relatório do banco
+                                        traz os dois valores. O app soma a curva (o que o título paga se você
+                                        segurar até o vencimento); o mercado é quanto receberia vendendo hoje. */}
+                                    {Number(invMeta.marketValue) > 0 && (() => {
+                                      const curveVal = Number(inv.estimatedValue || 0);
+                                      const marketVal = Number(invMeta.marketValue);
+                                      const gapPct = curveVal > 0 ? (1 - marketVal / curveVal) * 100 : 0;
+                                      return (
+                                        <>
+                                          <div className="flex justify-between">
+                                            <span>Valor de Mercado{invMeta.marketValueDate ? ` (${String(invMeta.marketValueDate).split('-').reverse().join('/')})` : ''}:</span>
+                                            <span className={`font-bold ${gapPct >= 10 ? 'text-rose-600' : 'text-slate-700'}`}>{formatCurrency(marketVal)}</span>
+                                          </div>
+                                          <p className="text-[11px] font-medium text-slate-400 leading-relaxed">
+                                            Curva = o que o título vale se você segurar até o vencimento (é o que entra no patrimônio). Mercado = quanto o banco pagaria se você vendesse hoje
+                                            {Math.abs(gapPct) >= 0.5 ? ` (${gapPct > 0 ? `${gapPct.toFixed(1).replace('.', ',')}% abaixo` : `${Math.abs(gapPct).toFixed(1).replace('.', ',')}% acima`} da curva)` : ''}. Atualize o mercado pelo relatório mensal no Radar de Investimentos.
+                                          </p>
+                                        </>
+                                      );
+                                    })()}
                                     <div className="flex justify-between">
                                       <span>Valor Aplicado (Custo):</span>
                                       <span className="font-bold text-slate-700">{formatCurrency(purchase)}</span>
@@ -9764,9 +9787,29 @@ ${tabelaHtml}
                                 {isExpanded && (
                                   <div className="mt-3 px-6 py-4 bg-slate-50 rounded-2xl space-y-1.5 text-xs text-slate-500 font-semibold border border-slate-100/50 text-left animate-in slide-in-from-top-1 duration-200" onClick={(e) => e.stopPropagation()}>
                                     <div className="flex justify-between">
-                                      <span>Valor Bruto (Atual):</span>
+                                      <span>{Number(invMeta.marketValue) > 0 ? 'Valor Bruto pela Curva (Atual):' : 'Valor Bruto (Atual):'}</span>
                                       <span className="font-bold text-slate-700">{formatCurrency(Number(inv.estimatedValue || 0))}</span>
                                     </div>
+                                    {/* Títulos com marcação a mercado (CRA, CRI, debêntures…): o relatório do banco
+                                        traz os dois valores. O app soma a curva (o que o título paga se você
+                                        segurar até o vencimento); o mercado é quanto receberia vendendo hoje. */}
+                                    {Number(invMeta.marketValue) > 0 && (() => {
+                                      const curveVal = Number(inv.estimatedValue || 0);
+                                      const marketVal = Number(invMeta.marketValue);
+                                      const gapPct = curveVal > 0 ? (1 - marketVal / curveVal) * 100 : 0;
+                                      return (
+                                        <>
+                                          <div className="flex justify-between">
+                                            <span>Valor de Mercado{invMeta.marketValueDate ? ` (${String(invMeta.marketValueDate).split('-').reverse().join('/')})` : ''}:</span>
+                                            <span className={`font-bold ${gapPct >= 10 ? 'text-rose-600' : 'text-slate-700'}`}>{formatCurrency(marketVal)}</span>
+                                          </div>
+                                          <p className="text-[11px] font-medium text-slate-400 leading-relaxed">
+                                            Curva = o que o título vale se você segurar até o vencimento (é o que entra no patrimônio). Mercado = quanto o banco pagaria se você vendesse hoje
+                                            {Math.abs(gapPct) >= 0.5 ? ` (${gapPct > 0 ? `${gapPct.toFixed(1).replace('.', ',')}% abaixo` : `${Math.abs(gapPct).toFixed(1).replace('.', ',')}% acima`} da curva)` : ''}. Atualize o mercado pelo relatório mensal no Radar de Investimentos.
+                                          </p>
+                                        </>
+                                      );
+                                    })()}
                                     <div className="flex justify-between">
                                       <span>Valor Aplicado (Custo):</span>
                                       <span className="font-bold text-slate-700">{formatCurrency(purchase)}</span>

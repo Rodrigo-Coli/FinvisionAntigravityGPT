@@ -1,27 +1,64 @@
 {
-  "version": "2026.11.07.1716",
-  "title": "Caixa livre da corretora mostra o dinheiro que está de verdade nela",
+  "version": "2026.11.07.2150",
+  "title": "Radar de Investimentos e Benefícios e Milhas dos cartões",
   "date": "07/11/2026",
   "benefits": [
     {
-      "title": "Caixa livre real em cada corretora",
-      "desc": "No Patrimônio, o caixa livre de cada corretora agora é o saldo da conta menos os investimentos ligados a ela. Antes era só o saldo inicial, então juros, resgates e transferências lançados na corretora não apareciam no caixa e o card não batia com a conta.",
-      "type": "correcao"
+      "title": "Radar de Investimentos: aviso para sair na hora certa",
+      "desc": "Em Patrimônio › Investimentos, o Radar acompanha cada investimento: o rendimento mês a mês contra o CDI, o preço de mercado contra a curva, notícias do emissor pesquisadas na internet (com as fontes) e a concentração num mesmo emissor. Só marca URGENTE com dois ou mais sinais diferentes, sendo um grave, e sempre mostra a conta de vender hoje × segurar até o vencimento. Checa sozinho: o que está tranquilo a cada 7 dias, o que pede atenção todo dia.",
+      "type": "novidade"
     },
     {
-      "title": "Salvar um investimento não estraga mais o saldo da corretora",
-      "desc": "Ao salvar, mudar de corretora ou excluir um investimento, o saldo da corretora era regravado como saldo inicial + investimentos, deixando de fora os lançamentos da conta. Agora o saldo é recalculado com tudo: saldo inicial, lançamentos e investimentos.",
-      "type": "correcao"
+      "title": "Aviso urgente na tela inicial e no WhatsApp",
+      "desc": "Quando algo vira urgente, aparece uma faixa vermelha na tela inicial e chega mensagem no WhatsApp/notificação (no máximo uma vez por semana para o mesmo caso). Dá para esconder o aviso por 7 dias depois de ver.",
+      "type": "novidade"
     },
     {
-      "title": "Ajustar caixa livre já abre com o valor certo",
-      "desc": "Em Contas › Ajustar saldo de uma corretora, o modo Caixa Livre abre com o dinheiro que está de fato parado nela (e não com o saldo inicial).",
+      "title": "Comparar a sugestão do banco com a sua carteira",
+      "desc": "No Radar, mande o print ou o PDF do produto que o gerente ofereceu: a IA lê o produto, compara com o que você já tem (rendimento líquido de IR, risco, liquidez, FGC, concentração), diz se vale, não vale ou depende e sugere perguntas para o gerente. Quando ele responder, registre a resposta (texto ou print) na mesma sugestão: a IA reavalia com tudo o que já foi conversado e a conversa fica guardada.",
+      "type": "novidade"
+    },
+    {
+      "title": "Sugestão do banco também pelo WhatsApp",
+      "desc": "Pode falar do seu jeito: \"o gerente me ofereceu um CDB de 102% do CDI, vale a pena?\" ou mandar o print/PDF da oferta, e a análise chega ali mesmo. Depois é só contar o que ele respondeu (\"o gerente disse que…\", em texto, áudio ou print) que eu reavalio na mesma conversa, que também aparece no app. Comprovantes, gastos e consultas continuam funcionando como sempre.",
+      "type": "novidade"
+    },
+    {
+      "title": "Benefícios e Milhas dos cartões",
+      "desc": "Nova aba em Contas & Cartões: cadastre o cashback, os pontos ou as milhas de cada cartão (cada campo tem um ? explicando) e veja, com o seu gasto real dos últimos 12 meses, quanto o cartão devolve por ano, quanto custa de anuidade, se compensa e qual cartão usar primeiro.",
+      "type": "novidade"
+    },
+    {
+      "title": "Simuladores: pontos ou cashback? e vale fazer este cartão?",
+      "desc": "Compare duas opções no mesmo gasto (inclusive quanto o milheiro precisa valer para os pontos empatarem com o cashback) e teste uma oferta de cartão novo contra o seu melhor cartão atual, já descontando a anuidade.",
+      "type": "novidade"
+    },
+    {
+      "title": "Onde ver seus pontos e cashback",
+      "desc": "Na aba Benefícios e Milhas, um guia mostra onde conferir pontos, milhas e cashback (fatura, app do banco, Livelo, Esfera, Smiles, LATAM Pass, Azul Fidelidade e o Investback da XP) para você preencher certo e acompanhar o que cada cartão rendeu.",
+      "type": "melhoria"
+    },
+    {
+      "title": "Curva e mercado lado a lado",
+      "desc": "Em CRA, CRI e debêntures, o detalhe do investimento mostra o valor pela curva (o que entra no patrimônio, se você segurar até o vencimento) e o valor de mercado (quanto receberia vendendo hoje), com a diferença em %.",
+      "type": "melhoria"
+    },
+    {
+      "title": "Passo a passo para atualizar todo mês",
+      "desc": "No Radar de Investimentos, \"Como atualizar todo mês\" ensina a lançar o relatório do banco no app: rendimento do mês, juros que caíram na conta, aplicações, resgates, impostos e o valor de mercado — e como conferir se bateu.",
       "type": "melhoria"
     }
   ],
   "changes": [
-    "Assets.tsx: brokerCashById = current_balance − soma do valor bruto dos ativos não arquivados da corretora (mesma regra do recalculate_account_balance); dynamicBrokers, card da corretora e alocação usam esse caixa",
-    "Assets.tsx: sync de saldo da corretora ao salvar/trocar de corretora/excluir passa a chamar recalculate_account_balance em vez de gravar initial_balance + investimentos",
-    "AccountsSection.tsx: modo Caixa Livre pré-preenche saldo − investimentos e compara a diferença com esse valor"
+    "lib/investmentRadar.ts + testes: sinais (desempenho × CDI, meses com perda, mercado × curva, notícia, concentração, vencimento), nível com regra de 2 sinais independentes, conta de saída, periodicidade e reaviso",
+    "api/_lib/investment-radar.ts: rota /api/investment-radar (scan e compare), CDI mensal do BCB (série 4391), notícias via Gemini com googleSearch e fontes do grounding, upsert em investment_radar, aviso WhatsApp/push; varredura no daily-cron (por último)",
+    "components/assets/InvestmentRadarPanel.tsx (Investimentos), components/home/RadarUrgentBanner.tsx (Home), components/common/HelpTip.tsx",
+    "lib/cardBenefits.ts + testes; components/banking/CardBenefitsSection.tsx; aba benefits em Banking e no menu",
+    "Migração supabase/2026-11-07_radar_investimentos_e_beneficios_cartao.sql: investment_radar, investment_proposals (RLS) e cards.benefits",
+    "ai-usage-limits: investment_radar e investment_compare contam como diagnóstico; varredura automática fora do limite",
+    "Testes de regressão: telas novas e as que já existiam (Contas & Cartões nas 3 abas, Patrimônio › Investimentos e Visão Geral, tela inicial) abrem com o banco antes e depois da migração; rotina diária continua rodando contas/vencimentos/indicações/manutenção mesmo se o radar falhar; radar com limite de 40 s na rotina diária",
+    "Resposta do gerente: investment_proposals.follow_ups (memória) + action 'answer' na rota e no WhatsApp ('gerente:'); WhatsApp só intercepta print/PDF com legenda 'sugestão/proposta/radar/vale a pena' ou texto iniciando com 'gerente:' (testes garantem que comprovantes e lançamentos seguem o fluxo normal)",
+    "WhatsApp em linguagem natural: classifyInvestmentMessage (oferta + assunto de investimento; 'o gerente disse…' só com sugestão recente e detalhe de investimento); analyzeProposal aceita descrição em texto; testes cobrindo mensagens comuns que NÃO podem ser capturadas",
+    "Assets: valor pela curva × valor de mercado (metadata.marketValue) no detalhe do investimento; Radar: guia 'Como atualizar todo mês'"
   ]
 }

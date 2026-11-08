@@ -36,6 +36,7 @@ const Nav: React.FC<{ user: Profile }> = ({ user }) => {
   const bankingSubItems: NavSubItem[] = [
     { id: 'accounts', label: 'Contas e Carteiras', icon: <Landmark size={16} /> },
     { id: 'cards', label: 'Cartões de Crédito', icon: <CreditCard size={16} /> },
+    { id: 'benefits', label: 'Benefícios e Milhas', icon: <Gift size={16} /> },
   ];
 
   const aiSubItems: NavSubItem[] = [
