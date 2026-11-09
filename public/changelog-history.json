@@ -1,5 +1,27 @@
 [
   {
+    "version": "2026.11.09.1636",
+    "title": "Investimentos encerrados e arquivados",
+    "date": "09/11/2026",
+    "benefits": [
+      {
+        "title": "Veja os investimentos que já terminaram",
+        "desc": "Em Patrimônio › Investimentos, o novo quadro \"Encerrados e arquivados\" lista o que já foi resgatado ou venceu, com a corretora, a data em que terminou e o extrato completo. Eles continuam fora da carteira e do saldo.",
+        "type": "novidade"
+      },
+      {
+        "title": "Arquive para limpar a tela",
+        "desc": "Toque em Arquivar para tirar um encerrado da lista. Os arquivados ficam em \"Ver arquivados\" e podem voltar com Desarquivar a qualquer momento.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "lib/closedInvestments.ts: splitClosedInvestments/canArchiveInvestment/closedOn (arquivar só encerrado com valor zero, para não mexer no saldo da corretora).",
+      "components/assets/ClosedInvestmentsPanel.tsx no fim de Patrimônio › Investimentos (fechado por padrão; Extrato, Arquivar, Ver arquivados, Desarquivar), usando handleArchiveAsset/handleUnarchiveAsset existentes.",
+      "Testes: closedInvestments (regras e tela)."
+    ]
+  },
+  {
     "version": "2026.11.09.1106",
     "title": "Avisos de investimento mostram a corretora ou o banco",
     "date": "09/11/2026",
