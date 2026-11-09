@@ -28,7 +28,7 @@ const text = () => (container.textContent || '').replace(/ /g, ' ');
 
 beforeEach(() => {
   calls = [];
-  forecasts = [{ id: 'f1', date: '2027-01-15', amount: 507.28, account_id: 'acc-matteo', account_name: 'Safra Matteo', description: 'Juros previstos - CRA Eucatex CDI 105,15% (estimado)', metadata: {} }];
+  forecasts = [{ id: 'f1', date: '2027-01-15', amount: 507.28, account_id: 'acc-matteo', account_name: 'Safra Matteo', broker_name: 'Safra Investimentos Matteo', description: 'Juros previstos - CRA Eucatex CDI 105,15% (estimado)', metadata: {} }];
   (globalThis as any).fetch = vi.fn(async (_url: string, init: any) => {
     const body = JSON.parse(init.body);
     calls.push(body);
@@ -51,6 +51,7 @@ describe('Juros previstos (tela)', () => {
     expect(text()).toContain('CRA Eucatex CDI 105,15%');
     expect(text()).toContain('15/01/2027');
     expect(text()).toContain('cai em Safra Matteo');
+    expect(text()).toContain('Safra Investimentos Matteo'); // onde o título está
 
     const recebi = [...container.querySelectorAll('button')].find(b => b.textContent?.includes('Recebi'))!;
     await act(async () => { recebi.click(); });

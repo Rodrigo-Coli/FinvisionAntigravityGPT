@@ -4,6 +4,7 @@ import { AlertTriangle, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
 import { getSessionUser } from '../../lib/session';
 import { missedCoupons, cycleOf } from '../../lib/couponForecast';
+import { brokerOf, withBroker, type AccountLite } from '../../lib/assetLocation';
 
 // Faixa na tela inicial: juros previstos que passaram da data e não caíram na conta
 // (lib/couponForecast.ts › missedCoupons). Só aparece quando um juro não chega.
@@ -31,8 +32,25 @@ const MissedCouponBanner: React.FC = () => {
           .eq('is_paid', false)
           .eq('metadata->>expected_coupon_state', 'open');
         if (error || cancelled) return;
-        setItems(missedCoupons((data || []) as any[], todayIso()).map((f: any) => ({
-          name: String(f.description || 'Investimento').replace(/^Juros previstos - /, '').replace(/ \(estimado\)$/, ''),
+        const missed = missedCoupons((data || []) as any[], todayIso());
+        // Corretora/banco de cada título, para não precisar procurar onde está.
+        const brokerByAsset = new Map<string, string>();
+        if (missed.length) {
+          try {
+            const ids = Array.from(new Set(missed.map((f: any) => String(f.metadata?.expected_coupon_asset_id || '')).filter(Boolean)));
+            const [{ data: assets }, { data: accs }] = await Promise.all([
+              supabase.from('physical_assets').select('id, metadata').in('id', ids),
+              supabase.from('accounts').select('id, institution, name').eq('user_id', user.id)
+            ]);
+            for (const a of (assets || []) as any[]) brokerByAsset.set(a.id, brokerOf(a.metadata, (accs || []) as AccountLite[]));
+          } catch { /* sem nome da corretora */ }
+        }
+        if (cancelled) return;
+        setItems(missed.map((f: any) => ({
+          name: withBroker(
+            String(f.description || 'Investimento').replace(/^Juros previstos - /, '').replace(/ \(estimado\)$/, ''),
+            brokerByAsset.get(String(f.metadata?.expected_coupon_asset_id || '')) || ''
+          ),
           when: cycleOf(f).split('-').reverse().join('/')
         })));
       } catch { /* sem juros previstos: não mostra nada */ }
@@ -54,7 +72,7 @@ const MissedCouponBanner: React.FC = () => {
         <p className="text-sm font-bold truncate">
           {items.length === 1 ? `${items[0].name}: o juro de ${items[0].when} não caiu` : `${items.length} juros previstos não caíram na conta`}
         </p>
-        <p className="text-xs text-white/85 truncate">Toque para conferir e falar com o banco.</p>
+        <p className="text-xs text-white/85 truncate">{items.length > 1 ? items.map(i => i.name).join(' · ') : 'Toque para conferir e falar com o banco.'}</p>
       </div>
       <ChevronRight size={20} className="shrink-0" />
     </button>

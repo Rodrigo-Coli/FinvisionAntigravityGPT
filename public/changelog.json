@@ -1,35 +1,17 @@
 {
-  "version": "2026.11.08.0019",
-  "title": "Alerta de juros não recebidos e investimento sempre ligado às Transações",
-  "date": "08/11/2026",
+  "version": "2026.11.09.1106",
+  "title": "Avisos de investimento mostram a corretora ou o banco",
+  "date": "09/11/2026",
   "benefits": [
     {
-      "title": "Alerta de juros não recebidos",
-      "desc": "Quando um juro previsto passa da data (mais de 5 dias) e não cai na conta, o app avisa: aparece uma faixa na tela inicial, um quadro \"Juros não recebidos\" em Patrimônio › Investimentos e uma mensagem no WhatsApp (uma vez por juro). O aviso só aparece quando o juro não chega. Se caiu, toque em Recebi; se o banco confirmou que não vai ser pago, toque em Dispensar.",
-      "type": "novidade"
-    },
-    {
-      "title": "Radar entende juro atrasado",
-      "desc": "Juro não recebido vira sinal no Radar de Investimentos: um atrasado pede atenção; dois, ou mais de 30 dias de atraso, é grave. Somado à queda do valor de mercado, o título vai para Urgente.",
+      "title": "Onde está cada investimento, em todo aviso",
+      "desc": "O Radar de Investimentos, os juros previstos e não recebidos, as faixas de alerta da tela inicial e as mensagens no WhatsApp agora mostram em qual corretora ou banco o investimento está (por exemplo: CRA Raízen (Safra Investimentos Matteo)). Não precisa mais procurar.",
       "type": "melhoria"
-    },
-    {
-      "title": "Juro atrasado não some",
-      "desc": "O juro previsto que não caiu continua em aberto até você resolver, e o próximo pagamento do cronograma já fica previsto ao lado.",
-      "type": "melhoria"
-    },
-    {
-      "title": "Transações e investimento sempre ligados",
-      "desc": "Juros, aportes, amortizações e resgates ligados a um investimento agora andam juntos: alterou o valor ou a data em Transações, o extrato do investimento e o valor do título acompanham, e vice-versa. Ao excluir de um lado, o app pergunta se exclui do outro também.",
-      "type": "novidade"
     }
   ],
   "changes": [
-    "lib/couponForecast.ts: missedCoupons (previsto em aberto vencido há mais de MISSED_GRACE_DAYS=5 dias) e cycleOf.",
-    "api/_lib/coupon-forecast.ts: vários previstos em aberto por título (o atrasado fica, o próximo é criado); notifyMissedCoupons (WhatsApp uma vez, metadata.missed_notified_at) na rotina diária; ação coupon_dismiss.",
-    "lib/investmentRadar.ts: sinal missed_coupon (moderado/grave) no evaluateAsset; api/_lib/investment-radar.ts carrega os previstos atrasados.",
-    "components/assets/CouponForecastPanel.tsx: seção Juros não recebidos com Recebi/Dispensar; components/home/MissedCouponBanner.tsx na Home.",
-    "lib/linkedInvestmentSync.ts: sincroniza valor/data e exclusão entre transactions (metadata.investment_movement_id) e investment_movements (linked_transaction_id), com o ajuste da curva automática e o valor do título; ligado em pages/History.tsx e pages/Assets.tsx.",
-    "Testes: couponForecast (+2), couponForecastServer (+3), couponForecastPanel (+2), linkedInvestmentSync (8)."
+    "lib/assetLocation.ts: brokerOf/withBroker (corretora = conta de metadata.brokerAccountId).",
+    "InvestmentRadarPanel, RadarUrgentBanner, MissedCouponBanner e CouponForecastPanel mostram a corretora; listOpenForecasts devolve broker_name; WhatsApp do Radar e de juros não recebidos inclui a corretora.",
+    "Testes: assetLocation (2) e verificações nas telas e no servidor."
   ]
 }

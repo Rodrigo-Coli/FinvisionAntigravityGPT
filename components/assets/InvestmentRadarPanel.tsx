@@ -10,6 +10,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { FieldLabel } from '../common/HelpTip';
 import { LEVEL_LABEL, RECHECK_DAYS, type RadarLevel, type RadarSignal } from '../../lib/investmentRadar';
 import { curveSpecOf, CURVE_TYPES } from '../../lib/curveProjection';
+import { brokerOf, type AccountLite } from '../../lib/assetLocation';
 
 // Radar de Investimentos (Patrimônio › Investimentos).
 // Mostra o último resultado de cada investimento (gravado pela varredura
@@ -103,6 +104,7 @@ const fileToBase64 = (file: File) => new Promise<string>((resolve, reject) => {
 const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAssetsChanged }) => {
   const { toast } = useToast();
   const [assets, setAssets] = useState<AssetLite[]>([]);
+  const [accounts, setAccounts] = useState<AccountLite[]>([]);
   const [rows, setRows] = useState<Record<string, RadarRow>>({});
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,11 +131,13 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
     if (!supabase) return;
     const user = await getSessionUser(supabase);
     if (!user) return;
-    const [assetsRes, radarRes, propRes] = await Promise.all([
+    const [assetsRes, radarRes, propRes, accRes] = await Promise.all([
       supabase.from('physical_assets').select('id, name, estimated_value, metadata').eq('user_id', user.id).eq('category', 'INVESTMENT').eq('is_archived', false),
       supabase.from('investment_radar').select('*').eq('user_id', user.id),
-      supabase.from('investment_proposals').select('id, created_at, source_name, verdict, analysis, follow_ups, channel').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5)
+      supabase.from('investment_proposals').select('id, created_at, source_name, verdict, analysis, follow_ups, channel').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5),
+      supabase.from('accounts').select('id, institution, name').eq('user_id', user.id)
     ]);
+    setAccounts(accRes?.error ? [] : (((accRes?.data) || []) as AccountLite[]));
     setAssets(((assetsRes.data || []) as AssetLite[]).filter(a => a.metadata?.status !== 'RESGATADO' && Number(a.estimated_value) > 0));
     if (radarRes.error) {
       setTableMissing(/does not exist|relation|schema cache/i.test(radarRes.error.message || ''));
@@ -434,6 +438,9 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
                 </span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-bold text-slate-800 truncate">{asset.name}</span>
+                  {brokerOf(asset.metadata, accounts) && (
+                    <span className="block text-[11px] font-bold text-indigo-600 truncate" data-testid="radar-broker">{brokerOf(asset.metadata, accounts)}</span>
+                  )}
                   <span className="block text-[11px] text-slate-500 truncate">{row?.summary || 'Ainda não analisado'} · {brl(asset.estimated_value)}</span>
                 </span>
                 {open ? <ChevronUp size={16} className="text-slate-400 shrink-0" /> : <ChevronDown size={16} className="text-slate-400 shrink-0" />}
