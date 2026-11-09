@@ -1,5 +1,22 @@
 [
   {
+    "version": "2026.11.09.1106",
+    "title": "Avisos de investimento mostram a corretora ou o banco",
+    "date": "09/11/2026",
+    "benefits": [
+      {
+        "title": "Onde está cada investimento, em todo aviso",
+        "desc": "O Radar de Investimentos, os juros previstos e não recebidos, as faixas de alerta da tela inicial e as mensagens no WhatsApp agora mostram em qual corretora ou banco o investimento está (por exemplo: CRA Raízen (Safra Investimentos Matteo)). Não precisa mais procurar.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "lib/assetLocation.ts: brokerOf/withBroker (corretora = conta de metadata.brokerAccountId).",
+      "InvestmentRadarPanel, RadarUrgentBanner, MissedCouponBanner e CouponForecastPanel mostram a corretora; listOpenForecasts devolve broker_name; WhatsApp do Radar e de juros não recebidos inclui a corretora.",
+      "Testes: assetLocation (2) e verificações nas telas e no servidor."
+    ]
+  },
+  {
     "version": "2026.11.08.0019",
     "title": "Alerta de juros não recebidos e investimento sempre ligado às Transações",
     "date": "08/11/2026",

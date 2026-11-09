@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Siren, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
 import { getSessionUser } from '../../lib/session';
+import { brokerOf, withBroker, type AccountLite } from '../../lib/assetLocation';
 
 // Faixa vermelha na tela inicial quando o Radar de Investimentos marca algo
 // como URGENTE (e a pessoa não escondeu o aviso). Some sozinha quando não há
@@ -20,14 +21,25 @@ const RadarUrgentBanner: React.FC = () => {
         if (!user) return;
         const { data, error } = await supabase
           .from('investment_radar')
-          .select('summary, dismissed_until, physical_assets(name)')
+          .select('summary, dismissed_until, physical_assets(name, metadata)')
           .eq('user_id', user.id)
           .eq('level', 'URGENTE');
         if (error || cancelled) return;
         const now = Date.now();
-        setItems((data || [])
-          .filter((r: any) => !r.dismissed_until || Date.parse(r.dismissed_until) < now)
-          .map((r: any) => ({ name: r.physical_assets?.name || 'Investimento', summary: r.summary || '' })));
+        const urgent = (data || []).filter((r: any) => !r.dismissed_until || Date.parse(r.dismissed_until) < now);
+        // Corretora/banco de cada um, para não precisar procurar onde está.
+        let accounts: AccountLite[] = [];
+        if (urgent.length) {
+          try {
+            const { data: accs } = await supabase.from('accounts').select('id, institution, name').eq('user_id', user.id);
+            accounts = (accs || []) as AccountLite[];
+          } catch { /* sem nome da corretora */ }
+        }
+        if (cancelled) return;
+        setItems(urgent.map((r: any) => ({
+          name: withBroker(r.physical_assets?.name || 'Investimento', brokerOf(r.physical_assets?.metadata, accounts)),
+          summary: r.summary || ''
+        })));
       } catch { /* sem radar: não mostra nada */ }
     })();
     return () => { cancelled = true; };
@@ -46,7 +58,7 @@ const RadarUrgentBanner: React.FC = () => {
         <p className="text-sm font-bold truncate">
           {items.length === 1 ? `${items[0].name}: avalie a saída` : `${items.length} investimentos pedem decisão`}
         </p>
-        <p className="text-xs text-white/80 truncate">{items.map(i => i.summary || i.name).join(' · ')}</p>
+        <p className="text-xs text-white/80 truncate">{items.length === 1 ? (items[0].summary || items[0].name) : items.map(i => i.name).join(' · ')}</p>
       </div>
       <ChevronRight size={20} className="shrink-0" />
     </button>

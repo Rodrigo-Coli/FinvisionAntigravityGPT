@@ -25,14 +25,15 @@ const monthsAgo = (m: number) => { const d = new Date(today); d.setMonth(d.getMo
 
 const baseTables = () => ({
   physical_assets: [
-    { id: 'a1', user_id: 'u1', category: 'INVESTMENT', is_archived: false, name: 'CRA Raízen', estimated_value: 61418.18, metadata: { investmentType: 'CRI_CRA' } },
+    { id: 'a1', user_id: 'u1', category: 'INVESTMENT', is_archived: false, name: 'CRA Raízen', estimated_value: 61418.18, metadata: { investmentType: 'CRI_CRA', brokerAccountId: 'acc-matteo' } },
     { id: 'a2', user_id: 'u1', category: 'INVESTMENT', is_archived: false, name: 'SulAmérica Excellence', estimated_value: 51727.13, metadata: { investmentType: 'FUNDOS' } },
     { id: 'a3', user_id: 'u1', category: 'INVESTMENT', is_archived: false, name: 'Fundo resgatado', estimated_value: 0, metadata: { status: 'RESGATADO' } }
   ],
   investment_radar: [
-    { asset_id: 'a1', user_id: 'u1', level: 'URGENTE', score: 20, summary: 'Preço de mercado despencou', signals: [{ key: 'market_gap', severity: 'severe', label: 'Preço de mercado despencou', detail: 'x' }], recommendation: 'Avalie a saída.', exit_math: { holdGross: 61418.18, sellGross: 26133.78, costOfExit: 35284.4, irNote: 'Isento', note: '' }, news: null, sources: [], history: [], checked_at: today.toISOString(), next_check_at: today.toISOString(), dismissed_until: null, physical_assets: { name: 'CRA Raízen' } }
+    { asset_id: 'a1', user_id: 'u1', level: 'URGENTE', score: 20, summary: 'Preço de mercado despencou', signals: [{ key: 'market_gap', severity: 'severe', label: 'Preço de mercado despencou', detail: 'x' }], recommendation: 'Avalie a saída.', exit_math: { holdGross: 61418.18, sellGross: 26133.78, costOfExit: 35284.4, irNote: 'Isento', note: '' }, news: null, sources: [], history: [], checked_at: today.toISOString(), next_check_at: today.toISOString(), dismissed_until: null, physical_assets: { name: 'CRA Raízen', metadata: { brokerAccountId: 'acc-matteo' } } }
   ],
   investment_proposals: [],
+  accounts: [{ id: 'acc-matteo', user_id: 'u1', institution: 'Safra Investimentos Matteo', name: null }],
   cards: [
     { id: 'c1', user_id: 'u1', is_archived: false, name: 'XP', brand: 'Visa', last4: '3769', is_additional: false, parent_card_id: null, sums_into_invoice: null, benefits: { type: 'CASHBACK', cashbackPct: 1 } },
     { id: 'c2', user_id: 'u1', is_archived: false, name: 'XP Carol', brand: 'Visa', last4: '7727', is_additional: true, parent_card_id: 'c1', sums_into_invoice: true, benefits: null }
@@ -110,6 +111,7 @@ describe('Radar de Investimentos (tela)', () => {
     await mount(<InvestmentRadarPanel />);
     expect(text()).toContain('Radar de Investimentos');
     expect(text()).toContain('CRA Raízen');
+    expect(text()).toContain('Safra Investimentos Matteo'); // onde o investimento está
     expect(text()).toContain('Urgente');
     expect(text()).toContain('SulAmérica Excellence');
     expect(text()).toContain('Sem análise');
@@ -135,7 +137,7 @@ describe('Radar de Investimentos (tela)', () => {
 describe('Faixa urgente da tela inicial', () => {
   it('aparece quando há investimento URGENTE', async () => {
     await mount(<RadarUrgentBanner />);
-    expect(text()).toContain('CRA Raízen');
+    expect(text()).toContain('CRA Raízen (Safra Investimentos Matteo)');
   });
   it('some quando o aviso foi escondido', async () => {
     state.tables.investment_radar[0].dismissed_until = new Date(Date.now() + 86400000).toISOString();

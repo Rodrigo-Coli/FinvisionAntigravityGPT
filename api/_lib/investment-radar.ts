@@ -13,6 +13,7 @@ import {
   type LedgerMovement, type NewsAssessment, type RadarAsset, type RadarEvaluation, type RadarLevel
 } from '../../lib/investmentRadar.js';
 import { missedCoupons, cycleOf } from '../../lib/couponForecast.js';
+import { brokerOf, withBroker, type AccountLite } from '../../lib/assetLocation.js';
 
 // Radar de Investimentos (servidor).
 //
@@ -266,6 +267,13 @@ export async function scanUser(userId: string, opts: ScanOptions) {
 
   const cdi = await cdiResolver(userId);
 
+  // Corretora/banco de cada investimento: o aviso diz onde ele está.
+  let userAccounts: AccountLite[] = [];
+  try {
+    const { data: accs } = await supabase.from('accounts').select('id, institution, name').eq('user_id', userId);
+    userAccounts = (accs || []) as AccountLite[];
+  } catch { /* sem nome da corretora */ }
+
   // Juros previstos que não caíram (api/_lib/coupon-forecast.ts): viram sinal no Radar.
   const missedByAsset = new Map<string, { cycle: string; amount: number }[]>();
   try {
@@ -321,7 +329,7 @@ export async function scanUser(userId: string, opts: ScanOptions) {
     });
 
     const notify = opts.notify && shouldNotify(prev, evaluation.level, now);
-    if (notify) urgentToNotify.push({ name: asset.name, evaluation });
+    if (notify) urgentToNotify.push({ name: withBroker(asset.name, brokerOf(asset.metadata, userAccounts)), evaluation });
 
     const history = [{ at: now.toISOString(), level: evaluation.level, score: evaluation.score }, ...((prev?.history as any[]) || [])].slice(0, 12);
     const row = {

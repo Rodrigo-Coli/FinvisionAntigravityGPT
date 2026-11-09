@@ -5,6 +5,7 @@ import {
 } from '../../lib/couponForecast.js';
 import type { Indexes, Movement } from '../../lib/curveProjection.js';
 import { refreshAssetCurve } from './curve-projection.js';
+import { brokerOf, type AccountLite } from '../../lib/assetLocation.js';
 
 // Juros previstos (servidor).
 // Para cada título com "Próximo Pagamento" de juros, mantém UMA receita prevista em
@@ -276,13 +277,15 @@ export async function notifyMissedCoupons(today = todayStr()): Promise<number> {
   const byUser = new Map<string, any[]>();
   for (const f of pending) byUser.set(f.user_id, [...(byUser.get(f.user_id) || []), f]);
   let sent = 0;
+  const brokers = await brokersByAsset(pending.map((f: any) => String(f.metadata?.expected_coupon_asset_id || '')));
   for (const [userId, items] of byUser) {
     const { data: st } = await supabase.from('user_settings').select('whatsapp_enabled, whatsapp_number').eq('user_id', userId).maybeSingle();
     if ((st as any)?.whatsapp_enabled && (st as any)?.whatsapp_number) {
       let msg = `*Zyvion* ⚠️ *Juros não recebidos*\n`;
       for (const f of items) {
         const name = String(f.description || '').replace(`${FORECAST_PREFIX} - `, '').replace(' (estimado)', '');
-        msg += `• *${name}*: previsto para ${br(cycleOf(f))} (cerca de R$ ${Number(f.amount).toFixed(2).replace('.', ',')})${f.account_name ? ` em ${f.account_name}` : ''}, e não caiu.\n`;
+        const broker = brokers.get(String(f.metadata?.expected_coupon_asset_id || ''));
+        msg += `• *${name}*${broker ? ` (${broker})` : ''}: previsto para ${br(cycleOf(f))} (cerca de R$ ${Number(f.amount).toFixed(2).replace('.', ',')})${f.account_name ? ` em ${f.account_name}` : ''}, e não caiu.\n`;
       }
       msg += `\nConfirme com o banco se foi adiado, suspenso ou pago em outra conta. Se já caiu, dê como recebido em Patrimônio › Juros previstos.`;
       await sendWhatsApp((st as any).whatsapp_number, msg);
@@ -307,13 +310,32 @@ export async function dismissForecast(userId: string, body: any): Promise<{ stat
   return { status: 200, json: { message: 'Juro previsto dispensado. Ele não volta a aparecer.' } };
 }
 
+/** Corretora/banco de cada investimento (id do ativo → nome), para os avisos mostrarem onde está. */
+async function brokersByAsset(assetIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const ids = Array.from(new Set(assetIds.filter(Boolean)));
+  if (!ids.length) return out;
+  try {
+    const { data: assets } = await supabase.from('physical_assets').select('id, metadata').in('id', ids);
+    const accIds = Array.from(new Set(((assets || []) as any[]).map(a => a.metadata?.brokerAccountId).filter(Boolean)));
+    const { data: accs } = accIds.length ? await supabase.from('accounts').select('id, institution, name').in('id', accIds) : { data: [] } as any;
+    const byId = new Map<string, AccountLite>(((accs || []) as AccountLite[]).map(a => [a.id, a]));
+    for (const a of (assets || []) as any[]) out.set(a.id, brokerOf(a.metadata, byId));
+  } catch { /* sem nome da corretora: o aviso sai sem ele */ }
+  return out;
+}
+
 /** Previstos em aberto de uma pessoa (para a tela). */
 export async function listOpenForecasts(userId: string) {
   const { data } = await supabase.from('transactions')
     .select('id, date, amount, account_id, account_name, description, metadata')
     .eq('user_id', userId).eq('is_deleted', false).eq('is_paid', false)
     .eq('metadata->>expected_coupon_state', 'open');
-  return ((data || []) as any[]).sort((a, b) => day(a.date).localeCompare(day(b.date)));
+  const rows = (data || []) as any[];
+  const brokers = await brokersByAsset(rows.map(r => String(r.metadata?.expected_coupon_asset_id || '')));
+  return rows
+    .map(r => ({ ...r, broker_name: brokers.get(String(r.metadata?.expected_coupon_asset_id || '')) || null }))
+    .sort((a, b) => day(a.date).localeCompare(day(b.date)));
 }
 
 /** "Recebi": dá baixa no previsto com o valor e a data reais. */

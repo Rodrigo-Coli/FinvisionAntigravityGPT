@@ -25,6 +25,7 @@ class Q {
   eq(c: string, v: any) { this.filters.push(r => String(get(r, c)) === String(v)); return this.mode === 'update' ? this.run() : this; }
   gte(c: string, v: any) { this.filters.push(r => String(get(r, c)).slice(0, 10) >= String(v).slice(0, 10)); return this; }
   lte(c: string, v: any) { this.filters.push(r => String(get(r, c)).slice(0, 10) <= String(v).slice(0, 10)); return this; }
+  in(c: string, vs: any[]) { this.filters.push(r => vs.map(String).includes(String(get(r, c)))); return this; }
   insert(rows: any) {
     this.mode = 'insert';
     this.inserted = (Array.isArray(rows) ? rows : [rows]).map(r => ({ id: `n${++seq}`, is_deleted: false, ...r }));
@@ -81,9 +82,10 @@ beforeEach(() => {
 
 describe('criar o previsto', () => {
   it('uma receita em aberto em 15/01/2027, na conta onde os juros caíram, pelo último valor', async () => {
-    const { syncCouponForecasts } = await import('../api/_lib/coupon-forecast');
+    const { syncCouponForecasts, listOpenForecasts } = await import('../api/_lib/coupon-forecast');
     const r = await syncCouponForecasts('u1', '2026-11-08');
     expect(r.created).toBe(1);
+    expect((await listOpenForecasts('u1'))[0].broker_name).toBe('Safra Investimentos Matteo');
     const f = openForecasts();
     expect(f).toHaveLength(1);
     expect(f[0]).toMatchObject({ type: 'INCOME', amount: 507.28, date: '2027-01-15', is_paid: false, paid_amount: 0, account_id: MATTEO, category: 'Investimentos' });
@@ -220,6 +222,7 @@ describe('juros não recebidos', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0].text).toContain('Juros não recebidos');
     expect(sent[0].text).toContain('15/01/2027');
+    expect(sent[0].text).toContain('(Safra Investimentos Matteo)'); // onde o título está
     // no dia seguinte não repete
     expect(await notifyMissedCoupons('2027-01-26')).toBe(0);
     expect(sent).toHaveLength(1);

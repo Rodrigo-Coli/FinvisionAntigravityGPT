@@ -19,6 +19,7 @@ interface Forecast {
   amount: number;
   account_id: string | null;
   account_name: string | null;
+  broker_name?: string | null;
   description: string | null;
   metadata: Record<string, any> | null;
 }
@@ -140,6 +141,7 @@ export default function CouponForecastPanel({ onAssetsChanged }: { onAssetsChang
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-slate-800 truncate">{name}</p>
+                    {f.broker_name && <p className="text-[11px] font-bold text-indigo-600 truncate">{f.broker_name}</p>}
                     <p className="text-[11px] text-slate-500">
                       {late ? <span className="text-amber-600 font-bold">Era para {brDate(f.date)}</span> : <>Previsto para {brDate(f.date)}</>}
                       {' · '}{brl(f.amount)} estimado{f.account_name ? ` · cai em ${f.account_name}` : ''}
