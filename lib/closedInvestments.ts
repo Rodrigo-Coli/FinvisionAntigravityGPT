@@ -1,4 +1,5 @@
-// Investimentos encerrados e arquivados (Patrimônio › Investimentos).
+// Filtro de situação dos investimentos (Patrimônio › Investimentos):
+// Ativos (carteira, padrão) · Encerrados · Arquivados.
 //
 // · Encerrado: resgatado ou vencido (metadata.status 'RESGATADO'). Já não entra na
 //   carteira nem no saldo, mas continua com o extrato completo.
@@ -16,8 +17,6 @@ export interface ClosedInvestmentInput {
   metadata?: any;
 }
 
-const day = (s: any) => String(s || '').slice(0, 10);
-
 export const isInvestment = (a: ClosedInvestmentInput) => a?.category === 'INVESTMENT';
 export const isClosedInvestment = (a: ClosedInvestmentInput) => isInvestment(a) && a.metadata?.status === 'RESGATADO';
 
@@ -25,18 +24,19 @@ export const isClosedInvestment = (a: ClosedInvestmentInput) => isInvestment(a) 
 export const canArchiveInvestment = (a: ClosedInvestmentInput) =>
   isClosedInvestment(a) && !a.is_archived && Math.abs(Number(a.estimatedValue || 0)) < 0.005;
 
-/** Data em que terminou: resgate registrado, senão o vencimento já passado. */
-export function closedOn(a: ClosedInvestmentInput, today: string): string | null {
-  const m = a.metadata || {};
-  if (m.resgateDate) return day(m.resgateDate);
-  if (m.vencimentoDate && day(m.vencimentoDate) <= today) return day(m.vencimentoDate);
-  return null;
+export type InvestmentStatusFilter = 'ATIVOS' | 'ENCERRADOS' | 'ARQUIVADOS';
+
+/** O investimento aparece com este filtro? Arquivado só aparece em "Arquivados". */
+export function matchesInvestmentStatus(a: ClosedInvestmentInput, filter: InvestmentStatusFilter): boolean {
+  if (!isInvestment(a)) return false;
+  if (filter === 'ARQUIVADOS') return !!a.is_archived;
+  if (a.is_archived) return false;
+  return filter === 'ENCERRADOS' ? isClosedInvestment(a) : a.metadata?.status !== 'RESGATADO';
 }
 
-/** Separa os encerrados (ainda na lista de encerrados) dos arquivados; mais recentes primeiro. */
-export function splitClosedInvestments<T extends ClosedInvestmentInput>(assets: T[], today: string) {
-  const byDate = (x: T, y: T) => (closedOn(y, today) || '').localeCompare(closedOn(x, today) || '') || String(x.name).localeCompare(String(y.name));
-  const closed = assets.filter(a => isClosedInvestment(a) && !a.is_archived).sort(byDate);
-  const archived = assets.filter(a => isInvestment(a) && !!a.is_archived).sort(byDate);
-  return { closed, archived };
+/** Quantos há em cada situação (para o rótulo do filtro). */
+export function countByInvestmentStatus(assets: ClosedInvestmentInput[]): Record<InvestmentStatusFilter, number> {
+  const out: Record<InvestmentStatusFilter, number> = { ATIVOS: 0, ENCERRADOS: 0, ARQUIVADOS: 0 };
+  for (const a of assets) for (const f of ['ATIVOS', 'ENCERRADOS', 'ARQUIVADOS'] as InvestmentStatusFilter[]) if (matchesInvestmentStatus(a, f)) out[f]++;
+  return out;
 }

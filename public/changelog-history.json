@@ -1,5 +1,28 @@
 [
   {
+    "version": "2026.11.09.1652",
+    "title": "Filtro de investimentos: Ativos, Encerrados e Arquivados",
+    "date": "09/11/2026",
+    "benefits": [
+      {
+        "title": "Encerrados e arquivados viram filtro",
+        "desc": "Em Patrimônio › Investimentos, junto dos outros filtros, escolha Ativos (a carteira, padrão), Encerrados (resgatados ou vencidos) ou Arquivados. A lista continua a mesma, separada por corretora, com o extrato de cada um. O quadro separado saiu.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Arquivar e desarquivar direto na linha",
+        "desc": "Em um investimento encerrado, toque em Arquivar para tirá-lo dos Encerrados. No filtro Arquivados, Desarquivar traz de volta. O saldo da corretora não muda.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "lib/closedInvestments.ts: matchesInvestmentStatus/countByInvestmentStatus/canArchiveInvestment.",
+      "pages/Assets.tsx: select 'Situação do investimento' nos filtros (ATIVOS padrão), listas por corretora e sem corretora filtram pela situação; enriquecimento passa a cobrir arquivados (enrichedAllAssets) sem mudar a carteira; botões Arquivar/Desarquivar na linha; Resgatar some em encerrados.",
+      "Removido components/assets/ClosedInvestmentsPanel.tsx (quadro da versão anterior).",
+      "Testes: closedInvestments (filtro, contagem, arquivar)."
+    ]
+  },
+  {
     "version": "2026.11.09.1636",
     "title": "Investimentos encerrados e arquivados",
     "date": "09/11/2026",

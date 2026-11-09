@@ -49,7 +49,8 @@ import {
   Download,
   Printer,
   HandCoins,
-  SlidersHorizontal
+  SlidersHorizontal,
+  ArchiveRestore
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { PhysicalAsset, InvestmentBroker, Liability, Transaction } from '../types';
@@ -80,7 +81,7 @@ import { isOrphanPendingFinancing } from '../lib/pendingFinancing';
 import { summarizeLoan, loanOpenBalance } from '../lib/loanSummary';
 import InvestmentRadarPanel from '../components/assets/InvestmentRadarPanel';
 import CouponForecastPanel from '../components/assets/CouponForecastPanel';
-import ClosedInvestmentsPanel from '../components/assets/ClosedInvestmentsPanel';
+import { canArchiveInvestment, countByInvestmentStatus, matchesInvestmentStatus, InvestmentStatusFilter } from '../lib/closedInvestments';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -336,6 +337,7 @@ const Assets: React.FC = () => {
   const [liquidityFilter, setLiquidityFilter] = useState<string>('ALL');
   const [maturityFilter, setMaturityFilter] = useState<string>('ALL');
   const [investmentSearchQuery, setInvestmentSearchQuery] = useState<string>('');
+  const [investmentStatusFilter, setInvestmentStatusFilter] = useState<InvestmentStatusFilter>('ATIVOS');
   const [investmentTypeFilter, setInvestmentTypeFilter] = useState<string>('ALL');
   const [investmentBrokerFilter, setInvestmentBrokerFilter] = useState<string>('ALL');
 
@@ -1075,8 +1077,10 @@ const Assets: React.FC = () => {
     return { taxAmount, effectiveRate, weightedDays: Math.round(weightedDays), breakdown };
   };
 
-  const enrichedPhysicalAssets = useMemo(() => {
-    return activePhysicalAssets.map(p => {
+  // Enriquecimento (custo, IR, líquido) de todos os bens, arquivados inclusive: a
+  // carteira usa só os não arquivados; o filtro "Arquivados" dos investimentos usa o resto.
+  const enrichedAllAssets = useMemo(() => {
+    return physicalAssets.map(p => {
       if (p.category === 'INVESTMENT') {
         const meta = p.metadata || {};
         const declaredPurchase = Number(meta.purchaseValue) || Number(meta.initialInvestmentAmount) || Number(p.estimatedValue) || 0;
@@ -1178,7 +1182,9 @@ const Assets: React.FC = () => {
         parsedAnnualRate: 0
       };
     });
-  }, [activePhysicalAssets, investmentLotsByAsset]);
+  }, [physicalAssets, investmentLotsByAsset]);
+  const enrichedPhysicalAssets = useMemo(() => enrichedAllAssets.filter(p => !p.is_archived), [enrichedAllAssets]);
+  const investmentStatusCounts = useMemo(() => countByInvestmentStatus(physicalAssets), [physicalAssets]);
 
   // Caixa livre da corretora = dinheiro de verdade parado nela: saldo da conta menos o
   // valor bruto dos investimentos ligados a ela (a mesma conta do recálculo do saldo no
@@ -9407,7 +9413,18 @@ ${tabelaHtml}
                   <option value="LONGO_PRAZO">Acima de 180 dias</option>
                   <option value="SEM_DATA">Sem Data de Vencimento</option>
                 </select>
-                {(investmentSearchQuery || investmentTypeFilter !== 'ALL' || investmentBrokerFilter !== 'ALL' || liquidityFilter !== 'ALL' || maturityFilter !== 'ALL') && (
+                {/* Situação: carteira (ativos), encerrados (resgatados/vencidos) ou arquivados */}
+                <select
+                  value={investmentStatusFilter}
+                  onChange={(e) => setInvestmentStatusFilter(e.target.value as InvestmentStatusFilter)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                  aria-label="Situação do investimento"
+                >
+                  <option value="ATIVOS">Ativos (carteira)</option>
+                  <option value="ENCERRADOS">Encerrados ({investmentStatusCounts.ENCERRADOS})</option>
+                  <option value="ARQUIVADOS">Arquivados ({investmentStatusCounts.ARQUIVADOS})</option>
+                </select>
+                {(investmentSearchQuery || investmentTypeFilter !== 'ALL' || investmentBrokerFilter !== 'ALL' || liquidityFilter !== 'ALL' || maturityFilter !== 'ALL' || investmentStatusFilter !== 'ATIVOS') && (
                   <button
                     onClick={() => {
                       setInvestmentSearchQuery('');
@@ -9415,6 +9432,7 @@ ${tabelaHtml}
                       setInvestmentBrokerFilter('ALL');
                       setLiquidityFilter('ALL');
                       setMaturityFilter('ALL');
+                      setInvestmentStatusFilter('ATIVOS');
                     }}
                     className="text-[10px] font-black text-indigo-500 hover:text-indigo-700 uppercase tracking-widest"
                   >
@@ -9425,9 +9443,11 @@ ${tabelaHtml}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {dynamicBrokers.map(broker => {
-                  const brokerInvestments = getFilteredInvestments(enrichedPhysicalAssets.filter(
-                    p => p.category === 'INVESTMENT' && p.metadata?.brokerAccountId === broker.id && p.metadata?.status !== 'RESGATADO'
+                  const brokerInvestments = getFilteredInvestments(enrichedAllAssets.filter(
+                    p => p.category === 'INVESTMENT' && p.metadata?.brokerAccountId === broker.id && matchesInvestmentStatus(p, investmentStatusFilter)
                   ));
+                  // Filtro Encerrados/Arquivados: só as corretoras que têm algum.
+                  if (investmentStatusFilter !== 'ATIVOS' && brokerInvestments.length === 0) return null;
                   // Somas do que está de fato listado abaixo, para o topo do card sempre
                   // fechar com a soma das linhas. Antes o topo usava o total de TODOS os
                   // ativos da corretora e as linhas mostravam o bruto, então bastava ligar
@@ -9557,7 +9577,26 @@ ${tabelaHtml}
                                       )}
                                     </div>
                                     <div className="flex gap-2 items-center" onClick={(e) => e.stopPropagation()}>
-                                      <button
+                                      {inv.is_archived ? (
+                                        <button
+                                          onClick={() => handleUnarchiveAsset(inv)}
+                                          className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
+                                          title="Desarquivar"
+                                        >
+                                          <ArchiveRestore size={11} />
+                                          <span className="hidden sm:inline">Desarquivar</span>
+                                        </button>
+                                      ) : canArchiveInvestment(inv) && (
+                                        <button
+                                          onClick={() => handleArchiveAsset(inv)}
+                                          className="p-1 text-slate-600 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
+                                          title="Arquivar (sai da lista de encerrados)"
+                                        >
+                                          <Archive size={11} />
+                                          <span className="hidden sm:inline">Arquivar</span>
+                                        </button>
+                                      )}
+                                      {inv.metadata?.status !== 'RESGATADO' && <button
                                         onClick={() => {
                                           setSelectedAssetForResgate(inv);
                                           setResgateForm({
@@ -9572,7 +9611,7 @@ ${tabelaHtml}
                                       >
                                         <HandCoins size={11} />
                                         <span className="hidden sm:inline">Resgatar</span>
-                                      </button>
+                                      </button>}
                                       <button
                                         onClick={() => openInvestmentLedger(inv)}
                                         className="p-1 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
@@ -9736,10 +9775,10 @@ ${tabelaHtml}
                 {/* Card for investments without a broker */}
                 {(() => {
                   const activeBrokerIds = new Set(brokers.map(b => b.id));
-                  const unboundInvestments = getFilteredInvestments(enrichedPhysicalAssets.filter(
-                    p => p.category === 'INVESTMENT' && (!p.metadata?.brokerAccountId || !activeBrokerIds.has(p.metadata.brokerAccountId)) && p.metadata?.status !== 'RESGATADO'
+                  const unboundInvestments = getFilteredInvestments(enrichedAllAssets.filter(
+                    p => p.category === 'INVESTMENT' && (!p.metadata?.brokerAccountId || !activeBrokerIds.has(p.metadata.brokerAccountId)) && matchesInvestmentStatus(p, investmentStatusFilter)
                   ));
-                  if (unboundInvestments.length === 0 && brokers.length > 0) return null;
+                  if (unboundInvestments.length === 0 && (brokers.length > 0 || investmentStatusFilter !== 'ATIVOS')) return null;
                   const isCollapsed = !!collapsedBrokers.unbound;
 
                   return (
@@ -9838,7 +9877,26 @@ ${tabelaHtml}
                                       )}
                                     </div>
                                     <div className="flex gap-2 items-center" onClick={(e) => e.stopPropagation()}>
-                                      <button
+                                      {inv.is_archived ? (
+                                        <button
+                                          onClick={() => handleUnarchiveAsset(inv)}
+                                          className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
+                                          title="Desarquivar"
+                                        >
+                                          <ArchiveRestore size={11} />
+                                          <span className="hidden sm:inline">Desarquivar</span>
+                                        </button>
+                                      ) : canArchiveInvestment(inv) && (
+                                        <button
+                                          onClick={() => handleArchiveAsset(inv)}
+                                          className="p-1 text-slate-600 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
+                                          title="Arquivar (sai da lista de encerrados)"
+                                        >
+                                          <Archive size={11} />
+                                          <span className="hidden sm:inline">Arquivar</span>
+                                        </button>
+                                      )}
+                                      {inv.metadata?.status !== 'RESGATADO' && <button
                                         onClick={() => {
                                           setSelectedAssetForResgate(inv);
                                           setResgateForm({
@@ -9853,7 +9911,7 @@ ${tabelaHtml}
                                       >
                                         <HandCoins size={11} />
                                         <span className="hidden sm:inline">Resgatar</span>
-                                      </button>
+                                      </button>}
                                       <button
                                         onClick={() => openInvestmentLedger(inv)}
                                         className="p-1 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest"
@@ -9999,14 +10057,6 @@ ${tabelaHtml}
                   );
                 })()}
               </div>
-              {/* Encerrados (resgatados/vencidos) e arquivados: fora da carteira, com extrato */}
-              <ClosedInvestmentsPanel
-                assets={physicalAssets}
-                brokers={brokers}
-                onOpenLedger={(a) => openInvestmentLedger(a)}
-                onArchive={(a) => handleArchiveAsset(a)}
-                onUnarchive={(a) => handleUnarchiveAsset(a)}
-              />
             </div>
           </div>
         )}
