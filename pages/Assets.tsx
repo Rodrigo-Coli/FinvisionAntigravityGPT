@@ -80,6 +80,7 @@ import { isOrphanPendingFinancing } from '../lib/pendingFinancing';
 import { summarizeLoan, loanOpenBalance } from '../lib/loanSummary';
 import InvestmentRadarPanel from '../components/assets/InvestmentRadarPanel';
 import CouponForecastPanel from '../components/assets/CouponForecastPanel';
+import ClosedInvestmentsPanel from '../components/assets/ClosedInvestmentsPanel';
 
 // Trava global para impedir que o sincronizador automático rode em paralelo
 // (múltiplos carregamentos concorrentes geravam lançamentos duplicados, ex.: "Aquisição Ativo").
@@ -9998,6 +9999,14 @@ ${tabelaHtml}
                   );
                 })()}
               </div>
+              {/* Encerrados (resgatados/vencidos) e arquivados: fora da carteira, com extrato */}
+              <ClosedInvestmentsPanel
+                assets={physicalAssets}
+                brokers={brokers}
+                onOpenLedger={(a) => openInvestmentLedger(a)}
+                onArchive={(a) => handleArchiveAsset(a)}
+                onUnarchive={(a) => handleUnarchiveAsset(a)}
+              />
             </div>
           </div>
         )}
