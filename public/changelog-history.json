@@ -1,5 +1,34 @@
 [
   {
+    "version": "2026.11.10.0916",
+    "title": "Avisos da tela inicial já abrem filtrados",
+    "date": "10/11/2026",
+    "benefits": [
+      {
+        "title": "Aviso vermelho abre só o que é urgente",
+        "desc": "Ao tocar no aviso do Radar na tela inicial (ou no WhatsApp), a aba Radar abre mostrando só os investimentos urgentes, já com o motivo aberto. Um toque em \"Ver todos\" volta à lista completa.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Aviso laranja abre só os juros não recebidos",
+        "desc": "Ao tocar em \"Juros não recebidos\", a tela de Investimentos abre direto no quadro de juros, mostrando só os que não caíram na conta. Dá para trocar entre Todos, Não recebidos e A receber.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Filtro por nível no Radar",
+        "desc": "Os quadros de resumo do Radar (Urgente, Atenção, OK, Sem análise) agora são filtros: toque em um para ver só aquele nível.",
+        "type": "novidade"
+      }
+    ],
+    "changes": [
+      "components/assets/InvestmentRadarPanel.tsx: filtro por nível (quadros do resumo viram botões; ?nivel=URGENTE ou radar=1 chega filtrado, abre os itens e cai para 'todos' se não houver nenhum)",
+      "components/assets/CouponForecastPanel.tsx: filtro Todos / Não recebidos / A receber; ?juros=atrasados chega filtrado, abre e rola até o quadro",
+      "components/home/RadarUrgentBanner.tsx, api/_lib/investment-radar.ts: link /assets?view=investments&sub=radar&nivel=URGENTE",
+      "components/home/MissedCouponBanner.tsx: link /assets?view=investments&juros=atrasados",
+      "tests: filtros do Radar e dos juros previstos"
+    ]
+  },
+  {
     "version": "2026.11.10.0858",
     "title": "Investimentos em duas abas: carteira e Radar",
     "date": "10/11/2026",

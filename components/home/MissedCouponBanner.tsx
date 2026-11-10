@@ -62,7 +62,7 @@ const MissedCouponBanner: React.FC = () => {
 
   return (
     <button
-      onClick={() => navigate('/assets?view=investments')}
+      onClick={() => navigate('/assets?view=investments&juros=atrasados')}
       className="w-full text-left bg-amber-500 text-white rounded-[24px] p-4 sm:p-5 shadow-lg shadow-amber-500/20 flex items-center gap-4 hover:bg-amber-600 transition-colors"
       data-testid="missed-coupon-banner"
     >

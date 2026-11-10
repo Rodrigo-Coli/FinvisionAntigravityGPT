@@ -132,6 +132,35 @@ describe('Radar de Investimentos (tela)', () => {
     await mount(<InvestmentRadarPanel />);
     expect(text()).toBe('');
   });
+
+  it('vindo do aviso vermelho (nivel=URGENTE) já chega filtrado e com o motivo aberto', async () => {
+    (Element.prototype as any).scrollIntoView = vi.fn();
+    await mount(<InvestmentRadarPanel />, '/assets?view=investments&sub=radar&nivel=URGENTE');
+    expect(container.querySelector('[data-testid="radar-filter-note"]')?.textContent).toContain('Urgente (1)');
+    expect(text()).toContain('CRA Raízen');
+    expect(text()).not.toContain('SulAmérica Excellence');
+    expect(text()).toContain('Avalie a saída.'); // aberto: mostra a recomendação
+    const verTodos = [...container.querySelectorAll('button')].find(b => b.textContent?.startsWith('Ver todos'))!;
+    await act(async () => { verTodos.click(); });
+    expect(text()).toContain('SulAmérica Excellence');
+  });
+
+  it('o link antigo (radar=1) também filtra; sem urgente, mostra todos', async () => {
+    (Element.prototype as any).scrollIntoView = vi.fn();
+    state.tables.investment_radar = [];
+    await mount(<InvestmentRadarPanel />, '/assets?view=investments&radar=1');
+    expect(container.querySelector('[data-testid="radar-filter-note"]')).toBeNull();
+    expect(text()).toContain('CRA Raízen');
+    expect(text()).toContain('SulAmérica Excellence');
+  });
+
+  it('tocar no resumo filtra por nível', async () => {
+    await mount(<InvestmentRadarPanel />);
+    const chip = [...container.querySelectorAll('button[aria-pressed]')].find(b => b.textContent?.includes('Sem análise'))!;
+    await act(async () => { (chip as HTMLButtonElement).click(); });
+    expect(text()).toContain('SulAmérica Excellence');
+    expect(text()).not.toContain('CRA Raízen');
+  });
 });
 
 describe('Faixa urgente da tela inicial', () => {

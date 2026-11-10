@@ -49,7 +49,7 @@ const RadarUrgentBanner: React.FC = () => {
 
   return (
     <button
-      onClick={() => navigate('/assets?view=investments&radar=1')}
+      onClick={() => navigate('/assets?view=investments&sub=radar&nivel=URGENTE')}
       className="w-full text-left bg-rose-600 text-white rounded-[24px] p-4 sm:p-5 shadow-lg shadow-rose-500/20 flex items-center gap-4 hover:bg-rose-700 transition-colors"
     >
       <div className="w-11 h-11 rounded-2xl bg-white/15 flex items-center justify-center shrink-0"><Siren size={22} /></div>

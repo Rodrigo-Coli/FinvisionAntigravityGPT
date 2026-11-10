@@ -102,6 +102,30 @@ describe('Juros previstos (tela)', () => {
     expect(calls.find(c => c.action === 'coupon_dismiss')).toMatchObject({ transactionId: 'late' });
   });
 
+  it('vindo do aviso laranja (juros=atrasados) já chega só com os não recebidos, com filtro', async () => {
+    (Element.prototype as any).scrollIntoView = vi.fn();
+    window.location.hash = '#/assets?view=investments&juros=atrasados';
+    forecasts = [
+      { id: 'late', date: '2026-04-15', amount: 3307.97, account_id: 'acc-matteo', account_name: 'Safra Matteo', description: 'Juros previstos - CRA Raízen (estimado)', metadata: { expected_coupon_state: 'open', expected_coupon_cycle: '2026-04-15' } },
+      { id: 'next', date: '2099-01-15', amount: 507.28, account_id: 'acc-matteo', account_name: 'Safra Matteo', description: 'Juros previstos - CRA Eucatex (estimado)', metadata: { expected_coupon_state: 'open', expected_coupon_cycle: '2099-01-15' } }
+    ];
+    try {
+      await act(async () => { root.render(<CouponForecastPanel />); });
+      await flush();
+      expect(container.querySelector('[data-testid="coupon-filter"]')).toBeTruthy();
+      expect(text()).toContain('CRA Raízen');
+      expect(text()).not.toContain('CRA Eucatex');
+      const todos = [...container.querySelectorAll('[data-testid="coupon-filter"] button')].find(b => b.textContent?.startsWith('Todos'))!;
+      await act(async () => { (todos as HTMLButtonElement).click(); });
+      expect(text()).toContain('CRA Eucatex');
+      const aReceber = [...container.querySelectorAll('[data-testid="coupon-filter"] button')].find(b => b.textContent?.startsWith('A receber'))!;
+      await act(async () => { (aReceber as HTMLButtonElement).click(); });
+      expect(text()).not.toContain('CRA Raízen');
+    } finally {
+      window.location.hash = '';
+    }
+  });
+
   it('sem atraso, o quadro de não recebidos não aparece', async () => {
     await act(async () => { root.render(<CouponForecastPanel />); });
     await flush();
