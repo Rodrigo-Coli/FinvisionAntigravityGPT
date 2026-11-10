@@ -1,5 +1,25 @@
 [
   {
+    "version": "2026.11.10.0858",
+    "title": "Investimentos em duas abas: carteira e Radar",
+    "date": "10/11/2026",
+    "benefits": [
+      {
+        "title": "Radar em aba própria",
+        "desc": "Em Patrimônio › Investimentos agora há duas abas: \"Investimentos\" (sua carteira, juros previstos e corretoras) e \"Radar\" (alertas, explicação de cada investimento e notícias). A lista da carteira fica mais limpa e o Radar fica a um toque.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Aviso do Radar abre direto na aba certa",
+        "desc": "O aviso de investimento urgente na tela inicial e no WhatsApp abre direto na aba Radar.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "pages/Assets.tsx: abas Investimentos | Radar dentro da visão Investimentos (parâmetro sub=radar na URL; radar=1 dos avisos também abre o Radar); InvestmentRadarPanel só é montado na aba Radar"
+    ]
+  },
+  {
     "version": "2026.11.10.0543",
     "title": "Radar de Investimentos: análise que sempre conclui e explica por que cada um subiu ou caiu",
     "date": "10/11/2026",
