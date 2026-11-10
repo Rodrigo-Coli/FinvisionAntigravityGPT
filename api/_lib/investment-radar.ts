@@ -216,7 +216,7 @@ async function notifyUrgent(userId: string, items: { name: string; evaluation: R
       await webpush.sendNotification(settings.push_subscription, JSON.stringify({
         title: 'Zyvion 🚨 Radar de Investimentos',
         body: items.length === 1 ? `${items[0].name}: avalie a saída.` : `${items.length} investimentos pedem atenção urgente.`,
-        url: '/#/assets?view=investments&radar=1'
+        url: '/#/assets?view=investments&sub=radar&nivel=URGENTE'
       }));
     } catch (err: any) {
       console.warn('[InvestmentRadar] push falhou:', err?.message);

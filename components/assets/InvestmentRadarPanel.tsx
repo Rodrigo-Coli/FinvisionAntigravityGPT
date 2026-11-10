@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Radar, ShieldCheck, AlertTriangle, Siren, RefreshCw, ChevronDown, ChevronUp, ExternalLink,
   FileUp, Loader2, Info, BellOff, Pencil, Check, X, TrendingUp, TrendingDown, Minus
@@ -71,6 +72,7 @@ const LEVEL_STYLE: Record<RadarLevel | 'NONE', { chip: string; icon: React.React
   NONE: { chip: 'bg-slate-50 text-slate-500 border-slate-200', icon: <Info size={14} /> }
 };
 const LEVEL_ORDER: Record<string, number> = { URGENTE: 0, ATENCAO: 1, NONE: 2, OK: 3 };
+type LevelFilter = RadarLevel | 'NONE';
 const TREND_STYLE: Record<PerformanceExplanation['trend'], { cls: string; icon: React.ReactNode }> = {
   up: { cls: 'text-emerald-700', icon: <TrendingUp size={13} className="shrink-0" /> },
   flat: { cls: 'text-slate-600', icon: <Minus size={13} className="shrink-0" /> },
@@ -135,6 +137,17 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
   const [answering, setAnswering] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Filtro por nível. O aviso vermelho da tela inicial e o do WhatsApp chegam
+  // com ?nivel=URGENTE (ou o antigo radar=1) e a lista já vem filtrada e aberta.
+  const [searchParams] = useSearchParams();
+  const linkLevel = useMemo(() => {
+    const n = searchParams.get('nivel');
+    if (n && n in LEVEL_ORDER) return n as LevelFilter;
+    return searchParams.get('radar') === '1' ? 'URGENTE' : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [levelFilter, setLevelFilter] = useState<LevelFilter | 'ALL'>(linkLevel || 'ALL');
+  const linkApplied = useRef(false);
   const autoRetried = useRef(false);
 
   const load = useCallback(async () => {
@@ -182,12 +195,12 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
 
   const pendingNews = useMemo(() => Object.values(rows).filter(r => r.news?.pending).length, [rows]);
 
-  // Link do aviso (…&radar=1) rola até o radar.
+  // Link do aviso (…&nivel=URGENTE ou radar=1) rola até o radar.
   useEffect(() => {
-    if (!loading && /radar=1/.test(window.location.hash || window.location.search)) {
+    if (!loading && linkLevel) {
       rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [loading]);
+  }, [loading, linkLevel]);
 
   const scan = async (assetId?: string) => {
     setScanning(assetId || 'ALL');
@@ -365,6 +378,21 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
     return c;
   }, [list]);
 
+  // Chegou pelo aviso: abre os itens do nível pedido; se não houver nenhum
+  // (o aviso já foi resolvido), mostra todos em vez de uma lista vazia.
+  useEffect(() => {
+    if (loading || !linkLevel || linkApplied.current || list.length === 0) return;
+    linkApplied.current = true;
+    const hits = list.filter(({ row }) => (row?.level || 'NONE') === linkLevel);
+    if (hits.length === 0) { setLevelFilter('ALL'); return; }
+    setExpanded(e => ({ ...e, ...Object.fromEntries(hits.map(({ asset }) => [asset.id, true])) }));
+  }, [loading, linkLevel, list]);
+
+  const visible = useMemo(
+    () => levelFilter === 'ALL' ? list : list.filter(({ row }) => (row?.level || 'NONE') === levelFilter),
+    [list, levelFilter]
+  );
+
   const lastCheck = useMemo(() => {
     const dates = Object.values(rows).map(r => r.checked_at).filter(Boolean).sort();
     return dates[dates.length - 1] || null;
@@ -451,18 +479,37 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
 
         {/* Resumo */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {(['URGENTE', 'ATENCAO', 'OK', 'NONE'] as const).map(l => (
-            <div key={l} className={`px-3 py-2.5 rounded-2xl border ${LEVEL_STYLE[l].chip}`}>
-              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest">{LEVEL_STYLE[l].icon}{l === 'NONE' ? 'Sem análise' : LEVEL_LABEL[l]}</div>
-              <div className="text-xl font-black mt-0.5">{counts[l]}</div>
-            </div>
-          ))}
+          {(['URGENTE', 'ATENCAO', 'OK', 'NONE'] as const).map(l => {
+            const active = levelFilter === l;
+            return (
+              <button
+                key={l}
+                type="button"
+                aria-pressed={active}
+                title={active ? 'Mostrar todos' : 'Mostrar só este nível'}
+                onClick={() => setLevelFilter(active ? 'ALL' : l)}
+                className={`text-left px-3 py-2.5 rounded-2xl border transition-all ${LEVEL_STYLE[l].chip} ${active ? 'ring-2 ring-offset-1 ring-current' : levelFilter !== 'ALL' ? 'opacity-50 hover:opacity-100' : 'hover:brightness-95'}`}
+              >
+                <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest">{LEVEL_STYLE[l].icon}{l === 'NONE' ? 'Sem análise' : LEVEL_LABEL[l]}</div>
+                <div className="text-xl font-black mt-0.5">{counts[l]}</div>
+              </button>
+            );
+          })}
         </div>
+        {levelFilter !== 'ALL' && (
+          <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-slate-500" data-testid="radar-filter-note">
+            <span>Mostrando só: {levelFilter === 'NONE' ? 'Sem análise' : LEVEL_LABEL[levelFilter]} ({visible.length})</span>
+            <button type="button" onClick={() => setLevelFilter('ALL')} className="text-brand-600 hover:underline">Ver todos ({list.length})</button>
+          </div>
+        )}
       </div>
 
       {/* Lista */}
       <div className="border-t border-slate-100 divide-y divide-slate-100">
-        {list.map(({ asset, row }) => {
+        {visible.length === 0 && (
+          <p className="px-5 sm:px-7 py-6 text-xs text-slate-400 font-medium">Nenhum investimento neste nível.</p>
+        )}
+        {visible.map(({ asset, row }) => {
           const level = (row ? row.level : 'NONE') as RadarLevel | 'NONE';
           const open = !!expanded[asset.id];
           const style = LEVEL_STYLE[level];

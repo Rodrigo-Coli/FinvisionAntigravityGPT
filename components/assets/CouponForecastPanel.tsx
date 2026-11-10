@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CalendarClock, Check, ChevronDown, ChevronUp, Loader2, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
 import { authHeaders } from '../../lib/apiClient';
@@ -45,6 +45,14 @@ export default function CouponForecastPanel({ onAssetsChanged }: { onAssetsChang
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState({ value: '', date: todayIso(), accountId: '' });
   const [saving, setSaving] = useState(false);
+  // Filtro: o aviso laranja da tela inicial chega com ?juros=atrasados e a
+  // lista já vem só com os juros que não caíram.
+  // (lido da URL direto: o painel também é usado fora do roteador)
+  const [fromMissedLink] = useState(() => {
+    try { return /[?&]juros=atrasados\b/.test(`${window.location.hash}${window.location.search}`); } catch { return false; }
+  });
+  const [filter, setFilter] = useState<'all' | 'missed' | 'upcoming'>(fromMissedLink ? 'missed' : 'all');
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const call = async (body: any) => {
     const resp = await fetch('/api/investment-radar', {
@@ -73,6 +81,13 @@ export default function CouponForecastPanel({ onAssetsChanged }: { onAssetsChang
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!loading && fromMissedLink && forecasts.length) {
+      setOpen(true);
+      rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [loading, fromMissedLink, forecasts.length]);
 
   useEffect(() => {
     if (!supabase || forecasts.length === 0 || accounts.length) return;
@@ -130,6 +145,10 @@ export default function CouponForecastPanel({ onAssetsChanged }: { onAssetsChang
   const missedIds = new Set(missed.map(f => f.id));
   const upcoming = forecasts.filter(f => !missedIds.has(f.id));
   const total = upcoming.reduce((s, f) => s + Number(f.amount || 0), 0);
+  // Sem nenhum atrasado, o filtro "Não recebidos" não faz sentido: mostra tudo.
+  const effFilter = filter === 'missed' && missed.length === 0 ? 'all' : filter;
+  const showMissed = missed.length > 0 && effFilter !== 'upcoming';
+  const showUpcoming = effFilter !== 'missed';
 
   const renderList = (list: Forecast[], isMissed: boolean) => (
     <>
@@ -200,7 +219,7 @@ export default function CouponForecastPanel({ onAssetsChanged }: { onAssetsChang
   );
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm" data-testid="coupon-forecast-panel">
+    <div ref={rootRef} className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm scroll-mt-4" data-testid="coupon-forecast-panel">
       <button type="button" onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between gap-3 text-left">
         <div className="flex items-center gap-2 min-w-0">
           <CalendarClock size={18} className="text-indigo-600 shrink-0" />
@@ -221,7 +240,23 @@ export default function CouponForecastPanel({ onAssetsChanged }: { onAssetsChang
             Cada juro previsto já está em <b>Transações</b> como receita em aberto, na conta onde ele cai. Quando o dinheiro cair, toque em <b>Recebi</b> e coloque o valor exato.
             Também pode dar baixa em Transações. Se o crédito vier pelo extrato do banco, ou se você lançar no Extrato do investimento, o app reconhece e tira o previsto, sem duplicar.
           </p>
-          {missed.length > 0 && (
+          {missed.length > 0 && upcoming.length > 0 && (
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar juros previstos" data-testid="coupon-filter">
+              {([
+                { id: 'all', label: `Todos (${forecasts.length})` },
+                { id: 'missed', label: `Não recebidos (${missed.length})` },
+                { id: 'upcoming', label: `A receber (${upcoming.length})` },
+              ] as const).map(o => (
+                <button key={o.id} type="button" aria-pressed={effFilter === o.id} onClick={() => setFilter(o.id)}
+                  className={`px-3 py-1.5 rounded-full border text-[11px] font-bold transition-colors ${effFilter === o.id
+                    ? (o.id === 'missed' ? 'bg-rose-600 border-rose-600 text-white' : 'bg-indigo-600 border-indigo-600 text-white')
+                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {showMissed && (
             <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 space-y-2" data-testid="missed-coupons">
               <p className="text-xs font-black text-rose-700 flex items-center gap-1.5"><AlertTriangle size={14} /> Juros não recebidos</p>
               <p className="text-[11px] text-rose-700/90 leading-relaxed">
@@ -230,7 +265,7 @@ export default function CouponForecastPanel({ onAssetsChanged }: { onAssetsChang
               {renderList(missed, true)}
             </div>
           )}
-          {renderList(upcoming, false)}
+          {showUpcoming && renderList(upcoming, false)}
         </div>
       )}
     </div>
