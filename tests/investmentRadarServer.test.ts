@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 /**
  * Servidor do Radar e a rotina diária.
@@ -138,11 +138,83 @@ describe('varredura do radar', () => {
 
 vi.mock('../api/_lib/ai-usage-limits.js', () => ({ checkAiActionAllowed: async () => ({ allowed: true }) }));
 vi.mock('../api/_lib/ai-models.js', () => ({
-  generateWithFallback: async () => ({
-    response: { text: '## O que a resposta esclareceu\n- **Taxa**: 102% do CDI\nVEREDITO: VALE' },
-    model: 'test'
-  })
+  // Testes de notícias trocam a resposta por (globalThis as any).__aiImpl.
+  generateWithFallback: async (...args: any[]) => (globalThis as any).__aiImpl
+    ? (globalThis as any).__aiImpl(...args)
+    : {
+      response: { text: '## O que a resposta esclareceu\n- **Taxa**: 102% do CDI\nVEREDITO: VALE' },
+      model: 'test'
+    }
 }));
+
+describe('notícias: cota da IA, prazo e trava contra notícia falsa', () => {
+  beforeEach(() => {
+    process.env.GEMINI_API_KEY = 'k';
+    delete (globalThis as any).__aiImpl;
+  });
+  afterEach(() => {
+    delete (globalThis as any).__aiImpl;
+    delete process.env.GEMINI_API_KEY;
+  });
+
+  it('sem cota da IA, grava a análise dos números mesmo assim e marca as notícias como pendentes', async () => {
+    (globalThis as any).__aiImpl = async () => { throw Object.assign(new Error('RESOURCE_EXHAUSTED'), { status: 429 }); };
+    const { scanUser } = await import('../api/_lib/investment-radar');
+    const r: any = await scanUser('u1', { maxNewsIssuers: 12, aiFn: 'investment_radar', notify: false });
+    expect(r.checked).toBe(2);
+    expect(r.newsOk).toBe(0);
+    expect(db.upserts).toHaveLength(2);
+    for (const u of db.upserts) {
+      expect(u.news?.pending).toBe(true);
+      expect(u.explanation?.headline).toBeTruthy();
+      // tenta de novo em até 6 h, não daqui a 7 dias
+      expect(Date.parse(u.next_check_at) - Date.now()).toBeLessThanOrEqual(6 * 3600 * 1000 + 5000);
+    }
+  });
+
+  it('IA travada não segura a rodada: o prazo encerra a busca e grava o resto', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    (globalThis as any).__aiImpl = () => new Promise(() => { /* nunca responde */ });
+    const { scanUser } = await import('../api/_lib/investment-radar');
+    const p = scanUser('u1', { maxNewsIssuers: 12, aiFn: 'investment_radar', notify: false });
+    await vi.advanceTimersByTimeAsync(21_000);
+    const r: any = await p;
+    vi.useRealTimers();
+    expect(r.checked).toBe(2);
+    expect(db.upserts.every(u => u.news?.pending)).toBe(true);
+  });
+
+  it('notícia que não cita o emissor ou sem fonte é descartada', async () => {
+    (globalThis as any).__aiImpl = async () => ({
+      response: {
+        text: '{"risk":"severe","headline":"Empresa X pede recuperação judicial","events":["Empresa X em RJ em 10/10"]}',
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'valor.globo.com', uri: 'https://x' } }] } }]
+      },
+      model: 'test'
+    });
+    const { scanUser } = await import('../api/_lib/investment-radar');
+    await scanUser('u1', { maxNewsIssuers: 12, aiFn: 'investment_radar', notify: false });
+    const raizen = db.upserts.find(u => u.asset_id === 'a1');
+    expect(raizen.news?.risk).toBe('none');
+    expect(raizen.signals.some((s: any) => s.key === 'news')).toBe(false);
+  });
+
+  it('notícia com fonte que cita o emissor entra como sinal', async () => {
+    (globalThis as any).__aiImpl = async () => ({
+      response: {
+        text: '{"risk":"watch","headline":"Raízen tem rating rebaixado","events":["S&P rebaixa Raízen em 05/11","Mercado em queda geral"]}',
+        candidates: [{ groundingMetadata: { groundingChunks: [{ web: { title: 'valor.globo.com', uri: 'https://x' } }] } }]
+      },
+      model: 'test'
+    });
+    const { scanUser } = await import('../api/_lib/investment-radar');
+    await scanUser('u1', { maxNewsIssuers: 12, aiFn: 'investment_radar', notify: false });
+    const raizen = db.upserts.find(u => u.asset_id === 'a1');
+    expect(raizen.news.risk).toBe('watch');
+    expect(raizen.news.events).toEqual(['S&P rebaixa Raízen em 05/11']);
+    expect(raizen.news.pending).toBeUndefined();
+  });
+});
 
 describe('WhatsApp: só entra no radar o que é claramente sobre investimento', () => {
   it('mensagens comuns seguem o fluxo de sempre', async () => {

@@ -17,6 +17,8 @@
 // Quem usa: o servidor (api/_lib/investment-radar.ts, na varredura e no botão
 // "Analisar agora") e a tela (components/assets/InvestmentRadarPanel.tsx).
 
+import { curveSpecOf } from './curveProjection.js';
+
 export type RadarLevel = 'OK' | 'ATENCAO' | 'URGENTE';
 export type SignalSeverity = 'info' | 'moderate' | 'severe';
 
@@ -220,6 +222,40 @@ export function concentrationSignal(asset: RadarAsset, issuerShare: number, issu
   };
 }
 
+// Palavras que não identificam o emissor (aparecem no nome de muita coisa).
+const GENERIC_ISSUER_WORDS = new Set([
+  'banco', 'bank', 'fundo', 'fundos', 'investimento', 'investimentos', 'renda', 'fixa', 'credito', 'privado',
+  'cra', 'cri', 'cdb', 'lci', 'lca', 'lcd', 'fii', 'fiis', 'coe', 'debenture', 'debentures', 'tesouro',
+  'pre', 'pos', 'cdi', 'ipca', 'selic', 'plus', 'master', 'max', 'ref', 'referenciado', 'simples',
+  'holding', 'participacoes', 'agroindustria', 'industria', 'comercio', 'brasil', 'brasileira', 'grupo',
+  'companhia', 'cia', 'ltda', 'securitizadora', 'securitizacao', 'asset', 'gestora', 'capital', 'para', 'com'
+]);
+const normalize = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+/** Palavras que identificam o emissor (ex.: "CRA Eucatex CDI 105%" → ["eucatex"]). */
+export function issuerTokens(issuer: string): string[] {
+  return Array.from(new Set(
+    normalize(issuer).split(/[^a-z0-9]+/).filter(w => w.length >= 4 && !/^\d+$/.test(w) && !GENERIC_ISSUER_WORDS.has(w))
+  ));
+}
+
+/**
+ * Trava contra notícia falsa ou de outra empresa: um alerta de notícia só vale
+ * com fonte na internet E com o texto citando o emissor pelo nome. Sem isso,
+ * a notícia é descartada (vira "nada relevante") e não aparece no Radar.
+ */
+export function vetNews(news: NewsAssessment | null | undefined, issuer: string, sourceCount: number): NewsAssessment | null {
+  if (!news) return null;
+  if (news.risk === 'none') return { risk: 'none' };
+  if (sourceCount <= 0) return { risk: 'none' };
+  const tokens = issuerTokens(issuer);
+  const text = normalize([news.headline, ...(news.events || [])].filter(Boolean).join(' '));
+  if (tokens.length === 0 || !tokens.some(t => text.includes(t))) return { risk: 'none' };
+  // Só os fatos que citam o emissor (os demais podem ser de outra empresa ou do mercado em geral).
+  const events = (news.events || []).filter(e => tokens.some(t => normalize(e).includes(t)));
+  return { ...news, events };
+}
+
 export function newsSignal(news: NewsAssessment | null | undefined): RadarSignal | null {
   if (!news || news.risk === 'none') return null;
   return {
@@ -323,11 +359,135 @@ export function issuerOf(asset: RadarAsset): string {
   return String(meta.issuer || meta.emissor || asset.name || '').trim();
 }
 
+// ---------------------------------------------------------------------------
+// Por que subiu ou caiu (explicação para o usuário, sem IA)
+// ---------------------------------------------------------------------------
+
+export interface PerformanceExplanation {
+  /** up = rendendo acima do CDI; flat = em linha; down = abaixo do CDI ou com perda; unknown = sem histórico. */
+  trend: 'up' | 'flat' | 'down' | 'unknown';
+  headline: string;
+  points: string[];
+}
+
+const MONTHS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const monthLabel = (month: string) => {
+  const [y, m] = month.split('-');
+  return `${MONTHS_PT[Number(m) - 1] || m}/${y}`;
+};
+const pct2 = (n: number) => `${(n * 100).toFixed(2).replace('.', ',')}%`;
+const num = (n: number) => String(n).replace('.', ',');
+
+/** O que explica o rendimento deste tipo de investimento (indexador, cota, mercado). */
+function mechanismPoints(asset: RadarAsset, cdiNow: number): string[] {
+  const meta = asset.metadata || {};
+  const type = String(meta.investmentType || '').toUpperCase();
+  const spec = curveSpecOf(meta);
+  const out: string[] = [];
+
+  if (spec?.index === 'PRE') {
+    const monthly = monthlyFromAnnual(spec.rate);
+    const vsCdi = cdiNow > 0 ? ` — cerca de ${Math.round((monthly / cdiNow) * 100)}% do CDI de hoje` : '';
+    out.push(`Taxa prefixada de ${num(spec.rate)}% ao ano (≈ ${pct2(monthly)} ao mês${vsCdi}). A taxa ficou travada na compra: pela curva rende isso todo mês, suba ou desça o CDI.`);
+  } else if (spec?.index === 'IPCA') {
+    out.push(`Rende a inflação (IPCA) + ${num(spec.rate)}% ao ano. Em mês de inflação baixa rende menos que o CDI; com inflação alta, rende mais. O ganho real (acima da inflação) é garantido se segurar até o vencimento.`);
+  } else if (spec?.index === 'CDI') {
+    out.push(spec.rate >= 30
+      ? `Contratado a ${num(spec.rate)}% do CDI: acompanha o CDI todo mês. Diferenças pequenas vêm dos dias úteis de cada mês e de arredondamento do banco.`
+      : `Rende o CDI + ${num(spec.rate)}% ao ano: acompanha o CDI com um prêmio fixo pelo risco do emissor.`);
+  } else if (type === 'FUNDOS') {
+    out.push('Fundo: o rendimento é a variação da cota, já descontada a taxa de administração. Em maio e novembro o come-cotas (IR antecipado) reduz o saldo. Fundos de crédito privado rendem abaixo do CDI quando os títulos da carteira perdem preço.');
+  } else if (type === 'FIIS') {
+    out.push('Fundo imobiliário: rende pelos aluguéis distribuídos todo mês (isentos de IR) e pela variação da cota na bolsa, que sobe e desce com os juros e com o humor do mercado.');
+  } else if (type === 'COE') {
+    out.push('COE: o resultado depende do ativo de referência e só é definido no vencimento. O valor no meio do caminho é uma estimativa do banco, não o que você vai receber.');
+  } else if (type === 'POUPANCA') {
+    out.push('Poupança: rende 0,5% ao mês + TR quando a Selic está acima de 8,5% ao ano, por isso fica abaixo do CDI.');
+  }
+
+  const market = Number(meta.marketValue);
+  const curve = Number(asset.estimated_value);
+  if (market > 0 && curve > 0 && Math.abs(market / curve - 1) >= 0.005) {
+    const gap = market / curve - 1;
+    const why = spec?.index === 'CDI'
+      ? 'o mercado está cobrando mais (ou menos) prêmio pelo risco do emissor do que na compra'
+      : 'os juros do mercado mudaram desde a compra';
+    out.push(gap < 0
+      ? `Valor de mercado (${brl(market)}) está ${pct(-gap)} abaixo da curva (${brl(curve)}): ${why}. Não é perda se segurar até o vencimento e o emissor pagar; só vira perda se vender antes.`
+      : `Valor de mercado (${brl(market)}) está ${pct(gap)} acima da curva (${brl(curve)}): ${why}. Vender hoje daria um ganho extra.`);
+  }
+  return out;
+}
+
+/**
+ * Explica, em português simples, por que o investimento rendeu bem ou mal nos
+ * últimos meses: rendimento mês a mês × CDI, como o indexador funciona, mercado ×
+ * curva, IR/come-cotas e juros que saíram para a conta.
+ */
+export function explainPerformance(
+  asset: RadarAsset,
+  movements: LedgerMovement[],
+  today: string,
+  cdiMonthly: (month: string) => number
+): PerformanceExplanation {
+  const recent = monthlyReturns(movements, today, 3); // do mais recente para o mais antigo
+  const lastMonth = previousMonths(today, 1)[0];
+  const points: string[] = [];
+  let trend: PerformanceExplanation['trend'] = 'unknown';
+  let headline = 'Ainda sem meses completos no extrato do app para medir o rendimento.';
+
+  if (recent.length > 0) {
+    const lines = [...recent].reverse().map(r => {
+      const cdi = cdiMonthly(r.month);
+      const vs = cdi > 0 ? `; ${Math.round((r.rate / cdi) * 100)}% do CDI` : '';
+      return `${monthLabel(r.month)}: ${r.income >= 0 ? '+' : ''}${brl(r.income)} (${pct2(r.rate)} no mês${vs})`;
+    });
+    points.push(`Mês a mês: ${lines.join(' · ')}.`);
+
+    const negatives = recent.filter(r => r.income < 0);
+    const ratios = recent.map(r => { const c = cdiMonthly(r.month); return c > 0 ? r.rate / c : null; }).filter((x): x is number => x !== null);
+    const avg = ratios.length ? ratios.reduce((s, x) => s + x, 0) / ratios.length : null;
+    if (negatives.length > 0) {
+      trend = 'down';
+      headline = `Caiu em ${negatives.map(r => monthLabel(r.month)).reverse().join(' e ')}`;
+    } else if (avg === null) {
+      trend = 'flat';
+      headline = 'Rendeu no período';
+    } else if (avg >= 1.05) {
+      trend = 'up';
+      headline = `Rendendo acima do CDI (média de ${Math.round(avg * 100)}% do CDI)`;
+    } else if (avg >= 0.9) {
+      trend = 'flat';
+      headline = `Rendendo em linha com o CDI (média de ${Math.round(avg * 100)}% do CDI)`;
+    } else {
+      trend = 'down';
+      headline = `Rendendo abaixo do CDI (média de ${Math.round(avg * 100)}% do CDI)`;
+    }
+  }
+
+  points.push(...mechanismPoints(asset, cdiMonthly(lastMonth)));
+
+  const months = new Set(recent.map(r => r.month));
+  const inWindow = movements.filter(m => months.has(monthKey(m.movement_date)));
+  const taxes = inWindow
+    .filter(m => m.movement_type === 'AJUSTE_MANUAL' && Number(m.amount) < 0 && TAX_NOTE.test(m.notes || ''))
+    .reduce((s, m) => s + Math.abs(Number(m.amount) || 0), 0);
+  if (taxes > 0) points.push(`IR/come-cotas descontado no período: ${brl(round2(taxes))} (fica fora da conta do rendimento acima).`);
+  const paidOut = inWindow.filter(m => m.movement_type === 'RENDIMENTO_MENSAL').reduce((s, m) => s + (Number(m.amount) || 0), 0);
+  if (paidOut > 0) points.push(`${brl(round2(paidOut))} do rendimento caiu na conta como juros; por isso o valor do título não sobe na mesma medida.`);
+
+  if (recent.length === 0 && !asset.metadata?.autoCurve) {
+    points.push('Para acompanhar mês a mês, lance o rendimento pelo relatório do banco ou ligue a curva automática em "Atualizar pelo banco".');
+  }
+  return { trend, headline, points };
+}
+
 export interface RadarEvaluation {
   level: RadarLevel;
   score: number;
   signals: RadarSignal[];
   exit: ExitMath;
+  explanation: PerformanceExplanation;
 }
 
 export function evaluateAsset(params: {
@@ -349,7 +509,13 @@ export function evaluateAsset(params: {
     concentrationSignal(asset, issuerShare, issuerOf(asset)),
     maturitySignal(asset, today)
   ].filter(Boolean) as RadarSignal[];
-  return { level: classify(signals), score: score(signals), signals, exit: exitMath(asset, today) };
+  return {
+    level: classify(signals),
+    score: score(signals),
+    signals,
+    exit: exitMath(asset, today),
+    explanation: explainPerformance(asset, movements, today, cdiMonthly)
+  };
 }
 
 export const LEVEL_LABEL: Record<RadarLevel, string> = { OK: 'Tranquilo', ATENCAO: 'Atenção', URGENTE: 'Urgente' };

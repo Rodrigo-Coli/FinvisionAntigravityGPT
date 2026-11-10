@@ -1,5 +1,39 @@
 [
   {
+    "version": "2026.11.10.0543",
+    "title": "Radar de Investimentos: análise que sempre conclui e explica por que cada um subiu ou caiu",
+    "date": "10/11/2026",
+    "benefits": [
+      {
+        "title": "\"Analisar agora\" não trava mais",
+        "desc": "Quando o limite da IA de notícias acaba, o Radar analisa os números do mesmo jeito (rendimento × CDI, mercado × curva, concentração, juros não recebidos) e grava o resultado em menos de 1 minuto. Antes, a tela voltava igual, sem nada analisado.",
+        "type": "correcao"
+      },
+      {
+        "title": "Por que rende assim",
+        "desc": "Cada investimento mostra se está rendendo acima, em linha ou abaixo do CDI, mês a mês, e o motivo: taxa prefixada travada, IPCA, % do CDI, cota do fundo, come-cotas, valor de mercado × curva, juros que caíram na conta. Tudo calculado com os seus números, sem IA.",
+        "type": "novidade"
+      },
+      {
+        "title": "Notícias pendentes são buscadas sozinhas",
+        "desc": "Se a IA estiver no limite, as notícias ficam como pendentes e o app tenta de novo sozinho: na rodada diária e ao abrir o Radar depois de 1 hora.",
+        "type": "melhoria"
+      },
+      {
+        "title": "Só notícia verdadeira e do emissor certo",
+        "desc": "Um alerta de notícia só aparece com fonte na internet e citando o emissor pelo nome. Notícia sem fonte, de empresa de nome parecido ou do mercado em geral é descartada.",
+        "type": "melhoria"
+      }
+    ],
+    "changes": [
+      "lib/investmentRadar.ts: explainPerformance (tendência, rendimento mensal × CDI, mecanismo por indexador/tipo, mercado × curva, IR/come-cotas, juros pagos), issuerTokens e vetNews (exige fonte e citação do emissor)",
+      "api/_lib/investment-radar.ts: busca de notícias com prazo (20 s por emissor, 4 em paralelo, 30 s por rodada manual / 25 s na diária), interrompe quando a IA não responde; notícias pendentes (news.pending) com nova checagem em até 6 h; grava explanation; scan aceita assetIds; mensagem clara quando a IA está no limite",
+      "components/assets/InvestmentRadarPanel.tsx: bloco 'Por que rende assim', tendência na linha de cada investimento, aviso de notícias pendentes e nova tentativa automática em segundo plano ao abrir o Radar",
+      "supabase/2026-11-10_radar_explicacao.sql: coluna investment_radar.explanation (jsonb); servidor funciona sem ela",
+      "tests: explicação, trava de notícias, cota esgotada e prazo da busca"
+    ]
+  },
+  {
     "version": "2026.11.09.1652",
     "title": "Filtro de investimentos: Ativos, Encerrados e Arquivados",
     "date": "09/11/2026",

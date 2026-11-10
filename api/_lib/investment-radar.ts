@@ -9,7 +9,7 @@ import { isCronAuthorized } from './cron-auth.js';
 import { handleCurveAction } from './curve-projection.js';
 import { handleCouponAction } from './coupon-forecast.js';
 import {
-  evaluateAsset, issuerOf, monthlyFromAnnual, nextCheckAt, shouldNotify, LEVEL_LABEL,
+  evaluateAsset, issuerOf, monthlyFromAnnual, nextCheckAt, shouldNotify, vetNews, LEVEL_LABEL,
   type LedgerMovement, type NewsAssessment, type RadarAsset, type RadarEvaluation, type RadarLevel
 } from '../../lib/investmentRadar.js';
 import { missedCoupons, cycleOf } from '../../lib/couponForecast.js';
@@ -52,6 +52,27 @@ const MAX_CRON_ASSETS = 60;
  * foi checado continua "vencido" e entra primeiro na próxima rodada).
  */
 const CRON_TIME_BUDGET_MS = 40_000;
+/**
+ * Busca de notícias com prazo: cada emissor tem até 20 s, até 4 de cada vez, e a
+ * rodada inteira até 30 s (25 s na diária). Sem isso, com a cota da IA esgotada
+ * cada emissor levava ~1 min e a função estourava o tempo sem gravar nada.
+ * O que não deu tempo ou falhou fica com "notícias pendentes" e é tentado de
+ * novo sozinho (rodada diária e ao abrir o Radar depois de 1 h).
+ */
+const NEWS_CALL_TIMEOUT_MS = 20_000;
+const NEWS_BUDGET_MANUAL_MS = 30_000;
+const NEWS_BUDGET_CRON_MS = 25_000;
+const NEWS_CONCURRENCY = 4;
+/** Notícias pendentes: tenta de novo daqui a 6 h (em vez de esperar a semana do "Tranquilo"). */
+const NEWS_RETRY_MS = 6 * 3600 * 1000;
+
+/** Resolve com null se a promessa não terminar no prazo (ou falhar). */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise(resolve => {
+    const t = setTimeout(() => resolve(null), ms);
+    p.then(v => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(null); });
+  });
+}
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const brl = (n: number) => Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -111,6 +132,8 @@ Regras:
 - "severe" SÓ para evento de crédito confirmado ou muito provável (recuperação judicial/extrajudicial, default, renegociação forçada com perda, rebaixamento forte de rating, liquidação, resgates suspensos).
 - "watch" para notícia negativa relevante ainda sem evento de crédito (resultado ruim, alavancagem alta, rating em observação negativa).
 - "none" se não houver nada relevante ou se não encontrar notícias confiáveis.
+- Só conte notícias que citam EXPLICITAMENTE "${issuer}" (ou a razão social dele). Não confunda com empresas de nome parecido, com o setor ou com o mercado em geral.
+- Cada fato em "events" tem de citar o nome do emissor, a data e vir de fonte jornalística ou oficial (comunicado, fato relevante, agência de rating).
 - Nunca invente fatos. Na dúvida, "none".`;
 
 function parseJsonObject(text: string): any | null {
@@ -137,14 +160,15 @@ async function fetchIssuerNews(ai: GoogleGenAI, userId: string, issuer: string, 
       .map((c: any) => ({ title: String(c?.web?.title || ''), url: String(c?.web?.uri || '') }))
       .filter((s: any) => s.url)
       .slice(0, 6);
-    // Sem fonte nenhuma, uma notícia "grave" não é confiável o bastante: rebaixa para acompanhar.
-    const safeRisk = risk === 'severe' && sources.length === 0 ? 'watch' : risk;
-    return {
-      risk: safeRisk,
+    // Trava contra notícia falsa ou de outra empresa (lib/investmentRadar.ts › vetNews):
+    // sem fonte, ou sem citar o emissor pelo nome, a notícia é descartada.
+    const vetted = vetNews({
+      risk,
       headline: String(parsed.headline || '').slice(0, 300),
-      events: Array.isArray(parsed.events) ? parsed.events.map((e: any) => String(e).slice(0, 300)).slice(0, 5) : [],
-      sources
-    };
+      events: Array.isArray(parsed.events) ? parsed.events.map((e: any) => String(e).slice(0, 300)).slice(0, 5) : []
+    }, issuer, sources.length);
+    if (!vetted || vetted.risk === 'none') return { risk: 'none', headline: '', events: [], sources: [] };
+    return { ...vetted, sources };
   } catch (err: any) {
     console.warn('[InvestmentRadar] notícias falharam para', issuer, err?.message);
     return null;
@@ -220,6 +244,8 @@ interface ScanOptions {
   maxNewsIssuers: number;
   aiFn: string;
   notify: boolean;
+  /** Tempo máximo da busca de notícias nesta rodada. */
+  newsBudgetMs?: number;
 }
 
 export async function scanUser(userId: string, opts: ScanOptions) {
@@ -233,7 +259,7 @@ export async function scanUser(userId: string, opts: ScanOptions) {
     .eq('category', 'INVESTMENT')
     .eq('is_archived', false);
   const active = (assetsRaw || []).filter((a: any) => a.metadata?.status !== 'RESGATADO' && Number(a.estimated_value) > 0) as RadarAsset[];
-  if (active.length === 0) return { checked: 0, results: [] as any[] };
+  if (active.length === 0) return { checked: 0, results: [] as any[], newsOk: 0, newsFailed: 0, newsWanted: false };
 
   const { data: radarRows } = await supabase.from('investment_radar').select('asset_id, level, notified_at, next_check_at, history').eq('user_id', userId);
   const prevByAsset = new Map((radarRows || []).map((r: any) => [r.asset_id, r]));
@@ -246,7 +272,7 @@ export async function scanUser(userId: string, opts: ScanOptions) {
       return !prev?.next_check_at || Date.parse(prev.next_check_at) <= now.getTime();
     });
   }
-  if (targets.length === 0) return { checked: 0, results: [] as any[] };
+  if (targets.length === 0) return { checked: 0, results: [] as any[], newsOk: 0, newsFailed: 0, newsWanted: false };
 
   const totalInvested = active.reduce((s, a) => s + Number(a.estimated_value || 0), 0);
   const byIssuer = new Map<string, RadarAsset[]>();
@@ -287,20 +313,41 @@ export async function scanUser(userId: string, opts: ScanOptions) {
     }
   } catch { /* sem juros previstos: segue sem esse sinal */ }
 
-  // Notícias: um pedido por emissor, priorizando os de maior valor.
-  const newsByIssuer = new Map<string, NewsResult | null>();
+  // Notícias: um pedido por emissor, priorizando os de maior valor (e os que
+  // ficaram pendentes da última vez), com prazo para não travar a rodada.
+  const newsByIssuer = new Map<string, NewsResult>();
+  let newsOk = 0;
+  let newsFailed = 0;
   const geminiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
   if (geminiKey && opts.maxNewsIssuers > 0) {
     const ai = new GoogleGenAI({ apiKey: geminiKey });
+    const pendingKeys = new Set(
+      targets.filter(a => (prevByAsset.get(a.id) as any)?.news?.pending).map(a => issuerOf(a).toLowerCase())
+    );
     const issuersToCheck = Array.from(new Set(targets.map(a => issuerOf(a).toLowerCase())))
       .map(key => ({ key, assets: byIssuer.get(key) || [] }))
-      .sort((x, y) => y.assets.reduce((s, a) => s + Number(a.estimated_value), 0) - x.assets.reduce((s, a) => s + Number(a.estimated_value), 0))
+      .sort((x, y) =>
+        Number(pendingKeys.has(y.key)) - Number(pendingKeys.has(x.key)) ||
+        y.assets.reduce((s, a) => s + Number(a.estimated_value), 0) - x.assets.reduce((s, a) => s + Number(a.estimated_value), 0))
       .slice(0, opts.maxNewsIssuers);
-    for (const { key, assets } of issuersToCheck) {
-      const products = assets.map(a => `${a.name} (${a.metadata?.investmentType || 'investimento'})`).join('; ');
-      newsByIssuer.set(key, await fetchIssuerNews(ai, userId, issuerOf(assets[0]), products, opts.aiFn));
+    const started = Date.now();
+    const budget = opts.newsBudgetMs ?? NEWS_BUDGET_MANUAL_MS;
+    for (let i = 0; i < issuersToCheck.length; i += NEWS_CONCURRENCY) {
+      if (Date.now() - started > budget) break;
+      const batch = issuersToCheck.slice(i, i + NEWS_CONCURRENCY);
+      const got = await Promise.all(batch.map(({ key, assets }) => {
+        const products = assets.map(a => `${a.name} (${a.metadata?.investmentType || 'investimento'})`).join('; ');
+        return withTimeout(fetchIssuerNews(ai, userId, issuerOf(assets[0]), products, opts.aiFn), NEWS_CALL_TIMEOUT_MS);
+      }));
+      batch.forEach(({ key }, j) => {
+        const r = got[j];
+        if (r) { newsByIssuer.set(key, r); newsOk++; } else newsFailed++;
+      });
+      // A IA não respondeu nenhum do lote (cota esgotada/fora do ar): não insiste agora.
+      if (got.every(g => !g)) break;
     }
   }
+  const newsWanted = !!geminiKey && opts.maxNewsIssuers > 0;
 
   const urgentToNotify: { name: string; evaluation: RadarEvaluation }[] = [];
   const results: any[] = [];
@@ -310,10 +357,12 @@ export async function scanUser(userId: string, opts: ScanOptions) {
     const issuerTotal = (byIssuer.get(issuerKey) || []).reduce((s, a) => s + Number(a.estimated_value || 0), 0);
     const prev: any = prevByAsset.get(asset.id) || null;
     // Sem notícia nova nesta rodada, mantém a última avaliação de notícias (não "esquece" um alerta).
-    const freshNews = newsByIssuer.has(issuerKey) ? newsByIssuer.get(issuerKey) : undefined;
+    const freshNews = newsByIssuer.get(issuerKey);
+    // Pendente: queríamos as notícias deste emissor e a IA não respondeu (cota/prazo).
+    const newsPending = newsWanted && !freshNews;
 
     let news: NewsResult | null | undefined = freshNews;
-    if (freshNews === undefined) {
+    if (!freshNews) {
       const { data: last } = await supabase.from('investment_radar').select('news, sources').eq('asset_id', asset.id).maybeSingle();
       news = last?.news ? { ...(last.news as any), sources: (last.sources as any) || [] } : null;
     }
@@ -341,20 +390,30 @@ export async function scanUser(userId: string, opts: ScanOptions) {
       summary: evaluation.signals.filter(s => s.severity !== 'info').map(s => s.label).join(' · ') || 'Sem sinais de risco',
       recommendation: recommendationFor(evaluation.level, evaluation),
       exit_math: evaluation.exit,
-      news: news ? { risk: news.risk, headline: news.headline, events: news.events } : null,
+      news: news
+        ? { risk: news.risk, headline: news.headline, events: news.events, ...(newsPending ? { pending: true } : {}) }
+        : (newsPending ? { risk: 'none', pending: true } : null),
       sources: news?.sources || [],
+      explanation: evaluation.explanation,
       history,
       checked_at: now.toISOString(),
-      next_check_at: nextCheckAt(evaluation.level, now),
+      next_check_at: newsPending
+        ? new Date(Math.min(Date.parse(nextCheckAt(evaluation.level, now)), now.getTime() + NEWS_RETRY_MS)).toISOString()
+        : nextCheckAt(evaluation.level, now),
       notified_at: notify ? now.toISOString() : prev?.notified_at || null
     };
-    const { error } = await supabase.from('investment_radar').upsert(row, { onConflict: 'asset_id' });
+    let { error } = await supabase.from('investment_radar').upsert(row, { onConflict: 'asset_id' });
+    // Banco ainda sem a coluna da explicação (migração não aplicada): grava o resto.
+    if (error && /explanation/i.test(error.message || '')) {
+      const { explanation: _omit, ...rest } = row;
+      ({ error } = await supabase.from('investment_radar').upsert(rest, { onConflict: 'asset_id' }));
+    }
     if (error) console.warn('[InvestmentRadar] gravar falhou:', error.message);
     results.push({ asset_id: asset.id, name: asset.name, level: evaluation.level, label: LEVEL_LABEL[evaluation.level], signals: evaluation.signals });
   }
 
   if (urgentToNotify.length) await notifyUrgent(userId, urgentToNotify);
-  return { checked: results.length, results };
+  return { checked: results.length, results, newsOk, newsFailed, newsWanted };
 }
 
 /** Rodada diária: só o que venceu a data de checagem, em todos os usuários com investimentos. */
@@ -371,7 +430,7 @@ export async function runInvestmentRadarCron(req: any, res: any) {
     const started = Date.now();
     for (const userId of userIds) {
       if (checked >= MAX_CRON_ASSETS || Date.now() - started > CRON_TIME_BUDGET_MS) break;
-      const r = await scanUser(userId, { onlyDue: true, maxNewsIssuers: MAX_NEWS_ISSUERS_CRON, aiFn: 'investment_radar_auto', notify: true });
+      const r = await scanUser(userId, { onlyDue: true, maxNewsIssuers: MAX_NEWS_ISSUERS_CRON, aiFn: 'investment_radar_auto', notify: true, newsBudgetMs: NEWS_BUDGET_CRON_MS });
       checked += r.checked;
     }
     return res.status(200).json({ success: true, users: userIds.length, checked });
@@ -573,13 +632,21 @@ export async function handleInvestmentRadar(req: any, res: any) {
   try {
     const limit = await checkAiActionAllowed(supabase, user.id, 'investment_radar');
     const allowAi = limit.allowed;
+    const ids = Array.isArray(body.assetIds) ? body.assetIds.map(String).slice(0, 100) : body.assetId ? [String(body.assetId)] : undefined;
     const result = await scanUser(user.id, {
-      assetIds: body.assetId ? [String(body.assetId)] : undefined,
+      assetIds: ids,
       maxNewsIssuers: allowAi ? MAX_NEWS_ISSUERS_MANUAL : 0,
       aiFn: 'investment_radar',
-      notify: true
+      notify: true,
+      newsBudgetMs: NEWS_BUDGET_MANUAL_MS
     });
-    return res.status(200).json({ ...result, newsChecked: allowAi, limitMessage: allowAi ? null : limit.message });
+    const newsDown = allowAi && result.newsWanted && result.newsOk === 0 && result.newsFailed > 0;
+    const limitMessage = !allowAi
+      ? limit.message
+      : newsDown
+        ? 'a busca de notícias na internet está indisponível agora (limite da IA). Os números foram analisados; as notícias ficam pendentes e o app tenta de novo sozinho.'
+        : null;
+    return res.status(200).json({ ...result, newsChecked: allowAi && !newsDown, limitMessage });
   } catch (err: any) {
     console.error('[InvestmentRadar] scan falhou:', err?.message);
     return res.status(500).json({ error: 'Não foi possível analisar agora. Tente de novo em instantes.' });

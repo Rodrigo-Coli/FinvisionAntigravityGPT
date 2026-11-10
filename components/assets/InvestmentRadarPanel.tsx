@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Radar, ShieldCheck, AlertTriangle, Siren, RefreshCw, ChevronDown, ChevronUp, ExternalLink,
-  FileUp, Loader2, Info, BellOff, Pencil, Check, X
+  FileUp, Loader2, Info, BellOff, Pencil, Check, X, TrendingUp, TrendingDown, Minus
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
 import { authHeaders } from '../../lib/apiClient';
 import { getSessionUser } from '../../lib/session';
 import { useToast } from '../../contexts/ToastContext';
 import { FieldLabel } from '../common/HelpTip';
-import { LEVEL_LABEL, RECHECK_DAYS, type RadarLevel, type RadarSignal } from '../../lib/investmentRadar';
+import { LEVEL_LABEL, RECHECK_DAYS, type RadarLevel, type RadarSignal, type PerformanceExplanation } from '../../lib/investmentRadar';
 import { curveSpecOf, CURVE_TYPES } from '../../lib/curveProjection';
 import { brokerOf, type AccountLite } from '../../lib/assetLocation';
 
@@ -26,7 +26,8 @@ interface RadarRow {
   summary: string | null;
   recommendation: string | null;
   exit_math: { holdGross: number; sellGross: number; costOfExit: number; irNote: string; note: string } | null;
-  news: { risk: string; headline?: string; events?: string[] } | null;
+  news: { risk: string; headline?: string; events?: string[]; pending?: boolean } | null;
+  explanation?: PerformanceExplanation | null;
   sources: { title: string; url: string }[];
   history: { at: string; level: RadarLevel }[];
   checked_at: string;
@@ -70,6 +71,14 @@ const LEVEL_STYLE: Record<RadarLevel | 'NONE', { chip: string; icon: React.React
   NONE: { chip: 'bg-slate-50 text-slate-500 border-slate-200', icon: <Info size={14} /> }
 };
 const LEVEL_ORDER: Record<string, number> = { URGENTE: 0, ATENCAO: 1, NONE: 2, OK: 3 };
+const TREND_STYLE: Record<PerformanceExplanation['trend'], { cls: string; icon: React.ReactNode }> = {
+  up: { cls: 'text-emerald-700', icon: <TrendingUp size={13} className="shrink-0" /> },
+  flat: { cls: 'text-slate-600', icon: <Minus size={13} className="shrink-0" /> },
+  down: { cls: 'text-rose-700', icon: <TrendingDown size={13} className="shrink-0" /> },
+  unknown: { cls: 'text-slate-400', icon: <Info size={13} className="shrink-0" /> }
+};
+/** Notícias pendentes (cota da IA): o Radar tenta de novo sozinho ao abrir, passado este tempo. */
+const PENDING_RETRY_MS = 3600 * 1000;
 const VERDICT_STYLE: Record<string, string> = {
   VALE: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   NAO_VALE: 'bg-rose-50 text-rose-700 border-rose-200',
@@ -126,6 +135,7 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
   const [answering, setAnswering] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const autoRetried = useRef(false);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -151,6 +161,27 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
 
   useEffect(() => { load(); }, [load]);
 
+  // Notícias pendentes (a cota da IA tinha acabado): ao abrir o Radar, passada
+  // 1 h, tenta de novo em segundo plano, sem travar a tela nem avisar se falhar.
+  useEffect(() => {
+    if (loading || autoRetried.current || scanning) return;
+    const due = Object.values(rows).filter(r => r.news?.pending && Date.now() - Date.parse(r.checked_at) > PENDING_RETRY_MS);
+    if (due.length === 0) return;
+    autoRetried.current = true;
+    (async () => {
+      try {
+        const resp = await fetch('/api/investment-radar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+          body: JSON.stringify({ action: 'scan', assetIds: due.map(r => r.asset_id) })
+        });
+        if (resp.ok) await load();
+      } catch { /* segue pendente; a rodada diária tenta de novo */ }
+    })();
+  }, [loading, rows, scanning, load]);
+
+  const pendingNews = useMemo(() => Object.values(rows).filter(r => r.news?.pending).length, [rows]);
+
   // Link do aviso (…&radar=1) rola até o radar.
   useEffect(() => {
     if (!loading && /radar=1/.test(window.location.hash || window.location.search)) {
@@ -167,7 +198,7 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
         body: JSON.stringify({ action: 'scan', assetId })
       });
       const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data.error || 'Falha ao analisar.');
+      if (!resp.ok) throw new Error(data.error || (resp.status === 504 ? 'A análise demorou demais. Tente "Analisar este" em um investimento.' : 'Falha ao analisar.'));
       const urgent = (data.results || []).filter((r: any) => r.level === 'URGENTE').length;
       toast(
         data.limitMessage
@@ -352,8 +383,13 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
             <div className="min-w-0">
               <h3 className="text-lg font-black text-slate-900 tracking-tight">Radar de Investimentos</h3>
               <p className="text-xs text-slate-500 font-medium">
-                Avisa quando vale pensar em sair de um investimento. Última análise: {dateBr(lastCheck)}.
+                Avisa quando vale pensar em sair de um investimento e explica por que cada um subiu ou caiu. Última análise: {dateBr(lastCheck)}.
               </p>
+              {pendingNews > 0 && (
+                <p className="text-[11px] text-amber-700 font-medium mt-0.5">
+                  Notícias de {pendingNews} investimento{pendingNews > 1 ? 's' : ''} pendente{pendingNews > 1 ? 's' : ''} (limite da IA). O app tenta de novo sozinho.
+                </p>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -441,7 +477,12 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
                   {brokerOf(asset.metadata, accounts) && (
                     <span className="block text-[11px] font-bold text-indigo-600 truncate" data-testid="radar-broker">{brokerOf(asset.metadata, accounts)}</span>
                   )}
-                  <span className="block text-[11px] text-slate-500 truncate">{row?.summary || 'Ainda não analisado'} · {brl(asset.estimated_value)}</span>
+                  <span className="block text-[11px] text-slate-500 truncate">{row?.summary || 'Ainda não analisado — toque em "Analisar agora"'} · {brl(asset.estimated_value)}</span>
+                  {row?.explanation?.headline && row.explanation.trend !== 'unknown' && (
+                    <span className={`flex items-center gap-1 text-[11px] font-semibold truncate ${TREND_STYLE[row.explanation.trend].cls}`} data-testid="radar-trend">
+                      {TREND_STYLE[row.explanation.trend].icon}<span className="truncate">{row.explanation.headline}</span>
+                    </span>
+                  )}
                 </span>
                 {open ? <ChevronUp size={16} className="text-slate-400 shrink-0" /> : <ChevronDown size={16} className="text-slate-400 shrink-0" />}
               </button>
@@ -450,6 +491,22 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
                 <div className="mt-4 space-y-4 text-xs">
                   {row?.recommendation && (
                     <div className={`p-3 rounded-2xl border ${style.chip} font-semibold leading-relaxed`}>{row.recommendation}</div>
+                  )}
+
+                  {row?.explanation && (
+                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1.5" data-testid="radar-explanation">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Por que rende assim</p>
+                      <p className={`flex items-center gap-1.5 font-bold ${TREND_STYLE[row.explanation.trend].cls}`}>
+                        {TREND_STYLE[row.explanation.trend].icon}{row.explanation.headline}
+                      </p>
+                      {row.explanation.points.map((p, i) => (
+                        <p key={i} className="text-slate-600 leading-relaxed pl-3 relative"><span className="absolute left-0">•</span>{p}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {row?.news?.pending && (
+                    <p className="text-[11px] text-amber-700">Notícias do emissor pendentes: a IA estava no limite na última análise. O app tenta de novo sozinho.</p>
                   )}
 
                   {row?.signals?.length ? (
