@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   classify, evaluateAsset, exitMath, marketGapSignal, monthlyReturns, newsSignal,
-  performanceSignals, shouldNotify, monthlyFromAnnual, type RadarSignal, type LedgerMovement
+  performanceSignals, shouldNotify, monthlyFromAnnual, explainPerformance, vetNews, issuerTokens,
+  type RadarSignal, type LedgerMovement
 } from '../lib/investmentRadar';
 
 const sig = (key: RadarSignal['key'], severity: RadarSignal['severity']): RadarSignal => ({ key, severity, label: '', detail: '' });
@@ -104,5 +105,67 @@ describe('radar: aviso', () => {
     expect(shouldNotify({ level: 'URGENTE', notified_at: '2026-11-04T12:00:00Z' }, 'URGENTE', now)).toBe(false);
     expect(shouldNotify({ level: 'URGENTE', notified_at: '2026-10-30T12:00:00Z' }, 'URGENTE', now)).toBe(true);
     expect(shouldNotify(null, 'ATENCAO', now)).toBe(false);
+  });
+});
+
+
+describe('radar: por que subiu ou caiu', () => {
+  const cdi = () => 0.01; // 1% ao mês
+  const base = (meta: Record<string, any>, value = 10000) => ({ id: 'x', name: 'Título', estimated_value: value, metadata: meta });
+  const moves = (incomes: number[]): LedgerMovement[] => [
+    { movement_type: 'APORTE', amount: 10000, movement_date: '2026-06-05' },
+    ...incomes.map((a, i) => ({ movement_type: 'RENDIMENTO_ACUMULADO', amount: a, movement_date: `2026-${String(8 + i).padStart(2, '0')}-28` }))
+  ];
+
+  it('acima do CDI: diz quanto e por quê (taxa prefixada travada)', () => {
+    const e = explainPerformance(base({ investmentType: 'CDB', interestType: 'PRE', yieldRate: 15.5 }), moves([120, 121, 122]), '2026-11-10', cdi);
+    expect(e.trend).toBe('up');
+    expect(e.headline).toContain('acima do CDI');
+    expect(e.points.join(' ')).toContain('Taxa prefixada de 15,5% ao ano');
+    expect(e.points[0]).toContain('ago/2026');
+  });
+
+  it('mês com perda vira "caiu" e o mercado abaixo da curva é explicado sem chamar de perda', () => {
+    const e = explainPerformance(
+      base({ investmentType: 'CRI_CRA', interestType: 'PRE', yieldRate: 12.6, marketValue: 9000 }),
+      moves([100, -50, 90]), '2026-11-10', cdi);
+    expect(e.trend).toBe('down');
+    expect(e.headline).toContain('set/2026');
+    const text = e.points.join(' ');
+    expect(text).toContain('abaixo da curva');
+    expect(text).toContain('Não é perda se segurar até o vencimento');
+  });
+
+  it('fundo abaixo do CDI explica taxa de administração e come-cotas; IR do período aparece à parte', () => {
+    const m = moves([60, 62, 61]);
+    m.push({ movement_type: 'AJUSTE_MANUAL', amount: -30, movement_date: '2026-10-31', notes: 'come-cotas' });
+    const e = explainPerformance(base({ investmentType: 'FUNDOS' }), m, '2026-11-10', cdi);
+    expect(e.trend).toBe('down');
+    expect(e.points.join(' ')).toContain('come-cotas');
+    expect(e.points.join(' ')).toContain('IR/come-cotas descontado no período');
+  });
+
+  it('sem histórico: não inventa tendência', () => {
+    const e = explainPerformance(base({ investmentType: 'FIIS' }), [], '2026-11-10', cdi);
+    expect(e.trend).toBe('unknown');
+    expect(e.points.join(' ')).toContain('aluguéis');
+  });
+});
+
+describe('radar: trava contra notícia falsa ou de outra empresa', () => {
+  it('nome do emissor sem palavras genéricas', () => {
+    expect(issuerTokens('CRA Eucatex CDI 105,15%')).toEqual(['eucatex']);
+    expect(issuerTokens('LCI Banco Inter Pré 13,20%')).toEqual(['inter']);
+  });
+  it('sem fonte: descarta', () => {
+    expect(vetNews({ risk: 'severe', headline: 'Eucatex em RJ' }, 'Eucatex', 0)).toEqual({ risk: 'none' });
+  });
+  it('notícia de outra empresa: descarta', () => {
+    expect(vetNews({ risk: 'watch', headline: 'Duratex tem prejuízo' }, 'CRA Eucatex', 3)).toEqual({ risk: 'none' });
+  });
+  it('cita o emissor e tem fonte: mantém só os fatos que citam o emissor', () => {
+    const v = vetNews({ risk: 'watch', headline: 'Eucatex rebaixada', events: ['Fitch rebaixa Eucatex', 'Juros sobem no Brasil'] }, 'CRA Eucatex', 2);
+    expect(v?.risk).toBe('watch');
+    expect(v?.events).toEqual(['Fitch rebaixa Eucatex']);
   });
 });
