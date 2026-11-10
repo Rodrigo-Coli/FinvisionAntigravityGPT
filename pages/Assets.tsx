@@ -50,7 +50,8 @@ import {
   Printer,
   HandCoins,
   SlidersHorizontal,
-  ArchiveRestore
+  ArchiveRestore,
+  Radar
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { PhysicalAsset, InvestmentBroker, Liability, Transaction } from '../types';
@@ -102,6 +103,13 @@ const Assets: React.FC = () => {
   const activeView: AssetView = resolveTabParam(searchParams.get('view'), ASSET_VIEWS, 'overview');
   const setActiveView = (view: AssetView) => {
     setSearchParams(view === 'overview' ? {} : { view }, { replace: true });
+  };
+  // Investimentos tem duas abas: a carteira e o Radar. O link do aviso do Radar
+  // (…&radar=1, usado na Home e no WhatsApp) continua abrindo direto no Radar.
+  const investmentsTab: 'carteira' | 'radar' =
+    searchParams.get('sub') === 'radar' || searchParams.get('radar') === '1' ? 'radar' : 'carteira';
+  const setInvestmentsTab = (tab: 'carteira' | 'radar') => {
+    setSearchParams(tab === 'radar' ? { view: 'investments', sub: 'radar' } : { view: 'investments' }, { replace: true });
   };
   const [allAccounts, setAllAccounts] = useState<any[]>([]);
   const [collapsedBrokers, setCollapsedBrokers] = useState<Record<string, boolean>>({});
@@ -9327,8 +9335,28 @@ ${tabelaHtml}
         {/* INVESTMENTS VIEW */}
         {activeView === 'investments' && (
           <div className="space-y-8 animate-in fade-in duration-500">
-            {/* Radar de Investimentos: avisa quando vale pensar em sair (lib/investmentRadar.ts) */}
+            {/* Abas: Carteira | Radar */}
+            <div className="flex gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full sm:w-fit" role="tablist">
+              {([
+                { id: 'carteira', label: 'Investimentos', icon: <TrendingUp size={16} /> },
+                { id: 'radar', label: 'Radar', icon: <Radar size={16} /> },
+              ] as const).map(tab => (
+                <button
+                  key={tab.id}
+                  role="tab"
+                  aria-selected={investmentsTab === tab.id}
+                  onClick={() => setInvestmentsTab(tab.id)}
+                  className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold transition-all ${investmentsTab === tab.id ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  {tab.icon}
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            {investmentsTab === 'radar' ? (
+            /* Radar de Investimentos: avisa quando vale pensar em sair (lib/investmentRadar.ts) */
             <InvestmentRadarPanel onAssetsChanged={() => fetchData()} />
+            ) : (<>
             {/* Juros previstos (cupons a receber): some quando não há nenhum */}
             <CouponForecastPanel onAssetsChanged={() => { fetchData(); reloadAllInvestmentMovements(); }} />
             {/* BANK INVESTMENTS (BROKERS) SECTION */}
@@ -10058,6 +10086,7 @@ ${tabelaHtml}
                 })()}
               </div>
             </div>
+            </>)}
           </div>
         )}
 
