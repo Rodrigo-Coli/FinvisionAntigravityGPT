@@ -9,6 +9,7 @@ import { authHeaders } from '../../lib/apiClient';
 import { getSessionUser } from '../../lib/session';
 import { useToast } from '../../contexts/ToastContext';
 import { FieldLabel } from '../common/HelpTip';
+import SnoozeControl from '../home/SnoozeControl';
 import { LEVEL_LABEL, RECHECK_DAYS, type RadarLevel, type RadarSignal, type PerformanceExplanation } from '../../lib/investmentRadar';
 import { curveSpecOf, CURVE_TYPES } from '../../lib/curveProjection';
 import { brokerOf, type AccountLite } from '../../lib/assetLocation';
@@ -229,11 +230,11 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
     }
   };
 
-  const dismiss = async (assetId: string) => {
+  const dismiss = async (assetId: string, days = 7) => {
     if (!supabase) return;
-    const until = new Date(Date.now() + 7 * 86400000).toISOString();
+    const until = new Date(Date.now() + days * 86400000).toISOString();
     await supabase.from('investment_radar').update({ dismissed_until: until }).eq('asset_id', assetId);
-    toast('Aviso escondido da tela inicial por 7 dias. O radar continua checando.', 'success');
+    toast(`Aviso escondido da tela inicial por ${days} dia${days === 1 ? '' : 's'}. O radar continua checando.`, 'success');
     load();
   };
 
@@ -675,9 +676,7 @@ const InvestmentRadarPanel: React.FC<{ onAssetsChanged?: () => void }> = ({ onAs
                         <Pencil size={13} /> Atualizar pelo banco
                       </button>
                       {row?.level === 'URGENTE' && (
-                        <button onClick={() => dismiss(asset.id)} className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 font-bold flex items-center gap-1.5">
-                          <BellOff size={13} /> Já vi, esconder da tela inicial por 7 dias
-                        </button>
+                        <SnoozeControl variant="light" label="Já vi, esconder da tela inicial" onSnooze={days => dismiss(asset.id, days)} />
                       )}
                     </div>
                   )}

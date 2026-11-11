@@ -1,29 +1,31 @@
 {
-  "version": "2026.11.10.0916",
-  "title": "Avisos da tela inicial já abrem filtrados",
+  "version": "2026.11.10.2314",
+  "title": "Avisos da tela inicial: ocultar por quantos dias quiser e lembrete do imóvel só perto da entrega",
   "date": "10/11/2026",
   "benefits": [
     {
-      "title": "Aviso vermelho abre só o que é urgente",
-      "desc": "Ao tocar no aviso do Radar na tela inicial (ou no WhatsApp), a aba Radar abre mostrando só os investimentos urgentes, já com o motivo aberto. Um toque em \"Ver todos\" volta à lista completa.",
-      "type": "melhoria"
-    },
-    {
-      "title": "Aviso laranja abre só os juros não recebidos",
-      "desc": "Ao tocar em \"Juros não recebidos\", a tela de Investimentos abre direto no quadro de juros, mostrando só os que não caíram na conta. Dá para trocar entre Todos, Não recebidos e A receber.",
-      "type": "melhoria"
-    },
-    {
-      "title": "Filtro por nível no Radar",
-      "desc": "Os quadros de resumo do Radar (Urgente, Atenção, OK, Sem análise) agora são filtros: toque em um para ver só aquele nível.",
+      "title": "Ocultar avisos pelo tempo que você escolher",
+      "desc": "Os avisos vermelho (Radar urgente) e laranja (juros não recebidos) ganharam o botão \"Ocultar\": escolha 7, 15 ou 30 dias, ou digite qualquer número de dias. Passado o prazo, o aviso volta se o problema continuar. No Radar, o \"Já vi\" também deixa escolher os dias.",
       "type": "novidade"
+    },
+    {
+      "title": "Juros em aberto aparecem na hora",
+      "desc": "Ao tocar no aviso laranja, o quadro \"Juros previstos\" abre já com os juros não recebidos, mesmo quando o servidor demora para responder. Antes ele podia ficar em branco.",
+      "type": "correcao"
+    },
+    {
+      "title": "Lembrete do imóvel na planta no momento certo",
+      "desc": "\"Saldo de entrega a definir\" só aparece a partir de 6 meses antes da entrega, quando é hora de decidir entre financiamento, à vista etc. Tocar nele abre Ativos Imobiliários.",
+      "type": "melhoria"
     }
   ],
   "changes": [
-    "components/assets/InvestmentRadarPanel.tsx: filtro por nível (quadros do resumo viram botões; ?nivel=URGENTE ou radar=1 chega filtrado, abre os itens e cai para 'todos' se não houver nenhum)",
-    "components/assets/CouponForecastPanel.tsx: filtro Todos / Não recebidos / A receber; ?juros=atrasados chega filtrado, abre e rola até o quadro",
-    "components/home/RadarUrgentBanner.tsx, api/_lib/investment-radar.ts: link /assets?view=investments&sub=radar&nivel=URGENTE",
-    "components/home/MissedCouponBanner.tsx: link /assets?view=investments&juros=atrasados",
-    "tests: filtros do Radar e dos juros previstos"
+    "components/home/SnoozeControl.tsx: controle 'Ocultar por X dias' (7/15/30 ou 1–365 livre)",
+    "components/home/RadarUrgentBanner.tsx: ocultar grava investment_radar.dismissed_until dos urgentes exibidos",
+    "components/home/MissedCouponBanner.tsx: ocultar grava metadata.missed_snoozed_until em cada juro em atraso (preserva o resto do metadata); faixa ignora os ocultados até o prazo",
+    "components/assets/CouponForecastPanel.tsx: lê os previstos em aberto direto do banco antes da sincronização (coupon_sync); se o servidor falhar, mantém a lista",
+    "components/assets/InvestmentRadarPanel.tsx: 'Já vi' com escolha de dias",
+    "lib/deliveryReminder.ts + pages/Home.tsx: lembrete de saldo de entrega só a partir de 180 dias antes (sem data continua aparecendo); link para Ativos Imobiliários",
+    "tests: faixa laranja (ocultar/prazo), ocultar do Radar, lembrete de entrega"
   ]
 }
